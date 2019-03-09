@@ -47,6 +47,7 @@ static const int resizehints = 1; /* 1 means respect size hints in tiled resizal
 #include "tcl.c"
 #include "layouts.c"
 
+#include "gridmode.c"
 static const Layout layouts[] = {
 	/* symbol     arrange function */
 	{ "[]=",      tile },    /* first entry is default */
@@ -54,6 +55,7 @@ static const Layout layouts[] = {
 	{ "[M]",      monocle },
 	{ "|||",      tcl },
 	{ "H[]",      deck },
+	{ "HHH",      grid },
 	{ NULL,       NULL },
 };
 
@@ -122,6 +124,8 @@ static Key keys[] = {
 	{0, XF86XK_AudioLowerVolume, spawn, {.v = downvol}},
 	{0, XF86XK_AudioMute, spawn, {.v = mutevol}},
 	{0, XF86XK_AudioRaiseVolume, spawn, {.v = upvol}},
+	{ MODKEY, XK_o, winview, {0} },
+
 };
 
 /* button definitions */
