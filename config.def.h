@@ -1,7 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 #include <X11/XF86keysym.h>
 /* appearance */
-static const unsigned int borderpx = 5;		  /* border pixel of windows */
+static const unsigned int borderpx = 3;		  /* border pixel of windows */
 static const unsigned int snap = 32;		  /* snap pixel */
 static const unsigned int systraypinning = 0; /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
 static const unsigned int systrayspacing = 2; /* systray spacing */
@@ -11,15 +11,16 @@ static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Monaco:size=12"};
 static const char dmenufont[] = "Monaco:size=12";
-static const char col_gray1[] = "#282a36";
-static const char col_gray2[] = "#44475a";
-static const char col_gray3[] = "#f8f8f2";
-static const char col_gray4[] = "#44475a";
-static const char col_cyan[] = "#8be9fd";
+static const char col_gray1[] = "#282a36"; /* top bar d */
+static const char col_gray2[] = "#bd93f9";/*unfocused border d */
+static const char col_gray3[] = "#6272a4";/*unfocused fontsd d */
+static const char col_gray4[] = "#8be9fd";/*focused fonts d */
+static const char col_gray5[] = "#50fa7b";/*focused windows d */
+static const char col_cyan[] = "#44475a";/*focused dmenu or topbar d */
 static const char *colors[][3] = {
 	/*               fg         bg         border   */
-	[SchemeNorm] = {col_gray3, col_gray1, col_gray2},
-	[SchemeSel] = {col_gray4, col_cyan, col_cyan},
+	[SchemeNorm] = {col_gray2, col_gray1, col_gray3},
+	[SchemeSel] = {col_gray4, col_cyan, col_gray5},
 };
 
 /* tagging */
