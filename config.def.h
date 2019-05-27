@@ -79,6 +79,7 @@ static const char *dmenucmd[] = {"dmenu_run", "-m", dmenumon, "-fn", dmenufont, 
 static const char *termcmd[] = {"st", NULL};
 static const char *papercmd[] = {"paperapps", NULL};
 static const char *slockcmd[] = {"slock", NULL};
+static const char *dswitchcmd[] = {"dswitch", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
 static const char *slingscold[] = { "slingscold-launcher", NULL};
 #include "push.c"
@@ -89,6 +90,7 @@ static Key keys[] = {
 	{MODKEY, XK_y, spawn, {.v = slingscold} },
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
 	{MODKEY, XK_p, spawn, {.v = dmenucmd}},
+	{MODKEY, XK_x, spawn, {.v = dswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ShiftMask, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_b, togglebar, {0}},
@@ -106,7 +108,7 @@ static Key keys[] = {
 	{MODKEY, XK_t, setlayout, {.v = &layouts[0]}},
 	{MODKEY, XK_f, setlayout, {.v = &layouts[1]}},
 	{MODKEY, XK_m, setlayout, {.v = &layouts[2]}},
-	{MODKEY, XK_c, setlayout, {.v = &layouts[3]}},
+	{MODKEY, XK_c, setlayout, {.v = &layouts[5]}},
 
 	{ MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
