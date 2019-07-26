@@ -1,5 +1,5 @@
 # dwm version
-VERSION = 6.2
+VERSION = PB-0.1
 
 # Customize below to fit your system
 
