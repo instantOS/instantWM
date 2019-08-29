@@ -78,6 +78,7 @@ static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() 
 static const char *dmenucmd[] = {"dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, NULL};
 static const char *termcmd[] = {"st", NULL};
 static const char *papercmd[] = {"paperapps", NULL};
+static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"sslock", NULL};
 static const char *dswitchcmd[] = {"dswitch", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
@@ -87,6 +88,7 @@ static const char *slingscold[] = { "slingscold-launcher", NULL};
 static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
+	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
 	{MODKEY, XK_y, spawn, {.v = slingscold} },
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
 	{MODKEY, XK_p, spawn, {.v = dmenucmd}},
