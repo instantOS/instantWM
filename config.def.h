@@ -81,6 +81,7 @@ static const char *papercmd[] = {"paperapps", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"sslock", NULL};
 static const char *dswitchcmd[] = {"dswitch", NULL};
+static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
 static const char *slingscold[] = { "slingscold-launcher", NULL};
 #include "push.c"
@@ -89,6 +90,7 @@ static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
+	{MODKEY, XK_q, spawn, {.v = sucklessshutdowncmd } },
 	{MODKEY, XK_y, spawn, {.v = slingscold} },
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
 	{MODKEY, XK_p, spawn, {.v = dmenucmd}},
