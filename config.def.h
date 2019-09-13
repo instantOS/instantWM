@@ -84,6 +84,8 @@ static const char *dswitchcmd[] = {"dswitch", NULL};
 static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
 static const char *slingscold[] = { "slingscold-launcher", NULL};
+static const char *notifycmd[] = { "kill", "-s", "USR1", "$(pidof deadd-notification-center)", NULL};
+
 #include "push.c"
 
 static Key keys[] = {
@@ -93,6 +95,7 @@ static Key keys[] = {
 	{MODKEY, XK_q, spawn, {.v = sucklessshutdowncmd } },
 	{MODKEY, XK_y, spawn, {.v = slingscold} },
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
+	{MODKEY, XK_g, spawn, {.v = notifycmd} },
 	{MODKEY, XK_p, spawn, {.v = dmenucmd}},
 	{MODKEY, XK_x, spawn, {.v = dswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
