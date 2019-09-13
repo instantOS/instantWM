@@ -82,9 +82,9 @@ static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"sslock", NULL};
 static const char *dswitchcmd[] = {"dswitch", NULL};
 static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
+static const char *notifycmd[] = {"deadcenter", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
 static const char *slingscold[] = { "slingscold-launcher", NULL};
-static const char *notifycmd[] = { "kill", "-s", "USR1", "$(pidof deadd-notification-center)", NULL};
 
 #include "push.c"
 
