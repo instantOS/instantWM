@@ -50,12 +50,12 @@ static const int resizehints = 1; /* 1 means respect size hints in tiled resizal
 #include "gridmode.c"
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "[]=",      tile },    /* first entry is default */
+	{ "𐄹",      grid },
+	{ "☰",      tile },    /* first entry is default */
 	{ "><>",      NULL },    /* no layout function means floating behavior */
 	{ "[M]",      monocle },
 	{ "|||",      tcl },
 	{ "H[]",      deck },
-	{ "HHH",      grid },
 	{ NULL,       NULL },
 };
 
@@ -112,10 +112,10 @@ static Key keys[] = {
 	{MODKEY, XK_Return, zoom, {0}},
 	{MODKEY, XK_Tab, view, {0}},
 	{MODKEY | ShiftMask, XK_c, killclient, {0}},
-	{MODKEY, XK_t, setlayout, {.v = &layouts[0]}},
-	{MODKEY, XK_f, setlayout, {.v = &layouts[1]}},
-	{MODKEY, XK_m, setlayout, {.v = &layouts[2]}},
-	{MODKEY, XK_c, setlayout, {.v = &layouts[5]}},
+	{MODKEY, XK_t, setlayout, {.v = &layouts[1]}},
+	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
+	{MODKEY, XK_m, setlayout, {.v = &layouts[3]}},
+	{MODKEY, XK_c, setlayout, {.v = &layouts[0]}},
 
 	{ MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
