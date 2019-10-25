@@ -84,7 +84,7 @@ static const char *dswitchcmd[] = {"dswitch", NULL};
 static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
 static const char *notifycmd[] = {"deadcenter", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
-static const char *slingscold[] = { "slingscold-launcher", NULL};
+static const char *slingscold[] = { "rofi", "-show", "drun", NULL};
 
 #include "push.c"
 
