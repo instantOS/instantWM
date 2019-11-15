@@ -86,6 +86,7 @@ static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
 static const char *notifycmd[] = {"deadcenter", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
 static const char *slingscold[] = { "rofi", "-show", "drun", NULL};
+static const char  *clickcmd[] = { "autoclicker", NULL };
 
 #include "push.c"
 
@@ -96,6 +97,7 @@ static Key keys[] = {
 	{MODKEY, XK_q, spawn, {.v = sucklessshutdowncmd } },
 	{MODKEY, XK_y, spawn, {.v = slingscold} },
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
+	{MODKEY, XK_w, spawn, {.v = clickcmd} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
 	{MODKEY, XK_p, spawn, {.v = dmenucmd}},
 	{MODKEY, XK_minus, spawn, {.v = dmenustcmd}},
