@@ -1,0 +1,8 @@
+static const char *fonts[] = {"SF-Mono-Bold:size=12"};
+static const char dmenufont[] = "SF-Mono-Bold:size=12";
+static const char col_gray1[] = "#fafafa"; /* top bar d */
+static const char col_gray2[] = "#4c4c4c";/*unfocused fonts d */
+static const char col_gray3[] = "#8e8e93";/*unfocused border d */
+static const char col_gray4[] = "#fafafa";/*focused fonts d */
+static const char col_gray5[] = "#28CD41";/*focused windows d */
+static const char col_cyan[] = "#007aff";/*focused dmenu or topbar d */
