@@ -13,7 +13,7 @@ replacetheme() {
 }
 
 replacetheme '\*fonts'
-replacetheme 'dmenufont'
+replacetheme 'r dmenufont'
 replacetheme "r col_gray1"
 replacetheme "r col_gray2"
 replacetheme "r col_gray3"
@@ -21,6 +21,7 @@ replacetheme "r col_gray4"
 replacetheme "r col_gray5"
 
 if [ -z "$2" ]; then
+    rm config.h &>/dev/null
     make
     sudo make install
 fi
