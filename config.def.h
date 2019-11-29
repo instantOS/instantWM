@@ -9,13 +9,13 @@ static const int systraypinningfailfirst = 1; /* 1: if pinning fails, display sy
 static const int showsystray = 1;			  /* 0 means no systray */
 static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
-static const char *fonts[] = {"Cantarell-Regular:size=12"};
-static const char dmenufont[] = "Cantarell-Regular:size=12";
-static const char col_gray1[] = "#292f3a"; /* top bar d */
-static const char col_gray2[] = "#ffffff";/*unfocused fonts d */
-static const char col_gray3[] = "#747c90";/*unfocused border d */
-static const char col_gray4[] = "#ffffff";/*focused fonts d */
-static const char col_gray5[] = "#4dadd4";/*focused windows d */
+static const char *fonts[] = {"Monaco-Nerd-Font-Complete-Mono:size=12"};
+static const char dmenufont[] = "Monaco-Nerd-Font-Complete-Mono:size=12";
+static const char col_gray1[] = "#282a36"; /* top bar d */
+static const char col_gray2[] = "#bd93f9";/*unfocused fonts d */
+static const char col_gray3[] = "#6272a4";/*unfocused border d */
+static const char col_gray4[] = "#8be9fd";/*focused fonts d */
+static const char col_gray5[] = "#50fa7b";/*focused windows d */
 static const char col_cyan[] = "#007aff";/*focused dmenu or topbar d */
 static const char *colors[][3] = {
 	/*               fg         bg         border   */
@@ -26,6 +26,7 @@ static const char *colors[][3] = {
 
 /* tagging */
 static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
+static const char *tagsalt[] = { "a", "b", "3", "4", "5", "6", "7", "8", "9" };
 
 static const char *upvol[] = {"/usr/bin/pactl", "set-sink-volume", "0", "+5%", NULL};
 static const char *downvol[] = {"/usr/bin/pactl", "set-sink-volume", "0", "-5%", NULL};
@@ -112,6 +113,7 @@ static Key keys[] = {
 	{MODKEY, XK_Up, focusstack, {.i = -1}},
 	{MODKEY|ControlMask, XK_j, pushdown, {0} },
 	{MODKEY|ControlMask, XK_k, pushup, {0} },
+	{MODKEY, XK_s, togglealttag, {0} },
 	{MODKEY, XK_i, incnmaster, {.i = +1}},
 	{MODKEY, XK_d, incnmaster, {.i = -1}},
 	{MODKEY, XK_h, setmfact, {.f = -0.05}},

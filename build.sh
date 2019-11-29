@@ -19,7 +19,7 @@ replacetheme "r col_gray2"
 replacetheme "r col_gray3"
 replacetheme "r col_gray4"
 replacetheme "r col_gray5"
-
+replacetheme "r col_cyan"
 if [ -z "$2" ]; then
     rm config.h &>/dev/null
     make
