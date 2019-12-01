@@ -5,4 +5,4 @@ static const char col_gray2[] = "#ffffff";/*unfocused fonts d */
 static const char col_gray3[] = "#747c90";/*unfocused border d */
 static const char col_gray4[] = "#ffffff";/*focused fonts d */
 static const char col_gray5[] = "#4dadd4";/*focused windows d */
-static const char col_cyan[] = "#44475a";/*focused dmenu or topbar d */
+static const char col_cyan[] = "#5294E2";/*focused dmenu or topbar d */
