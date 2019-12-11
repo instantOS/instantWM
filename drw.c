@@ -379,6 +379,28 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 }
 
 void
+drw_arrow(Drw *drw, int x, int y, unsigned int w, unsigned int h, int direction, int slash)
+{
+        if (!drw)
+                return;
+
+        /* direction=1 draws right arrow */
+        x = direction ? x : x + w;
+        w = direction ? w : -w;
+        /* slash=1 draws slash instead of arrow */
+        unsigned int hh = slash ? (direction ? 0 : h) : h/2;
+
+        XPoint points[] = {
+                {x    , y      },
+                {x + w, y + hh },
+                {x    , y + h  },
+        };
+
+        XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+        XFillPolygon(drw->dpy, drw->drawable, drw->gc, points, 3, Nonconvex, CoordModeOrigin);
+}
+
+void
 drw_map(Drw *drw, Window win, int x, int y, unsigned int w, unsigned int h)
 {
 	if (!drw)

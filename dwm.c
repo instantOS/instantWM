@@ -923,6 +923,7 @@ drawbar(Monitor *m)
 		drw_setscheme(drw, scheme[SchemeNorm]);
 		sw = TEXTW(stext) - lrpad / 2 + 2; /* 2px right padding */
 		drw_text(drw, m->ww - sw - stw, 0, sw, bh, lrpad / 2 - 2, stext, 0);
+
 	}
 
 	resizebarwin(m);
@@ -951,7 +952,7 @@ drawbar(Monitor *m)
 	drw_setscheme(drw, scheme[SchemeNorm]);
 	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
 
-	if ((w = m->ww - sw - x - 100) > bh) {
+	if ((w = m->ww - sw - x - stw) > bh) {
 		if (n > 0) {
 			int remainder = w % n;
 			int tabw = (1.0 / (double)n) * w + 1;
@@ -981,6 +982,11 @@ drawbar(Monitor *m)
 		}
 
 	}
+	
+    // prevscheme = scheme[SchemeNorm];
+	drw_setscheme(drw, scheme[SchemeNorm]);
+
+	drw_arrow(drw, m->ww - sw - stw - (bh /2), 0, (bh / 2), bh, 0, 0);
 
 	m->bt = n;
 	m->btw = w;
@@ -1936,7 +1942,7 @@ setup(void)
 	if (!drw_fontset_create(drw, fonts, LENGTH(fonts)))
 		die("no fonts could be loaded.");
 	lrpad = drw->fonts->h;
-	bh = drw->fonts->h + 2;
+	bh = drw->fonts->h + 12;
 	updategeom();
 	/* init atoms */
 	utf8string = XInternAtom(dpy, "UTF8_STRING", False);
