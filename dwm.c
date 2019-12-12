@@ -951,6 +951,7 @@ drawbar(Monitor *m)
 	w = blw = TEXTW(m->ltsymbol);
 	drw_setscheme(drw, scheme[SchemeNorm]);
 	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
+	int arrowx = x;
 
 	if ((w = m->ww - sw - x - stw) > bh) {
 		if (n > 0) {
@@ -973,7 +974,14 @@ drawbar(Monitor *m)
 					}
 					remainder--;
 				}
-				drw_text(drw, x, 0, tabw, bh, lrpad / 2, c->name, 0);
+
+				if ( TEXTW(c->name) < tabw ) {
+					int mid = ((tabw - (TEXTW(c->name))) / 2);
+					drw_text(drw, x, 0, tabw, bh, mid, c->name, 0);
+				} else {
+					drw_text(drw, x, 0, tabw, bh, lrpad / 2, c->name, 0);
+				}
+
 				x += tabw;
 			}
 		} else {
@@ -987,6 +995,7 @@ drawbar(Monitor *m)
 	drw_setscheme(drw, scheme[SchemeNorm]);
 
 	drw_arrow(drw, m->ww - sw - stw - (bh /2), 0, (bh / 2), bh, 0, 0);
+	drw_arrow(drw, arrowx, 0, bh / 2, bh, 1, 0);
 
 	m->bt = n;
 	m->btw = w;
@@ -1622,13 +1631,16 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	c->oldw = c->w; c->w = wc.width = w;
 	c->oldh = c->h; c->h = wc.height = h;
 	wc.border_width = c->bw;
-	if (((nexttiled(c->mon->clients) == c && !nexttiled(c->next))
+
+	if (((nexttiled(c->mon->clients) == c && !nexttiled(c->next)) &&
+		(NULL != c->mon->lt[c->mon->sellt]->arrange)
 	    || &monocle == c->mon->lt[c->mon->sellt]->arrange)
 	    && !c->isfullscreen && !c->isfloating) {
 		c->w = wc.width += c->bw * 2;
 		c->h = wc.height += c->bw * 2;
 		wc.border_width = 0;
 	}
+
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
 	XSync(dpy, False);
