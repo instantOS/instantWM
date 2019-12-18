@@ -83,6 +83,7 @@ static const char *termcmd[] = {"st", NULL};
 static const char *papercmd[] = {"paperapps", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"sslock", NULL};
+static const char *slockmcmd[] = {"sslock", "dmenu", NULL};
 static const char *dswitchcmd[] = {"dswitch", NULL};
 static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
 static const char *notifycmd[] = {"deadcenter", NULL};
@@ -105,6 +106,7 @@ static Key keys[] = {
 	{MODKEY, XK_minus, spawn, {.v = dmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = dswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
+	{MODKEY | Mod1Mask, XK_l, spawn, {.v = slockmcmd}},
 	{MODKEY | ShiftMask, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_b, togglebar, {0}},
 	{MODKEY, XK_j, focusstack, {.i = +1}},
