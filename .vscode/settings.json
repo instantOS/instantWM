@@ -1,5 +1,5 @@
 {
     "files.associations": {
-        "layouts.c": "cpp"
+        "layouts.c": "c"
     }
 }

@@ -154,6 +154,7 @@ struct Monitor {
 	Window barwin;
 	const Layout *lt[2];
 	unsigned int alttag;
+	unsigned int showtags;
 	Pertag *pertag;
 };
 
@@ -253,6 +254,7 @@ static void tagtoleft(const Arg *arg);
 static void tagtoright(const Arg *arg);
 static void tile(Monitor *);
 static void togglealttag();
+static void toggleshowtags();
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
@@ -523,7 +525,7 @@ attachstack(Client *c)
 void
 buttonpress(XEvent *e)
 {
-	unsigned int i, x, click;
+	unsigned int i, x, click, occ = 0;
 	Arg arg = {0};
 	Client *c;
 	Monitor *m;
@@ -538,9 +540,18 @@ buttonpress(XEvent *e)
 	}
 	if (ev->window == selmon->barwin) {
 		i = x = 0;
-		do
-			x += TEXTW(tags[i]);
-		while (ev->x >= x && ++i < LENGTH(tags));
+		for (c = m->clients; c; c = c->next)
+			occ |= c->tags == 255 ? 0 : c->tags;
+		do {
+			/* do not reserve space for vacant tags */
+			if (selmon->showtags){
+				if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+					continue;
+			}
+
+			x += TEXTW(tags[i]);	
+		} while (ev->x >= x && ++i < LENGTH(tags));
+
 		if (i < LENGTH(tags)) {
 			click = ClkTagBar;
 			arg.ui = 1 << i;
@@ -930,12 +941,22 @@ drawbar(Monitor *m)
 	for (c = m->clients; c; c = c->next) {
 		if (ISVISIBLE(c))
 			n++;
-		occ |= c->tags;
+		occ |= c->tags == 255 ? 0 : c->tags;
+
 		if (c->isurgent)
 			urg |= c->tags;
 	}
 	x = 0;
 	for (i = 0; i < LENGTH(tags); i++) {
+
+		/* do not draw vacant tags */
+		if (selmon->showtags){
+			if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+			continue;
+		}
+
+
+
 		w = TEXTW(tags[i]);
 		wdelta = selmon->alttag ? abs(TEXTW(tags[i]) - TEXTW(tagsalt[i])) / 2 : 0;
 
@@ -2151,6 +2172,13 @@ void
 togglealttag()
 {
 	selmon->alttag = !selmon->alttag;
+	drawbar(selmon);
+}
+
+void
+toggleshowtags()
+{
+	selmon->showtags = !selmon->showtags;
 	drawbar(selmon);
 }
 
