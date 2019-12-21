@@ -2202,9 +2202,11 @@ togglealttag()
 
 void
 togglefakefullscreen(){
-	if (selmon->sel->isfakefullscreen) {
-		resizeclient(selmon->sel, selmon->mx, selmon->my, selmon->mw, selmon->mh);
-		XRaiseWindow(dpy, selmon->sel->win);
+	if (selmon->sel->isfullscreen) {
+		if (selmon->sel->isfakefullscreen) {
+			resizeclient(selmon->sel, selmon->mx, selmon->my, selmon->mw, selmon->mh);
+			XRaiseWindow(dpy, selmon->sel->win);
+		}
 	}
 	
 	selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
