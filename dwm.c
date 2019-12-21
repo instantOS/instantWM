@@ -219,6 +219,7 @@ static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
+static void moveresize(const Arg *arg);
 static Client *nexttiled(Client *c);
 static void pop(Client *);
 static void propertynotify(XEvent *e);
@@ -278,6 +279,7 @@ static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
+static void warp(const Client *c);
 static void viewtoleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
 static Client *wintoclient(Window w);
@@ -2211,6 +2213,65 @@ togglefakefullscreen(){
 	
 	selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
+
+
+
+void
+warp(const Client *c)
+{
+	int x, y;
+
+	if (!c) {
+		XWarpPointer(dpy, None, root, 0, 0, 0, 0, selmon->wx + selmon->ww/2, selmon->wy + selmon->wh/2);
+		return;
+	}
+
+	if (!getrootptr(&x, &y) ||
+	    (x > c->x - c->bw &&
+	     y > c->y - c->bw &&
+	     x < c->x + c->w + c->bw*2 &&
+	     y < c->y + c->h + c->bw*2) ||
+	    (y > c->mon->by && y < c->mon->by + bh) ||
+	    (c->mon->topbar && !y))
+		return;
+
+	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
+}
+
+
+
+
+void
+moveresize(const Arg *arg) {
+	/* only floating windows can be moved */
+	Client *c;
+	c = selmon->sel;
+	
+	if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+		return;
+
+	int mstrength = 40;
+	int mpositions[4][2] = {{0, mstrength}, {0, (-1) * mstrength}, {mstrength,0}, {(-1) * mstrength,0}};
+	int nx = (c->x + mpositions[arg->i][0]);
+	int ny = (c->y + mpositions[arg->i][1]);
+	
+	if (nx < selmon->mx)
+		nx = selmon->mx;
+	if (ny < 0)
+		ny = 0;
+
+	if ((ny + c->h) > selmon->mh)
+		ny = (selmon->mh - c->h);
+
+	if ((nx + c->w) > (selmon->mx + selmon->mw))
+		nx = ((selmon->mw + selmon->mx) - c->w);
+
+	resize(c, nx, ny, c->w, c->h, True);
+	warp(c);
+}
+
+
+
 
 void
 toggleshowtags()

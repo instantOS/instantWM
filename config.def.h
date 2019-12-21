@@ -133,6 +133,12 @@ static Key keys[] = {
 	{ MODKEY,                       XK_Right,  viewtoright,    {0} },
 	{ MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0} },
 	{ MODKEY|ShiftMask,             XK_Right,  tagtoright,     {0} },
+
+	{ MODKEY|ShiftMask,				XK_j,  	moveresize,	{.i = 0}},
+	{ MODKEY|ShiftMask,				XK_k,  	moveresize,	{.i = 1}},
+	{ MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
+	{ MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
+	
 	{ MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
 	{MODKEY, XK_space, setlayout, {0}},
