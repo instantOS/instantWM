@@ -52,8 +52,8 @@ static const int resizehints = 1; /* 1 means respect size hints in tiled resizal
 #include "gridmode.c"
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "𐄹",      grid },
 	{ "☰",      tile },    /* first entry is default */
+	{ "𐄹",      grid },
 	{ "><>",      NULL },    /* no layout function means floating behavior */
 	{ "[M]",      monocle },
 	{ "|||",      tcl },
@@ -102,13 +102,13 @@ static Key keys[] = {
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
 	{MODKEY, XK_w, spawn, {.v = clickcmd} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
-	{MODKEY, XK_p, spawn, {.v = dmenucmd}},
+	{MODKEY, XK_space, spawn, {.v = dmenucmd}},
 	{MODKEY, XK_minus, spawn, {.v = dmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = dswitchcmd}},
 	{Mod1Mask, XK_Tab, spawn, {.v = dswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | Mod1Mask, XK_l, spawn, {.v = slockmcmd}},
-	{MODKEY | ShiftMask, XK_Return, spawn, {.v = termcmd}},
+	{MODKEY, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_b, togglebar, {0}},
 	{MODKEY, XK_j, focusstack, {.i = +1}},
 	{MODKEY, XK_Down, focusstack, {.i = +1}},
@@ -124,13 +124,13 @@ static Key keys[] = {
 	{MODKEY, XK_d, incnmaster, {.i = -1}},
 	{MODKEY, XK_h, setmfact, {.f = -0.05}},
 	{MODKEY, XK_l, setmfact, {.f = +0.05}},
-	{MODKEY, XK_Return, zoom, {0}},
+	{MODKEY | ShiftMask, XK_Return, zoom, {0}},
 	{MODKEY, XK_Tab, view, {0}},
 	{MODKEY | ShiftMask, XK_c, killclient, {0}},
-	{MODKEY, XK_t, setlayout, {.v = &layouts[1]}},
+	{MODKEY, XK_t, setlayout, {.v = &layouts[0]}},
 	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
 	{MODKEY, XK_m, setlayout, {.v = &layouts[3]}},
-	{MODKEY, XK_c, setlayout, {.v = &layouts[0]}},
+	{MODKEY, XK_c, setlayout, {.v = &layouts[1]}},
 	{ MODKEY,                       XK_Left,   viewtoleft,     {0} },
 	{ MODKEY,                       XK_Right,  viewtoright,    {0} },
 	{ MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0} },
@@ -143,7 +143,7 @@ static Key keys[] = {
 	
 	{ MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
-	{MODKEY, XK_space, setlayout, {0}},
+	{MODKEY, XK_p, setlayout, {0}},
 	{MODKEY | ShiftMask, XK_space, togglefloating, {0}},
 	{MODKEY, XK_0, view, {.ui = ~0}},
 	{MODKEY | ShiftMask, XK_0, tag, {.ui = ~0}},
