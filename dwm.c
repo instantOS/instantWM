@@ -281,6 +281,7 @@ static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
 static void warp(const Client *c);
+static void warpfocus();
 static void viewtoleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
 static Client *wintoclient(Window w);
@@ -2341,7 +2342,11 @@ warp(const Client *c)
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 }
 
-
+void
+warpfocus()
+{
+	warp(selmon->sel);
+}
 
 
 void
