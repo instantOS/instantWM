@@ -1084,41 +1084,41 @@ drawbar(Monitor *m)
 	w = blw = TEXTW(m->ltsymbol);
 	drw_setscheme(drw, scheme[SchemeNorm]);
 	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
-	int arrowx = x;
 
 	if ((w = m->ww - sw - x - stw) > bh) {
 		if (n > 0) {
-			int remainder = w % n;
-			int tabw = (1.0 / (double)n) * w + 1;
 			for (c = m->clients; c; c = c->next) {
 				if (!ISVISIBLE(c))
 					continue;
-				if (m->sel == c)
-					scm = SchemeSel;
-				else if (HIDDEN(c))
-					scm = SchemeHid;
-				else
-					scm = SchemeNorm;
-				drw_setscheme(drw, scheme[scm]);
-
-				if (remainder >= 0) {
-					if (remainder == 0) {
-						tabw--;
+				if (m->sel == c) {
+					XSetForeground(drw->dpy, drw->gc, scheme[SchemeSel][ColBg].pixel);
+					XFillArc(drw->dpy, drw->drawable, drw->gc, x, 0, bh, bh, 360*16, 360*32);
+					XFillArc(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh, 360*48, 360*32);
+					drw_setscheme(drw, scheme[SchemeSel]);
+					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
+						drw_text(drw, x + 0.5 * bh, 0, (1.0 / (double)n) * w - bh, bh, ((1.0 / (double)n) * w - bh - TEXTW(c->name)) * 0.5, c->name, 0);
+					} else {
+						drw_text(drw, x + 0.5 * bh, 0, (1.0 / ((double)n) * w) - bh, bh, lrpad / 2, c->name, 0);
 					}
-					remainder--;
-				}
-
-				if ( TEXTW(c->name) < tabw ) {
-					int mid = ((tabw - (TEXTW(c->name))) / 2);
-					drw_text(drw, x, 0, tabw, bh, mid, c->name, 0);
+				x += (1.0 / (double)n) * w;
+					
 				} else {
-					if (x < arrowx + tabw){
-						drw_text(drw, x, 0, tabw, bh, (lrpad / 2) + (bh / 2), c->name, 0);
-					}else{
-						drw_text(drw, x, 0, tabw, bh, lrpad / 2, c->name, 0);
+					if (HIDDEN(c)) {
+						scm = SchemeHid;
+					} else{
+						scm = SchemeNorm;
 					}
+					drw_setscheme(drw, scheme[scm]);
+					if (TEXTW(c->name) < (1.0 / (double)n) * w){
+						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0);
+					} else {
+						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, lrpad / 2, c->name, 0);	
+					}
+					x += (1.0 / (double)n) * w;
+
+					
 				}
-				x += tabw;
+
 			}
 		} else {
 			drw_setscheme(drw, scheme[SchemeNorm]);
@@ -1129,9 +1129,6 @@ drawbar(Monitor *m)
 	
     // prevscheme = scheme[SchemeNorm];
 	drw_setscheme(drw, scheme[SchemeNorm]);
-
-	drw_arrow(drw, m->ww - sw - stw - (bh /2), 0, (bh / 2), bh, 0, 0);
-	drw_arrow(drw, arrowx, 0, bh / 2, bh, 1, 0);
 
 	m->bt = n;
 	m->btw = w;

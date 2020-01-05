@@ -9,14 +9,14 @@ static const int systraypinningfailfirst = 1; /* 1: if pinning fails, display sy
 static const int showsystray = 1;			  /* 0 means no systray */
 static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
-static const char *fonts[] = {"SF-Mono-Bold:size=12"};
-static const char dmenufont[] = "SF-Mono-Bold:size=12";
-static const char col_gray1[] = "#fafafa"; /* top bar d */
-static const char col_gray2[] = "#4c4c4c";/*unfocused fonts d */
-static const char col_gray3[] = "#8e8e93";/*unfocused border d */
-static const char col_gray4[] = "#fafafa";/*focused fonts d */
-static const char col_gray5[] = "#28CD41";/*focused windows d */
-static const char col_cyan[] = "#007aff";/*focused dmenu or topbar d */
+static const char *fonts[] = {"Cantarell-Regular:size=12"};
+static const char dmenufont[] = "Cantarell-Regular:size=12";
+static const char col_gray1[] = "#1B2224"; /* top bar d */
+static const char col_gray2[] = "#A4ABAA";/*unfocused fonts d */
+static const char col_gray3[] = "#686868";/*unfocused border d */
+static const char col_gray4[] = "#FFFFFF";/*focused fonts d */
+static const char col_gray5[] = "#2EB398";/*focused windows d */
+static const char col_cyan[] = "#2EB398";/*focused dmenu or topbar d */
 static const char *colors[][3] = {
 	/*               fg         bg         border   */
 	[SchemeNorm] = { col_gray2, col_gray1, col_gray3 },
