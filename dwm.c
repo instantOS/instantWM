@@ -1032,7 +1032,7 @@ drawbar(Monitor *m)
 
 	int x, w, sw = 0, n = 0, stw = 0, scm, wdelta;
 	int boxs = drw->fonts->h / 9;
-	int boxw = drw->fonts->h / 6 + 2;
+	int boxw = drw->fonts->h / 6 + 5;
   unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
@@ -1077,9 +1077,9 @@ drawbar(Monitor *m)
 
 		if (!selmon->showtags){
 			if (occ & 1 << i)
-					drw_rect(drw, x + boxw, 0, w - ( 2 * boxw + 1), boxw - 2,
-						m == selmon && selmon->sel && selmon->sel->tags & 1 << i,
-						urg & 1 << i);
+				drw_circ(drw, x + boxs, boxs, boxw, boxw,
+					m == selmon && selmon->sel && selmon->sel->tags & 1 << i,
+					urg & 1 << i);
 		}
 
 

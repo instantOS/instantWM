@@ -247,6 +247,18 @@ drw_rect(Drw *drw, int x, int y, unsigned int w, unsigned int h, int filled, int
 		XDrawRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w - 1, h - 1);
 }
 
+void
+drw_circ(Drw *drw, int x, int y, unsigned int w, unsigned int h, int filled, int invert)
+{
+	if (!drw || !drw->scheme)
+		return;
+	XSetForeground(drw->dpy, drw->gc, invert ? drw->scheme[ColBg].pixel : drw->scheme[ColFg].pixel);
+	if (filled)
+		XFillArc(drw->dpy, drw->drawable, drw->gc, x, y, w, h, 0, 360*64);
+	else
+		XDrawArc(drw->dpy, drw->drawable, drw->gc, x, y, w - 1, h - 1, 0, 360*64);
+}
+
 int
 drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lpad, const char *text, int invert, int rounded)
 {
