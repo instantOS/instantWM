@@ -51,7 +51,7 @@ void drw_setscheme(Drw *drw, Clr *scm);
 
 /* Drawing functions */
 void drw_rect(Drw *drw, int x, int y, unsigned int w, unsigned int h, int filled, int invert);
-int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lpad, const char *text, int invert);
+int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lpad, const char *text, int invert, int rounded);
 void drw_arrow(Drw* drw, int x, int y, unsigned int w, unsigned int h, int direction, int slash);
 
 /* Map functions */

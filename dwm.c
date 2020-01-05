@@ -980,7 +980,7 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 
 			text[i] = '\0';
 			w = TEXTW(text) - lrpad;
-			drw_text(drw, x, 0, w, bh, 0, text, 0);
+			drw_text(drw, x, 0, w, bh, 0, text, 0, 0);
 
 			x += w;
 
@@ -1017,7 +1017,7 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 
 	if (!isCode) {
 		w = TEXTW(text) - lrpad;
-		drw_text(drw, x, 0, w, bh, 0, text, 0);
+		drw_text(drw, x, 0, w, bh, 0, text, 0, 0);
 	}
 
 	drw_setscheme(drw, scheme[SchemeNorm]);
@@ -1070,7 +1070,11 @@ drawbar(Monitor *m)
 		wdelta = selmon->alttag ? abs(TEXTW(tags[i]) - TEXTW(tagsalt[i])) / 2 : 0;
 
 		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
-		drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i);
+		if (drw->scheme == scheme[SchemeSel])
+			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
+		else
+			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
+
 		if (!selmon->showtags){
 			if (occ & 1 << i)
 					drw_rect(drw, x + boxw, 0, w - ( 2 * boxw + 1), boxw - 2,
@@ -1083,7 +1087,7 @@ drawbar(Monitor *m)
 	}
 	w = blw = TEXTW(m->ltsymbol);
 	drw_setscheme(drw, scheme[SchemeNorm]);
-	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0);
+	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0, 0);
 
 	if ((w = m->ww - sw - x - stw) > bh) {
 		if (n > 0) {
@@ -1096,9 +1100,9 @@ drawbar(Monitor *m)
 					XFillArc(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh, 360*48, 360*32);
 					drw_setscheme(drw, scheme[SchemeSel]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
-						drw_text(drw, x + 0.5 * bh, 0, (1.0 / (double)n) * w - bh, bh, ((1.0 / (double)n) * w - bh - TEXTW(c->name)) * 0.5, c->name, 0);
+						drw_text(drw, x + 0.5 * bh, 0, (1.0 / (double)n) * w - bh, bh, ((1.0 / (double)n) * w - bh - TEXTW(c->name)) * 0.5, c->name, 0, 0);
 					} else {
-						drw_text(drw, x + 0.5 * bh, 0, (1.0 / ((double)n) * w) - bh, bh, lrpad / 2, c->name, 0);
+						drw_text(drw, x + 0.5 * bh, 0, (1.0 / ((double)n) * w) - bh, bh, lrpad / 2, c->name, 0, 0);
 					}
 				x += (1.0 / (double)n) * w;
 					
@@ -1110,9 +1114,9 @@ drawbar(Monitor *m)
 					}
 					drw_setscheme(drw, scheme[scm]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w){
-						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0);
+						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 0);
 					} else {
-						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, lrpad / 2, c->name, 0);	
+						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, lrpad / 2, c->name, 0, 0);	
 					}
 					x += (1.0 / (double)n) * w;
 
