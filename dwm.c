@@ -1085,9 +1085,9 @@ drawbar(Monitor *m)
 
 		x += w;
 	}
-	w = blw = TEXTW(m->ltsymbol);
+	w = blw = 60;
 	drw_setscheme(drw, scheme[SchemeNorm]);
-	x = drw_text(drw, x, 0, w, bh, lrpad / 2, m->ltsymbol, 0, 0);
+	x = drw_text(drw, x, 0, w, bh, (w - TEXTW(m->ltsymbol)) * 0.5 + 10, m->ltsymbol, 0, 0);
 
 	if ((w = m->ww - sw - x - stw) > bh) {
 		if (n > 0) {
