@@ -1095,6 +1095,8 @@ drawbar(Monitor *m)
 				if (!ISVISIBLE(c))
 					continue;
 				if (m->sel == c) {
+					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, 0, bh, bh);
+					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh);
 					XSetForeground(drw->dpy, drw->gc, scheme[SchemeSel][ColBg].pixel);
 					XFillArc(drw->dpy, drw->drawable, drw->gc, x, 0, bh, bh, 360*16, 360*32);
 					XFillArc(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh, 360*48, 360*32);
