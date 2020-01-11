@@ -6,7 +6,7 @@
  * events about window (dis-)appearance. Only one X connection at a time is
  * allowed to select for this event mask.
  *
- * The event handlers of dwm are organized in an array which is accessed
+ * The event handlers of instantWM are organized in an array which is accessed
  * whenever a new event has been fetched. This allows event dispatching
  * in O(1) time.
  *
@@ -1917,8 +1917,8 @@ run(void)
 
 void
 runAutostart(void) {
-	system("cd ~/.dwm; ./autostart_blocking.sh");
-	system("cd ~/.dwm; ./autostart.sh &");
+	system("cd ~/.instantwm; ./autostart_blocking.sh");
+	system("cd ~/.instantwm; ./autostart.sh &");
 }
 
 void
@@ -2230,7 +2230,7 @@ spawn(const Arg *arg)
 			close(ConnectionNumber(dpy));
 		setsid();
 		execvp(((char **)arg->v)[0], (char **)arg->v);
-		fprintf(stderr, "dwm: execvp %s", ((char **)arg->v)[0]);
+		fprintf(stderr, "instantwm: execvp %s", ((char **)arg->v)[0]);
 		perror(" failed");
 		exit(EXIT_SUCCESS);
 	}
@@ -2752,7 +2752,7 @@ void
 updatestatus(void)
 {
 	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext)))
-		strcpy(stext, "dwm-"VERSION);
+		strcpy(stext, "instantwm-"VERSION);
 	drawbar(selmon);
 	updatesystray();
 }
@@ -2839,7 +2839,7 @@ updatesystray(void)
 			XSync(dpy, False);
 		}
 		else {
-			fprintf(stderr, "dwm: unable to obtain system tray.\n");
+			fprintf(stderr, "instantwm: unable to obtain system tray.\n");
 			free(systray);
 			systray = NULL;
 			return;
@@ -3047,7 +3047,7 @@ xerror(Display *dpy, XErrorEvent *ee)
 	|| (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
 	|| (ee->request_code == X_CopyArea && ee->error_code == BadDrawable))
 		return 0;
-	fprintf(stderr, "dwm: fatal error: request code=%d, error code=%d\n",
+	fprintf(stderr, "instantwm: fatal error: request code=%d, error code=%d\n",
 		ee->request_code, ee->error_code);
 	return xerrorxlib(dpy, ee); /* may call exit */
 }
@@ -3063,7 +3063,7 @@ xerrordummy(Display *dpy, XErrorEvent *ee)
 int
 xerrorstart(Display *dpy, XErrorEvent *ee)
 {
-	die("dwm: another window manager is already running");
+	die("instantwm: another window manager is already running");
 	return -1;
 }
 
@@ -3101,13 +3101,13 @@ int
 main(int argc, char *argv[])
 {
 	if (argc == 2 && !strcmp("-v", argv[1]))
-		die("dwm-"VERSION);
+		die("instantwm-"VERSION);
 	else if (argc != 1)
-		die("usage: dwm [-v]");
+		die("usage: instantwm [-v]");
 	if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
 		fputs("warning: no locale support\n", stderr);
 	if (!(dpy = XOpenDisplay(NULL)))
-		die("dwm: cannot open display");
+		die("instantwm: cannot open display");
 	checkotherwm();
 	setup();
 #ifdef __OpenBSD__

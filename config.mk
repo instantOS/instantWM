@@ -1,5 +1,5 @@
-# dwm version
-VERSION = PB-0.1
+# instantWM version
+VERSION = instantOS-Alpha
 
 # Customize below to fit your system
 

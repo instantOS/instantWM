@@ -1,5 +1,7 @@
 dwm.o
+instantwm.o
 config.h
 util.o
 dwm
+instantwm
 drw.o
