@@ -84,11 +84,11 @@ static const char *papercmd[] = {"paperapps", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"sslock", NULL};
 static const char *slockmcmd[] = {"sslock", "dmenu", NULL};
-static const char *dswitchcmd[] = {"dswitch", NULL};
-static const char *sucklessshutdowncmd[] = {"sucklessshutdown", NULL};
-static const char *notifycmd[] = {"pbnotify", NULL};
+static const char *instantswitchcmd[] = {"instantswitch", NULL};
+static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
+static const char *notifycmd[] = {"instantnotify", NULL};
 static const char  *rangercmd[] = { "st", "-e", "sh", "-c", "ranger", NULL };
-static const char *slingscold[] = { "panther_launcher", NULL};
+static const char *panther[] = { "panther_launcher", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
 
 #include "push.c"
@@ -97,15 +97,15 @@ static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
-	{MODKEY, XK_q, spawn, {.v = sucklessshutdowncmd } },
-	{MODKEY, XK_y, spawn, {.v = slingscold} },
+	{MODKEY, XK_q, spawn, {.v = instantshutdowncmd } },
+	{MODKEY, XK_y, spawn, {.v = panther} },
 	{MODKEY, XK_a, spawn, {.v = papercmd} },
 	{MODKEY, XK_w, spawn, {.v = clickcmd} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
 	{MODKEY, XK_space, spawn, {.v = dmenucmd}},
 	{MODKEY, XK_minus, spawn, {.v = dmenustcmd}},
-	{MODKEY, XK_x, spawn, {.v = dswitchcmd}},
-	{Mod1Mask, XK_Tab, spawn, {.v = dswitchcmd}},
+	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
+	{Mod1Mask, XK_Tab, spawn, {.v = instantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | Mod1Mask, XK_l, spawn, {.v = slockmcmd}},
 	{MODKEY, XK_Return, spawn, {.v = termcmd}},

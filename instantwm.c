@@ -1917,8 +1917,8 @@ run(void)
 
 void
 runAutostart(void) {
-	system("cd ~/.instantwm; ./autostart_blocking.sh");
-	system("cd ~/.instantwm; ./autostart.sh &");
+	system("cd ~/.instantos; ./autostart_blocking.sh");
+	system("cd ~/.instantos; ./autostart.sh &");
 }
 
 void
