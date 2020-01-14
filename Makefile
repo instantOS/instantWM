@@ -31,7 +31,7 @@ clean:
 dist: clean
 	mkdir -p instantwm-${VERSION}
 	cp -R LICENSE Makefile README config.def.h config.mk\
-		instantwm.1 drw.h util.h ${SRC} instantwm.png transient.c instantwm-${VERSION}
+		instantwm.1 drw.h util.h ${SRC} transient.c instantwm-${VERSION}
 	tar -cf instantwm-${VERSION}.tar instantwm-${VERSION}
 	gzip instantwm-${VERSION}.tar
 	rm -rf instantwm-${VERSION}
