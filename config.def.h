@@ -10,7 +10,6 @@ static const int showsystray = 1;			  /* 0 means no systray */
 static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Cantarell-Regular:size=12"};
-static const char dmenufont[] = "Cantarell-Regular:size=12";
 static const char col_gray1[] = "#1B2224"; /* top bar d */
 static const char col_gray2[] = "#A4ABAA";/*unfocused fonts d */
 static const char col_gray3[] = "#686868";/*unfocused border d */
@@ -76,9 +75,9 @@ static const Layout layouts[] = {
 	}
 
 /* commands */
-static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
-static const char *dmenucmd[] = {"instantmenu_run", NULL};
-static const char *dmenustcmd[] = {"instantmenu_run_st", NULL};
+static char instantmenumon[2] = "0"; /* component of instantmenucmd, manipulated in spawn() */
+static const char *instantmenucmd[] = {"instantmenu_run", NULL};
+static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {"urxvt", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
@@ -102,8 +101,8 @@ static Key keys[] = {
 	{MODKEY, XK_a, spawn, {.v = instantassistcmd} },
 	{MODKEY, XK_w, spawn, {.v = clickcmd} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
-	{MODKEY, XK_space, spawn, {.v = dmenucmd}},
-	{MODKEY, XK_minus, spawn, {.v = dmenustcmd}},
+	{MODKEY, XK_space, spawn, {.v = instantmenucmd}},
+	{MODKEY, XK_minus, spawn, {.v = instantmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
 	{Mod1Mask, XK_Tab, spawn, {.v = instantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},

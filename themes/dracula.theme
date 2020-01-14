@@ -1,8 +1,7 @@
 static const char *fonts[] = {"Monaco-Nerd-Font-Complete-Mono:size=12"};
-static const char dmenufont[] = "Monaco-Nerd-Font-Complete-Mono:size=12";
 static const char col_gray1[] = "#282a36"; /* top bar d */
 static const char col_gray2[] = "#bd93f9";/*unfocused fonts d */
 static const char col_gray3[] = "#6272a4";/*unfocused border d */
 static const char col_gray4[] = "#8be9fd";/*focused fonts d */
 static const char col_gray5[] = "#50fa7b";/*focused windows d */
-static const char col_cyan[] = "#44475a";/*focused dmenu or topbar d */
+static const char col_cyan[] = "#44475a";/*focused instantmenu or topbar d */

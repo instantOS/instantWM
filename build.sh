@@ -13,7 +13,6 @@ replacetheme() {
 }
 
 replacetheme '\*fonts'
-replacetheme 'r dmenufont'
 replacetheme "r col_gray1"
 replacetheme "r col_gray2"
 replacetheme "r col_gray3"
