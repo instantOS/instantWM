@@ -1071,6 +1071,7 @@ drawbar(Monitor *m)
 
 		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
 		if (drw->scheme == scheme[SchemeSel])
+			//todo: fix circles appearing behind focus indicator
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
 		else
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);

@@ -77,13 +77,13 @@ static const Layout layouts[] = {
 
 /* commands */
 static char dmenumon[2] = "0"; /* component of dmenucmd, manipulated in spawn() */
-static const char *dmenucmd[] = {"dmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, "-h", "31", NULL};
-static const char *dmenustcmd[] = {"dmenu_run_st", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, NULL};
-static const char *termcmd[] = {"st", NULL};
+static const char *dmenucmd[] = {"instantmenu_run", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, "-h", "31", NULL};
+static const char *dmenustcmd[] = {"instantmenu_run_st", "-m", dmenumon, "-fn", dmenufont, "-nb", col_gray1, "-nf", col_gray3, "-sb", col_cyan, "-sf", col_gray4, NULL};
+static const char *termcmd[] = {"urxvt", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
-static const char *slockcmd[] = {"sslock", NULL};
-static const char *slockmcmd[] = {"sslock", "dmenu", NULL};
+static const char *slockcmd[] = {"ilock", NULL};
+static const char *slockmcmd[] = {"ilock", "dmenu", NULL};
 static const char *instantswitchcmd[] = {"instantswitch", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
@@ -131,18 +131,18 @@ static Key keys[] = {
 	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
 	{MODKEY, XK_m, setlayout, {.v = &layouts[3]}},
 	{MODKEY, XK_c, setlayout, {.v = &layouts[1]}},
-	{ MODKEY,                       XK_Left,   viewtoleft,     {0} },
-	{ MODKEY,                       XK_Right,  viewtoright,    {0} },
-	{ MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0} },
-	{ MODKEY|ShiftMask,             XK_Right,  tagtoright,     {0} },
+	{MODKEY,                       XK_Left,   viewtoleft,     {0}},
+	{MODKEY,                       XK_Right,  viewtoright,    {0}},
+	{MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0}},
+	{MODKEY|ShiftMask,             XK_Right,  tagtoright,     {0}},
 
-	{ MODKEY|ShiftMask,				XK_j,  	moveresize,	{.i = 0}},
-	{ MODKEY|ShiftMask,				XK_k,  	moveresize,	{.i = 1}},
-	{ MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
-	{ MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
+	{MODKEY|ShiftMask,				XK_j,  	moveresize,	{.i = 0}},
+	{MODKEY|ShiftMask,				XK_k,  	moveresize,	{.i = 1}},
+	{MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
+	{MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
 	
-	{ MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
-	{ MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
+	{MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
+	{MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
 	{MODKEY, XK_p, setlayout, {0}},
 	{MODKEY | ShiftMask, XK_space, togglefloating, {0}},
 	{MODKEY, XK_0, view, {.ui = ~0}},
