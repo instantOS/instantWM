@@ -1070,11 +1070,13 @@ drawbar(Monitor *m)
 		wdelta = selmon->alttag ? abs(TEXTW(tags[i]) - TEXTW(tagsalt[i])) / 2 : 0;
 
 		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
-		if (drw->scheme == scheme[SchemeSel])
-			//todo: fix circles appearing behind focus indicator
+		if (drw->scheme == scheme[SchemeSel]) {
+	        XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 1, 0, w - 1, bh - 0.5*w + 1);
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
-		else
+		} else {
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
+		}
 
 		if (!selmon->showtags){
 			if (occ & 1 << i)

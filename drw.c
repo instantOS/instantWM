@@ -285,7 +285,7 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 	} else {
 		XSetForeground(drw->dpy, drw->gc, drw->scheme[invert ? ColFg : ColBg].pixel);
 		if (rounded && h > w) {
-			XFillArc(drw->dpy, drw->drawable, drw->gc, x, y + (h - w)*0.5, w, w, 0, 360*64);
+			XFillArc(drw->dpy, drw->drawable, drw->gc, x, y + h - w, w, w, 32*360, 360*32);
 		} else {
 			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h);
 		}

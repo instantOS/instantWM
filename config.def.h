@@ -15,7 +15,7 @@ static const char col_gray2[] = "#A4ABAA";/*unfocused fonts d */
 static const char col_gray3[] = "#686868";/*unfocused border d */
 static const char col_gray4[] = "#FFFFFF";/*focused fonts d */
 static const char col_gray5[] = "#2EB398";/*focused windows d */
-static const char col_cyan[] = "#2EB398";/*focused dmenu or topbar d */
+static const char col_cyan[] = "#2EB398";/*focused instantmenu or topbar d */
 static const char *colors[][3] = {
 	/*               fg         bg         border   */
 	[SchemeNorm] = { col_gray2, col_gray1, col_gray3 },
