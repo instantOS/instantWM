@@ -1105,7 +1105,7 @@ drawbar(Monitor *m)
 					XFillArc(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh, 360*48, 360*32);
 					drw_setscheme(drw, scheme[SchemeSel]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
-						drw_text(drw, x + 0.5 * bh, 0, (1.0 / (double)n) * w - bh, bh, ((1.0 / (double)n) * w - bh - TEXTW(c->name)) * 0.5, c->name, 0, 0);
+						drw_text(drw, x + 0.5 * bh, 0, (1.0 / (double)n) * w - bh + 2, bh, ((1.0 / (double)n) * w - bh - TEXTW(c->name)) * 0.5, c->name, 0, 0);
 					} else {
 						drw_text(drw, x + 0.5 * bh, 0, (1.0 / ((double)n) * w) - bh, bh, lrpad / 2, c->name, 0, 0);
 					}
