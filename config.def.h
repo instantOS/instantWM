@@ -77,6 +77,7 @@ static const Layout layouts[] = {
 /* commands */
 static char instantmenumon[2] = "0"; /* component of instantmenucmd, manipulated in spawn() */
 static const char *instantmenucmd[] = {"instantmenu_run", NULL};
+static const char *roficmd[] = {"rofi", "-show", "run", NULL};
 static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {"urxvt", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
@@ -101,6 +102,7 @@ static Key keys[] = {
 	{MODKEY, XK_a, spawn, {.v = instantassistcmd} },
 	{MODKEY, XK_w, spawn, {.v = clickcmd} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
+	{MODKEY | ControlMask, XK_space, spawn, {.v = roficmd}},
 	{MODKEY, XK_space, spawn, {.v = instantmenucmd}},
 	{MODKEY, XK_minus, spawn, {.v = instantmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
