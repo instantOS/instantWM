@@ -1920,8 +1920,8 @@ run(void)
 
 void
 runAutostart(void) {
-	system("cd ~/.instantos; ./autostart_blocking.sh");
-	system("cd ~/.instantos; ./autostart.sh &");
+	system("cd /opt/instantos/scripts; ./autostart_blocking.sh");
+	system("cd /opt/instantos/scripts; ./autostart.sh &");
 }
 
 void
