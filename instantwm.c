@@ -566,19 +566,23 @@ buttonpress(XEvent *e)
 		else if (ev->x > selmon->ww - TEXTW(stext) + lrpad - 2)
 			click = ClkStatusText;
 		else {
-			x += blw;
-			c = m->clients;
+			if (selmon->stack) {
+				x += blw;
+				c = m->clients;
 
-			do {
-				if (!ISVISIBLE(c))
-					continue;
-				else
-					x += (1.0 / (double)m->bt) * m->btw;
-			} while (ev->x > x && (c = c->next));
+				do {
+					if (!ISVISIBLE(c))
+						continue;
+					else
+						x += (1.0 / (double)m->bt) * m->btw;
+				} while (ev->x > x && (c = c->next));
 
-			if (c) {
-				click = ClkWinTitle;
-				arg.v = c;
+				if (c) {
+					click = ClkWinTitle;
+					arg.v = c;
+				} 
+			} else {
+				click = ClkRootWin;
 			}
 		}
 	} else if ((c = wintoclient(ev->window))) {
