@@ -87,7 +87,7 @@ static const char *slockmcmd[] = {"ilock", "dmenu", NULL};
 static const char *instantswitchcmd[] = {"instantswitch", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
-static const char *rangercmd[] = { "urxvt", "-e", "sh", "-c", "ranger", NULL };
+static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "jgmenu_run", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
 
