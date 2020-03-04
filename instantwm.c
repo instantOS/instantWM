@@ -221,6 +221,7 @@ static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void moveresize(const Arg *arg);
+static void centerwindow();
 static Client *nexttiled(Client *c);
 static void pop(Client *);
 static void propertynotify(XEvent *e);
@@ -2388,7 +2389,23 @@ moveresize(const Arg *arg) {
 	warp(c);
 }
 
+void
+centerwindow() {
+	Client *c;
+	c = selmon->sel;
+	if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+		return;
 
+	int w, h, mw, mh;
+	w = c->w;
+	h = c->h;
+	mw = selmon->ww;
+	mh = selmon->wh;
+	if (w > mw || h > mh)
+		return;
+
+	resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2), c->w, c->h, True);
+}
 
 
 void

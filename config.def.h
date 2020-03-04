@@ -120,6 +120,7 @@ static Key keys[] = {
 	{MODKEY, XK_s, togglealttag, {0} },
 	{MODKEY|ShiftMask, XK_f, togglefakefullscreen, {0} },
 	{MODKEY|ShiftMask, XK_w, warpfocus, {0} },
+	{MODKEY|Mod1Mask, XK_w, centerwindow, {0} },
 	{MODKEY|ShiftMask, XK_s, toggleshowtags, {0} },
 	{MODKEY, XK_i, incnmaster, {.i = +1}},
 	{MODKEY, XK_d, incnmaster, {.i = -1}},
