@@ -2391,6 +2391,8 @@ moveresize(const Arg *arg) {
 
 void
 centerwindow() {
+	if (!selmon->sel)
+		return;
 	Client *c;
 	c = selmon->sel;
 	if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
