@@ -4,6 +4,7 @@
         "functional": "c",
         "exception": "c",
         "stack": "c",
-        "variant": "c"
+        "variant": "c",
+        "stdarg.h": "c"
     }
 }
