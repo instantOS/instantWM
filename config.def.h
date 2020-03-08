@@ -31,6 +31,10 @@ static const char *upvol[] = {"/opt/instantos/menus/dm/p.sh", "+5", NULL};
 static const char *downvol[] = {"/opt/instantos/menus/dm/p.sh", "-5", NULL};
 static const char *mutevol[] = {"/opt/instantos/menus/dm/p.sh", "m", NULL};
 
+static const char *upbright[] = {"/opt/instantos/menus/dm/b.sh", "+", NULL};
+static const char *downbright[] = {"/opt/instantos/menus/dm/b.sh", "-", NULL};
+
+
 static const Rule rules[] = {
 	/* xprop(1):
 	 *	WM_CLASS(STRING) = instance, class
@@ -185,6 +189,8 @@ static Button buttons[] = {
 	{ ClkStatusText,        0,              Button5,        spawn,          {.v = downvol } },
 	{ ClkStatusText,        MODKEY,         Button2,        spawn,          {.v = mutevol } },
 	{ ClkStatusText,        0,              Button1,        spawn,          {.v = panther } },
+	{ ClkStatusText,        MODKEY,         Button4,        spawn,          {.v = upbright } },
+	{ ClkStatusText,        MODKEY,         Button5,        spawn,          {.v = downbright } },
 	{ ClkRootWin,           0,              Button1,        spawn,          {.v = panther } },
 	{ ClkRootWin,           0,              Button3,        spawn,          {.v = roficmd } },
 	{ ClkRootWin,           0,              Button2,        spawn,          {.v = instantmenucmd } },
