@@ -27,9 +27,9 @@ static const char *colors[][3] = {
 static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
 static const char *tagsalt[] = { "a", "b", "3", "4", "5", "6", "7", "8", "9" };
 
-static const char *upvol[] = {"/usr/bin/pactl", "set-sink-volume", "0", "+5%", NULL};
-static const char *downvol[] = {"/usr/bin/pactl", "set-sink-volume", "0", "-5%", NULL};
-static const char *mutevol[] = {"/usr/bin/pactl", "set-sink-mute", "0", "toggle", NULL};
+static const char *upvol[] = {"/opt/instantos/menus/dm/p.sh", "+5", NULL};
+static const char *downvol[] = {"/opt/instantos/menus/dm/p.sh", "-5", NULL};
+static const char *mutevol[] = {"/opt/instantos/menus/dm/p.sh", "m", NULL};
 
 static const Rule rules[] = {
 	/* xprop(1):
@@ -181,6 +181,9 @@ static Button buttons[] = {
 	{ ClkWinTitle,          0,              Button5,        focusstack,     {.i = +1} },
 	{ ClkWinTitle,          0,              Button4,        focusstack,     {.i = -1} },
 	{ ClkStatusText,        0,              Button2,        spawn,          {.v = termcmd } },
+	{ ClkStatusText,        0,              Button4,        spawn,          {.v = upvol } },
+	{ ClkStatusText,        0,              Button5,        spawn,          {.v = downvol } },
+	{ ClkStatusText,        MODKEY,         Button2,        spawn,          {.v = mutevol } },
 	{ ClkStatusText,        0,              Button1,        spawn,          {.v = panther } },
 	{ ClkRootWin,           0,              Button1,        spawn,          {.v = panther } },
 	{ ClkRootWin,           0,              Button3,        spawn,          {.v = roficmd } },
