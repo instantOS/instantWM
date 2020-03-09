@@ -1,6 +1,6 @@
 #!/bin/bash
 
-THEME=themes/${1:-dracula}.theme
+THEME=themes/${1:-arc}.theme
 echo "$THEME"
 grep -q 'size' <$THEME || { echo "theme not valid" && exit 1; }
 

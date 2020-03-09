@@ -94,6 +94,8 @@ static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "jgmenu_run", NULL};
+static const char *pavucontrol[] = { "pavucontrol", NULL};
+static const char *spoticli[] = { "spoticli", "m", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
 
 #include "push.c"
@@ -190,6 +192,8 @@ static Button buttons[] = {
 	{ ClkStatusText,        0,              Button5,        spawn,          {.v = downvol } },
 	{ ClkStatusText,        MODKEY,         Button2,        spawn,          {.v = mutevol } },
 	{ ClkStatusText,        0,              Button1,        spawn,          {.v = panther } },
+	{ ClkStatusText,        MODKEY|ShiftMask,Button1,       spawn,          {.v = pavucontrol } },
+	{ ClkStatusText,        MODKEY,         Button3,       spawn,           {.v = spoticli } },
 	{ ClkStatusText,        MODKEY,         Button4,        spawn,          {.v = upbright } },
 	{ ClkStatusText,        MODKEY,         Button5,        spawn,          {.v = downbright } },
 	{ ClkRootWin,           0,              Button1,        spawn,          {.v = panther } },

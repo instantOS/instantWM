@@ -5,6 +5,7 @@
         "exception": "c",
         "stack": "c",
         "variant": "c",
-        "stdarg.h": "c"
+        "stdarg.h": "c",
+        "push.c": "c"
     }
 }
