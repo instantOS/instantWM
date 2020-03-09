@@ -25,7 +25,8 @@ static const char *colors[][3] = {
 
 /* tagging */
 static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
-static const char *tagsalt[] = { "a", "b", "3", "4", "5", "6", "7", "8", "9" };
+/* ffox, b, music, steam, folder  */
+static const char *tagsalt[] = { "", "{}", "", "", "", "6", "7", "8", "9" };
 
 static const char *upvol[] = {"/opt/instantos/menus/dm/p.sh", "+5", NULL};
 static const char *downvol[] = {"/opt/instantos/menus/dm/p.sh", "-5", NULL};
