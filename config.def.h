@@ -24,9 +24,9 @@ static const char *colors[][3] = {
 };
 
 /* tagging */
-static const char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
-/* ffox, b, music, steam, folder  */
-static const char *tagsalt[] = { "", "{}", "", "", "", "6", "7", "8", "9" };
+static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+/* ffox, programming1, term, music, steam, folder, play icon, document, message  */
+static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
 static const char *upvol[] = {"/opt/instantos/menus/dm/p.sh", "+5", NULL};
 static const char *downvol[] = {"/opt/instantos/menus/dm/p.sh", "-5", NULL};
