@@ -153,7 +153,6 @@ struct Monitor {
 	Monitor *next;
 	Window barwin;
 	const Layout *lt[2];
-	unsigned int alttag;
 	unsigned int showtags;
 	Pertag *pertag;
 };
@@ -305,6 +304,9 @@ static void comboview(const Arg *arg);
 static Systray *systray =  NULL;
 static const char broken[] = "broken";
 static char stext[1024];
+
+static int showalttag = 0;
+
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
 static int bh, blw = 0;      /* bar geometry */
@@ -1073,15 +1075,15 @@ drawbar(Monitor *m)
 
 
 		w = TEXTW(tags[i]);
-		wdelta = selmon->alttag ? abs(TEXTW(tags[i]) - TEXTW(tagsalt[i])) / 2 : 0;
+		wdelta = showalttag ? abs(TEXTW(tags[i]) - TEXTW(tagsalt[i])) / 2 : 0;
 
 		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
 		if (drw->scheme == scheme[SchemeSel]) {
 	        XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
 			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 1, 0, w - 1, bh - 0.5*w + 1);
-			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
+			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
 		} else {
-			drw_text(drw, x, 0, w, bh, lrpad / 2, (selmon->alttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
+			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
 		}
 
 		if (!selmon->showtags){
@@ -2313,8 +2315,10 @@ tile(Monitor *m)
 void
 togglealttag()
 {
-	selmon->alttag = !selmon->alttag;
-	drawbar(selmon);
+	showalttag = !showalttag;
+	Monitor *m;
+	for (m = mons; m; m = m->next)
+		drawbar(m);
 }
 
 void
