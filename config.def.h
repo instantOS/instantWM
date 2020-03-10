@@ -95,8 +95,11 @@ static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "jgmenu_run", NULL};
 static const char *pavucontrol[] = { "pavucontrol", NULL};
-static const char *spoticli[] = { "spoticli", "m", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
+
+static const char *spoticli[] = { "spoticli", "m", NULL};
+static const char *spotiprev[] = { "spoticli", "p", NULL};
+static const char *spotinext[] = { "spoticli", "n", NULL};
 
 #include "push.c"
 
@@ -172,6 +175,9 @@ static Key keys[] = {
 	{0, XF86XK_AudioLowerVolume, spawn, {.v = downvol}},
 	{0, XF86XK_AudioMute, spawn, {.v = mutevol}},
 	{0, XF86XK_AudioRaiseVolume, spawn, {.v = upvol}},
+	{0, XF86XK_AudioPlay, spawn, {.v = spoticli}},
+	{0, XF86XK_AudioNext, spawn, {.v = spotinext}},
+	{0, XF86XK_AudioPrev, spawn, {.v = spotiprev}},
 	{ MODKEY, XK_o, winview, {0} },
 
 };
