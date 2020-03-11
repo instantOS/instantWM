@@ -17,11 +17,25 @@ prevc(Client *c, float f) {
 	return r;
 }
 
+int clientcount()
+{
+	int count;
+	Client *c;
+	for(c = selmon->clients; c; c = c->next) {
+		if (ISVISIBLE(c))
+			count++;
+	}
+	return count;
+}
+
 static void
 pushup(const Arg *arg) {
 	Client *sel = selmon->sel;
 	Client *c;
-
+	if (clientcount() < 2) {
+		return;
+	}
+	
 	if(!sel || (sel->isfloating && !arg->f))
 		return;
 	if((c = prevc(sel, arg->f))) {
@@ -49,6 +63,10 @@ static void
 pushdown(const Arg *arg) {
 	Client *sel = selmon->sel;
 	Client *c;
+	
+	if (clientcount() < 2) {
+		return;
+	}
 
 	if(!sel || (sel->isfloating && !arg->f))
 		return;
