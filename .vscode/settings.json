@@ -6,6 +6,11 @@
         "stack": "c",
         "variant": "c",
         "stdarg.h": "c",
-        "push.c": "c"
+        "push.c": "c",
+        "cmath": "c",
+        "bit": "c",
+        "*.tcc": "c",
+        "complex": "c",
+        "random": "c"
     }
 }

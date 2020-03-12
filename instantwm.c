@@ -149,6 +149,8 @@ struct Monitor {
 	int topbar;
 	Client *clients;
 	Client *sel;
+	Client *overlay;
+	int overlaystatus;
 	Client *stack;
 	Monitor *next;
 	Window barwin;
@@ -297,6 +299,8 @@ static void zoom(const Arg *arg);
 
 static void keyrelease(XEvent *e);
 static void combotag(const Arg *arg);
+static void setoverlay();
+static void createoverlay();
 static void comboview(const Arg *arg);
 
 
@@ -362,6 +366,93 @@ static int combo = 0;
 void
 keyrelease(XEvent *e) {
 	combo = 0;
+}
+
+int overlayexists() {
+	Client *c;
+
+	if (!selmon->overlay)
+		return 0;
+	for(c = selmon->clients; c; c = c->next) {
+		if (c == selmon->overlay) {
+			return 1;
+		}
+	}
+	
+	return 0;
+}
+
+void createoverlay() {
+	if (!selmon->sel || selmon->sel == selmon->overlay)
+		return;
+
+	Client *tempclient = selmon->sel;
+	
+	selmon->overlaystatus = 1;
+
+	resetoverlay();
+
+	selmon->overlay = tempclient;
+	selmon->overlay->bw = 0;
+
+	showoverlay();
+}
+
+void resetoverlay(){
+	if (!overlayexists())
+		return;
+	selmon->overlay->tags = selmon->tagset[selmon->seltags];
+	selmon->overlay->bw = borderpx;
+	changefloating(selmon->overlay);
+	arrange(selmon);
+	focus(selmon->overlay);
+
+}
+
+void showoverlay(){
+	if (!overlayexists())
+		return;
+	selmon->overlaystatus = 1;
+	Client *c = selmon->overlay;
+
+	selmon->overlay->tags = selmon->tagset[selmon->seltags];
+	focus(c);
+
+	if (!selmon->overlay->isfloating) {
+		changefloating(selmon->overlay);
+	}
+	resize(c, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
+
+	arrange(selmon);
+
+}
+
+void hideoverlay(){
+	if (!overlayexists())
+		return;
+	selmon->overlaystatus = 0;
+	selmon->overlay->tags = 0;
+	focus(NULL);
+	arrange(selmon);
+
+}
+
+void setoverlay(){
+	
+	if (!overlayexists()) {
+		createoverlay();
+		return;
+	}
+
+	if (!selmon->overlaystatus) {
+		showoverlay();
+	} else {
+		if (ISVISIBLE(selmon->overlay)) {
+			hideoverlay();
+		} else {
+			showoverlay();
+		}
+	}
 }
 
 void
@@ -1456,7 +1547,7 @@ keypress(XEvent *e)
 void
 killclient(const Arg *arg)
 {
-	if (!selmon->sel)
+	if (!selmon->sel || selmon->sel == selmon->overlay)
 		return;
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
@@ -2040,9 +2131,9 @@ setfullscreen(Client *c, int fullscreen)
 
 		c->oldstate = c->isfloating;
 		c->oldbw = c->bw;
-		c->bw = 0;
 		c->isfloating = 1;
 		if (!c->isfakefullscreen) {
+			c->bw = 0;
 			resizeclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh);
 			XRaiseWindow(dpy, c->win);
 		}
@@ -2327,6 +2418,8 @@ togglefakefullscreen(){
 		if (selmon->sel->isfakefullscreen) {
 			resizeclient(selmon->sel, selmon->mx, selmon->my, selmon->mw, selmon->mh);
 			XRaiseWindow(dpy, selmon->sel->win);
+		} else {
+			selmon->sel->bw = borderpx;
 		}
 	}
 	
@@ -2459,6 +2552,28 @@ togglefloating(const Arg *arg)
 		selmon->sel->sfy = selmon->sel->y;
 		selmon->sel->sfw = selmon->sel->w;
 		selmon->sel->sfh = selmon->sel->h;
+	}
+	arrange(selmon);
+}
+
+void
+changefloating(Client *c)
+{
+	if (!c)
+		return;
+	if (c->isfullscreen && !c->isfakefullscreen) /* no support for fullscreen windows */
+		return;
+	c->isfloating = !c->isfloating || c->isfixed;
+	if (c->isfloating)
+		/* restore last known float dimensions */
+		resize(c, c->sfx, c->sfy,
+		       c->sfw, c->sfh, False);
+	else {
+		/* save last known float dimensions */
+		c->sfx = c->x;
+		c->sfy = c->y;
+		c->sfw = c->w;
+		c->sfh = c->h;
 	}
 	arrange(selmon);
 }
