@@ -154,6 +154,12 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
 	{MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
 	
+	{MODKEY|Mod1Mask,				XK_j,  	keyresize,	{.i = 0}},
+	{MODKEY|Mod1Mask,				XK_k,  	keyresize,	{.i = 1}},
+	{MODKEY|Mod1Mask,				XK_l,  	keyresize,	{.i = 2}},
+	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
+
+
 	{MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
 	{MODKEY, XK_p, setlayout, {0}},
