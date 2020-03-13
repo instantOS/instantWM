@@ -394,7 +394,7 @@ void createoverlay() {
 	resetoverlay();
 
 	selmon->overlay = tempclient;
-	selmon->overlay->bw = 0;
+	tempclient->bw = 0;
 
 	showoverlay();
 }
@@ -419,9 +419,11 @@ void showoverlay(){
 	selmon->overlay->tags = selmon->tagset[selmon->seltags];
 	focus(c);
 
-	if (!selmon->overlay->isfloating) {
+	if (!c->isfloating) {
 		changefloating(selmon->overlay);
 	}
+
+	c->bw = 0;
 	resize(c, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
 
 	arrange(selmon);
