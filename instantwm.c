@@ -288,6 +288,8 @@ static void warp(const Client *c);
 static void warpfocus();
 static void viewtoleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
+static void viewrightclient(const Arg *arg);
+static void viewleftclient(const Arg *arg);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
 static Client *wintosystrayicon(Window w);
@@ -3169,6 +3171,15 @@ viewtoleft(const Arg *arg) {
 	}
 }
 
+void viewleftclient(const Arg *arg) {
+	Arg *arg2;
+	viewtoleft(arg2);
+	while (clientcount() < 1 && selmon->pertag->curtag > 0)
+	{
+		viewtoleft(arg2);
+	}
+}
+
 void
 viewtoright(const Arg *arg) {
 	int i;
@@ -3199,6 +3210,17 @@ viewtoright(const Arg *arg) {
 		
 		focus(NULL);
 		arrange(selmon);
+	}
+}
+
+void viewrightclient(const Arg *arg) {
+
+	Arg *arg2;
+
+	viewtoright(arg2);
+	while (clientcount() < 1 && selmon->pertag->curtag < LENGTH(tags))
+	{
+		viewtoright(arg2);
 	}
 }
 

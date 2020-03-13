@@ -144,8 +144,13 @@ static Key keys[] = {
 	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
 	{MODKEY, XK_m, setlayout, {.v = &layouts[3]}},
 	{MODKEY, XK_c, setlayout, {.v = &layouts[1]}},
+
 	{MODKEY,                       XK_Left,   viewtoleft,     {0}},
 	{MODKEY,                       XK_Right,  viewtoright,    {0}},
+
+	{MODKEY|ControlMask,           XK_Left,   viewleftclient,     {0}},
+	{MODKEY|ControlMask,           XK_Right,  viewrightclient,    {0}},
+
 	{MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0}},
 	{MODKEY|ShiftMask,             XK_Right,  tagtoright,     {0}},
 
