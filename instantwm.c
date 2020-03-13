@@ -3172,6 +3172,8 @@ viewtoleft(const Arg *arg) {
 }
 
 void viewleftclient(const Arg *arg) {
+	if (!selmon->clients)
+		return;
 	Arg *arg2;
 	viewtoleft(arg2);
 	while (clientcount() < 1 && selmon->pertag->curtag > 0)
@@ -3214,9 +3216,9 @@ viewtoright(const Arg *arg) {
 }
 
 void viewrightclient(const Arg *arg) {
-
+	if (!selmon->clients)
+		return;
 	Arg *arg2;
-
 	viewtoright(arg2);
 	while (clientcount() < 1 && selmon->pertag->curtag < LENGTH(tags))
 	{

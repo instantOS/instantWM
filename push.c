@@ -19,7 +19,9 @@ prevc(Client *c, float f) {
 
 int clientcount()
 {
+
 	int count;
+	count = 0;
 	Client *c;
 	for(c = selmon->clients; c; c = c->next) {
 		if (ISVISIBLE(c))
