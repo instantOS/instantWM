@@ -313,6 +313,8 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int anchortag;
+static int tagoffset = 1;
 
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
@@ -445,7 +447,6 @@ void hideoverlay(){
 void setoverlay(){
 	
 	if (!overlayexists()) {
-		createoverlay();
 		return;
 	}
 
@@ -1137,7 +1138,7 @@ drawbar(Monitor *m)
 	int x, w, sw = 0, n = 0, stw = 0, scm, wdelta;
 	int boxs = drw->fonts->h / 9;
 	int boxw = drw->fonts->h / 6 + 5;
-  unsigned int i, occ = 0, urg = 0;
+    unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
 	if(showsystray && m == systraytomon(m))
@@ -1552,7 +1553,7 @@ keypress(XEvent *e)
 void
 killclient(const Arg *arg)
 {
-	if (!selmon->sel || selmon->sel == selmon->overlay)
+	if (!selmon->sel || (selmon->sel == selmon->overlay && selmon->sel->isfloating))
 		return;
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
@@ -2362,10 +2363,14 @@ tagmon(const Arg *arg)
 
 void
 tagtoleft(const Arg *arg) {
+	int offset = 1;
+	if (arg->i)
+		offset=arg->i;
+
 	if(selmon->sel != NULL
 	&& __builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
 	&& selmon->tagset[selmon->seltags] > 1) {
-		selmon->sel->tags >>= 1;
+		selmon->sel->tags >>= offset;
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -2373,10 +2378,14 @@ tagtoleft(const Arg *arg) {
 
 void
 tagtoright(const Arg *arg) {
+	int offset = 1;
+	if (arg->i)
+		offset=arg->i;
+
 	if(selmon->sel != NULL
 	&& __builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
 	&& selmon->tagset[selmon->seltags] & (TAGMASK >> 1)) {
-		selmon->sel->tags <<= 1;
+		selmon->sel->tags <<= offset;
 		focus(NULL);
 		arrange(selmon);
 	}

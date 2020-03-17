@@ -42,7 +42,8 @@ static const Rule rules[] = {
 	 *	WM_NAME(STRING) = title
 	 */
 	/* class      instance    title       tags mask     isfloating   monitor */
-	{"Gimp", NULL, NULL, 0, 1, -1},
+	{"Gimp", 	  NULL,       NULL,       0,            1,           -1},
+	{"pavucontrol", NULL,     NULL,       0,            1,           -1},
 };
 
 /* layout(s) */
@@ -227,6 +228,8 @@ static Button buttons[] = {
 	{ ClkClientWin,         MODKEY,         Button3,        resizemouse,    {0} },
 	{ ClkTagBar,            0,              Button1,        view,           {0} },
 	{ ClkTagBar,            0,              Button5,        viewtoright,    {0} },
+	{ ClkTagBar,            MODKEY,         Button4,        viewleftclient, {0} },
+	{ ClkTagBar,            MODKEY,         Button5,        viewrightclient,{0} },
 	{ ClkTagBar,            0,              Button4,        viewtoleft,     {0} },
 	{ ClkTagBar,            0,              Button3,        toggleview,     {0} },
 	{ ClkTagBar,            MODKEY,         Button1,        tag,            {0} },
