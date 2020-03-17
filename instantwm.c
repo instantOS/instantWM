@@ -3197,7 +3197,7 @@ void viewleftclient(const Arg *arg) {
 		return;
 	Arg *arg2;
 	viewtoleft(arg2);
-	while (clientcount() < 1 && selmon->pertag->curtag > 0)
+	while (clientcount() < 1 && selmon->pertag->curtag > 1)
 	{
 		viewtoleft(arg2);
 	}
