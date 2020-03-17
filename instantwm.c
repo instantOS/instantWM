@@ -388,8 +388,16 @@ int overlayexists() {
 }
 
 void createoverlay() {
-	if (!selmon->sel || selmon->sel == selmon->overlay)
+	if (!selmon->sel)
 		return;
+	if (selmon->sel == selmon->overlay) {
+		if (!selmon->overlay->isfloating) {
+			changefloating(selmon->overlay);
+		}
+		resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
+		arrange(selmon);
+		return;
+	}
 
 	Client *tempclient = selmon->sel;
 	
@@ -399,7 +407,11 @@ void createoverlay() {
 
 	selmon->overlay = tempclient;
 	tempclient->bw = 0;
+	if (!selmon->overlay->isfloating) {
+		changefloating(selmon->overlay);
+	}
 
+	selmon->overlay->h =((selmon->wh) / 3);
 	showoverlay();
 }
 
@@ -428,7 +440,7 @@ void showoverlay(){
 	}
 
 	c->bw = 0;
-	resize(c, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
+	resize(c, selmon->mx + 20, bh, selmon->ww - 40, c->h, True);
 
 	arrange(selmon);
 
