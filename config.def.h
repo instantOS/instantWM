@@ -120,6 +120,8 @@ static Key keys[] = {
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
 	{Mod1Mask, XK_Tab, spawn, {.v = instantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
+	{MODKEY | ControlMask, XK_h, hidewin, {0}},
+	{MODKEY | Mod1Mask, XK_h, unhideall, {0}},
 	{MODKEY | Mod1Mask, XK_l, spawn, {.v = slockmcmd}},
 	{MODKEY, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_b, togglebar, {0}},

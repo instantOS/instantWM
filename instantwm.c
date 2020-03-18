@@ -266,6 +266,8 @@ static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void togglewin(const Arg *arg);
+static void hidewin(const Arg *arg);
+static void unhideall(const Arg *arg);
 static void closewin(const Arg *arg);
 static void unfocus(Client *c, int setfocus);
 static void unmanage(Client *c, int destroyed);
@@ -2688,6 +2690,29 @@ togglewin(const Arg *arg)
 		focus(c);
 		restack(selmon);
 	}
+}
+
+void hidewin(const Arg *arg)
+{
+	if (!selmon->sel)
+		return;
+	Client *c = selmon->sel;
+	if (HIDDEN(c))
+		return;
+	hide(c);
+}
+
+void unhideall(const Arg *arg){
+	Client *c;
+	for (c = selmon->clients; c; c = c->next) {
+		if (!ISVISIBLE(c)) {
+			continue;
+		}
+		if (HIDDEN(c))
+			show(c);
+	}
+	restack(selmon);
+
 }
 
 void
