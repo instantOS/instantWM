@@ -2703,14 +2703,13 @@ void hidewin(const Arg *arg)
 }
 
 void unhideall(const Arg *arg){
+
 	Client *c;
 	for (c = selmon->clients; c; c = c->next) {
-		if (!ISVISIBLE(c)) {
-			continue;
-		}
-		if (HIDDEN(c))
+		if (ISVISIBLE(c) && HIDDEN(c))
 			show(c);
 	}
+	focus(c);
 	restack(selmon);
 
 }
