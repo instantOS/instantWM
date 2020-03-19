@@ -16,11 +16,13 @@ static const char col_gray3[] = "#747c90";/*unfocused border d */
 static const char col_gray4[] = "#ffffff";/*focused fonts d */
 static const char col_gray5[] = "#4dadd4";/*focused windows d */
 static const char col_cyan[] = "#5294E2";/*focused instantmenu or topbar d */
-static const char *colors[][3] = {
-	/*               fg         bg         border   */
-	[SchemeNorm] = { col_gray2, col_gray1, col_gray3 },
-	[SchemeSel]  = { col_gray4, col_cyan,  col_gray5  },
-	[SchemeHid]  = { col_cyan,  col_gray1, col_cyan  },
+static const char col_border1[] = "#73d216";/*focused instantmenu or topbar d */
+
+static const char *colors[][4] = {
+	/*               fg         bg         border   	float*/
+	[SchemeNorm] = { col_gray2, col_gray1, col_gray3, col_border1 },
+	[SchemeSel]  = { col_gray4, col_cyan,  col_gray5, col_border1  },
+	[SchemeHid]  = { col_cyan,  col_gray1, col_cyan, col_border1  },
 };
 
 /* tagging */
