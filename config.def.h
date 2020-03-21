@@ -152,9 +152,13 @@ static Key keys[] = {
 
 	{MODKEY,                       XK_Left,   viewtoleft,     {0}},
 	{MODKEY,                       XK_Right,  viewtoright,    {0}},
+	
+	{MODKEY,                       XK_e,  overtoggle,    {.ui = ~0}},
 
 	{MODKEY|ControlMask,           XK_Left,   viewleftclient,     {0}},
+	{MODKEY|Mod1Mask,              XK_Left,   moveleft,     {0}},
 	{MODKEY|ControlMask,           XK_Right,  viewrightclient,    {0}},
+	{MODKEY|Mod1Mask,              XK_Right,  moveright,     {0}},
 
 	{MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0}},
 	{MODKEY|ShiftMask,             XK_Right,  tagtoright,     {0}},
