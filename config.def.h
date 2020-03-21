@@ -44,8 +44,8 @@ static const Rule rules[] = {
 	 *	WM_NAME(STRING) = title
 	 */
 	/* class      instance    title       tags mask     isfloating   monitor */
-	{"Gimp", 	  NULL,       NULL,       0,            1,           -1},
-	{"pavucontrol", NULL,     NULL,       0,            1,           -1},
+	{"Pavucontrol", NULL,     NULL,       0,            1,           -1},
+	{"Welcome.py", NULL,     NULL,        0,            1,           -1},
 };
 
 /* layout(s) */
