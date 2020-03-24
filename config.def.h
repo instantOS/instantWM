@@ -92,7 +92,8 @@ static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
 static const char *slockmcmd[] = {"ilock", "dmenu", NULL};
-static const char *instantswitchcmd[] = {"rofi", "-show", "window", NULL};
+static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", NULL};
+static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
@@ -115,7 +116,7 @@ static Key keys[] = {
 	/* modifier                     key        function        argument */
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
-	{MODKEY, XK_q, spawn, {.v = instantshutdowncmd } },
+	{MODKEY | ControlMask, XK_q, spawn, {.v = instantshutdowncmd } },
 	{MODKEY, XK_y, spawn, {.v = panther} },
 	{MODKEY, XK_a, spawn, {.v = instantassistcmd} },
 	{MODKEY, XK_w, setoverlay, {0} },
@@ -126,6 +127,7 @@ static Key keys[] = {
 	{MODKEY, XK_minus, spawn, {.v = instantmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
 	{Mod1Mask, XK_Tab, spawn, {.v = instantswitchcmd}},
+	{MODKEY, XK_q, spawn, {.v = caretinstantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ControlMask, XK_h, hidewin, {0}},
 	{MODKEY | Mod1Mask, XK_h, unhideall, {0}},
