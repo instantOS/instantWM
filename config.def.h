@@ -92,15 +92,18 @@ static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
 static const char *slockmcmd[] = {"ilock", "dmenu", NULL};
-static const char *instantswitchcmd[] = {"instantswitch", NULL};
+static const char *instantswitchcmd[] = {"rofi", "-show", "window", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "appmenu", NULL};
 static const char *pavucontrol[] = { "pavucontrol", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
+
 static const char  *scrotcmd[] = { "/opt/instantos/menus/dm/ss.sh", NULL };
 static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
+static const char  *clipscrotcmd[] = { "/opt/instantos/menus/dm/sc.sh", NULL };
+static const char  *fclipscrotcmd[] = { "/opt/instantos/menus/dm/sf.sh", NULL };
 
 static const char *spoticli[] = { "spoticli", "m", NULL};
 static const char *spotiprev[] = { "spoticli", "p", NULL};
@@ -204,6 +207,8 @@ static Key keys[] = {
 	
 	{0, XK_Print, spawn, {.v = fscrotcmd}},
 	{MODKEY, XK_Print, spawn, {.v = scrotcmd}},
+	{MODKEY|ControlMask, XK_Print, spawn, {.v = clipscrotcmd}},
+	{MODKEY|Mod1Mask, XK_Print, spawn, {.v = fclipscrotcmd}},
 
 	{ MODKEY, XK_o, winview, {0} },
 
