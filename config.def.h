@@ -99,6 +99,8 @@ static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "appmenu", NULL};
 static const char *pavucontrol[] = { "pavucontrol", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
+static const char  *scrotcmd[] = { "/opt/instantos/menus/dm/ss.sh", NULL };
+static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
 
 static const char *spoticli[] = { "spoticli", "m", NULL};
 static const char *spotiprev[] = { "spoticli", "p", NULL};
@@ -199,6 +201,10 @@ static Key keys[] = {
 	{0, XF86XK_AudioPlay, spawn, {.v = spoticli}},
 	{0, XF86XK_AudioNext, spawn, {.v = spotinext}},
 	{0, XF86XK_AudioPrev, spawn, {.v = spotiprev}},
+	
+	{0, XK_Print, spawn, {.v = fscrotcmd}},
+	{MODKEY, XK_Print, spawn, {.v = scrotcmd}},
+
 	{ MODKEY, XK_o, winview, {0} },
 
 };
