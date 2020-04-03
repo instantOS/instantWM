@@ -2567,8 +2567,11 @@ centerwindow() {
 	mh = selmon->wh;
 	if (w > mw || h > mh)
 		return;
+	if (selmon->showbar)
+		resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2) + bh, c->w, c->h, True);
+	else
+		resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2) - bh, c->w, c->h, True);
 
-	resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2), c->w, c->h, True);
 }
 
 
