@@ -227,6 +227,7 @@ static Button buttons[] = {
 	{ ClkWinTitle,          0,              Button1,        togglewin,      {0} },
 	{ ClkWinTitle,          MODKEY,         Button1,        setoverlay,      {0} },
 	{ ClkWinTitle,          MODKEY,         Button3,        spawn,      {.v = notifycmd } },
+	{ ClkStatusText,        0,              Button3,        spawn,      {.v = caretinstantswitchcmd } },
 	{ ClkWinTitle,          0,              Button2,        closewin,      {0} },
 	{ ClkWinTitle,          0,              Button3,        zoom,           {0} },
 	{ ClkWinTitle,          0,              Button5,        focusstack,     {.i = +1} },
