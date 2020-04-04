@@ -124,10 +124,12 @@ static Key dkeys[] = {
 	{0, XK_Return, spawn, {.v = termcmd} },
 	{0, XK_plus, spawn, {.v = upvol} },
 	{0, XK_minus, spawn, {.v = downvol} },
+	{0, XK_Tab, spawn, {.v = caretinstantswitchcmd} },
 	
 	{0, XK_Left,   viewtoleft,     {0}},
 	{0, XK_Right,  viewtoright,    {0}},
-
+	{0, XK_n,      shiftview,      {.i = +1 } },
+	{0, XK_p,      shiftview,      {.i = -1 } },
 };
 
 static Key keys[] = {
@@ -181,9 +183,10 @@ static Key keys[] = {
 	
 	{MODKEY,                       XK_e,  overtoggle,    {.ui = ~0}},
 
-	{MODKEY|ControlMask,           XK_Left,   viewleftclient,     {0}},
+	{MODKEY|ControlMask,           XK_Left,   shiftview,      {.i = -1 }},
 	{MODKEY|Mod1Mask,              XK_Left,   moveleft,     {0}},
-	{MODKEY|ControlMask,           XK_Right,  viewrightclient,    {0}},
+	{MODKEY|ControlMask,           XK_Right,  shiftview,      {.i = +1 }},
+
 	{MODKEY|Mod1Mask,              XK_Right,  moveright,     {0}},
 
 	{MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0}},
@@ -271,8 +274,8 @@ static Button buttons[] = {
 	{ ClkClientWin,         MODKEY,         Button3,        resizemouse,    {0} },
 	{ ClkTagBar,            0,              Button1,        view,           {0} },
 	{ ClkTagBar,            0,              Button5,        viewtoright,    {0} },
-	{ ClkTagBar,            MODKEY,         Button4,        viewleftclient, {0} },
-	{ ClkTagBar,            MODKEY,         Button5,        viewrightclient,{0} },
+	{ ClkTagBar,            MODKEY,         Button4,        shiftview,      {.i = -1 } },
+	{ ClkTagBar,            MODKEY,         Button5,        shiftview,      {.i = +1 } },
 	{ ClkTagBar,            0,              Button4,        viewtoleft,     {0} },
 	{ ClkTagBar,            0,              Button3,        toggleview,     {0} },
 	{ ClkTagBar,            MODKEY,         Button1,        tag,            {0} },

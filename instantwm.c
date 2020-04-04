@@ -291,8 +291,6 @@ static void warpfocus();
 static void viewtoleft(const Arg *arg);
 static void moveleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
-static void viewrightclient(const Arg *arg);
-static void viewleftclient(const Arg *arg);
 static void moveright(const Arg *arg);
 
 static void overtoggle(const Arg *arg);
@@ -312,6 +310,7 @@ static void combotag(const Arg *arg);
 static void setoverlay();
 static void createoverlay();
 static void comboview(const Arg *arg);
+static void shiftview(const Arg *arg);
 
 
 /* variables */
@@ -3284,16 +3283,41 @@ viewtoleft(const Arg *arg) {
 	}
 }
 
-void viewleftclient(const Arg *arg) {
-	if (!selmon->clients)
-		return;
-	Arg *arg2;
-	viewtoleft(arg2);
-	while (clientcount() < 1 && selmon->pertag->curtag > 1)
-	{
-		viewtoleft(arg2);
+
+
+void
+shiftview(const Arg *arg)
+{
+	Arg a;
+	Client *c;
+	unsigned visible = 0;
+	int i = arg->i;
+	int count = 0;
+	int nextseltags, curseltags = selmon->tagset[selmon->seltags];
+
+	do {
+		if(i > 0) // left circular shift
+			nextseltags = (curseltags << i) | (curseltags >> (LENGTH(tags) - i));
+
+		else // right circular shift
+			nextseltags = curseltags >> (- i) | (curseltags << (LENGTH(tags) + i));
+
+                // Check if tag is visible
+		for (c = selmon->clients; c && !visible; c = c->next)
+			if (nextseltags & c->tags) {
+				visible = 1;
+				break;
+			}
+		i += arg->i;
+	} while (!visible && ++count < 10);
+
+	if (count < 10) {
+		a.i = nextseltags;
+		view(&a);
 	}
 }
+
+
 
 void
 viewtoright(const Arg *arg) {
@@ -3328,16 +3352,6 @@ viewtoright(const Arg *arg) {
 	}
 }
 
-void viewrightclient(const Arg *arg) {
-	if (!selmon->clients)
-		return;
-	Arg *arg2;
-	viewtoright(arg2);
-	while (clientcount() < 1 && selmon->pertag->curtag < LENGTH(tags))
-	{
-		viewtoright(arg2);
-	}
-}
 
 void
 moveright(const Arg *arg) {
