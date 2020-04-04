@@ -106,11 +106,29 @@ static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
 static const char  *clipscrotcmd[] = { "/opt/instantos/menus/dm/sc.sh", NULL };
 static const char  *fclipscrotcmd[] = { "/opt/instantos/menus/dm/sf.sh", NULL };
 
+static const char  *firefoxcmd[] = { "firefox", NULL };
+
 static const char *spoticli[] = { "spoticli", "m", NULL};
 static const char *spotiprev[] = { "spoticli", "p", NULL};
 static const char *spotinext[] = { "spoticli", "n", NULL};
 
 #include "push.c"
+
+static Key dkeys[] = {
+	/* modifier                     key        function        argument */
+	{0, XK_r, spawn, {.v = rangercmd } },
+	{0, XK_n, spawn, {.v = nautiluscmd } },
+	{0, XK_space, spawn, {.v = panther} },
+	{0, XK_f, spawn, {.v = firefoxcmd} },
+	{0, XK_m, spawn, {.v = spoticli} },
+	{0, XK_Return, spawn, {.v = termcmd} },
+	{0, XK_plus, spawn, {.v = upvol} },
+	{0, XK_minus, spawn, {.v = downvol} },
+	
+	{0, XK_Left,   viewtoleft,     {0}},
+	{0, XK_Right,  viewtoright,    {0}},
+
+};
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */

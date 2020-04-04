@@ -323,6 +323,8 @@ static int showalttag = 0;
 static int anchortag;
 static int tagoffset = 1;
 
+static int isdesktop = 0;
+
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
 static int bh, blw = 0;      /* bar geometry */
@@ -1343,6 +1345,15 @@ focus(Client *c)
 	}
 	selmon->sel = c;
 	drawbars();
+	if (!c){
+		if (!isdesktop) {
+			isdesktop = 1;
+			grabkeys();
+		}
+	} else if (isdesktop) {
+		isdesktop = 0;
+		grabkeys();
+	}
 }
 
 /* there are some broken focus acquiring clients needing extra handling */
@@ -1512,11 +1523,24 @@ grabkeys(void)
 		KeyCode code;
 
 		XUngrabKey(dpy, AnyKey, AnyModifier, root);
-		for (i = 0; i < LENGTH(keys); i++)
+		for (i = 0; i < LENGTH(keys); i++) {
 			if ((code = XKeysymToKeycode(dpy, keys[i].keysym)))
 				for (j = 0; j < LENGTH(modifiers); j++)
 					XGrabKey(dpy, code, keys[i].mod | modifiers[j], root,
 						True, GrabModeAsync, GrabModeAsync);
+		}
+		
+		if(!selmon->sel){
+			for (i = 0; i < LENGTH(dkeys); i++) {
+				if ((code = XKeysymToKeycode(dpy, dkeys[i].keysym)))
+					for (j = 0; j < LENGTH(modifiers); j++)
+						XGrabKey(dpy, code, dkeys[i].mod | modifiers[j], root,
+							True, GrabModeAsync, GrabModeAsync);
+			}
+
+		}
+		
+
 	}
 }
 
@@ -1567,17 +1591,33 @@ isuniquegeom(XineramaScreenInfo *unique, size_t n, XineramaScreenInfo *info)
 void
 keypress(XEvent *e)
 {
+
 	unsigned int i;
 	KeySym keysym;
 	XKeyEvent *ev;
 
 	ev = &e->xkey;
 	keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
-	for (i = 0; i < LENGTH(keys); i++)
+	for (i = 0; i < LENGTH(keys); i++) {
 		if (keysym == keys[i].keysym
 		&& CLEANMASK(keys[i].mod) == CLEANMASK(ev->state)
-		&& keys[i].func)
+		&& keys[i].func) {
 			keys[i].func(&(keys[i].arg));
+		}
+
+	}
+
+	if (!selmon->sel) {
+		for (i = 0; i < LENGTH(dkeys); i++) {
+			if (keysym == dkeys[i].keysym
+			&& CLEANMASK(dkeys[i].mod) == CLEANMASK(ev->state)
+			&& dkeys[i].func)
+				dkeys[i].func(&(dkeys[i].arg));
+
+		}
+
+	}
+
 }
 
 void
