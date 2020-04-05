@@ -2571,6 +2571,10 @@ moveresize(const Arg *arg) {
 
 void
 keyresize(const Arg *arg) {
+
+	if (!selmon->sel)
+		return;
+
 	Client *c;
 	c = selmon->sel;
 

@@ -91,7 +91,7 @@ static const char *termcmd[] = {"urxvt", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
-static const char *slockmcmd[] = {"ilock", "dmenu", NULL};
+static const char *slockmcmd[] = {"ilock", "message", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", NULL};
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
@@ -134,6 +134,12 @@ static Key dkeys[] = {
 
 static Key keys[] = {
 	/* modifier                     key        function        argument */
+
+	{MODKEY|Mod1Mask,				XK_j,  	keyresize,	{.i = 0}},
+	{MODKEY|Mod1Mask,				XK_k,  	keyresize,	{.i = 1}},
+	{MODKEY|Mod1Mask,				XK_l,  	keyresize,	{.i = 2}},
+	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
+
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
 	{MODKEY | ControlMask, XK_q, spawn, {.v = instantshutdowncmd } },
@@ -150,8 +156,8 @@ static Key keys[] = {
 	{MODKEY, XK_dead_circumflex, spawn, {.v = caretinstantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ControlMask, XK_h, hidewin, {0}},
-	{MODKEY | Mod1Mask, XK_h, unhideall, {0}},
-	{MODKEY | Mod1Mask, XK_l, spawn, {.v = slockmcmd}},
+	{MODKEY | Mod1Mask | ControlMask, XK_h, unhideall, {0}},
+	{MODKEY | Mod1Mask | ControlMask, XK_l, spawn, {.v = slockmcmd}},
 	{MODKEY, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_b, togglebar, {0}},
 	{MODKEY, XK_j, focusstack, {.i = +1}},
@@ -197,11 +203,6 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
 	{MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
 	
-	{MODKEY|Mod1Mask,				XK_j,  	keyresize,	{.i = 0}},
-	{MODKEY|Mod1Mask,				XK_k,  	keyresize,	{.i = 1}},
-	{MODKEY|Mod1Mask,				XK_l,  	keyresize,	{.i = 2}},
-	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
-
 
 	{MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
