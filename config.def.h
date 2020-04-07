@@ -126,10 +126,15 @@ static Key dkeys[] = {
 	{0, XK_minus, spawn, {.v = downvol} },
 	{0, XK_Tab, spawn, {.v = caretinstantswitchcmd} },
 	
+	{0, XK_h,   viewtoleft,     {0}},
+	{0, XK_l,  viewtoright,    {0}},
+	{0, XK_k,      shiftview,      {.i = +1 } },
+	{0, XK_j,      shiftview,      {.i = -1 } },
+
 	{0, XK_Left,   viewtoleft,     {0}},
 	{0, XK_Right,  viewtoright,    {0}},
-	{0, XK_n,      shiftview,      {.i = +1 } },
-	{0, XK_p,      shiftview,      {.i = -1 } },
+	{0, XK_Up,      shiftview,      {.i = +1 } },
+	{0, XK_Down,      shiftview,      {.i = -1 } },
 };
 
 static Key keys[] = {
