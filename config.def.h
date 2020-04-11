@@ -73,9 +73,10 @@ static const Layout layouts[] = {
 /* key definitions */
 #define MODKEY Mod4Mask
 #define TAGKEYS(KEY, TAG)                                          \
-	{MODKEY, KEY, view, {.ui = 1 << TAG}},                         \
+		{MODKEY, KEY, view, {.ui = 1 << TAG}},                     \
 		{MODKEY | ControlMask, KEY, toggleview, {.ui = 1 << TAG}}, \
 		{MODKEY | ShiftMask, KEY, tag, {.ui = 1 << TAG}},          \
+		{MODKEY | Mod1Mask, KEY, followtag, {.ui = 1 << TAG}},          \
 		{MODKEY | ControlMask | ShiftMask, KEY, toggletag, {.ui = 1 << TAG}},
 
 
@@ -93,7 +94,7 @@ static const char *termcmd[] = {"urxvt", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
-static const char *slockmcmd[] = {"ilock", "dmenu", NULL};
+static const char *slockmcmd[] = {"ilock", "message", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", NULL};
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
@@ -108,14 +109,45 @@ static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
 static const char  *clipscrotcmd[] = { "/opt/instantos/menus/dm/sc.sh", NULL };
 static const char  *fclipscrotcmd[] = { "/opt/instantos/menus/dm/sf.sh", NULL };
 
+static const char  *firefoxcmd[] = { "firefox", NULL };
+
 static const char *spoticli[] = { "spoticli", "m", NULL};
 static const char *spotiprev[] = { "spoticli", "p", NULL};
 static const char *spotinext[] = { "spoticli", "n", NULL};
 
 #include "push.c"
 
+static Key dkeys[] = {
+	/* modifier                     key        function        argument */
+	{0, XK_r, spawn, {.v = rangercmd } },
+	{0, XK_n, spawn, {.v = nautiluscmd } },
+	{0, XK_space, spawn, {.v = panther} },
+	{0, XK_f, spawn, {.v = firefoxcmd} },
+	{0, XK_m, spawn, {.v = spoticli} },
+	{0, XK_Return, spawn, {.v = termcmd} },
+	{0, XK_plus, spawn, {.v = upvol} },
+	{0, XK_minus, spawn, {.v = downvol} },
+	{0, XK_Tab, spawn, {.v = caretinstantswitchcmd} },
+	
+	{0, XK_h,   viewtoleft,     {0}},
+	{0, XK_l,  viewtoright,    {0}},
+	{0, XK_k,      shiftview,      {.i = +1 } },
+	{0, XK_j,      shiftview,      {.i = -1 } },
+
+	{0, XK_Left,   viewtoleft,     {0}},
+	{0, XK_Right,  viewtoright,    {0}},
+	{0, XK_Up,      shiftview,      {.i = +1 } },
+	{0, XK_Down,      shiftview,      {.i = -1 } },
+};
+
 static Key keys[] = {
 	/* modifier                     key        function        argument */
+
+	{MODKEY|Mod1Mask,				XK_j,  	keyresize,	{.i = 0}},
+	{MODKEY|Mod1Mask,				XK_k,  	keyresize,	{.i = 1}},
+	{MODKEY|Mod1Mask,				XK_l,  	keyresize,	{.i = 2}},
+	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
+
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
 	{MODKEY | ControlMask, XK_q, spawn, {.v = instantshutdowncmd } },
@@ -132,8 +164,8 @@ static Key keys[] = {
 	{MODKEY, XK_dead_circumflex, spawn, {.v = caretinstantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ControlMask, XK_h, hidewin, {0}},
-	{MODKEY | Mod1Mask, XK_h, unhideall, {0}},
-	{MODKEY | Mod1Mask, XK_l, spawn, {.v = slockmcmd}},
+	{MODKEY | Mod1Mask | ControlMask, XK_h, unhideall, {0}},
+	{MODKEY | Mod1Mask | ControlMask, XK_l, spawn, {.v = slockmcmd}},
 	{MODKEY, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_b, togglebar, {0}},
 	{MODKEY, XK_j, focusstack, {.i = +1}},
@@ -165,9 +197,10 @@ static Key keys[] = {
 	
 	{MODKEY,                       XK_e,  overtoggle,    {.ui = ~0}},
 
-	{MODKEY|ControlMask,           XK_Left,   viewleftclient,     {0}},
+	{MODKEY|ControlMask,           XK_Left,   shiftview,      {.i = -1 }},
 	{MODKEY|Mod1Mask,              XK_Left,   moveleft,     {0}},
-	{MODKEY|ControlMask,           XK_Right,  viewrightclient,    {0}},
+	{MODKEY|ControlMask,           XK_Right,  shiftview,      {.i = +1 }},
+
 	{MODKEY|Mod1Mask,              XK_Right,  moveright,     {0}},
 
 	{MODKEY|ShiftMask,             XK_Left,   tagtoleft,      {0}},
@@ -178,11 +211,6 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
 	{MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
 	
-	{MODKEY|Mod1Mask,				XK_j,  	keyresize,	{.i = 0}},
-	{MODKEY|Mod1Mask,				XK_k,  	keyresize,	{.i = 1}},
-	{MODKEY|Mod1Mask,				XK_l,  	keyresize,	{.i = 2}},
-	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
-
 
 	{MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
@@ -229,6 +257,7 @@ static Button buttons[] = {
 	{ ClkWinTitle,          0,              Button1,        togglewin,      {0} },
 	{ ClkWinTitle,          MODKEY,         Button1,        setoverlay,      {0} },
 	{ ClkWinTitle,          MODKEY,         Button3,        spawn,      {.v = notifycmd } },
+	{ ClkStatusText,        0,              Button3,        spawn,      {.v = caretinstantswitchcmd } },
 	{ ClkWinTitle,          0,              Button2,        closewin,      {0} },
 	{ ClkWinTitle,          0,              Button3,        zoom,           {0} },
 	{ ClkWinTitle,          0,              Button5,        focusstack,     {.i = +1} },
@@ -254,8 +283,8 @@ static Button buttons[] = {
 	{ ClkClientWin,         MODKEY,         Button3,        resizemouse,    {0} },
 	{ ClkTagBar,            0,              Button1,        view,           {0} },
 	{ ClkTagBar,            0,              Button5,        viewtoright,    {0} },
-	{ ClkTagBar,            MODKEY,         Button4,        viewleftclient, {0} },
-	{ ClkTagBar,            MODKEY,         Button5,        viewrightclient,{0} },
+	{ ClkTagBar,            MODKEY,         Button4,        shiftview,      {.i = -1 } },
+	{ ClkTagBar,            MODKEY,         Button5,        shiftview,      {.i = +1 } },
 	{ ClkTagBar,            0,              Button4,        viewtoleft,     {0} },
 	{ ClkTagBar,            0,              Button3,        toggleview,     {0} },
 	{ ClkTagBar,            MODKEY,         Button1,        tag,            {0} },

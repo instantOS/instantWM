@@ -254,6 +254,7 @@ static void sigchld(int unused);
 static void spawn(const Arg *arg);
 static Monitor *systraytomon(Monitor *m);
 static void tag(const Arg *arg);
+static void followtag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tagtoleft(const Arg *arg);
 static void tagtoright(const Arg *arg);
@@ -291,8 +292,6 @@ static void warpfocus();
 static void viewtoleft(const Arg *arg);
 static void moveleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
-static void viewrightclient(const Arg *arg);
-static void viewleftclient(const Arg *arg);
 static void moveright(const Arg *arg);
 
 static void overtoggle(const Arg *arg);
@@ -316,6 +315,7 @@ static void combotag(const Arg *arg);
 static void setoverlay();
 static void createoverlay();
 static void comboview(const Arg *arg);
+static void shiftview(const Arg *arg);
 
 
 /* variables */
@@ -326,6 +326,8 @@ static char stext[1024];
 static int showalttag = 0;
 static int anchortag;
 static int tagoffset = 1;
+
+static int isdesktop = 0;
 
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
@@ -1347,6 +1349,15 @@ focus(Client *c)
 	}
 	selmon->sel = c;
 	drawbars();
+	if (!c){
+		if (!isdesktop) {
+			isdesktop = 1;
+			grabkeys();
+		}
+	} else if (isdesktop) {
+		isdesktop = 0;
+		grabkeys();
+	}
 }
 
 /* there are some broken focus acquiring clients needing extra handling */
@@ -1516,11 +1527,24 @@ grabkeys(void)
 		KeyCode code;
 
 		XUngrabKey(dpy, AnyKey, AnyModifier, root);
-		for (i = 0; i < LENGTH(keys); i++)
+		for (i = 0; i < LENGTH(keys); i++) {
 			if ((code = XKeysymToKeycode(dpy, keys[i].keysym)))
 				for (j = 0; j < LENGTH(modifiers); j++)
 					XGrabKey(dpy, code, keys[i].mod | modifiers[j], root,
 						True, GrabModeAsync, GrabModeAsync);
+		}
+		
+		if(!selmon->sel){
+			for (i = 0; i < LENGTH(dkeys); i++) {
+				if ((code = XKeysymToKeycode(dpy, dkeys[i].keysym)))
+					for (j = 0; j < LENGTH(modifiers); j++)
+						XGrabKey(dpy, code, dkeys[i].mod | modifiers[j], root,
+							True, GrabModeAsync, GrabModeAsync);
+			}
+
+		}
+		
+
 	}
 }
 
@@ -1571,17 +1595,33 @@ isuniquegeom(XineramaScreenInfo *unique, size_t n, XineramaScreenInfo *info)
 void
 keypress(XEvent *e)
 {
+
 	unsigned int i;
 	KeySym keysym;
 	XKeyEvent *ev;
 
 	ev = &e->xkey;
 	keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
-	for (i = 0; i < LENGTH(keys); i++)
+	for (i = 0; i < LENGTH(keys); i++) {
 		if (keysym == keys[i].keysym
 		&& CLEANMASK(keys[i].mod) == CLEANMASK(ev->state)
-		&& keys[i].func)
+		&& keys[i].func) {
 			keys[i].func(&(keys[i].arg));
+		}
+
+	}
+
+	if (!selmon->sel) {
+		for (i = 0; i < LENGTH(dkeys); i++) {
+			if (keysym == dkeys[i].keysym
+			&& CLEANMASK(dkeys[i].mod) == CLEANMASK(ev->state)
+			&& dkeys[i].func)
+				dkeys[i].func(&(dkeys[i].arg));
+
+		}
+
+	}
+
 }
 
 void
@@ -2387,6 +2427,12 @@ tag(const Arg *arg)
 	}
 }
 
+void followtag(const Arg *arg)
+{
+	tag(arg);
+	view(arg);
+}
+
 void
 tagmon(const Arg *arg)
 {
@@ -2536,6 +2582,10 @@ moveresize(const Arg *arg) {
 
 void
 keyresize(const Arg *arg) {
+
+	if (!selmon->sel)
+		return;
+
 	Client *c;
 	c = selmon->sel;
 
@@ -2571,8 +2621,11 @@ centerwindow() {
 	mh = selmon->wh;
 	if (w > mw || h > mh)
 		return;
+	if (selmon->showbar)
+		resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2) + bh, c->w, c->h, True);
+	else
+		resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2) - bh, c->w, c->h, True);
 
-	resize(c, selmon->mx + (mw/2) - (w/2), selmon->my + (mh/2) - (h/2), c->w, c->h, True);
 }
 
 
@@ -3245,16 +3298,41 @@ viewtoleft(const Arg *arg) {
 	}
 }
 
-void viewleftclient(const Arg *arg) {
-	if (!selmon->clients)
-		return;
-	Arg *arg2;
-	viewtoleft(arg2);
-	while (clientcount() < 1 && selmon->pertag->curtag > 1)
-	{
-		viewtoleft(arg2);
+
+
+void
+shiftview(const Arg *arg)
+{
+	Arg a;
+	Client *c;
+	unsigned visible = 0;
+	int i = arg->i;
+	int count = 0;
+	int nextseltags, curseltags = selmon->tagset[selmon->seltags];
+
+	do {
+		if(i > 0) // left circular shift
+			nextseltags = (curseltags << i) | (curseltags >> (LENGTH(tags) - i));
+
+		else // right circular shift
+			nextseltags = curseltags >> (- i) | (curseltags << (LENGTH(tags) + i));
+
+                // Check if tag is visible
+		for (c = selmon->clients; c && !visible; c = c->next)
+			if (nextseltags & c->tags) {
+				visible = 1;
+				break;
+			}
+		i += arg->i;
+	} while (!visible && ++count < 10);
+
+	if (count < 10) {
+		a.i = nextseltags;
+		view(&a);
 	}
 }
+
+
 
 void
 viewtoright(const Arg *arg) {
@@ -3289,16 +3367,6 @@ viewtoright(const Arg *arg) {
 	}
 }
 
-void viewrightclient(const Arg *arg) {
-	if (!selmon->clients)
-		return;
-	Arg *arg2;
-	viewtoright(arg2);
-	while (clientcount() < 1 && selmon->pertag->curtag < LENGTH(tags))
-	{
-		viewtoright(arg2);
-	}
-}
 
 void
 moveright(const Arg *arg) {
