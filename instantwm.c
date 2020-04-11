@@ -3378,6 +3378,12 @@ moveright(const Arg *arg) {
 void overtoggle(const Arg *arg){
 	if (!selmon->pertag->curtag == 0) {
 		view(arg);
+		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)&layouts[1];
+		strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, sizeof selmon->ltsymbol);
+		if (selmon->sel)
+			arrange(selmon);
+		else
+			drawbar(selmon);
 	} else {
 		Arg *nonearg;
 		winview(nonearg);
