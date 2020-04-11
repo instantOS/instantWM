@@ -65,6 +65,8 @@ static const Layout layouts[] = {
 	{ "[M]",      monocle },
 	{ "|||",      tcl },
 	{ "H[]",      deck },
+	{ "TTT",      bstack },
+	{ "===",      bstackhoriz },
 	{ NULL,       NULL },
 };
 
