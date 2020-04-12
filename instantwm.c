@@ -222,6 +222,7 @@ static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void moveresize(const Arg *arg);
+static void distributeclients(const Arg *arg);
 static void keyresize(const Arg *arg);
 static void centerwindow();
 static Client *nexttiled(Client *c);
@@ -907,6 +908,27 @@ configurenotify(XEvent *e)
 			arrange(NULL);
 		}
 	}
+}
+
+void distributeclients(const Arg *arg) {
+	if (!selmon->sel)
+		return;
+
+	Client *c;
+	int tagcounter = 0;
+	focus(NULL);
+
+	for (c = selmon->clients; c; c = c->next) {
+		if (tagcounter > 8) {
+			tagcounter = 0;
+		}
+		if (c && 1<<tagcounter & TAGMASK) {
+			c->tags = 1<<tagcounter & TAGMASK;
+		}
+		tagcounter++;
+	}
+	focus(NULL);
+	arrange(selmon);
 }
 
 void
