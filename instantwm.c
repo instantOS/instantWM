@@ -447,7 +447,7 @@ void showoverlay(){
 	selmon->overlaystatus = 1;
 	Client *c = selmon->overlay;
 
-	selmon->overlay->tags = selmon->tagset[selmon->seltags];
+	selmon->overlay->tags = ~0 & TAGMASK;
 	focus(c);
 
 	if (!c->isfloating) {
@@ -1208,6 +1208,8 @@ drawbar(Monitor *m)
 
 	resizebarwin(m);
 	for (c = m->clients; c; c = c->next) {
+		if (c == selmon->overlay)
+			continue;
 		if (ISVISIBLE(c))
 			n++;
 		occ |= c->tags == 255 ? 0 : c->tags;
