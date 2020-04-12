@@ -920,6 +920,8 @@ void distributeclients(const Arg *arg) {
 	focus(NULL);
 
 	for (c = selmon->clients; c; c = c->next) {
+		if (c == selmon->overlay)
+			continue;
 		if (tagcounter > 8) {
 			tagcounter = 0;
 		}
