@@ -296,6 +296,7 @@ static void viewtoright(const Arg *arg);
 static void moveright(const Arg *arg);
 
 static void overtoggle(const Arg *arg);
+static void fullovertoggle(const Arg *arg);
 
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
@@ -3401,6 +3402,18 @@ void
 overtoggle(const Arg *arg){
 	if (!selmon->pertag->curtag == 0) {
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[1];
+		view(arg);
+	} else {
+		Arg *nonearg;
+		winview(nonearg);
+	}
+}
+
+// overtoggle but with monocle layout
+void
+fullovertoggle(const Arg *arg){
+	if (!selmon->pertag->curtag == 0) {
+		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[3];
 		view(arg);
 	} else {
 		Arg *nonearg;
