@@ -154,6 +154,7 @@ struct Monitor {
 	Client *sel;
 	Client *overlay;
 	int overlaystatus;
+	int gesture;
 	Client *stack;
 	Monitor *next;
 	Window barwin;
@@ -1209,12 +1210,9 @@ drawbar(Monitor *m)
 		sw = m->ww - stw - drawstatusbar(m, bh, stext);
 
 	}
-	
 
 	resizebarwin(m);
 	for (c = m->clients; c; c = c->next) {
-		if (c == selmon->overlay)
-			continue;
 		if (ISVISIBLE(c))
 			n++;
 		occ |= c->tags == 255 ? 0 : c->tags;
@@ -1792,6 +1790,18 @@ motionnotify(XEvent *e)
 
 	if (ev->window != root)
 		return;
+
+	if (ev->y_root == 0 && ev->x_root >= selmon->mx + selmon->ww - 20) {
+			if (selmon->gesture != 11) {
+				selmon->gesture = 11;
+				setoverlay();
+			}
+	} else {
+		if (selmon->gesture == 11 && ev->x_root >= selmon->mx + selmon->ww - 24) {
+			selmon->gesture = 0;
+		}
+	}
+
 	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
 		unfocus(selmon->sel, 1);
 		selmon = m;
