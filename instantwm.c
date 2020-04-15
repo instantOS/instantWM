@@ -87,7 +87,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
-       ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
+       ClkClientWin, ClkRootWin, ClkLast, ClkCloseButton }; /* clicks */
 
 typedef union {
 	int i;
@@ -720,8 +720,12 @@ buttonpress(XEvent *e)
 				} while (ev->x > x && (c = c->next));
 
 				if (c) {
-					click = ClkWinTitle;
 					arg.v = c;
+					if (c != selmon->sel || ev->x > x - (1.0 / (double)m->bt) * m->btw + 32) {
+						click = ClkWinTitle;
+					} else {
+						click = ClkCloseButton;
+					}
 				} 
 			} else {
 				click = ClkRootWin;
@@ -736,7 +740,7 @@ buttonpress(XEvent *e)
 	for (i = 0; i < LENGTH(buttons); i++)
 		if (click == buttons[i].click && buttons[i].func && buttons[i].button == ev->button
 		&& CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
-			buttons[i].func((click == ClkTagBar || click == ClkWinTitle) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
+			buttons[i].func((click == ClkTagBar || click == ClkWinTitle || click == ClkCloseButton) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
 }
 
 void
@@ -1293,8 +1297,14 @@ drawbar(Monitor *m)
 					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
 						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 4);
 					} else {
-						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2, c->name, 0, 4);
+						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2 + 26, c->name, 0, 4);
 					}
+
+					XSetForeground(drw->dpy, drw->gc, scheme[SchemeEmpty][ColBg].pixel);
+					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
+					XSetForeground(drw->dpy, drw->gc, scheme[SchemeEmpty][ColFloat].pixel);
+					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
+
 				x += (1.0 / (double)n) * w;
 					
 				} else {
