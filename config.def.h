@@ -274,6 +274,7 @@ static Button buttons[] = {
 	{ ClkStatusText,        0,              Button3,        spawn,          {.v = caretinstantswitchcmd } },
 	{ ClkWinTitle,          0,              Button2,        closewin,       {0} },
 	{ ClkCloseButton,       0,              Button1,        closewin,       {0} },
+	{ ClkCloseButton,       0,              Button3,        togglelocked,       {0} },
 	{ ClkWinTitle,          0,              Button3,        zoom,           {0} },
 	{ ClkWinTitle,          0,              Button5,        focusstack,     {.i = +1} },
 	{ ClkWinTitle,          0,              Button4,        focusstack,     {.i = -1} },

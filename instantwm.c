@@ -115,7 +115,7 @@ struct Client {
 	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	int bw, oldbw;
 	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen;
+	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen, islocked;
 	Client *next;
 	Client *snext;
 	Monitor *mon;
@@ -265,7 +265,8 @@ static void tagtoleft(const Arg *arg);
 static void tagtoright(const Arg *arg);
 static void tile(Monitor *);
 static void togglealttag();
-static void togglefakefullscreen();
+static void togglefakefullscreen(const Arg *arg);
+static void togglelocked(const Arg *arg);
 static void toggleshowtags();
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
@@ -1300,9 +1301,15 @@ drawbar(Monitor *m)
 						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2 + 26, c->name, 0, 4);
 					}
 
-					XSetForeground(drw->dpy, drw->gc, scheme[SchemeEmpty][ColBg].pixel);
+					// render close button
+					if (!c->islocked) {
+						drw_setscheme(drw, scheme[SchemeEmpty]);
+					} else {
+						drw_setscheme(drw, scheme[SchemeAddActive]);
+					}
+					XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
 					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
-					XSetForeground(drw->dpy, drw->gc, scheme[SchemeEmpty][ColFloat].pixel);
+					XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
 					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
 
 				x += (1.0 / (double)n) * w;
@@ -1686,7 +1693,7 @@ keypress(XEvent *e)
 void
 killclient(const Arg *arg)
 {
-	if (!selmon->sel || (selmon->sel == selmon->overlay && selmon->sel->isfloating))
+	if (!selmon->sel || (selmon->sel == selmon->overlay && selmon->sel->isfloating) || selmon->sel->islocked)
 		return;
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
@@ -2578,7 +2585,7 @@ togglealttag()
 }
 
 void
-togglefakefullscreen(){
+togglefakefullscreen(const Arg *arg){
 	if (selmon->sel->isfullscreen) {
 		if (selmon->sel->isfakefullscreen) {
 			resizeclient(selmon->sel, selmon->mx, selmon->my, selmon->mw, selmon->mh);
@@ -2591,6 +2598,13 @@ togglefakefullscreen(){
 	selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
 
+void
+togglelocked(const Arg *arg){
+	if (!selmon->sel)
+		return;
+	selmon->sel->islocked = !selmon->sel->islocked;
+	drawbar(selmon);
+}
 
 
 void
@@ -2867,7 +2881,7 @@ closewin(const Arg *arg)
 {
 	Client *c = (Client*)arg->v;
 
-	if (!c)
+	if (!c || c->islocked)
 		return;
 	if (!sendevent(c->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
