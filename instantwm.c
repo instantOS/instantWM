@@ -406,7 +406,8 @@ int overlayexists() {
 	return 0;
 }
 
-void createoverlay() {
+void
+createoverlay() {
 	if (!selmon->sel)
 		return;
 	if (selmon->sel == selmon->overlay) {
@@ -434,7 +435,8 @@ void createoverlay() {
 	showoverlay();
 }
 
-void resetoverlay(){
+void
+resetoverlay() {
 	if (!overlayexists())
 		return;
 	selmon->overlay->tags = selmon->tagset[selmon->seltags];
@@ -445,7 +447,8 @@ void resetoverlay(){
 
 }
 
-void showoverlay(){
+void
+showoverlay() {
 	if (!overlayexists())
 		return;
 	selmon->overlaystatus = 1;
@@ -468,7 +471,8 @@ void showoverlay(){
 
 }
 
-void hideoverlay(){
+void
+hideoverlay() {
 	if (!overlayexists())
 		return;
 	selmon->overlaystatus = 0;
@@ -478,7 +482,8 @@ void hideoverlay(){
 
 }
 
-void setoverlay(){
+void
+setoverlay() {
 	
 	if (!overlayexists()) {
 		return;
@@ -1224,7 +1229,7 @@ drawbar(Monitor *m)
 	for (i = 0; i < LENGTH(tags); i++) {
 
 		/* do not draw vacant tags */
-		if (selmon->showtags){
+		if (selmon->showtags) {
 			if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
 			continue;
 		}
@@ -1239,7 +1244,11 @@ drawbar(Monitor *m)
 				if (m->tagset[m->seltags] & 1 << i) {
 					drw_setscheme(drw, scheme[SchemeAddActive]);
 				} else {
-					drw_setscheme(drw, scheme[SchemeTags]);
+					if(!selmon->showtags){
+						drw_setscheme(drw, scheme[SchemeTags]);
+					} else {
+						drw_setscheme(drw, scheme[SchemeNorm]);
+					}
 				}
 			}
 		} else {
@@ -2828,7 +2837,8 @@ void hidewin(const Arg *arg)
 	hide(c);
 }
 
-void unhideall(const Arg *arg){
+void
+unhideall(const Arg *arg) {
 
 	Client *c;
 	for (c = selmon->clients; c; c = c->next) {
