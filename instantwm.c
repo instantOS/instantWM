@@ -79,7 +79,7 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel, SchemeHid }; /* color schemes */
+enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
@@ -1229,27 +1229,40 @@ drawbar(Monitor *m)
 			continue;
 		}
 
-
-
 		w = TEXTW(tags[i]);
 		wdelta = showalttag ? abs(TEXTW(tags[i]) - TEXTW(tagsalt[i])) / 2 : 0;
 
-		drw_setscheme(drw, scheme[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
-		if (drw->scheme == scheme[SchemeSel]) {
-	        XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 1, 0, w - 1, bh - 0.5*w + 1);
+		if (occ & 1 << i) {
+			if (m == selmon && selmon->sel && selmon->sel->tags & 1 << i) {
+				drw_setscheme(drw, scheme[SchemeActive]);
+			} else {
+				if (m->tagset[m->seltags] & 1 << i) {
+					drw_setscheme(drw, scheme[SchemeAddActive]);
+				} else {
+					drw_setscheme(drw, scheme[SchemeTags]);
+				}
+			}
+		} else {
+			if (m->tagset[m->seltags] & 1 << i) {
+				drw_setscheme(drw, scheme[SchemeEmpty]);
+			} else {
+				drw_setscheme(drw, scheme[SchemeNorm]);
+			}
+
+		}
+		if (drw->scheme != scheme[SchemeNorm]) {
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
 		} else {
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
 		}
-
+/*
 		if (!selmon->showtags){
 			if (occ & 1 << i)
 				drw_circ(drw, x + boxs, boxs, boxw, boxw,
 					m == selmon && selmon->sel && selmon->sel->tags & 1 << i,
 					urg & 1 << i);
 		}
-
+*/
 
 		x += w;
 	}
@@ -1263,16 +1276,13 @@ drawbar(Monitor *m)
 				if (!ISVISIBLE(c))
 					continue;
 				if (m->sel == c) {
-					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, 0, bh, bh);
-					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh);
-					XSetForeground(drw->dpy, drw->gc, scheme[SchemeSel][ColBg].pixel);
-					XFillArc(drw->dpy, drw->drawable, drw->gc, x, 0, bh, bh, 360*16, 360*32);
-					XFillArc(drw->dpy, drw->drawable, drw->gc, x + (1.0 / (double)n) * w - bh, 0, bh, bh, 360*48, 360*32);
-					drw_setscheme(drw, scheme[SchemeSel]);
+
+					//background color rectangles to draw circle on
+					drw_setscheme(drw, scheme[SchemeTags]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
-						drw_text(drw, x + 0.5 * bh, 0, (1.0 / (double)n) * w - bh + 2, bh, ((1.0 / (double)n) * w - bh - TEXTW(c->name)) * 0.5, c->name, 0, 0);
+						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 1);
 					} else {
-						drw_text(drw, x + 0.5 * bh, 0, (1.0 / ((double)n) * w) - bh, bh, lrpad / 2, c->name, 0, 0);
+						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2, c->name, 0, 1);
 					}
 				x += (1.0 / (double)n) * w;
 					

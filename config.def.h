@@ -16,13 +16,25 @@ static const char col_white[] = "#ffffff";/*unfocused fonts d */
 static const char col_pastel_blue[] = "#747c90";/*unfocused border d */
 static const char col_light_blue[] = "#4dadd4";/*focused windows d */
 static const char col_blue[] = "#5294E2";/*focused instantmenu or topbar d */
-static const char col_green[] = "#73d216";/*focused instantmenu or topbar d */
+static const char col_dark_blue[] = "#3579CB";/*focused instantmenu or topbar d */
+static const char col_dark_green[] = "#35CB4B";/*focused instantmenu or topbar d */
+static const char col_green[] = "#52E167";/*focused instantmenu or topbar d */
+
+static const char col_orange[] = "#E1A052";/*focused instantmenu or topbar d */
+static const char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar d */
+
+static const char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
+static const char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
 
 static const char *colors[][4] = {
 	/*               fg         bg         border   	float*/
 	[SchemeNorm] = { col_white, col_background, col_pastel_blue, col_green },
 	[SchemeSel]  = { col_white, col_blue, col_light_blue, col_green },
 	[SchemeHid]  = { col_pastel_blue, col_background, col_pastel_blue, col_green },
+	[SchemeTags]  = { col_white, col_blue, col_light_blue, col_dark_blue },
+	[SchemeActive]  = { col_white, col_green, col_light_blue, col_dark_green },
+	[SchemeAddActive]  = { col_white, col_orange, col_light_blue, col_dark_orange },
+	[SchemeEmpty]  = { col_white, col_red, col_light_blue, col_dark_red },
 };
 
 /* tagging */
