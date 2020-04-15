@@ -333,6 +333,8 @@ static int showalttag = 0;
 static int anchortag;
 static int tagoffset = 1;
 
+static int statuswidth = 0;
+
 static int isdesktop = 0;
 
 static int screen;
@@ -703,7 +705,7 @@ buttonpress(XEvent *e)
 		} else if (ev->x < x + blw)
 			click = ClkLtSymbol;
 		/* 2px right padding */
-		else if (ev->x > selmon->ww - getsystraywidth() - TEXTW(stext) + lrpad - 2)
+		else if (ev->x > selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
 			click = ClkStatusText;
 		else {
 			if (selmon->stack) {
@@ -1134,7 +1136,7 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 	else
 		isCode = 0;
 	text = p;
-
+	statuswidth = w;
 	w += 2; /* 1px padding on both sides */
 	ret = x = m->ww - w - getsystraywidth();
 
