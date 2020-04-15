@@ -1161,10 +1161,10 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 					char buf[8];
 					memcpy(buf, (char*)text+i+1, 7);
 					buf[7] = '\0';
-					drw_clr_create(drw, &drw->scheme[ColFg], buf);
+					drw_clr_create(drw, &drw->scheme[ColBg], buf);
 					i += 7;
 				} else if (text[i] == 'd') {
-					drw->scheme[ColFg] = scheme[SchemeNorm][ColFg];
+					drw->scheme[ColBg] = scheme[SchemeNorm][ColBg];
 				} else if (text[i] == 'r') {
 					int rx = atoi(text + ++i);
 					while (text[++i] != ',');
@@ -1810,13 +1810,13 @@ motionnotify(XEvent *e)
 	if (ev->window != root)
 		return;
 
-	if (ev->y_root == 0 && ev->x_root >= selmon->mx + selmon->ww - 20) {
+	if (ev->y_root == 0 && ev->x_root >= selmon->mx + selmon->ww +  - 20 - getsystraywidth()) {
 			if (selmon->gesture != 11) {
 				selmon->gesture = 11;
 				setoverlay();
 			}
 	} else {
-		if (selmon->gesture == 11 && ev->x_root >= selmon->mx + selmon->ww - 24) {
+		if (selmon->gesture == 11 && ev->x_root >= selmon->mx + selmon->ww - 24  - getsystraywidth()) {
 			selmon->gesture = 0;
 		}
 	}
