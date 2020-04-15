@@ -289,9 +289,9 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 		XSetForeground(drw->dpy, drw->gc, drw->scheme[invert ? ColFg : ColBg].pixel);
 		
 		if (rounded) {
-			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h - 4);
+			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h - rounded);
 			XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y + h - 4, w, 4);
+			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y + h - rounded, w, rounded);
 
 		} else {
 			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h);
@@ -344,7 +344,7 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 						; /* NOP */
 
 				if (render) {
-					ty = y + (h - usedfont->h) / 2 + usedfont->xfont->ascent + (rounded ? 0 : 2);
+					ty = y + (h - usedfont->h) / 2 + usedfont->xfont->ascent - (rounded ? (rounded / 2) : 0);
 					XftDrawStringUtf8(d, &drw->scheme[invert ? ColBg : ColFg],
 					                  usedfont->xfont, x, ty, (XftChar8 *)buf, len);
 				}

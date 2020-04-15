@@ -1262,7 +1262,7 @@ drawbar(Monitor *m)
 
 		}
 		if (drw->scheme != scheme[SchemeNorm]) {
-			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 1);
+			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
 		} else {
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
 		}
@@ -1291,9 +1291,9 @@ drawbar(Monitor *m)
 					//background color rectangles to draw circle on
 					drw_setscheme(drw, scheme[SchemeTags]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
-						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 1);
+						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 4);
 					} else {
-						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2, c->name, 0, 1);
+						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2, c->name, 0, 4);
 					}
 				x += (1.0 / (double)n) * w;
 					
