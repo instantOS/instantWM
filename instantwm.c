@@ -1264,15 +1264,19 @@ drawbar(Monitor *m)
 			} else {
 				drw_setscheme(drw, scheme[SchemeNorm]);
 			}
-
 		}
 		if (drw->scheme != scheme[SchemeNorm]) {
+			if (i != selmon->gesture - 1)
+			{
 				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
+			} else {
+				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 8);
+			}
 		} else {
 			if (i == selmon->gesture - 1)
 			{
 				drw_setscheme(drw, scheme[SchemeHover]);
-				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 8);
+				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 2);
 			}else {
 				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
 			}
@@ -1420,6 +1424,8 @@ focus(Client *c)
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 	}
 	selmon->sel = c;
+	if (selmon->gesture)
+		selmon->gesture = 0;
 	drawbars();
 	if (!c){
 		if (!isdesktop) {
