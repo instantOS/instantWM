@@ -1323,9 +1323,9 @@ drawbar(Monitor *m)
 							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
 						} else {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 2, 20, 14);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 2, 20, 16);
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 16, 20, 8);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 18, 20, 6);
 						}
 					} else {
 						drw_setscheme(drw, scheme[SchemeAddActive]);
@@ -1869,7 +1869,8 @@ motionnotify(XEvent *e)
 			selmon->gesture = 0;
 		}
 
-		if (ev->y_root <= bh) {
+		// leave small deactivator zone 
+		if (ev->y_root <= bh - 3) {
 			if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
 				i = 0;
 				x = selmon->mx;
@@ -1895,6 +1896,9 @@ motionnotify(XEvent *e)
 				}
 			}
 
+		} else if (selmon->gesture) {
+			selmon->gesture = 0;
+			drawbar(selmon);
 		}
 	}
 	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
