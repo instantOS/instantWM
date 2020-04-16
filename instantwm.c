@@ -79,7 +79,7 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty }; /* color schemes */
+enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
@@ -1267,9 +1267,15 @@ drawbar(Monitor *m)
 
 		}
 		if (drw->scheme != scheme[SchemeNorm]) {
-			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
+				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
 		} else {
-			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
+			if (i == selmon->gesture - 1)
+			{
+				drw_setscheme(drw, scheme[SchemeHover]);
+				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 8);
+			}else {
+				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
+			}
 		}
 /*
 		if (!selmon->showtags){
@@ -1826,6 +1832,8 @@ motionnotify(XEvent *e)
 	Monitor *m;
 	XMotionEvent *ev = &e->xmotion;
 
+	unsigned int i, x;
+
 	if (ev->window != root)
 		return;
 
@@ -1838,8 +1846,21 @@ motionnotify(XEvent *e)
 		if (selmon->gesture == 11 && ev->x_root >= selmon->mx + selmon->ww - 24  - getsystraywidth()) {
 			selmon->gesture = 0;
 		}
-	}
 
+		if (ev->y_root <= bh) {
+			if (ev->x_root < 500 && !selmon->showtags) {
+				i = x = 0;
+				do {
+					x += TEXTW(tags[i]);	
+				} while (ev->x_root >= x && ++i < LENGTH(tags));
+				
+				if (i != selmon->gesture - 1) {
+					selmon->gesture = i + 1;
+					drawbar(selmon);
+				}
+			}
+		}
+	}
 	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
 		unfocus(selmon->sel, 1);
 		selmon = m;

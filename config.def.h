@@ -11,9 +11,9 @@ static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Cantarell-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
-static const char col_background[] = "#292f3a"; /* top bar d */
-static const char col_white[] = "#ffffff";/*unfocused fonts d */
-static const char col_pastel_blue[] = "#747c90";/*unfocused border d */
+static const char col_background[] = "#292f3a"; /* top bar dark background*/
+static const char col_white[] = "#ffffff";/*white for fonts*/
+static const char col_pastel_blue[] = "#747c90";/*unsaturated for focused border*/
 static const char col_light_blue[] = "#4dadd4";/*focused windows d */
 static const char col_blue[] = "#5294E2";/*focused instantmenu or topbar d */
 static const char col_dark_blue[] = "#3579CB";/*focused instantmenu or topbar d */
@@ -26,6 +26,9 @@ static const char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar 
 static const char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
 static const char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
 
+static const char col_hover[] = "#596377";/*focused instantmenu or topbar d */
+static const char col_hover_shadow[] = "#475166";/*focused instantmenu or topbar d */
+
 static const char *colors[][4] = {
 	/*               fg         bg         border   	float*/
 	[SchemeNorm] = { col_white, col_background, col_pastel_blue, col_green },
@@ -35,6 +38,7 @@ static const char *colors[][4] = {
 	[SchemeActive]  = { col_white, col_green, col_light_blue, col_dark_green },
 	[SchemeAddActive]  = { col_white, col_orange, col_light_blue, col_dark_orange },
 	[SchemeEmpty]  = { col_white, col_red, col_light_blue, col_dark_red },
+	[SchemeHover]  = { col_white, col_hover, col_light_blue, col_hover_shadow },
 };
 
 /* tagging */
