@@ -79,7 +79,7 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover }; /* color schemes */
+enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
@@ -148,6 +148,7 @@ struct Monitor {
 	unsigned int seltags;
 	unsigned int sellt;
 	unsigned int tagset[2];
+	unsigned int activeoffset;
 	int showbar;
 	int topbar;
 	Client *clients;
@@ -686,6 +687,7 @@ buttonpress(XEvent *e)
 		selmon = m;
 		focus(NULL);
 	}
+
 	if (ev->window == selmon->barwin) {
 		i = x = 0;
 		for (c = m->clients; c; c = c->next)
@@ -1305,22 +1307,36 @@ drawbar(Monitor *m)
 
 					//background color rectangles to draw circle on
 					drw_setscheme(drw, scheme[SchemeTags]);
-					if (TEXTW(c->name) < (1.0 / (double)n) * w - bh){
+					if (TEXTW(c->name) < (1.0 / (double)n) * w - 64){
 						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 4);
 					} else {
-						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2 + 26, c->name, 0, 4);
+						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2 + 20, c->name, 0, 4);
 					}
 
 					// render close button
 					if (!c->islocked) {
-						drw_setscheme(drw, scheme[SchemeEmpty]);
+						drw_setscheme(drw, scheme[SchemeClose]);
+						if (selmon->gesture != 12) {
+							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
+							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
+						} else {
+							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFg].pixel);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 2, 20, 14);
+							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 16, 20, 8);
+						}
 					} else {
 						drw_setscheme(drw, scheme[SchemeAddActive]);
+						XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
+						XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
+						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
+
 					}
-					XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
-					XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-					XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
+
+					m->activeoffset = selmon->mx + x;
 
 				x += (1.0 / (double)n) * w;
 					
@@ -1424,7 +1440,7 @@ focus(Client *c)
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 	}
 	selmon->sel = c;
-	if (selmon->gesture)
+	if (selmon->gesture != 11 && selmon->gesture)
 		selmon->gesture = 0;
 	drawbars();
 	if (!c){
@@ -1838,7 +1854,7 @@ motionnotify(XEvent *e)
 	Monitor *m;
 	XMotionEvent *ev = &e->xmotion;
 
-	unsigned int i, x;
+	int i, x;
 
 	if (ev->window != root)
 		return;
@@ -1854,10 +1870,11 @@ motionnotify(XEvent *e)
 		}
 
 		if (ev->y_root <= bh) {
-			if (ev->x_root < 500 && !selmon->showtags) {
-				i = x = 0;
+			if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
+				i = 0;
+				x = selmon->mx;
 				do {
-					x += TEXTW(tags[i]);	
+					x += TEXTW(tags[i]);
 				} while (ev->x_root >= x && ++i < LENGTH(tags));
 				
 				if (i != selmon->gesture - 1) {
@@ -1865,6 +1882,19 @@ motionnotify(XEvent *e)
 					drawbar(selmon);
 				}
 			}
+
+			if (selmon->sel) {
+				if (ev->x_root > selmon->activeoffset && ev->x_root < (selmon->activeoffset + 32)) {
+					if (selmon->gesture != 12) {
+						selmon->gesture = 12;
+						drawbar(selmon);
+					}
+				} else if (selmon->gesture == 12) {
+					selmon->gesture = 0;
+					drawbar(selmon);
+				}
+			}
+
 		}
 	}
 	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
