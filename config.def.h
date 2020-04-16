@@ -267,6 +267,7 @@ static Button buttons[] = {
 	/* click                event mask      button          function        argument */
 	{ ClkLtSymbol,          0,              Button1,        cyclelayout,    {.i = -1 } },
 	{ ClkLtSymbol,          0,              Button3,        cyclelayout,    {.i = +1 } },
+	{ ClkLtSymbol,          MODKEY,         Button1,        createoverlay,  {0} },
 	{ ClkLtSymbol,          0,              Button2,        setlayout,      {.v = &layouts[0]} },
 	{ ClkWinTitle,          0,              Button1,        togglewin,      {0} },
 	{ ClkWinTitle,          MODKEY,         Button1,        setoverlay,     {0} },
