@@ -79,7 +79,7 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose }; /* color schemes */
+enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
@@ -1272,6 +1272,8 @@ drawbar(Monitor *m)
 			{
 				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
 			} else {
+				if (drw->scheme == scheme[SchemeTags])
+						drw_setscheme(drw, scheme[SchemeHoverTags]);
 				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 8);
 			}
 		} else {

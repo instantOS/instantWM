@@ -29,9 +29,12 @@ static const char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d *
 static const char col_hover_red[] = "#D37492";/*focused instantmenu or topbar d */
 static const char col_hover_dark_red[] = "#CE577C";/*focused instantmenu or topbar d */
 
-
 static const char col_hover[] = "#596377";/*focused instantmenu or topbar d */
 static const char col_hover_shadow[] = "#475166";/*focused instantmenu or topbar d */
+
+static const char col_hover_blue[] = "#7CA8DC";/*focused instantmenu or topbar d */
+static const char col_hover_dark_blue[] = "#578BC9";/*focused instantmenu or topbar d */
+
 
 static const char *colors[][4] = {
 	/*               fg         bg         border   	float*/
@@ -44,6 +47,7 @@ static const char *colors[][4] = {
 	[SchemeEmpty]  = { col_white, col_red, col_light_blue, col_dark_red },
 	[SchemeHover]  = { col_white, col_hover, col_light_blue, col_hover_shadow },
 	[SchemeClose]  = { col_hover_red, col_red, col_hover_dark_red, col_dark_red },
+	[SchemeHoverTags]  = { col_white, col_hover_blue, col_light_blue, col_hover_dark_blue },
 };
 
 /* tagging */
