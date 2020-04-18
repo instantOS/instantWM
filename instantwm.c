@@ -265,7 +265,8 @@ static void tagmon(const Arg *arg);
 static void tagtoleft(const Arg *arg);
 static void tagtoright(const Arg *arg);
 static void tile(Monitor *);
-static void togglealttag();
+static void togglealttag(const Arg *arg);
+static void toggledoubledraw(const Arg *arg);
 static void togglefakefullscreen(const Arg *arg);
 static void togglelocked(const Arg *arg);
 static void toggleshowtags();
@@ -332,6 +333,7 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int doubledraw = 0;
 static int anchortag;
 static int tagoffset = 1;
 
@@ -930,9 +932,6 @@ configurenotify(XEvent *e)
 }
 
 void distributeclients(const Arg *arg) {
-	if (!selmon->sel)
-		return;
-
 	Client *c;
 	int tagcounter = 0;
 	focus(NULL);
@@ -1942,7 +1941,7 @@ movemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
 				continue;
 			lasttime = ev.xmotion.time;
 
@@ -2154,7 +2153,7 @@ resizemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
 				continue;
 			lasttime = ev.xmotion.time;
 
@@ -2639,7 +2638,7 @@ tile(Monitor *m)
 }
 
 void
-togglealttag()
+togglealttag(const Arg *arg)
 {
 	showalttag = !showalttag;
 	Monitor *m;
@@ -2648,7 +2647,12 @@ togglealttag()
 }
 
 void
-togglefakefullscreen(const Arg *arg){
+toggledoubledraw(const Arg *arg) {
+	doubledraw = !doubledraw;
+}
+
+void
+togglefakefullscreen(const Arg *arg) {
 	if (selmon->sel->isfullscreen) {
 		if (selmon->sel->isfakefullscreen) {
 			resizeclient(selmon->sel, selmon->mx, selmon->my, selmon->mw, selmon->mh);
@@ -2662,7 +2666,7 @@ togglefakefullscreen(const Arg *arg){
 }
 
 void
-togglelocked(const Arg *arg){
+togglelocked(const Arg *arg) {
 	if (!selmon->sel)
 		return;
 	selmon->sel->islocked = !selmon->sel->islocked;
