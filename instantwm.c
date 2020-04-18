@@ -296,6 +296,7 @@ static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
 static void warp(const Client *c);
+static void forcewarp(const Client *c);
 static void warpfocus();
 static void viewtoleft(const Arg *arg);
 static void moveleft(const Arg *arg);
@@ -2599,7 +2600,7 @@ tagmon(const Arg *arg)
 void
 tagtoleft(const Arg *arg) {
 	int offset = 1;
-	if (arg->i)
+	if (arg && arg->i)
 		offset=arg->i;
 
 	if(selmon->sel != NULL
@@ -2614,7 +2615,7 @@ tagtoleft(const Arg *arg) {
 void
 tagtoright(const Arg *arg) {
 	int offset = 1;
-	if (arg->i)
+	if (arg && arg->i)
 		offset=arg->i;
 
 	if(selmon->sel != NULL
@@ -2708,6 +2709,11 @@ warp(const Client *c)
 	    (c->mon->topbar && !y))
 		return;
 
+	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
+}
+
+void forcewarp(const Client *c){
+	int x, y;
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 }
 
@@ -3397,8 +3403,16 @@ view(const Arg *arg)
 	int i;
 	unsigned int tmptag;
 
-	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
+	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags]) {
+		if (selmon->sel) {
+			if (!selmon->sel->isfloating)
+				togglefloating(NULL);
+			forcewarp(selmon->sel);
+			movemouse(NULL);
+		}
 		return;
+	}
+
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (arg->ui & TAGMASK) {
 		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
