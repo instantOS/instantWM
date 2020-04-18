@@ -1963,6 +1963,21 @@ movemouse(const Arg *arg)
 			break;
 		}
 	} while (ev.type != ButtonRelease);
+	
+	if (ev.xmotion.y_root < 5) {
+		if (selmon->sel->isfloating) {
+			togglefloating(NULL);
+		}
+	}
+
+	if (ev.xmotion.x_root > selmon->mx + selmon->mw - 5 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
+		c->isfloating = 0;
+		tagtoright(arg);
+	} else if (ev.xmotion.x_root < selmon->mx + 5 && ev.xmotion.x_root > selmon->mx - 1) {
+		c->isfloating = 0;
+		tagtoleft(arg);
+	}
+
 	XUngrabPointer(dpy, CurrentTime);
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
