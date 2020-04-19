@@ -11,6 +11,7 @@
         "bit": "c",
         "*.tcc": "c",
         "complex": "c",
-        "random": "c"
+        "random": "c",
+        "config.h": "c"
     }
 }

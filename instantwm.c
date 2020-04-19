@@ -1972,25 +1972,32 @@ movemouse(const Arg *arg)
 	} while (ev.type != ButtonRelease);
 	
 	if (ev.xmotion.y_root < 5) {
-		if (selmon->sel->isfloating) {
-			togglefloating(NULL);
+		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+			resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
+			createoverlay();
+			selmon->gesture = 11;
+		} else {
+			if (selmon->sel->isfloating) {
+				togglefloating(NULL);
+			}
+		}
+	} else {
+		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
+			c->isfloating = 0;
+			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
+				tagtoright(arg);
+			else
+				moveright(arg);
+
+		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
+			c->isfloating = 0;
+			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
+				tagtoleft(arg);
+			else
+				moveleft(arg);
 		}
 	}
 
-	if (ev.xmotion.x_root > selmon->mx + selmon->mw - 5 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
-		c->isfloating = 0;
-		if (ev.xmotion.y_root < selmon->mh - 20)
-			tagtoright(arg);
-		else
-			moveright(arg);
-
-	} else if (ev.xmotion.x_root < selmon->mx + 5 && ev.xmotion.x_root > selmon->mx - 1) {
-		c->isfloating = 0;
-		if (ev.xmotion.y_root < selmon->mh - 20)
-			tagtoleft(arg);
-		else
-			moveleft(arg);
-	}
 
 	XUngrabPointer(dpy, CurrentTime);
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
@@ -2004,7 +2011,7 @@ movemouse(const Arg *arg)
 void
 dragmouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, starty, startx, dragging;
+	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, isactive;
 	starty = 100;
 	dragging = 0;
 	Monitor *m;
@@ -2012,19 +2019,30 @@ dragmouse(const Arg *arg)
 	Time lasttime = 0;
 
 	Client *tempc = (Client*)arg->v;
-	if (!selmon->sel) {
-		show(tempc);
+	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
+	return;
+	
+	if (tempc == selmon->overlay) {
+		setoverlay();
+		return;
+	}
+
+	if (tempc != selmon->sel) {
+		isactive = 0;
+		if (HIDDEN(tempc)) {
+			show(tempc);
+			focus(tempc);
+			restack(selmon);
+			return;
+		}
 		focus(tempc);
 		restack(selmon);
-		return;
+	} else {
+		isactive = 1;
 	}
 
 	Client *c = selmon->sel;
 
-	if (c->isfullscreen && !c->isfakefullscreen) /* no support moving fullscreen windows by mouse */
-		return;
-
-	restack(selmon);
 	ocx = c->x;
 	ocy = c->y;
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
@@ -2048,9 +2066,7 @@ dragmouse(const Arg *arg)
 				starty = ev.xmotion.y_root;
 				startx = ev.xmotion.x_root;
 			} else {
-				if (starty > 2 && ev.xmotion.y_root == 0)
-					dragging = 1;
-				if (abs(startx - ev.xmotion.x_root) > 35)
+				if ((starty > 2 && ev.xmotion.y_root == 0) || abs(startx - ev.xmotion.x_root) > 200)
 					dragging = 1;
 			}
 		}
@@ -2060,17 +2076,14 @@ dragmouse(const Arg *arg)
 		if (!c->isfloating) {
 			togglefloating(NULL);
 		}
-		forcewarp(c);
+		if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
+		else
+			forcewarp(c);
 		movemouse(NULL);
 	} else {
-		if (tempc == c) {
+		if (isactive)
 			hide(tempc);
-		} else {
-			if (HIDDEN(tempc)) 
-				show(tempc);
-			focus(tempc);
-			restack(selmon);
-		}
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
@@ -2806,7 +2819,6 @@ warp(const Client *c)
 }
 
 void forcewarp(const Client *c){
-	int x, y;
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, 10);
 }
 
