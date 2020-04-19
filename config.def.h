@@ -283,7 +283,7 @@ static Button buttons[] = {
 	{ ClkLtSymbol,          0,              Button3,        cyclelayout,    {.i = +1 } },
 	{ ClkLtSymbol,          MODKEY,         Button1,        createoverlay,  {0} },
 	{ ClkLtSymbol,          0,              Button2,        setlayout,      {.v = &layouts[0]} },
-	{ ClkWinTitle,          0,              Button1,        togglewin,      {0} },
+	{ ClkWinTitle,          0,              Button1,        dragmouse,      {0} },
 	{ ClkWinTitle,          MODKEY,         Button1,        setoverlay,     {0} },
 	{ ClkWinTitle,          MODKEY,         Button3,        spawn,          {.v = notifycmd } },
 	{ ClkStatusText,        0,              Button3,        spawn,          {.v = caretinstantswitchcmd } },

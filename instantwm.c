@@ -226,6 +226,7 @@ static void maprequest(XEvent *e);
 static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
+static void dragmouse(const Arg *arg);
 static void moveresize(const Arg *arg);
 static void distributeclients(const Arg *arg);
 static void keyresize(const Arg *arg);
@@ -274,7 +275,6 @@ static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
-static void togglewin(const Arg *arg);
 static void hidewin(const Arg *arg);
 static void unhideall(const Arg *arg);
 static void closewin(const Arg *arg);
@@ -334,6 +334,7 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int dragsnap = 0;
 static int doubledraw = 0;
 static int anchortag;
 static int tagoffset = 1;
@@ -1947,7 +1948,12 @@ movemouse(const Arg *arg)
 			lasttime = ev.xmotion.time;
 
 			nx = ocx + (ev.xmotion.x - x);
-			ny = ocy + (ev.xmotion.y - y);
+			if (ev.xmotion.y_root > bh) {
+				ny = ocy + (ev.xmotion.y - y);
+			} else {
+				ny = bh;
+			}
+
 			if (abs(selmon->wx - nx) < snap)
 				nx = selmon->wx;
 			else if (abs((selmon->wx + selmon->ww) - (nx + WIDTH(c))) < snap)
@@ -1993,6 +1999,86 @@ movemouse(const Arg *arg)
 		focus(NULL);
 	}
 }
+
+
+void
+dragmouse(const Arg *arg)
+{
+	int x, y, ocx, ocy, nx, ny, starty, startx, dragging;
+	starty = 100;
+	dragging = 0;
+	Monitor *m;
+	XEvent ev;
+	Time lasttime = 0;
+
+	Client *tempc = (Client*)arg->v;
+	if (!selmon->sel) {
+		show(tempc);
+		focus(tempc);
+		restack(selmon);
+		return;
+	}
+
+	Client *c = selmon->sel;
+
+	if (c->isfullscreen && !c->isfakefullscreen) /* no support moving fullscreen windows by mouse */
+		return;
+
+	restack(selmon);
+	ocx = c->x;
+	ocy = c->y;
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	if (!getrootptr(&x, &y))
+		return;
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+				continue;
+			lasttime = ev.xmotion.time;
+			if (starty == 100) {
+				starty = ev.xmotion.y_root;
+				startx = ev.xmotion.x_root;
+			} else {
+				if (starty > 2 && ev.xmotion.y_root == 0)
+					dragging = 1;
+				if (abs(startx - ev.xmotion.x_root) > 35)
+					dragging = 1;
+			}
+		}
+	} while (ev.type != ButtonRelease && ev.xmotion.y_root < bh && !dragging);
+	
+	if (ev.xmotion.y_root > bh - 5 || dragging) {
+		if (!c->isfloating) {
+			togglefloating(NULL);
+		}
+		forcewarp(c);
+		movemouse(NULL);
+	} else {
+		if (tempc == c) {
+			hide(tempc);
+		} else {
+			if (HIDDEN(tempc)) 
+				show(tempc);
+			focus(tempc);
+			restack(selmon);
+		}
+	}
+
+	XUngrabPointer(dpy, CurrentTime);
+
+}
+
+
+
 
 Client *
 nexttiled(Client *c)
@@ -2721,7 +2807,7 @@ warp(const Client *c)
 
 void forcewarp(const Client *c){
 	int x, y;
-	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
+	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, 10);
 }
 
 void
@@ -2931,20 +3017,6 @@ toggleview(const Arg *arg)
 
 		focus(NULL);
 		arrange(selmon);
-	}
-}
-
-void
-togglewin(const Arg *arg)
-{
-	Client *c = (Client*)arg->v;
-	if (c == selmon->sel)
-		hide(c);
-	else {
-		if (HIDDEN(c))
-			show(c);
-		focus(c);
-		restack(selmon);
 	}
 }
 
@@ -3411,12 +3483,7 @@ view(const Arg *arg)
 	unsigned int tmptag;
 
 	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags]) {
-		if (selmon->sel) {
-			if (!selmon->sel->isfloating)
-				togglefloating(NULL);
-			forcewarp(selmon->sel);
-			movemouse(NULL);
-		}
+		// insert drag tag drag gesture here
 		return;
 	}
 
