@@ -1973,10 +1973,17 @@ movemouse(const Arg *arg)
 
 	if (ev.xmotion.x_root > selmon->mx + selmon->mw - 5 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
 		c->isfloating = 0;
-		tagtoright(arg);
+		if (ev.xmotion.y_root < selmon->mh - 20)
+			tagtoright(arg);
+		else
+			moveright(arg);
+
 	} else if (ev.xmotion.x_root < selmon->mx + 5 && ev.xmotion.x_root > selmon->mx - 1) {
 		c->isfloating = 0;
-		tagtoleft(arg);
+		if (ev.xmotion.y_root < selmon->mh - 20)
+			tagtoleft(arg);
+		else
+			moveleft(arg);
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
