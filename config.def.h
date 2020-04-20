@@ -290,7 +290,7 @@ static Button buttons[] = {
 	{ ClkWinTitle,          0,              Button2,        closewin,       {0} },
 	{ ClkCloseButton,       0,              Button1,        closewin,       {0} },
 	{ ClkCloseButton,       0,              Button3,        togglelocked,       {0} },
-	{ ClkWinTitle,          0,              Button3,        zoom,           {0} },
+	{ ClkWinTitle,          0,              Button3,        dragrightmouse,     {0} },
 	{ ClkWinTitle,          0,              Button5,        focusstack,     {.i = +1} },
 	{ ClkWinTitle,          0,              Button4,        focusstack,     {.i = -1} },
 	{ ClkWinTitle,          ShiftMask,      Button5,        pushdown,       {0} },

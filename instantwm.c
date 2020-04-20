@@ -78,7 +78,7 @@
 #define XEMBED_EMBEDDED_VERSION (VERSION_MAJOR << 16) | VERSION_MINOR
 
 /* enums */
-enum { CurNormal, CurResize, CurMove, CurLast }; /* cursor */
+enum { CurNormal, CurResize, CurMove, CurLast, CurClick }; /* cursor */
 enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
@@ -227,6 +227,8 @@ static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void dragmouse(const Arg *arg);
+static void dragrightmouse(const Arg *arg);
+static void dragtag(const Arg *arg);
 static void moveresize(const Arg *arg);
 static void distributeclients(const Arg *arg);
 static void keyresize(const Arg *arg);
@@ -2048,6 +2050,158 @@ dragmouse(const Arg *arg)
 	Client *c = selmon->sel;
 
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurClick]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	if (!getrootptr(&x, &y))
+		return;
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+				continue;
+			lasttime = ev.xmotion.time;
+			
+			if (!sinit) {
+				starty = ev.xmotion.y_root;
+				startx = ev.xmotion.x_root;
+				sinit = 1;
+			} else {
+				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
+					dragging = 1;
+			}
+		}
+	} while (ev.type != ButtonRelease && !dragging);
+	
+	if (dragging) {
+		if (!c->isfloating)
+			togglefloating(NULL);
+			if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
+				XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
+			else
+				forcewarp(c);
+		
+		movemouse(NULL);
+	} else {
+		if (isactive)
+			hide(tempc);
+	}
+
+	XUngrabPointer(dpy, CurrentTime);
+
+}
+
+
+void
+dragrightmouse(const Arg *arg)
+{
+	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, sinit;
+	starty = 100;
+	sinit = 0;
+	dragging = 0;
+	Monitor *m;
+	XEvent ev;
+	Time lasttime = 0;
+
+	Client *tempc = (Client*)arg->v;
+
+	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
+		return;
+	
+	if (tempc == selmon->overlay) {
+		createoverlay();
+		return;
+	}
+
+	if (tempc != selmon->sel) {
+		focus(tempc);
+		zoom(tempc);
+	}
+
+	Client *c = selmon->sel;
+
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	if (!getrootptr(&x, &y))
+		return;
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+				continue;
+			lasttime = ev.xmotion.time;
+			
+			if (!sinit) {
+				starty = ev.xmotion.y_root;
+				startx = ev.xmotion.x_root;
+				sinit = 1;
+			} else {
+				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
+					dragging = 1;
+			}
+		}
+	} while (ev.type != ButtonRelease && !dragging);
+	
+	if (dragging) {
+		XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + c->w, c->y + c->h);
+		resizemouse(NULL);
+	}
+
+	XUngrabPointer(dpy, CurrentTime);
+
+}
+
+
+void
+dragtag(const Arg *arg)
+{
+	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, isactive, sinit;
+	starty = 100;
+	sinit = 0;
+	dragging = 0;
+	Monitor *m;
+	XEvent ev;
+	Time lasttime = 0;
+
+	Client *tempc = (Client*)arg->v;
+
+	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
+		return;
+	
+	if (tempc == selmon->overlay) {
+		setoverlay();
+		return;
+	}
+
+	if (tempc != selmon->sel) {
+		if (HIDDEN(tempc)) {
+			show(tempc);
+			focus(tempc);
+			restack(selmon);
+			return;
+		}
+		isactive = 0;
+		focus(tempc);
+		restack(selmon);
+	} else {
+		isactive = 1;
+	}
+
+	Client *c = selmon->sel;
+
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
 	if (!getrootptr(&x, &y))
@@ -2581,6 +2735,7 @@ setup(void)
 	cursor[CurNormal] = drw_cur_create(drw, XC_left_ptr);
 	cursor[CurResize] = drw_cur_create(drw, XC_crosshair);
 	cursor[CurMove] = drw_cur_create(drw, XC_fleur);
+	cursor[CurClick] = drw_cur_create(drw, XC_hand1);
 	/* init appearance */
 
 	scheme = ecalloc(LENGTH(colors) + 1, sizeof(Clr *));
