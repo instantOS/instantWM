@@ -2179,6 +2179,7 @@ void
 dragtag(const Arg *arg)
 {
 	int x, y, i, tagx;
+	int leftbar = 0;
 	unsigned int occ = 0;
 	Monitor *m;
 	XEvent ev;
@@ -2206,26 +2207,30 @@ dragtag(const Arg *arg)
 			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
 				continue;
 			lasttime = ev.xmotion.time;
+			if (ev.xmotion.y_root > bh + 1)
+				leftbar = 1;
 		}
 		// add additional dragging code
-	} while (ev.type != ButtonRelease);
+	} while (ev.type != ButtonRelease && !leftbar);
 	
-	i = x = 0;
-	for (c = selmon->clients; c; c = c->next)
-		occ |= c->tags == 255 ? 0 : c->tags;
-	
-	
-	do {
-		// do not reserve space for vacant tags
-		if (selmon->showtags){
-			if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
-				continue;
-		}
+	if (!leftbar) {
+		i = x = 0;
+		for (c = selmon->clients; c; c = c->next)
+			occ |= c->tags == 255 ? 0 : c->tags;
+		
+		do {
+			// do not reserve space for vacant tags
+			if (selmon->showtags){
+				if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+					continue;
+			}
 
-		x += TEXTW(tags[i]);	
-	} while (ev.xmotion.x_root >= x && ++i < LENGTH(tags));
-	fprintf(stderr, "tag %d", i);
-	tag(&((Arg) { .ui = 1 << i }));
+			x += TEXTW(tags[i]);	
+		} while (ev.xmotion.x_root >= x && ++i < LENGTH(tags));
+
+		tag(&((Arg) { .ui = 1 << i }));
+	}
+	
 	XUngrabPointer(dpy, CurrentTime);
 
 }
