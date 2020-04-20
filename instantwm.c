@@ -78,7 +78,7 @@
 #define XEMBED_EMBEDDED_VERSION (VERSION_MAJOR << 16) | VERSION_MINOR
 
 /* enums */
-enum { CurNormal, CurResize, CurMove, CurLast, CurClick }; /* cursor */
+enum { CurNormal, CurResize, CurMove, CurClick, CurLast }; /* cursor */
 enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
@@ -323,10 +323,8 @@ static void bstackhoriz(Monitor *m);
 
 
 static void keyrelease(XEvent *e);
-static void combotag(const Arg *arg);
 static void setoverlay();
 static void createoverlay();
-static void comboview(const Arg *arg);
 static void shiftview(const Arg *arg);
 
 
@@ -336,10 +334,7 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
-static int dragsnap = 0;
 static int doubledraw = 0;
-static int anchortag;
-static int tagoffset = 1;
 
 static int statuswidth = 0;
 
@@ -508,35 +503,6 @@ setoverlay() {
 			showoverlay();
 		}
 	}
-}
-
-void
-combotag(const Arg *arg) {
-	if(selmon->sel && arg->ui & TAGMASK) {
-		if (combo) {
-			selmon->sel->tags |= arg->ui & TAGMASK;
-		} else {
-			combo = 1;
-			selmon->sel->tags = arg->ui & TAGMASK;
-		}
-		focus(NULL);
-		arrange(selmon);
-	}
-}
-
-void
-comboview(const Arg *arg) {
-	unsigned newtags = arg->ui & TAGMASK;
-	if (combo) {
-		selmon->tagset[selmon->seltags] |= newtags;
-	} else {
-		selmon->seltags ^= 1;	/*toggle tagset*/
-		combo = 1;
-		if (newtags)
-			selmon->tagset[selmon->seltags] = newtags;
-	}
-	focus(NULL);
-	arrange(selmon);
 }
 
 void
@@ -1214,8 +1180,6 @@ drawbar(Monitor *m)
 {
 
 	int x, w, sw = 0, n = 0, stw = 0, scm, wdelta;
-	int boxs = drw->fonts->h / 9;
-	int boxw = drw->fonts->h / 6 + 5;
     unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
@@ -1288,14 +1252,6 @@ drawbar(Monitor *m)
 				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
 			}
 		}
-/*
-		if (!selmon->showtags){
-			if (occ & 1 << i)
-				drw_circ(drw, x + boxs, boxs, boxw, boxw,
-					m == selmon && selmon->sel && selmon->sel->tags & 1 << i,
-					urg & 1 << i);
-		}
-*/
 
 		x += w;
 	}
@@ -2015,11 +1971,10 @@ movemouse(const Arg *arg)
 void
 dragmouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, isactive, sinit;
+	int x, y, ocx, ocy, starty, startx, dragging, isactive, sinit;
 	starty = 100;
 	sinit = 0;
 	dragging = 0;
-	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
 
@@ -2187,6 +2142,7 @@ dragtag(const Arg *arg)
 	int leftbar = 0;
 	unsigned int occ = 0;
 	Monitor *m;
+	m = selmon;
 	XEvent ev;
 	Time lasttime = 0;
 	Client *c;
@@ -3795,8 +3751,7 @@ overtoggle(const Arg *arg){
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[1];
 		view(arg);
 	} else {
-		Arg *nonearg;
-		winview(nonearg);
+		winview(NULL);
 	}
 }
 
@@ -3807,8 +3762,7 @@ fullovertoggle(const Arg *arg){
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[3];
 		view(arg);
 	} else {
-		Arg *nonearg;
-		winview(nonearg);
+		winview(NULL);
 	}
 }
 
