@@ -1875,7 +1875,7 @@ motionnotify(XEvent *e)
 void
 movemouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient;
+	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient, colorclient;
 	Client *c;
 	Monitor *m;
 	XEvent ev;
@@ -1911,8 +1911,22 @@ movemouse(const Arg *arg)
 			nx = ocx + (ev.xmotion.x - x);
 			if (ev.xmotion.y_root > bh) {
 				ny = ocy + (ev.xmotion.y - y);
+				if (ev.xmotion.x_root < selmon->mx + 50 || ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+					if (!colorclient) {
+						XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
+						colorclient = 1;
+					}
+				} else if (colorclient) {
+					colorclient = 0;
+					XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColFloat].pixel);
+				}
 			} else {
 				ny = bh;
+				if (!colorclient) {
+					colorclient = 1;
+					XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
+				}
+
 			}
 
 			if (abs(selmon->wx - nx) < snap)
