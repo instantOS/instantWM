@@ -462,7 +462,7 @@ showoverlay() {
 	selmon->overlaystatus = 1;
 	Client *c = selmon->overlay;
 
-	selmon->overlay->tags = ~0 & TAGMASK;
+	selmon->overlay->tags = selmon->tagset[selmon->seltags];
 	focus(c);
 
 	if (!c->isfloating) {
@@ -2172,6 +2172,8 @@ dragrightmouse(const Arg *arg)
 void
 dragtag(const Arg *arg)
 {
+	if (!tagwidth)
+		tagwidth = gettagwidth();
 	if ((arg->ui & TAGMASK) != selmon->tagset[selmon->seltags]) {
 		view(arg);
 		return;
@@ -2220,21 +2222,16 @@ dragtag(const Arg *arg)
 	} while (ev.type != ButtonRelease && !leftbar);
 	
 	if (!leftbar) {
-		i = x = 0;
-		for (c = selmon->clients; c; c = c->next)
-			occ |= c->tags == 255 ? 0 : c->tags;
-		
-		do {
-			// do not reserve space for vacant tags
-			if (selmon->showtags){
-				if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
-					continue;
+		if (ev.xmotion.x_root < tagwidth) {
+			tag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+			if (selmon->sel == selmon->overlay) {
+				setoverlay();
+			} else {
+				createoverlay();
+				selmon->gesture = 11;
 			}
-
-			x += TEXTW(tags[i]);	
-		} while (ev.xmotion.x_root >= x && ++i < LENGTH(tags));
-
-		tag(&((Arg) { .ui = 1 << i }));
+		}
 	}
 	bardragging = 0;
 	XUngrabPointer(dpy, CurrentTime);
