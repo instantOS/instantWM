@@ -2063,11 +2063,10 @@ dragmouse(const Arg *arg)
 void
 dragrightmouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, sinit;
+	int x, y, starty, startx, dragging, sinit;
 	starty = 100;
 	sinit = 0;
 	dragging = 0;
-	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
 
@@ -2083,7 +2082,7 @@ dragrightmouse(const Arg *arg)
 
 	if (tempc != selmon->sel) {
 		focus(tempc);
-		zoom(tempc);
+		zoom(NULL);
 	}
 
 	Client *c = selmon->sel;
@@ -2138,7 +2137,7 @@ dragtag(const Arg *arg)
 		return;
 	}
 
-	int x, y, i, tagx;
+	int x, y, i;
 	int leftbar = 0;
 	unsigned int occ = 0;
 	Monitor *m;
@@ -2146,7 +2145,6 @@ dragtag(const Arg *arg)
 	XEvent ev;
 	Time lasttime = 0;
 	Client *c;
-	Arg *arg2;
 
 	if (!selmon->sel)
 		return;
