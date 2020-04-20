@@ -1985,16 +1985,17 @@ movemouse(const Arg *arg)
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
 			c->isfloating = 0;
 			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
-				tagtoright(arg);
-			else
 				moveright(arg);
+			else
+				tagtoright(arg);
 
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			c->isfloating = 0;
 			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
-				tagtoleft(arg);
-			else
 				moveleft(arg);
+			else
+				tagtoleft(arg);
+
 		}
 	}
 
@@ -2011,16 +2012,18 @@ movemouse(const Arg *arg)
 void
 dragmouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, isactive;
+	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, isactive, sinit;
 	starty = 100;
+	sinit = 0;
 	dragging = 0;
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
 
 	Client *tempc = (Client*)arg->v;
+
 	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
-	return;
+		return;
 	
 	if (tempc == selmon->overlay) {
 		setoverlay();
@@ -2028,13 +2031,13 @@ dragmouse(const Arg *arg)
 	}
 
 	if (tempc != selmon->sel) {
-		isactive = 0;
 		if (HIDDEN(tempc)) {
 			show(tempc);
 			focus(tempc);
 			restack(selmon);
 			return;
 		}
+		isactive = 0;
 		focus(tempc);
 		restack(selmon);
 	} else {
@@ -2043,8 +2046,6 @@ dragmouse(const Arg *arg)
 
 	Client *c = selmon->sel;
 
-	ocx = c->x;
-	ocy = c->y;
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
@@ -2059,27 +2060,29 @@ dragmouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
 				continue;
 			lasttime = ev.xmotion.time;
-			if (starty == 100) {
+			
+			if (!sinit) {
 				starty = ev.xmotion.y_root;
 				startx = ev.xmotion.x_root;
+				sinit = 1;
 			} else {
-				if ((starty > 2 && ev.xmotion.y_root == 0) || abs(startx - ev.xmotion.x_root) > 200)
+				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
 					dragging = 1;
 			}
 		}
-	} while (ev.type != ButtonRelease && ev.xmotion.y_root < bh && !dragging);
+	} while (ev.type != ButtonRelease && !dragging);
 	
-	if (ev.xmotion.y_root > bh - 5 || dragging) {
-		if (!c->isfloating) {
+	if (dragging) {
+		if (!c->isfloating)
 			togglefloating(NULL);
-		}
-		if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
-			XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
-		else
-			forcewarp(c);
+			if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
+				XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
+			else
+				forcewarp(c);
+		
 		movemouse(NULL);
 	} else {
 		if (isactive)
