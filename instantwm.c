@@ -251,6 +251,7 @@ static void scan(void);
 static int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3, long d4);
 static void sendmon(Client *c, Monitor *m);
 static int gettagwidth();
+static int getxtag(int ix);
 static void setclientstate(Client *c, long state);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
@@ -328,13 +329,13 @@ static void setoverlay();
 static void createoverlay();
 static void shiftview(const Arg *arg);
 
-
 /* variables */
 static Systray *systray =  NULL;
 static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int bardragging = 0;
 static int tagwidth = 0;
 static int doubledraw = 0;
 
@@ -1181,7 +1182,7 @@ void
 drawbar(Monitor *m)
 {
 
-	int x, w, sw = 0, n = 0, stw = 0, scm, wdelta;
+	int x, w, sw = 0, n = 0, stw = 0, scm, wdelta, roundw;
     unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
@@ -1236,25 +1237,26 @@ drawbar(Monitor *m)
 				drw_setscheme(drw, scheme[SchemeNorm]);
 			}
 		}
-		if (drw->scheme != scheme[SchemeNorm]) {
-			if (i != selmon->gesture - 1)
-			{
-				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
-			} else {
-				if (drw->scheme == scheme[SchemeTags])
-						drw_setscheme(drw, scheme[SchemeHoverTags]);
-				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 8);
-			}
-		} else {
-			if (i == selmon->gesture - 1)
-			{
-				drw_setscheme(drw, scheme[SchemeHover]);
-				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 2);
-			}else {
-				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 0);
-			}
-		}
 
+		if (i == selmon->gesture - 1) {
+			roundw = 8;
+			if (bardragging) {
+				drw_setscheme(drw, scheme[SchemeHoverTags]);
+			} else {
+				if (drw->scheme == scheme[SchemeTags]) {
+							drw_setscheme(drw, scheme[SchemeHoverTags]);
+				} else if (drw->scheme == scheme[SchemeNorm]) {
+					drw_setscheme(drw, scheme[SchemeHover]);
+					roundw = 2;
+				}
+			}
+
+			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, roundw);
+
+		} else {
+				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, drw->scheme == scheme[SchemeNorm] ? 0 : 4);
+		
+		}
 		x += w;
 	}
 	w = blw = 60;
@@ -1875,13 +1877,13 @@ motionnotify(XEvent *e)
 void
 movemouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient, colorclient;
+	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient, colorclient, tagx;
 	Client *c;
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
 	tagclient = 0;
-
+	
 	if (!(c = selmon->sel))
 		return;
 	if (c->isfullscreen && !c->isfakefullscreen) /* no support moving fullscreen windows by mouse */
@@ -1895,6 +1897,7 @@ movemouse(const Arg *arg)
 		return;
 	if (!getrootptr(&x, &y))
 		return;
+	bardragging = 1;
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 		switch(ev.type) {
@@ -1942,10 +1945,17 @@ movemouse(const Arg *arg)
 				togglefloating(NULL);
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
 				resize(c, nx, ny, c->w, c->h, 1);
+
+			if (ev.xmotion.y_root < bh && tagx != getxtag(ev.xmotion.x_root)) {
+				tagx = getxtag(ev.xmotion.x_root);
+				selmon->gesture = tagx + 1;
+				drawbar(selmon);
+			}
 			break;
 		}
 	} while (ev.type != ButtonRelease);
-	
+
+	bardragging = 0;
 	if (ev.xmotion.y_root < bh) {
 		if (!tagwidth)
 			tagwidth = gettagwidth();
@@ -2167,7 +2177,7 @@ dragtag(const Arg *arg)
 		return;
 	}
 
-	int x, y, i;
+	int x, y, i, tagx, tagi;
 	int leftbar = 0;
 	unsigned int occ = 0;
 	Monitor *m;
@@ -2184,6 +2194,7 @@ dragtag(const Arg *arg)
 		return;
 	if (!getrootptr(&x, &y))
 		return;
+	bardragging = 1;
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 		switch(ev.type) {
@@ -2198,6 +2209,12 @@ dragtag(const Arg *arg)
 			lasttime = ev.xmotion.time;
 			if (ev.xmotion.y_root > bh + 1)
 				leftbar = 1;
+		}
+
+		if (tagx != getxtag(ev.xmotion.x_root)) {
+			tagx = getxtag(ev.xmotion.x_root);
+			selmon->gesture = tagx + 1;
+			drawbar(selmon);
 		}
 		// add additional dragging code
 	} while (ev.type != ButtonRelease && !leftbar);
@@ -2219,7 +2236,7 @@ dragtag(const Arg *arg)
 
 		tag(&((Arg) { .ui = 1 << i }));
 	}
-	
+	bardragging = 0;
 	XUngrabPointer(dpy, CurrentTime);
 
 }
@@ -2537,6 +2554,25 @@ int gettagwidth() {
 		x += TEXTW(tags[i]);
 	} while (++i < LENGTH(tags));
 	return x;
+}
+
+int getxtag(int ix) {
+	int x, i, occ;
+	Client *c;
+	i = x = 0;
+	for (c = selmon->clients; c; c = c->next)
+		occ |= c->tags == 255 ? 0 : c->tags;
+	
+	do {
+		// do not reserve space for vacant tags
+		if (selmon->showtags){
+			if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
+				continue;
+		}
+
+		x += TEXTW(tags[i]);	
+	} while (ix >= x && ++i < LENGTH(tags));
+	return i;
 }
 
 void
