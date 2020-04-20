@@ -2178,6 +2178,11 @@ dragrightmouse(const Arg *arg)
 void
 dragtag(const Arg *arg)
 {
+	if ((arg->ui & TAGMASK) != selmon->tagset[selmon->seltags]) {
+		view(arg);
+		return;
+	}
+
 	int x, y, i, tagx;
 	int leftbar = 0;
 	unsigned int occ = 0;
@@ -2186,7 +2191,7 @@ dragtag(const Arg *arg)
 	Time lasttime = 0;
 	Client *c;
 	Arg *arg2;
-	
+
 	if (!selmon->sel)
 		return;
 
@@ -3639,12 +3644,6 @@ view(const Arg *arg)
 {
 	int i;
 	unsigned int tmptag;
-
-	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags]) {
-		dragtag(NULL);
-		// insert drag tag drag gesture here
-		return;
-	}
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (arg->ui & TAGMASK) {

@@ -312,7 +312,7 @@ static Button buttons[] = {
 	{ ClkClientWin,         MODKEY,         Button1,        movemouse,      {0} },
 	{ ClkClientWin,         MODKEY,         Button2,        togglefloating, {0} },
 	{ ClkClientWin,         MODKEY,         Button3,        resizemouse,    {0} },
-	{ ClkTagBar,            0,              Button1,        view,           {0} },
+	{ ClkTagBar,            0,              Button1,        dragtag,        {0} },
 	{ ClkTagBar,            0,              Button5,        viewtoright,    {0} },
 	{ ClkTagBar,            MODKEY,         Button4,        shiftview,      {.i = -1 } },
 	{ ClkTagBar,            MODKEY,         Button5,        shiftview,      {.i = +1 } },
