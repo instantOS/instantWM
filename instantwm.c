@@ -2085,8 +2085,10 @@ dragmouse(const Arg *arg)
 	} while (ev.type != ButtonRelease && !dragging);
 	
 	if (dragging) {
-		if (!c->isfloating)
+		if (!c->isfloating) {
+			c->sfy = bh;
 			togglefloating(NULL);
+		}
 			if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
 				XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
 			else
@@ -2176,39 +2178,16 @@ dragrightmouse(const Arg *arg)
 void
 dragtag(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, starty, startx, dragging, isactive, sinit;
-	starty = 100;
-	sinit = 0;
-	dragging = 0;
+	int x, y, i, tagx;
+	unsigned int occ = 0;
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
-
-	Client *tempc = (Client*)arg->v;
-
-	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
-		return;
+	Client *c;
+	Arg *arg2;
 	
-	if (tempc == selmon->overlay) {
-		setoverlay();
+	if (!selmon->sel)
 		return;
-	}
-
-	if (tempc != selmon->sel) {
-		if (HIDDEN(tempc)) {
-			show(tempc);
-			focus(tempc);
-			restack(selmon);
-			return;
-		}
-		isactive = 0;
-		focus(tempc);
-		restack(selmon);
-	} else {
-		isactive = 1;
-	}
-
-	Client *c = selmon->sel;
 
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
@@ -2227,32 +2206,26 @@ dragtag(const Arg *arg)
 			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
 				continue;
 			lasttime = ev.xmotion.time;
-			
-			if (!sinit) {
-				starty = ev.xmotion.y_root;
-				startx = ev.xmotion.x_root;
-				sinit = 1;
-			} else {
-				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
-					dragging = 1;
-			}
 		}
-	} while (ev.type != ButtonRelease && !dragging);
+		// add additional dragging code
+	} while (ev.type != ButtonRelease);
 	
-	if (dragging) {
-		if (!c->isfloating)
-			togglefloating(NULL);
-			if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
-				XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
-			else
-				forcewarp(c);
-		
-		movemouse(NULL);
-	} else {
-		if (isactive)
-			hide(tempc);
-	}
+	i = x = 0;
+	for (c = selmon->clients; c; c = c->next)
+		occ |= c->tags == 255 ? 0 : c->tags;
+	
+	
+	do {
+		// do not reserve space for vacant tags
+		if (selmon->showtags){
+			if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+				continue;
+		}
 
+		x += TEXTW(tags[i]);	
+	} while (ev.xmotion.x_root >= x && ++i < LENGTH(tags));
+	fprintf(stderr, "tag %d", i);
+	tag(&((Arg) { .ui = 1 << i }));
 	XUngrabPointer(dpy, CurrentTime);
 
 }
@@ -3663,6 +3636,7 @@ view(const Arg *arg)
 	unsigned int tmptag;
 
 	if ((arg->ui & TAGMASK) == selmon->tagset[selmon->seltags]) {
+		dragtag(NULL);
 		// insert drag tag drag gesture here
 		return;
 	}
