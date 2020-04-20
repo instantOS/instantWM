@@ -2043,15 +2043,19 @@ dragmouse(const Arg *arg)
 		isactive = 0;
 		focus(tempc);
 		restack(selmon);
+		if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurClick]->cursor, CurrentTime) != GrabSuccess)
+			return;
+
 	} else {
+		if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+			return;
 		isactive = 1;
 	}
 
 	Client *c = selmon->sel;
 
-	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-		None, cursor[CurClick]->cursor, CurrentTime) != GrabSuccess)
-		return;
 	if (!getrootptr(&x, &y))
 		return;
 	do {
@@ -2073,6 +2077,8 @@ dragmouse(const Arg *arg)
 				sinit = 1;
 			} else {
 				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
+					dragging = 1;
+				if (starty > 10 && ev.xmotion.y_root == 0 && c->isfloating)
 					dragging = 1;
 			}
 		}
@@ -2150,6 +2156,9 @@ dragrightmouse(const Arg *arg)
 			} else {
 				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
 					dragging = 1;
+				if (starty > 10 && ev.xmotion.y_root == 0 && c->isfloating)
+					dragging = 1;
+
 			}
 		}
 	} while (ev.type != ButtonRelease && !dragging);
