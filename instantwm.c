@@ -250,6 +250,7 @@ static void runAutostart(void);
 static void scan(void);
 static int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3, long d4);
 static void sendmon(Client *c, Monitor *m);
+static int gettagwidth();
 static void setclientstate(Client *c, long state);
 static void setfocus(Client *c);
 static void setfullscreen(Client *c, int fullscreen);
@@ -334,6 +335,7 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int tagwidth = 0;
 static int doubledraw = 0;
 
 static int statuswidth = 0;
@@ -1873,11 +1875,12 @@ motionnotify(XEvent *e)
 void
 movemouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny;
+	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient;
 	Client *c;
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
+	tagclient = 0;
 
 	if (!(c = selmon->sel))
 		return;
@@ -1929,16 +1932,33 @@ movemouse(const Arg *arg)
 		}
 	} while (ev.type != ButtonRelease);
 	
-	if (ev.xmotion.y_root < 5) {
-		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
-			resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
-			togglefloating(NULL);
-			createoverlay();
-			selmon->gesture = 11;
-		} else {
-			if (selmon->sel->isfloating) {
+	if (ev.xmotion.y_root < bh) {
+		if (!tagwidth)
+			tagwidth = gettagwidth();
+
+		if (ev.xmotion.x_root < tagwidth) {
+			ti = tx = 0;
+			for (c = selmon->clients; c; c = c->next)
+				occ |= c->tags == 255 ? 0 : c->tags;
+			do {
+				// do not reserve space for vacant tags
+				if (selmon->showtags){
+					if (!(occ & 1 << ti || m->tagset[m->seltags] & 1 << ti))
+						continue;
+				}
+				tx += TEXTW(tags[ti]);	
+			} while (ev.xmotion.x_root >= tx && ++ti < LENGTH(tags));
+			selmon->sel->isfloating = 0;
+			tag(&((Arg) { .ui = 1 << ti }));
+			tagclient = 1;
+
+		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+				resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
 				togglefloating(NULL);
-			}
+				createoverlay();
+				selmon->gesture = 11;
+		} else if (selmon->sel->isfloating) {
+				togglefloating(NULL);
 		}
 	} else {
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
@@ -1947,20 +1967,17 @@ movemouse(const Arg *arg)
 				moveright(arg);
 			else
 				tagtoright(arg);
-
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			c->isfloating = 0;
 			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
 				moveleft(arg);
 			else
 				tagtoleft(arg);
-
 		}
-	}
-
+	}	
 
 	XUngrabPointer(dpy, CurrentTime);
-	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
+	if (!tagclient && (m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
 		selmon = m;
 		focus(NULL);
@@ -2077,7 +2094,6 @@ dragrightmouse(const Arg *arg)
 	
 	if (tempc == selmon->overlay) {
 		createoverlay();
-		return;
 	}
 
 	if (tempc != selmon->sel) {
@@ -2495,6 +2511,20 @@ scan(void)
 	}
 }
 
+int gettagwidth() {
+	int x, i, occ;
+	i = x = 0;
+	do {
+		// do not reserve space for vacant tags
+		if (selmon->showtags){
+			if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
+				continue;
+		}
+		x += TEXTW(tags[i]);
+	} while (++i < LENGTH(tags));
+	return x;
+}
+
 void
 sendmon(Client *c, Monitor *m)
 {
@@ -2871,6 +2901,8 @@ togglealttag(const Arg *arg)
 	Monitor *m;
 	for (m = mons; m; m = m->next)
 		drawbar(m);
+	
+	tagwidth = gettagwidth();
 }
 
 void
