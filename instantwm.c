@@ -1974,6 +1974,7 @@ movemouse(const Arg *arg)
 	if (ev.xmotion.y_root < 5) {
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
 			resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
+			togglefloating(NULL);
 			createoverlay();
 			selmon->gesture = 11;
 		} else {
