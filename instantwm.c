@@ -76,7 +76,7 @@
 #define XEMBED_EMBEDDED_VERSION (VERSION_MAJOR << 16) | VERSION_MINOR
 
 /* enums */
-enum { CurNormal, CurResize, CurMove, CurClick, CurLast }; /* cursor */
+enum { CurNormal, CurResize, CurMove, CurClick, CurHor, CurVert, CurTL, CurTR, CurBL, CurBR, CurLast }; /* cursor */
 enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /* color schemes */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
@@ -2384,6 +2384,7 @@ resizemouse(const Arg *arg)
 	Client *c;
 	Monitor *m;
 	XEvent ev;
+	Cursor cur;
 	int horizcorner, vertcorner;
 	int corner;
 	int di;
@@ -2402,45 +2403,58 @@ resizemouse(const Arg *arg)
 	ocy = c->y;
 	ocx2 = c->x + c->w;
 	ocy2 = c->y + c->h;
-	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-		None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
-		return;
 	if (!XQueryPointer (dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
 	       return;
 
-
 	if (ny > c->h / 2) { // bottom
 		if (nx < c->w / 3) { //left
-			if (ny < 2 * c->h / 3)
+			if (ny < 2 * c->h / 3) {
 				corner = 7; //side
-			else
+				cur = cursor[CurHor]->cursor;
+			} else {
 				corner = 6; //corner
+				cur = cursor[CurBL]->cursor;
+			}
 		} else if (nx > 2 * c->w / 3) { //right
-			if (ny < 2 * c->h / 3) 
+			if (ny < 2 * c->h / 3) {
 				corner = 3; //side
-			else
+				cur = cursor[CurHor]->cursor;
+			} else {
 				corner = 4; //corner
+				cur = cursor[CurBR]->cursor;
+			}
 		} else {
 			//middle
 			corner = 5;
+			cur = cursor[CurVert]->cursor;
 		}
-
 	} else { // top
 		if (nx < c->w / 3) { // left
-			if (ny > c->h / 3)
+			if (ny > c->h / 3) {
 				corner = 7; //side
-			else
+				cur = cursor[CurHor]->cursor;
+			} else {
 				corner = 0; //corner
+				cur = cursor[CurTL]->cursor;
+			}
 		} else if (nx > 2 * c->w / 3) { //right
-			if (ny > c->h / 3)
+			if (ny > c->h / 3) {
 				corner = 3; //side
-			else
+				cur = cursor[CurHor]->cursor;
+			} else {
 				corner = 2; //corner
+				cur = cursor[CurTR]->cursor;
+			}
 		} else {
 			//cursor on middle
 			corner = 1;
+			cur = cursor[CurVert]->cursor;
 		}
 	}
+
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cur, CurrentTime) != GrabSuccess)
+		return;
 
 	fprintf(stderr, "cursor: %d", corner);
 
@@ -2814,6 +2828,13 @@ setup(void)
 	cursor[CurResize] = drw_cur_create(drw, XC_crosshair);
 	cursor[CurMove] = drw_cur_create(drw, XC_fleur);
 	cursor[CurClick] = drw_cur_create(drw, XC_hand1);
+	cursor[CurVert] = drw_cur_create(drw, XC_sb_v_double_arrow);
+	cursor[CurHor] = drw_cur_create(drw, XC_sb_h_double_arrow);
+	cursor[CurBL] = drw_cur_create(drw, XC_bottom_left_corner);
+	cursor[CurBR] = drw_cur_create(drw, XC_bottom_right_corner);
+	cursor[CurTL] = drw_cur_create(drw, XC_top_left_corner);
+	cursor[CurTR] = drw_cur_create(drw, XC_top_right_corner);
+
 	/* init appearance */
 
 	scheme = ecalloc(LENGTH(colors) + 1, sizeof(Clr *));
