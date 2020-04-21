@@ -2412,32 +2412,32 @@ resizemouse(const Arg *arg)
 
 
 	if (ny > c->h / 2) { // bottom
-		if (nx < c->w / 4) { // left corner
-			if (ny < 3 * c->h / 4)
-				corner = 7;
+		if (nx < c->w / 3) { //left
+			if (ny < 2 * c->h / 3)
+				corner = 7; //side
 			else
-				corner = 6;
-		} else if (nx > 3 * c->w / 4) {
-			if (ny < 3 * c->h / 4)
-				corner = 3;
+				corner = 6; //corner
+		} else if (nx > 2 * c->w / 3) { //right
+			if (ny < 2 * c->h / 3) 
+				corner = 3; //side
 			else
-				corner = 4;
+				corner = 4; //corner
 		} else {
 			//middle
 			corner = 5;
 		}
 
-	} else { //cursor on top
-		if (nx < c->w / 4) { // left corner
-			if (ny > c->h / 4)
-				corner = 7;
+	} else { // top
+		if (nx < c->w / 3) { // left
+			if (ny > c->h / 3)
+				corner = 7; //side
 			else
-				corner = 0;
-		} else if (nx > 3 * c->w / 4) {
-			if (ny > c->h / 4)
-				corner = 3;
+				corner = 0; //corner
+		} else if (nx > 2 * c->w / 3) { //right
+			if (ny > c->h / 3)
+				corner = 3; //side
 			else
-				corner = 2;
+				corner = 2; //corner
 		} else {
 			//cursor on middle
 			corner = 1;
