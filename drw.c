@@ -311,17 +311,21 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 		nextfont = NULL;
 		while (*text) {
 			utf8charlen = utf8decode(text, &utf8codepoint, UTF_SIZ);
-			for (curfont = drw->fonts; curfont; curfont = curfont->next) {
-				charexists = charexists || XftCharExists(drw->dpy, curfont->xfont, utf8codepoint);
-				if (charexists) {
-					if (curfont == usedfont) {
-						utf8strlen += utf8charlen;
-						text += utf8charlen;
-					} else {
-						nextfont = curfont;
+			while (!charexists) {
+				for (curfont = drw->fonts; curfont; curfont = curfont->next) {
+					charexists = charexists || XftCharExists(drw->dpy, curfont->xfont, utf8codepoint);
+					if (charexists) {
+						if (curfont == usedfont) {
+							utf8strlen += utf8charlen;
+							text += utf8charlen;
+						} else {
+							nextfont = curfont;
+						}
+						break;
 					}
-					break;
 				}
+				if (!charexists)
+					utf8charlen = utf8decode("a", &utf8codepoint, UTF_SIZ);
 			}
 
 			if (!charexists || nextfont)
@@ -359,6 +363,7 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 			charexists = 0;
 			usedfont = nextfont;
 		} else {
+			//utf8codepoint = utf8decode('s', &utf8codepoint, UTF_SIZ);
 			/* Regardless of whether or not a fallback font is found, the
 			 * character must be drawn. */
 			charexists = 1;
