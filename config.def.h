@@ -128,6 +128,7 @@ static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "appmenu", NULL};
 static const char *pavucontrol[] = { "pavucontrol", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
+static const char  *codecmd[] = { "code", NULL };
 
 static const char  *scrotcmd[] = { "/opt/instantos/menus/dm/ss.sh", NULL };
 static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
@@ -153,6 +154,8 @@ static Key dkeys[] = {
 	{0, XK_plus, spawn, {.v = upvol} },
 	{0, XK_minus, spawn, {.v = downvol} },
 	{0, XK_Tab, spawn, {.v = caretinstantswitchcmd} },
+	{0, XK_c, spawn, {.v = codecmd} },
+	{0, XK_y, spawn, {.v = roficmd} },
 	
 	{0, XK_h,   viewtoleft,     {0}},
 	{0, XK_l,  viewtoright,    {0}},
