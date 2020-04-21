@@ -1973,7 +1973,7 @@ movemouse(const Arg *arg)
 				tx += TEXTW(tags[ti]);	
 			} while (ev.xmotion.x_root >= tx && ++ti < LENGTH(tags));
 			selmon->sel->isfloating = 0;
-			tag(&((Arg) { .ui = 1 << ti }));
+			followtag(&((Arg) { .ui = 1 << ti }));
 			tagclient = 1;
 
 		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
