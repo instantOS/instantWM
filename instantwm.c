@@ -2387,6 +2387,7 @@ resizemouse(const Arg *arg)
 	Monitor *m;
 	XEvent ev;
 	int horizcorner, vertcorner;
+	int corner;
 	int di;
 	unsigned int dui;
 	Window dummy;
@@ -2408,11 +2409,60 @@ resizemouse(const Arg *arg)
 		return;
 	if (!XQueryPointer (dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
 	       return;
+
+
+	if (ny > c->h / 2) { // bottom
+		if (nx < c->w / 4) { // left corner
+			if (ny < 3 * c->h / 4)
+				corner = 7;
+			else
+				corner = 6;
+		} else if (nx > 3 * c->w / 4) {
+			if (ny < 3 * c->h / 4)
+				corner = 3;
+			else
+				corner = 4;
+		} else {
+			//middle
+			corner = 5;
+		}
+
+	} else { //cursor on top
+		if (nx < c->w / 4) { // left corner
+			if (ny > c->h / 4)
+				corner = 7;
+			else
+				corner = 0;
+		} else if (nx > 3 * c->w / 4) {
+			if (ny > c->h / 4)
+				corner = 3;
+			else
+				corner = 2;
+		} else {
+			//cursor on middle
+			corner = 1;
+		}
+	}
+
+	fprintf(stderr, "cursor: %d", corner);
+
 	horizcorner = nx < c->w / 2;
 	vertcorner = ny < c->h / 2;
-	XWarpPointer (dpy, None, c->win, 0, 0, 0, 0,
-		      horizcorner ? (-c->bw) : (c->w + c->bw - 1),
+	if (corner == 0 || corner == 2 || corner == 4 || corner == 6) {
+		XWarpPointer (dpy, None, c->win, 0, 0, 0, 0,
+				horizcorner ? (-c->bw) : (c->w + c->bw - 1),
+				vertcorner ? (-c->bw) : (c->h + c->bw - 1));
+	} else {
+		if (corner == 1 || corner == 5) {
+			XWarpPointer (dpy, None, c->win, 0, 0, 0, 0,
+		      (c->w + c->bw - 1) / 2,
 		      vertcorner ? (-c->bw) : (c->h + c->bw - 1));
+		} else if (corner == 3 || corner == 7) {
+			XWarpPointer (dpy, None, c->win, 0, 0, 0, 0,
+		      horizcorner ? (-c->bw) : (c->w + c->bw - 1),
+		      (c->h + c->bw - 1) / 2);
+		}
+	}
 
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
@@ -2427,12 +2477,21 @@ resizemouse(const Arg *arg)
 				continue;
 			lasttime = ev.xmotion.time;
 
-			nw = MAX(ev.xmotion.x - ocx - 2 * c->bw + 1, 1);
-			nh = MAX(ev.xmotion.y - ocy - 2 * c->bw + 1, 1);
-			nx = horizcorner ? ev.xmotion.x : c->x;
-			ny = vertcorner ? ev.xmotion.y : c->y;
-			nw = MAX(horizcorner ? (ocx2 - nx) : (ev.xmotion.x - ocx - 2 * c->bw + 1), 1);
-			nh = MAX(vertcorner ? (ocy2 - ny) : (ev.xmotion.y - ocy - 2 * c->bw + 1), 1);
+			if (corner != 1 && corner != 5) {
+				nx = horizcorner ? ev.xmotion.x : c->x;
+				nw = MAX(horizcorner ? (ocx2 - nx) : (ev.xmotion.x - ocx - 2 * c->bw + 1), 1);
+			} else {
+				nx = c->x;
+				nw = c->w;
+			}
+
+			if (corner != 7 && corner != 3) {
+				ny = vertcorner ? ev.xmotion.y : c->y;
+				nh = MAX(vertcorner ? (ocy2 - ny) : (ev.xmotion.y - ocy - 2 * c->bw + 1), 1);
+			} else {
+				ny = c->y;
+				nh = c->h;
+			}
 
 			if (c->mon->wx + nw >= selmon->wx && c->mon->wx + nw <= selmon->wx + selmon->ww
 			&& c->mon->wy + nh >= selmon->wy && c->mon->wy + nh <= selmon->wy + selmon->wh)
@@ -2446,9 +2505,7 @@ resizemouse(const Arg *arg)
 			break;
 		}
 	} while (ev.type != ButtonRelease);
-	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
-		      horizcorner ? (-c->bw) : (c->w + c->bw - 1),
-		      vertcorner ? (-c->bw) : (c->h + c->bw - 1));
+	
 	XUngrabPointer(dpy, CurrentTime);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
