@@ -3,9 +3,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <X11/Xlib.h>
-#include<cairo.h>
-#include<cairo-xlib.h>
-
 #include <X11/Xutil.h>
 
 int main(void) {
