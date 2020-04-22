@@ -85,7 +85,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
-       ClkClientWin, ClkRootWin, ClkLast, ClkCloseButton }; /* clicks */
+       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkLast }; /* clicks */
 
 typedef union {
 	int i;
@@ -680,6 +680,8 @@ buttonpress(XEvent *e)
 			arg.ui = 1 << i;
 		} else if (ev->x < x + blw)
 			click = ClkLtSymbol;
+		else if (ev->x > tagwidth + 60 &&  ev->x < tagwidth + 60 + bh)
+			click = ClkShutDown;
 		/* 2px right padding */
 		else if (ev->x > selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
 			click = ClkStatusText;
@@ -716,7 +718,7 @@ buttonpress(XEvent *e)
 	for (i = 0; i < LENGTH(buttons); i++)
 		if (click == buttons[i].click && buttons[i].func && buttons[i].button == ev->button
 		&& CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
-			buttons[i].func((click == ClkTagBar || click == ClkWinTitle || click == ClkCloseButton) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
+			buttons[i].func((click == ClkTagBar || click == ClkWinTitle || click == ClkCloseButton || click == ClkShutDown) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
 }
 
 void
@@ -1317,13 +1319,14 @@ drawbar(Monitor *m)
 					}
 					x += (1.0 / (double)n) * w;
 
-					
 				}
-
 			}
 		} else {
 			drw_setscheme(drw, scheme[SchemeNorm]);
 			drw_rect(drw, x, 0, w, bh, 1, 1);
+			drw_setscheme(drw, scheme[SchemeTags]);
+			// shutdown button
+			drw_text(drw, x, 0, bh, bh, lrpad / 2, "", 0, 2);	
 		}
 
 	}
