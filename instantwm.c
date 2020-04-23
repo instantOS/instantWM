@@ -241,6 +241,7 @@ static void resize(Client *c, int x, int y, int w, int h, int interact);
 static void resizebarwin(Monitor *m);
 static void resizeclient(Client *c, int x, int y, int w, int h);
 static void resizemouse(const Arg *arg);
+static void resizeaspectmouse(const Arg *arg);
 static void resizerequest(XEvent *e);
 static void restack(Monitor *m);
 static void run(void);
@@ -1324,9 +1325,9 @@ drawbar(Monitor *m)
 		} else {
 			drw_setscheme(drw, scheme[SchemeNorm]);
 			drw_rect(drw, x, 0, w, bh, 1, 1);
-			drw_setscheme(drw, scheme[SchemeTags]);
-			// shutdown button
-			drw_text(drw, x, 0, bh, bh, lrpad / 2, "", 0, 2);	
+			//drw_setscheme(drw, scheme[SchemeTags]);
+			// render shutdown button
+			drw_text(drw, x, 0, bh, bh, lrpad / 2, "", 0, 0);	
 		}
 
 	}
@@ -2523,6 +2524,93 @@ resizemouse(const Arg *arg)
 	
 	XUngrabPointer(dpy, CurrentTime);
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
+	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
+		sendmon(c, m);
+		selmon = m;
+		focus(NULL);
+	}
+}
+
+
+
+void
+resizeaspectmouse(const Arg *arg)
+{
+	int ocx, ocy, nw, nh;
+	int ocx2, ocy2, nx, ny;
+	Client *c;
+	Monitor *m;
+	XEvent ev;
+	int di;
+	unsigned int dui;
+	Window dummy;
+	Time lasttime = 0;
+
+	if (!(c = selmon->sel))
+		return;
+	
+	if (c->isfullscreen && !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse */
+		return;
+
+	restack(selmon);
+	ocx = c->x;
+	ocy = c->y;
+	ocx2 = c->w;
+	ocy2 = c->h;
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	if (!XQueryPointer (dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
+	       return;
+	XWarpPointer (dpy, None, c->win, 0, 0, 0, 0,
+		      c->w + c->bw - 1,
+		      c->h + c->bw - 1);
+
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+				continue;
+			lasttime = ev.xmotion.time;
+
+			nw = MAX(ev.xmotion.x - ocx - 2 * c->bw + 1, 1);
+			nh = MAX(ev.xmotion.y - ocy - 2 * c->bw + 1, 1);
+			nx = c->x;
+			ny = c->y;
+			nw = MAX(ev.xmotion.x - ocx - 2 * c->bw + 1, 1);
+			nh = MAX(ev.xmotion.y - ocy - 2 * c->bw + 1, 1);
+
+			if (c->mon->wx + nw >= selmon->wx && c->mon->wx + nw <= selmon->wx + selmon->ww
+			&& c->mon->wy + nh >= selmon->wy && c->mon->wy + nh <= selmon->wy + selmon->wh)
+			{
+				if (!c->isfloating && selmon->lt[selmon->sellt]->arrange
+				&& (abs(nw - c->w) > snap || abs(nh - c->h) > snap))
+					togglefloating(NULL);
+			}
+
+			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
+				if (ev.xmotion.x < ocx + c->w) {
+					resize(c, nx, ny, nw,  nw * (float)ocy2/ocx2, 1);
+				} else if (ev.xmotion.y < ocy + c->h){
+					resize(c, nx, ny, nh * (float)ocx2/ocy2, nh, 1);
+				} else if (ev.xmotion.x > ocx + c->w + c->bw - 1 + 40) {
+					resize(c, nx, ny, nh * (float)ocx2/ocy2, nh, 1);
+				} else if (ev.xmotion.y > ocy + c->h + c->bw - 1 + 40) {
+					resize(c, nx, ny, nw,  nw * (float)ocy2/ocx2, 1);
+				}
+			}
+			break;
+		}
+	} while (ev.type != ButtonRelease);
+	XUngrabPointer(dpy, CurrentTime);
+	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
+
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
 		selmon = m;
