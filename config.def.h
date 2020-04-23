@@ -326,4 +326,5 @@ static Button buttons[] = {
 	{ ClkTagBar,            MODKEY,         Button3,        toggletag,      {0} },
 	{ ClkShutDown,          0,              Button1,        spawn,          {.v = instantshutdowncmd } },
 	{ ClkShutDown,          0,              Button3,        spawn,          {.v = slockcmd } },
+	{ ClkSideBar,           0,              Button1,        gesturemouse,   {0} },
 };

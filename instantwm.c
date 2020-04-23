@@ -85,7 +85,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
-       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkLast }; /* clicks */
+       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkLast }; /* clicks */
 
 typedef union {
 	int i;
@@ -225,6 +225,7 @@ static void monocle(Monitor *m);
 static void motionnotify(XEvent *e);
 static void movemouse(const Arg *arg);
 static void dragmouse(const Arg *arg);
+static void gesturemouse(const Arg *arg);
 static void dragrightmouse(const Arg *arg);
 static void dragtag(const Arg *arg);
 static void moveresize(const Arg *arg);
@@ -715,11 +716,13 @@ buttonpress(XEvent *e)
 		restack(selmon);
 		XAllowEvents(dpy, ReplayPointer, CurrentTime);
 		click = ClkClientWin;
+	} else if (ev->x > selmon->mx + selmon->mw - 50) {
+		click = ClkSideBar;
 	}
 	for (i = 0; i < LENGTH(buttons); i++)
 		if (click == buttons[i].click && buttons[i].func && buttons[i].button == ev->button
 		&& CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
-			buttons[i].func((click == ClkTagBar || click == ClkWinTitle || click == ClkCloseButton || click == ClkShutDown) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
+			buttons[i].func((click == ClkTagBar || click == ClkWinTitle || click == ClkCloseButton || click == ClkShutDown || click == ClkSideBar) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
 }
 
 void
@@ -2012,6 +2015,47 @@ movemouse(const Arg *arg)
 
 
 void
+gesturemouse(const Arg *arg)
+{
+	int x, y, lasty;
+	Monitor *m;
+	XEvent ev;
+	Time lasttime = 0;
+	
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	if (!getrootptr(&x, &y))
+		return;
+	lasty = y;
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+				continue;
+			lasttime = ev.xmotion.time;
+			if (abs(lasty - ev.xmotion.y_root) > selmon->mh / 30) {
+				if (ev.xmotion.y_root < lasty)
+					spawn(&((Arg) { .v = upvol }));
+				else
+					spawn(&((Arg) { .v = downvol }));
+				lasty = ev.xmotion.y_root;
+			}
+			break;
+		}
+	} while (ev.type != ButtonRelease);
+
+	XUngrabPointer(dpy, CurrentTime);
+
+}
+
+void
 dragmouse(const Arg *arg)
 {
 	int x, y, ocx, ocy, starty, startx, dragging, isactive, sinit;
@@ -2459,8 +2503,6 @@ resizemouse(const Arg *arg)
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cur, CurrentTime) != GrabSuccess)
 		return;
-
-	fprintf(stderr, "cursor: %d", corner);
 
 	horizcorner = nx < c->w / 2;
 	vertcorner = ny < c->h / 2;
