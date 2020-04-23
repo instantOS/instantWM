@@ -681,7 +681,7 @@ buttonpress(XEvent *e)
 			arg.ui = 1 << i;
 		} else if (ev->x < x + blw)
 			click = ClkLtSymbol;
-		else if (ev->x > x + blw &&  ev->x < x + blw + bh)
+		else if (!selmon->sel && ev->x > x + blw &&  ev->x < x + blw + bh)
 			click = ClkShutDown;
 		/* 2px right padding */
 		else if (ev->x > selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
