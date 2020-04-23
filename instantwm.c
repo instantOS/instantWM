@@ -2023,7 +2023,7 @@ gesturemouse(const Arg *arg)
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
-	
+	int tmpactive = 0;
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
@@ -2048,10 +2048,15 @@ gesturemouse(const Arg *arg)
 				else
 					spawn(&((Arg) { .v = downvol }));
 				lasty = ev.xmotion.y_root;
+				if (!tmpactive)
+					tmpactive = 1;
 			}
 			break;
 		}
 	} while (ev.type != ButtonRelease);
+	if (!tmpactive && abs(ev.xmotion.y_root - y) < 100) {
+		spawn(&((Arg) { .v = caretinstantswitchcmd }));
+	}
 
 	XUngrabPointer(dpy, CurrentTime);
 
