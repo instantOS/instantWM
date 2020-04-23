@@ -435,6 +435,7 @@ createoverlay() {
 
 	selmon->overlay = tempclient;
 	tempclient->bw = 0;
+	tempclient->islocked = 1;
 	if (!selmon->overlay->isfloating) {
 		changefloating(selmon->overlay);
 	}
@@ -449,6 +450,7 @@ resetoverlay() {
 		return;
 	selmon->overlay->tags = selmon->tagset[selmon->seltags];
 	selmon->overlay->bw = borderpx;
+	selmon->overlay->islocked = 0;
 	changefloating(selmon->overlay);
 	arrange(selmon);
 	focus(selmon->overlay);
@@ -1691,7 +1693,7 @@ keypress(XEvent *e)
 void
 killclient(const Arg *arg)
 {
-	if (!selmon->sel || (selmon->sel == selmon->overlay && selmon->sel->isfloating) || selmon->sel->islocked)
+	if (!selmon->sel || selmon->sel->islocked)
 		return;
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
