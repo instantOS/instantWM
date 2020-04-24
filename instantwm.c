@@ -336,6 +336,7 @@ static char stext[1024];
 
 static int showalttag = 0;
 static int bardragging = 0;
+static int altcursor = 0;
 static int tagwidth = 0;
 static int doubledraw = 0;
 
@@ -1862,7 +1863,7 @@ motionnotify(XEvent *e)
 				if (!topdrag)
 					topdrag = ev->x_root;
 			} else if (topdrag) {
-				if (ev->x_root > tagwidth + 60 && topdrag < tagwidth && ev->x_root < tagwidth + 300)
+				if (ev->x_root > tagwidth + 60 && topdrag < tagwidth && ev->x_root < tagwidth + 600)
 					spawn(&((Arg) { .v = caretinstantswitchcmd }));	
 				topdrag = 0;
 			} 
@@ -1880,9 +1881,23 @@ motionnotify(XEvent *e)
 				}
 			}
 
-		} else if (selmon->gesture) {
-			selmon->gesture = 0;
-			drawbar(selmon);
+		} else {
+			if (selmon->gesture) {
+				selmon->gesture = 0;
+				drawbar(selmon);
+			}
+
+			if (ev->x_root > selmon->mx + selmon->mw - 50) {
+				if (!altcursor) {
+					altcursor = 1;
+					XDefineCursor(dpy, root, cursor[CurVert]->cursor);
+				}
+			} else if (altcursor) {
+				altcursor = 0;
+				XUndefineCursor(dpy, root);
+				XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+
+			}
 		}
 	}
 	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
