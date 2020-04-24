@@ -220,6 +220,8 @@ static Key keys[] = {
 	{MODKEY, XK_t, setlayout, {.v = &layouts[0]}},
 	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
 	{MODKEY, XK_m, setlayout, {.v = &layouts[3]}},
+	{MODKEY|ShiftMask, XK_m, movemouse, {0}},
+	{MODKEY|Mod1Mask, XK_m, resizemouse, {0}},
 	{MODKEY, XK_c, setlayout, {.v = &layouts[1]}},
 
 	{MODKEY,                       XK_Left,   viewtoleft,     {0}},
