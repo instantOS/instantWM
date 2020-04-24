@@ -340,6 +340,7 @@ static int tagwidth = 0;
 static int doubledraw = 0;
 
 static int statuswidth = 0;
+static int topdrag = 0;
 
 static int isdesktop = 0;
 
@@ -1854,6 +1855,19 @@ motionnotify(XEvent *e)
 				}
 			}
 
+			// perform gesture over layout indicator to bring up switcher
+			if (ev->y_root == 0) {
+				if (!tagwidth)
+					tagwidth = gettagwidth();
+				if (!topdrag)
+					topdrag = ev->x_root;
+			} else if (topdrag) {
+				if (ev->x_root > tagwidth + 60 && topdrag < tagwidth && ev->x_root < tagwidth + 300)
+					spawn(&((Arg) { .v = caretinstantswitchcmd }));	
+				topdrag = 0;
+			} 
+
+			// hover over close button
 			if (selmon->sel) {
 				if (ev->x_root > selmon->activeoffset && ev->x_root < (selmon->activeoffset + 32)) {
 					if (selmon->gesture != 12) {
