@@ -549,7 +549,6 @@ applyrules(Client *c)
 int
 applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 {
-	int baseismin;
 	Monitor *m = c->mon;
 
 	/* set minimum possible */
@@ -580,7 +579,7 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 		*w = bh;
 	if (resizehints || c->isfloating || !c->mon->lt[c->mon->sellt]->arrange) {
 		/* see last two sentences in ICCCM 4.1.2.3 */
-		baseismin = c->basew == c->minw && c->baseh == c->minh;
+		int baseismin = c->basew == c->minw && c->baseh == c->minh;
 		if (!baseismin) { /* temporarily remove base dimensions */
 			*w -= c->basew;
 			*h -= c->baseh;
@@ -883,11 +882,10 @@ configurenotify(XEvent *e)
 	Monitor *m;
 	Client *c;
 	XConfigureEvent *ev = &e->xconfigure;
-	int dirty;
 
 	/* TODO: updategeom handling sucks, needs to be simplified */
 	if (ev->window == root) {
-		dirty = (sw != ev->width || sh != ev->height);
+		int dirty = (sw != ev->width || sh != ev->height);
 		sw = ev->width;
 		sh = ev->height;
 		if (updategeom() || dirty) {
@@ -1087,7 +1085,7 @@ dirtomon(int dir)
 int
 drawstatusbar(Monitor *m, int bh, char* stext) {
 	int ret, i, w, x, len;
-	short isCode = 0;
+	short isCode;
 	char *text;
 	char *p;
 
@@ -1826,7 +1824,7 @@ motionnotify(XEvent *e)
 	Monitor *m;
 	XMotionEvent *ev = &e->xmotion;
 
-	int i, x;
+	int i;
 
 	if (ev->window != root)
 		return;
@@ -1845,7 +1843,7 @@ motionnotify(XEvent *e)
 		if (ev->y_root <= bh - 3) {
 			if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
 				i = 0;
-				x = selmon->mx;
+				int x = selmon->mx;
 				do {
 					x += TEXTW(tags[i]);
 				} while (ev->x_root >= x && ++i < LENGTH(tags));
@@ -3324,7 +3322,7 @@ togglebar(const Arg *arg)
 		XWindowChanges wc;
 		if (!selmon->showbar)
 			wc.y = -bh;
-		else if (selmon->showbar) {
+		else {
 			wc.y = 0;
 			if (!selmon->topbar)
 				wc.y = selmon->mh - bh;
@@ -3892,7 +3890,6 @@ void
 view(const Arg *arg)
 {
 	int i;
-	unsigned int tmptag;
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (arg->ui & TAGMASK) {
@@ -3906,6 +3903,7 @@ view(const Arg *arg)
 			selmon->pertag->curtag = i + 1;
 		}
 	} else {
+		unsigned int tmptag;
 		tmptag = selmon->pertag->prevtag;
 		selmon->pertag->prevtag = selmon->pertag->curtag;
 		selmon->pertag->curtag = tmptag;
