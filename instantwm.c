@@ -2008,7 +2008,10 @@ movemouse(const Arg *arg)
 				tx += TEXTW(tags[ti]);	
 			} while (ev.xmotion.x_root >= tx && ++ti < LENGTH(tags));
 			selmon->sel->isfloating = 0;
-			followtag(&((Arg) { .ui = 1 << ti }));
+			if (ev.xmotion.state & ShiftMask)
+				tag(&((Arg) { .ui = 1 << ti }));
+			else
+				followtag(&((Arg) { .ui = 1 << ti }));
 			tagclient = 1;
 
 		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
@@ -2304,7 +2307,10 @@ dragtag(const Arg *arg)
 	
 	if (!leftbar) {
 		if (ev.xmotion.x_root < tagwidth) {
-			tag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+			if (ev.xmotion.state & ShiftMask)
+				followtag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+			else
+				tag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
 		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
 			if (selmon->sel == selmon->overlay) {
 				setoverlay();
