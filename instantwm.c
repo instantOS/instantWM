@@ -1858,14 +1858,14 @@ motionnotify(XEvent *e)
 			}
 
 			// perform gesture over layout indicator to bring up switcher
-			if (ev->y_root == 0) {
+			if (ev->y_root == 0 && ev->state & ShiftMask) {
+				if (ev->x_root == 0 && !topdrag) {
+					spawn(&((Arg) { .v = caretinstantswitchcmd }));
+					topdrag = 1;
+				}
 				if (!tagwidth)
 					tagwidth = gettagwidth();
-				if (!topdrag)
-					topdrag = ev->x_root;
 			} else if (topdrag) {
-				if (ev->x_root > tagwidth + 60 && topdrag < tagwidth && ev->x_root < tagwidth + 600)
-					spawn(&((Arg) { .v = caretinstantswitchcmd }));	
 				topdrag = 0;
 			} 
 
@@ -1890,10 +1890,10 @@ motionnotify(XEvent *e)
 
 			if (ev->x_root > selmon->mx + selmon->mw - 50) {
 				if (!altcursor) {
-					altcursor = 1;
+					altcursor = 2;
 					XDefineCursor(dpy, root, cursor[CurVert]->cursor);
 				}
-			} else if (altcursor) {
+			} else if (altcursor == 2) {
 				altcursor = 0;
 				XUndefineCursor(dpy, root);
 				XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
@@ -2304,7 +2304,7 @@ dragtag(const Arg *arg)
 		}
 		// add additional dragging code
 	} while (ev.type != ButtonRelease && !leftbar);
-	
+
 	if (!leftbar) {
 		if (ev.xmotion.x_root < tagwidth) {
 			if (ev.xmotion.state & ShiftMask)

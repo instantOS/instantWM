@@ -12,6 +12,12 @@
         "*.tcc": "c",
         "complex": "c",
         "random": "c",
-        "config.h": "c"
+        "config.h": "c",
+        "hash_map": "c",
+        "deque": "c",
+        "list": "c",
+        "string": "c",
+        "vector": "c",
+        "valarray": "c"
     }
 }
