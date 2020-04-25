@@ -266,6 +266,7 @@ static void spawn(const Arg *arg);
 static Monitor *systraytomon(Monitor *m);
 static void tag(const Arg *arg);
 static void followtag(const Arg *arg);
+static void followview(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tagtoleft(const Arg *arg);
 static void tagtoright(const Arg *arg);
@@ -3119,6 +3120,18 @@ void followtag(const Arg *arg)
 	tag(arg);
 	view(arg);
 }
+
+void followview(const Arg *arg)
+{
+	if (!selmon->sel)
+		return;
+	Client *c = selmon->sel;
+	view(arg);
+	c->tags = selmon->tagset[selmon->seltags];
+	focus(c);
+	arrange(selmon);
+}
+
 
 void
 tagmon(const Arg *arg)
