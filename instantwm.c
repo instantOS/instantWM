@@ -1915,7 +1915,7 @@ motionnotify(XEvent *e)
 					altcursor = 2;
 					XDefineCursor(dpy, root, cursor[CurVert]->cursor);
 				}
-			} else if (altcursor == 2) {
+			} else if (altcursor == 2 || altcursor == 1) {
 				altcursor = 0;
 				XUndefineCursor(dpy, root);
 				XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
