@@ -1912,13 +1912,13 @@ motionnotify(XEvent *e)
 void
 movemouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient, colorclient, tagx;
+	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient, colorclient, tagx, notfloating;
 	Client *c;
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
 	tagclient = 0;
-	
+	notfloating = 0;
 	if (!(c = selmon->sel))
 		return;
 	if (c->isfullscreen && !c->isfakefullscreen) /* no support moving fullscreen windows by mouse */
@@ -1949,7 +1949,7 @@ movemouse(const Arg *arg)
 			nx = ocx + (ev.xmotion.x - x);
 			if (ev.xmotion.y_root > bh) {
 				ny = ocy + (ev.xmotion.y - y);
-				if (ev.xmotion.x_root < selmon->mx + 50 || ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+				if ((ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx) || (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw)) {
 					if (!colorclient) {
 						XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
 						colorclient = 1;
@@ -1995,7 +1995,7 @@ movemouse(const Arg *arg)
 		if (!tagwidth)
 			tagwidth = gettagwidth();
 
-		if (ev.xmotion.x_root < tagwidth) {
+		if (ev.xmotion.x_root < selmon->mx + tagwidth && ev.xmotion.x_root > selmon->mx) {
 			ti = tx = 0;
 			for (c = selmon->clients; c; c = c->next)
 				occ |= c->tags == 255 ? 0 : c->tags;
@@ -2006,7 +2006,7 @@ movemouse(const Arg *arg)
 						continue;
 				}
 				tx += TEXTW(tags[ti]);	
-			} while (ev.xmotion.x_root >= tx && ++ti < LENGTH(tags));
+			} while (ev.xmotion.x_root >= tx + selmon->mx && ++ti < LENGTH(tags));
 			selmon->sel->isfloating = 0;
 			if (ev.xmotion.state & ShiftMask)
 				tag(&((Arg) { .ui = 1 << ti }));
@@ -2014,13 +2014,13 @@ movemouse(const Arg *arg)
 				followtag(&((Arg) { .ui = 1 << ti }));
 			tagclient = 1;
 
-		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
-				resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
-				togglefloating(NULL);
-				createoverlay();
-				selmon->gesture = 11;
+		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw ) {
+			resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
+			togglefloating(NULL);
+			createoverlay();
+			selmon->gesture = 11;
 		} else if (selmon->sel->isfloating) {
-				togglefloating(NULL);
+			notfloating = 1;
 		}
 	} else {
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
@@ -2044,6 +2044,8 @@ movemouse(const Arg *arg)
 		selmon = m;
 		focus(NULL);
 	}
+	if (notfloating)
+		togglefloating(NULL);
 }
 
 
@@ -2306,7 +2308,7 @@ dragtag(const Arg *arg)
 	} while (ev.type != ButtonRelease && !leftbar);
 
 	if (!leftbar) {
-		if (ev.xmotion.x_root < tagwidth) {
+		if (ev.xmotion.x_root < selmon->mx + tagwidth) {
 			if (ev.xmotion.state & ShiftMask)
 				followtag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
 			else
@@ -2809,9 +2811,8 @@ int getxtag(int ix) {
 			if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
 				continue;
 		}
-
 		x += TEXTW(tags[i]);	
-	} while (ix >= x && ++i < LENGTH(tags));
+	} while (ix >= x + selmon->mx && ++i < LENGTH(tags));
 	return i;
 }
 
