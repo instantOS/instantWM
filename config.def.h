@@ -55,13 +55,12 @@ static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
-static const char *upvol[] = {"/opt/instantos/menus/dm/p.sh", "+5", NULL};
-static const char *downvol[] = {"/opt/instantos/menus/dm/p.sh", "-5", NULL};
-static const char *mutevol[] = {"/opt/instantos/menus/dm/p.sh", "m", NULL};
+static const char *upvol[] = {"/opt/instantos/menus/ex/p.sh", "+5", NULL};
+static const char *downvol[] = {"/opt/instantos/menus/ex/p.sh", "-5", NULL};
+static const char *mutevol[] = {"/opt/instantos/menus/ex/p.sh", "m", NULL};
 
-static const char *upbright[] = {"/opt/instantos/menus/dm/b.sh", "+", NULL};
-static const char *downbright[] = {"/opt/instantos/menus/dm/b.sh", "-", NULL};
-
+static const char *upbright[] = {"/opt/instantos/menus/ex/b.sh", "+", NULL};
+static const char *downbright[] = {"/opt/instantos/menus/ex/b.sh", "-", NULL};
 
 static const Rule rules[] = {
 	/* xprop(1):
