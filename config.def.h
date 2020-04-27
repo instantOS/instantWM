@@ -126,6 +126,7 @@ static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "appmenu", NULL};
 static const char *pavucontrol[] = { "pavucontrol", NULL};
+static const char *instantsettings[] = { "instantsettings", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
 static const char  *codecmd[] = { "code", NULL };
 
@@ -306,6 +307,7 @@ static Button buttons[] = {
 	{ ClkStatusText,        MODKEY,         Button2,        spawn,          {.v = mutevol } },
 	{ ClkStatusText,        0,              Button1,        spawn,          {.v = panther } },
 	{ ClkStatusText,        MODKEY|ShiftMask,Button1,       spawn,          {.v = pavucontrol } },
+	{ ClkStatusText,        MODKEY,         Button1,       spawn,          {.v = instantsettings } },
 	{ ClkStatusText,        MODKEY,         Button3,        spawn,          {.v = spoticli } },
 	{ ClkStatusText,        MODKEY,         Button4,        spawn,          {.v = upbright } },
 	{ ClkStatusText,        MODKEY,         Button5,        spawn,          {.v = downbright } },
