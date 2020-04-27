@@ -182,6 +182,7 @@ static void applyrules(Client *c);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
 static void arrangemon(Monitor *m);
+static void resetcursor();
 static void attach(Client *c);
 static void attachstack(Client *c);
 static void buttonpress(XEvent *e);
@@ -617,6 +618,7 @@ applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact)
 void
 arrange(Monitor *m)
 {
+	resetcursor();
 	if (m)
 		showhide(m->stack);
 	else for (m = mons; m; m = m->next)
@@ -648,6 +650,14 @@ attachstack(Client *c)
 {
 	c->snext = c->mon->stack;
 	c->mon->stack = c;
+}
+
+void resetcursor()
+{
+	if (!altcursor)
+		return;
+	XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+	altcursor = 0;
 }
 
 void
@@ -1879,7 +1889,19 @@ motionnotify(XEvent *e)
 				} else if (selmon->gesture == 12) {
 					selmon->gesture = 0;
 					drawbar(selmon);
-				}
+				} else {
+					if (!altcursor) {
+						if (ev->x_root > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 && ev->x_root < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
+							XDefineCursor(dpy, root, cursor[CurResize]->cursor);
+							altcursor = 1;
+						}
+					} else {
+						if (ev->x_root < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 || ev->x_root > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
+							XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+							altcursor = 0;
+						}
+					}
+				} 
 			}
 
 		} else {
@@ -2109,7 +2131,13 @@ dragmouse(const Arg *arg)
 
 	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
 		return;
-	
+	if (!getrootptr(&x, &y))
+		return;
+	if (x > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 && x < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
+		dragrightmouse(&((Arg) { .v = tempc }));
+		return;
+	}
+
 	if (tempc == selmon->overlay) {
 		setoverlay();
 		return;
@@ -2138,8 +2166,7 @@ dragmouse(const Arg *arg)
 
 	Client *c = selmon->sel;
 
-	if (!getrootptr(&x, &y))
-		return;
+
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 		switch(ev.type) {
@@ -3600,7 +3627,7 @@ updatebars(void)
 		m->barwin = XCreateWindow(dpy, root, m->wx, m->by, w, bh, 0, DefaultDepth(dpy, screen),
 				CopyFromParent, DefaultVisual(dpy, screen),
 				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-		XDefineCursor(dpy, m->barwin, cursor[CurNormal]->cursor);
+		//XDefineCursor(dpy, m->barwin, cursor[CurNormal]->cursor);
 		if (showsystray && m == systraytomon(m))
 			XMapRaised(dpy, systray->win);
 		XMapRaised(dpy, m->barwin);
