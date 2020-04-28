@@ -2320,7 +2320,10 @@ void drawwindow(const Arg *arg) {
     
     int counter = 0;
     int exitcode;
-
+	Monitor *m;
+	Client *c;
+	if (!selmon->sel)
+		return;
 	FILE *fp = popen("slop", "r");
     while (fgets(str, 100, fp) != NULL) {
     	strcat(strout, str);
@@ -2373,10 +2376,21 @@ void drawwindow(const Arg *arg) {
 
 	y = atoi(tmpstring);
 	memset(tmpstring,0,strlen(tmpstring));
+	
+	if (!selmon->sel)
+		return;
 
-	if (!selmon->sel->isfloating)
+	c = selmon->sel;
+
+	if ((m = recttomon(x, y, width, height)) != selmon) {
+		sendmon(c, m);
+		selmon = m;
+		focus(NULL);
+	}
+
+	if (!c->isfloating)
 		togglefloating(NULL);
-	resize(selmon->sel, x, y, width, height, 0);
+	resize(c, x, y, width, height, 0);
 	arrange(selmon);
 	counter = 0;
 }
