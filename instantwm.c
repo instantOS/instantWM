@@ -2233,11 +2233,6 @@ dragrightmouse(const Arg *arg)
 		createoverlay();
 	}
 
-	if (tempc != selmon->sel) {
-		focus(tempc);
-		zoom(NULL);
-	}
-
 	Client *c = selmon->sel;
 
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
@@ -2275,6 +2270,11 @@ dragrightmouse(const Arg *arg)
 	if (dragging) {
 		XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + c->w, c->y + c->h);
 		resizemouse(NULL);
+	} else {
+		if (tempc != selmon->sel) {
+			focus(tempc);
+			zoom(NULL);
+		}
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
