@@ -2270,10 +2270,9 @@ dragrightmouse(const Arg *arg)
 					dragging = 1;
 				if (starty > 10 && ev.xmotion.y_root == 0 && c->isfloating)
 					dragging = 1;
-
 			}
+			break;
 		}
-		break;
 	} while (ev.type != ButtonRelease && !dragging);
 	
 	if (dragging) {
@@ -2326,7 +2325,7 @@ void drawwindow(const Arg *arg) {
 
 	if (!selmon->sel)
 		return;
-	FILE *fp = popen("slop", "r");
+	FILE *fp = popen("slop -b 3 -c \"0.3203125,0.875,0.40234375\"", "r");
     while (fgets(str, 100, fp) != NULL) {
     	strcat(strout, str);
     }
@@ -2384,7 +2383,9 @@ void drawwindow(const Arg *arg) {
 
 	c = selmon->sel;
 
-	if (width > 20 && height > 20 && (abs(c->w - width) > 20 || abs(c->h - height) > 20) || abs(c->x - x) > 20 || abs(c->y - y) > 20) {
+	if (width > 50 && height > 50 && 
+		(!(c->isfloating) || (c->w - width) > 20 || abs(c->h - height) > 20 || abs(c->x - x) > 20 || abs(c->y - y) > 20) && 
+		x > 0 && y > 0 && width < selmon->mw && height < selmon->mh) {
 		if ((m = recttomon(x, y, width, height)) != selmon) {
 			sendmon(c, m);
 			selmon = m;
