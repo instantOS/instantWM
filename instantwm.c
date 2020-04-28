@@ -2384,7 +2384,7 @@ void drawwindow(const Arg *arg) {
 	c = selmon->sel;
 
 	if (width > 50 && height > 50 && 
-		(!(c->isfloating) || (c->w - width) > 20 || abs(c->h - height) > 20 || abs(c->x - x) > 20 || abs(c->y - y) > 20) && 
+		(!(c->isfloating) || abs(c->w - width) > 20 || abs(c->h - height) > 20 || abs(c->x - x) > 20 || abs(c->y - y) > 20) && 
 		x > 0 && y > 0 && width < selmon->mw && height < selmon->mh) {
 		if ((m = recttomon(x, y, width, height)) != selmon) {
 			sendmon(c, m);
