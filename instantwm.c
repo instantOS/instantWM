@@ -228,6 +228,8 @@ static void movemouse(const Arg *arg);
 static void dragmouse(const Arg *arg);
 static void gesturemouse(const Arg *arg);
 static void dragrightmouse(const Arg *arg);
+static void drawwindow(const Arg *arg);
+static void waitforclickend(const Arg *arg);
 static void dragtag(const Arg *arg);
 static void moveresize(const Arg *arg);
 static void distributeclients(const Arg *arg);
@@ -1890,6 +1892,7 @@ motionnotify(XEvent *e)
 					selmon->gesture = 0;
 					drawbar(selmon);
 				} else {
+					// hover over resize widget
 					if (!altcursor) {
 						if (ev->x_root > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 && ev->x_root < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
 							XDefineCursor(dpy, root, cursor[CurResize]->cursor);
@@ -2134,7 +2137,7 @@ dragmouse(const Arg *arg)
 	if (!getrootptr(&x, &y))
 		return;
 	if (x > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 && x < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
-		dragrightmouse(&((Arg) { .v = tempc }));
+		drawwindow(NULL);
 		return;
 	}
 
@@ -2232,6 +2235,10 @@ dragrightmouse(const Arg *arg)
 	if (tempc == selmon->overlay) {
 		createoverlay();
 	}
+	if (tempc != selmon->sel) {
+		focus(tempc);
+		restack(selmon);
+	}
 
 	Client *c = selmon->sel;
 
@@ -2265,6 +2272,7 @@ dragrightmouse(const Arg *arg)
 
 			}
 		}
+		break;
 	} while (ev.type != ButtonRelease && !dragging);
 	
 	if (dragging) {
@@ -2278,7 +2286,99 @@ dragrightmouse(const Arg *arg)
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
+}
 
+void waitforclickend(const Arg *arg)
+{
+	XEvent ev;
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+	None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
+	return;
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		}
+	} while (ev.type != ButtonRelease);
+	XUngrabPointer(dpy, CurrentTime);
+
+}
+
+
+void drawwindow(const Arg *arg) {
+
+    char str[100];
+    int i;
+    char strout[100];
+
+    int width, height, x, y;
+    char tmpstring[20] = {};
+    
+    int counter = 0;
+    int exitcode;
+
+	FILE *fp = popen("slop", "r");
+    while (fgets(str, 100, fp) != NULL) {
+    	strcat(strout, str);
+    }
+
+	pclose(fp);
+
+	if (strlen(strout) < 6) {
+		fprintf(stderr,"exited slop %d", strlen(strout));
+		return;
+	}
+
+	for (i = 0; i < strlen(strout); i++){
+		if (counter == 0) {
+			if (strout[i] != 'x') {
+				if( strout[i] >= '0' && strout[i] <= '9' ){
+					tmpstring[strlen(tmpstring)] = strout[i];
+				}
+			} else {
+				counter = 1;
+				width = atoi(tmpstring);
+				memset(tmpstring,0,strlen(tmpstring));
+			}
+		} else if (counter == 1) {
+			if (strout[i] != '+') {
+				if( strout[i] >= '0' && strout[i] <= '9' ){
+					tmpstring[strlen(tmpstring)] = strout[i];
+				}
+			} else {
+				counter = 2;
+				height = atoi(tmpstring);
+				memset(tmpstring,0,strlen(tmpstring));
+			}
+		} else if (counter == 2) {
+			if (strout[i] != '+') {
+				if( strout[i] >= '0' && strout[i] <= '9' ){
+					tmpstring[strlen(tmpstring)] = strout[i];
+				}
+			} else {
+				counter = 3;
+				x = atoi(tmpstring);
+				memset(tmpstring,0,strlen(tmpstring));
+			}
+		} else {
+			if( strout[i] >= '0' && strout[i] <= '9' ){
+				tmpstring[strlen(tmpstring)] = strout[i];
+			}
+		}
+	}
+
+	y = atoi(tmpstring);
+	memset(tmpstring,0,strlen(tmpstring));
+
+	if (!selmon->sel->isfloating)
+		togglefloating(NULL);
+	resize(selmon->sel, x, y, width, height, 0);
+	arrange(selmon);
+	counter = 0;
 }
 
 
