@@ -175,7 +175,8 @@ static Key keys[] = {
 	{MODKEY|Mod1Mask,				XK_k,  	keyresize,	{.i = 1}},
 	{MODKEY|Mod1Mask,				XK_l,  	keyresize,	{.i = 2}},
 	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
-	{MODKEY|ShiftMask,				XK_d,  	distributeclients,	{0}},
+	{MODKEY|ControlMask,			XK_d,  	distributeclients,	{0}},
+	{MODKEY|ShiftMask,				XK_d,  	drawwindow,	{0}},
 
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },

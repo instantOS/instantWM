@@ -2316,12 +2316,13 @@ void drawwindow(const Arg *arg) {
     char strout[100];
 
     int width, height, x, y;
-    char tmpstring[20] = {};
+    char tmpstring[30] = {};
     
     int counter = 0;
     int exitcode;
 	Monitor *m;
 	Client *c;
+
 	if (!selmon->sel)
 		return;
 	FILE *fp = popen("slop", "r");
@@ -2382,16 +2383,19 @@ void drawwindow(const Arg *arg) {
 
 	c = selmon->sel;
 
-	if ((m = recttomon(x, y, width, height)) != selmon) {
-		sendmon(c, m);
-		selmon = m;
-		focus(NULL);
+	if (width > 20 && height > 20 && (abs(c->w - width) > 20 || abs(c->h - height) > 20) || abs(c->x - x) > 20 || abs(c->y - y) > 20) {
+		if ((m = recttomon(x, y, width, height)) != selmon) {
+			sendmon(c, m);
+			selmon = m;
+			focus(NULL);
+		}
+
+		if (!c->isfloating)
+			togglefloating(NULL);
+		resize(c, x, y, width, height, 0);
+		arrange(selmon);
 	}
 
-	if (!c->isfloating)
-		togglefloating(NULL);
-	resize(c, x, y, width, height, 0);
-	arrange(selmon);
 	counter = 0;
 }
 
