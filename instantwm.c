@@ -1402,6 +1402,7 @@ expose(XEvent *e)
 void
 focus(Client *c)
 {
+	resetcursor();
 	if (!c || !ISVISIBLE(c) || HIDDEN(c))
 		for (c = selmon->stack; c && (!ISVISIBLE(c) || HIDDEN(c)); c = c->snext);
 	if (selmon->sel && selmon->sel != c)
