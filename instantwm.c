@@ -2285,8 +2285,8 @@ dragrightmouse(const Arg *arg)
 	} else {
 		if (tempc != selmon->sel) {
 			focus(tempc);
-			zoom(NULL);
 		}
+		zoom(NULL);
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
