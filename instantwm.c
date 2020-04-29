@@ -2236,10 +2236,6 @@ dragrightmouse(const Arg *arg)
 	if (tempc == selmon->overlay) {
 		createoverlay();
 	}
-	if (tempc != selmon->sel) {
-		focus(tempc);
-		restack(selmon);
-	}
 
 	Client *c = selmon->sel;
 
@@ -2274,9 +2270,17 @@ dragrightmouse(const Arg *arg)
 			break;
 		}
 	} while (ev.type != ButtonRelease && !dragging);
-	
+
 	if (dragging) {
-		XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + c->w, c->y + c->h);
+		if (tempc != selmon->sel) {
+			focus(tempc);
+			restack(selmon);
+		}
+		if (tempc == selmon->overlay) {
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + (c->w / 2), c->y + c->h);
+		} else {
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + c->w, c->y + c->h);
+		}
 		resizemouse(NULL);
 	} else {
 		if (tempc != selmon->sel) {
@@ -2314,10 +2318,10 @@ void drawwindow(const Arg *arg) {
     char str[100];
     int i;
     char strout[100];
-
+	int dimensions[4];
     int width, height, x, y;
     char tmpstring[30] = {};
-    
+	int firstchar = 0;
     int counter = 0;
     int exitcode;
 	Monitor *m;
@@ -2325,7 +2329,8 @@ void drawwindow(const Arg *arg) {
 
 	if (!selmon->sel)
 		return;
-	FILE *fp = popen("slop -b 3 -c \"0.3203125,0.875,0.40234375\"", "r");
+	FILE *fp = popen("instantslop", "r");
+
     while (fgets(str, 100, fp) != NULL) {
     	strcat(strout, str);
     }
@@ -2333,59 +2338,38 @@ void drawwindow(const Arg *arg) {
 	pclose(fp);
 
 	if (strlen(strout) < 6) {
-		fprintf(stderr,"exited slop %d", strlen(strout));
 		return;
 	}
 
+
 	for (i = 0; i < strlen(strout); i++){
-		if (counter == 0) {
-			if (strout[i] != 'x') {
-				if( strout[i] >= '0' && strout[i] <= '9' ){
-					tmpstring[strlen(tmpstring)] = strout[i];
-				}
-			} else {
-				counter = 1;
-				width = atoi(tmpstring);
-				memset(tmpstring,0,strlen(tmpstring));
+		if(!firstchar) {
+			if (strout[i] == 'x') {
+			firstchar = 1;
 			}
-		} else if (counter == 1) {
-			if (strout[i] != '+') {
-				if( strout[i] >= '0' && strout[i] <= '9' ){
-					tmpstring[strlen(tmpstring)] = strout[i];
-				}
-			} else {
-				counter = 2;
-				height = atoi(tmpstring);
-				memset(tmpstring,0,strlen(tmpstring));
-			}
-		} else if (counter == 2) {
-			if (strout[i] != '+') {
-				if( strout[i] >= '0' && strout[i] <= '9' ){
-					tmpstring[strlen(tmpstring)] = strout[i];
-				}
-			} else {
-				counter = 3;
-				x = atoi(tmpstring);
-				memset(tmpstring,0,strlen(tmpstring));
-			}
+			continue;
+		}
+
+		if (strout[i] != 'x') {
+			tmpstring[strlen(tmpstring)] = strout[i];
 		} else {
-			if( strout[i] >= '0' && strout[i] <= '9' ){
-				tmpstring[strlen(tmpstring)] = strout[i];
-			}
+			dimensions[counter] = atoi(tmpstring);
+			counter++;
+			memset(tmpstring,0,strlen(tmpstring));
 		}
 	}
 
-	y = atoi(tmpstring);
-	memset(tmpstring,0,strlen(tmpstring));
-	
+	x = dimensions[0];
+	y = dimensions[1];
+	width = dimensions[2];
+	height = dimensions[3];
+
 	if (!selmon->sel)
 		return;
 
 	c = selmon->sel;
 
-	if (width > 50 && height > 50 && 
-		(!(c->isfloating) || abs(c->w - width) > 20 || abs(c->h - height) > 20 || abs(c->x - x) > 20 || abs(c->y - y) > 20) && 
-		x > 0 && y > 0 && width < selmon->mw && height < selmon->mh) {
+	if (width > 50 && height > 50 && x > -40 && y > -40 && width < selmon->mw + 40 && height < selmon->mh + 40) {
 		if ((m = recttomon(x, y, width, height)) != selmon) {
 			sendmon(c, m);
 			selmon = m;
@@ -2394,9 +2378,12 @@ void drawwindow(const Arg *arg) {
 
 		if (!c->isfloating)
 			togglefloating(NULL);
-		resize(c, x, y, width, height, 0);
+		resize(c, x, y, width - (c->bw * 2), height - (c->bw * 2), 0);
 		arrange(selmon);
+	} else {
+		fprintf(stderr, "errror %s", strout);
 	}
+	memset(tmpstring,0,strlen(tmpstring));
 
 	counter = 0;
 }
