@@ -2277,9 +2277,9 @@ dragrightmouse(const Arg *arg)
 			restack(selmon);
 		}
 		if (tempc == selmon->overlay) {
-			XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + (c->w / 2), c->y + c->h);
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + (tempc->w / 2), tempc->y + tempc->h);
 		} else {
-			XWarpPointer(dpy, None, root, 0, 0, 0, 0, c->x + c->w, c->y + c->h);
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + tempc->w, tempc->y + tempc->h);
 		}
 		resizemouse(NULL);
 	} else {
