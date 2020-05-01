@@ -331,6 +331,7 @@ static void bstackhoriz(Monitor *m);
 static void keyrelease(XEvent *e);
 static void setoverlay();
 static void desktopset();
+static void createdesktop();
 static void createoverlay();
 static void shiftview(const Arg *arg);
 
@@ -344,6 +345,7 @@ static int bardragging = 0;
 static int altcursor = 0;
 static int tagwidth = 0;
 static int doubledraw = 0;
+static int desktopicons = 0;
 
 static int statuswidth = 0;
 static int topdrag = 0;
@@ -419,6 +421,22 @@ int overlayexists() {
 	}
 	
 	return 0;
+}
+
+void createdesktop(){
+	Client *c;
+	Monitor *m;
+	for (m = mons; m->next; m = m->next) {
+		fprintf(stderr,"hello");
+		for(c = m->clients; c; c = c->next) {
+			if (strstr(c->name, "ROX-Filer") != NULL) {
+				focus(c);
+				desktopset();
+				break;
+			}
+		}
+	}
+
 }
 
 void
@@ -549,6 +567,10 @@ applyrules(Client *c)
 		&& (!r->class || strstr(class, r->class))
 		&& (!r->instance || strstr(instance, r->instance)))
 		{
+			if (strstr(r->class, "ROX-Filer") != NULL) {
+				selmon = c->mon;
+				desktopicons = 1;
+			}
 			c->isfloating = r->isfloating;
 			c->tags |= r->tags;
 			for (m = mons; m && m->num != r->monitor; m = m->next);
@@ -1802,6 +1824,10 @@ manage(Window w, XWindowAttributes *wa)
 	if (!HIDDEN(c))
 		XMapWindow(dpy, c->win);
 	focus(NULL);
+	if (desktopicons) {
+		createdesktop();
+		desktopicons = 0;
+	}
 }
 
 void

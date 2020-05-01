@@ -70,6 +70,7 @@ static const Rule rules[] = {
 	/* class      instance    title       tags mask     isfloating   monitor */
 	{"Pavucontrol", NULL,     NULL,       0,            1,           -1},
 	{"Welcome.py", NULL,     NULL,        0,            1,           -1},
+	{"ROX-Filer", NULL,     NULL,        0,            1,           -1},
 };
 
 /* layout(s) */
@@ -257,7 +258,7 @@ static Key keys[] = {
 	{MODKEY, XK_period, focusmon, {.i = +1}},
 	{MODKEY | ShiftMask, XK_comma, tagmon, {.i = -1}},
 	{MODKEY | ShiftMask, XK_period, tagmon, {.i = +1}},
-	{MODKEY | ShiftMask | ControlMask | Mod1Mask, XK_period, desktopset, {0}},
+	{MODKEY | ShiftMask | ControlMask | Mod1Mask, XK_period, createdesktop, {0}},
 	TAGKEYS(XK_1, 0)
 	TAGKEYS(XK_2, 1)
 	TAGKEYS(XK_3, 2)
