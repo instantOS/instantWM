@@ -70,7 +70,7 @@ static const Rule rules[] = {
 	/* class      instance    title       tags mask     isfloating   monitor */
 	{"Pavucontrol", NULL,     NULL,       0,            1,           -1},
 	{"Welcome.py", NULL,     NULL,        0,            1,           -1},
-	{"ROX-Filer", NULL,     NULL,        0,            1,           -1},
+	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
 };
 
 /* layout(s) */

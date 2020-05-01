@@ -430,9 +430,11 @@ void createdesktop(){
 		fprintf(stderr,"hello");
 		for(c = m->clients; c; c = c->next) {
 			if (strstr(c->name, "ROX-Filer") != NULL) {
-				focus(c);
-				desktopset();
-				break;
+				if (c->w > drw->w - 100) {
+					focus(c);
+					desktopset();
+					break;
+				}
 			}
 		}
 	}
