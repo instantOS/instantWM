@@ -18,6 +18,7 @@
         "list": "c",
         "string": "c",
         "vector": "c",
-        "valarray": "c"
+        "valarray": "c",
+        "typeinfo": "cpp"
     }
 }

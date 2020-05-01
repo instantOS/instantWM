@@ -330,6 +330,7 @@ static void bstackhoriz(Monitor *m);
 
 static void keyrelease(XEvent *e);
 static void setoverlay();
+static void desktopset();
 static void createoverlay();
 static void shiftview(const Arg *arg);
 
@@ -514,6 +515,16 @@ setoverlay() {
 			showoverlay();
 		}
 	}
+}
+
+void desktopset() {
+	Client *c = selmon->sel;
+	c->isfloating = 0;
+	arrange(c->mon);
+	resize(c, 0,bh,drw->w, drw->h - bh, 0);
+	unmanage(c, 0);
+	restack(selmon);
+	return;
 }
 
 void
