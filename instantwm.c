@@ -346,6 +346,7 @@ static int altcursor = 0;
 static int tagwidth = 0;
 static int doubledraw = 0;
 static int desktopicons = 0;
+static int newdesktop = 0;
 
 static int statuswidth = 0;
 static int topdrag = 0;
@@ -426,19 +427,16 @@ int overlayexists() {
 void createdesktop(){
 	Client *c;
 	Monitor *m;
-	for (m = mons; m->next; m = m->next) {
-		fprintf(stderr,"hello");
-		for(c = m->clients; c; c = c->next) {
-			if (strstr(c->name, "ROX-Filer") != NULL) {
-				if (c->w > drw->w - 100) {
-					focus(c);
-					desktopset();
-					break;
-				}
+	m = selmon;
+	for(c = m->clients; c; c = c->next) {
+		if (strstr(c->name, "ROX-Filer") != NULL) {
+			if (c->w > drw->w - 100) {
+				focus(c);
+				desktopset();
+				break;
 			}
 		}
 	}
-
 }
 
 void
@@ -570,8 +568,8 @@ applyrules(Client *c)
 		&& (!r->instance || strstr(instance, r->instance)))
 		{
 			if (strstr(r->class, "ROX-Filer") != NULL) {
-				selmon = c->mon;
 				desktopicons = 1;
+				newdesktop = 1;
 			}
 			c->isfloating = r->isfloating;
 			c->tags |= r->tags;
@@ -1763,6 +1761,21 @@ killclient(const Arg *arg)
 void
 manage(Window w, XWindowAttributes *wa)
 {
+
+	if (desktopicons) {
+		int x, y;
+		Monitor *tempmon;
+		if (getrootptr(&x, &y)) {
+			tempmon = recttomon(x, y, 1, 1);
+			if (selmon != tempmon) {
+				if (selmon->sel)
+					unfocus(selmon->sel, 1);
+				selmon = tempmon;
+				focus(NULL);
+			}
+		}
+	}
+
 	Client *c, *t = NULL;
 	Window trans = None;
 	XWindowChanges wc;
@@ -1826,9 +1839,9 @@ manage(Window w, XWindowAttributes *wa)
 	if (!HIDDEN(c))
 		XMapWindow(dpy, c->win);
 	focus(NULL);
-	if (desktopicons) {
+	if (newdesktop) {
+		newdesktop = 0;
 		createdesktop();
-		desktopicons = 0;
 	}
 }
 
