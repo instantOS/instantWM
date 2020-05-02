@@ -131,6 +131,7 @@ static const char *pavucontrol[] = { "pavucontrol", NULL};
 static const char *instantsettings[] = { "instantsettings", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
 static const char  *codecmd[] = { "code", NULL };
+static const char  *startmenucmd[] = { "instantstartmenu", NULL };
 
 static const char  *scrotcmd[] = { "/opt/instantos/menus/dm/ss.sh", NULL };
 static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
@@ -335,4 +336,5 @@ static Button buttons[] = {
 	{ ClkShutDown,          0,              Button1,        spawn,          {.v = instantshutdowncmd } },
 	{ ClkShutDown,          0,              Button3,        spawn,          {.v = slockcmd } },
 	{ ClkSideBar,           0,              Button1,        gesturemouse,   {0} },
+	{ ClkStartMenu,         0,              Button1,        spawn,          {.v = startmenucmd}},
 };

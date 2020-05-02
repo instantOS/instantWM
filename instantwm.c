@@ -85,7 +85,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
-       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkLast }; /* clicks */
+       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkStartMenu, ClkLast }; /* clicks */
 
 typedef union {
 	int i;
@@ -727,7 +727,7 @@ buttonpress(XEvent *e)
 			x += TEXTW(tags[i]);	
 		} while (ev->x >= x && ++i < LENGTH(tags));
 		if (ev->x < startmenusize) {
-			click = ClkRootWin;
+			click = ClkStartMenu;
 		} else if (i < LENGTH(tags)) {
 			click = ClkTagBar;
 			arg.ui = 1 << i;
