@@ -713,7 +713,8 @@ buttonpress(XEvent *e)
 	}
 
 	if (ev->window == selmon->barwin) {
-		i = x = 0;
+		i = 0;
+		x = startmenusize;
 		for (c = m->clients; c; c = c->next)
 			occ |= c->tags == 255 ? 0 : c->tags;
 		do {
@@ -725,8 +726,9 @@ buttonpress(XEvent *e)
 
 			x += TEXTW(tags[i]);	
 		} while (ev->x >= x && ++i < LENGTH(tags));
-
-		if (i < LENGTH(tags)) {
+		if (ev->x < startmenusize) {
+			click = ClkRootWin;
+		} else if (i < LENGTH(tags)) {
 			click = ClkTagBar;
 			arg.ui = 1 << i;
 		} else if (ev->x < x + blw)
@@ -1252,6 +1254,12 @@ drawbar(Monitor *m)
 
 	}
 
+	//draw start menu icon
+	drw_rect(drw, 0, 0, startmenusize, bh, 1, 1);
+	drw_rect(drw, 5, 5, 14, 14, 1, 0);
+	drw_rect(drw, 9, 9, 6, 6, 1, 1);
+	drw_rect(drw, 19, 19, 6, 6, 1, 0);
+
 	resizebarwin(m);
 	for (c = m->clients; c; c = c->next) {
 		if (ISVISIBLE(c))
@@ -1261,7 +1269,7 @@ drawbar(Monitor *m)
 		if (c->isurgent)
 			urg |= c->tags;
 	}
-	x = 0;
+	x = startmenusize;
 	for (i = 0; i < LENGTH(tags); i++) {
 
 		/* do not draw vacant tags */
@@ -1916,7 +1924,7 @@ motionnotify(XEvent *e)
 		if (ev->y_root <= bh - 3) {
 			if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
 				i = 0;
-				int x = selmon->mx;
+				int x = selmon->mx + startmenusize;
 				do {
 					x += TEXTW(tags[i]);
 				} while (ev->x_root >= x && ++i < LENGTH(tags));
@@ -2082,7 +2090,8 @@ movemouse(const Arg *arg)
 			tagwidth = gettagwidth();
 
 		if (ev.xmotion.x_root < selmon->mx + tagwidth && ev.xmotion.x_root > selmon->mx) {
-			ti = tx = 0;
+			ti = 0;
+			tx = startmenusize;
 			for (c = selmon->clients; c; c = c->next)
 				occ |= c->tags == 255 ? 0 : c->tags;
 			do {
@@ -2990,13 +2999,14 @@ int gettagwidth() {
 		}
 		x += TEXTW(tags[i]);
 	} while (++i < LENGTH(tags));
-	return x;
+	return x + startmenusize;
 }
 
 int getxtag(int ix) {
 	int x, i, occ;
 	Client *c;
-	i = x = 0;
+	i = 0;
+	x = startmenusize;
 	for (c = selmon->clients; c; c = c->next)
 		occ |= c->tags == 255 ? 0 : c->tags;
 	
