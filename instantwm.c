@@ -1255,10 +1255,12 @@ drawbar(Monitor *m)
 	}
 
 	//draw start menu icon
-	drw_rect(drw, 0, 0, startmenusize, bh, 1, 1);
-	drw_rect(drw, 5, 5, 14, 14, 1, 0);
-	drw_rect(drw, 9, 9, 6, 6, 1, 1);
-	drw_rect(drw, 19, 19, 6, 6, 1, 0);
+
+	int startmenuinvert = (selmon->gesture == 13);
+	drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0:1);
+	drw_rect(drw, 5, 5, 14, 14, 1, startmenuinvert ? 1:0);
+	drw_rect(drw, 9, 9, 6, 6, 1, startmenuinvert ? 0:1);
+	drw_rect(drw, 19, 19, 6, 6, 1, startmenuinvert ? 1:0);
 
 	resizebarwin(m);
 	for (c = m->clients; c; c = c->next) {
@@ -1923,15 +1925,20 @@ motionnotify(XEvent *e)
 		// leave small deactivator zone 
 		if (ev->y_root <= bh - 3) {
 			if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
-				i = 0;
-				int x = selmon->mx + startmenusize;
-				do {
-					x += TEXTW(tags[i]);
-				} while (ev->x_root >= x && ++i < LENGTH(tags));
-				
-				if (i != selmon->gesture - 1) {
-					selmon->gesture = i + 1;
+				if (ev->x_root < selmon->mx + startmenusize) {
+					selmon->gesture = 13;
 					drawbar(selmon);
+				} else {
+					i = 0;
+					int x = selmon->mx + startmenusize;
+					do {
+						x += TEXTW(tags[i]);
+					} while (ev->x_root >= x && ++i < LENGTH(tags));
+					
+					if (i != selmon->gesture - 1) {
+						selmon->gesture = i + 1;
+						drawbar(selmon);
+					}
 				}
 			}
 
