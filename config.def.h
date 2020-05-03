@@ -120,6 +120,7 @@ static const char *termcmd[] = {"urxvt", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
+static const char *oslockcmd[] = {"instantlock", "-o", NULL};
 static const char *slockmcmd[] = {"ilock", "message", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", NULL};
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
@@ -335,6 +336,7 @@ static Button buttons[] = {
 	{ ClkTagBar,            MODKEY,         Button3,        toggletag,      {0} },
 	{ ClkShutDown,          0,              Button1,        spawn,          {.v = instantshutdowncmd } },
 	{ ClkShutDown,          0,              Button3,        spawn,          {.v = slockcmd } },
+	{ ClkShutDown,          0,              Button2,        spawn,          {.v = oslockcmd } },
 	{ ClkSideBar,           0,              Button1,        gesturemouse,   {0} },
 	{ ClkStartMenu,         0,              Button1,        spawn,          {.v = startmenucmd}},
 };

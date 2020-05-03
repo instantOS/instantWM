@@ -147,6 +147,7 @@ struct Monitor {
 	unsigned int sellt;
 	unsigned int tagset[2];
 	unsigned int activeoffset;
+	unsigned int titleoffset;
 	int showbar;
 	int topbar;
 	Client *clients;
@@ -155,6 +156,7 @@ struct Monitor {
 	int overlaystatus;
 	int gesture;
 	Client *stack;
+	Client *hoverclient;
 	Monitor *next;
 	Window barwin;
 	const Layout *lt[2];
@@ -728,6 +730,8 @@ buttonpress(XEvent *e)
 		} while (ev->x >= x && ++i < LENGTH(tags));
 		if (ev->x < startmenusize) {
 			click = ClkStartMenu;
+			selmon->gesture = 0;
+			drawbar(selmon);
 		} else if (i < LENGTH(tags)) {
 			click = ClkTagBar;
 			arg.ui = 1 << i;
@@ -2050,7 +2054,7 @@ movemouse(const Arg *arg)
 			nx = ocx + (ev.xmotion.x - x);
 			if (ev.xmotion.y_root > bh) {
 				ny = ocy + (ev.xmotion.y - y);
-				if ((ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx) || (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw)) {
+				if ((ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) || (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw)) {
 					if (!colorclient) {
 						XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
 						colorclient = 1;
