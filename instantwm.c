@@ -4306,7 +4306,7 @@ moveright(const Arg *arg) {
 void
 overtoggle(const Arg *arg){
 	if (!selmon->pertag->curtag == 0) {
-		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[1];
+		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[6];
 		view(arg);
 	} else {
 		winview(NULL);
