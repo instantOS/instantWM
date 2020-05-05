@@ -499,10 +499,12 @@ showoverlay() {
 	}
 
 	c->bw = 0;
-	if (selmon->showbar)
-		resize(c, selmon->mx + 20, bh, selmon->ww - 40, c->h, True);
-	else
-		resize(c, selmon->mx + 20, 0, selmon->ww - 40, c->h, True);
+	if (selmon->overlay->islocked) {
+		if (selmon->showbar)
+			resize(c, selmon->mx + 20, bh, selmon->ww - 40, c->h, True);
+		else
+			resize(c, selmon->mx + 20, 0, selmon->ww - 40, c->h, True);
+	}
 
 	arrange(selmon);
 
@@ -2314,6 +2316,7 @@ dragrightmouse(const Arg *arg)
 		return;
 	
 	if (tempc == selmon->overlay) {
+		focus(selmon->overlay);
 		createoverlay();
 	}
 
