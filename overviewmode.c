@@ -1,4 +1,25 @@
 void
+focusstack2(const Arg *arg)
+{
+	Client *c = NULL;
+
+	for (c = selmon->sel->next; c && !ISVISIBLE(c); c = c->next);
+	if (!c)
+		for (c = selmon->clients; c && !ISVISIBLE(c); c = c->next);
+
+	if (c) {
+		if (c) {
+			if (c->mon != selmon)
+				selmon = c->mon;
+			detachstack(c);
+			attachstack(c);
+		}
+
+		selmon->sel = c;
+	}
+}
+
+void
 overviewlayout(Monitor *m) {
 	unsigned int i, n, cx, cy, cw, ch, aw, cols, rows,nx,ny;
 	Client *c;
@@ -36,7 +57,7 @@ overviewlayout(Monitor *m) {
 	focus(nexttiled(m->clients));
 	for (int i = 0; i < clientcount() - 1; i++)
 	{
-		focusstack(&((Arg) { .i = +1 }));
+		focusstack2(&((Arg) { .i = +1 }));
 	}
 	
 
