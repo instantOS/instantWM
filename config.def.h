@@ -225,6 +225,7 @@ static Key keys[] = {
 	{MODKEY, XK_Tab, view, {0}},
 	{MODKEY|Mod1Mask, XK_Tab, followview, {0}},
 	{MODKEY, XK_q, killclient, {0}},
+	{MODKEY|ShiftMask, XK_c, killclient, {0}},
 	{Mod1Mask, XK_F4, killclient, {0}},
 	{MODKEY, XK_t, setlayout, {.v = &layouts[0]}},
 	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
