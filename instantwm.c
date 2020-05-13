@@ -1996,7 +1996,7 @@ motionnotify(XEvent *e)
 			}
 
 			if (ev->x_root > selmon->mx + selmon->mw - 50) {
-				if (!altcursor) {
+				if (!altcursor && ev->y_root > bh + 60) {
 					altcursor = 2;
 					XDefineCursor(dpy, root, cursor[CurVert]->cursor);
 				}
@@ -2049,7 +2049,7 @@ movemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 240 : 120)))
 				continue;
 			lasttime = ev.xmotion.time;
 
@@ -2180,7 +2180,7 @@ gesturemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 240 : 120)))
 				continue;
 			lasttime = ev.xmotion.time;
 			if (abs(lasty - ev.xmotion.y_root) > selmon->mh / 30) {
@@ -2792,7 +2792,7 @@ resizemouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 240 : 120)))
 				continue;
 			lasttime = ev.xmotion.time;
 
@@ -2878,7 +2878,7 @@ resizeaspectmouse(const Arg *arg)
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 120 : 60)))
+			if ((ev.xmotion.time - lasttime) <= (1000 / (doubledraw ? 240 : 120)))
 				continue;
 			lasttime = ev.xmotion.time;
 
