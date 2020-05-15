@@ -2132,17 +2132,28 @@ movemouse(const Arg *arg)
 		}
 	} else {
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
-			c->isfloating = 0;
-			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
-				moveright(arg);
-			else
-				tagtoright(arg);
+			
+			if (ev.xmotion.state & ShiftMask) {
+				resize(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 0);
+			} else {
+				c->isfloating = 0;
+				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
+					moveright(arg);
+				else
+					tagtoright(arg);
+			}
+
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
-			c->isfloating = 0;
-			if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
-				moveleft(arg);
-			else
-				tagtoleft(arg);
+			if (ev.xmotion.state & ShiftMask) {
+				resize(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 0);
+			} else {
+				c->isfloating = 0;
+				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
+					moveleft(arg);
+				else
+					tagtoleft(arg);
+
+			}
 		}
 	}	
 
