@@ -2195,8 +2195,13 @@ gesturemouse(const Arg *arg)
 			break;
 		}
 	} while (ev.type != ButtonRelease);
-	if (!tmpactive && abs(ev.xmotion.y_root - y) < 100) {
-		spawn(&((Arg) { .v = caretinstantswitchcmd }));
+
+	if (ev.xmotion.x_root < selmon->mx + selmon->mw - 100) {
+			spawn(&((Arg) { .v = onboardcmd }));
+	} else {
+		if (!tmpactive && abs(ev.xmotion.y_root - y) < 100) {
+			spawn(&((Arg) { .v = caretinstantswitchcmd }));
+		}
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
