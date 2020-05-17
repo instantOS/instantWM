@@ -126,6 +126,7 @@ static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
 static const char *oslockcmd[] = {"instantlock", "-o", NULL};
 static const char *slockmcmd[] = {"ilock", "message", NULL};
+static const char *helpcmd[] = {"urxvt", "-e", "instanthotkeys", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", NULL};
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
 static const char *onboardcmd[] = {"onboard", NULL};
@@ -229,6 +230,7 @@ static Key keys[] = {
 	{MODKEY, XK_q, killclient, {0}},
 	{MODKEY|ShiftMask, XK_c, killclient, {0}},
 	{Mod1Mask, XK_F4, killclient, {0}},
+	{MODKEY, XK_F1, spawn, {.v = helpcmd}},
 	{MODKEY, XK_t, setlayout, {.v = &layouts[0]}},
 	{MODKEY, XK_f, setlayout, {.v = &layouts[2]}},
 	{MODKEY, XK_m, setlayout, {.v = &layouts[3]}},
