@@ -177,6 +177,17 @@ static Key dkeys[] = {
 	{0, XK_Right,  viewtoright,    {0}},
 	{0, XK_Up,      shiftview,      {.i = +1 } },
 	{0, XK_Down,      shiftview,      {.i = -1 } },
+	
+	{0, XK_1, view, {.ui = 1 << 0}},
+	{0, XK_2, view, {.ui = 1 << 1}},
+	{0, XK_3, view, {.ui = 1 << 2}},
+	{0, XK_4, view, {.ui = 1 << 3}},
+	{0, XK_5, view, {.ui = 1 << 4}},
+	{0, XK_6, view, {.ui = 1 << 5}},
+	{0, XK_7, view, {.ui = 1 << 6}},
+	{0, XK_8, view, {.ui = 1 << 7}},
+	{0, XK_9, view, {.ui = 1 << 8}},
+
 };
 
 static Key keys[] = {
