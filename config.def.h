@@ -159,6 +159,7 @@ static Key dkeys[] = {
 	{0, XK_n, spawn, {.v = nautiluscmd } },
 	{0, XK_space, spawn, {.v = panther} },
 	{0, XK_f, spawn, {.v = firefoxcmd} },
+	{0, XK_F1, spawn, {.v = helpcmd} },
 	{0, XK_m, spawn, {.v = spoticli} },
 	{0, XK_Return, spawn, {.v = termcmd} },
 	{0, XK_plus, spawn, {.v = upvol} },
