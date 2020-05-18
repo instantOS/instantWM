@@ -489,6 +489,9 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 {
 	int time;
 	int oldx, oldy;
+	int width, height;
+	width = w ? w : c->w;
+	height = h ? h : c->h;
 	time = 1;
 	oldx = c->x;
 	oldy = c->y; 
@@ -498,15 +501,15 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 		fprintf(stderr, "hello, %d, %d", time, frames);
 		resize(c,
 			oldx + ((double)time/frames * (x - oldx)),
-			oldy + ((double)time/frames * (y - oldy)), c->w, c->h, 1);
+			oldy + ((double)time/frames * (y - oldy)), width, height, 1);
 		time++;
 		usleep(15000);
 	}
 
 	if (resetpos)
-		resize(c, oldx, oldy, c->w, c->h, 0);
+		resize(c, oldx, oldy, width, height, 0);
 	else
-		resize(c, x, y, c->w, c->h, 1);
+		resize(c, x, y, width, height, 1);
 
 }
 
