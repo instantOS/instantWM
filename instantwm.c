@@ -1923,6 +1923,12 @@ manage(Window w, XWindowAttributes *wa)
 		newdesktop = 0;
 		createdesktop();
 	}
+
+	if (animated) {
+		resizeclient(c, c->x, c->y - 70, c->w, c->h);
+		animateclient(c,c->x, c->y + 70, 0,0,7,0);
+	}
+
 }
 
 void
@@ -1953,6 +1959,7 @@ maprequest(XEvent *e)
 		return;
 	if (!wintoclient(ev->window))
 		manage(ev->window, &wa);
+	
 }
 
 void
