@@ -505,7 +505,9 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 
 	if (animated) {
 		if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
-			if (c->x == x && c->y == y) {
+			if (c->x == x && c->y == y && 
+			&monocle != c->mon->lt[c->mon->sellt]->arrange && 
+			c->w < selmon->mw - 50) {
 				oldx = oldx + abs(c->w - width);
 				oldy = oldy + abs(c->h - height);
 			}
