@@ -1810,6 +1810,7 @@ killclient(const Arg *arg)
 {
 	if (!selmon->sel || selmon->sel->islocked)
 		return;
+	animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 7, 0);
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
 		XSetErrorHandler(xerrordummy);
