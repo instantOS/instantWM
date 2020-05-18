@@ -505,6 +505,10 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 
 	if (animated) {
 		if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
+			if (c->x == x && c->y == y) {
+				oldx = oldx + abs(c->w - width);
+				oldy = oldy + abs(c->h - height);
+			}
 			while (time < frames)
 			{
 				fprintf(stderr, "float, %f", easeOutQuint(((double)time/frames)));
@@ -1976,7 +1980,7 @@ monocle(Monitor *m)
 	if (n > 0) /* override layout symbol */
 		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%d]", n);
 	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		resize(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 0);
+		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 10, 0);
 }
 
 void
@@ -3476,7 +3480,7 @@ tagtoleft(const Arg *arg) {
 	oldx = c->x;
 	if (!c->isfloating && animated) {
 		XRaiseWindow(dpy,c->win);
-		animateclient(c, selmon->mx - c->w + 50, c->y, 0, 0, 10, 0);
+		animateclient(c, c->x - (c->w / 3), c->y, 0, 0, 10, 0);
 	}
 
 	int offset = 1;
@@ -3504,7 +3508,7 @@ tagtoright(const Arg *arg) {
 	oldx = c->x;
 	if (!c->isfloating && animated) {
 		XRaiseWindow(dpy,c->win);
-		animateclient(c, selmon->mx + c->w - 50, c->y, 0, 0, 10, 0);
+		animateclient(c, c->x + (c->x/3), c->y, 0, 0, 10, 0);
 	}
 
 	int offset = 1;
@@ -4482,11 +4486,11 @@ bstack(Monitor *m) {
 	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
 		if (i < m->nmaster) {
 			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 0);
+			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 10, 0);
 			mx += WIDTH(c);
 		} else {
 			h = m->wh - mh;
-			resize(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw), 0);
+			animateclient(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw), 10, 0);
 			if (tw != m->ww)
 				tx += WIDTH(c);
 		}
@@ -4513,10 +4517,10 @@ bstackhoriz(Monitor *m) {
 	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
 		if (i < m->nmaster) {
 			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 0);
+			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 10, 0);
 			mx += WIDTH(c);
 		} else {
-		resize(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw), 0);
+		animateclient(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw), 10, 0);
 			if (th != m->wh)
 				ty += HEIGHT(c);
 		}
@@ -4641,7 +4645,7 @@ void
 zoom(const Arg *arg)
 {
 	Client *c = selmon->sel;
-
+	XRaiseWindow(dpy, c->win);
 	if (!selmon->lt[selmon->sellt]->arrange
 	|| (selmon->sel && selmon->sel->isfloating))
 		return;
