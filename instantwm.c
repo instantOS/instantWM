@@ -485,6 +485,10 @@ resetoverlay() {
 
 }
 
+double easeOutQuint( double t ) {
+    return 1 + (--t) * t * t;
+}
+
 // move client to position within a set amount of frames
 void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos)
 {
@@ -500,9 +504,10 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
 		while (time < frames)
 		{
+			fprintf(stderr, "float, %f", easeOutQuint(((double)time/frames)));
 			resize(c,
-				oldx + ((double)time/frames * (x - oldx)),
-				oldy + ((double)time/frames * (y - oldy)), width, height, 1);
+				oldx + easeOutQuint(((double)time/frames)) * (x - oldx),
+				oldy + easeOutQuint(((double)time/frames)) * (y - oldy), width, height, 1);
 			time++;
 			usleep(15000);
 		}
@@ -539,9 +544,9 @@ showoverlay() {
 	if (c->islocked)
 	{
 		if (selmon->showbar)
-			animateclient(c, c->x, bh, 0, 0, 5, 0);
+			animateclient(c, c->x, bh, 0, 0, 15, 0);
 		else
-			animateclient(c, c->x, 0, 0, 0, 5, 0);
+			animateclient(c, c->x, 0, 0, 0, 15, 0);
 	}
 
 	c->bw = 0;
@@ -557,7 +562,7 @@ hideoverlay() {
 	Client *c;
 	c = selmon->overlay;
 	if (c->islocked)
-		animateclient(c, c->x, 0 - c->h, 0, 0, 5, 0);
+		animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
 
 	selmon->overlaystatus = 0;
 	selmon->overlay->tags = 0;
@@ -1732,7 +1737,13 @@ hide(Client *c) {
 	if (!c || HIDDEN(c))
 		return;
 
-	animateclient(c, c->x, -c->h, 0, 0, 5, 1);
+	int x, y, wi, h;
+	x = c->x;
+	y = c->y;
+	wi = c->w;
+	h = c->h;
+
+	animateclient(c, c->x, bh - c->h + 40, 0, 0, 10, 0);
 
 	Window w = c->win;
 	static XWindowAttributes ra, ca;
@@ -1749,6 +1760,7 @@ hide(Client *c) {
 	XSelectInput(dpy, root, ra.your_event_mask);
 	XSelectInput(dpy, w, ca.your_event_mask);
 	XUngrabServer(dpy);
+	resize(c, x, y, wi, h, 0);
 
 	focus(c->snext);
 	arrange(c->mon);
@@ -1810,7 +1822,7 @@ killclient(const Arg *arg)
 {
 	if (!selmon->sel || selmon->sel->islocked)
 		return;
-	animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 7, 0);
+	animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
 		XSetErrorHandler(xerrordummy);
@@ -2182,7 +2194,7 @@ movemouse(const Arg *arg)
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
 			// snap to half of the screen like on gnome
 			if (ev.xmotion.state & ShiftMask) {
-				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 5, 0);
+				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
 				c->isfloating = 0;
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -2193,7 +2205,7 @@ movemouse(const Arg *arg)
 
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			if (ev.xmotion.state & ShiftMask) {
-				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 5, 0);
+				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
 				c->isfloating = 0;
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -3356,9 +3368,10 @@ show(Client *c)
 
 	XMapWindow(dpy, c->win);
 	setclientstate(c, NormalState);
+	resize(c, x, -50 , w, h, 0);
+	XRaiseWindow(dpy, c->win);
+	animateclient(c, x, y, 0, 0, 14, 0);
 	arrange(c->mon);
-	resizeclient(c, x, -c->h, w, h);
-	animateclient(c, x, y, 0, 0, 7, 0);
 
 }
 
@@ -3487,12 +3500,12 @@ tile(Monitor *m)
 	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 5, 0);
+			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 7, 0);
 			if (my + HEIGHT(c) < m->wh)
 				my += HEIGHT(c);
 		} else {
 			h = (m->wh - ty) / (n - i);
-			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 5, 0);
+			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 7, 0);
 			if (ty + HEIGHT(c) < m->wh)
 				ty += HEIGHT(c);
 		}
