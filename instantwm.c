@@ -278,6 +278,7 @@ static void tagtoleft(const Arg *arg);
 static void tagtoright(const Arg *arg);
 static void tile(Monitor *);
 static void togglealttag(const Arg *arg);
+static void toggleanimated(const Arg *arg);
 static void toggledoubledraw(const Arg *arg);
 static void togglefakefullscreen(const Arg *arg);
 static void togglelocked(const Arg *arg);
@@ -344,6 +345,7 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int animated = 1;
 static int bardragging = 0;
 static int altcursor = 0;
 static int tagwidth = 0;
@@ -501,15 +503,17 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	oldx = c->x;
 	oldy = c->y;
 
-	if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
-		while (time < frames)
-		{
-			fprintf(stderr, "float, %f", easeOutQuint(((double)time/frames)));
-			resize(c,
-				oldx + easeOutQuint(((double)time/frames)) * (x - oldx),
-				oldy + easeOutQuint(((double)time/frames)) * (y - oldy), width, height, 1);
-			time++;
-			usleep(15000);
+	if (animated) {
+		if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
+			while (time < frames)
+			{
+				fprintf(stderr, "float, %f", easeOutQuint(((double)time/frames)));
+				resize(c,
+					oldx + easeOutQuint(((double)time/frames)) * (x - oldx),
+					oldy + easeOutQuint(((double)time/frames)) * (y - oldy), width, height, 1);
+				time++;
+				usleep(15000);
+			}
 		}
 	}
 
@@ -3520,6 +3524,12 @@ togglealttag(const Arg *arg)
 		drawbar(m);
 	
 	tagwidth = gettagwidth();
+}
+
+void
+toggleanimated(const Arg *arg)
+{
+	animated = !animated;
 }
 
 void
