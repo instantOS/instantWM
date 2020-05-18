@@ -1927,6 +1927,8 @@ manage(Window w, XWindowAttributes *wa)
 	if (animated) {
 		resizeclient(c, c->x, c->y - 70, c->w, c->h);
 		animateclient(c,c->x, c->y + 70, 0,0,7,0);
+		if (c->w > selmon->mw - 30 || c->h > selmon->mh - 30)
+			arrange(selmon);
 	}
 
 }
