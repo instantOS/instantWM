@@ -3466,6 +3466,17 @@ tagmon(const Arg *arg)
 
 void
 tagtoleft(const Arg *arg) {
+	int oldx;
+	Client *c;
+	if (!selmon->sel)
+		return;
+	c = selmon->sel;
+	oldx = c->x;
+	if (!c->isfloating && animated) {
+		XRaiseWindow(dpy,c->win);
+		animateclient(c, selmon->mx - c->w + 50, c->y, 0, 0, 10, 0);
+	}
+
 	int offset = 1;
 	if (arg && arg->i)
 		offset=arg->i;
@@ -3477,10 +3488,23 @@ tagtoleft(const Arg *arg) {
 		focus(NULL);
 		arrange(selmon);
 	}
+	c->x = oldx;
+
 }
 
 void
 tagtoright(const Arg *arg) {
+	int oldx;
+	Client *c;
+	if (!selmon->sel)
+		return;
+	c = selmon->sel;
+	oldx = c->x;
+	if (!c->isfloating && animated) {
+		XRaiseWindow(dpy,c->win);
+		animateclient(c, selmon->mx + c->w - 50, c->y, 0, 0, 10, 0);
+	}
+
 	int offset = 1;
 	if (arg && arg->i)
 		offset=arg->i;
@@ -3492,6 +3516,8 @@ tagtoright(const Arg *arg) {
 		focus(NULL);
 		arrange(selmon);
 	}
+	c->x = oldx;
+
 }
 
 void
