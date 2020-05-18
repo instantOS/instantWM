@@ -495,15 +495,17 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	height = h ? h : c->h;
 	time = 1;
 	oldx = c->x;
-	oldy = c->y; 
+	oldy = c->y;
 
-	while (time < frames)
-	{
-		resize(c,
-			oldx + ((double)time/frames * (x - oldx)),
-			oldy + ((double)time/frames * (y - oldy)), width, height, 1);
-		time++;
-		usleep(15000);
+	if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
+		while (time < frames)
+		{
+			resize(c,
+				oldx + ((double)time/frames * (x - oldx)),
+				oldy + ((double)time/frames * (y - oldy)), width, height, 1);
+			time++;
+			usleep(15000);
+		}
 	}
 
 	if (resetpos)
@@ -3484,12 +3486,12 @@ tile(Monitor *m)
 	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 0);
+			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 5, 0);
 			if (my + HEIGHT(c) < m->wh)
 				my += HEIGHT(c);
 		} else {
 			h = (m->wh - ty) / (n - i);
-			resize(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 0);
+			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), 5, 0);
 			if (ty + HEIGHT(c) < m->wh)
 				ty += HEIGHT(c);
 		}
