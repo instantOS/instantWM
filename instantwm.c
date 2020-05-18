@@ -484,6 +484,32 @@ resetoverlay() {
 
 }
 
+// move client to position within a set amount of frames
+void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos)
+{
+	int time;
+	int oldx, oldy;
+	time = 1;
+	oldx = c->x;
+	oldy = c->y; 
+
+	while (time < frames)
+	{
+		fprintf(stderr, "hello, %d, %d", time, frames);
+		resize(c,
+			oldx + ((double)time/frames * (x - oldx)),
+			oldy + ((double)time/frames * (y - oldy)), c->w, c->h, 1);
+		time++;
+		usleep(15000);
+	}
+
+	if (resetpos)
+		resize(c, oldx, oldy, c->w, c->h, 0);
+	else
+		resize(c, x, y, c->w, c->h, 1);
+
+}
+
 void
 showoverlay() {
 	if (!overlayexists())
@@ -491,21 +517,29 @@ showoverlay() {
 	selmon->overlaystatus = 1;
 	Client *c = selmon->overlay;
 
-	selmon->overlay->tags = selmon->tagset[selmon->seltags];
+	if (c->islocked) {
+		if (selmon->showbar)
+			resize(c, selmon->mx + 20, bh - c->h, selmon->ww - 40, c->h, True);
+		else
+			resize(c, selmon->mx + 20, 0, selmon->ww - 40, c->h, True);
+	}
+	
+	c->tags = selmon->tagset[selmon->seltags];
 	focus(c);
 
 	if (!c->isfloating) {
 		changefloating(selmon->overlay);
 	}
 
-	c->bw = 0;
-	if (selmon->overlay->islocked) {
+	if (c->islocked)
+	{
 		if (selmon->showbar)
-			resize(c, selmon->mx + 20, bh, selmon->ww - 40, c->h, True);
+			animateclient(c, c->x, bh, 0, 0, 5, 0);
 		else
-			resize(c, selmon->mx + 20, 0, selmon->ww - 40, c->h, True);
+			animateclient(c, c->x, 0, 0, 0, 5, 0);
 	}
 
+	c->bw = 0;
 	arrange(selmon);
 
 }
@@ -514,6 +548,12 @@ void
 hideoverlay() {
 	if (!overlayexists())
 		return;
+	
+	Client *c;
+	c = selmon->overlay;
+	if (c->islocked)
+		animateclient(c, c->x, 0 - c->h, 0, 0, 5, 0);
+
 	selmon->overlaystatus = 0;
 	selmon->overlay->tags = 0;
 	focus(NULL);
