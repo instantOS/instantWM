@@ -250,6 +250,7 @@ static void resizemouse(const Arg *arg);
 static void resizeaspectmouse(const Arg *arg);
 static void resizerequest(XEvent *e);
 static void restack(Monitor *m);
+static void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos);
 static void run(void);
 static void runAutostart(void);
 static void scan(void);
@@ -498,7 +499,6 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 
 	while (time < frames)
 	{
-		fprintf(stderr, "hello, %d, %d", time, frames);
 		resize(c,
 			oldx + ((double)time/frames * (x - oldx)),
 			oldy + ((double)time/frames * (y - oldy)), width, height, 1);
@@ -1730,6 +1730,8 @@ hide(Client *c) {
 	if (!c || HIDDEN(c))
 		return;
 
+	animateclient(c, c->x, -c->h, 0, 0, 5, 1);
+
 	Window w = c->win;
 	static XWindowAttributes ra, ca;
 
@@ -2175,9 +2177,9 @@ movemouse(const Arg *arg)
 		}
 	} else {
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
-			
+			// snap to half of the screen like on gnome
 			if (ev.xmotion.state & ShiftMask) {
-				resize(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 0);
+				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 5, 0);
 			} else {
 				c->isfloating = 0;
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -2188,7 +2190,7 @@ movemouse(const Arg *arg)
 
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			if (ev.xmotion.state & ShiftMask) {
-				resize(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 0);
+				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 5, 0);
 			} else {
 				c->isfloating = 0;
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -3340,12 +3342,21 @@ seturgent(Client *c, int urg)
 void
 show(Client *c)
 {
+	int x, y, w, h;
+	x = c->x;
+	y = c->y;
+	w = c->w;
+	h = c->h;
+
 	if (!c || !HIDDEN(c))
 		return;
 
 	XMapWindow(dpy, c->win);
 	setclientstate(c, NormalState);
 	arrange(c->mon);
+	resizeclient(c, x, -c->h, w, h);
+	animateclient(c, x, y, 0, 0, 7, 0);
+
 }
 
 void
