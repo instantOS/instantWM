@@ -3345,13 +3345,13 @@ void
 show(Client *c)
 {
 	int x, y, w, h;
+	if (!c || !HIDDEN(c))
+		return;
+
 	x = c->x;
 	y = c->y;
 	w = c->w;
 	h = c->h;
-
-	if (!c || !HIDDEN(c))
-		return;
 
 	XMapWindow(dpy, c->win);
 	setclientstate(c, NormalState);
