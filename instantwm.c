@@ -2375,6 +2375,8 @@ dragmouse(const Arg *arg)
 		if (!c->isfloating) {
 			c->sfy = bh;
 			if (animated) {
+				animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
+		       		selmon->sel->sfw, selmon->sel->sfh, 5, 0);
 				animated = 0;
 				togglefloating(NULL);
 				animated = 1;
@@ -3758,8 +3760,8 @@ togglefloating(const Arg *arg)
 	if (selmon->sel->isfloating) {
 		/* restore last known float dimensions */
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColFloat].pixel);
-		resize(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
-		       selmon->sel->sfw, selmon->sel->sfh, False);
+		animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
+		       selmon->sel->sfw, selmon->sel->sfh, 7, 0);
 	}
 	else {
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
