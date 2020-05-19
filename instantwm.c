@@ -2377,14 +2377,20 @@ dragmouse(const Arg *arg)
 	if (dragging) {
 		if (!c->isfloating) {
 			c->sfy = bh;
-			togglefloating(NULL);
+			if (animated) {
+				animated = 0;
+				togglefloating(NULL);
+				animated = 1;
+			} else {
+				togglefloating(NULL);
+			}
 		}
 			if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
 				XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
 			else
 				forcewarp(c);
-		
 		movemouse(NULL);
+	
 	} else {
 		if (isactive)
 			hide(tempc);
