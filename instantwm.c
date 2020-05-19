@@ -2212,23 +2212,24 @@ movemouse(const Arg *arg)
 			if (ev.xmotion.state & ShiftMask) {
 				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
-				c->isfloating = 0;
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
 					moveright(arg);
 				else
 					tagtoright(arg);
+				c->isfloating = 0;
+				arrange(selmon);
 			}
 
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			if (ev.xmotion.state & ShiftMask) {
 				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
-				c->isfloating = 0;
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
 					moveleft(arg);
 				else
 					tagtoleft(arg);
-
+				c->isfloating = 0;
+				arrange(selmon);
 			}
 		}
 	}	
@@ -2464,7 +2465,14 @@ dragrightmouse(const Arg *arg)
 		} else {
 			XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + tempc->w, tempc->y + tempc->h);
 		}
-		resizemouse(NULL);
+		if (animated) {
+			animated = 0;
+			resizemouse(NULL);
+			animated = 1;
+		} else {
+			resizemouse(NULL);
+		}
+
 	} else {
 		if (tempc != selmon->sel) {
 			focus(tempc);
