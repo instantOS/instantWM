@@ -503,14 +503,10 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	oldx = c->x;
 	oldy = c->y;
 
-	if (animated) {
-		if (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10) {
-			if (c->x == x && c->y == y && 
-			&monocle != c->mon->lt[c->mon->sellt]->arrange && 
-			c->w < selmon->mw - 50) {
-				oldx = oldx + abs(c->w - width);
-				oldy = oldy + abs(c->h - height);
-			}
+	if (animated && (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10)) {
+		if (x == c->x && y == c->y && c->w < selmon->mw - 50 && c->h < selmon->mh - 50) {
+			animateclient(c, c->x + (width - c->w), c->y + (height - c->h), 0, 0, frames, 0);
+		} else {
 			while (time < frames)
 			{
 				fprintf(stderr, "float, %f", easeOutQuint(((double)time/frames)));
@@ -553,6 +549,7 @@ showoverlay() {
 
 	if (c->islocked)
 	{
+		XRaiseWindow(dpy, c->win);
 		if (selmon->showbar)
 			animateclient(c, c->x, bh, 0, 0, 15, 0);
 		else
