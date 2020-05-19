@@ -3534,10 +3534,10 @@ tile(Monitor *m)
 	unsigned int i, n, h, mw, my, ty, framecount;
 	Client *c;
 
-	if (clientcount() > 5)
-		framecount = 5;
+	if (animated && clientcount() > 5)
+		framecount = 4;
 	else
-		framecount = 10;
+		framecount = 7;
 
 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
 	if (n == 0)

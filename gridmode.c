@@ -1,8 +1,11 @@
 void
 grid(Monitor *m) {
-	unsigned int i, n, cx, cy, cw, ch, aw, cols, rows;
+	unsigned int i, n, cx, cy, cw, ch, aw, cols, rows, framecount;
 	Client *c;
-
+	if (animated && clientcount() > 5)
+		framecount = 3;
+	else
+		framecount = 6;
 	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
 		n++;
 
@@ -21,7 +24,7 @@ grid(Monitor *m) {
 		/* adjust height/width of last row/column's windows */
 		int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
 		aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
-		resize(c, cx, cy, cw - 2 * c->bw + aw, ch - 2 * c->bw + ah, False);
+		animateclient(c, cx, cy, cw - 2 * c->bw + aw, ch - 2 * c->bw + ah, framecount, 0);
 		i++;
 	}
 }
