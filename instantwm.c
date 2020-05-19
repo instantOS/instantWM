@@ -2560,7 +2560,7 @@ void drawwindow(const Arg *arg) {
 
 		if (!c->isfloating)
 			togglefloating(NULL);
-		resize(c, x, y, width - (c->bw * 2), height - (c->bw * 2), 0);
+		animateclient(c, x, y, width - (c->bw * 2), height - (c->bw * 2), 10, 0);
 		arrange(selmon);
 	} else {
 		fprintf(stderr, "errror %s", strout);
