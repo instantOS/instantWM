@@ -1974,6 +1974,9 @@ monocle(Monitor *m)
 {
 	unsigned int n = 0;
 	Client *c;
+	
+	if (animated && selmon->sel)
+		XRaiseWindow(dpy, selmon->sel->win);
 
 	for (c = m->clients; c; c = c->next)
 		if (ISVISIBLE(c))
