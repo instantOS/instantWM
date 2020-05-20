@@ -311,6 +311,8 @@ static void warp(const Client *c);
 static void forcewarp(const Client *c);
 static void warpfocus();
 static void viewtoleft(const Arg *arg);
+static void animleft(const Arg *arg);
+static void animright(const Arg *arg);
 static void moveleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
 static void moveright(const Arg *arg);
@@ -4352,6 +4354,33 @@ moveleft(const Arg *arg) {
 	tagtoleft(arg);
 	viewtoleft(arg);	
 }
+
+animleft(const Arg *arg) {
+	Client *c;
+	if (!selmon->sel || clientcount() != 1) {
+		viewtoleft(arg);
+		return;
+	}
+	c = selmon->sel;
+
+	animateclient(c, c->x + 50, c->y, 0,0,10,1);
+	viewtoleft(arg);
+}
+
+
+animright(const Arg *arg) {
+	Client *c;
+	if (!selmon->sel || clientcount() != 1) {
+		viewtoright(arg);
+		return;
+	}
+	c = selmon->sel;
+
+	animateclient(c, c->x - 50, c->y, 0,0,10,1);
+	viewtoright(arg);
+}
+
+
 
 void
 viewtoleft(const Arg *arg) {

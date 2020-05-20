@@ -251,8 +251,8 @@ static Key keys[] = {
 	{MODKEY|Mod1Mask, XK_m, resizemouse, {0}},
 	{MODKEY, XK_c, setlayout, {.v = &layouts[1]}},
 
-	{MODKEY,                       XK_Left,   viewtoleft,     {0}},
-	{MODKEY,                       XK_Right,  viewtoright,    {0}},
+	{MODKEY,                       XK_Left,   animleft,     {0}},
+	{MODKEY,                       XK_Right,  animright,    {0}},
 	
 	{MODKEY,                       XK_e,  overtoggle,    {.ui = ~0}},
 	{MODKEY|ShiftMask,             XK_e,  fullovertoggle,    {.ui = ~0}},
