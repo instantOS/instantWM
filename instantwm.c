@@ -2161,8 +2161,15 @@ movemouse(const Arg *arg)
 			else if (abs((selmon->wy + selmon->wh) - (ny + HEIGHT(c))) < snap)
 				ny = selmon->wy + selmon->wh - HEIGHT(c);
 			if (!c->isfloating && selmon->lt[selmon->sellt]->arrange
-			&& (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
-				togglefloating(NULL);
+			&& (abs(nx - c->x) > snap || abs(ny - c->y) > snap)) {
+				if (animated) {
+					animated = 0;
+					togglefloating(NULL);
+					animated = 1;
+				} else {
+					togglefloating(NULL);
+				}
+			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
 				resize(c, nx, ny, c->w, c->h, 1);
 
@@ -2926,8 +2933,15 @@ resizemouse(const Arg *arg)
 			&& c->mon->wy + nh >= selmon->wy && c->mon->wy + nh <= selmon->wy + selmon->wh)
 			{
 				if (!c->isfloating && selmon->lt[selmon->sellt]->arrange
-				&& (abs(nw - c->w) > snap || abs(nh - c->h) > snap))
-					togglefloating(NULL);
+				&& (abs(nw - c->w) > snap || abs(nh - c->h) > snap)) {
+					if (animated) {
+						animated = 0;
+						togglefloating(NULL);
+						animated = 1;
+					} else {
+						togglefloating(NULL);
+					}
+				}
 			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
 				resize(c, nx, ny, nw, nh, 1);
