@@ -2183,7 +2183,7 @@ movemouse(const Arg *arg)
 			ev.xmotion.x_root > selmon->mx + selmon->mw || 
 			ev.xmotion.y_root < selmon->my || 
 			ev.xmotion.y_root > selmon->my + selmon->mh) {
-				if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
+				if ((m = recttomon(ev.xmotion.x_root, ev.xmotion.y_root, 2, 2)) != selmon) {
 					XRaiseWindow(dpy, c->win);
 					fprintf(stderr, "x, %d", ev.xmotion.x_root);
 					sendmon(c, m);
