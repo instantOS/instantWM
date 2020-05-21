@@ -511,7 +511,6 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 		} else {
 			while (time < frames)
 			{
-				fprintf(stderr, "float, %f", easeOutQuint(((double)time/frames)));
 				resize(c,
 					oldx + easeOutQuint(((double)time/frames)) * (x - oldx),
 					oldy + easeOutQuint(((double)time/frames)) * (y - oldy), width, height, 1);
@@ -2180,10 +2179,23 @@ movemouse(const Arg *arg)
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
 				resize(c, nx, ny, c->w, c->h, 1);
 
-			if (ev.xmotion.y_root < bh && tagx != getxtag(ev.xmotion.x_root)) {
-				tagx = getxtag(ev.xmotion.x_root);
-				selmon->gesture = tagx + 1;
-				drawbar(selmon);
+			if (ev.xmotion.x_root < selmon->mx || 
+			ev.xmotion.x_root > selmon->mx + selmon->mw || 
+			ev.xmotion.y_root < selmon->my || 
+			ev.xmotion.y_root > selmon->my + selmon->mh) {
+				if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
+					XRaiseWindow(dpy, c->win);
+					fprintf(stderr, "x, %d", ev.xmotion.x_root);
+					sendmon(c, m);
+					selmon = m;
+					focus(NULL);
+				}
+			} else {
+				if (ev.xmotion.y_root < bh && tagx != getxtag(ev.xmotion.x_root)) {
+					tagx = getxtag(ev.xmotion.x_root);
+					selmon->gesture = tagx + 1;
+					drawbar(selmon);
+				}
 			}
 			break;
 		}
