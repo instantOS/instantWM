@@ -2185,7 +2185,6 @@ movemouse(const Arg *arg)
 			ev.xmotion.y_root > selmon->my + selmon->mh) {
 				if ((m = recttomon(ev.xmotion.x_root, ev.xmotion.y_root, 2, 2)) != selmon) {
 					XRaiseWindow(dpy, c->win);
-					fprintf(stderr, "x, %d", ev.xmotion.x_root);
 					sendmon(c, m);
 					selmon = m;
 					focus(NULL);
