@@ -3259,12 +3259,14 @@ setfullscreen(Client *c, int fullscreen)
 
 		c->oldstate = c->isfloating;
 		c->oldbw = c->bw;
-		c->isfloating = 1;
 		if (!c->isfakefullscreen) {
 			c->bw = 0;
+			if (!c->isfloating)
+				animateclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh, 10, 0);
 			resizeclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh);
 			XRaiseWindow(dpy, c->win);
 		}
+		c->isfloating = 1;
 
 
 	} else if (!fullscreen && c->isfullscreen){
