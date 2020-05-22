@@ -567,9 +567,10 @@ showoverlay() {
 			animateclient(c, c->x, bh, 0, 0, 15, 0);
 		else
 			animateclient(c, c->x, 0, 0, 0, 15, 0);
+		c->issticky = 1;
+
 	}
 
-	c->issticky = 1;
 	c->bw = 0;
 	arrange(selmon);
 }
