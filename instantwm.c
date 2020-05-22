@@ -568,9 +568,8 @@ showoverlay() {
 		else
 			animateclient(c, c->x, 0, 0, 0, 15, 0);
 	}
-	if (!c->issticky)
-		togglesticky(NULL);
 
+	c->issticky = 1;
 	c->bw = 0;
 	arrange(selmon);
 }
@@ -582,8 +581,7 @@ hideoverlay() {
 	
 	Client *c;
 	c = selmon->overlay;
-	if (c->issticky)
-		togglesticky(NULL);
+	c->issticky = 0;
 
 	if (c->islocked)
 		animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
