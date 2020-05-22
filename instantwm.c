@@ -1463,7 +1463,7 @@ drawbar(Monitor *m)
 						if (!c->issticky)
 							scm = SchemeNorm;
 						else
-							scm = SchemeActive;
+							scm = SchemeAddActive;
 					}
 					drw_setscheme(drw, scheme[scm]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w){
