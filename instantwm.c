@@ -50,7 +50,7 @@
 #define CLEANMASK(mask)         (mask & ~(numlockmask|LockMask) & (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
 #define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
                                * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
-#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]))
+#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) || C->issticky)
 #define HIDDEN(C)               ((getstate(C->win) == IconicState))
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
@@ -122,7 +122,7 @@ struct Client {
 	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	int bw, oldbw;
 	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen, islocked;
+	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen, islocked, issticky;
 	Client *next;
 	Client *snext;
 	Monitor *mon;
@@ -294,6 +294,7 @@ static void togglelocked(const Arg *arg);
 static void toggleshowtags();
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
+static void togglesticky(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void hidewin(const Arg *arg);
@@ -558,6 +559,7 @@ showoverlay() {
 		changefloating(selmon->overlay);
 	}
 
+
 	if (c->islocked)
 	{
 		XRaiseWindow(dpy, c->win);
@@ -566,10 +568,11 @@ showoverlay() {
 		else
 			animateclient(c, c->x, 0, 0, 0, 15, 0);
 	}
+	if (!c->issticky)
+		togglesticky(NULL);
 
 	c->bw = 0;
 	arrange(selmon);
-
 }
 
 void
@@ -579,6 +582,9 @@ hideoverlay() {
 	
 	Client *c;
 	c = selmon->overlay;
+	if (c->issticky)
+		togglesticky(NULL);
+
 	if (c->islocked)
 		animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
 
@@ -1412,7 +1418,11 @@ drawbar(Monitor *m)
 				if (m->sel == c) {
 
 					//background color rectangles to draw circle on
-					drw_setscheme(drw, scheme[SchemeTags]);
+					if (!c->issticky)
+						drw_setscheme(drw, scheme[SchemeTags]);
+					else
+						drw_setscheme(drw, scheme[SchemeActive]);
+
 					if (TEXTW(c->name) < (1.0 / (double)n) * w - 64){
 						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 4);
 					} else {
@@ -1450,7 +1460,10 @@ drawbar(Monitor *m)
 					if (HIDDEN(c)) {
 						scm = SchemeHid;
 					} else{
-						scm = SchemeNorm;
+						if (!c->issticky)
+							scm = SchemeNorm;
+						else
+							scm = SchemeActive;
 					}
 					drw_setscheme(drw, scheme[scm]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w){
@@ -3641,6 +3654,15 @@ togglealttag(const Arg *arg)
 		drawbar(m);
 	
 	tagwidth = gettagwidth();
+}
+
+void
+togglesticky(const Arg *arg)
+{
+	if (!selmon->sel)
+		return;
+	selmon->sel->issticky = !selmon->sel->issticky;
+	arrange(selmon);
 }
 
 void
