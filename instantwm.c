@@ -493,6 +493,7 @@ resetoverlay() {
 		return;
 	selmon->overlay->tags = selmon->tagset[selmon->seltags];
 	selmon->overlay->bw = borderpx;
+	selmon->overlay->issticky = 0;
 	selmon->overlay->islocked = 0;
 	changefloating(selmon->overlay);
 	arrange(selmon);
