@@ -3680,13 +3680,10 @@ void
 togglefakefullscreen(const Arg *arg) {
 	if (selmon->sel->isfullscreen) {
 		if (selmon->sel->isfakefullscreen) {
-			if (selmon->sel->isfullscreen)
-				selmon->sel->bw = 0;
-			resizeclient(selmon->sel, selmon->mx, selmon->my, selmon->mw, selmon->mh);
+			resizeclient(selmon->sel, selmon->mx + borderpx, selmon->my + borderpx, selmon->mw - 2 * borderpx, selmon->mh - 2 * borderpx);
 			XRaiseWindow(dpy, selmon->sel->win);
 		} else {
-			if (selmon->sel->isfullscreen)
-				selmon->sel->bw = borderpx;
+			selmon->sel->bw = borderpx;
 		}
 	}
 	
