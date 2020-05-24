@@ -122,6 +122,7 @@ static const char *instantmenucmd[] = {"instantmenu_run", NULL};
 static const char *roficmd[] = {"rofi", "-show", "run", NULL};
 static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {"st", NULL};
+static const char *quickmenucmd[] = {"quickmenu", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
@@ -220,6 +221,7 @@ static Key keys[] = {
 	{MODKEY | Mod1Mask | ControlMask, XK_h, unhideall, {0}},
 	{MODKEY | Mod1Mask | ControlMask, XK_l, spawn, {.v = slockmcmd}},
 	{MODKEY, XK_Return, spawn, {.v = termcmd}},
+	{MODKEY, XK_v, spawn, {.v = quickmenucmd}},
 	{MODKEY, XK_b, togglebar, {0}},
 	{MODKEY, XK_j, focusstack, {.i = +1}},
 	{MODKEY, XK_Down, focusstack, {.i = +1}},
