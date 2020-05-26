@@ -332,6 +332,8 @@ static Button buttons[] = {
 	{ ClkWinTitle,          0,              Button4,        focusstack,     {.i = -1} },
 	{ ClkWinTitle,          ShiftMask,      Button5,        pushdown,       {0} },
 	{ ClkWinTitle,          ShiftMask,      Button4,        pushup,         {0} },
+	{ ClkWinTitle,          ControlMask,    Button5,        downscaleclient,{0} },
+	{ ClkWinTitle,          ControlMask,    Button4,        upscaleclient,  {0} },
 	{ ClkStatusText,        0,              Button2,        spawn,          {.v = termcmd } },
 	{ ClkStatusText,        0,              Button4,        spawn,          {.v = upvol } },
 	{ ClkStatusText,        0,              Button5,        spawn,          {.v = downvol } },

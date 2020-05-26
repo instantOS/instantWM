@@ -328,6 +328,10 @@ static void moveleft(const Arg *arg);
 static void viewtoright(const Arg *arg);
 static void moveright(const Arg *arg);
 
+static void scaleclient(Client *c, int scale);
+static void upscaleclient(const Arg *arg);
+static void downscaleclient(const Arg *arg);
+
 static void overtoggle(const Arg *arg);
 static void fullovertoggle(const Arg *arg);
 
@@ -4602,6 +4606,63 @@ void
 moveright(const Arg *arg) {
 	tagtoright(arg);
 	viewtoright(arg);	
+}
+
+
+void upscaleclient(const Arg *arg) {
+	Client *c;
+
+	if (!arg->v) {
+		if (selmon->sel)
+			c = selmon->sel;
+		else
+			return;
+	} else {
+		c = (Client*)arg->v;
+	}
+
+	scaleclient(c, 30);
+}
+
+
+void downscaleclient(const Arg *arg) {
+	Client *c;
+
+	if (!arg->v) {
+		if (selmon->sel)
+			c = selmon->sel;
+		else
+			return;
+	} else {
+		c = (Client*)arg->v;
+	}
+
+	if (!c->isfloating) {
+		focus(c);
+		togglefloating(NULL);
+	}
+
+	scaleclient(c, -30);
+}
+
+void scaleclient(Client *c, int scale) {
+	int x, y, w, h;
+	if (!c->isfloating)
+		return;
+
+	w = c->w + scale;
+	h = c->h + scale ;
+	x = c->x - (scale/2);
+	y = c->y - (scale/2);
+	
+	if ((double)c->h/c->w < 0.25 || (double)c->h/c->w < 0.25) {
+		h = c->h + scale;	
+		h = c->x - scale / 2;	
+		h = c->y - scale / 2;	
+	}
+
+	animateclient(c, x, y, w, h, 3, 0);
+
 }
 
 // toggle overview like layout
