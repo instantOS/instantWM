@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+bash $HOME/.iwm-autostart&
+instantwm
