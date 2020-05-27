@@ -517,6 +517,13 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	int width, height;
 	width = w ? w : c->w;
 	height = h ? h : c->h;
+
+	if (width > selmon->mw - (2 * c->bw))
+		width = selmon->ww - (2 * c->bw);
+
+	if (height > selmon->wh - (2 * c->bw))
+		height = selmon->wh - (2 * c->bw);
+
 	time = 1;
 	oldx = c->x;
 	oldy = c->y;

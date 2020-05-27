@@ -19,6 +19,7 @@
         "string": "c",
         "vector": "c",
         "valarray": "c",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "*.rh": "cpp"
     }
 }
