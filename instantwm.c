@@ -1883,7 +1883,9 @@ closewin(const Arg *arg)
 
 	if (!c || c->islocked)
 		return;
-	animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
+
+	animateclient(c, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
+
 	if (!sendevent(c->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
 		XSetErrorHandler(xerrordummy);
