@@ -45,7 +45,9 @@ install: all
 	sed "s/VERSION/${VERSION}/g" < instantwm.1 > ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	cp -f instantwm.desktop ${DESTDIR}/usr/share/xsessions
+	cp -f instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop
 	chmod 644 ${DESTDIR}/usr/share/xsessions/instantwm.desktop
+	chmod 644 ${DESTDIR}/usr/share/xsessions/default.desktop
 	cp -f startinstantos ${DESTDIR}${PREFIX}/bin/startinstantos
 	chmod 755 ${DESTDIR}${PREFIX}/bin/startinstantos
 
@@ -53,7 +55,8 @@ uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
 		${DESTDIR}${MANPREFIX}/man1/instantwm.1\
 		${DESTDIR}${PREFIX}/bin/startinstantos\
-		${DESTDIR}/usr/share/xsessions/instantwm.desktop
+		${DESTDIR}/usr/share/xsessions/instantwm.desktop\
+		${DESTDIR}/usr/share/xsessions/default.desktop
 
 
 .PHONY: all options clean dist install uninstall
