@@ -1,0 +1,6 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=instantWM
+Comment=The window manager for instantOS
+Exec=iwm-starter
+Type=Application

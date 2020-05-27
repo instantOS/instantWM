@@ -43,6 +43,7 @@ install: all
 	mkdir -p ${DESTDIR}${MANPREFIX}/man1
 	sed "s/VERSION/${VERSION}/g" < instantwm.1 > ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/instantwm.1
+	cp instantwm.desktop /usr/share/xsessions
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
