@@ -20,7 +20,7 @@ cd instantWM
 You can use this to get access to new features early. 
 It can be used outside of instantOS but depends on instantassist, instantutils and slop. 
 
-[Download latest release](http://instantos.surge.sh/instantwm.pkg.tar.xz)
+[Download latest release](https://github.com/instantOS/instantWM/releases/download/beta2/instantwm.pkg.tar.xz)
 
 ## Features
 
