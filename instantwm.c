@@ -248,6 +248,7 @@ static void keyresize(const Arg *arg);
 static void centerwindow();
 static Client *nexttiled(Client *c);
 static void pop(Client *);
+static void shutkill(const Arg *arg);
 static void propertynotify(XEvent *e);
 static void quit(const Arg *arg);
 static Monitor *recttomon(int x, int y, int w, int h);
@@ -2747,7 +2748,12 @@ dragtag(const Arg *arg)
 }
 
 
-
+void shutkill(const Arg *arg) {
+	if (!selmon->clients)
+		spawn(&((Arg) { .v = instantshutdowncmd }));
+	else
+		killclient(arg);
+}
 
 Client *
 nexttiled(Client *c)
