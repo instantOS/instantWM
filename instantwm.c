@@ -1857,6 +1857,7 @@ keypress(XEvent *e)
 
 }
 
+// close selected client
 void
 killclient(const Arg *arg)
 {
@@ -1873,6 +1874,27 @@ killclient(const Arg *arg)
 		XUngrabServer(dpy);
 	}
 }
+
+// close client from arg->v
+void
+closewin(const Arg *arg)
+{
+	Client *c = (Client*)arg->v;
+
+	if (!c || c->islocked)
+		return;
+	animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
+	if (!sendevent(c->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
+		XGrabServer(dpy);
+		XSetErrorHandler(xerrordummy);
+		XSetCloseDownMode(dpy, DestroyAll);
+		XKillClient(dpy, c->win);
+		XSync(dpy, False);
+		XSetErrorHandler(xerror);
+		XUngrabServer(dpy);
+	}
+}
+
 
 void
 manage(Window w, XWindowAttributes *wa)
@@ -2002,6 +2024,7 @@ maprequest(XEvent *e)
 	
 }
 
+// overlay all clients on top of each other
 void
 monocle(Monitor *m)
 {
@@ -2564,7 +2587,7 @@ void waitforclickend(const Arg *arg)
 
 }
 
-
+// drag out an area using slop and resize the selected window to it. 
 void drawwindow(const Arg *arg) {
 
     char str[100];
@@ -2641,7 +2664,7 @@ void drawwindow(const Arg *arg) {
 	counter = 0;
 }
 
-
+// drag the green tag mark to another tag
 void
 dragtag(const Arg *arg)
 {
@@ -3962,24 +3985,7 @@ unhideall(const Arg *arg) {
 
 }
 
-void
-closewin(const Arg *arg)
-{
-	Client *c = (Client*)arg->v;
 
-	if (!c || c->islocked)
-		return;
-	if (!sendevent(c->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
-		XGrabServer(dpy);
-		XSetErrorHandler(xerrordummy);
-		XSetCloseDownMode(dpy, DestroyAll);
-		XKillClient(dpy, c->win);
-		XSync(dpy, False);
-		XSetErrorHandler(xerror);
-		XUngrabServer(dpy);
-	}
-
-}
 
 
 void
