@@ -366,4 +366,5 @@ static Button buttons[] = {
 	{ ClkShutDown,          0,              Button2,        spawn,          {.v = oslockcmd } },
 	{ ClkSideBar,           0,              Button1,        gesturemouse,   {0} },
 	{ ClkStartMenu,         0,              Button1,        spawn,          {.v = startmenucmd}},
+	{ ClkStartMenu,         0,              Button3,        spawn,          {.v = quickmenucmd}},
 };
