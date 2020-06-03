@@ -661,6 +661,11 @@ applyrules(Client *c)
 				desktopicons = 1;
 				newdesktop = 1;
 			}
+
+			if (strstr(r->class, "Onboard") != NULL) {
+				c->issticky=1;
+			}
+
 			c->isfloating = r->isfloating;
 			c->tags |= r->tags;
 			for (m = mons; m && m->num != r->monitor; m = m->next);
