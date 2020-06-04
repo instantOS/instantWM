@@ -4718,9 +4718,14 @@ fullovertoggle(const Arg *arg){
 
 static void
 bstack(Monitor *m) {
-	int w, h, mh, mx, tx, ty, tw;
+	int w, h, mh, mx, tx, ty, tw, framecount;
 	unsigned int i, n;
 	Client *c;
+
+	if (animated && clientcount() > 4)
+		framecount = 4;
+	else
+		framecount = 7;
 
 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
 	if (n == 0)
@@ -4737,11 +4742,11 @@ bstack(Monitor *m) {
 	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
 		if (i < m->nmaster) {
 			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 10, 0);
+			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), framecount, 0);
 			mx += WIDTH(c);
 		} else {
 			h = m->wh - mh;
-			animateclient(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw), 10, 0);
+			animateclient(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw), framecount, 0);
 			if (tw != m->ww)
 				tx += WIDTH(c);
 		}
@@ -4750,9 +4755,14 @@ bstack(Monitor *m) {
 
 static void
 bstackhoriz(Monitor *m) {
-	int w, mh, mx, tx, ty, th;
+	int w, mh, mx, tx, ty, th, framecount;
 	unsigned int i, n;
 	Client *c;
+
+	if (animated && clientcount() > 4)
+		framecount = 4;
+	else
+		framecount = 7;
 
 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
 	if (n == 0)
@@ -4768,10 +4778,10 @@ bstackhoriz(Monitor *m) {
 	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
 		if (i < m->nmaster) {
 			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), 10, 0);
+			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), framecount, 0);
 			mx += WIDTH(c);
 		} else {
-		animateclient(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw), 10, 0);
+		animateclient(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw), framecount, 0);
 			if (th != m->wh)
 				ty += HEIGHT(c);
 		}
