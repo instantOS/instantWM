@@ -4508,7 +4508,7 @@ animleft(const Arg *arg) {
 	}
 	c = selmon->sel;
 
-	animateclient(c, c->x + 50, c->y, 0,0,10,1);
+	animateclient(c, c->x + 50, c->y, 0,0,6,1);
 	viewtoleft(arg);
 }
 
@@ -4521,10 +4521,9 @@ animright(const Arg *arg) {
 	}
 	c = selmon->sel;
 
-	animateclient(c, c->x - 50, c->y, 0,0,10,1);
+	animateclient(c, c->x - 50, c->y, 0,0,6,1);
 	viewtoright(arg);
 }
-
 
 
 void
