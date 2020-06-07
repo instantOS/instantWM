@@ -3204,7 +3204,7 @@ run(void)
 
 void
 runAutostart(void) {
-	spawn(&((Arg) { .v = "instantautostart" }));
+	system("instantautostart &");
 }
 
 void
