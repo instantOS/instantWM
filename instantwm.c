@@ -2059,6 +2059,7 @@ monocle(Monitor *m)
 		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 10, 0);
 }
 
+// gets triggered on mouse movement
 void
 motionnotify(XEvent *e)
 {
@@ -2169,6 +2170,7 @@ motionnotify(XEvent *e)
 	mon = m;
 }
 
+// drag a window around using the mouse
 void
 movemouse(const Arg *arg)
 {
@@ -2344,7 +2346,8 @@ movemouse(const Arg *arg)
 		togglefloating(NULL);
 }
 
-
+// drag up and down on the desktop to
+// change volume or start onboard by dragging to the right
 void
 gesturemouse(const Arg *arg)
 {
@@ -2396,6 +2399,7 @@ gesturemouse(const Arg *arg)
 
 }
 
+// drag clients around the top bar
 void
 dragmouse(const Arg *arg)
 {
@@ -2503,7 +2507,7 @@ dragmouse(const Arg *arg)
 
 }
 
-
+// drag on the top bar with the right mouse
 void
 dragrightmouse(const Arg *arg)
 {
@@ -2836,6 +2840,7 @@ quit(const Arg *arg)
 	running = 0;
 }
 
+// return monitor that a rectangle is on
 Monitor *
 recttomon(int x, int y, int w, int h)
 {
@@ -2904,6 +2909,7 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	XSync(dpy, False);
 }
 
+//resize a window using the mouse
 void
 resizemouse(const Arg *arg)
 {
@@ -3061,7 +3067,7 @@ resizemouse(const Arg *arg)
 }
 
 
-
+// resizemouse but keep the aspect ratio
 void
 resizeaspectmouse(const Arg *arg)
 {
@@ -3242,6 +3248,7 @@ int gettagwidth() {
 	return x + startmenusize;
 }
 
+// return tag for indicator of given x coordinate
 int getxtag(int ix) {
 	int x, i, occ;
 	Client *c;
@@ -3261,6 +3268,7 @@ int getxtag(int ix) {
 	return i;
 }
 
+// send client to another monitor
 void
 sendmon(Client *c, Monitor *m)
 {
@@ -3508,6 +3516,7 @@ seturgent(Client *c, int urg)
 	XFree(wmh);
 }
 
+// unminimize window
 void
 show(Client *c)
 {
@@ -4689,7 +4698,8 @@ void scaleclient(Client *c, int scale) {
 		h = c->x - scale / 2;	
 		h = c->y - scale / 2;	
 	}
-
+	if (y < bh)
+		y = bh;
 	animateclient(c, x, y, w, h, 3, 0);
 
 }
