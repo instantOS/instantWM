@@ -3204,7 +3204,7 @@ run(void)
 
 void
 runAutostart(void) {
-	system("cd /usr/bin; ./instantautostart &");
+	spawn(&((Arg) { .v = "instantautostart" }));
 }
 
 void
