@@ -1876,7 +1876,8 @@ killclient(const Arg *arg)
 {
 	if (!selmon->sel || selmon->sel->islocked)
 		return;
-	animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
+	if (animated)	
+		animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
 	if (!sendevent(selmon->sel->win, wmatom[WMDelete], NoEventMask, wmatom[WMDelete], CurrentTime, 0 , 0, 0)) {
 		XGrabServer(dpy);
 		XSetErrorHandler(xerrordummy);
@@ -2480,6 +2481,9 @@ dragmouse(const Arg *arg)
 				animated = 0;
 				togglefloating(NULL);
 				animated = 1;
+				getrootptr(&x, &y);
+				if (y > c->y + 20)
+					resize(c, c->x, y - 20, c->w, c->h, 1);
 			} else {
 				togglefloating(NULL);
 			}
