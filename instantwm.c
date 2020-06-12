@@ -1822,6 +1822,16 @@ hide(Client *c) {
 void
 incnmaster(const Arg *arg)
 {
+	int ccount;
+	ccount = clientcount();
+	if (arg->i > 0) {
+		if (selmon->nmaster >= ccount) {
+			selmon->nmaster = ccount;
+			return;
+		}
+
+	}
+
 	selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag] = MAX(selmon->nmaster + arg->i, 0);
 	arrange(selmon);
 }
@@ -3689,8 +3699,14 @@ tile(Monitor *m)
 
 	if (n > m->nmaster)
 		mw = m->nmaster ? m->ww * m->mfact : 0;
-	else
+	else {
 		mw = m->ww;
+		if (n > 1 && n < m->nmaster) {
+			m->nmaster = n;
+			tile(m);
+			return;
+		}
+	}
 	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);

@@ -19,15 +19,10 @@ prevc(Client *c, float f) {
 
 int clientcount()
 {
-
-	int count;
-	count = 0;
+	int n;
 	Client *c;
-	for(c = selmon->clients; c; c = c->next) {
-		if (ISVISIBLE(c))
-			count++;
-	}
-	return count;
+	for (n = 0, c = nexttiled(selmon->clients); c; c = nexttiled(c->next), n++);
+	return n;
 }
 
 static void
