@@ -814,6 +814,8 @@ buttonpress(XEvent *e)
 			occ |= c->tags == 255 ? 0 : c->tags;
 		do {
 			/* do not reserve space for vacant tags */
+			if (i >=9 )
+				continue;
 			if (selmon->showtags){
 				if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
 					continue;
@@ -1370,6 +1372,10 @@ drawbar(Monitor *m)
 	}
 	x = startmenusize;
 	for (i = 0; i < LENGTH(tags); i++) {
+		if (i >= 9)
+			continue;
+		if (i == 8 && selmon->pertag->curtag > 9)
+			i = selmon->pertag->curtag - 1;
 
 		/* do not draw vacant tags */
 		if (selmon->showtags) {
@@ -1387,6 +1393,7 @@ drawbar(Monitor *m)
 				if (m->tagset[m->seltags] & 1 << i) {
 					drw_setscheme(drw, scheme[SchemeAddActive]);
 				} else {
+					// do not color tags if vacant tags are hidden
 					if(!selmon->showtags){
 						drw_setscheme(drw, scheme[SchemeTags]);
 					} else {
@@ -2094,6 +2101,7 @@ motionnotify(XEvent *e)
 
 		// leave small deactivator zone 
 		if (ev->y_root <= bh - 3) {
+			// don't animate if no vacant tags
 			if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
 				if (ev->x_root < selmon->mx + startmenusize) {
 					selmon->gesture = 13;
@@ -2297,6 +2305,8 @@ movemouse(const Arg *arg)
 				occ |= c->tags == 255 ? 0 : c->tags;
 			do {
 				// do not reserve space for vacant tags
+				if (ti >= 9)
+					continue;
 				if (selmon->showtags){
 					if (!(occ & 1 << ti || m->tagset[m->seltags] & 1 << ti))
 						continue;
@@ -3249,6 +3259,8 @@ int gettagwidth() {
 	i = x = 0;
 	do {
 		// do not reserve space for vacant tags
+		if (i >= 9)
+			continue;
 		if (selmon->showtags){
 			if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
 				continue;
@@ -3269,6 +3281,8 @@ int getxtag(int ix) {
 	
 	do {
 		// do not reserve space for vacant tags
+		if (i >= 9)
+			continue;
 		if (selmon->showtags){
 			if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
 				continue;
@@ -3892,7 +3906,7 @@ centerwindow() {
 
 }
 
-
+// toggle vacant tags
 void
 toggleshowtags()
 {
@@ -4018,6 +4032,7 @@ toggleview(const Arg *arg)
 	}
 }
 
+//minimize window
 void hidewin(const Arg *arg)
 {
 	if (!selmon->sel)
@@ -4040,7 +4055,6 @@ unhideall(const Arg *arg) {
 	restack(selmon);
 
 }
-
 
 
 

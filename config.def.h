@@ -52,7 +52,7 @@ static const char *colors[][4] = {
 };
 
 /* tagging */
-static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20" };
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
