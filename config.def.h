@@ -119,7 +119,7 @@ static const Layout layouts[] = {
 /* commands */
 static char instantmenumon[2] = "0"; /* component of instantmenucmd, manipulated in spawn() */
 static const char *instantmenucmd[] = {"instantmenu_run", NULL};
-static const char *roficmd[] = {"rofi", "-show", "run", NULL};
+static const char *roficmd[] = {"rofi", "-sort", "-show", "run", NULL};
 static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {"st", NULL};
 static const char *quickmenucmd[] = {"quickmenu", NULL};
