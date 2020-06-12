@@ -3709,11 +3709,13 @@ tile(Monitor *m)
 	}
 	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
+			// client is in the master
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
 			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
 			if (my + HEIGHT(c) < m->wh)
 				my += HEIGHT(c);
 		} else {
+			// client is in the stack
 			h = (m->wh - ty) / (n - i);
 			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
 			if (ty + HEIGHT(c) < m->wh)
@@ -3721,6 +3723,7 @@ tile(Monitor *m)
 		}
 }
 
+// toggle tag icon view
 void
 togglealttag(const Arg *arg)
 {
@@ -3732,6 +3735,7 @@ togglealttag(const Arg *arg)
 	tagwidth = gettagwidth();
 }
 
+// make client show on all tags
 void
 togglesticky(const Arg *arg)
 {
@@ -3741,12 +3745,14 @@ togglesticky(const Arg *arg)
 	arrange(selmon);
 }
 
+// disable/enable animations
 void
 toggleanimated(const Arg *arg)
 {
 	animated = !animated;
 }
 
+// double the window refresh rate
 void
 toggledoubledraw(const Arg *arg) {
 	doubledraw = !doubledraw;
@@ -3766,6 +3772,7 @@ togglefakefullscreen(const Arg *arg) {
 	selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
 
+// lock prevents windows from getting closed until unlocked
 void
 togglelocked(const Arg *arg) {
 	if (!selmon->sel)
@@ -3807,7 +3814,7 @@ warpfocus()
 	warp(selmon->sel);
 }
 
-
+// move a client with the mouse and keyboard
 void
 moveresize(const Arg *arg) {
 	/* only floating windows can be moved */
