@@ -219,6 +219,7 @@ static void expose(XEvent *e);
 static void focus(Client *c);
 static void focusin(XEvent *e);
 static void focusmon(const Arg *arg);
+static void followmon(const Arg *arg);
 static void focusstack(const Arg *arg);
 static Atom getatomprop(Client *c, Atom prop);
 static int getrootptr(int *x, int *y);
@@ -1617,6 +1618,17 @@ focusin(XEvent *e)
 
 	if (selmon->sel && ev->window != selmon->sel->win)
 		setfocus(selmon->sel);
+}
+
+followmon(const Arg *arg)
+{
+	Client *c;
+	if (!selmon->sel)
+		return;
+	c = selmon->sel;
+	tagmon(arg);
+	selmon = c->mon;
+	focus(NULL);
 }
 
 void
