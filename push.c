@@ -25,6 +25,16 @@ int clientcount()
 	return n;
 }
 
+int clientdistance(Client *c, Client *c2) {
+	int x, y, distance;
+	x = abs(((c->x + c->w) / 2) - ((c2->x + c->w) / 2));
+	y = abs(((c->y + c->h) / 2) - ((c2->y + c->h) / 2));
+	
+	distance = (sqrt(y*y+x*x));
+	return distance;
+
+}
+
 static void
 pushup(const Arg *arg) {
 	Client *sel = selmon->sel;
