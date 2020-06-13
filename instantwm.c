@@ -1629,6 +1629,9 @@ followmon(const Arg *arg)
 	tagmon(arg);
 	selmon = c->mon;
 	focus(NULL);
+	focus(c);
+	XRaiseWindow(dpy, c->win);
+	warp(c);
 }
 
 void
