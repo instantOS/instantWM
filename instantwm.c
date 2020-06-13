@@ -297,6 +297,7 @@ static void toggleshowtags();
 static void togglebar(const Arg *arg);
 static void togglefloating(const Arg *arg);
 static void togglesticky(const Arg *arg);
+static void toggleprefix(const Arg *arg);
 static void toggletag(const Arg *arg);
 static void toggleview(const Arg *arg);
 static void hidewin(const Arg *arg);
@@ -365,6 +366,7 @@ static char stext[1024];
 
 static int showalttag = 0;
 static int animated = 1;
+static int tagprefix = 0;
 static int bardragging = 0;
 static int altcursor = 0;
 static int tagwidth = 0;
@@ -431,7 +433,7 @@ static int combo = 0;
 
 void
 keyrelease(XEvent *e) {
-	combo = 0;
+	//combo = 0;
 }
 
 int overlayexists() {
@@ -1355,6 +1357,8 @@ drawbar(Monitor *m)
 	}
 
 	//draw start menu icon
+	if (tagprefix)
+		drw_setscheme(drw, scheme[SchemeActive]);
 
 	int startmenuinvert = (selmon->gesture == 13);
 	drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0:1);
@@ -3605,11 +3609,21 @@ spawn(const Arg *arg)
 	}
 }
 
+int computeprefix(const Arg *arg) {
+	if (tagprefix && arg->ui) {
+		tagprefix = 0;
+		return arg->ui << 10;
+	} else {
+		return arg->ui;
+	}
+}
+
 void
 tag(const Arg *arg)
 {
-	if (selmon->sel && arg->ui & TAGMASK) {
-		selmon->sel->tags = arg->ui & TAGMASK;
+	int ui = computeprefix(arg);
+	if (selmon->sel && ui & TAGMASK) {
+		selmon->sel->tags = ui & TAGMASK;
 		focus(NULL);
 		arrange(selmon);
 	}
@@ -3617,8 +3631,18 @@ tag(const Arg *arg)
 
 void followtag(const Arg *arg)
 {
-	tag(arg);
-	view(arg);
+	if (!selmon->sel)
+		return;
+	if (tagprefix) {
+		tag(arg);
+		tagprefix = 1;
+		view(arg);
+
+	} else {
+		tag(arg);
+		view(arg);
+
+	}
 }
 
 void followview(const Arg *arg)
@@ -3643,6 +3667,7 @@ tagmon(const Arg *arg)
 
 void
 tagtoleft(const Arg *arg) {
+
 	int oldx;
 	Client *c;
 	if (!selmon->sel)
@@ -3671,8 +3696,10 @@ tagtoleft(const Arg *arg) {
 
 void
 tagtoright(const Arg *arg) {
+	
 	int oldx;
 	Client *c;
+
 	if (!selmon->sel)
 		return;
 	c = selmon->sel;
@@ -3758,6 +3785,14 @@ togglesticky(const Arg *arg)
 		return;
 	selmon->sel->issticky = !selmon->sel->issticky;
 	arrange(selmon);
+}
+
+void toggleprefix(const Arg *arg) {
+	if (!tagprefix)
+		fprintf(stderr, "prefix");
+	
+	tagprefix = 1;
+	drawbar(selmon);
 }
 
 // disable/enable animations
@@ -3985,6 +4020,7 @@ changefloating(Client *c)
 void
 toggletag(const Arg *arg)
 {
+	int ui = computeprefix(arg);
 	unsigned int newtags;
 
 	if (!selmon->sel)
@@ -4512,17 +4548,20 @@ updatewmhints(Client *c)
 void
 view(const Arg *arg)
 {
+
+	int ui = computeprefix(arg);
 	int i;
 
+
 	selmon->seltags ^= 1; /* toggle sel tagset */
-	if (arg->ui & TAGMASK) {
-		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
+	if (ui & TAGMASK) {
+		selmon->tagset[selmon->seltags] = ui & TAGMASK;
 		selmon->pertag->prevtag = selmon->pertag->curtag;
 
-		if (arg->ui == ~0)
+		if (ui == ~0)
 			selmon->pertag->curtag = 0;
 		else {
-			for (i = 0; !(arg->ui & 1 << i); i++) ;
+			for (i = 0; !(ui & 1 << i); i++) ;
 			selmon->pertag->curtag = i + 1;
 		}
 	} else {
