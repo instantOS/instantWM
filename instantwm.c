@@ -1475,8 +1475,12 @@ drawbar(Monitor *m)
 				if (m->sel == c) {
 
 					//background color rectangles to draw circle on
-					if (!c->issticky)
-						drw_setscheme(drw, scheme[SchemeTags]);
+					if (!c->issticky) {
+						if (c == selmon->hoverclient && !selmon->gesture)
+							drw_setscheme(drw, scheme[SchemeHoverTags]);
+						else
+							drw_setscheme(drw, scheme[SchemeTags]);
+					}
 					else
 						drw_setscheme(drw, scheme[SchemeActive]);
 
@@ -1517,10 +1521,12 @@ drawbar(Monitor *m)
 					if (HIDDEN(c)) {
 						scm = SchemeHid;
 					} else{
-						if (!c->issticky)
-							scm = SchemeNorm;
-						else
+						if (c->issticky)
 							scm = SchemeAddActive;
+						else if (c == selmon->hoverclient && !selmon->gesture)
+							scm = SchemeHover;
+						else
+							scm = SchemeNorm;
 					}
 					drw_setscheme(drw, scheme[scm]);
 					if (TEXTW(c->name) < (1.0 / (double)n) * w){
@@ -2129,8 +2135,9 @@ motionnotify(XEvent *e)
 {
 	static Monitor *mon = NULL;
 	Monitor *m;
+	Client *c;
 	XMotionEvent *ev = &e->xmotion;
-
+	int x;
 	int i;
 
 	if (ev->window != root)
@@ -2173,12 +2180,12 @@ motionnotify(XEvent *e)
 					spawn(&((Arg) { .v = caretinstantswitchcmd }));
 					topdrag = 1;
 				}
-				if (!tagwidth)
-					tagwidth = gettagwidth();
 			} else if (topdrag) {
 				topdrag = 0;
 			} 
 
+			if (!tagwidth)
+				tagwidth = gettagwidth();
 			// hover over close button
 			if (selmon->sel) {
 				if (ev->x_root > selmon->activeoffset && ev->x_root < (selmon->activeoffset + 32)) {
@@ -2203,14 +2210,37 @@ motionnotify(XEvent *e)
 						}
 					}
 				} 
+				
+				if (selmon->stack) {
+					x = selmon->mx + tagwidth + 60;
+					c = selmon->clients;
+
+					do {
+						if (!ISVISIBLE(c))
+							continue;
+						else
+							x += (1.0 / (double)selmon->bt) * selmon->btw;
+					} while (ev->x_root > x && (c = c->next));
+
+					if (c) {
+						if (c != selmon->hoverclient) {
+							selmon->hoverclient = c;
+							selmon->gesture = 0;
+							drawbar(selmon);
+						}
+					} 
+				} else {
+					selmon->hoverclient = NULL;
+				}
 			}
 			if (altcursor == 2) {
 				resetcursor();
 			}
 
 		} else {
-			if (selmon->gesture) {
+			if (selmon->gesture || selmon->hoverclient) {
 				selmon->gesture = 0;
+				selmon->hoverclient = NULL;
 				drawbar(selmon);
 			}
 
