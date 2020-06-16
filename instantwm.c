@@ -2165,7 +2165,7 @@ motionnotify(XEvent *e)
 					int x = selmon->mx + startmenusize;
 					do {
 						x += TEXTW(tags[i]);
-					} while (ev->x_root >= x && ++i < LENGTH(tags));
+					} while (ev->x_root >= x && ++i < 8);
 					
 					if (i != selmon->gesture - 1) {
 						selmon->gesture = i + 1;
