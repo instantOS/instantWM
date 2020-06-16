@@ -2267,6 +2267,8 @@ void resetbar(){
 		return;
 	selmon->hoverclient = NULL;
 	selmon->gesture = 0;
+	if (altcursor)
+		resetcursor();
 	drawbar(selmon);
 }
 
