@@ -359,6 +359,7 @@ static void desktopset();
 static void createdesktop();
 static void createoverlay();
 static void shiftview(const Arg *arg);
+static void focuslastclient(const Arg *arg);
 
 /* variables */
 static Systray *systray =  NULL;
@@ -367,6 +368,9 @@ static char stext[1024];
 
 static int showalttag = 0;
 static int animated = 1;
+
+static Client *lastclient;
+
 static int tagprefix = 0;
 static int bardragging = 0;
 static int altcursor = 0;
@@ -627,6 +631,29 @@ setoverlay() {
 			showoverlay();
 		}
 	}
+}
+
+void focuslastclient(const Arg *arg) {
+	Client *c;
+	int i;
+	if (!lastclient)
+		return;
+
+	c = lastclient;
+
+	const Arg a = {.ui = c->tags};
+	if (selmon != c->mon) {
+		unfocus(selmon->sel, 0);
+		selmon = c->mon;
+	}
+
+	if (selmon->sel)
+		lastclient = selmon->sel;
+	
+	view(&a);
+	focus(c);
+	restack(selmon);
+
 }
 
 void desktopset() {
@@ -3968,6 +3995,14 @@ toggleshowtags()
 void
 togglebar(const Arg *arg)
 {
+	int tmpnoanim;
+	if (animated && clientcount() > 6) {
+		animated = 0;
+		tmpnoanim = 1;
+	} else {
+		tmpnoanim = 0;
+	}
+
 	selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag] = !selmon->showbar;
 	updatebarpos(selmon);
 	resizebarwin(selmon);
@@ -3983,6 +4018,8 @@ togglebar(const Arg *arg)
 		XConfigureWindow(dpy, systray->win, CWY, &wc);
 	}
 	arrange(selmon);
+	if (tmpnoanim)
+		animated = 1;
 }
 
 void
@@ -4115,6 +4152,7 @@ unfocus(Client *c, int setfocus)
 {
 	if (!c)
 		return;
+	lastclient = c;
 	grabbuttons(c, 0);
 	XSetWindowBorder(dpy, c->win, scheme[SchemeNorm][ColBorder].pixel);
 	if (setfocus) {
