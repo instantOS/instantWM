@@ -2515,7 +2515,7 @@ dragmouse(const Arg *arg)
 	Time lasttime = 0;
 
 	Client *tempc = (Client*)arg->v;
-
+	resetbar();
 	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
 		return;
 	if (!getrootptr(&x, &y))
@@ -2623,7 +2623,7 @@ dragrightmouse(const Arg *arg)
 	Time lasttime = 0;
 
 	Client *tempc = (Client*)arg->v;
-
+	resetbar();
 	if (tempc->isfullscreen && !tempc->isfakefullscreen) /* no support moving fullscreen windows by mouse */
 		return;
 	
