@@ -129,6 +129,7 @@ static const char *slockcmd[] = {"ilock", NULL};
 static const char *oslockcmd[] = {"instantlock", "-o", NULL};
 static const char *slockmcmd[] = {"ilock", "message", NULL};
 static const char *helpcmd[] = {"instanthotkeys", "gui", NULL};
+static const char *iswitchcmd[] = {"iswitch", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", NULL};
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
 static const char *onboardcmd[] = {"onboard", NULL};
@@ -214,7 +215,7 @@ static Key keys[] = {
 	{MODKEY, XK_space, spawn, {.v = roficmd}},
 	{MODKEY, XK_minus, spawn, {.v = instantmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
-	{Mod1Mask, XK_Tab, spawn, {.v = instantswitchcmd}},
+	{Mod1Mask, XK_Tab, spawn, {.v = iswitchcmd}},
 	{MODKEY, XK_dead_circumflex, spawn, {.v = caretinstantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ControlMask, XK_h, hidewin, {0}},
