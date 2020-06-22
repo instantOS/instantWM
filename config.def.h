@@ -156,6 +156,13 @@ static const char *spotinext[] = { "spoticli", "n", NULL};
 
 #include "push.c"
 
+ResourcePref resources[] = {
+		{ "bgcolor",        STRING,  &col_background },
+		{ "fontcolor",        STRING,  &col_white },
+		{ "selectcolor",        STRING,  &col_blue },
+		{ "closecolor",        STRING,  &col_red },
+};
+
 static Key dkeys[] = {
 	/* modifier                     key        function        argument */
 	{0, XK_r, spawn, {.v = rangercmd } },
