@@ -12,29 +12,29 @@ static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Cantarell-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
-static const char col_background[] = "#292f3a"; /* top bar dark background*/
-static const char col_white[] = "#ffffff";/*white for fonts*/
-static const char col_pastel_blue[] = "#747c90";/*unsaturated for focused border*/
-static const char col_light_blue[] = "#4dadd4";/*focused windows d */
-static const char col_blue[] = "#5294E2";/*focused instantmenu or topbar d */
-static const char col_dark_blue[] = "#3579CB";/*focused instantmenu or topbar d */
-static const char col_dark_green[] = "#35CB4B";/*focused instantmenu or topbar d */
-static const char col_green[] = "#52E167";/*focused instantmenu or topbar d */
+static char col_background[] = "#292f3a"; /* top bar dark background*/
+static char col_white[] = "#ffffff";/*white for fonts*/
+static char col_pastel_blue[] = "#747c90";/*unsaturated for focused border*/
+static char col_light_blue[] = "#4dadd4";/*focused windows d */
+static char col_blue[] = "#5294E2";/*focused instantmenu or topbar d */
+static char col_dark_blue[] = "#3579CB";/*focused instantmenu or topbar d */
+static char col_dark_green[] = "#35CB4B";/*focused instantmenu or topbar d */
+static char col_green[] = "#52E167";/*focused instantmenu or topbar d */
 
-static const char col_orange[] = "#E1A052";/*focused instantmenu or topbar d */
-static const char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar d */
+static char col_orange[] = "#E1A052";/*focused instantmenu or topbar d */
+static char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar d */
 
-static const char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
-static const char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
+static char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
+static char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
 
-static const char col_hover_red[] = "#D37492";/*focused instantmenu or topbar d */
-static const char col_hover_dark_red[] = "#CE577C";/*focused instantmenu or topbar d */
+static char col_hover_red[] = "#D37492";/*focused instantmenu or topbar d */
+static char col_hover_dark_red[] = "#CE577C";/*focused instantmenu or topbar d */
 
-static const char col_hover[] = "#596377";/*focused instantmenu or topbar d */
-static const char col_hover_shadow[] = "#475166";/*focused instantmenu or topbar d */
+static char col_hover[] = "#596377";/*focused instantmenu or topbar d */
+static char col_hover_shadow[] = "#475166";/*focused instantmenu or topbar d */
 
-static const char col_hover_blue[] = "#7CA8DC";/*focused instantmenu or topbar d */
-static const char col_hover_dark_blue[] = "#578BC9";/*focused instantmenu or topbar d */
+static char col_hover_blue[] = "#7CA8DC";/*focused instantmenu or topbar d */
+static char col_hover_dark_blue[] = "#578BC9";/*focused instantmenu or topbar d */
 
 
 static const char *colors[][4] = {
