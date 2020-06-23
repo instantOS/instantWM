@@ -1,3 +1,5 @@
+#include "push.h"
+
 void
 grid(Monitor *m) {
 	unsigned int i, n, cx, cy, cw, ch, aw, cols, rows, framecount;
