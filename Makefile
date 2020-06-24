@@ -3,7 +3,7 @@
 
 include config.mk
 
-SRC = drw.c instantwm.c util.c
+SRC = drw.c instantwm.c layouts.c util.c
 OBJ = ${SRC:.c=.o}
 
 all: options instantwm
