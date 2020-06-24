@@ -280,11 +280,11 @@ tcl(Monitor * m)
 	if (h < bh)
 		h = m->wh;
 
-	int rw = (i + 1 == (n + 1) / 2) ? w - bdw : w - bdw;
-	int rh = (i + 1 == (n + 1) / 2) ? m->wy + m->wh - y - bdw : h - bdw;
+	int rw = w - bdw;
 
 	for (i = 0; c; c = nexttiled(c->next), i++)
 	{
+		int rh = (i + 1 == (n + 1) / 2) ? m->wy + m->wh - y - bdw : h - bdw;
 		resize(c, x, y, rw,	rh, 0);
 
 		if (h != m->wh)
