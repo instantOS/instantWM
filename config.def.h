@@ -1,5 +1,6 @@
 /* See LICENSE file for copyright and license details. */
 #include <X11/XF86keysym.h>
+
 /* appearance */
 static const unsigned int borderpx = 3;		  /* border pixel of windows */
 static const unsigned int snap = 32;		  /* snap pixel */
@@ -81,17 +82,11 @@ static const int nmaster = 1;	 /* number of clients in master area */
 static const int resizehints = 1; /* 1 means respect size hints in tiled resizals */
 static const int decorhints  = 1;    /* 1 means respect decoration hints */
 
-#include "tcl.c"
-#include "layouts.c"
-
-#include "gridmode.c"
-#include "overviewmode.c"
-
 static const Layout layouts[] = {
 	/* symbol     arrange function */
-	{ "+",      tile },    /* first entry is default */
-	{ "#",      grid },
-	{ "-",      NULL },    /* no layout function means floating behavior */
+	{ "+",        tile },    /* first entry is default */
+	{ "#",        grid },
+	{ "-",        NULL },    /* no layout function means floating behavior */
 	{ "[M]",      monocle },
 	{ "|||",      tcl },
 	{ "H[]",      deck },
@@ -177,7 +172,7 @@ static Key dkeys[] = {
 	{0, XK_Tab, spawn, {.v = caretinstantswitchcmd} },
 	{0, XK_c, spawn, {.v = codecmd} },
 	{0, XK_y, spawn, {.v = roficmd} },
-	
+
 	{0, XK_h,   viewtoleft,     {0}},
 	{0, XK_l,  viewtoright,    {0}},
 	{0, XK_k,      shiftview,      {.i = +1 } },
@@ -187,7 +182,7 @@ static Key dkeys[] = {
 	{0, XK_Right,  viewtoright,    {0}},
 	{0, XK_Up,      shiftview,      {.i = +1 } },
 	{0, XK_Down,      shiftview,      {.i = -1 } },
-	
+
 	{0, XK_1, view, {.ui = 1 << 0}},
 	{0, XK_2, view, {.ui = 1 << 1}},
 	{0, XK_3, view, {.ui = 1 << 2}},
@@ -267,7 +262,7 @@ static Key keys[] = {
 
 	{MODKEY,                       XK_Left,   animleft,     {0}},
 	{MODKEY,                       XK_Right,  animright,    {0}},
-	
+
 	{MODKEY,                       XK_e,  overtoggle,    {.ui = ~0}},
 	{MODKEY|ShiftMask,             XK_e,  fullovertoggle,    {.ui = ~0}},
 
@@ -284,7 +279,7 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,				XK_k,  	moveresize,	{.i = 1}},
 	{MODKEY|ShiftMask,				XK_l,  	moveresize,	{.i = 2}},
 	{MODKEY|ShiftMask,				XK_h,  	moveresize,	{.i = 3}},
-	
+
 
 	{MODKEY|ControlMask,		XK_comma,  cyclelayout,    {.i = -1 } },
 	{MODKEY|ControlMask,           XK_period, cyclelayout,    {.i = +1 } },
@@ -315,7 +310,7 @@ static Key keys[] = {
 	{0, XF86XK_AudioPlay, spawn, {.v = spoticli}},
 	{0, XF86XK_AudioNext, spawn, {.v = spotinext}},
 	{0, XF86XK_AudioPrev, spawn, {.v = spotiprev}},
-	
+
 	{0, XK_Print, spawn, {.v = fscrotcmd}},
 	{MODKEY, XK_Print, spawn, {.v = scrotcmd}},
 	{MODKEY|ControlMask, XK_Print, spawn, {.v = clipscrotcmd}},

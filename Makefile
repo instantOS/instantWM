@@ -3,7 +3,7 @@
 
 include config.mk
 
-SRC = drw.c instantwm.c util.c
+SRC = drw.c instantwm.c layouts.c util.c
 OBJ = ${SRC:.c=.o}
 
 all: options instantwm
@@ -31,7 +31,7 @@ clean:
 dist: clean
 	mkdir -p instantwm-${VERSION}
 	cp -R LICENSE Makefile README config.def.h config.mk\
-		instantwm.1 drw.h util.h ${SRC} transient.c instantwm-${VERSION}
+		instantwm.1 drw.h util.h ${SRC} instantwm-${VERSION}
 	tar -cf instantwm-${VERSION}.tar instantwm-${VERSION}
 	gzip instantwm-${VERSION}.tar
 	rm -rf instantwm-${VERSION}

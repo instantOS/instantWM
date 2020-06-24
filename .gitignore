@@ -1,7 +1,3 @@
-dwm.o
-instantwm.o
+*.o
 config.h
-util.o
-dwm
 instantwm
-drw.o

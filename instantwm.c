@@ -30,357 +30,14 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <X11/cursorfont.h>
-#include <X11/keysym.h>
-#include <X11/Xatom.h>
-#include <X11/Xlib.h>
 #include <math.h>
 
-#include <X11/Xproto.h>
-#include <X11/Xutil.h>
-#include <X11/Xresource.h>
-
-#ifdef XINERAMA
-#include <X11/extensions/Xinerama.h>
-#endif /* XINERAMA */
-#include <X11/Xft/Xft.h>
-
-#include "drw.h"
+#include "instantwm.h"
+#include "layouts.h"
 #include "util.h"
 
-/* macros */
-#define BUTTONMASK              (ButtonPressMask|ButtonReleaseMask)
-#define CLEANMASK(mask)         (mask & ~(numlockmask|LockMask) & (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
-#define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
-                               * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
-#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) || C->issticky)
-#define HIDDEN(C)               ((getstate(C->win) == IconicState))
-#define LENGTH(X)               (sizeof X / sizeof X[0])
-#define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
-#define WIDTH(X)                ((X)->w + 2 * (X)->bw)
-#define HEIGHT(X)               ((X)->h + 2 * (X)->bw)
-#define TAGMASK                 ((1 << LENGTH(tags)) - 1)
-#define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
-
-#define MWM_HINTS_FLAGS_FIELD       0
-#define MWM_HINTS_DECORATIONS_FIELD 2
-#define MWM_HINTS_DECORATIONS       (1 << 1)
-#define MWM_DECOR_ALL               (1 << 0)
-#define MWM_DECOR_BORDER            (1 << 1)
-#define MWM_DECOR_TITLE             (1 << 3)
-
-
-
-#define SYSTEM_TRAY_REQUEST_DOCK    0
-
-/* XEMBED messages */
-#define XEMBED_EMBEDDED_NOTIFY      0
-#define XEMBED_WINDOW_ACTIVATE      1
-#define XEMBED_FOCUS_IN             4
-#define XEMBED_MODALITY_ON         10
-
-#define XEMBED_MAPPED              (1 << 0)
-#define XEMBED_WINDOW_ACTIVATE      1
-#define XEMBED_WINDOW_DEACTIVATE    2
-
-#define VERSION_MAJOR               0
-#define VERSION_MINOR               0
-#define XEMBED_EMBEDDED_VERSION (VERSION_MAJOR << 16) | VERSION_MINOR
-
-/* enums */
-enum { CurNormal, CurResize, CurMove, CurClick, CurHor, CurVert, CurTL, CurTR, CurBL, CurBR, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /* color schemes */
-enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
-       NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
-       NetWMFullscreen, NetActiveWindow, NetWMWindowType,
-       NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
-enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
-enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
-enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
-       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkStartMenu, ClkLast }; /* clicks */
-
-typedef union {
-	int i;
-	unsigned int ui;
-	float f;
-	const void *v;
-} Arg;
-
-typedef struct {
-	unsigned int click;
-	unsigned int mask;
-	unsigned int button;
-	void (*func)(const Arg *arg);
-	const Arg arg;
-} Button;
-
-typedef struct Monitor Monitor;
-typedef struct Client Client;
-struct Client {
-	char name[256];
-	float mina, maxa;
-	int x, y, w, h;
-	int sfx, sfy, sfw, sfh; /* stored float geometry, used on mode revert */
-	int oldx, oldy, oldw, oldh;
-	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
-	int bw, oldbw;
-	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen, islocked, issticky;
-	Client *next;
-	Client *snext;
-	Monitor *mon;
-	Window win;
-};
-
-typedef struct {
-	unsigned int mod;
-	KeySym keysym;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Key;
-
-typedef struct {
-	const char *symbol;
-	void (*arrange)(Monitor *);
-} Layout;
-
-typedef struct Pertag Pertag;
-struct Monitor {
-	char ltsymbol[16];
-	float mfact;
-	int nmaster;
-	int num;
-	int by;               /* bar geometry */
-	int btw;              /* width of tasks portion of bar */
-	int bt;               /* number of tasks */
-	int mx, my, mw, mh;   /* screen size */
-	int wx, wy, ww, wh;   /* window area  */
-	unsigned int seltags;
-	unsigned int sellt;
-	unsigned int tagset[2];
-	unsigned int activeoffset;
-	unsigned int titleoffset;
-	int showbar;
-	int topbar;
-	Client *clients;
-	Client *sel;
-	Client *overlay;
-	int overlaystatus;
-	int gesture;
-	Client *stack;
-	Client *hoverclient;
-	Monitor *next;
-	Window barwin;
-	const Layout *lt[2];
-	unsigned int showtags;
-	Pertag *pertag;
-};
-
-typedef struct {
-	const char *class;
-	const char *instance;
-	const char *title;
-	unsigned int tags;
-	int isfloating;
-	int monitor;
-} Rule;
-
-/* Xresources preferences */
-enum resource_type {
-	STRING = 0,
-	INTEGER = 1,
-	FLOAT = 2
-};
-
-typedef struct {
-	char *name;
-	enum resource_type type;
-	void *dst;
-} ResourcePref;
-
-typedef struct Systray   Systray;
-struct Systray {
-	Window win;
-	Client *icons;
-};
-
-/* function declarations */
-static void applyrules(Client *c);
-static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
-static void arrange(Monitor *m);
-static void arrangemon(Monitor *m);
-static void resetcursor();
-static void attach(Client *c);
-static void attachstack(Client *c);
-static void buttonpress(XEvent *e);
-static void checkotherwm(void);
-static void cleanup(void);
-static void cleanupmon(Monitor *mon);
-static void clientmessage(XEvent *e);
-static void configure(Client *c);
-static void configurenotify(XEvent *e);
-static void configurerequest(XEvent *e);
-static Monitor *createmon(void);
-static void cyclelayout(const Arg *arg);
-static void destroynotify(XEvent *e);
-static void detach(Client *c);
-static void detachstack(Client *c);
-static Monitor *dirtomon(int dir);
-static void drawbar(Monitor *m);
-static void drawbars(void);
-static int drawstatusbar(Monitor *m, int bh, char* text);
-static void enternotify(XEvent *e);
-static void expose(XEvent *e);
-static void focus(Client *c);
-static void focusin(XEvent *e);
-static void focusmon(const Arg *arg);
-static void followmon(const Arg *arg);
-static void focusstack(const Arg *arg);
-static Atom getatomprop(Client *c, Atom prop);
-static int getrootptr(int *x, int *y);
-static long getstate(Window w);
-static unsigned int getsystraywidth();
-static int gettextprop(Window w, Atom atom, char *text, unsigned int size);
-static void grabbuttons(Client *c, int focused);
-static void grabkeys(void);
-static void hide(Client *c);
-static void incnmaster(const Arg *arg);
-static void keypress(XEvent *e);
-static void killclient(const Arg *arg);
-static void manage(Window w, XWindowAttributes *wa);
-static void mappingnotify(XEvent *e);
-static void maprequest(XEvent *e);
-static void monocle(Monitor *m);
-static void motionnotify(XEvent *e);
-static void movemouse(const Arg *arg);
-static void dragmouse(const Arg *arg);
-static void gesturemouse(const Arg *arg);
-static void dragrightmouse(const Arg *arg);
-static void drawwindow(const Arg *arg);
-static void dragtag(const Arg *arg);
-static void moveresize(const Arg *arg);
-static void distributeclients(const Arg *arg);
-static void keyresize(const Arg *arg);
-static void centerwindow();
-static Client *nexttiled(Client *c);
-static void pop(Client *);
-static void shutkill(const Arg *arg);
-static void propertynotify(XEvent *e);
-static void quit(const Arg *arg);
-static Monitor *recttomon(int x, int y, int w, int h);
-static void removesystrayicon(Client *i);
-static void resize(Client *c, int x, int y, int w, int h, int interact);
-static void resizebarwin(Monitor *m);
-static void resizeclient(Client *c, int x, int y, int w, int h);
-static void resizemouse(const Arg *arg);
-static void resizeaspectmouse(const Arg *arg);
-static void resizerequest(XEvent *e);
-static void restack(Monitor *m);
-static void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos);
-static void run(void);
-static void runAutostart(void);
-static void scan(void);
-static int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3, long d4);
-static void sendmon(Client *c, Monitor *m);
-static int gettagwidth();
-static int getxtag(int ix);
-static void setclientstate(Client *c, long state);
-static void setfocus(Client *c);
-static void setfullscreen(Client *c, int fullscreen);
-static void setlayout(const Arg *arg);
-static void setmfact(const Arg *arg);
-static void setup(void);
-static void seturgent(Client *c, int urg);
-static void show(Client *c);
-static void showhide(Client *c);
-static void sigchld(int unused);
-static void spawn(const Arg *arg);
-static Monitor *systraytomon(Monitor *m);
-static void tag(const Arg *arg);
-static void followtag(const Arg *arg);
-static void followview(const Arg *arg);
-static void tagmon(const Arg *arg);
-static void tagtoleft(const Arg *arg);
-static void tagtoright(const Arg *arg);
-static void tile(Monitor *);
-static void togglealttag(const Arg *arg);
-static void toggleanimated(const Arg *arg);
-static void toggledoubledraw(const Arg *arg);
-static void togglefakefullscreen(const Arg *arg);
-static void togglelocked(const Arg *arg);
-static void toggleshowtags();
-static void togglebar(const Arg *arg);
-static void togglefloating(const Arg *arg);
-static void togglesticky(const Arg *arg);
-static void toggleprefix(const Arg *arg);
-static void toggletag(const Arg *arg);
-static void toggleview(const Arg *arg);
-static void hidewin(const Arg *arg);
-static void unhideall(const Arg *arg);
-static void closewin(const Arg *arg);
-static void unfocus(Client *c, int setfocus);
-static void unmanage(Client *c, int destroyed);
-static void unmapnotify(XEvent *e);
-static void updatebarpos(Monitor *m);
-static void updatebars(void);
-static void updateclientlist(void);
-static int updategeom(void);
-static void updatemotifhints(Client *c);
-static void updatenumlockmask(void);
-static void updatesizehints(Client *c);
-static void updatestatus(void);
-static void updatesystray(void);
-static void updatesystrayicongeom(Client *i, int w, int h);
-static void updatesystrayiconstate(Client *i, XPropertyEvent *ev);
-static void updatetitle(Client *c);
-static void updatewindowtype(Client *c);
-static void updatewmhints(Client *c);
-static void view(const Arg *arg);
-static void warp(const Client *c);
-static void forcewarp(const Client *c);
-static void warpfocus();
-static void viewtoleft(const Arg *arg);
-static void animleft(const Arg *arg);
-static void animright(const Arg *arg);
-static void moveleft(const Arg *arg);
-static void viewtoright(const Arg *arg);
-static void moveright(const Arg *arg);
-
-static void scaleclient(Client *c, int scale);
-static void upscaleclient(const Arg *arg);
-static void downscaleclient(const Arg *arg);
-
-static void overtoggle(const Arg *arg);
-static void fullovertoggle(const Arg *arg);
-
-static Client *wintoclient(Window w);
-static Monitor *wintomon(Window w);
-static Client *wintosystrayicon(Window w);
-static void winview(const Arg* arg);
-
-static int xerror(Display *dpy, XErrorEvent *ee);
-static int xerrordummy(Display *dpy, XErrorEvent *ee);
-static int xerrorstart(Display *dpy, XErrorEvent *ee);
-static void zoom(const Arg *arg);
-static void load_xresources(void);
-static void resource_load(XrmDatabase db, char *name, enum resource_type rtype, void *dst);
-
-static void bstack(Monitor *m);
-static void bstackhoriz(Monitor *m);
-
-
-static void keyrelease(XEvent *e);
-static void setoverlay();
-static void desktopset();
-static void createdesktop();
-static void createoverlay();
-static void shiftview(const Arg *arg);
-static void focuslastclient(const Arg *arg);
-
-static void resetoverlay();
-static void showoverlay();
-static void changefloating(Client *c);
-static void resetbar();
+/* configuration, allows nested code to access above variables */
+#include "config.h"
 
 /* variables */
 static Systray *systray =  NULL;
@@ -388,7 +45,6 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
-static int animated = 1;
 
 static Client *lastclient;
 
@@ -406,11 +62,11 @@ static int isdesktop = 0;
 
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
-static int bh, blw = 0;      /* bar geometry */
+int bh, blw = 0;      /* bar geometry */
 static int lrpad;            /* sum of left and right padding for text */
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static unsigned int numlockmask = 0;
-static void (*handler[LASTEvent]) (XEvent *) = {
+void (*handler[LASTEvent]) (XEvent *) = {
 	[ButtonPress] = buttonpress,
 	[ButtonRelease] = keyrelease,
 	[ClientMessage] = clientmessage,
@@ -433,13 +89,12 @@ static Atom wmatom[WMLast], netatom[NetLast], xatom[XLast], motifatom;
 static int running = 1;
 static Cur *cursor[CurLast];
 static Clr **scheme;
-static Display *dpy;
+Display *dpy;
 static Drw *drw;
-static Monitor *mons, *selmon;
+static Monitor *mons;
 static Window root, wmcheckwin;
-
-/* configuration, allows nested code to access above variables */
-#include "config.h"
+int animated = 1;
+Monitor *selmon;
 
 struct Pertag {
 	unsigned int curtag, prevtag; /* current and previous tag */
@@ -2126,25 +1781,6 @@ maprequest(XEvent *e)
 
 }
 
-// overlay all clients on top of each other
-void
-monocle(Monitor *m)
-{
-	unsigned int n = 0;
-	Client *c;
-
-	if (animated && selmon->sel)
-		XRaiseWindow(dpy, selmon->sel->win);
-
-	for (c = m->clients; c; c = c->next)
-		if (ISVISIBLE(c))
-			n++;
-	if (n > 0) /* override layout symbol */
-		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%d]", n);
-	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 10, 0);
-}
-
 // gets triggered on mouse movement
 void
 motionnotify(XEvent *e)
@@ -3803,47 +3439,6 @@ tagtoright(const Arg *arg) {
 
 }
 
-void
-tile(Monitor *m)
-{
-	unsigned int i, n, h, mw, my, ty, framecount;
-	Client *c;
-
-	if (animated && clientcount() > 5)
-		framecount = 4;
-	else
-		framecount = 7;
-
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
-	if (n == 0)
-		return;
-
-	if (n > m->nmaster)
-		mw = m->nmaster ? m->ww * m->mfact : 0;
-	else {
-		mw = m->ww;
-		if (n > 1 && n < m->nmaster) {
-			m->nmaster = n;
-			tile(m);
-			return;
-		}
-	}
-	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
-		if (i < m->nmaster) {
-			// client is in the master
-			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
-			if (my + HEIGHT(c) < m->wh)
-				my += HEIGHT(c);
-		} else {
-			// client is in the stack
-			h = (m->wh - ty) / (n - i);
-			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
-			if (ty + HEIGHT(c) < m->wh)
-				ty += HEIGHT(c);
-		}
-}
-
 // toggle tag icon view
 void
 togglealttag(const Arg *arg)
@@ -4897,77 +4492,6 @@ fullovertoggle(const Arg *arg){
 	}
 }
 
-static void
-bstack(Monitor *m) {
-	int w, h, mh, mx, tx, ty, tw, framecount;
-	unsigned int i, n;
-	Client *c;
-
-	if (animated && clientcount() > 4)
-		framecount = 4;
-	else
-		framecount = 7;
-
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
-	if (n == 0)
-		return;
-	if (n > m->nmaster) {
-		mh = m->nmaster ? m->mfact * m->wh : 0;
-		tw = m->ww / (n - m->nmaster);
-		ty = m->wy + mh;
-	} else {
-		mh = m->wh;
-		tw = m->ww;
-		ty = m->wy;
-	}
-	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
-		if (i < m->nmaster) {
-			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), framecount, 0);
-			mx += WIDTH(c);
-		} else {
-			h = m->wh - mh;
-			animateclient(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw), framecount, 0);
-			if (tw != m->ww)
-				tx += WIDTH(c);
-		}
-	}
-}
-
-static void
-bstackhoriz(Monitor *m) {
-	int w, mh, mx, tx, ty, th, framecount;
-	unsigned int i, n;
-	Client *c;
-
-	if (animated && clientcount() > 4)
-		framecount = 4;
-	else
-		framecount = 7;
-
-	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
-	if (n == 0)
-		return;
-	if (n > m->nmaster) {
-		mh = m->nmaster ? m->mfact * m->wh : 0;
-		th = (m->wh - mh) / (n - m->nmaster);
-		ty = m->wy + mh;
-	} else {
-		th = mh = m->wh;
-		ty = m->wy;
-	}
-	for (i = mx = 0, tx = m->wx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++) {
-		if (i < m->nmaster) {
-			w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw), mh - (2 * c->bw), framecount, 0);
-			mx += WIDTH(c);
-		} else {
-		animateclient(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw), framecount, 0);
-			if (th != m->wh)
-				ty += HEIGHT(c);
-		}
-	}
-}
 
 
 
