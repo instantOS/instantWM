@@ -107,7 +107,7 @@ deck(Monitor *m)
 
 void
 grid(Monitor *m) {
-	unsigned int i, n, cx, cy, cw, ch, aw, cols, rows, framecount;
+	unsigned int i, n, cw, ch, aw, cols, rows, framecount;
 	Client *c;
 	if (animated && clientcount() > 5)
 		framecount = 3;
@@ -126,8 +126,8 @@ grid(Monitor *m) {
 	ch = m->wh / (rows ? rows : 1);
 	cw = m->ww / (cols ? cols : 1);
 	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
-		cx = m->wx + (i / rows) * cw;
-		cy = m->wy + (i % rows) * ch;
+		unsigned int cx = m->wx + (i / rows) * cw;
+		unsigned int cy = m->wy + (i % rows) * ch;
 		/* adjust height/width of last row/column's windows */
 		int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
 		aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
@@ -150,7 +150,7 @@ monocle(Monitor *m)
 		if (ISVISIBLE(c))
 			n++;
 	if (n > 0) /* override layout symbol */
-		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%d]", n);
+		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%1u]", n);
 	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
 		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 10, 0);
 }
@@ -179,7 +179,7 @@ focusstack2(const Arg *arg)
 void
 overviewlayout(Monitor *m)
 {
-	unsigned int i, n, cx, cy, cw, ch, aw, cols, rows,nx,ny;
+	unsigned int i, n, cw, ch, aw, cols, rows, nx, ny;
 	Client *c;
 
 	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
@@ -195,8 +195,8 @@ overviewlayout(Monitor *m)
 	ch = m->wh / (rows ? rows : 1);
 	cw = m->ww / (cols ? cols : 1);
 	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
-		cx = m->wx + (i / rows) * cw;
-		cy = m->wy + (i % rows) * ch;
+		unsigned int cx = m->wx + (i / rows) * cw;
+		unsigned int cy = m->wy + (i % rows) * ch;
 		ny = cy;
 		nx = cx;
 		/* adjust height/width of last row/column's windows */
@@ -227,7 +227,7 @@ tcl(Monitor * m)
 	Client * c;
 
 	for (n = 0, c = nexttiled(m->clients); c;
-	        c = nexttiled(c->next), n++);
+			c = nexttiled(c->next), n++);
 
 	if (n == 0)
 		return;
@@ -238,11 +238,11 @@ tcl(Monitor * m)
 	sw = (m->ww - mw) / 2;
 	bdw = (2 * c->bw);
 	resize(c,
-	       n < 3 ? m->wx : m->wx + sw,
-	       m->wy,
-	       n == 1 ? m->ww - bdw : mw - bdw,
-	       m->wh - bdw,
-	       False);
+			n < 3 ? m->wx : m->wx + sw,
+			m->wy,
+			n == 1 ? m->ww - bdw : mw - bdw,
+			m->wh - bdw,
+			False);
 
 	if (--n == 0)
 		return;
@@ -262,11 +262,11 @@ tcl(Monitor * m)
 		for (i = 0; c && i < n / 2; c = nexttiled(c->next), i++)
 		{
 			resize(c,
-			       x,
-			       y,
-			       w - bdw,
-			       (i + 1 == n / 2) ? m->wy + m->wh - y - bdw : h - bdw,
-			       False);
+					x,
+					y,
+					w - bdw,
+					(i + 1 == n / 2) ? m->wy + m->wh - y - bdw : h - bdw,
+					False);
 
 			if (h != m->wh)
 				y = c->y + HEIGHT(c);
@@ -280,14 +280,12 @@ tcl(Monitor * m)
 	if (h < bh)
 		h = m->wh;
 
+	int rw = (i + 1 == (n + 1) / 2) ? w - bdw : w - bdw;
+	int rh = (i + 1 == (n + 1) / 2) ? m->wy + m->wh - y - bdw : h - bdw;
+
 	for (i = 0; c; c = nexttiled(c->next), i++)
 	{
-		resize(c,
-		       x,
-		       y,
-		       (i + 1 == (n + 1) / 2) ? w - bdw : w - bdw,
-		       (i + 1 == (n + 1) / 2) ? m->wy + m->wh - y - bdw : h - bdw,
-		       False);
+		resize(c, x, y, rw,	rh, 0);
 
 		if (h != m->wh)
 			y = c->y + HEIGHT(c);
