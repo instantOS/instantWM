@@ -107,7 +107,8 @@ deck(Monitor *m)
 
 void
 grid(Monitor *m) {
-	unsigned int i, n, cw, ch, aw, cols, rows, framecount;
+	int i, n, rows, framecount;
+	unsigned int cols;
 	Client *c;
 	if (animated && clientcount() > 5)
 		framecount = 3;
@@ -123,14 +124,14 @@ grid(Monitor *m) {
 	cols = (rows && (rows - 1) * rows >= n) ? rows - 1 : rows;
 
 	/* window geoms (cell height/width) */
-	ch = m->wh / (rows ? rows : 1);
-	cw = m->ww / (cols ? cols : 1);
+	int ch = m->wh / (rows ? rows : 1);
+	int cw = m->ww / (cols ? cols : 1);
 	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
 		unsigned int cx = m->wx + (i / rows) * cw;
 		unsigned int cy = m->wy + (i % rows) * ch;
 		/* adjust height/width of last row/column's windows */
 		int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
-		aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
+		unsigned int aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
 		animateclient(c, cx, cy, cw - 2 * c->bw + aw, ch - 2 * c->bw + ah, framecount, 0);
 		i++;
 	}
@@ -179,7 +180,8 @@ focusstack2(const Arg *arg)
 void
 overviewlayout(Monitor *m)
 {
-	unsigned int i, n, cw, ch, aw, cols, rows, nx, ny;
+	int i, n, rows;
+	unsigned int cols;
 	Client *c;
 
 	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
@@ -192,16 +194,16 @@ overviewlayout(Monitor *m)
 	cols = (rows && (rows - 1) * rows >= n) ? rows - 1 : rows;
 
 	/* window geoms (cell height/width) */
-	ch = m->wh / (rows ? rows : 1);
-	cw = m->ww / (cols ? cols : 1);
+	int ch = m->wh / (rows ? rows : 1);
+	int cw = m->ww / (cols ? cols : 1);
 	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
 		unsigned int cx = m->wx + (i / rows) * cw;
 		unsigned int cy = m->wy + (i % rows) * ch;
-		ny = cy;
-		nx = cx;
+		unsigned int ny = cy;
+		unsigned int nx = cx;
 		/* adjust height/width of last row/column's windows */
 		int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
-		aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
+		int aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
 
 		if (cw - 2 * c->bw + aw > c->w)
 			nx = cx + ((cw - 2 * c->bw + aw) - c->w) / 2;
