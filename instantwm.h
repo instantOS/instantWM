@@ -238,6 +238,7 @@ void resize(Client *c, int x, int y, int w, int h, int interact);
 void resizebarwin(Monitor *m);
 void resizeclient(Client *c, int x, int y, int w, int h);
 void resizemouse(const Arg *arg);
+void forceresizemouse(const Arg *arg);
 void resizeaspectmouse(const Arg *arg);
 void resizerequest(XEvent *e);
 void restack(Monitor *m);

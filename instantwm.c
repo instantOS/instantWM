@@ -94,6 +94,7 @@ static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
 int animated = 1;
+int forceresize = 0;
 Monitor *selmon;
 
 struct Pertag {
@@ -2644,6 +2645,14 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	XSync(dpy, False);
 }
 
+void
+forceresizemouse(const Arg *arg)
+{
+	forceresize = 1;
+	resizemouse(arg);
+	forceresize = 0;
+}
+
 //resize a window using the mouse
 void
 resizemouse(const Arg *arg)
@@ -2786,8 +2795,12 @@ resizemouse(const Arg *arg)
 					}
 				}
 			}
-			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
-				resize(c, nx, ny, nw, nh, 1);
+			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
+				if (!forceresize)
+					resize(c, nx, ny, nw, nh, 1);
+				else
+					resizeclient(c, nx, ny, nw, nh);
+			}
 			break;
 		}
 	} while (ev.type != ButtonRelease);

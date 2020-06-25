@@ -360,6 +360,7 @@ static Button buttons[] = {
 	{ ClkClientWin,         MODKEY,         Button1,        movemouse,      {0} },
 	{ ClkClientWin,         MODKEY,         Button2,        togglefloating, {0} },
 	{ ClkClientWin,         MODKEY,         Button3,        resizemouse,    {0} },
+	{ ClkClientWin,         MODKEY|Mod1Mask,Button3,        forceresizemouse,    {0} },
 	{ ClkClientWin,         MODKEY | ShiftMask,             Button3,        resizeaspectmouse,    {0} },
 	{ ClkTagBar,            0,              Button1,        dragtag,        {0} },
 	{ ClkTagBar,            0,              Button5,        viewtoright,    {0} },
