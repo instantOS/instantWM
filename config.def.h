@@ -206,6 +206,7 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,				XK_d,  	drawwindow,	{0}},
 
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
+	{MODKEY|ControlMask|Mod1Mask, XK_r, redrawwin, {0} },
 	{MODKEY, XK_n, spawn, {.v = nautiluscmd } },
 	{MODKEY | ControlMask, XK_q, spawn, {.v = instantshutdowncmd } },
 	{MODKEY, XK_y, spawn, {.v = panther} },

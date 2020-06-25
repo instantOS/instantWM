@@ -3777,6 +3777,26 @@ void hidewin(const Arg *arg)
 	hide(c);
 }
 
+// fixes drawing issues with wine games
+void redrawwin(const Arg *arg)
+{
+	int tmpanimated = 0;
+	if (!selmon->sel)
+		return;
+	Client *c = selmon->sel;
+	if (HIDDEN(c))
+		return;
+	if (animated) {
+		tmpanimated = 1;
+		animated = 0;
+	}
+
+	hide(c);
+	show(c);
+	if (tmpanimated)
+		animated = 1;
+}
+
 void
 unhideall(const Arg *arg) {
 

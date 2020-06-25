@@ -281,6 +281,7 @@ void toggleprefix(const Arg *arg);
 void toggletag(const Arg *arg);
 void toggleview(const Arg *arg);
 void hidewin(const Arg *arg);
+void redrawwin(const Arg *arg);
 void unhideall(const Arg *arg);
 void closewin(const Arg *arg);
 void unfocus(Client *c, int setfocus);
