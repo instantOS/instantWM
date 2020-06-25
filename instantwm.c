@@ -4461,6 +4461,18 @@ void scaleclient(Client *c, int scale) {
 		h = c->x - scale / 2;
 		h = c->y - scale / 2;
 	}
+
+	if (x < selmon->mx)
+		x = selmon->mx;
+
+	if (w > selmon->mw)
+		w = selmon->mw;
+
+	if (h > selmon->mh)
+		h = selmon->mh;
+	if ((h + y) > selmon->my + selmon->mh)
+		y = selmon->mh - h;
+
 	if (y < bh)
 		y = bh;
 	animateclient(c, x, y, w, h, 3, 0);
