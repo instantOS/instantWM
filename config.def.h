@@ -145,9 +145,10 @@ static const char  *fclipscrotcmd[] = { "/opt/instantos/menus/dm/sf.sh", NULL };
 
 static const char  *firefoxcmd[] = { "firefox", NULL };
 
+static const char *playernext[] = { "playerctl", "next", NULL};
+static const char *playerprevious[] = { "playerctl", "previous", NULL};
+static const char *playerpause[] = { "playerctl", "play-pause", NULL};
 static const char *spoticli[] = { "spoticli", "m", NULL};
-static const char *spotiprev[] = { "spoticli", "p", NULL};
-static const char *spotinext[] = { "spoticli", "n", NULL};
 
 #include "push.c"
 
@@ -308,9 +309,9 @@ static Key keys[] = {
 	{0, XF86XK_AudioLowerVolume, spawn, {.v = downvol}},
 	{0, XF86XK_AudioMute, spawn, {.v = mutevol}},
 	{0, XF86XK_AudioRaiseVolume, spawn, {.v = upvol}},
-	{0, XF86XK_AudioPlay, spawn, {.v = spoticli}},
-	{0, XF86XK_AudioNext, spawn, {.v = spotinext}},
-	{0, XF86XK_AudioPrev, spawn, {.v = spotiprev}},
+	{0, XF86XK_AudioPlay, spawn, {.v = playerpause}},
+	{0, XF86XK_AudioNext, spawn, {.v = playernext}},
+	{0, XF86XK_AudioPrev, spawn, {.v = playerprevious}},
 
 	{0, XK_Print, spawn, {.v = fscrotcmd}},
 	{MODKEY, XK_Print, spawn, {.v = scrotcmd}},
