@@ -13,30 +13,42 @@ static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Cantarell-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
+// empty background
 static char col_background[] = "#292f3a"; /* top bar dark background*/
+// fonts
 static char col_white[] = "#ffffff";/*white for fonts*/
+
+// border active and inactive
 static char col_pastel_blue[] = "#747c90";/*unsaturated for focused border*/
 static char col_light_blue[] = "#4dadd4";/*focused windows d */
+
+// blue window indicator
 static char col_blue[] = "#5294E2";/*focused instantmenu or topbar d */
 static char col_dark_blue[] = "#3579CB";/*focused instantmenu or topbar d */
-static char col_dark_green[] = "#35CB4B";/*focused instantmenu or topbar d */
-static char col_green[] = "#52E167";/*focused instantmenu or topbar d */
 
-static char col_orange[] = "#E1A052";/*focused instantmenu or topbar d */
-static char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar d */
-
-static char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
-static char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
-
-static char col_hover_red[] = "#D37492";/*focused instantmenu or topbar d */
-static char col_hover_dark_red[] = "#CE577C";/*focused instantmenu or topbar d */
-
-static char col_hover[] = "#596377";/*focused instantmenu or topbar d */
-static char col_hover_shadow[] = "#475166";/*focused instantmenu or topbar d */
-
+// hover over blue window indicator
 static char col_hover_blue[] = "#7CA8DC";/*focused instantmenu or topbar d */
 static char col_hover_dark_blue[] = "#578BC9";/*focused instantmenu or topbar d */
 
+// sticky window indicator
+static char col_green[] = "#52E167";/*focused instantmenu or topbar d */
+static char col_dark_green[] = "#35CB4B";/*focused instantmenu or topbar d */
+
+// unfocused sticky indicator
+static char col_orange[] = "#E1A052";/*focused instantmenu or topbar d */
+static char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar d */
+
+// close button
+static char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
+static char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
+
+// hover over close button
+static char col_hover_red[] = "#D37492";/*focused instantmenu or topbar d */
+static char col_hover_dark_red[] = "#CE577C";/*focused instantmenu or topbar d */
+
+// hover over empty tag
+static char col_hover[] = "#596377";/*focused instantmenu or topbar d */
+static char col_hover_shadow[] = "#475166";/*focused instantmenu or topbar d */
 
 static const char *colors[][4] = {
 	/*               fg         bg         border   	float*/
@@ -153,10 +165,26 @@ static const char *spoticli[] = { "spoticli", "m", NULL};
 #include "push.c"
 
 ResourcePref resources[] = {
+
 		{ "bgcolor",        STRING,  &col_background },
 		{ "fontcolor",        STRING,  &col_white },
+		{ "hoverbgcolor",        STRING,  &col_hover },
+		{ "hovershadowcolor",        STRING,  &col_hover_shadow },
+		{ "minimize",        STRING,  &col_orange },
+		{ "darkminimize",    STRING,  &col_dark_orange },
 		{ "selectcolor",        STRING,  &col_blue },
-		{ "closecolor",        STRING,  &col_red },
+
+		{ "close",        STRING,  &col_red },
+		{ "darkclose",        STRING,  &col_dark_red },
+		{ "hoverclose",        STRING,  &col_hover_red },
+		{ "darkhoverclose",        STRING,  &col_hover_dark_red },
+
+		{ "focus",        STRING,  &col_blue },
+		{ "darkfocus",        STRING,  &col_dark_blue },
+		{ "hoverfocus",        STRING,  &col_hover_blue },
+		{ "darkhoverfocus",        STRING,  &col_hover_dark_blue },
+
+
 };
 
 static Key dkeys[] = {
