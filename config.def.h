@@ -167,12 +167,19 @@ static const char *spoticli[] = { "spoticli", "m", NULL};
 ResourcePref resources[] = {
 
 		{ "bgcolor",        STRING,  &col_background },
-		{ "fontcolor",        STRING,  &col_white },
 		{ "hoverbgcolor",        STRING,  &col_hover },
 		{ "hovershadowcolor",        STRING,  &col_hover_shadow },
+
+		{ "fontcolor",        STRING,  &col_white },
+
 		{ "minimize",        STRING,  &col_orange },
 		{ "darkminimize",    STRING,  &col_dark_orange },
-		{ "selectcolor",        STRING,  &col_blue },
+
+		{ "border",        STRING,  &col_pastel_blue },
+		{ "activeborder",        STRING,  &col_blue },
+
+		{ "activetag",        STRING,  &col_green },
+		{ "darkactivetag",        STRING,  &col_dark_green },
 
 		{ "close",        STRING,  &col_red },
 		{ "darkclose",        STRING,  &col_dark_red },
