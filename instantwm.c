@@ -698,6 +698,8 @@ clientmessage(XEvent *e)
 		if (c == selmon->overlay) {
 			showoverlay();
 		} else {
+			if (HIDDEN(c))
+				show(c);
 			for (i = 0; i < LENGTH(tags) && !((1 << i) & c->tags); i++);
 			if (i < LENGTH(tags)) {
 				const Arg a = {.ui = 1 << i};
