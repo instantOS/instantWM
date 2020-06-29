@@ -1061,12 +1061,12 @@ drawbar(Monitor *m)
 	//draw start menu icon
 	if (tagprefix)
 		drw_setscheme(drw, scheme[SchemeActive]);
-
+	iconoffset = (bh - 20) / 2;
 	int startmenuinvert = (selmon->gesture == 13);
 	drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0:1);
-	drw_rect(drw, 5, 5, 14, 14, 1, startmenuinvert ? 1:0);
-	drw_rect(drw, 9, 9, 6, 6, 1, startmenuinvert ? 0:1);
-	drw_rect(drw, 19, 19, 6, 6, 1, startmenuinvert ? 1:0);
+	drw_rect(drw, 5, iconoffset, 14, 14, 1, startmenuinvert ? 1:0);
+	drw_rect(drw, 9, iconoffset + 4, 6, 6, 1, startmenuinvert ? 0:1);
+	drw_rect(drw, 19, iconoffset + 14, 6, 6, 1, startmenuinvert ? 1:0);
 
 	resizebarwin(m);
 	for (c = m->clients; c; c = c->next) {
@@ -1168,14 +1168,14 @@ drawbar(Monitor *m)
 						drw_setscheme(drw, scheme[SchemeClose]);
 						if (selmon->gesture != 12) {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, (bh - 20) / 2, 20, 16);
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, (bh - 20) / 2 + 16, 20, 4);
 						} else {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 2, 20, 16);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, (bh - 20) / 2 - 2, 20, 16);
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 18, 20, 6);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, (bh - 20) / 2 + 14, 20, 6);
 						}
 					} else {
 						drw_setscheme(drw, scheme[SchemeAddActive]);
