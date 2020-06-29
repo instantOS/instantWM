@@ -13,6 +13,8 @@ static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Cantarell-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
+static char barheight[5];
+
 // empty background
 static char col_background[] = "#292f3a"; /* top bar dark background*/
 // fonts
@@ -191,6 +193,7 @@ ResourcePref resources[] = {
 		{ "hoverfocus",        STRING,  &col_hover_blue },
 		{ "darkhoverfocus",        STRING,  &col_hover_dark_blue },
 
+		{ "barheight",        STRING,  &barheight },
 
 };
 
