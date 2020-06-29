@@ -1045,7 +1045,7 @@ void
 drawbar(Monitor *m)
 {
 
-	int x, w, sw = 0, n = 0, stw = 0, scm, roundw;
+	int x, w, sw = 0, n = 0, stw = 0, scm, roundw, iconoffset;
     unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
