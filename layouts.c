@@ -141,8 +141,9 @@ grid(Monitor *m) {
 void
 monocle(Monitor *m)
 {
-	unsigned int n = 0;
+	unsigned int n = 0, ccount;
 	Client *c;
+	ccount = clientcount();
 
 	if (animated && selmon->sel)
 		XRaiseWindow(dpy, selmon->sel->win);
@@ -153,7 +154,7 @@ monocle(Monitor *m)
 	if (n > 0) /* override layout symbol */
 		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%1u]", n);
 	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 10, 0);
+		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, ccount < 5 ? 10 : 0, 0);
 }
 
 void
