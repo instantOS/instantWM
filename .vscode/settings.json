@@ -20,6 +20,7 @@
         "vector": "c",
         "valarray": "c",
         "typeinfo": "cpp",
-        "*.rh": "cpp"
+        "*.rh": "cpp",
+        "memory_resource": "cpp"
     }
 }

@@ -3184,12 +3184,18 @@ setup(void)
 	sw = DisplayWidth(dpy, screen);
 	sh = DisplayHeight(dpy, screen);
 	root = RootWindow(dpy, screen);
+
+	if (strlen(xresourcesfont) > 3) {
+		fonts[0] = xresourcesfont;
+		fprintf(stderr, "manual font %s", xresourcesfont);
+	}
+
 	drw = drw_create(dpy, screen, root, sw, sh);
 	if (!drw_fontset_create(drw, fonts, LENGTH(fonts)))
 		die("no fonts could be loaded.");
 	lrpad = drw->fonts->h;
-	if (atoi(barheight))
-		bh = drw->fonts->h + atoi(barheight);
+	if (barheight)
+		bh = drw->fonts->h + barheight;
 	else
 		bh = drw->fonts->h + 12;
 	updategeom();
@@ -3582,7 +3588,7 @@ moveresize(const Arg *arg) {
 	if ((nx + c->w) > (selmon->mx + selmon->mw))
 		nx = ((selmon->mw + selmon->mx) - c->w);
 
-	resize(c, nx, ny, c->w, c->h, True);
+	animateclient(c, nx, ny, c->w, c->h, 5, 0);
 	warp(c);
 }
 
