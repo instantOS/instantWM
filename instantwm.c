@@ -4526,12 +4526,14 @@ void scaleclient(Client *c, int scale) {
 // toggle overview like layout
 void
 overtoggle(const Arg *arg){
-
+	Client *c;
+	c = selmon->sel;
 	if (!selmon->pertag->curtag == 0) {
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[6];
 		view(arg);
 		if (selmon->lt[selmon->sellt] != (Layout *)&layouts[6] )
 			setlayout(&((Arg) { .v = &layouts[6] }));
+		focus(c);
 	} else {
 		winview(NULL);
 	}
