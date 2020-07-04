@@ -469,6 +469,9 @@ arrangemon(Monitor *m)
 	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
 	if (m->lt[m->sellt]->arrange)
 		m->lt[m->sellt]->arrange(m);
+
+	if (m == selmon)
+		selmon->clientcount = clientcount();
 }
 
 void
@@ -856,6 +859,7 @@ createmon(void)
 	m->nmaster = nmaster;
 	m->showbar = showbar;
 	m->topbar = topbar;
+	m->clientcount = 0;
 	m->lt[0] = &layouts[3];
 	m->lt[1] = &layouts[0];
 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
@@ -2638,7 +2642,7 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	c->oldh = c->h; c->h = wc.height = h;
 	wc.border_width = c->bw;
 
-	if ((nexttiled(c->mon->clients) == c && !nexttiled(c->next)) &&
+	if (c->mon->clientcount == 1 || (nexttiled(c->mon->clients) == c && !nexttiled(c->next)) &&
 		(NULL != c->mon->lt[c->mon->sellt]->arrange
 	    || &monocle == c->mon->lt[c->mon->sellt]->arrange)
 	    && !c->isfullscreen && !c->isfloating) {

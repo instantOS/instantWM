@@ -126,6 +126,7 @@ struct Monitor {
 	unsigned int tagset[2];
 	unsigned int activeoffset;
 	unsigned int titleoffset;
+	unsigned int clientcount;
 	int showbar;
 	int topbar;
 	Client *clients;
