@@ -203,6 +203,7 @@ void focusin(XEvent *e);
 void focusmon(const Arg *arg);
 void followmon(const Arg *arg);
 void focusstack(const Arg *arg);
+void upkey(const Arg *arg);
 Atom getatomprop(Client *c, Atom prop);
 int getrootptr(int *x, int *y);
 long getstate(Window w);

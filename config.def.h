@@ -271,7 +271,7 @@ static Key keys[] = {
 	{MODKEY, XK_j, focusstack, {.i = +1}},
 	{MODKEY, XK_Down, focusstack, {.i = +1}},
 	{MODKEY, XK_k, focusstack, {.i = -1}},
-	{MODKEY, XK_Up, focusstack, {.i = -1}},
+	{MODKEY, XK_Up, upkey, {.i = -1}},
 	{MODKEY|ControlMask, XK_j, pushdown, {0} },
 	{MODKEY|ControlMask, XK_k, pushup, {0} },
 	{MODKEY|Mod1Mask, XK_s, togglealttag, {0} },

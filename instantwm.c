@@ -2126,6 +2126,7 @@ movemouse(const Arg *arg)
 		if (NULL != selmon->lt[selmon->sellt]->arrange) {
 			togglefloating(NULL);		
 		} else {
+			// maximize window
 			XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 			animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
 		}
@@ -4414,6 +4415,16 @@ viewtoleft(const Arg *arg) {
 }
 
 
+void upkey(const Arg *arg) {
+	if (!selmon->sel)
+		return;
+	if (NULL == selmon->lt[selmon->sellt]->arrange) {
+		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
+		animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
+		return;
+	}
+	focusstack(arg);
+}
 
 void
 shiftview(const Arg *arg)
