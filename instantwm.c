@@ -1313,6 +1313,7 @@ focus(Client *c)
 	selmon->sel = c;
 	if (selmon->gesture != 11 && selmon->gesture)
 		selmon->gesture = 0;
+	resetbar();
 	drawbars();
 	if (!c){
 		if (!isdesktop) {
