@@ -342,6 +342,7 @@ void focuslastclient(const Arg *arg);
 
 void resetoverlay();
 void showoverlay();
+void hideoverlay();
 void changefloating(Client *c);
 void resetbar();
 

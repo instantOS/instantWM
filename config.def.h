@@ -398,6 +398,8 @@ static Button buttons[] = {
 	{ ClkRootWin,           0,              Button1,        spawn,          {.v = panther } },
 	{ ClkRootWin,           MODKEY,         Button1,        setoverlay,     {0} },
 	{ ClkRootWin,           0,              Button3,        spawn,          {.v = roficmd } },
+	{ ClkRootWin,           0,              Button5,        showoverlay,          {0} },
+	{ ClkRootWin,           0,              Button4,        hideoverlay,          {0} },
 	{ ClkRootWin,           0,              Button2,        spawn,          {.v = instantmenucmd } },
 	{ ClkClientWin,         MODKEY,         Button1,        movemouse,      {0} },
 	{ ClkClientWin,         MODKEY,         Button2,        togglefloating, {0} },
