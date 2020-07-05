@@ -21,6 +21,7 @@
         "valarray": "c",
         "typeinfo": "cpp",
         "*.rh": "cpp",
-        "memory_resource": "cpp"
+        "memory_resource": "cpp",
+        "*.inc": "c"
     }
 }

@@ -1539,7 +1539,8 @@ hide(Client *c) {
 	wi = c->w;
 	h = c->h;
 
-	animateclient(c, c->x, bh - c->h + 40, 0, 0, 10, 0);
+	if (animated)
+		animateclient(c, c->x, bh - c->h + 40, 0, 0, 10, 0);
 
 	Window w = c->win;
 	static XWindowAttributes ra, ca;
