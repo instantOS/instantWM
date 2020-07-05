@@ -2088,6 +2088,7 @@ movemouse(const Arg *arg)
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
 			// snap to half of the screen like on gnome, right side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
+				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -2101,6 +2102,7 @@ movemouse(const Arg *arg)
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			// snap to half of the screen like on gnome, left side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
+				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -2119,11 +2121,13 @@ movemouse(const Arg *arg)
 		selmon = m;
 		focus(NULL);
 	}
+
 	if (notfloating) {
-		if (NULL != c->mon->lt[c->mon->sellt]->arrange) {
+		if (NULL != selmon->lt[selmon->sellt]->arrange) {
 			togglefloating(NULL);		
 		} else {
-			animateclient(c, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
+			XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
+			animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
 		}
 	}
 }
@@ -4342,6 +4346,7 @@ animleft(const Arg *arg) {
 	Client *c;
 	
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
+		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBg].pixel);
 		animateclient(selmon->sel, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 		return;
 	}
@@ -4362,6 +4367,7 @@ animright(const Arg *arg) {
 
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
 		animateclient(selmon->sel, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
+		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 		return;
 	}
 
