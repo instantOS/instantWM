@@ -2081,7 +2081,7 @@ movemouse(const Arg *arg)
 			togglefloating(NULL);
 			createoverlay();
 			selmon->gesture = 11;
-		} else if (selmon->sel->isfloating) {
+		} else if (selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange) {
 			notfloating = 1;
 		}
 	} else {
