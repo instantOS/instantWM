@@ -266,6 +266,7 @@ showoverlay() {
 	c->bw = 0;
 	arrange(selmon);
 	focus(c);
+	XRaiseWindow(dpy, c->win);
 }
 
 void
