@@ -162,11 +162,13 @@ createoverlay() {
 	selmon->overlay = tempclient;
 	tempclient->bw = 0;
 	tempclient->islocked = 1;
+	selmon->overlaystatus = 0;
 	if (!selmon->overlay->isfloating) {
 		changefloating(selmon->overlay);
 	}
 
 	selmon->overlay->h =((selmon->wh) / 3);
+	XRaiseWindow(dpy,tempclient->win);
 	showoverlay();
 }
 
@@ -245,7 +247,6 @@ showoverlay() {
 	}
 
 	c->tags = selmon->tagset[selmon->seltags];
-	focus(c);
 
 	if (!c->isfloating) {
 		changefloating(selmon->overlay);
@@ -260,11 +261,11 @@ showoverlay() {
 		else
 			animateclient(c, c->x, 0, 0, 0, 15, 0);
 		c->issticky = 1;
-
 	}
 
 	c->bw = 0;
 	arrange(selmon);
+	focus(c);
 }
 
 void
