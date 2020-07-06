@@ -157,8 +157,6 @@ createoverlay() {
 
 	Client *tempclient = selmon->sel;
 
-	selmon->overlaystatus = 1;
-
 	resetoverlay();
 
 	selmon->overlay = tempclient;
@@ -1314,7 +1312,11 @@ focus(Client *c)
 	selmon->sel = c;
 	if (selmon->gesture != 11 && selmon->gesture)
 		selmon->gesture = 0;
-	resetbar();
+
+	if (selmon->gesture < 9)
+		selmon->gesture = 0;
+	selmon->hoverclient = NULL;
+
 	drawbars();
 	if (!c){
 		if (!isdesktop) {
