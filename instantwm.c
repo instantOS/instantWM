@@ -2945,6 +2945,8 @@ resizerequest(XEvent *e)
 void
 restack(Monitor *m)
 {
+	if (&overviewlayout == m->lt[m->sellt]->arrange)
+		return;
 	Client *c;
 	XEvent ev;
 	XWindowChanges wc;

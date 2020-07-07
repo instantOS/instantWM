@@ -182,44 +182,48 @@ void
 overviewlayout(Monitor *m)
 {
 	int i, n, rows;
+	int gridwidth;
 	unsigned int cols;
+	unsigned int colwidth;
+	unsigned int lineheight;
+	int tmpx;
+	int tmpy;
 	Client *c;
+	Client *tempc;
+	XWindowChanges wc;
+	n = clientcount();
 
-	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		n++;
+ 	if (n == 0)
+		return;
 
-	/* grid dimensions */
-	for(rows = 0; rows <= n/2; rows++)
-		if(rows*rows >= n)
-			break;
-	cols = (rows && (rows - 1) * rows >= n) ? rows - 1 : rows;
+	gridwidth = 1;
 
-	/* window geoms (cell height/width) */
-	int ch = m->wh / (rows ? rows : 1);
-	int cw = m->ww / (cols ? cols : 1);
-	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
-		unsigned int cx = m->wx + (i / rows) * cw;
-		unsigned int cy = m->wy + (i % rows) * ch;
-		unsigned int ny = cy;
-		unsigned int nx = cx;
-		/* adjust height/width of last row/column's windows */
-		int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
-		int aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
-
-		if (cw - 2 * c->bw + aw > c->w)
-			nx = cx + ((cw - 2 * c->bw + aw) - c->w) / 2;
-		if (ch - 2 * c->bw + ah > c->h)
-			ny = cy + ((ch - 2 * c->bw + ah) - c->h) / 2;
-		resize(c, nx, ny, c->w, c->h, False);
-
-		i++;
+	while ((gridwidth * gridwidth) < n) {
+		gridwidth++;
 	}
 
-	focus(nexttiled(m->clients));
-	for (int i = 0; i < clientcount() - 1; i++)
-	{
-		focusstack2(&((Arg) { .i = +1 }));
+	tmpx = selmon->mx;
+	tmpy = selmon->my + selmon->showbar ? bh : 0;
+	lineheight = selmon->wh / gridwidth;
+	colwidth = selmon->ww / gridwidth;
+	wc.stack_mode = Above;
+	wc.sibling = m->barwin;
+
+	for(c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+		resize(c,tmpx, tmpy, c->w, c->h, 0);
+
+		XConfigureWindow(dpy, c->win, CWSibling|CWStackMode, &wc);
+		wc.sibling = c->win;
+
+		tempc = c;
+		if (tmpx + colwidth < selmon->mx + selmon->ww) {
+			tmpx += colwidth;
+		} else {
+			tmpx = selmon->mx;
+			tmpy += lineheight;
+		}
 	}
+	XSync(dpy, False);
 }
 
 void
