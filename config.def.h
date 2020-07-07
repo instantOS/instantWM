@@ -287,7 +287,7 @@ static Key keys[] = {
 	{MODKEY, XK_h, setmfact, {.f = -0.05}},
 	{MODKEY, XK_l, setmfact, {.f = +0.05}},
 	{MODKEY | ShiftMask, XK_Return, zoom, {0}},
-	{MODKEY, XK_Tab, view, {0}},
+	{MODKEY, XK_Tab, lastview, {0}},
 	{MODKEY|ShiftMask, XK_Tab, focuslastclient, {0}},
 	{MODKEY|Mod1Mask, XK_Tab, followview, {0}},
 	{MODKEY, XK_q, shutkill, {0}},

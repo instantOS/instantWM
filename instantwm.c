@@ -4579,15 +4579,24 @@ void
 overtoggle(const Arg *arg){
 	Client *c;
 	c = selmon->sel;
+	unsigned int tmptag;
 	if (!selmon->pertag->curtag == 0) {
+		tmptag = selmon->pertag->curtag;
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[6];
 		view(arg);
 		if (selmon->lt[selmon->sellt] != (Layout *)&layouts[6] )
 			setlayout(&((Arg) { .v = &layouts[6] }));
 		focus(c);
 	} else {
+		tmptag = selmon->pertag->prevtag;
 		winview(NULL);
 	}
+	selmon->pertag->prevtag = tmptag;
+}
+
+void
+lastview(const Arg *arg) {
+	view(&((Arg) { .ui = 1 << selmon->pertag->prevtag -1 }));
 }
 
 // overtoggle but with monocle layout
