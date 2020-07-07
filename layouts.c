@@ -189,7 +189,6 @@ overviewlayout(Monitor *m)
 	int tmpx;
 	int tmpy;
 	Client *c;
-	Client *tempc;
 	XWindowChanges wc;
 	n = clientcount();
 
@@ -203,7 +202,7 @@ overviewlayout(Monitor *m)
 	}
 
 	tmpx = selmon->mx;
-	tmpy = selmon->my + selmon->showbar ? bh : 0;
+	tmpy = selmon->my + (selmon->showbar ? bh : 0);
 	lineheight = selmon->wh / gridwidth;
 	colwidth = selmon->ww / gridwidth;
 	wc.stack_mode = Above;
@@ -214,8 +213,6 @@ overviewlayout(Monitor *m)
 
 		XConfigureWindow(dpy, c->win, CWSibling|CWStackMode, &wc);
 		wc.sibling = c->win;
-
-		tempc = c;
 		if (tmpx + colwidth < selmon->mx + selmon->ww) {
 			tmpx += colwidth;
 		} else {
