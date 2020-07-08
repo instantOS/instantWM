@@ -352,6 +352,7 @@ static Key keys[] = {
 	{0, XF86XK_AudioMute, spawn, {.v = mutevol}},
 	{0, XF86XK_AudioRaiseVolume, spawn, {.v = upvol}},
 	{0, XF86XK_AudioPlay, spawn, {.v = playerpause}},
+	{0, XF86XK_AudioPause, spawn, {.v = playerpause}},
 	{0, XF86XK_AudioNext, spawn, {.v = playernext}},
 	{0, XF86XK_AudioPrev, spawn, {.v = playerprevious}},
 

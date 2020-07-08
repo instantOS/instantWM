@@ -3064,6 +3064,8 @@ sendmon(Client *c, Monitor *m)
 {
 	if (c->mon == m)
 		return;
+
+	resetsticky(c);
 	unfocus(c, 1);
 	detach(c);
 	detachstack(c);
@@ -3429,6 +3431,13 @@ void followview(const Arg *arg)
 }
 
 
+void resetsticky(Client *c) {
+	if (!c->issticky)
+		return;
+	c->issticky = 0;
+	c->tags = 1 << selmon->pertag->curtag -1;
+}
+
 void
 tagmon(const Arg *arg)
 {
@@ -3445,6 +3454,7 @@ tagtoleft(const Arg *arg) {
 	if (!selmon->sel)
 		return;
 	c = selmon->sel;
+	resetsticky(c);
 	oldx = c->x;
 	if (!c->isfloating && animated) {
 		XRaiseWindow(dpy,c->win);
@@ -3475,6 +3485,7 @@ tagtoright(const Arg *arg) {
 	if (!selmon->sel)
 		return;
 	c = selmon->sel;
+	resetsticky(c);
 	oldx = c->x;
 	if (!c->isfloating && animated) {
 		XRaiseWindow(dpy,c->win);
