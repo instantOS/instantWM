@@ -22,6 +22,7 @@
         "typeinfo": "cpp",
         "*.rh": "cpp",
         "memory_resource": "cpp",
-        "*.inc": "c"
+        "*.inc": "c",
+        "iterator": "c"
     }
 }

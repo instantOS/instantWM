@@ -3706,6 +3706,20 @@ togglebar(const Arg *arg)
 		animated = 1;
 }
 
+void savefloating(Client *c) {
+	c->sfx = c->x;
+	c->sfy = c->y;
+	c->sfw = c->w;
+	c->sfh = c->h;
+}
+
+void restorefloating(Client *c) {
+	c->x = c->sfx;
+	c->y = c->sfy;
+	c->w = c->sfw;
+	c->h = c->sfh;
+}
+
 void
 togglefloating(const Arg *arg)
 {
@@ -4664,6 +4678,13 @@ winview(const Arg* arg){
 	int unused;
 	Client* c;
 	Arg a;
+
+	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+		for(c = selmon->clients; c; c = c->next) {
+			if (c->isfloating)
+				restorefloating(c);
+		}
+	}
 
 	if (!XGetInputFocus(dpy, &win, &unused)) return;
 	while(XQueryTree(dpy, win, &win_r, &win_p, &win_c, &nc)

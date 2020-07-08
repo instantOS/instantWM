@@ -25,6 +25,14 @@ int clientcount()
 	return n;
 }
 
+int allclientcount()
+{
+	int n;
+	Client *c;
+	for (n = 0, c = selmon->clients; c; c = c->next, n++);
+	return n;
+}
+
 int clientdistance(Client *c, Client *c2) {
 	int x, y, distance;
 	x = abs(((c->x + c->w) / 2) - ((c2->x + c->w) / 2));

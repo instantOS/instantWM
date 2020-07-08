@@ -190,7 +190,7 @@ overviewlayout(Monitor *m)
 	int tmpy;
 	Client *c;
 	XWindowChanges wc;
-	n = clientcount();
+	n = allclientcount();
 
  	if (n == 0)
 		return;
@@ -208,7 +208,9 @@ overviewlayout(Monitor *m)
 	wc.stack_mode = Above;
 	wc.sibling = m->barwin;
 
-	for(c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+	for(c = m->clients; c; c = c->next) {
+		if (c->isfloating)
+			savefloating(c);
 		resize(c,tmpx, tmpy, c->w, c->h, 0);
 
 		XConfigureWindow(dpy, c->win, CWSibling|CWStackMode, &wc);
