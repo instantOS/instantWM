@@ -4681,6 +4681,8 @@ winview(const Arg* arg){
 
 	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
 		for(c = selmon->clients; c; c = c->next) {
+			if (c == selmon->overlay)
+				continue;
 			if (c->isfloating)
 				restorefloating(c);
 		}
