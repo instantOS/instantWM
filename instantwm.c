@@ -706,6 +706,8 @@ clientmessage(XEvent *e)
 				focus(NULL);
 			}
 			showoverlay();
+		} else if (c->tags == 1 << 20) {
+			togglescratchpad(NULL);
 		} else {
 			if (HIDDEN(c))
 				show(c);
@@ -861,6 +863,7 @@ createmon(void)
 	m->showbar = showbar;
 	m->topbar = topbar;
 	m->clientcount = 0;
+	m->scratchvisible = 0;
 	m->lt[0] = &layouts[3];
 	m->lt[1] = &layouts[0];
 	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
@@ -3390,6 +3393,8 @@ tag(const Arg *arg)
 {
 	int ui = computeprefix(arg);
 	if (selmon->sel && ui & TAGMASK) {
+		if (selmon->sel->tags == 1 << 20)
+			selmon->sel->issticky = 0;
 		selmon->sel->tags = ui & TAGMASK;
 		focus(NULL);
 		arrange(selmon);
@@ -3775,12 +3780,51 @@ toggletag(const Arg *arg)
 
 	if (!selmon->sel)
 		return;
+
+	if (selmon->sel->tags == 1 << 20) {
+		tag(arg);
+		return;
+	}
+
 	newtags = selmon->sel->tags ^ (ui & TAGMASK);
 	if (newtags) {
 		selmon->sel->tags = newtags;
 		focus(NULL);
 		arrange(selmon);
 	}
+}
+
+void togglescratchpad(const Arg *arg) {
+	Client *c;
+
+	if (selmon->scratchvisible)
+		selmon->scratchvisible = 0;
+	else
+		selmon->scratchvisible = 1;
+
+		for(c = selmon->clients; c; c = c->next) {
+			if (c->tags == 1 << 20)
+				c->issticky = selmon->scratchvisible;
+		}
+
+		arrange(selmon);
+		focus(NULL);
+}
+
+void createscratchpad(const Arg *arg) {
+	Client *c;
+	if (!selmon->sel)
+		return;
+	c = selmon->sel;
+
+	c->tags = 1 << 20;
+	c->issticky = selmon->scratchvisible;
+	if (!c->isfloating)
+		togglefloating(NULL);
+	else
+		arrange(selmon);
+	focus(NULL);
+
 }
 
 void
@@ -4363,7 +4407,8 @@ moveleft(const Arg *arg) {
 
 void
 animleft(const Arg *arg) {
-
+	if (selmon->pertag->curtag == 1)
+		return;
 	Client *c;
 	
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
@@ -4385,7 +4430,8 @@ animleft(const Arg *arg) {
 void
 animright(const Arg *arg) {
 	Client *c;
-
+	if (selmon->pertag->curtag >= 20)
+		return;
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
 		animateclient(selmon->sel, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
@@ -4406,7 +4452,8 @@ animright(const Arg *arg) {
 void
 viewtoleft(const Arg *arg) {
 	int i;
-
+	if (selmon->pertag->curtag == 1)
+		return;
 	if(__builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
 	&& selmon->tagset[selmon->seltags] > 1) {
 		selmon->seltags ^= 1; /* toggle sel tagset */
@@ -4483,6 +4530,9 @@ shiftview(const Arg *arg)
 void
 viewtoright(const Arg *arg) {
 	int i;
+
+	if (selmon->pertag->curtag == 20)
+		return;
 
 	if(__builtin_popcount(selmon->tagset[selmon->seltags] & TAGMASK) == 1
 	&& selmon->tagset[selmon->seltags] & (TAGMASK >> 1)) {
@@ -4596,6 +4646,8 @@ overtoggle(const Arg *arg){
 	Client *c;
 	c = selmon->sel;
 	unsigned int tmptag;
+	if (selmon->scratchvisible)
+		togglescratchpad(NULL);
 	if (!selmon->pertag->curtag == 0) {
 		tmptag = selmon->pertag->curtag;
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[6];
@@ -4695,7 +4747,16 @@ winview(const Arg* arg){
 	if (!(c = wintoclient(win))) return;
 
 	a.ui = c->tags;
-	view(&a);
+	if (c->tags == 1 << 20) {
+		if (selmon->pertag->curtag == 0) {
+			lastview(NULL);
+		}
+		if (!selmon->scratchvisible) {
+			togglescratchpad(NULL);
+		}
+	} else {
+		view(&a);
+	}
 }
 
 /* There's no way to check accesses to destroyed windows, thus those cases are

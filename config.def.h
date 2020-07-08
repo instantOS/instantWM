@@ -68,7 +68,7 @@ static const char *colors[][4] = {
 };
 
 /* tagging */
-static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20" };
+static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "s" };
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
@@ -276,12 +276,14 @@ static Key keys[] = {
 	{MODKEY|ControlMask, XK_k, pushup, {0} },
 	{MODKEY|Mod1Mask, XK_s, togglealttag, {0} },
 	{MODKEY|ShiftMask|Mod1Mask, XK_s, toggleanimated, {0} },
-	{MODKEY,                    XK_s,      togglesticky,   {0} },
+	{MODKEY|ControlMask,                    XK_s,      togglesticky,   {0} },
+	{MODKEY|ShiftMask,                    XK_s,      createscratchpad, {0}},
+	{MODKEY,                    XK_s, togglescratchpad, {0}},
 	{MODKEY|ShiftMask, XK_f, togglefakefullscreen, {0} },
 	{MODKEY | ShiftMask | Mod1Mask, XK_d, toggledoubledraw, {0} },
 	{MODKEY|ShiftMask, XK_w, warpfocus, {0} },
 	{MODKEY|Mod1Mask, XK_w, centerwindow, {0} },
-	{MODKEY|ShiftMask, XK_s, toggleshowtags, {0} },
+	{MODKEY|ShiftMask|ControlMask, XK_s, toggleshowtags, {0} },
 	{MODKEY, XK_i, incnmaster, {.i = +1}},
 	{MODKEY, XK_d, incnmaster, {.i = -1}},
 	{MODKEY, XK_h, setmfact, {.f = -0.05}},

@@ -133,6 +133,7 @@ struct Monitor {
 	Client *sel;
 	Client *overlay;
 	int overlaystatus;
+	int scratchvisible;
 	int gesture;
 	Client *stack;
 	Client *hoverclient;
@@ -281,6 +282,8 @@ void togglefloating(const Arg *arg);
 void togglesticky(const Arg *arg);
 void toggleprefix(const Arg *arg);
 void toggletag(const Arg *arg);
+void togglescratchpad(const Arg *arg);
+void createscratchpad(const Arg *arg);
 void toggleview(const Arg *arg);
 void hidewin(const Arg *arg);
 void redrawwin(const Arg *arg);

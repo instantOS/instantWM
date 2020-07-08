@@ -23,6 +23,7 @@
         "*.rh": "cpp",
         "memory_resource": "cpp",
         "*.inc": "c",
-        "iterator": "c"
+        "iterator": "c",
+        "new": "c"
     }
 }
