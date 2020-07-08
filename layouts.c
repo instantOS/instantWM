@@ -209,6 +209,8 @@ overviewlayout(Monitor *m)
 	wc.sibling = m->barwin;
 
 	for(c = m->clients; c; c = c->next) {
+		if (c == selmon->overlay)
+			continue;
 		if (c->isfloating)
 			savefloating(c);
 		resize(c,tmpx, tmpy, c->w, c->h, 0);

@@ -29,7 +29,12 @@ int allclientcount()
 {
 	int n;
 	Client *c;
-	for (n = 0, c = selmon->clients; c; c = c->next, n++);
+	n = 0;
+	for (c = selmon->clients; c; c = c->next) {
+		if (c == selmon->overlay)
+			continue;
+			n++;
+	}
 	return n;
 }
 
