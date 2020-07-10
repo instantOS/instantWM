@@ -356,7 +356,7 @@ static Key keys[] = {
 	{0, XF86XK_AudioNext, spawn, {.v = playernext}},
 	{0, XF86XK_AudioPrev, spawn, {.v = playerprevious}},
 
-	{0, XK_Print, spawn, {.v = fscrotcmd}},
+	{MODKEY|ShiftMask, XK_Print, spawn, {.v = fscrotcmd}},
 	{MODKEY, XK_Print, spawn, {.v = scrotcmd}},
 	{MODKEY|ControlMask, XK_Print, spawn, {.v = clipscrotcmd}},
 	{MODKEY|Mod1Mask, XK_Print, spawn, {.v = fclipscrotcmd}},

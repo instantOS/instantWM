@@ -3807,6 +3807,9 @@ toggletag(const Arg *arg)
 
 void togglescratchpad(const Arg *arg) {
 	Client *c;
+	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+		return;
+	}
 
 	if (selmon->scratchvisible)
 		selmon->scratchvisible = 0;
@@ -3814,8 +3817,11 @@ void togglescratchpad(const Arg *arg) {
 		selmon->scratchvisible = 1;
 
 		for(c = selmon->clients; c; c = c->next) {
-			if (c->tags == 1 << 20)
+			if (c->tags == 1 << 20) {
 				c->issticky = selmon->scratchvisible;
+				if (!c->isfloating)
+					c->isfloating = 1;
+			}
 		}
 
 		arrange(selmon);
