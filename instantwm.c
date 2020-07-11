@@ -4424,44 +4424,58 @@ moveleft(const Arg *arg) {
 
 void
 animleft(const Arg *arg) {
-	if (selmon->pertag->curtag == 1)
+	if (selmon->pertag->curtag == 1 || selmon->pertag->curtag == 0)
 		return;
+
 	Client *c;
-	
+	Client *tempc;
+	int tmpcounter = 0;
+
+	// windows like behaviour in floating layout
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBg].pixel);
 		animateclient(selmon->sel, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 		return;
 	}
-
-	if (!selmon->sel || clientcount() != 1) {
-		viewtoleft(arg);
-		return;
+	
+	for(tempc = selmon->clients; tempc; tempc = tempc->next) {
+		if (tempc->tags & 1 << selmon->pertag->curtag - 2 && !tempc->isfloating && selmon->pertag &&
+			selmon->pertag->ltidxs[selmon->pertag->curtag - 1][0]->arrange != NULL) {
+			if (!tmpcounter) {
+				tmpcounter = 1;
+				tempc->x = tempc->x - 200;
+			}
+		}
 	}
-	c = selmon->sel;
 
-	animateclient(c, c->x + 50, c->y, 0,0,6,1);
 	viewtoleft(arg);
 }
 
 void
 animright(const Arg *arg) {
-	Client *c;
-	if (selmon->pertag->curtag >= 20)
+	if (selmon->pertag->curtag >= 20 || selmon->pertag->curtag == 0)
 		return;
+
+	Client *c;
+	Client *tempc;
+	int tmpcounter = 0;
+
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
 		animateclient(selmon->sel, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 		return;
 	}
 
-	if (!selmon->sel || clientcount() != 1) {
-		viewtoright(arg);
-		return;
+	for(tempc = selmon->clients; tempc; tempc = tempc->next) {
+		if (tempc->tags & 1 << selmon->pertag->curtag && !tempc->isfloating && selmon->pertag &&
+			selmon->pertag->ltidxs[selmon->pertag->curtag + 1][0]->arrange != NULL) {
+			if (!tmpcounter) {
+				tmpcounter = 1;
+				tempc->x = tempc->x + 200;
+			}
+		}
 	}
-	c = selmon->sel;
 
-	animateclient(c, c->x - 50, c->y, 0,0,6,1);
 	viewtoright(arg);
 }
 
