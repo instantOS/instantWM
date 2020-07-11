@@ -330,6 +330,9 @@ tile(Monitor *m)
 			// client is in the master
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
 			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+			if (m->nmaster == 1 && n > 1) {
+				mw = c->w + c->bw * 2;
+			}
 			if (my + HEIGHT(c) < m->wh)
 				my += HEIGHT(c);
 		} else {
