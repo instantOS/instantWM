@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-./theme.sh "$1"
+# ./theme.sh "$1"
 
 make clean &>/dev/null
 

@@ -3458,7 +3458,7 @@ tagtoleft(const Arg *arg) {
 	oldx = c->x;
 	if (!c->isfloating && animated) {
 		XRaiseWindow(dpy,c->win);
-		animateclient(c, c->x - (c->w / 3), c->y, 0, 0, 10, 0);
+		animateclient(c, c->x - (selmon->mw / 10), c->y, 0, 0, 7, 0);
 	}
 
 	int offset = 1;
@@ -3489,7 +3489,7 @@ tagtoright(const Arg *arg) {
 	oldx = c->x;
 	if (!c->isfloating && animated) {
 		XRaiseWindow(dpy,c->win);
-		animateclient(c, c->x + (c->w/3), c->y, 0, 0, 10, 0);
+		animateclient(c, c->x + (selmon->mw/10), c->y, 0, 0, 7, 0);
 	}
 
 	int offset = 1;
