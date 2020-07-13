@@ -4437,13 +4437,14 @@ animleft(const Arg *arg) {
 		animateclient(selmon->sel, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 		return;
 	}
-	
-	for(tempc = selmon->clients; tempc; tempc = tempc->next) {
-		if (tempc->tags & 1 << selmon->pertag->curtag - 2 && !tempc->isfloating && selmon->pertag &&
-			selmon->pertag->ltidxs[selmon->pertag->curtag - 1][0]->arrange != NULL) {
-			if (!tmpcounter) {
-				tmpcounter = 1;
-				tempc->x = tempc->x - 200;
+	if (animated) {
+		for(tempc = selmon->clients; tempc; tempc = tempc->next) {
+			if (tempc->tags & 1 << selmon->pertag->curtag - 2 && !tempc->isfloating && selmon->pertag &&
+				selmon->pertag->ltidxs[selmon->pertag->curtag - 1][0]->arrange != NULL) {
+				if (!tmpcounter) {
+					tmpcounter = 1;
+					tempc->x = tempc->x - 200;
+				}
 			}
 		}
 	}
@@ -4466,12 +4467,14 @@ animright(const Arg *arg) {
 		return;
 	}
 
-	for(tempc = selmon->clients; tempc; tempc = tempc->next) {
-		if (tempc->tags & 1 << selmon->pertag->curtag && !tempc->isfloating && selmon->pertag &&
-			selmon->pertag->ltidxs[selmon->pertag->curtag + 1][0]->arrange != NULL) {
-			if (!tmpcounter) {
-				tmpcounter = 1;
-				tempc->x = tempc->x + 200;
+	if (animated) {
+		for(tempc = selmon->clients; tempc; tempc = tempc->next) {
+			if (tempc->tags & 1 << selmon->pertag->curtag && !tempc->isfloating && selmon->pertag &&
+				selmon->pertag->ltidxs[selmon->pertag->curtag + 1][0]->arrange != NULL) {
+				if (!tmpcounter) {
+					tmpcounter = 1;
+					tempc->x = tempc->x + 200;
+				}
 			}
 		}
 	}
