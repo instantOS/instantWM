@@ -266,6 +266,7 @@ void sigchld(int unused);
 void spawn(const Arg *arg);
 Monitor *systraytomon(Monitor *m);
 void tag(const Arg *arg);
+void tagall(const Arg *arg);
 void followtag(const Arg *arg);
 void followview(const Arg *arg);
 void tagmon(const Arg *arg);

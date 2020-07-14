@@ -2510,10 +2510,13 @@ dragtag(const Arg *arg)
 
 	if (!leftbar) {
 		if (ev.xmotion.x_root < selmon->mx + tagwidth) {
-			if (ev.xmotion.state & ShiftMask)
+			if (ev.xmotion.state & ShiftMask) {
 				followtag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
-			else
+			} else if (ev.xmotion.state & ControlMask) {
+				tagall(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+			} else {
 				tag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+			}
 		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
 			if (selmon->sel == selmon->overlay) {
 				setoverlay();
@@ -3401,6 +3404,27 @@ tag(const Arg *arg)
 		focus(NULL);
 		arrange(selmon);
 	}
+}
+
+void
+tagall(const Arg *arg)
+{
+	Client *c;
+	int ui = computeprefix(arg);
+	if (selmon->pertag->curtag == 0)
+		return;
+	if (selmon->sel && ui & TAGMASK) {
+		for(c = selmon->clients; c; c = c->next) {
+			if (!(c->tags & 1 << selmon->pertag->curtag - 1))
+				continue;
+			if (c->tags == 1 << 20)
+				c->issticky = 0;
+			c->tags = ui & TAGMASK;
+		}
+		focus(NULL);
+		arrange(selmon);
+	}
+
 }
 
 void followtag(const Arg *arg)
