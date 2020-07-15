@@ -147,6 +147,7 @@ static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "appmenu", NULL};
+static const char *controlcentercmd[] = { "instantsettings", NULL};
 static const char *pavucontrol[] = { "pavucontrol", NULL};
 static const char *instantsettings[] = { "instantsettings", NULL};
 static const char  *clickcmd[] = { "autoclicker", NULL };
@@ -303,6 +304,7 @@ static Key keys[] = {
 	{MODKEY|ShiftMask, XK_m, movemouse, {0}},
 	{MODKEY|Mod1Mask, XK_m, resizemouse, {0}},
 	{MODKEY, XK_c, setlayout, {.v = &layouts[1]}},
+	{MODKEY|ControlMask, XK_c, spawn, {.v = controlcentercmd}},
 
 	{MODKEY,                       XK_Left,   animleft,     {0}},
 	{MODKEY,                       XK_Right,  animright,    {0}},
