@@ -2095,6 +2095,7 @@ movemouse(const Arg *arg)
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
 			// snap to half of the screen like on gnome, right side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
+				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
@@ -2109,6 +2110,7 @@ movemouse(const Arg *arg)
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			// snap to half of the screen like on gnome, left side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
+				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 			} else {
@@ -4544,11 +4546,42 @@ void upkey(const Arg *arg) {
 	if (!selmon->sel)
 		return;
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
+		savefloating(selmon->sel);
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 		animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
 		return;
 	}
 	focusstack(arg);
+}
+
+void downkey(const Arg *arg) {
+	if (!selmon->sel)
+		return;
+	if (NULL == selmon->lt[selmon->sellt]->arrange) {
+		Client *c;
+		c = selmon->sel;
+		resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
+		return;
+	}
+	focusstack(arg);
+}
+
+void spacetoggle(const Arg *arg) {
+	if (NULL == selmon->lt[selmon->sellt]->arrange) {
+		if (!selmon->sel)
+			return;
+		Client *c;
+		c = selmon->sel;
+		if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 && c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
+			resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
+		} else {
+			savefloating(c);
+			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
+			animateclient(c, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
+		}
+	} else {
+		togglefloating(arg);
+	}
 }
 
 void
