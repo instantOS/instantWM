@@ -1181,9 +1181,9 @@ drawbar(Monitor *m)
 						drw_setscheme(drw, scheme[SchemeClose]);
 						if (selmon->gesture != 12) {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, (bh - 20) / 2, 20, 16);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2, 20, 16);
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, (bh - 20) / 2 + 16, 20, 4);
+							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2 + 16, 20, 4);
 						} else {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFg].pixel);
 							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, (bh - 20) / 2 - 2, 20, 16);
@@ -1193,9 +1193,9 @@ drawbar(Monitor *m)
 					} else {
 						drw_setscheme(drw, scheme[SchemeAddActive]);
 						XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, 4, 20, 16);
+						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, 4, 20, 16);
 						XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, 20, 20, 4);
+						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, 20, 20, 4);
 
 					}
 
