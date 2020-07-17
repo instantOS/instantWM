@@ -4546,19 +4546,35 @@ void upkey(const Arg *arg) {
 	if (!selmon->sel)
 		return;
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
-		savefloating(selmon->sel);
-		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
-		animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
+		Client *c;
+		c = selmon->sel;
+		if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 && c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
+			hide(c);
+		} else {
+			savefloating(c);
+			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
+			animateclient(c, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
+		}
 		return;
 	}
 	focusstack(arg);
 }
 
 void downkey(const Arg *arg) {
-	if (!selmon->sel)
-		return;
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
 		Client *c;
+
+		for (c = selmon->clients; c; c = c->next) {
+			if (ISVISIBLE(c) && HIDDEN(c)) {
+				show(c);
+				focus(c);
+				restack(selmon);
+				return;
+			}
+		}
+
+		if (!selmon->sel)
+			return;
 		c = selmon->sel;
 		resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
 		return;
