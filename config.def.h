@@ -129,7 +129,7 @@ static const Layout layouts[] = {
 /* commands */
 static char instantmenumon[2] = "0"; /* component of instantmenucmd, manipulated in spawn() */
 static const char *instantmenucmd[] = {"instantmenu_run", NULL};
-static const char *roficmd[] = {"rofi", "-sort", "-show", "run", NULL};
+static const char *smartcmd[] = {"instantmenu_smartrun", NULL};
 static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {"st", NULL};
 static const char *quickmenucmd[] = {"quickmenu", NULL};
@@ -213,7 +213,7 @@ static Key dkeys[] = {
 	{0, XK_minus, spawn, {.v = downvol} },
 	{0, XK_Tab, spawn, {.v = caretinstantswitchcmd} },
 	{0, XK_c, spawn, {.v = codecmd} },
-	{0, XK_y, spawn, {.v = roficmd} },
+	{0, XK_y, spawn, {.v = smartcmd} },
 
 	{0, XK_h,   viewtoleft,     {0}},
 	{0, XK_l,  viewtoright,    {0}},
@@ -257,7 +257,7 @@ static Key keys[] = {
 	{MODKEY | ControlMask, XK_w, createoverlay, {0} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
 	{MODKEY | ControlMask, XK_space, spawn, {.v = instantmenucmd}},
-	{MODKEY, XK_space, spawn, {.v = roficmd}},
+	{MODKEY, XK_space, spawn, {.v = smartcmd}},
 	{MODKEY, XK_minus, spawn, {.v = instantmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
 	{Mod1Mask, XK_Tab, spawn, {.v = iswitchcmd}},
@@ -402,7 +402,7 @@ static Button buttons[] = {
 	{ ClkRootWin,           MODKEY,         Button3,        spawn,          {.v = notifycmd } },
 	{ ClkRootWin,           0,              Button1,        spawn,          {.v = panther } },
 	{ ClkRootWin,           MODKEY,         Button1,        setoverlay,     {0} },
-	{ ClkRootWin,           0,              Button3,        spawn,          {.v = roficmd } },
+	{ ClkRootWin,           0,              Button3,        spawn,          {.v = smartcmd } },
 	{ ClkRootWin,           0,              Button5,        showoverlay,          {0} },
 	{ ClkRootWin,           0,              Button4,        hideoverlay,          {0} },
 	{ ClkRootWin,           0,              Button2,        spawn,          {.v = instantmenucmd } },
