@@ -266,6 +266,7 @@ void show(Client *c);
 void showhide(Client *c);
 void sigchld(int unused);
 void spawn(const Arg *arg);
+void clickstatus(const Arg *arg);
 Monitor *systraytomon(Monitor *m);
 void tag(const Arg *arg);
 void tagall(const Arg *arg);

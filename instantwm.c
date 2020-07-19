@@ -94,6 +94,9 @@ static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
 int animated = 1;
+
+int commandoffsets[10];
+
 int forceresize = 0;
 Monitor *selmon;
 
@@ -199,6 +202,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	width = w ? w : c->w;
 	height = h ? h : c->h;
 
+	// prevent oversizing when minimizing/unminimizing
 	if (width > selmon->mw - (2 * c->bw))
 		width = selmon->ww - (2 * c->bw);
 
@@ -954,9 +958,24 @@ dirtomon(int dir)
 	return m;
 }
 
+void clickstatus(const Arg *arg) {
+	int x, y, i;
+	getrootptr(&x, &y);
+	i = 0;
+	while (1) {
+		if (i > 19 || (commandoffsets[i] == -1) || (commandoffsets[i] == 0))
+			break;
+		if (x - selmon->mx < commandoffsets[i])
+			break;
+		i++;
+	}
+	fprintf(stderr, "\ncounter: %d, x: %d, offset: %d", i, x - selmon->mx, commandoffsets[i]);
+
+}
+
 int
 drawstatusbar(Monitor *m, int bh, char* stext) {
-	int ret, i, w, x, len;
+	int ret, i, w, x, len, cmdcounter, testi;
 	short isCode = 0;
 	char *text;
 	char *p;
@@ -1002,6 +1021,9 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 
 	/* process status text */
 	i = -1;
+	cmdcounter = 0;
+	fprintf(stderr, "\nnewbar:");
+
 	while (text[++i]) {
 		if (text[i] == '^' && !isCode) {
 			isCode = 1;
@@ -1034,6 +1056,11 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 					drw_rect(drw, rx + x, ry, rw, rh, 1, 0);
 				} else if (text[i] == 'f') {
 					x += atoi(text + ++i);
+				} else if (text[i] == 'o') {
+					if (cmdcounter <= 20) {
+						commandoffsets[cmdcounter] = x;
+						cmdcounter++;
+					}
 				}
 			}
 
@@ -1041,6 +1068,21 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 			i=-1;
 			isCode = 0;
 		}
+	}
+
+	if (cmdcounter < 20) {
+		if (cmdcounter == 0)
+			commandoffsets[0] = -1;
+		else
+			commandoffsets[cmdcounter + 1] = -1;
+	}
+
+	cmdcounter = 0;
+	while (1) {
+		if (cmdcounter > 19 || (commandoffsets[cmdcounter] == -1) || (commandoffsets[cmdcounter] == 0))
+			break;
+		fprintf(stderr, "testi: %d, ", commandoffsets[cmdcounter]);
+		cmdcounter++;
 	}
 
 	if (!isCode) {
