@@ -350,6 +350,8 @@ static Key keys[] = {
 	TAGKEYS(XK_7, 6)
 	TAGKEYS(XK_8, 7)
 	TAGKEYS(XK_9, 8){MODKEY | ShiftMask | ControlMask, XK_q, quit, {0}},
+        {0, XF86XK_MonBrightnessUp, spawn, {.v = upbright}},
+        {0, XF86XK_MonBrightnessDown, spawn, {.v = downbright}},
 	{0, XF86XK_AudioLowerVolume, spawn, {.v = downvol}},
 	{0, XF86XK_AudioMute, spawn, {.v = mutevol}},
 	{0, XF86XK_AudioRaiseVolume, spawn, {.v = upvol}},
