@@ -72,8 +72,8 @@ static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
-static const char *upvol[] = {"/opt/instantos/menus/ex/p.sh", "+5", NULL};
-static const char *downvol[] = {"/opt/instantos/menus/ex/p.sh", "-5", NULL};
+static const char *upvol[] = {"/opt/instantos/menus/ex/p.sh", "+", NULL};
+static const char *downvol[] = {"/opt/instantos/menus/ex/p.sh", "-", NULL};
 static const char *mutevol[] = {"/opt/instantos/menus/ex/p.sh", "m", NULL};
 
 static const char *upbright[] = {"/opt/instantos/menus/ex/b.sh", "+", NULL};
