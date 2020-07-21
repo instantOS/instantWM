@@ -1022,7 +1022,6 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 	/* process status text */
 	i = -1;
 	cmdcounter = 0;
-	fprintf(stderr, "\nnewbar:");
 
 	while (text[++i]) {
 		if (text[i] == '^' && !isCode) {

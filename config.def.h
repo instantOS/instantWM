@@ -397,6 +397,7 @@ static Button buttons[] = {
 	{ ClkStatusText,        MODKEY,         Button2,        spawn,          {.v = mutevol } },
 	{ ClkStatusText,        0,              Button1,        spawn,          {.v = panther } },
 	{ ClkStatusText,        MODKEY|ShiftMask,Button1,       spawn,          {.v = pavucontrol } },
+	{ ClkStatusText,        MODKEY|ControlMask,Button1,       spawn,          {.v = notifycmd } },
 	{ ClkStatusText,        MODKEY,         Button1,        spawn,           {.v = instantsettings } },
 	{ ClkStatusText,        MODKEY,         Button3,        spawn,          {.v = spoticli } },
 	{ ClkStatusText,        MODKEY,         Button4,        spawn,          {.v = upbright } },
