@@ -4021,6 +4021,8 @@ unmanage(Client *c, int destroyed)
 {
 	Monitor *m = c->mon;
 	XWindowChanges wc;
+	if (c == selmon->overlay)
+		selmon->overlay = NULL;
 
 	detach(c);
 	detachstack(c);
