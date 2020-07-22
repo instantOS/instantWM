@@ -3031,6 +3031,7 @@ run(void)
 
 void
 runAutostart(void) {
+	system("command -v instantautostart || { sleep 4 && notify-send 'instantutils missing, please install instantutils!!!'; } &");
 	system("instantautostart &");
 }
 
