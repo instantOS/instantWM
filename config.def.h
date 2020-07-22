@@ -72,12 +72,12 @@ static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
-static const char *upvol[] = {"/opt/instantos/menus/ex/p.sh", "+", NULL};
-static const char *downvol[] = {"/opt/instantos/menus/ex/p.sh", "-", NULL};
-static const char *mutevol[] = {"/opt/instantos/menus/ex/p.sh", "m", NULL};
+static const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
+static const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-", NULL};
+static const char *mutevol[] = {"/usr/share/instantassist/utils/p.sh", "m", NULL};
 
-static const char *upbright[] = {"/opt/instantos/menus/ex/b.sh", "+", NULL};
-static const char *downbright[] = {"/opt/instantos/menus/ex/b.sh", "-", NULL};
+static const char *upbright[] = {"/usr/share/instantassist/utils/b.sh", "+", NULL};
+static const char *downbright[] = {"/usr/share/instantassist/utils/b.sh", "-", NULL};
 
 static const Rule rules[] = {
 	/* xprop(1):
@@ -154,10 +154,10 @@ static const char  *clickcmd[] = { "autoclicker", NULL };
 static const char  *codecmd[] = { "code", NULL };
 static const char  *startmenucmd[] = { "instantstartmenu", NULL };
 
-static const char  *scrotcmd[] = { "/opt/instantos/menus/dm/ss.sh", NULL };
-static const char  *fscrotcmd[] = { "/opt/instantos/menus/dm/sm.sh", NULL };
-static const char  *clipscrotcmd[] = { "/opt/instantos/menus/dm/sc.sh", NULL };
-static const char  *fclipscrotcmd[] = { "/opt/instantos/menus/dm/sf.sh", NULL };
+static const char  *scrotcmd[] = { "/usr/share/instantassist/assists/s/s.sh", NULL };
+static const char  *fscrotcmd[] = { "/usr/share/instantassist/assists/s/m.sh", NULL };
+static const char  *clipscrotcmd[] = { "/usr/share/instantassist/assists/s/c.sh", NULL };
+static const char  *fclipscrotcmd[] = { "/usr/share/instantassist/assists/s/f.sh", NULL };
 
 static const char  *firefoxcmd[] = { "firefox", NULL };
 
