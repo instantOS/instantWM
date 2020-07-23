@@ -2266,11 +2266,14 @@ resizeborder(const Arg *arg) {
 		return;
 	
 	do {
-		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|KeyPressMask|SubstructureRedirectMask, &ev);
 		switch(ev.type) {
 		case ConfigureRequest:
 		case Expose:
 		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case KeyPress:
 			handler[ev.type](&ev);
 			break;
 		case MotionNotify:
