@@ -1875,6 +1875,10 @@ motionnotify(XEvent *e)
 
 	// leave small deactivator zone
 	if (ev->y_root >= bh - 3) {
+		// hover near floating sel
+		if (selmon->sel && selmon->sel->isfloating) {
+			resizeborder(NULL);			
+		}
 		// hover over right side of desktop for slider
 		if (ev->x_root > selmon->mx + selmon->mw - 50) {
 			if (!altcursor && ev->y_root > bh + 60) {
@@ -2251,9 +2255,12 @@ resizeborder(const Arg *arg) {
 	int x, y;
 	getrootptr(&x, &y);
 	c = selmon->sel;
-	if (y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w){
+
+	if ((y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) || 
+		y < c->y - 30 || x < c->x - 30 || y > c->y + c->h + 30 || x > c->x + c->w + 30){
 		return 1;
 	}
+
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 	None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
 		return;
