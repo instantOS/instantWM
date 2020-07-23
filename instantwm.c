@@ -1307,6 +1307,10 @@ enternotify(XEvent *e)
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
 	c = wintoclient(ev->window);
+	if (selmon->sel && selmon->sel->isfloating && c != selmon->sel && (ev->window == root || (c->tags & selmon->sel->tags && c->mon == selmon))) {
+		if (resizeborder(NULL))
+			return;
+	}
 	m = c ? c->mon : wintomon(ev->window);
 	if (m != selmon) {
 		unfocus(selmon->sel, 1);
@@ -2232,6 +2236,64 @@ gesturemouse(const Arg *arg)
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
+
+}
+
+// hover over the border to move/resize a window
+int
+resizeborder(const Arg *arg) {
+	if (!(selmon->sel && selmon->sel->isfloating))
+		return 0;
+	XEvent ev;
+	Time lasttime = 0;
+	Client *c;
+	int inborder = 1;
+	int x, y;
+	getrootptr(&x, &y);
+	c = selmon->sel;
+	if (y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w){
+		return 1;
+	}
+	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+	None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
+		return;
+	
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch(ev.type) {
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handler[ev.type](&ev);
+			break;
+		case MotionNotify:
+			x = ev.xmotion.x_root;
+			y = ev.xmotion.y_root;
+
+			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+				continue;
+			lasttime = ev.xmotion.time;
+			if ((y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w)) {
+				XUngrabPointer(dpy, CurrentTime);
+				return 1;
+			}
+			if (y < c->y - 30 || x < c->x - 30 || y > c->y + c->h + 30 || x > c->x + c->w + 30)
+				inborder = 0;
+			}
+	} while (ev.type != ButtonPress && inborder);
+	XUngrabPointer(dpy, CurrentTime);
+	if (ev.type == ButtonPress) {
+		if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
+			forcewarp(c);
+			movemouse(NULL);
+		} else {
+			resizemouse(NULL);
+		}
+
+		return 1;
+	} else {
+		return 0;
+	}
 
 }
 
@@ -3606,9 +3668,6 @@ togglesticky(const Arg *arg)
 }
 
 void toggleprefix(const Arg *arg) {
-	if (!tagprefix)
-		fprintf(stderr, "prefix");
-
 	tagprefix = 1;
 	drawbar(selmon);
 }

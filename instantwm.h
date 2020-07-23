@@ -225,6 +225,7 @@ void motionnotify(XEvent *e);
 void movemouse(const Arg *arg);
 void dragmouse(const Arg *arg);
 void gesturemouse(const Arg *arg);
+int resizeborder(const Arg *arg);
 void dragrightmouse(const Arg *arg);
 void drawwindow(const Arg *arg);
 void dragtag(const Arg *arg);
