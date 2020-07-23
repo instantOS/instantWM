@@ -1308,7 +1308,7 @@ enternotify(XEvent *e)
 		return;
 	c = wintoclient(ev->window);
 	if (selmon->sel && selmon->sel->isfloating && c != selmon->sel && (ev->window == root || (c->tags & selmon->sel->tags && c->mon == selmon))) {
-		if (resizeborder(NULL))
+		if (!resizeborder(NULL))
 			return;
 	}
 	m = c ? c->mon : wintomon(ev->window);
@@ -2299,10 +2299,9 @@ resizeborder(const Arg *arg) {
 		} else {
 			resizemouse(NULL);
 		}
-
-		return 1;
-	} else {
 		return 0;
+	} else {
+		return 1;
 	}
 
 }
