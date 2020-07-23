@@ -1875,9 +1875,18 @@ motionnotify(XEvent *e)
 
 	// leave small deactivator zone
 	if (ev->y_root >= bh - 3) {
-		// hover near floating sel
-		if (selmon->sel && selmon->sel->isfloating) {
-			resizeborder(NULL);			
+		// hover near floating sel, don't do it if desktop is covered
+ 		if (selmon->sel && selmon->sel->isfloating) {
+			Client *c;
+			int tilefound = 0;
+			for(c = m->clients; c; c = c->next) {
+				if (ISVISIBLE(c) && !c->isfloating) {
+					tilefound = 1;
+					break;
+				}
+			}
+			if (!tilefound)
+				resizeborder(NULL);			
 		}
 		// hover over right side of desktop for slider
 		if (ev->x_root > selmon->mx + selmon->mw - 50) {
@@ -2296,10 +2305,11 @@ resizeborder(const Arg *arg) {
 		if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
 			XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
 			movemouse(NULL);
+			return 0;
 		} else {
 			resizemouse(NULL);
+			return 1;
 		}
-		return 0;
 	} else {
 		return 1;
 	}
