@@ -2294,7 +2294,7 @@ resizeborder(const Arg *arg) {
 	XUngrabPointer(dpy, CurrentTime);
 	if (ev.type == ButtonPress) {
 		if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
-			forcewarp(c);
+			XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
 			movemouse(NULL);
 		} else {
 			resizemouse(NULL);
