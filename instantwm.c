@@ -2266,7 +2266,8 @@ resizeborder(const Arg *arg) {
 	getrootptr(&x, &y);
 	c = selmon->sel;
 
-	if ((y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) || 
+	if ((selmon->showbar && y < selmon->my + bh) ||
+		(y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) || 
 		y < c->y - 30 || x < c->x - 30 || y > c->y + c->h + 30 || x > c->x + c->w + 30){
 		return 1;
 	}
@@ -2293,7 +2294,7 @@ resizeborder(const Arg *arg) {
 			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
 				continue;
 			lasttime = ev.xmotion.time;
-			if ((y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w)) {
+			if ((y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) || (selmon->showbar && y < selmon->my + bh)) {
 				XUngrabPointer(dpy, CurrentTime);
 				return 1;
 			}
@@ -2306,11 +2307,10 @@ resizeborder(const Arg *arg) {
 		if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
 			XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
 			movemouse(NULL);
-			return 0;
 		} else {
 			resizemouse(NULL);
-			return 1;
 		}
+		return 0;
 	} else {
 		return 1;
 	}
