@@ -137,8 +137,8 @@ static const char *quickmenucmd[] = {"quickmenu", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *nautiluscmd[] = {"nautilus", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
+static const char *langswitchcmd[] = {"ilayout", NULL};
 static const char *oslockcmd[] = {"instantlock", "-o", NULL};
-static const char *slockmcmd[] = {"ilock", "message", NULL};
 static const char *helpcmd[] = {"instanthotkeys", "gui", NULL};
 static const char *iswitchcmd[] = {"iswitch", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", NULL};
@@ -266,7 +266,7 @@ static Key keys[] = {
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ControlMask, XK_h, hidewin, {0}},
 	{MODKEY | Mod1Mask | ControlMask, XK_h, unhideall, {0}},
-	{MODKEY | Mod1Mask | ControlMask, XK_l, spawn, {.v = slockmcmd}},
+	{MODKEY | Mod1Mask | ControlMask, XK_l, spawn, {.v = langswitchcmd}},
 	{MODKEY, XK_Return, spawn, {.v = termcmd}},
 	{MODKEY, XK_v, spawn, {.v = quickmenucmd}},
 	{MODKEY, XK_b, togglebar, {0}},
