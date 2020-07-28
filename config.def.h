@@ -145,6 +145,7 @@ static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-dow
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
 static const char *onboardcmd[] = {"onboard", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
+static const char *systemmonitorcmd[] = {"mate-system-monitor", NULL};
 static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = { "urxvt", "-e", "ranger", NULL };
 static const char *panther[] = { "appmenu", NULL};
@@ -248,6 +249,7 @@ static Key keys[] = {
 	{MODKEY|Mod1Mask,				XK_h,  	keyresize,	{.i = 3}},
 	{MODKEY|ControlMask,			XK_d,  	distributeclients,	{0}},
 	{MODKEY|ShiftMask,				XK_d,  	drawwindow,	{0}},
+	{MODKEY|ShiftMask,				XK_Escape,  	spawn,	{.v = systemmonitorcmd}},
 
 	{MODKEY, XK_r, spawn, {.v = rangercmd } },
 	{MODKEY|ControlMask|Mod1Mask, XK_r, redrawwin, {0} },
