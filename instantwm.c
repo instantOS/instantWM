@@ -45,6 +45,7 @@ static const char broken[] = "broken";
 static char stext[1024];
 
 static int showalttag = 0;
+static int freealttab = 0;
 
 static Client *lastclient;
 
@@ -1564,9 +1565,12 @@ grabkeys(void)
 		XUngrabKey(dpy, AnyKey, AnyModifier, root);
 		for (i = 0; i < LENGTH(keys); i++) {
 			if ((code = XKeysymToKeycode(dpy, keys[i].keysym)))
-				for (j = 0; j < LENGTH(modifiers); j++)
+				for (j = 0; j < LENGTH(modifiers); j++) {
+					if (freealttab && keys[i].mod == Mod1Mask)
+						continue;
 					XGrabKey(dpy, code, keys[i].mod | modifiers[j], root,
 						True, GrabModeAsync, GrabModeAsync);
+				}
 		}
 
 		if(!selmon->sel){
@@ -3675,6 +3679,14 @@ togglealttag(const Arg *arg)
 		drawbar(m);
 
 	tagwidth = gettagwidth();
+}
+
+void alttabfree(const Arg *arg) {
+	if (!freealttab)
+		freealttab = 1;
+	else
+		freealttab = 0;
+	grabkeys();
 }
 
 // make client show on all tags

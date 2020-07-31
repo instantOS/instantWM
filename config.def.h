@@ -266,6 +266,7 @@ static Key keys[] = {
 	{MODKEY, XK_minus, spawn, {.v = instantmenustcmd}},
 	{MODKEY, XK_x, spawn, {.v = instantswitchcmd}},
 	{Mod1Mask, XK_Tab, spawn, {.v = iswitchcmd}},
+	{MODKEY|Mod1Mask|ControlMask|ShiftMask, XK_Tab, alttabfree, {0}},
 	{MODKEY, XK_dead_circumflex, spawn, {.v = caretinstantswitchcmd}},
 	{MODKEY | ControlMask, XK_l, spawn, {.v = slockcmd}},
 	{MODKEY | ControlMask, XK_h, hidewin, {0}},
