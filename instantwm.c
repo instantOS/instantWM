@@ -3991,6 +3991,14 @@ void togglescratchpad(const Arg *arg) {
 
 		arrange(selmon);
 		focus(NULL);
+		focus(c);
+
+		for(c = selmon->clients; c; c = c->next) {
+			if (c->tags == 1 << 20) {
+				XRaiseWindow(dpy, c->win);
+			}
+		}
+
 }
 
 void createscratchpad(const Arg *arg) {
