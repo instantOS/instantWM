@@ -6,6 +6,7 @@
 
 # used for shutdown
 touch ~/.instantosrunning
+cd
 
 if ! command -v instantautostart &>/dev/null; then
     sleep 4
