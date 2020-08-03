@@ -119,12 +119,15 @@ keyrelease(XEvent *e) {
 
 int overlayexists() {
 	Client *c;
-
+	Monitor *m;
 	if (!selmon->overlay)
 		return 0;
-	for(c = selmon->clients; c; c = c->next) {
-		if (c == selmon->overlay) {
-			return 1;
+
+	for (m = mons; m; m = m->next) {
+		for(c = m->clients; c; c = c->next) {
+			if (c == m->overlay) {
+				return 1;
+			}
 		}
 	}
 
@@ -148,6 +151,7 @@ void createdesktop(){
 
 void
 createoverlay() {
+	Monitor *m;
 	if (!selmon->sel)
 		return;
 	if (selmon->sel == selmon->overlay) {
@@ -163,10 +167,13 @@ createoverlay() {
 
 	resetoverlay();
 
-	selmon->overlay = tempclient;
+	for (m = mons; m; m = m->next) {
+		m->overlay = tempclient;
+		m->overlaystatus = 0;
+	}
+
 	tempclient->bw = 0;
 	tempclient->islocked = 1;
-	selmon->overlaystatus = 0;
 	if (!selmon->overlay->isfloating) {
 		changefloating(selmon->overlay);
 	}
@@ -238,10 +245,14 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 
 void
 showoverlay() {
+	Monitor *m;
 	if (!overlayexists() || selmon->overlaystatus)
 		return;
 
-	selmon->overlaystatus = 1;
+	for (m = mons; m; m = m->next) {
+		m->overlaystatus = 1;
+	}
+
 	Client *c = selmon->overlay;
 
 	if (c->islocked) {
@@ -280,13 +291,17 @@ hideoverlay() {
 		return;
 
 	Client *c;
+	Monitor *m;
 	c = selmon->overlay;
 	c->issticky = 0;
 
 	if (c->islocked)
 		animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
 
-	selmon->overlaystatus = 0;
+	for (m = mons; m; m = m->next) {
+		m->overlaystatus = 0;
+	}
+
 	selmon->overlay->tags = 0;
 	focus(NULL);
 	arrange(selmon);
