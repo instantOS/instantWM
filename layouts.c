@@ -159,7 +159,7 @@ monocle(Monitor *m)
 		resize(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 0);
 	}
 
-	if (animated && selmon->sel) {
+	if (animated && selmon->sel && !selmon->sel->isfloating) {
 		c = selmon->sel;
 		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 7, 0);
 	}
