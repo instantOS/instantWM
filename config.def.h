@@ -136,6 +136,7 @@ static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {".config/instantos/default/terminal", NULL};
 static const char *quickmenucmd[] = {"quickmenu", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
+static const char *instantpacmancmd[] = {"instantpacman", NULL};
 static const char *nautiluscmd[] = {".config/instantos/default/filemanager", NULL};
 static const char *slockcmd[] = {"ilock", NULL};
 static const char *langswitchcmd[] = {"ilayout", NULL};
@@ -260,6 +261,7 @@ static Key keys[] = {
 	{MODKEY | ControlMask, XK_q, spawn, {.v = instantshutdowncmd } },
 	{MODKEY, XK_y, spawn, {.v = panther} },
 	{MODKEY, XK_a, spawn, {.v = instantassistcmd} },
+	{MODKEY|ControlMask, XK_i, spawn, {.v = instantpacmancmd} },
 	{MODKEY, XK_w, setoverlay, {0} },
 	{MODKEY | ControlMask, XK_w, createoverlay, {0} },
 	{MODKEY, XK_g, spawn, {.v = notifycmd} },
