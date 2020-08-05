@@ -152,14 +152,14 @@ void createdesktop(){
 void
 createoverlay() {
 	Monitor *m;
+	Monitor *tm;
 	if (!selmon->sel)
 		return;
 	if (selmon->sel == selmon->overlay) {
-		if (!selmon->overlay->isfloating) {
-			changefloating(selmon->overlay);
+		resetoverlay();
+		for (tm = mons; tm; tm = tm->next) {
+			tm->overlay = NULL;
 		}
-		resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
-		arrange(selmon);
 		return;
 	}
 
@@ -2460,7 +2460,12 @@ dragrightmouse(const Arg *arg)
 
 	if (tempc == selmon->overlay) {
 		focus(selmon->overlay);
-		createoverlay();
+		// reset overlay size
+		if (!selmon->overlay->isfloating) {
+			changefloating(selmon->overlay);
+		}
+		resize(selmon->overlay, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
+		arrange(selmon);
 	}
 
 	Client *c = selmon->sel;
