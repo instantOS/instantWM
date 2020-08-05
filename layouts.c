@@ -154,15 +154,14 @@ monocle(Monitor *m)
 	if (n > 0) /* override layout symbol */
 		snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%1u]", n);
 	for (c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
-		if (animated && c == selmon->sel)
+		if (animated && c == selmon->sel) {
+			animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 7, 0);
 			continue;
+		}
+			
 		resize(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 0);
 	}
 
-	if (animated && selmon->sel && !selmon->sel->isfloating) {
-		c = selmon->sel;
-		animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw, 7, 0);
-	}
 }
 
 void
