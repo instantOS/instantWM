@@ -53,8 +53,6 @@ static Client *lastclient;
 static char rawstext[256];
 static int dwmblockssig;
 pid_t dwmblockspid = 0;
-static int statuscmdn;
-static char lastbutton[] = "-";
 #endif
 
 static int tagprefix = 0;
@@ -533,9 +531,6 @@ buttonpress(XEvent *e)
 	Client *c;
 	Monitor *m;
 	XButtonPressedEvent *ev = &e->xbutton;
-	#ifndef NOBLOCKS
-	*lastbutton = '0' + ev->button;
-	#endif
 
 	click = ClkRootWin;
 	/* focus monitor if necessary */
@@ -579,17 +574,17 @@ buttonpress(XEvent *e)
 				char *text = rawstext;
 				int i = -1;
 				char ch;
-				statuscmdn = 0;
+				dwmblockssig = 0;
 				while (text[++i]) {
 					if ((unsigned char)text[i] < ' ') {
 						ch = text[i];
 						text[i] = '\0';
-						x += TEXTW(text) - lrpad;
+						x += TEXTW(text) - lrpad + 2;
 						text[i] = ch;
 						text += i+1;
 						i = -1;
 						if (x >= ev->x) break;
-						if (ch <= LENGTH(statuscmds)) statuscmdn = ch - 1;
+						dwmblockssig = ch;
 					}
 				}
 			#endif
@@ -3606,12 +3601,6 @@ spawn(const Arg *arg)
 {
 	if (arg->v == instantmenucmd)
 		instantmenumon[0] = '0' + selmon->num;
-	#ifndef NOBLOCKS
-	else if (arg->v == statuscmd) {
-		statuscmd[2] = statuscmds[statuscmdn];
-		setenv("BUTTON", lastbutton, 1);
-	}
-	#endif
 	if (fork() == 0) {
 		if (dpy)
 			close(ConnectionNumber(dpy));

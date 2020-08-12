@@ -172,10 +172,6 @@ static const char *playerprevious[] = { "playerctl", "previous", NULL};
 static const char *playerpause[] = { "playerctl", "play-pause", NULL};
 static const char *spoticli[] = { "spoticli", "m", NULL};
 
-/* commands spawned when clicking statusbar, the mouse button pressed is exported as BUTTON */
-static char *statuscmds[] = { "notify-send Mouse$BUTTON" };
-static char *statuscmd[] = { "/bin/sh", "-c", NULL, NULL };
-
 #include "push.c"
 
 ResourcePref resources[] = {
@@ -420,9 +416,12 @@ static Button buttons[] = {
 	{ ClkStatusText,        MODKEY,         Button4,        spawn,          {.v = upbright } },
 	{ ClkStatusText,        MODKEY,         Button5,        spawn,          {.v = downbright } },
 	#ifndef NOBLOCKS
-	{ ClkStatusText,        0,              Button1,        spawn,          {.v = statuscmd } },
-	{ ClkStatusText,        0,              Button2,        spawn,          {.v = statuscmd } },
-	{ ClkStatusText,        0,              Button3,        spawn,          {.v = statuscmd } },
+	{ ClkStatusText,        0,              Button1,        sigdwmblocks,   {.i = 1} },
+	{ ClkStatusText,        0,              Button2,        sigdwmblocks,   {.i = 2} },
+	{ ClkStatusText,        0,              Button3,        sigdwmblocks,   {.i = 3} },
+	{ ClkStatusText,        0,              Button4,        sigdwmblocks,   {.i = 4} },
+	{ ClkStatusText,        0,              Button5,        sigdwmblocks,   {.i = 5} },
+	{ ClkStatusText,        ShiftMask,      Button1,        sigdwmblocks,   {.i = 6} },
 	#endif
 	{ ClkRootWin,           MODKEY,         Button3,        spawn,          {.v = notifycmd } },
 	{ ClkRootWin,           0,              Button1,        spawn,          {.v = panther } },
