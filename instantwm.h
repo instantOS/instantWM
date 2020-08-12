@@ -357,6 +357,12 @@ void hideoverlay();
 void changefloating(Client *c);
 void resetbar();
 
+#ifndef NOBLOCKS
+static void copyvalidchars(char *text, char *rawtext);
+static int getdwmblockspid();
+static void sigdwmblocks(const Arg *arg);
+#endif
+
 extern Monitor *selmon;
 extern int bh;
 extern int animated;
