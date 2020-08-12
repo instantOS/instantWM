@@ -47,6 +47,7 @@ static char stext[1024];
 static int showalttag = 0;
 static int freealttab = 0;
 
+
 static Client *lastclient;
 
 static int tagprefix = 0;
@@ -2313,7 +2314,7 @@ resizeborder(const Arg *arg) {
 			lasttime = ev.xmotion.time;
 			if ((y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) || (selmon->showbar && y < selmon->my + bh)) {
 				XUngrabPointer(dpy, CurrentTime);
-				return 1;
+				return 0;
 			}
 			if (y < c->y - 30 || x < c->x - 30 || y > c->y + c->h + 30 || x > c->x + c->w + 30)
 				inborder = 0;
