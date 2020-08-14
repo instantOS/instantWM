@@ -166,6 +166,7 @@ static const char  *clipscrotcmd[] = { "/usr/share/instantassist/assists/s/c.sh"
 static const char  *fclipscrotcmd[] = { "/usr/share/instantassist/assists/s/f.sh", NULL };
 
 static const char  *firefoxcmd[] = { ".config/instantos/default/browser", NULL };
+static const char  *editorcmd[] = { ".config/instantos/default/editor", NULL };
 
 static const char *playernext[] = { "playerctl", "next", NULL};
 static const char *playerprevious[] = { "playerctl", "previous", NULL};
@@ -209,6 +210,7 @@ ResourcePref resources[] = {
 static Key dkeys[] = {
 	/* modifier                     key        function        argument */
 	{0, XK_r, spawn, {.v = rangercmd } },
+	{0, XK_e, spawn, {.v = editorcmd } },
 	{0, XK_n, spawn, {.v = nautiluscmd } },
 	{0, XK_space, spawn, {.v = panther} },
 	{0, XK_f, spawn, {.v = firefoxcmd} },
