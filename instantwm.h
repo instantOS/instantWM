@@ -277,6 +277,8 @@ void followview(const Arg *arg);
 void tagmon(const Arg *arg);
 void tagtoleft(const Arg *arg);
 void tagtoright(const Arg *arg);
+void uppress(const Arg *arg);
+void downpress(const Arg *arg);
 void togglealttag(const Arg *arg);
 void alttabfree(const Arg *arg);
 void toggleanimated(const Arg *arg);

@@ -179,7 +179,11 @@ createoverlay() {
 		changefloating(selmon->overlay);
 	}
 
-	selmon->overlay->h =((selmon->wh) / 3);
+    if (selmon->overlaymode == 0 || selmon->overlaymode == 2)
+	    selmon->overlay->h =((selmon->wh) / 3);
+    else
+        selmon->overlay->w = ((selmon->ww) / 3);
+
 	XRaiseWindow(dpy,tempclient->win);
 	showoverlay();
 }
@@ -257,11 +261,28 @@ showoverlay() {
 	Client *c = selmon->overlay;
 
 	if (c->islocked) {
-		if (selmon->showbar)
-			resize(c, selmon->mx + 20, bh - c->h, selmon->ww - 40, c->h, True);
-		else
-			resize(c, selmon->mx + 20, 0, selmon->ww - 40, c->h, True);
-	}
+            switch (selmon->overlaymode) {
+            case 0:
+                resize(c, selmon->mx + 20, (selmon->showbar ? bh : 0) - c->h,
+                    selmon->ww - 40, c->h, True);
+                break;
+            case 1:
+                resize(c, selmon->mx + selmon->mw - 20, 40, c->w, selmon->mh - 80,
+                    True);
+              break;
+            case 2:
+                resize(c, selmon->mx + 20, selmon->my + selmon->mh,
+                    selmon->ww - 40, c->h, True);
+              break;
+            case 3:
+                resize(c, selmon->mx - c->w + 20, 40, c->w, selmon->mh - 80,
+                    True);
+              break;
+            default:
+                selmon->overlaymode = 0;
+              break;
+            }
+        }
 
 	c->tags = selmon->tagset[selmon->seltags];
 
@@ -273,10 +294,23 @@ showoverlay() {
 	if (c->islocked)
 	{
 		XRaiseWindow(dpy, c->win);
-		if (selmon->showbar)
-			animateclient(c, c->x, bh, 0, 0, 15, 0);
-		else
-			animateclient(c, c->x, 0, 0, 0, 15, 0);
+        switch (selmon->overlaymode) {
+            case 0:
+			    animateclient(c, c->x, ( selmon->showbar ? bh : 0 ), 0, 0, 15, 0);
+                break;
+            case 1:
+                animateclient(c, selmon->mx + selmon->mw - c->w, 40, 0, 0, 15, 0);
+                break;
+            case 2:
+                animateclient(c, selmon->mx + 20, selmon->my + selmon->mh - c->h, 0, 0, 15, 0);
+                break;
+            case 3:
+                animateclient(c, selmon->mx, 40, 0, 0, 15, 0);
+                break;
+            default:
+                selmon->overlaymode = 0;
+                break;
+        }
 		c->issticky = 1;
 	}
 
@@ -296,8 +330,25 @@ hideoverlay() {
 	c = selmon->overlay;
 	c->issticky = 0;
 
-	if (c->islocked)
-		animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
+	if (c->islocked) {
+        switch (selmon->overlaymode) {
+        case 0:
+		    animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
+            break;
+        case 1:
+		    animateclient(c, selmon->mx + selmon->mw, selmon->mx + selmon->mw, 0, 0, 15, 0);
+            break;
+        case 2:
+		    animateclient(c, c->x, selmon->mh + selmon->my, 0, 0, 15, 0);
+            break;
+        case 3:
+		    animateclient(c, selmon->mx - c->w, 40, 0, 0, 15, 0);
+            break;
+        default:
+            selmon->overlaymode = 0;
+            break;
+        }
+    }
 
 	for (m = mons; m; m = m->next) {
 		m->overlaystatus = 0;
@@ -896,6 +947,7 @@ createmon(void)
 	m->showbar = showbar;
 	m->topbar = topbar;
 	m->clientcount = 0;
+    m->overlaymode = 0;
 	m->scratchvisible = 0;
 	m->lt[0] = &layouts[3];
 	m->lt[1] = &layouts[0];
@@ -3692,6 +3744,15 @@ tagtoleft(const Arg *arg) {
 	Client *c;
 	if (!selmon->sel)
 		return;
+
+    if (selmon->sel == selmon->overlay) {
+        selmon->overlaymode = 3;
+        selmon->overlay->w = selmon->ww / 3;
+        hideoverlay();
+        showoverlay();
+        return;
+    }
+
 	c = selmon->sel;
 	resetsticky(c);
 	oldx = c->x;
@@ -3715,6 +3776,45 @@ tagtoleft(const Arg *arg) {
 
 }
 
+void uppress(const Arg *arg)
+{
+    if (!selmon->sel)
+        return;
+    if (selmon->sel == selmon->overlay) {
+        selmon->overlaymode = 0;
+        selmon->overlay->h = selmon->mh / 3;
+        hideoverlay();
+        showoverlay();
+        return;
+    }
+    if (selmon->sel->isfloating) {
+        togglefloating(NULL);
+        return;
+    } else {
+        hide(selmon->sel);
+        return;
+    }
+}
+
+void downpress(const Arg *arg)
+{
+    if (unhideone())
+        return;
+    if (!selmon->sel)
+        return;
+    if (selmon->sel == selmon->overlay) {
+        selmon->overlaymode = 2;
+        selmon->overlay->h = selmon->mh / 3;
+        hideoverlay();
+        showoverlay();
+        return;
+    }
+    if (!selmon->sel->isfloating) {
+        togglefloating(NULL);
+        return;
+    }
+}
+
 void
 tagtoright(const Arg *arg) {
 
@@ -3723,6 +3823,14 @@ tagtoright(const Arg *arg) {
 
 	if (!selmon->sel)
 		return;
+
+    if (selmon->sel == selmon->overlay) {
+        selmon->overlaymode = 1;
+        selmon->overlay->w = selmon->ww / 3;
+        hideoverlay();
+        showoverlay();
+        return;
+    }
 	c = selmon->sel;
 	resetsticky(c);
 	oldx = c->x;
@@ -4791,6 +4899,20 @@ void upkey(const Arg *arg) {
 	focusstack(arg);
 }
 
+int unhideone()
+{
+    Client *c;
+    for (c = selmon->clients; c; c = c->next) {
+        if (ISVISIBLE(c) && HIDDEN(c)) {
+            show(c);
+            focus(c);
+            restack(selmon);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void downkey(const Arg *arg) {
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
 		Client *c;
@@ -4807,6 +4929,7 @@ void downkey(const Arg *arg) {
 		if (!selmon->sel)
 			return;
 		c = selmon->sel;
+        // unmaximize
 		resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
 		return;
 	}
