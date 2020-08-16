@@ -600,7 +600,13 @@ buttonpress(XEvent *e)
 	for (i = 0; i < LENGTH(buttons); i++)
 		if (click == buttons[i].click && buttons[i].func && buttons[i].button == ev->button
 		&& CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
-			buttons[i].func((click == ClkTagBar || click == ClkWinTitle || click == ClkCloseButton || click == ClkShutDown || click == ClkSideBar) && buttons[i].arg.i == 0 ? &arg : &buttons[i].arg);
+                  buttons[i].func((click == ClkTagBar || click == ClkWinTitle ||
+                                   click == ClkCloseButton ||
+                                   click == ClkShutDown ||
+                                   click == ClkSideBar) &&
+                                          buttons[i].arg.i == 0
+                                      ? &arg
+                                      : &buttons[i].arg);
 }
 
 void
@@ -700,12 +706,20 @@ clientmessage(XEvent *e)
 			/* use parents background color */
 			swa.background_pixel  = scheme[SchemeNorm][ColBg].pixel;
 			XChangeWindowAttributes(dpy, c->win, CWBackPixel, &swa);
-			sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime, XEMBED_EMBEDDED_NOTIFY, 0 , systray->win, XEMBED_EMBEDDED_VERSION);
-			/* FIXME not sure if I have to send these events, too */
-			sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime, XEMBED_FOCUS_IN, 0 , systray->win, XEMBED_EMBEDDED_VERSION);
-			sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime, XEMBED_WINDOW_ACTIVATE, 0 , systray->win, XEMBED_EMBEDDED_VERSION);
-			sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime, XEMBED_MODALITY_ON, 0 , systray->win, XEMBED_EMBEDDED_VERSION);
-			XSync(dpy, False);
+                        sendevent(c->win, netatom[Xembed], StructureNotifyMask,
+                                  CurrentTime, XEMBED_EMBEDDED_NOTIFY, 0,
+                                  systray->win, XEMBED_EMBEDDED_VERSION);
+                        /* FIXME not sure if I have to send these events, too */
+                        sendevent(c->win, netatom[Xembed], StructureNotifyMask,
+                                  CurrentTime, XEMBED_FOCUS_IN, 0, systray->win,
+                                  XEMBED_EMBEDDED_VERSION);
+                        sendevent(c->win, netatom[Xembed], StructureNotifyMask,
+                                  CurrentTime, XEMBED_WINDOW_ACTIVATE, 0,
+                                  systray->win, XEMBED_EMBEDDED_VERSION);
+                        sendevent(c->win, netatom[Xembed], StructureNotifyMask,
+                                  CurrentTime, XEMBED_MODALITY_ON, 0,
+                                  systray->win, XEMBED_EMBEDDED_VERSION);
+                        XSync(dpy, False);
 			resizebarwin(selmon);
 			updatesystray();
 			setclientstate(c, NormalState);
@@ -1200,9 +1214,10 @@ drawbar(Monitor *m)
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, roundw);
 
 		} else {
-				drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, drw->scheme == scheme[SchemeNorm] ? 0 : 4);
-
-		}
+                  drw_text(drw, x, 0, w, bh, lrpad / 2,
+                           (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i,
+                           drw->scheme == scheme[SchemeNorm] ? 0 : 4);
+                }
 		x += w;
 	}
 	w = blw = 60;
@@ -1288,10 +1303,19 @@ drawbar(Monitor *m)
 			drw_text(drw, x, 0, bh, bh, lrpad / 2, "", 0, 0);
 			// display help message if no application is opened
 			if (!selmon->clients) {
-				int titlewidth =
-					TEXTW("Press space to launch an application") < selmon->btw ? TEXTW("Press space to launch an application") : (selmon->btw - bh);
-				drw_text(drw, x + bh + ((selmon->btw - bh) - titlewidth + 1) / 2, 0, titlewidth, bh, 0, "Press space to launch an application", 0, 0);
-			}
+                          int titlewidth =
+                              TEXTW("Press space to launch an application") <
+                                      selmon->btw
+                                  ? TEXTW(
+                                        "Press space to launch an application")
+                                  : (selmon->btw - bh);
+                          drw_text(
+                              drw,
+                              x + bh +
+                                  ((selmon->btw - bh) - titlewidth + 1) / 2,
+                              0, titlewidth, bh, 0,
+                              "Press space to launch an application", 0, 0);
+                        }
 		}
 	}
 
@@ -1853,9 +1877,11 @@ maprequest(XEvent *e)
 	XMapRequestEvent *ev = &e->xmaprequest;
 	Client *i;
 	if ((i = wintosystrayicon(ev->window))) {
-		sendevent(i->win, netatom[Xembed], StructureNotifyMask, CurrentTime, XEMBED_WINDOW_ACTIVATE, 0, systray->win, XEMBED_EMBEDDED_VERSION);
-		resizebarwin(selmon);
-		updatesystray();
+          sendevent(i->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
+                    XEMBED_WINDOW_ACTIVATE, 0, systray->win,
+                    XEMBED_EMBEDDED_VERSION);
+          resizebarwin(selmon);
+          updatesystray();
 	}
 
 	if (!XGetWindowAttributes(dpy, ev->window, &wa))
@@ -1980,15 +2006,27 @@ motionnotify(XEvent *e)
 		} else {
 			// hover over resize widget
 			if (!altcursor) {
-				if (ev->x_root > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 && ev->x_root < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
-					XDefineCursor(dpy, root, cursor[CurResize]->cursor);
-					altcursor = 1;
-				}
-			} else if (ev->x_root < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 || ev->x_root > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
-				XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
-				altcursor = 0;
-			}
-		}
+                          if (ev->x_root >
+                                  selmon->activeoffset +
+                                      (1.0 / (double)selmon->bt) * selmon->btw -
+                                      30 &&
+                              ev->x_root < selmon->activeoffset +
+                                               (1.0 / (double)selmon->bt) *
+                                                   selmon->btw) {
+                            XDefineCursor(dpy, root, cursor[CurResize]->cursor);
+                            altcursor = 1;
+                          }
+                        } else if (ev->x_root < selmon->activeoffset +
+                                                    (1.0 / (double)selmon->bt) *
+                                                        selmon->btw -
+                                                    30 ||
+                                   ev->x_root > selmon->activeoffset +
+                                                    (1.0 / (double)selmon->bt) *
+                                                        selmon->btw) {
+                          XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+                          altcursor = 0;
+                        }
+                }
 
 		//indicator when hovering over clients
 		if (selmon->stack) {
@@ -2068,16 +2106,25 @@ movemouse(const Arg *arg)
 			nx = ocx + (ev.xmotion.x - x);
 			if (ev.xmotion.y_root > bh) {
 				ny = ocy + (ev.xmotion.y - y);
-				if ((ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) || (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw)) {
-					if (!colorclient) {
-						XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
-						colorclient = 1;
-					}
-				} else if (colorclient) {
-					colorclient = 0;
-					XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColFloat].pixel);
-				}
-			} else {
+                                if ((ev.xmotion.x_root < selmon->mx + 50 &&
+                                     ev.xmotion.x_root > selmon->mx - 1) ||
+                                    (ev.xmotion.x_root >
+                                         selmon->mx + selmon->mw - 50 &&
+                                     ev.xmotion.x_root <
+                                         selmon->mx + selmon->mw)) {
+                                  if (!colorclient) {
+                                    XSetWindowBorder(
+                                        dpy, selmon->sel->win,
+                                        scheme[SchemeAddActive][ColBg].pixel);
+                                    colorclient = 1;
+                                  }
+                                } else if (colorclient) {
+                                  colorclient = 0;
+                                  XSetWindowBorder(
+                                      dpy, selmon->sel->win,
+                                      scheme[SchemeSel][ColFloat].pixel);
+                                }
+                        } else {
 				ny = bh;
 				if (!colorclient) {
 					colorclient = 1;
@@ -2352,12 +2399,15 @@ dragmouse(const Arg *arg)
 		return;
 	if (!getrootptr(&x, &y))
 		return;
-	if (x > selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw - 30 && x < selmon->activeoffset + (1.0 / (double)selmon->bt) * selmon->btw) {
-		drawwindow(NULL);
-		return;
-	}
+        if (x > selmon->activeoffset +
+                    (1.0 / (double)selmon->bt) * selmon->btw - 30 &&
+            x < selmon->activeoffset +
+                    (1.0 / (double)selmon->bt) * selmon->btw) {
+          drawwindow(NULL);
+          return;
+        }
 
-	if (tempc == selmon->overlay) {
+        if (tempc == selmon->overlay) {
 		setoverlay();
 		return;
 	}
@@ -2404,10 +2454,14 @@ dragmouse(const Arg *arg)
 				startx = ev.xmotion.x_root;
 				sinit = 1;
 			} else {
-				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
-					dragging = 1;
-				if (starty > 10 && ev.xmotion.y_root == 0 && c->isfloating)
-					dragging = 1;
+                          if ((abs((starty - ev.xmotion.y_root) *
+                                   (starty - ev.xmotion.y_root)) +
+                               abs((startx - ev.xmotion.x_root) *
+                                   (startx - ev.xmotion.x_root))) > 4069)
+                            dragging = 1;
+                          if (starty > 10 && ev.xmotion.y_root == 0 &&
+                              c->isfloating)
+                            dragging = 1;
 			}
 		}
 	} while (ev.type != ButtonRelease && !dragging);
@@ -2494,10 +2548,14 @@ dragrightmouse(const Arg *arg)
 				startx = ev.xmotion.x_root;
 				sinit = 1;
 			} else {
-				if ((abs((starty - ev.xmotion.y_root) * (starty - ev.xmotion.y_root)) + abs((startx - ev.xmotion.x_root) * (startx - ev.xmotion.x_root))) > 4069)
-					dragging = 1;
-				if (starty > 10 && ev.xmotion.y_root == 0 && c->isfloating)
-					dragging = 1;
+                          if ((abs((starty - ev.xmotion.y_root) *
+                                   (starty - ev.xmotion.y_root)) +
+                               abs((startx - ev.xmotion.x_root) *
+                                   (startx - ev.xmotion.x_root))) > 4069)
+                            dragging = 1;
+                          if (starty > 10 && ev.xmotion.y_root == 0 &&
+                              c->isfloating)
+                            dragging = 1;
 			}
 			break;
 		}
@@ -4658,9 +4716,12 @@ animright(const Arg *arg) {
 	int tmpcounter = 0;
 
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
-		animateclient(selmon->sel, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
-		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
-		return;
+          animateclient(selmon->sel, selmon->mx + (selmon->mw / 2) + 2,
+                        selmon->my + bh + 2, (selmon->mw / 2) - 8,
+                        selmon->mh - bh - 8, 15, 0);
+          XSetWindowBorder(dpy, selmon->sel->win,
+                           scheme[SchemeSel][ColBorder].pixel);
+          return;
 	}
 
 	if (animated) {

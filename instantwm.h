@@ -133,6 +133,7 @@ struct Monitor {
 	Client *sel;
 	Client *overlay;
 	int overlaystatus;
+    int overlaymode;
 	int scratchvisible;
 	int gesture;
 	Client *stack;
