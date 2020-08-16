@@ -259,6 +259,7 @@ showoverlay() {
 	}
 
 	Client *c = selmon->overlay;
+    c->mon = selmon;
 
 	if (c->islocked) {
             switch (selmon->overlaymode) {
@@ -3737,6 +3738,27 @@ tagmon(const Arg *arg)
 	sendmon(selmon->sel, dirtomon(arg->i));
 }
 
+void setoverlaymode(int mode) {
+    Monitor *m;
+	for (m = mons; m; m = m->next) {
+        m->overlaymode = mode;
+    }
+
+    if ( !selmon->overlay )
+        return;
+
+    if (mode == 0 || mode == 2)
+        selmon->overlay->h = selmon->wh / 3;
+    else
+        selmon->overlay->w = selmon->ww / 3;
+
+    if (selmon->overlaystatus) {
+        hideoverlay();
+        showoverlay();
+    }
+
+}
+
 void
 tagtoleft(const Arg *arg) {
 
@@ -3746,10 +3768,7 @@ tagtoleft(const Arg *arg) {
 		return;
 
     if (selmon->sel == selmon->overlay) {
-        selmon->overlaymode = 3;
-        selmon->overlay->w = selmon->ww / 3;
-        hideoverlay();
-        showoverlay();
+        setoverlaymode(3);
         return;
     }
 
@@ -3781,10 +3800,7 @@ void uppress(const Arg *arg)
     if (!selmon->sel)
         return;
     if (selmon->sel == selmon->overlay) {
-        selmon->overlaymode = 0;
-        selmon->overlay->h = selmon->mh / 3;
-        hideoverlay();
-        showoverlay();
+        setoverlaymode(0);
         return;
     }
     if (selmon->sel->isfloating) {
@@ -3803,10 +3819,7 @@ void downpress(const Arg *arg)
     if (!selmon->sel)
         return;
     if (selmon->sel == selmon->overlay) {
-        selmon->overlaymode = 2;
-        selmon->overlay->h = selmon->mh / 3;
-        hideoverlay();
-        showoverlay();
+        setoverlaymode(2);
         return;
     }
     if (!selmon->sel->isfloating) {
@@ -3825,10 +3838,7 @@ tagtoright(const Arg *arg) {
 		return;
 
     if (selmon->sel == selmon->overlay) {
-        selmon->overlaymode = 1;
-        selmon->overlay->w = selmon->ww / 3;
-        hideoverlay();
-        showoverlay();
+        setoverlaymode(1);
         return;
     }
 	c = selmon->sel;
@@ -4901,6 +4911,8 @@ void upkey(const Arg *arg) {
 
 int unhideone()
 {
+    if (selmon->sel && selmon->sel == selmon->overlay)
+        return 0;
     Client *c;
     for (c = selmon->clients; c; c = c->next) {
         if (ISVISIBLE(c) && HIDDEN(c)) {
