@@ -2392,7 +2392,7 @@ resizeborder(const Arg *arg) {
 
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 	None, cursor[CurResize]->cursor, CurrentTime) != GrabSuccess)
-		return;
+		return 0;
 	
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|KeyPressMask|SubstructureRedirectMask, &ev);

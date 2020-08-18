@@ -199,7 +199,7 @@ overviewlayout(Monitor *m)
 	XWindowChanges wc;
 	n = allclientcount();
 
- 	if (n == 0)
+	if (n == 0)
 		return;
 
 	gridwidth = 1;
@@ -216,6 +216,8 @@ overviewlayout(Monitor *m)
 	wc.sibling = m->barwin;
 
 	for(c = m->clients; c; c = c->next) {
+        if (HIDDEN(c))
+            continue;
 		if (c == selmon->overlay)
 			continue;
 		if (c->isfloating)
