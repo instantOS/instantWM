@@ -2550,6 +2550,32 @@ dragmouse(const Arg *arg)
 
 }
 
+void resetoverlaysize()
+{
+   if (!selmon->overlay)
+       return;
+   Client *c;
+   c = selmon->overlay;
+   selmon->overlay->isfloating = 1;
+   switch (selmon->overlaymode) {
+        case 0:
+		    resize(c, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
+            break;
+        case 1:
+            resize(c, selmon->mx + selmon->mw - c->w, 40,selmon->mw / 3, selmon->mh - 80, True);
+            break;
+        case 2:
+		    resize(c, selmon->mx + 20, selmon->my + selmon->mh - c->h, selmon->ww - 40, (selmon->wh) / 3, True);
+            break;
+        case 3:
+            resize(c, selmon->mx, 40,selmon->mw / 3, selmon->mh - 80, True);
+            break;
+        default:
+            selmon->overlaymode = 0;
+            break;
+   }
+}
+
 // drag on the top bar with the right mouse
 void
 dragrightmouse(const Arg *arg)
@@ -2572,7 +2598,7 @@ dragrightmouse(const Arg *arg)
 		if (!selmon->overlay->isfloating) {
 			changefloating(selmon->overlay);
 		}
-		resize(selmon->overlay, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
+        resetoverlaysize();
 		arrange(selmon);
 	}
 
@@ -2620,7 +2646,22 @@ dragrightmouse(const Arg *arg)
 			restack(selmon);
 		}
 		if (tempc == selmon->overlay) {
-			XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + (tempc->w / 2), tempc->y + tempc->h);
+            switch (selmon->overlaymode) {
+                case 0:
+			        XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + (tempc->w / 2), tempc->y + tempc->h);
+                    break;
+                case 1:
+			        XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x, tempc->y + tempc->h / 2);
+                    break;
+                case 2:
+			        XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + (tempc->w / 2), tempc->y);
+                    break;
+                case 3:
+			        XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + tempc->h, tempc->y + tempc->h / 2);
+                    break;
+                default:
+                    break;
+            }
 		} else {
 			XWarpPointer(dpy, None, root, 0, 0, 0, 0, tempc->x + tempc->w, tempc->y + tempc->h);
 		}
