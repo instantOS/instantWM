@@ -5163,6 +5163,13 @@ overtoggle(const Arg *arg){
 	Client *c;
 	c = selmon->sel;
 	unsigned int tmptag;
+
+    if (clientcount() == 0) {
+        if (selmon->pertag->curtag == 0)
+            lastview(NULL);
+        return;
+    }
+
 	if (selmon->scratchvisible)
 		togglescratchpad(NULL);
 	if (!selmon->pertag->curtag == 0) {
