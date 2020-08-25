@@ -3808,6 +3808,10 @@ tagtoleft(const Arg *arg) {
 
 	int oldx;
 	Client *c;
+
+	if (selmon->pertag->curtag == 1)
+		return;
+
 	if (!selmon->sel)
 		return;
 
@@ -3877,6 +3881,9 @@ tagtoright(const Arg *arg) {
 
 	int oldx;
 	Client *c;
+
+	if (selmon->pertag->curtag == 20)
+		return;
 
 	if (!selmon->sel)
 		return;
