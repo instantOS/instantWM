@@ -5171,7 +5171,7 @@ overtoggle(const Arg *arg){
 	c = selmon->sel;
 	unsigned int tmptag;
 
-    if (clientcount() == 0) {
+    if (!selmon->clients) {
         if (selmon->pertag->curtag == 0)
             lastview(NULL);
         return;
@@ -5179,33 +5179,33 @@ overtoggle(const Arg *arg){
 
 	if (selmon->scratchvisible)
 		togglescratchpad(NULL);
-	if (!selmon->pertag->curtag == 0) {
+	if (selmon->pertag->curtag == 0) {
+		tmptag = selmon->pertag->prevtag;
+		winview(NULL);
+	} else {
 		tmptag = selmon->pertag->curtag;
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[6];
 		view(arg);
 		if (selmon->lt[selmon->sellt] != (Layout *)&layouts[6] )
 			setlayout(&((Arg) { .v = &layouts[6] }));
 		focus(c);
-	} else {
-		tmptag = selmon->pertag->prevtag;
-		winview(NULL);
 	}
 	selmon->pertag->prevtag = tmptag;
 }
 
 void
 lastview(const Arg *arg) {
-	view(&((Arg) { .ui = 1 << selmon->pertag->prevtag -1 }));
+	view(&((Arg) { .ui = 1 << ( selmon->pertag->prevtag -1 ) }));
 }
 
 // overtoggle but with monocle layout
 void
 fullovertoggle(const Arg *arg){
-	if (!selmon->pertag->curtag == 0) {
+	if (selmon->pertag->curtag == 0) {
+		winview(NULL);
+	} else {
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[3];
 		view(arg);
-	} else {
-		winview(NULL);
 	}
 }
 
