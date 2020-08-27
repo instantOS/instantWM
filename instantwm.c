@@ -5171,7 +5171,7 @@ overtoggle(const Arg *arg){
 	c = selmon->sel;
 	unsigned int tmptag;
 
-    if (!selmon->clients) {
+    if (!selmon->clients || (selmon->clients == selmon->overlay && !selmon->overlay->next)) {
         if (selmon->pertag->curtag == 0)
             lastview(NULL);
         return;
