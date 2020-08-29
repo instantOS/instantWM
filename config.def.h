@@ -89,6 +89,7 @@ static const Rule rules[] = {
 	{"Onboard", NULL,     NULL,       0,                1,           -1},
 	{"floatmenu", NULL,     NULL,        0,            1,           -1},
 	{"Welcome.py", NULL,     NULL,        0,            1,           -1},
+	{"Pamac-installer", NULL,     NULL,        0,            1,           -1},
 	{"xpad", NULL,     NULL,        0,            1,           -1},
 	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
 };
