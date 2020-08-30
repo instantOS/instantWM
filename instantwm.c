@@ -450,6 +450,13 @@ applyrules(Client *c)
                     c->isfloating = 1;
                     centerwindow();
                     break;;
+                case 3:
+                    selmon->sel = c;
+                    c->isfloating = 1;
+                    c->w = c->mon->mw;
+                    c->h = c->mon->mh;
+                    centerwindow();
+                    break;;
                 case 1:
                     c->isfloating = 1;
                 case 0:
