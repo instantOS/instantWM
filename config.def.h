@@ -91,6 +91,9 @@ static const Rule rules[] = {
 	{"Welcome.py", NULL,     NULL,        0,            1,           -1},
 	{"Pamac-installer", NULL,     NULL,        0,            1,           -1},
 	{"xpad", NULL,     NULL,        0,            1,           -1},
+	{"instantfloat", NULL,     NULL,        0,            2,           -1},
+	{"org-wellkord-globonote-Main", NULL,     NULL,        0,            1,           -1},
+	{"Peek", NULL,     NULL,        0,            1,           -1},
 	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
 };
 

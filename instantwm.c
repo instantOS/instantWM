@@ -444,7 +444,18 @@ applyrules(Client *c)
 				c->issticky=1;
 			}
 
-			c->isfloating = r->isfloating;
+            switch (r->isfloating) {
+                case 2:
+                    selmon->sel = c;
+                    c->isfloating = 1;
+                    centerwindow();
+                    break;;
+                case 1:
+                    c->isfloating = 1;
+                case 0:
+                    c->isfloating = 0;
+            }
+
 			c->tags |= r->tags;
 			for (m = mons; m && m->num != r->monitor; m = m->next);
 			if (m)
