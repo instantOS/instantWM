@@ -459,8 +459,10 @@ applyrules(Client *c)
                     break;;
                 case 1:
                     c->isfloating = 1;
+                    break;;
                 case 0:
                     c->isfloating = 0;
+                    break;;
             }
 
 			c->tags |= r->tags;
