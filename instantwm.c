@@ -1987,7 +1987,8 @@ motionnotify(XEvent *e)
 		tagwidth = gettagwidth();
 
 	// detect mouse hovering over other monitor
-	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
+    m = recttomon(ev->x_root, ev->y_root, 1, 1);
+    if (m && m != selmon) {
 		unfocus(selmon->sel, 1);
 		selmon = m;
 		focus(NULL);
