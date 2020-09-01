@@ -157,7 +157,7 @@ void tempfullscreen() {
         c = selmon->fullscreen;
         if (c->isfloating) {
             restorefloating(c);
-            resize(c, c->x + 1, c->y, c->w, c->h, 0);
+            applysize(c);
         }
         selmon->fullscreen = NULL;
     } else {
@@ -183,6 +183,8 @@ createoverlay() {
 	Monitor *tm;
 	if (!selmon->sel)
 		return;
+    if (selmon->sel == selmon->fullscreen)
+        tempfullscreen();
 	if (selmon->sel == selmon->overlay) {
 		resetoverlay();
 		for (tm = mons; tm; tm = tm->next) {
@@ -357,7 +359,8 @@ hideoverlay() {
 	Monitor *m;
 	c = selmon->overlay;
 	c->issticky = 0;
-
+    if (c == selmon->fullscreen)
+        tempfullscreen();
 	if (c->islocked) {
         switch (selmon->overlaymode) {
         case 0:
@@ -595,7 +598,7 @@ arrangemon(Monitor *m)
 
 	if (m == selmon)
 		selmon->clientcount = clientcount();
-    if (m->fullscreen) {
+    if (m->fullscreen && selmon->pertag->curtag != 0) {
         tbw = selmon->fullscreen->bw;
         if (m->fullscreen->isfloating)
             savefloating(selmon->fullscreen);
@@ -2193,6 +2196,11 @@ movemouse(const Arg *arg)
 	if (c->isfullscreen && !c->isfakefullscreen) /* no support moving fullscreen windows by mouse */
 		return;
 
+    if (c == selmon->fullscreen) {
+        tempfullscreen();
+        return;
+    }
+
 	restack(selmon);
 	ocx = c->x;
 	ocy = c->y;
@@ -3066,6 +3074,11 @@ resizemouse(const Arg *arg)
 	if (!(c = selmon->sel))
 		return;
 
+    if (c == selmon->fullscreen) {
+        tempfullscreen();
+        return;
+    }
+
 	if (c->isfullscreen && !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse */
 		return;
 
@@ -3074,6 +3087,7 @@ resizemouse(const Arg *arg)
 	ocy = c->y;
 	ocx2 = c->x + c->w;
 	ocy2 = c->y + c->h;
+
 	if (!XQueryPointer (dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
 	       return;
 
@@ -4203,6 +4217,10 @@ void restorefloating(Client *c) {
 	c->y = c->sfy;
 	c->w = c->sfw;
 	c->h = c->sfh;
+}
+
+void applysize(Client *c) {
+    resize(c, c->x + 1, c->y, c->w, c->h, 0);
 }
 
 void
