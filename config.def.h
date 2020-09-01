@@ -302,6 +302,7 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,                    XK_s,      createscratchpad, {0}},
 	{MODKEY,                    XK_s, togglescratchpad, {0}},
 	{MODKEY|ShiftMask, XK_f, togglefakefullscreen, {0} },
+	{MODKEY|ControlMask, XK_f, tempfullscreen, {0} },
 	{MODKEY | ShiftMask | Mod1Mask, XK_d, toggledoubledraw, {0} },
 	{MODKEY|ShiftMask, XK_w, warpfocus, {0} },
 	{MODKEY|Mod1Mask, XK_w, centerwindow, {0} },

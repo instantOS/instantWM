@@ -151,6 +151,32 @@ void createdesktop(){
 	}
 }
 
+void tempfullscreen() {
+    Client *c;
+    if (selmon->fullscreen) {
+        c = selmon->fullscreen;
+        if (c->isfloating) {
+            restorefloating(c);
+            resize(c, c->x + 1, c->y, c->w, c->h, 0);
+        }
+        selmon->fullscreen = NULL;
+    } else {
+        if (!selmon->sel)
+            return;
+        selmon->fullscreen = selmon->sel;
+        if (selmon->sel->isfloating)
+            savefloating(selmon->fullscreen);
+    }
+
+    if (animated) {
+        animated = 0;
+        arrange(selmon);
+        animated = 1;
+    } else {
+        arrange(selmon);
+    }
+}
+
 void
 createoverlay() {
 	Monitor *m;
@@ -554,19 +580,28 @@ arrange(Monitor *m)
 	if (m) {
 		arrangemon(m);
 		restack(m);
-	} else for (m = mons; m; m = m->next)
+    } else for (m = mons; m; m = m->next) {
 		arrangemon(m);
+    }
 }
 
 void
 arrangemon(Monitor *m)
 {
+    int tbw;
 	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
 	if (m->lt[m->sellt]->arrange)
 		m->lt[m->sellt]->arrange(m);
 
 	if (m == selmon)
 		selmon->clientcount = clientcount();
+    if (m->fullscreen) {
+        tbw = selmon->fullscreen->bw;
+        if (m->fullscreen->isfloating)
+            savefloating(selmon->fullscreen);
+        resize(m->fullscreen, m->mx, m->my + ( m->showbar * bh ), m->mw - (tbw * 2), m->mh - ( m->showbar * bh ) - (tbw * 2), 0);
+    }
+
 }
 
 void

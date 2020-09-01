@@ -132,6 +132,7 @@ struct Monitor {
 	Client *clients;
 	Client *sel;
 	Client *overlay;
+	Client *fullscreen;
 	int overlaystatus;
     int overlaymode;
 	int scratchvisible;
@@ -351,6 +352,7 @@ void setoverlay();
 void desktopset();
 void createdesktop();
 void createoverlay();
+void tempfullscreen();
 void shiftview(const Arg *arg);
 void focuslastclient(const Arg *arg);
 
