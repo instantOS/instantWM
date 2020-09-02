@@ -167,35 +167,34 @@ void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     switch (c->snapstatus) {
         case 0:
-            restorefloating(c);
-            applysize(c);
+            animateclient(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
             break;
         case 1:
-            resize(c, m->mx, mony, m->mw, m->mh / 2, 0);
+            animateclient(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
             break;
         case 2:
-            resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 0);
+            animateclient(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 3:
-            resize(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2, m->wh - c->bw * 2, 0);
+            animateclient(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2, m->wh - c->bw * 2, 7, 0);
             break;
         case 4:
-            resize(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->wh / 2, 0);
+            animateclient(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
             break;
         case 5:
-            resize(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 0);
+            animateclient(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 7, 0);
             break;
         case 6:
-            resize(c, m->mx, mony + m->mh / 2, m->mw / 2, m->wh / 2, 0);
+            animateclient(c, m->mx, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
             break;
         case 7:
-            resize(c, m->mx, mony, m->mw / 2, m->wh, 0);
+            animateclient(c, m->mx, mony, m->mw / 2, m->wh, 7, 0);
             break;
         case 8:
-            resize(c, m->mx, mony, m->mw / 2, m->mh / 2, 0);
+            animateclient(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 9:
-            resize(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 0);
+            animateclient(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
             break;
         default:
             break;
@@ -2438,6 +2437,12 @@ movemouse(const Arg *arg)
 			// snap to half of the screen like on gnome, right side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
+
+                c->sfh = c->h;
+                c->sfw = c->w;
+                c->sfx = ocx;
+                c->sfy = ocy;
+
                 if (ev.xmotion.y_root < selmon->my + selmon->mh / 7)
                     c->snapstatus = 2;
                 else if (ev.xmotion.y_root > selmon->my + 6 * (selmon->mh / 7))
@@ -2458,7 +2463,18 @@ movemouse(const Arg *arg)
 			// snap to half of the screen like on gnome, left side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
-                c->snapstatus = 7;
+
+                c->sfh = c->h;
+                c->sfw = c->w;
+                c->sfx = ocx;
+                c->sfy = ocy;
+
+                if (ev.xmotion.y_root < selmon->my + selmon->mh / 7)
+                    c->snapstatus = 8;
+                else if (ev.xmotion.y_root > selmon->my + 6 * (selmon->mh / 7))
+                    c->snapstatus = 6;
+                else
+                    c->snapstatus = 7;
                 applysnap(c, c->mon);
 			} else {
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
