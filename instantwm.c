@@ -600,7 +600,7 @@ arrangemon(Monitor *m)
 
 	if (m == selmon)
 		selmon->clientcount = clientcount();
-    if (m->fullscreen && selmon->pertag->curtag != 0) {
+    if (m->fullscreen) {
         tbw = selmon->fullscreen->bw;
         if (m->fullscreen->isfloating)
             savefloating(selmon->fullscreen);
@@ -5261,6 +5261,8 @@ overtoggle(const Arg *arg){
 
 	if (selmon->scratchvisible)
 		togglescratchpad(NULL);
+	if (selmon->fullscreen)
+        tempfullscreen();
 	if (selmon->pertag->curtag == 0) {
 		tmptag = selmon->pertag->prevtag;
 		winview(NULL);
