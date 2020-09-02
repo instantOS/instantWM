@@ -41,6 +41,64 @@ bstack(Monitor *m) {
 	}
 }
 
+
+/*
+ * Different ids for snapping positions
+ *
+ *    ##################################
+ *    # 8             1              2 # 
+ *    #                                # 
+ *    #                                # 
+ *    #                                # 
+ *    # 7             9              3 # 
+ *    #                                # 
+ *    #                                # 
+ *    # 6             5              4 # 
+ *    ##################################
+ *
+ * */
+
+void floatl(Monitor *m) {
+    Client *c;
+    for(c = m->clients; c; c = c->next) {
+        if (!(ISVISIBLE(c)))
+            continue;
+        switch (c->snapstatus) {
+            case 1:
+                resize(c, m->mx, m->my, m->mw, m->mh / 2, 0);
+                break;
+            case 2:
+                resize(c, m->mx + m->mw / 2, m->my, m->mw / 2, m->mh / 2, 0);
+                break;
+            case 3:
+                resize(c, m->mx + m->mw / 2, m->my, m->mw / 2, m->mh, 0);
+                break;
+            case 4:
+                resize(c, m->mx + m->mw / 2, m->my + m->mh / 2, m->mw / 2, m->mh / 2, 0);
+                break;
+            case 5:
+                resize(c, m->mx, m->my + m->mh / 2, m->mw, m->mh / 2, 0);
+                break;
+            case 6:
+                resize(c, m->mx, m->my + m->mh / 2, m->mw / 2, m->mh / 2, 0);
+                break;
+            case 7:
+                resize(c, m->mx, m->my, m->mw / 2, m->mh, 0);
+                break;
+            case 8:
+                resize(c, m->mx, m->my, m->mw / 2, m->mh / 2, 0);
+                break;
+            case 9:
+                resize(c, m->mx, m->my, m->mw, m->mh, 0);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+
+
 void
 bstackhoriz(Monitor *m) {
 	int w, mh, mx, tx, ty, th, framecount;
