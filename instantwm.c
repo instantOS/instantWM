@@ -4889,7 +4889,7 @@ view(const Arg *arg)
 	int ui = computeprefix(arg);
 	int i;
     
-    if (selmon->tagset[0] == 1 << ui)
+    if (selmon->tagset[selmon->seltags] == 1 << ( ui - 1 ))
         return;
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
@@ -4931,8 +4931,6 @@ moveleft(const Arg *arg) {
 
 void
 animleft(const Arg *arg) {
-	if (selmon->pertag->curtag == 1 || selmon->pertag->curtag == 0)
-		return;
 
 	Client *c;
 	Client *tempc;
@@ -4944,6 +4942,10 @@ animleft(const Arg *arg) {
 		animateclient(selmon->sel, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
 		return;
 	}
+
+	if (selmon->pertag->curtag == 1 || selmon->pertag->curtag == 0)
+		return;
+
 	if (animated) {
 		for(tempc = selmon->clients; tempc; tempc = tempc->next) {
 			if (tempc->tags & 1 << selmon->pertag->curtag - 2 && !tempc->isfloating && selmon->pertag &&
@@ -4961,8 +4963,6 @@ animleft(const Arg *arg) {
 
 void
 animright(const Arg *arg) {
-	if (selmon->pertag->curtag >= 20 || selmon->pertag->curtag == 0)
-		return;
 
 	Client *c;
 	Client *tempc;
@@ -4976,6 +4976,9 @@ animright(const Arg *arg) {
                            scheme[SchemeSel][ColBorder].pixel);
           return;
 	}
+
+	if (selmon->pertag->curtag >= 20 || selmon->pertag->curtag == 0)
+		return;
 
 	if (animated) {
 		for(tempc = selmon->clients; tempc; tempc = tempc->next) {
