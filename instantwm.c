@@ -185,13 +185,13 @@ void applysnap(Client *c, Monitor *m) {
             resize(c, m->mx, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
             break;
         case 7:
-            resize(c, m->mx, m->my, m->mw / 2, m->mh, 0);
+            resize(c, m->mx, mony, m->mw / 2, m->mh, 0);
             break;
         case 8:
-            resize(c, m->mx, m->my, m->mw / 2, m->mh / 2, 0);
+            resize(c, m->mx, mony, m->mw / 2, m->mh / 2, 0);
             break;
         case 9:
-            resize(c, m->mx, m->my, m->mw, m->mh, 0);
+            resize(c, m->mx, mony, m->mw, m->mh, 0);
             break;
         default:
             break;
@@ -2255,7 +2255,10 @@ movemouse(const Arg *arg)
         return;
     }
 
-    resetsnap(c);
+    if (c->snapstatus) {
+        resetsnap(c);
+        return;
+    }
 
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
         //unmaximize in floating layout
@@ -2403,7 +2406,12 @@ movemouse(const Arg *arg)
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
 				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
-                c->snapstatus = 3;
+                if (ev.xmotion.y_root < selmon->my + selmon->mh / 7)
+                    c->snapstatus = 2;
+                else if (ev.xmotion.y_root > selmon->my + 6 * (selmon->mh / 7))
+                    c->snapstatus = 4;
+                else
+                    c->snapstatus = 3;
                 applysnap(c, c->mon);
 			} else {
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
@@ -2446,7 +2454,8 @@ movemouse(const Arg *arg)
 			// maximize window
 			XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
             savefloating(c);
-			animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
+            selmon->sel->snapstatus = 9;
+            arrange(selmon);
 		}
 	}
 }
@@ -2554,6 +2563,7 @@ resizeborder(const Arg *arg) {
 	} while (ev.type != ButtonPress && inborder);
 	XUngrabPointer(dpy, CurrentTime);
 	if (ev.type == ButtonPress) {
+        resetsnap(c);
 		if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
 			XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
 			movemouse(NULL);
@@ -2667,6 +2677,7 @@ dragmouse(const Arg *arg)
 				togglefloating(NULL);
 			}
 		}
+        resetsnap(c);
 			if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x  + c->w)
 				XWarpPointer(dpy, None, root, 0, 0, 0, 0, ev.xmotion.x_root, c->y + 20);
 			else

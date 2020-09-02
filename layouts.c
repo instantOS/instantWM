@@ -60,41 +60,10 @@ bstack(Monitor *m) {
 
 void floatl(Monitor *m) {
     Client *c;
-    int mony = m->my + (bh * m->showbar);
     for(c = m->clients; c; c = c->next) {
         if (!(ISVISIBLE(c)))
             continue;
-        switch (c->snapstatus) {
-            case 1:
-                resize(c, m->mx, mony, m->mw, m->mh / 2, 0);
-                break;
-            case 2:
-                resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 0);
-                break;
-            case 3:
-                resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->wh, 0);
-                break;
-            case 4:
-                resize(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
-                break;
-            case 5:
-                resize(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 0);
-                break;
-            case 6:
-                resize(c, m->mx, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
-                break;
-            case 7:
-                resize(c, m->mx, m->my, m->mw / 2, m->mh, 0);
-                break;
-            case 8:
-                resize(c, m->mx, m->my, m->mw / 2, m->mh / 2, 0);
-                break;
-            case 9:
-                resize(c, m->mx, m->my, m->mw, m->mh, 0);
-                break;
-            default:
-                break;
-        }
+        applysnap(c, m);
     }
 }
 
