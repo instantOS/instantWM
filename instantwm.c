@@ -4888,7 +4888,9 @@ view(const Arg *arg)
 
 	int ui = computeprefix(arg);
 	int i;
-
+    
+    if (selmon->tagset[0] == 1 << ui)
+        return;
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (ui & TAGMASK) {
@@ -5279,7 +5281,10 @@ overtoggle(const Arg *arg){
 
 void
 lastview(const Arg *arg) {
-	view(&((Arg) { .ui = 1 << ( selmon->pertag->prevtag -1 ) }));
+    if (selmon->pertag->curtag == selmon->pertag->prevtag)
+        focuslastclient(NULL);
+	else
+        view(&((Arg) { .ui = 1 << ( selmon->pertag->prevtag -1 ) }));
 }
 
 // overtoggle but with monocle layout
