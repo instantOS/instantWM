@@ -1361,7 +1361,10 @@ drawbar(Monitor *m)
 
 					// render close button
 					if (!c->islocked) {
-						drw_setscheme(drw, scheme[SchemeClose]);
+                        if (c == selmon->fullscreen)
+                            drw_setscheme(drw, scheme[SchemeActive]);
+                        else
+                            drw_setscheme(drw, scheme[SchemeClose]);
 						if (selmon->gesture != 12) {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
 							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2, 20, 16);
