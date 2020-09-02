@@ -151,6 +151,53 @@ void createdesktop(){
 	}
 }
 
+void resetsnap(Client *c) {
+    if (!c->snapstatus)
+        return;
+    if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange ) {
+        c->snapstatus = 0;
+        restorefloating(c);
+        applysize(c);
+    }
+
+}
+
+
+void applysnap(Client *c, Monitor *m) {
+    int mony = m->my + (bh * m->showbar);
+    switch (c->snapstatus) {
+        case 1:
+            resize(c, m->mx, mony, m->mw, m->mh / 2, 0);
+            break;
+        case 2:
+            resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 0);
+            break;
+        case 3:
+            resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->wh, 0);
+            break;
+        case 4:
+            resize(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
+            break;
+        case 5:
+            resize(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 0);
+            break;
+        case 6:
+            resize(c, m->mx, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
+            break;
+        case 7:
+            resize(c, m->mx, m->my, m->mw / 2, m->mh, 0);
+            break;
+        case 8:
+            resize(c, m->mx, m->my, m->mw / 2, m->mh / 2, 0);
+            break;
+        case 9:
+            resize(c, m->mx, m->my, m->mw, m->mh, 0);
+            break;
+        default:
+            break;
+    }
+}
+
 void tempfullscreen() {
     Client *c;
     if (selmon->fullscreen) {
@@ -597,6 +644,8 @@ arrangemon(Monitor *m)
 	strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
 	if (m->lt[m->sellt]->arrange)
 		m->lt[m->sellt]->arrange(m);
+    else
+        floatl(m);
 
 	if (m == selmon)
 		selmon->clientcount = clientcount();
@@ -2206,6 +2255,8 @@ movemouse(const Arg *arg)
         return;
     }
 
+    resetsnap(c);
+
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
         //unmaximize in floating layout
 		if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 && c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
@@ -2215,7 +2266,6 @@ movemouse(const Arg *arg)
 	restack(selmon);
 	ocx = c->x;
 	ocy = c->y;
-    warpfocus();
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
@@ -2353,7 +2403,8 @@ movemouse(const Arg *arg)
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
 				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
-				animateclient(c, selmon->mx + (selmon->mw / 2) + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
+                c->snapstatus = 3;
+                applysnap(c, c->mon);
 			} else {
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
 					moveright(arg);
@@ -2368,7 +2419,8 @@ movemouse(const Arg *arg)
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
 				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
-				animateclient(c, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
+                c->snapstatus = 7;
+                applysnap(c, c->mon);
 			} else {
 				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
 					moveleft(arg);
@@ -3949,6 +4001,12 @@ void downpress(const Arg *arg)
         return;
     if (!selmon->sel)
         return;
+
+    if (selmon->sel->snapstatus) {
+        resetsnap(selmon->sel);
+        return;
+    }
+
     if (selmon->sel == selmon->overlay) {
         setoverlaymode(2);
         return;
