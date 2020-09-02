@@ -11,5 +11,6 @@ void monocle(Monitor *m);
 void overviewlayout(Monitor *m);
 void tcl(Monitor * m);
 void tile(Monitor *m);
+void floatl(Monitor *m);
 
 #endif

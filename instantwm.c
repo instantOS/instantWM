@@ -166,6 +166,10 @@ void resetsnap(Client *c) {
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     switch (c->snapstatus) {
+        case 0:
+            restorefloating(c);
+            applysize(c);
+            break;
         case 1:
             resize(c, m->mx, mony, m->mw, m->mh / 2, 0);
             break;
@@ -173,29 +177,58 @@ void applysnap(Client *c, Monitor *m) {
             resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 0);
             break;
         case 3:
-            resize(c, m->mx + m->mw / 2, mony, m->mw / 2, m->wh, 0);
+            resize(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2, m->wh - c->bw * 2, 0);
             break;
         case 4:
-            resize(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
+            resize(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->wh / 2, 0);
             break;
         case 5:
             resize(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 0);
             break;
         case 6:
-            resize(c, m->mx, mony + m->mh / 2, m->mw / 2, m->mh / 2, 0);
+            resize(c, m->mx, mony + m->mh / 2, m->mw / 2, m->wh / 2, 0);
             break;
         case 7:
-            resize(c, m->mx, mony, m->mw / 2, m->mh, 0);
+            resize(c, m->mx, mony, m->mw / 2, m->wh, 0);
             break;
         case 8:
             resize(c, m->mx, mony, m->mw / 2, m->mh / 2, 0);
             break;
         case 9:
-            resize(c, m->mx, mony, m->mw, m->mh, 0);
+            resize(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 0);
             break;
         default:
             break;
     }
+}
+
+int checkfloating(Client *c) {
+    if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange )
+        return 1;
+    return 0;
+}
+
+void changesnap(Client *c, int snapmode) {
+    int snapmatrix[10][4] = {
+        {9, 3, 5, 7}, // normal
+        {9, 2, 0, 8}, // top half
+        {2, 2, 3, 1}, //top right
+        {2, 3, 4, 0}, //right half
+        {3, 4, 4, 5}, //bottom right
+        {0, 4, 5, 6}, //bottom half
+        {7, 5, 6, 6}, //bottom left
+        {8, 0, 6, 7}, //left half
+        {8, 1, 7, 1}, //top left
+        {1, 3, 0, 7}, //maximized
+    };
+    int tempsnap;
+    if (!c->snapstatus)
+        c->snapstatus = 0;
+    if (c->snapstatus == 0 && checkfloating(c))
+        savefloating(c);
+    tempsnap = c->snapstatus;
+    c->snapstatus = snapmatrix[tempsnap][snapmode];
+    applysnap(c, c->mon);
 }
 
 void tempfullscreen() {
@@ -2404,7 +2437,6 @@ movemouse(const Arg *arg)
 		if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw  + 1) {
 			// snap to half of the screen like on gnome, right side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
-				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
                 if (ev.xmotion.y_root < selmon->my + selmon->mh / 7)
                     c->snapstatus = 2;
@@ -2425,7 +2457,6 @@ movemouse(const Arg *arg)
 		} else if (ev.xmotion.x_root < selmon->mx + 50 && ev.xmotion.x_root > selmon->mx - 1) {
 			// snap to half of the screen like on gnome, left side
 			if (ev.xmotion.state & ShiftMask || NULL == c->mon->lt[c->mon->sellt]->arrange) {
-				savefloating(selmon->sel);
 				XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
                 c->snapstatus = 7;
                 applysnap(c, c->mon);
@@ -5016,7 +5047,7 @@ animleft(const Arg *arg) {
 	// windows like behaviour in floating layout
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBg].pixel);
-		animateclient(selmon->sel, selmon->mx + 2, selmon->my + bh + 2, (selmon->mw / 2) - 8, selmon->mh - bh - 8, 15, 0);
+        changesnap(selmon->sel, 3);
 		return;
 	}
 
@@ -5046,11 +5077,9 @@ animright(const Arg *arg) {
 	int tmpcounter = 0;
 
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
-          animateclient(selmon->sel, selmon->mx + (selmon->mw / 2) + 2,
-                        selmon->my + bh + 2, (selmon->mw / 2) - 8,
-                        selmon->mh - bh - 8, 15, 0);
           XSetWindowBorder(dpy, selmon->sel->win,
                            scheme[SchemeSel][ColBorder].pixel);
+          changesnap(selmon->sel, 1);
           return;
 	}
 
@@ -5112,13 +5141,8 @@ void upkey(const Arg *arg) {
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
 		Client *c;
 		c = selmon->sel;
-		if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 && c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
-			hide(c);
-		} else {
-			savefloating(c);
-			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
-			animateclient(c, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
-		}
+        XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
+        changesnap(c, 0);
 		return;
 	}
 	focusstack(arg);
@@ -5142,22 +5166,10 @@ int unhideone()
 
 void downkey(const Arg *arg) {
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
-		Client *c;
-
-		for (c = selmon->clients; c; c = c->next) {
-			if (ISVISIBLE(c) && HIDDEN(c)) {
-				show(c);
-				focus(c);
-				restack(selmon);
-				return;
-			}
-		}
-
 		if (!selmon->sel)
 			return;
-		c = selmon->sel;
         // unmaximize
-		resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
+        changesnap(selmon->sel, 2);
 		return;
 	}
 	focusstack(arg);
