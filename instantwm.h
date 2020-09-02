@@ -353,6 +353,10 @@ void desktopset();
 void createdesktop();
 void createoverlay();
 void tempfullscreen();
+
+void savefloating(Client *c);
+void restorefloating(Client *c);
+
 void shiftview(const Arg *arg);
 void focuslastclient(const Arg *arg);
 

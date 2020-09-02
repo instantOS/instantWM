@@ -155,7 +155,7 @@ void tempfullscreen() {
     Client *c;
     if (selmon->fullscreen) {
         c = selmon->fullscreen;
-        if (c->isfloating) {
+        if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange) {
             restorefloating(c);
             applysize(c);
         }
@@ -164,7 +164,7 @@ void tempfullscreen() {
         if (!selmon->sel)
             return;
         selmon->fullscreen = selmon->sel;
-        if (selmon->sel->isfloating)
+        if (selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange)
             savefloating(selmon->fullscreen);
     }
 
@@ -175,6 +175,8 @@ void tempfullscreen() {
     } else {
         arrange(selmon);
     }
+    if (selmon->fullscreen)
+        XRaiseWindow(dpy, selmon->fullscreen->win);
 }
 
 void
@@ -4208,21 +4210,24 @@ togglebar(const Arg *arg)
 		animated = 1;
 }
 
-void savefloating(Client *c) {
+void
+savefloating(Client *c) {
 	c->sfx = c->x;
 	c->sfy = c->y;
 	c->sfw = c->w;
 	c->sfh = c->h;
 }
 
-void restorefloating(Client *c) {
+void
+restorefloating(Client *c) {
 	c->x = c->sfx;
 	c->y = c->sfy;
 	c->w = c->sfw;
 	c->h = c->sfh;
 }
 
-void applysize(Client *c) {
+void
+applysize(Client *c) {
     resize(c, c->x + 1, c->y, c->w, c->h, 0);
 }
 
