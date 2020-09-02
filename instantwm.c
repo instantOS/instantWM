@@ -2206,9 +2206,16 @@ movemouse(const Arg *arg)
         return;
     }
 
+	if (NULL == selmon->lt[selmon->sellt]->arrange) {
+        //unmaximize in floating layout
+		if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 && c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
+			resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
+        }
+    }
 	restack(selmon);
 	ocx = c->x;
 	ocy = c->y;
+    warpfocus();
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
@@ -2386,6 +2393,7 @@ movemouse(const Arg *arg)
 		} else {
 			// maximize window
 			XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
+            savefloating(c);
 			animateclient(selmon->sel, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
 		}
 	}
