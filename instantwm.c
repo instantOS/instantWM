@@ -2041,11 +2041,11 @@ motionnotify(XEvent *e)
 	// leave small deactivator zone
 	if (ev->y_root >= bh - 3) {
 		// hover near floating sel, don't do it if desktop is covered
- 		if (selmon->sel && selmon->sel->isfloating) {
+ 		if (selmon->sel && ( selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange )) {
 			Client *c;
 			int tilefound = 0;
 			for(c = m->clients; c; c = c->next) {
-				if (ISVISIBLE(c) && !c->isfloating) {
+				if (ISVISIBLE(c) && !( c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange )) {
 					tilefound = 1;
 					break;
 				}
