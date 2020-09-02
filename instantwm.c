@@ -1463,7 +1463,7 @@ enternotify(XEvent *e)
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
 	c = wintoclient(ev->window);
-	if (c && selmon->sel && selmon->sel->isfloating && c != selmon->sel &&
+	if (c && selmon->sel && ( selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange ) && c != selmon->sel &&
 	(ev->window == root || (c->tags & selmon->sel->tags && c->mon == selmon) || selmon->sel->issticky)) {
 		if (!resizeborder(NULL))
 			return;
@@ -2446,7 +2446,7 @@ gesturemouse(const Arg *arg)
 // hover over the border to move/resize a window
 int
 resizeborder(const Arg *arg) {
-	if (!(selmon->sel && selmon->sel->isfloating))
+	if (!(selmon->sel && (selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange )))
 		return 0;
 	XEvent ev;
 	Time lasttime = 0;
