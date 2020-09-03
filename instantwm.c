@@ -167,7 +167,7 @@ void saveallfloating(Monitor *m) {
     int i;
     Client *c;
     for (i = 1; i < 20; ++i) {
-        if (m->pertag->ltidxs[i][selmon->pertag->sellts[i]]->arrange != NULL)
+        if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL)
             continue;
         for(c = m->clients; c; c = c->next) {
             if (c->tags & (1 << (i - 1)) && c->snapstatus == 0)
@@ -180,10 +180,10 @@ void restoreallfloating(Monitor *m) {
     int i;
     Client *c;
     for (i = 1; i < 20; ++i) {
-        if (m->pertag->ltidxs[i][selmon->pertag->sellts[i]]->arrange != NULL)
+        if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL)
             continue;
         for(c = m->clients; c; c = c->next) {
-            if (c->tags & (1 << (i - 1)))
+            if (c->tags & (1 << (i - 1)) && c->snapstatus == 0)
                 restorefloating(c);
         }
     }
@@ -3704,15 +3704,27 @@ setfullscreen(Client *c, int fullscreen)
 void
 setlayout(const Arg *arg)
 {
-	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-		selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
-	if (arg && arg->v)
-		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;
-	strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, sizeof selmon->ltsymbol);
-	if (selmon->sel)
-		arrange(selmon);
-	else
-		drawbar(selmon);
+    if (tagprefix) {
+        int i;
+        for (i = 0; i < 20; ++i) {
+            if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
+                selmon->pertag->sellts[i] ^= 1;
+            if (arg && arg->v)
+                selmon->pertag->ltidxs[i][selmon->pertag->sellts[i]] = (Layout *)arg->v;
+        }
+        tagprefix = 0;
+        setlayout(arg);
+    } else {
+        if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
+            selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
+        if (arg && arg->v)
+            selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;
+    }
+    strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, sizeof selmon->ltsymbol);
+    if (selmon->sel)
+        arrange(selmon);
+    else
+        drawbar(selmon);
 }
 
 /* arg > 1.0 will set mfact absolutely */
