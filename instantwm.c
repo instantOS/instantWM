@@ -227,6 +227,8 @@ void applysnap(Client *c, Monitor *m) {
         default:
             break;
     }
+    if (c != selmon->sel)
+        focus(c);
 }
 
 int checkfloating(Client *c) {
@@ -4185,7 +4187,7 @@ togglesticky(const Arg *arg)
 }
 
 void toggleprefix(const Arg *arg) {
-	tagprefix = 1;
+	tagprefix ^= 1;
 	drawbar(selmon);
 }
 
@@ -4303,6 +4305,7 @@ keyresize(const Arg *arg) {
 	int nw = (c->w + mpositions[arg->i][0]);
 	int nh = (c->h + mpositions[arg->i][1]);
 
+    resetsnap(c);
 
 	if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
 	return;
