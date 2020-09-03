@@ -163,6 +163,33 @@ void resetsnap(Client *c) {
 }
 
 
+void saveallfloating(Monitor *m) {
+    int i;
+    Client *c;
+    for (i = 1; i < 20; ++i) {
+        if (m->pertag->ltidxs[i][selmon->pertag->sellts[i]]->arrange != NULL)
+            continue;
+        for(c = m->clients; c; c = c->next) {
+            if (c->tags & (1 << (i - 1)) && c->snapstatus == 0)
+                savefloating(c);
+        }
+    }
+}
+
+void restoreallfloating(Monitor *m) {
+    int i;
+    Client *c;
+    for (i = 1; i < 20; ++i) {
+        if (m->pertag->ltidxs[i][selmon->pertag->sellts[i]]->arrange != NULL)
+            continue;
+        for(c = m->clients; c; c = c->next) {
+            if (c->tags & (1 << (i - 1)))
+                restorefloating(c);
+        }
+    }
+}
+
+
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     switch (c->snapstatus) {
@@ -195,6 +222,7 @@ void applysnap(Client *c, Monitor *m) {
             break;
         case 9:
             animateclient(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
+            XRaiseWindow(dpy, c->win);
             break;
         default:
             break;
@@ -5363,6 +5391,7 @@ overtoggle(const Arg *arg){
 	c = selmon->sel;
 	unsigned int tmptag;
 
+
     if (!selmon->clients || (selmon->clients == selmon->overlay && !selmon->overlay->next)) {
         if (selmon->pertag->curtag == 0)
             lastview(NULL);
@@ -5375,9 +5404,11 @@ overtoggle(const Arg *arg){
         tempfullscreen();
 	if (selmon->pertag->curtag == 0) {
 		tmptag = selmon->pertag->prevtag;
+        restoreallfloating(selmon);
 		winview(NULL);
 	} else {
 		tmptag = selmon->pertag->curtag;
+        saveallfloating(selmon);
 		selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] = (Layout *)&layouts[6];
 		view(arg);
 		if (selmon->lt[selmon->sellt] != (Layout *)&layouts[6] )

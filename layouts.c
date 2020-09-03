@@ -63,7 +63,8 @@ void floatl(Monitor *m) {
     for(c = m->clients; c; c = c->next) {
         if (!(ISVISIBLE(c)))
             continue;
-        applysnap(c, m);
+        if (c->snapstatus)
+            applysnap(c, m);
     }
 }
 
