@@ -3995,8 +3995,8 @@ void followview(const Arg *arg)
 	if (!selmon->sel)
 		return;
 	Client *c = selmon->sel;
-	view(arg);
-	c->tags = selmon->tagset[selmon->seltags];
+	c->tags = 1 << (selmon->pertag->prevtag - 1);
+    view(&((Arg) { .ui = 1 << ( selmon->pertag->prevtag -1 ) }));
 	focus(c);
 	arrange(selmon);
 }
@@ -5056,7 +5056,7 @@ view(const Arg *arg)
 	int ui = computeprefix(arg);
 	int i;
     
-    if (selmon->tagset[selmon->seltags] == 1 << ( ui - 1 ))
+    if (ui && selmon->tagset[selmon->seltags] == 1 << ( ui - 1 ))
         return;
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
