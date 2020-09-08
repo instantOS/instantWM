@@ -5056,10 +5056,10 @@ view(const Arg *arg)
 	int ui = computeprefix(arg);
 	int i;
     
-    if (ui && selmon->tagset[selmon->seltags] == 1 << ( ui - 1 ))
+	selmon->seltags ^= 1; /* toggle sel tagset */
+    if (ui && ( selmon->tagset[selmon->seltags] == ( 1 << ( ui - 1 ) ) ))
         return;
 
-	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (ui & TAGMASK) {
 		selmon->tagset[selmon->seltags] = ui & TAGMASK;
 		selmon->pertag->prevtag = selmon->pertag->curtag;
