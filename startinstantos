@@ -31,11 +31,16 @@ while [ -e /tmp/instantosrunning ]; do
         rm /tmp/wmoverride
     else
         # Log stderror or stdout to a file
+        if ! [ -e .local/share ]
+        then
+            mkdir -p ~/.local/share
+        fi
+
         if iconf -i debug
         then
-            instantwm &>~/.instantos.log
+            instantwm &>~/.local/share/instantos.log
         else
-            instantwm 2>~/.instantos.log
+            instantwm 2>~/.local/share/instantos.log
         fi
     fi
 done
