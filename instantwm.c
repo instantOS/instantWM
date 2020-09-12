@@ -5057,15 +5057,17 @@ view(const Arg *arg)
 	int i;
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
-
 	if (ui & TAGMASK) {
 		selmon->tagset[selmon->seltags] = ui & TAGMASK;
-		selmon->pertag->prevtag = selmon->pertag->curtag;
 
-		if (ui == ~0)
+        if (ui == ~0) {
+		    selmon->pertag->prevtag = selmon->pertag->curtag;
 			selmon->pertag->curtag = 0;
-		else {
+        } else {
 			for (i = 0; !(ui & 1 << i); i++) ;
+            if ((i + 1) == selmon->pertag->curtag)
+                return;
+		    selmon->pertag->prevtag = selmon->pertag->curtag;
 			selmon->pertag->curtag = i + 1;
 		}
 	} else {
