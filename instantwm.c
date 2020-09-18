@@ -5264,10 +5264,9 @@ shiftview(const Arg *arg)
 
 	do {
 		if(i > 0) // left circular shift
-			nextseltags = (curseltags << i) | (curseltags >> (LENGTH(tags) - i));
-
+			nextseltags = (curseltags << i) | (curseltags >> (LENGTH(tags) - 1 - i));
 		else // right circular shift
-			nextseltags = curseltags >> (- i) | (curseltags << (LENGTH(tags) + i));
+			nextseltags = curseltags >> (- i) | (curseltags << (LENGTH(tags) - 1 + i));
 
                 // Check if tag is visible
 		for (c = selmon->clients; c && !visible; c = c->next)
