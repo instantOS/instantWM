@@ -4044,9 +4044,6 @@ tagtoleft(const Arg *arg) {
 	int oldx;
 	Client *c;
 
-	if (selmon->pertag->curtag == 1)
-		return;
-
 	if (!selmon->sel)
 		return;
 
@@ -4054,6 +4051,9 @@ tagtoleft(const Arg *arg) {
         setoverlaymode(3);
         return;
     }
+
+	if (selmon->pertag->curtag == 1)
+		return;
 
 	c = selmon->sel;
 	resetsticky(c);
