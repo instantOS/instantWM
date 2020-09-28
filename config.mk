@@ -1,5 +1,5 @@
 # instantWM version
-VERSION = instantOS-Alpha
+VERSION = instantOS-beta
 
 # Customize below to fit your system
 
