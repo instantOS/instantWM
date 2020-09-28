@@ -399,7 +399,12 @@ showoverlay() {
 	}
 
 	Client *c = selmon->overlay;
+
+	detach(c);
+	detachstack(c);
     c->mon = selmon;
+	attach(c);
+	attachstack(c);
 
 	if (c->islocked) {
             switch (selmon->overlaymode) {
@@ -2307,9 +2312,7 @@ movemouse(const Arg *arg)
 	occ = 0;
 	tagx = 0;
 	colorclient = 0;
-	if (!(c = selmon->sel))
-		return;
-	if (c->isfullscreen && !c->isfakefullscreen) /* no support moving fullscreen windows by mouse */
+	if (!(c = selmon->sel) || (c->isfullscreen && !c->isfakefullscreen) || c == selmon->overlay)
 		return;
 
     if (c == selmon->fullscreen) {
