@@ -3669,40 +3669,61 @@ setfocus(Client *c)
 void
 setfullscreen(Client *c, int fullscreen)
 {
-	if (fullscreen && !c->isfullscreen) {
-		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-			PropModeReplace, (unsigned char*)&netatom[NetWMFullscreen], 1);
+	int savestate = 0, restorestate = 0;
+
+	if ((c->isfakefullscreen == 0 && fullscreen && !c->isfullscreen) // normal fullscreen
+			|| (c->isfakefullscreen == 2 && fullscreen)) // fake fullscreen --> actual fullscreen
+		savestate = 1; // go actual fullscreen
+	else if ((c->isfakefullscreen == 0 && !fullscreen && c->isfullscreen) // normal fullscreen exit
+			|| (c->isfakefullscreen >= 2 && !fullscreen)) // fullscreen exit --> fake fullscreen
+		restorestate = 1; // go back into tiled
+
+	/* If leaving fullscreen and the window was previously fake fullscreen (2), then restore
+	 * that while staying in fullscreen. The exception to this is if we are in said state, but
+	 * the client itself disables fullscreen (3) then we let the client go out of fullscreen
+	 * while keeping fake fullscreen enabled (as otherwise there will be a mismatch between the
+	 * client and the window manager's perception of the client's fullscreen state). */
+	if (c->isfakefullscreen == 2 && !fullscreen && c->isfullscreen) {
+		c->isfakefullscreen = 1;
 		c->isfullscreen = 1;
+		fullscreen = 1;
+	} else if (c->isfakefullscreen == 3) // client exiting actual fullscreen
+		c->isfakefullscreen = 1;
 
-		c->oldstate = c->isfloating;
+	if (fullscreen != c->isfullscreen) { // only send property change if necessary
+		if (fullscreen)
+			XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+				PropModeReplace, (unsigned char*)&netatom[NetWMFullscreen], 1);
+		else
+			XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
+				PropModeReplace, (unsigned char*)0, 0);
+	}
+
+	c->isfullscreen = fullscreen;
+
+	/* Some clients, e.g. firefox, will send a client message informing the window manager
+	 * that it is going into fullscreen after receiving the above signal. This has the side
+	 * effect of this function (setfullscreen) sometimes being called twice when toggling
+	 * fullscreen on and off via the window manager as opposed to the application itself.
+	 * To protect against obscure issues where the client settings are stored or restored
+	 * when they are not supposed to we add an additional bit-lock on the old state so that
+	 * settings can only be stored and restored in that precise order. */
+	if (savestate && !(c->oldstate & (1 << 1))) {
 		c->oldbw = c->bw;
-		if (!c->isfakefullscreen) {
-			c->bw = 0;
-			if (!c->isfloating)
-				animateclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh, 10, 0);
-			resizeclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh);
-			XRaiseWindow(dpy, c->win);
-		}
+		c->oldstate = c->isfloating | (1 << 1);
+		c->bw = 0;
 		c->isfloating = 1;
-
-
-	} else if (!fullscreen && c->isfullscreen){
-		XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
-			PropModeReplace, (unsigned char*)0, 0);
-		c->isfullscreen = 0;
-
-		c->isfloating = c->oldstate;
+		resizeclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh);
+		XRaiseWindow(dpy, c->win);
+	} else if (restorestate && (c->oldstate & (1 << 1))) {
 		c->bw = c->oldbw;
+		c->isfloating = c->oldstate = c->oldstate & 1;
 		c->x = c->oldx;
 		c->y = c->oldy;
 		c->w = c->oldw;
 		c->h = c->oldh;
-
-		if (!c->isfakefullscreen) {
-			resizeclient(c, c->x, c->y, c->w, c->h);
-			arrange(c->mon);
-		}
-
+		resizeclient(c, c->x, c->y, c->w, c->h);
+		restack(c->mon);
 	}
 }
 
@@ -4209,16 +4230,20 @@ toggledoubledraw(const Arg *arg) {
 
 void
 togglefakefullscreen(const Arg *arg) {
-	if (selmon->sel->isfullscreen) {
-		if (selmon->sel->isfakefullscreen) {
-			resizeclient(selmon->sel, selmon->mx + borderpx, selmon->my + borderpx, selmon->mw - 2 * borderpx, selmon->mh - 2 * borderpx);
-			XRaiseWindow(dpy, selmon->sel->win);
-		} else {
-			selmon->sel->bw = borderpx;
-		}
-	}
+	Client *c = selmon->sel;
+	if (!c)
+		return;
 
-	selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
+	if (c->isfakefullscreen != 1 && c->isfullscreen) { // exit fullscreen --> fake fullscreen
+		c->isfakefullscreen = 2;
+		setfullscreen(c, 0);
+	} else if (c->isfakefullscreen == 1) {
+		setfullscreen(c, 0);
+		c->isfakefullscreen = 0;
+	} else {
+		c->isfakefullscreen = 1;
+		setfullscreen(c, 1);
+	}
 }
 
 // lock prevents windows from getting closed until unlocked
