@@ -6,7 +6,7 @@
 
 instantWM the window manager of instantOS. 
 
-![img](https://raw.githubusercontent.com/instantOS/instantLOGO/master/screeenshots/screenshot1.png) <br />
+![img](https://github.com/instantOS/instantLOGO/blob/master/screeenshots/screenshot1.png)
 
 ## Installation
 It is preinstalled on instantOS  
