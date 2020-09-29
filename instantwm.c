@@ -5591,6 +5591,9 @@ void
 zoom(const Arg *arg)
 {
 	Client *c = selmon->sel;
+	if(!c)
+		return;
+
 	XRaiseWindow(dpy, c->win);
 	if (!selmon->lt[selmon->sellt]->arrange
 	|| (selmon->sel && selmon->sel->isfloating))
