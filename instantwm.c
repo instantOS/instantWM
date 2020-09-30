@@ -4533,6 +4533,8 @@ void createscratchpad(const Arg *arg) {
 // Called in manage when a scratchpad window is detected
 void makescratchpad(Client *c) {
     c->tags = 1 << 20;
+	c->x += (c->mon->ww - WIDTH(c)) / 2 - c->bw;
+	c->y += (c->mon->wh - HEIGHT(c)) / 2 - c->bw;
     selmon->scratchvisible = 1;
     c->issticky = selmon->scratchvisible;
     arrange(selmon);
