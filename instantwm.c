@@ -1704,7 +1704,7 @@ focusstack(const Arg *arg)
 {
 	Client *c = NULL, *i;
 
-	if (!selmon->sel)
+	if (!selmon->sel || (selmon->sel->isfullscreen && !selmon->sel->isfakefullscreen))
 		return;
 	if (arg->i > 0) {
 		for (c = selmon->sel->next; c && !ISVISIBLE(c); c = c->next);
@@ -5614,6 +5614,9 @@ void
 zoom(const Arg *arg)
 {
 	Client *c = selmon->sel;
+	if(!c)
+		return;
+
 	XRaiseWindow(dpy, c->win);
 	if (!selmon->lt[selmon->sellt]->arrange
 	|| (selmon->sel && selmon->sel->isfloating))
