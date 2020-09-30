@@ -4549,6 +4549,9 @@ void createscratchpad(const Arg *arg) {
 	else
 		arrange(selmon);
 	focus(NULL);
+    if (!selmon->scratchvisible) {
+        togglescratchpad(NULL);
+    }
 
 }
 
