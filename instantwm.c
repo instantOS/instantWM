@@ -4498,7 +4498,6 @@ void togglescratchpad(const Arg *arg) {
 		}
 
 		arrange(selmon);
-		focus(NULL);
 		if (found) {
 			focus(found);
 			warp(found);
