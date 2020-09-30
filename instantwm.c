@@ -602,6 +602,14 @@ applyrules(Client *c)
                     c->h = c->mon->mh;
                     centerwindow();
                     break;;
+                case 4:
+                    selmon->sel = c;
+                    c->tags = 1 << 20;
+                    selmon->scratchvisible = 1;
+                    c->issticky = 1;
+                    c->isfloating = 1;
+                    centerwindow();
+                    break;;
                 case 1:
                     c->isfloating = 1;
                     break;;
@@ -4472,6 +4480,8 @@ toggletag(const Arg *arg)
 
 void togglescratchpad(const Arg *arg) {
 	Client *c;
+    int scratchexists;
+    scratchexists = 0;
 	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
 		return;
 	}
@@ -4483,21 +4493,34 @@ void togglescratchpad(const Arg *arg) {
 
 		for(c = selmon->clients; c; c = c->next) {
 			if (c->tags == 1 << 20) {
+                if (!scratchexists)
+                    scratchexists = 1;
 				c->issticky = selmon->scratchvisible;
 				if (!c->isfloating)
 					c->isfloating = 1;
 			}
 		}
+        
+        if (!scratchexists){
+            // spawn scratchpad
+			spawn(&((Arg) { .v = termscratchcmd }));
+            return;
+        }
 
-		arrange(selmon);
-		focus(NULL);
-		focus(c);
 
 		for(c = selmon->clients; c; c = c->next) {
 			if (c->tags == 1 << 20) {
 				XRaiseWindow(dpy, c->win);
 			}
 		}
+
+        if (!selmon->sel->isfullscreen) {
+            selmon->sel = c;
+            arrange(selmon);
+
+            focus(c);
+            warp(c);
+        }
 
 }
 
