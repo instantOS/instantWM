@@ -4491,36 +4491,48 @@ void togglescratchpad(const Arg *arg) {
 	else
 		selmon->scratchvisible = 1;
 
-		for(c = selmon->clients; c; c = c->next) {
-			if (c->tags == 1 << 20) {
-                if (!scratchexists)
-                    scratchexists = 1;
-				c->issticky = selmon->scratchvisible;
-				if (!c->isfloating)
-					c->isfloating = 1;
-			}
-		}
-        
-        if (!scratchexists){
-            // spawn scratchpad
-			spawn(&((Arg) { .v = termscratchcmd }));
-            return;
+    for(c = selmon->clients; c; c = c->next) {
+        if (c->tags == 1 << 20) {
+            if (!scratchexists)
+                scratchexists = 1;
+            c->issticky = selmon->scratchvisible;
+            if (!c->isfloating)
+                c->isfloating = 1;
+        }
+    }
+    
+    if (!scratchexists){
+        // spawn scratchpad
+        spawn(&((Arg) { .v = termscratchcmd }));
+        return;
+    }
+
+    if (selmon->scratchvisible) {
+
+        for(c = selmon->clients; c; c = c->next) {
+            if (c->tags == 1 << 20) {
+                XRaiseWindow(dpy, c->win);
+            }
         }
 
-
-		for(c = selmon->clients; c; c = c->next) {
-			if (c->tags == 1 << 20) {
-				XRaiseWindow(dpy, c->win);
-			}
-		}
-
-        if (!selmon->sel->isfullscreen) {
-            selmon->sel = c;
-            arrange(selmon);
-
-            focus(c);
-            warp(c);
+        for(c = selmon->clients; c; c = c->next) {
+            if (c->tags == 1 << 20) {
+                if ((!selmon->sel || !selmon->sel->isfullscreen) && c->issticky) {
+                    selmon->sel = c;
+                    arrange(selmon);
+                    focus(c);
+                    warp(c);
+                } else {
+                    arrange(selmon);
+                }
+                break;
+            }
         }
+
+    } else {
+        focus(NULL);
+        arrange(selmon);
+    }
 
 }
 
