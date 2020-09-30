@@ -72,6 +72,8 @@ static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
+static const char scratchpadname[] = "scratchpad";
+
 static const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
 static const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-", NULL};
 static const char *mutevol[] = {"/usr/share/instantassist/utils/p.sh", "m", NULL};
@@ -96,6 +98,7 @@ static const Rule rules[] = {
 	{"org-wellkord-globonote-Main", NULL,     NULL,        0,            1,           -1},
 	{"Peek", NULL,     NULL,        0,            1,           -1},
 	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
+	{"St", NULL,     NULL,        0,            1,           -1},
 };
 
 /* layout(s) */
@@ -140,6 +143,7 @@ static const char *clipmenucmd[] = {"instantclipmenu", NULL};
 static const char *smartcmd[] = {"instantmenu_smartrun", NULL};
 static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {".config/instantos/default/terminal", NULL};
+static const char *termscratchcmd[] = {".config/instantos/default/terminal", "-t", scratchpadname, NULL};
 static const char *quickmenucmd[] = {"quickmenu", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *instantrepeatcmd[] = {"instantrepeat", NULL};

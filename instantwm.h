@@ -220,6 +220,7 @@ void hide(Client *c);
 void incnmaster(const Arg *arg);
 void keypress(XEvent *e);
 void killclient(const Arg *arg);
+void makescratchpad(Client *c);
 void manage(Window w, XWindowAttributes *wa);
 void mappingnotify(XEvent *e);
 void maprequest(XEvent *e);

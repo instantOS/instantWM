@@ -2080,7 +2080,12 @@ manage(Window w, XWindowAttributes *wa)
 	arrange(c->mon);
 	if (!HIDDEN(c))
 		XMapWindow(dpy, c->win);
-	focus(NULL);
+
+	if(!strcmp(c->name, scratchpadname)) {
+        makescratchpad(c);
+    } else {
+        focus(NULL);
+    }
 	if (newdesktop) {
 		newdesktop = 0;
 		createdesktop();
@@ -4472,6 +4477,8 @@ toggletag(const Arg *arg)
 
 void togglescratchpad(const Arg *arg) {
 	Client *c, *found = NULL;
+	Arg scratchcmd = {.v = termscratchcmd};
+
 	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
 		return;
 	}
@@ -4495,6 +4502,8 @@ void togglescratchpad(const Arg *arg) {
 		if (found) {
 			focus(found);
 			warp(found);
+		} else {
+			spawn(&scratchcmd);
 		}
 
 		for(c = selmon->clients; c; c = c->next) {
@@ -4519,6 +4528,17 @@ void createscratchpad(const Arg *arg) {
 		arrange(selmon);
 	focus(NULL);
 
+}
+
+// Called in manage when a scratchpad window is detected
+void makescratchpad(Client *c) {
+    c->tags = 1 << 20;
+    selmon->scratchvisible = 1;
+    c->issticky = selmon->scratchvisible;
+    arrange(selmon);
+    focus(c);
+    warp(c);
+    XRaiseWindow(dpy, c->win);
 }
 
 void
