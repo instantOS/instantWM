@@ -98,7 +98,7 @@ static const Rule rules[] = {
 	{"org-wellkord-globonote-Main", NULL,     NULL,        0,            1,           -1},
 	{"Peek", NULL,     NULL,        0,            1,           -1},
 	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
-	{"St", NULL,     NULL,        0,            1,           -1},
+	{"St", NULL,     scratchpadname,        0,            1,           -1},
 };
 
 /* layout(s) */
