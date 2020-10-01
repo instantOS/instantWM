@@ -50,6 +50,8 @@ static int freealttab = 0;
 
 static Client *lastclient;
 
+
+static int combo = 0;
 static int tagprefix = 0;
 static int bardragging = 0;
 static int altcursor = 0;
@@ -117,6 +119,7 @@ struct NumTags { char limitexceeded[LENGTH(tags) > 31 ? -1 : 1]; };
 
 void
 keyrelease(XEvent *e) {
+	combo = 0;
 }
 
 int overlayexists() {
@@ -3951,6 +3954,33 @@ int computeprefix(const Arg *arg) {
 		return arg->ui << 10;
 	} else {
 		return arg->ui;
+	}
+}
+
+void
+comboview(const Arg *arg) {
+	unsigned newtags = arg->ui & TAGMASK;
+	int ui = computeprefix(arg);
+	int i;
+
+	if (combo) {
+		selmon->tagset[selmon->seltags] |= newtags;
+		focus(NULL);
+		arrange(selmon);
+	} else {
+		combo = 1;
+
+		view(arg);
+		// view returns prematurely if the current tag is the tag to view
+		// this does not matter for view itself, here tho it matters, because a window
+		// from another tag will not get send to its tag visually, so you will have an
+		// unfocusable ghost window. 
+		// TODO: improve this, as it seems like a hack
+		for (i = 0; !(ui & 1 << i); i++) ;
+        if ((i + 1) == selmon->pertag->curtag) {
+			focus(NULL);
+			arrange(selmon);
+		}
 	}
 }
 

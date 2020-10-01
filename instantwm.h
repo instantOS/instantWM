@@ -271,6 +271,7 @@ void sigchld(int unused);
 void spawn(const Arg *arg);
 void clickstatus(const Arg *arg);
 Monitor *systraytomon(Monitor *m);
+void comboview(const Arg *arg);
 void tag(const Arg *arg);
 void tagall(const Arg *arg);
 void followtag(const Arg *arg);
