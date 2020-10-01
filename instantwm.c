@@ -596,11 +596,14 @@ applyrules(Client *c)
                     centerwindow();
                     break;;
                 case 3:
+                    // fullscreen overlay
                     selmon->sel = c;
                     c->isfloating = 1;
                     c->w = c->mon->mw;
-                    c->h = c->mon->mh;
-                    centerwindow();
+                    c->h = c->mon->wh - ( selmon->showbar ? bh : 0 );
+                    if (selmon->showbar)
+                        c->y = selmon->my + bh;
+                    c->x = selmon->mx;
                     break;;
                 case 4:
                     selmon->sel = c;

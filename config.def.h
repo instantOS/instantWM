@@ -96,6 +96,7 @@ static const Rule rules[] = {
 	{"instantfloat", NULL,     NULL,        0,            2,           -1},
 	{scratchpadname, NULL,     NULL,        0,            4,           -1},
 	{"kdeconnect.daemon", NULL,     NULL,        0,            3,           -1},
+	{"Panther", NULL,     NULL,        0,            3,           -1},
 	{"org-wellkord-globonote-Main", NULL,     NULL,        0,            1,           -1},
 	{"Peek", NULL,     NULL,        0,            1,           -1},
 	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
