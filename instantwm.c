@@ -1502,7 +1502,7 @@ drawbar(Monitor *m)
 						} else {
 							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFg].pixel);
 							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, (bh - 20) / 2 - 2, 20, 16);
-							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBorder].pixel);
 							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, (bh - 20) / 2 + 14, 20, 6);
 						}
 					} else {
