@@ -199,7 +199,7 @@ ResourcePref resources[] = {
 		{ "darkminimize",    STRING,  &col_dark_orange },
 
 		{ "border",        STRING,  &col_pastel_blue },
-		{ "activeborder",        STRING,  &col_blue },
+		{ "activeborder",        STRING,  &col_light_blue },
 
 		{ "activetag",        STRING,  &col_green },
 		{ "darkactivetag",        STRING,  &col_dark_green },
