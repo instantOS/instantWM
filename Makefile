@@ -40,7 +40,9 @@ install: all
 	mkdir -p ${DESTDIR}${PREFIX}/bin
 	mkdir -p ${DESTDIR}/usr/share/xsessions
 	cp -f instantwm ${DESTDIR}${PREFIX}/bin
+	cp -f instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
 	chmod 755 ${DESTDIR}${PREFIX}/bin/instantwm
+	chmod 755 ${DESTDIR}${PREFIX}/bin/instantwmctrl
 	mkdir -p ${DESTDIR}${MANPREFIX}/man1
 	sed "s/VERSION/${VERSION}/g" < instantwm.1 > ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/instantwm.1
@@ -53,6 +55,7 @@ install: all
 
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
+		${DESTDIR}${PREFIX}/bin/instantwmctrl\
 		${DESTDIR}${MANPREFIX}/man1/instantwm.1\
 		${DESTDIR}${PREFIX}/bin/startinstantos\
 		${DESTDIR}/usr/share/xsessions/instantwm.desktop\
