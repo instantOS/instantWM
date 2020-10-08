@@ -222,6 +222,7 @@ ResourcePref resources[] = {
 static Xcommand commands[] = {
 	/* signum       function        argument  */
 	{ "overlay",            setoverlay,      {0}, 0 },
+	{ "tag",            view,      { .ui = 2 }, 3 },
 };
 
 static Key dkeys[] = {

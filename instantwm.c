@@ -1964,28 +1964,63 @@ xcommand(void)
     char *fcursor;
     char *indicator="c;:;";
 	char str_signum[16];
-	int i, v, signum;
+	int i, v, signum, argnum;
 	size_t len_command;
+    Arg arg;
 
 	// Get root name property
-	if (gettextprop(root, XA_WM_NAME, command, sizeof(command))) {
-		len_command = strlen(command);
-
-        if (startswith(command, indicator)) {
-            fcursor = command + 4;
-        } else {
-            // no command was found
-            return 0;
-        }
-		// Check if a command was found, and if so handle it
-        for (i = 0; i < LENGTH(commands); i++) {
-            if (startswith(fcursor, commands[i].cmd)) {
-			    commands[i].func(&(commands[i].arg));
-            }
-        }
-        return 1;
+	if (!( gettextprop(root, XA_WM_NAME, command, sizeof(command))) ) {
+        return 0;
     }
-    return 0;
+
+    len_command = strlen(command);
+
+    if (startswith(command, indicator)) {
+        fcursor = command + 4;
+    } else {
+        // no command was found
+        return 0;
+    }
+
+    // Check if a command was found, and if so handle it
+    for (i = 0; i < LENGTH(commands); i++) {
+        // is valid command
+        if (startswith(fcursor, commands[i].cmd)) {
+            fcursor += strlen(commands[i].cmd);
+            // no args
+            if (!strlen(fcursor)) {
+                arg = commands[i].arg;
+            } else {
+                if (fcursor[0] != ';')
+                    continue;
+                fcursor++;
+                switch (commands[i].type) {
+                    case 0:
+                        arg = commands[i].arg;
+                        break;
+                    case 1:
+                        argnum = atoi(fcursor);
+                        if (argnum != 0 && fcursor[0] != '0') {
+                            arg = ((Arg) { .ui = atoi(fcursor) });
+                        } else {
+                            arg = commands[i].arg;
+                        }
+                        break;
+                    case 3:
+                        argnum = atoi(fcursor);
+                        if (argnum != 0 && fcursor[0] != '0') {
+                            arg = ((Arg) { .ui = ( 1 << (atoi(fcursor) - 1) ) });
+                        } else {
+                            arg = commands[i].arg;
+                        }
+                        break;
+                }
+            }
+            commands[i].func(&(arg));
+            break;
+        }
+    }
+    return 1;
 }
 
 
