@@ -66,6 +66,9 @@ void floatl(Monitor *m) {
         if (c->snapstatus)
             applysnap(c, m);
     }
+    restack(selmon);
+    if (selmon->sel)
+        XRaiseWindow(dpy, selmon->sel->win);
 }
 
 

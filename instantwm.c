@@ -194,41 +194,40 @@ void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     switch (c->snapstatus) {
         case 0:
-            animateclient(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
+            checkanimate(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
             break;
         case 1:
-            animateclient(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
+            checkanimate(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
             break;
         case 2:
-            animateclient(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 7, 0);
+            checkanimate(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 3:
-            animateclient(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2, m->wh - c->bw * 2, 7, 0);
+            checkanimate(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2, m->wh - c->bw * 2, 7, 0);
             break;
         case 4:
-            animateclient(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
+            checkanimate(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
             break;
         case 5:
-            animateclient(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 7, 0);
+            checkanimate(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 7, 0);
             break;
         case 6:
-            animateclient(c, m->mx, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
+            checkanimate(c, m->mx, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
             break;
         case 7:
-            animateclient(c, m->mx, mony, m->mw / 2, m->wh, 7, 0);
+            checkanimate(c, m->mx, mony, m->mw / 2, m->wh, 7, 0);
             break;
         case 8:
-            animateclient(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
+            checkanimate(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 9:
-            animateclient(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
-            XRaiseWindow(dpy, c->win);
+            checkanimate(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
+            if (c == selmon->sel)
+                XRaiseWindow(dpy, c->win);
             break;
         default:
             break;
     }
-    if (c != selmon->sel)
-        focus(c);
 }
 
 int checkfloating(Client *c) {
@@ -258,6 +257,8 @@ void changesnap(Client *c, int snapmode) {
     tempsnap = c->snapstatus;
     c->snapstatus = snapmatrix[tempsnap][snapmode];
     applysnap(c, c->mon);
+    warp(c);
+    focus(c);
 }
 
 void tempfullscreen() {
@@ -345,6 +346,15 @@ resetoverlay() {
 double easeOutQuint( double t ) {
     return 1 + (--t) * t * t;
 }
+
+void checkanimate(Client *c, int x, int y, int w, int h, int frames, int resetpos) {
+    if (c->x == x && c->y == y && c->w == w && c->h == h) {
+        return;
+    } else {
+        animateclient(c, x, y, w, h, frames, resetpos);
+    }
+}
+
 
 // move client to position within a set amount of frames
 void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos)
@@ -2098,10 +2108,14 @@ manage(Window w, XWindowAttributes *wa)
 	}
 
 	if (animated && !c->isfullscreen) {
-		resizeclient(c, c->x, c->y - 70, c->w, c->h);
-		animateclient(c,c->x, c->y + 70, 0,0,7,0);
-		if (c->w > selmon->mw - 30 || c->h > selmon->mh - 30)
-			arrange(selmon);
+        resizeclient(c, c->x, c->y - 70, c->w, c->h);
+        animateclient(c,c->x, c->y + 70, 0,0,7,0);
+        if (NULL == c->mon->lt[selmon->sellt]->arrange ) {
+            XRaiseWindow(dpy, c->win);
+        } else {
+            if (c->w > selmon->mw - 30 || c->h > selmon->mh - 30)
+                arrange(selmon);
+        }
 	}
 
 }

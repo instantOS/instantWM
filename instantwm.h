@@ -251,6 +251,7 @@ void resizeaspectmouse(const Arg *arg);
 void resizerequest(XEvent *e);
 void restack(Monitor *m);
 void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos);
+void checkanimate(Client *c, int x, int y, int w, int h, int frames, int resetpos);
 void run(void);
 void runAutostart(void);
 void scan(void);
