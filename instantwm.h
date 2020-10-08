@@ -105,6 +105,14 @@ typedef struct {
 	const Arg arg;
 } Key;
 
+
+typedef struct {
+    char *cmd;
+	void (*func)(const Arg *);
+	const Arg arg;
+    unsigned int type;
+} Xcommand;
+
 typedef struct {
 	const char *symbol;
 	void (*arrange)(Monitor *);
@@ -219,6 +227,7 @@ void grabkeys(void);
 void hide(Client *c);
 void incnmaster(const Arg *arg);
 void keypress(XEvent *e);
+static int xcommand(void);
 void killclient(const Arg *arg);
 void manage(Window w, XWindowAttributes *wa);
 void mappingnotify(XEvent *e);

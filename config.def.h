@@ -219,6 +219,11 @@ ResourcePref resources[] = {
 
 };
 
+static Xcommand commands[] = {
+	/* signum       function        argument  */
+	{ "overlay",            setoverlay,      {0}, 0 },
+};
+
 static Key dkeys[] = {
 	/* modifier                     key        function        argument */
 	{0, XK_r, spawn, {.v = rangercmd } },

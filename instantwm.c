@@ -1943,6 +1943,53 @@ isuniquegeom(XineramaScreenInfo *unique, size_t n, XineramaScreenInfo *info)
 }
 #endif /* XINERAMA */
 
+int startswith(const char *a, const char *b)
+{
+    char *checker = NULL;
+
+    checker = strstr(a, b);
+    if(checker == a)
+    {
+        return 1;
+    } else {
+        return 0;
+    }
+
+}
+
+int
+xcommand(void)
+{
+	char command[256];
+    char *fcursor;
+    char *indicator="c;:;";
+	char str_signum[16];
+	int i, v, signum;
+	size_t len_command;
+
+	// Get root name property
+	if (gettextprop(root, XA_WM_NAME, command, sizeof(command))) {
+		len_command = strlen(command);
+
+        if (startswith(command, indicator)) {
+            fcursor = command + 4;
+        } else {
+            // no command was found
+            return 0;
+        }
+		// Check if a command was found, and if so handle it
+        for (i = 0; i < LENGTH(commands); i++) {
+            if (startswith(fcursor, commands[i].cmd)) {
+			    commands[i].func(&(commands[i].arg));
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
+
+
 void
 keypress(XEvent *e)
 {
@@ -3123,8 +3170,10 @@ propertynotify(XEvent *e)
 		resizebarwin(selmon);
 		updatesystray();
 	}
-	if ((ev->window == root) && (ev->atom == XA_WM_NAME))
-		updatestatus();
+    if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
+		if (!xcommand())
+    		updatestatus();
+    }
 	else if (ev->state == PropertyDelete)
 		return; /* ignore */
 	else if ((c = wintoclient(ev->window))) {
