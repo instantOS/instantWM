@@ -60,6 +60,9 @@ bstack(Monitor *m) {
 
 void floatl(Monitor *m) {
     Client *c;
+    int animatestore;
+    animatestore = animated;
+    animated = 0;
     for(c = m->clients; c; c = c->next) {
         if (!(ISVISIBLE(c)))
             continue;
@@ -69,6 +72,8 @@ void floatl(Monitor *m) {
     restack(selmon);
     if (selmon->sel)
         XRaiseWindow(dpy, selmon->sel->win);
+    if (animatestore)
+        animated = 1;
 }
 
 
