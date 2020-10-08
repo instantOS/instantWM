@@ -224,6 +224,7 @@ static Xcommand commands[] = {
 	{ "overlay",    setoverlay,      {0}, 0 },
 	{ "tag",        view,      { .ui = 2 }, 3 },
 	{ "animated",   toggleanimated,      { .ui = 2 }, 1 },
+	{ "alttab",   alttabfree,      { .ui = 2 }, 1 },
 };
 
 static Key dkeys[] = {

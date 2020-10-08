@@ -4309,10 +4309,16 @@ togglealttag(const Arg *arg)
 }
 
 void alttabfree(const Arg *arg) {
-	if (!freealttab)
-		freealttab = 1;
-	else
-		freealttab = 0;
+
+    if (arg->ui < 2) {
+        freealttab = arg->ui;
+    } else {
+        if (!freealttab)
+            freealttab = 1;
+        else
+            freealttab = 0;
+    }
+
 	grabkeys();
 }
 
