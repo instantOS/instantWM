@@ -2920,8 +2920,11 @@ dragrightmouse(const Arg *arg)
 		} else {
 			resizemouse(NULL);
 		}
-
-	} else {
+        
+        if (NULL == selmon->lt[selmon->sellt]->arrange ) {
+            savefloating(c);
+    	}
+    } else {
 		if (tempc != selmon->sel) {
 			focus(tempc);
 		}
