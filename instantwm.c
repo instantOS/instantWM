@@ -156,6 +156,7 @@ void resetsnap(Client *c) {
         return;
     if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange ) {
         c->snapstatus = 0;
+        c->bw = borderpx;
         restorefloating(c);
         applysize(c);
     }
@@ -192,6 +193,8 @@ void restoreallfloating(Monitor *m) {
 
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
+    if (c->snapstatus != 9)
+        c->bw = borderpx;
     switch (c->snapstatus) {
         case 0:
             checkanimate(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
@@ -221,6 +224,7 @@ void applysnap(Client *c, Monitor *m) {
             checkanimate(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 9:
+            c->bw = 0;
             checkanimate(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
             if (c == selmon->sel)
                 XRaiseWindow(dpy, c->win);
