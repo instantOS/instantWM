@@ -4335,7 +4335,10 @@ void toggleprefix(const Arg *arg) {
 void
 toggleanimated(const Arg *arg)
 {
-	animated = !animated;
+    if (arg->ui == 2 || arg->ui > 1)
+	    animated = !animated;
+    else
+        animated = arg->ui;
 }
 
 // double the window refresh rate

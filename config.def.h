@@ -221,8 +221,9 @@ ResourcePref resources[] = {
 
 static Xcommand commands[] = {
 	/* signum       function        argument  */
-	{ "overlay",            setoverlay,      {0}, 0 },
-	{ "tag",            view,      { .ui = 2 }, 3 },
+	{ "overlay",    setoverlay,      {0}, 0 },
+	{ "tag",        view,      { .ui = 2 }, 3 },
+	{ "animated",   toggleanimated,      { .ui = 2 }, 1 },
 };
 
 static Key dkeys[] = {
@@ -312,7 +313,7 @@ static Key keys[] = {
 	{MODKEY|ControlMask, XK_j, pushdown, {0} },
 	{MODKEY|ControlMask, XK_k, pushup, {0} },
 	{MODKEY|Mod1Mask, XK_s, togglealttag, {0} },
-	{MODKEY|ShiftMask|Mod1Mask, XK_s, toggleanimated, {0} },
+	{MODKEY|ShiftMask|Mod1Mask, XK_s, toggleanimated, { .ui = 2 } },
 	{MODKEY|ControlMask,                    XK_s,      togglesticky,   {0} },
 	{MODKEY|ShiftMask,                    XK_s,      createscratchpad, {0}},
 	{MODKEY,                    XK_s, togglescratchpad, {0}},
