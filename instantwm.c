@@ -3734,13 +3734,19 @@ setfullscreen(Client *c, int fullscreen)
 void
 setlayout(const Arg *arg)
 {
+    int multimon;
+    multimon = 0;
     if (tagprefix) {
         int i;
-        for (i = 0; i < 20; ++i) {
-            if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-                selmon->pertag->sellts[i] ^= 1;
-            if (arg && arg->v)
-                selmon->pertag->ltidxs[i][selmon->pertag->sellts[i]] = (Layout *)arg->v;
+        Monitor *m;
+        multimon = 1;
+        for (m = mons; m; m = m->next) {
+            for (i = 0; i < 20; ++i) {
+                if (!arg || !arg->v || arg->v != m->lt[m->sellt])
+                    m->pertag->sellts[i] ^= 1;
+                if (arg && arg->v)
+                    m->pertag->ltidxs[i][m->pertag->sellts[i]] = (Layout *)arg->v;
+            }
         }
         tagprefix = 0;
         setlayout(arg);
@@ -3755,6 +3761,20 @@ setlayout(const Arg *arg)
         arrange(selmon);
     else
         drawbar(selmon);
+    if (multimon) {
+        Monitor *tmpmon;
+        Monitor *m;
+        tmpmon = selmon;
+        multimon = 0;
+	    for (m = mons; m; m = m->next) {
+            if (m != selmon) {
+                selmon = m;
+                setlayout(arg);
+            }
+        }
+        selmon = tmpmon;
+        focus(NULL);
+    }
 }
 
 /* arg > 1.0 will set mfact absolutely */
