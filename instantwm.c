@@ -3403,6 +3403,11 @@ resizemouse(const Arg *arg)
 		selmon = m;
 		focus(NULL);
 	}
+
+    if (NULL == selmon->lt[selmon->sellt]->arrange) {
+        savefloating(c);
+        c->snapstatus = 0;
+    }
 }
 
 
