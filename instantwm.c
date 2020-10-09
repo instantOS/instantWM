@@ -3827,6 +3827,10 @@ setfullscreen(Client *c, int fullscreen)
 	}
 }
 
+void commandprefix(const Arg *arg) {
+    tagprefix = arg->ui;
+}
+
 void
 commandlayout(const Arg *arg) {
     int layoutnumber;

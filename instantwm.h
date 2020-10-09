@@ -273,6 +273,7 @@ void setfocus(Client *c);
 void setfullscreen(Client *c, int fullscreen);
 void setlayout(const Arg *arg);
 void commandlayout(const Arg *arg);
+void commandprefix(const Arg *arg);
 void setmfact(const Arg *arg);
 void setup(void);
 void seturgent(Client *c, int urg);

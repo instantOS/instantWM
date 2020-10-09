@@ -226,6 +226,7 @@ static Xcommand commands[] = {
 	{ "animated",   toggleanimated,      { .ui = 2 }, 1 },
 	{ "alttab",   alttabfree,      { .ui = 2 }, 1 },
 	{ "layout",   commandlayout,      { .ui = 0 }, 1 },
+	{ "prefix",   commandprefix,      { .ui = 1 }, 1 },
 };
 
 static Key dkeys[] = {
