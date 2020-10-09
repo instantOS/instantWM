@@ -9,7 +9,7 @@ layout)
     else
         declare -A layouts=(
           ["tile"]=0 ['grid']=1 ['float']=2 
-          ['monocle']=2 ['tcl']=4 ['deck']=5
+          ['monocle']=3 ['tcl']=4 ['deck']=5
           ['overview']=6 ['bstack']=7 ['bstackhoriz']=8
         )
         layout=${layouts[$2]}
