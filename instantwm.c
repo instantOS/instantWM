@@ -3828,6 +3828,19 @@ setfullscreen(Client *c, int fullscreen)
 }
 
 void
+commandlayout(const Arg *arg) {
+    int layoutnumber;
+    Arg *larg;
+    if (arg->ui || arg->ui >= LENGTH(layouts))
+        layoutnumber = arg->ui;
+    else
+        layoutnumber = 0;
+
+    larg = &((Arg) { .v = &layouts[layoutnumber] });
+    setlayout(larg);
+}
+
+void
 setlayout(const Arg *arg)
 {
     int multimon;
