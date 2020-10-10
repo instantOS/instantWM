@@ -2541,7 +2541,7 @@ movemouse(const Arg *arg)
 	} while (ev.type != ButtonRelease);
 
 	bardragging = 0;
-	if (ev.xmotion.y_root < bh) {
+	if (ev.xmotion.y_root < selmon->my + bh) {
 		if (!tagwidth)
 			tagwidth = gettagwidth();
 
@@ -2595,7 +2595,7 @@ movemouse(const Arg *arg)
                     c->snapstatus = 3;
                 applysnap(c, c->mon);
 			} else {
-				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
+				if (ev.xmotion.y_root < selmon->my + (2 * selmon->mh) / 3)
 					moveright(arg);
 				else
 					tagtoright(arg);
@@ -2621,7 +2621,7 @@ movemouse(const Arg *arg)
                     c->snapstatus = 7;
                 applysnap(c, c->mon);
 			} else {
-				if (ev.xmotion.y_root < (2 * selmon->mh) / 3)
+				if (ev.xmotion.y_root < selmon->my + (2 * selmon->mh) / 3)
 					moveleft(arg);
 				else
 					tagtoleft(arg);
