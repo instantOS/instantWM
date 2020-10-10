@@ -23,6 +23,7 @@
 #define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
                                * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
 #define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) || C->issticky)
+#define ISVISIBLEONTAG(C, T)    ((C->tags & T))
 #define HIDDEN(C)               ((getstate(C->win) == IconicState))
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
@@ -189,6 +190,7 @@ void arrange(Monitor *m);
 void arrangemon(Monitor *m);
 void resetcursor();
 void attach(Client *c);
+void attachaside(Client *c);
 void attachstack(Client *c);
 void buttonpress(XEvent *e);
 void checkotherwm(void);
@@ -244,6 +246,7 @@ void moveresize(const Arg *arg);
 void distributeclients(const Arg *arg);
 void keyresize(const Arg *arg);
 void centerwindow();
+Client *nexttagged(Client *c);
 Client *nexttiled(Client *c);
 void pop(Client *);
 void shutkill(const Arg *arg);
@@ -292,6 +295,7 @@ void tagtoleft(const Arg *arg);
 void tagtoright(const Arg *arg);
 void uppress(const Arg *arg);
 void downpress(const Arg *arg);
+void toggleattachaside(void);
 void togglealttag(const Arg *arg);
 void alttabfree(const Arg *arg);
 void toggleanimated(const Arg *arg);

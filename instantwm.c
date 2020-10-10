@@ -758,6 +758,21 @@ attach(Client *c)
 }
 
 void
+attachaside(Client *c) {
+    if (!isattachaside) {
+        attach(c);
+        return;
+    }
+    Client *at = nexttagged(c);
+    if(!at) {
+        attach(c);
+        return;
+    }
+    c->next = at->next;
+    at->next = c;
+}
+
+void
 attachstack(Client *c)
 {
 	c->snext = c->mon->stack;
@@ -2174,7 +2189,7 @@ manage(Window w, XWindowAttributes *wa)
 		c->isfloating = c->oldstate = trans != None || c->isfixed;
 	if (c->isfloating)
 		XRaiseWindow(dpy, c->win);
-	attach(c);
+	attachaside(c);
 	attachstack(c);
 	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
 		(unsigned char *) &(c->win), 1);
@@ -3177,6 +3192,16 @@ void shutkill(const Arg *arg) {
 }
 
 Client *
+nexttagged(Client *c) {
+	Client *walked = c->mon->clients;
+	for(;
+		walked && (walked->isfloating || !ISVISIBLEONTAG(walked, c->tags));
+		walked = walked->next
+	);
+	return walked;
+}
+
+Client *
 nexttiled(Client *c)
 {
 	for (; c && (c->isfloating || !ISVISIBLE(c) || HIDDEN(c)); c = c->next);
@@ -3725,7 +3750,7 @@ sendmon(Client *c, Monitor *m)
 	detachstack(c);
 	c->mon = m;
 	c->tags = m->tagset[m->seltags]; /* assign tags of target monitor */
-	attach(c);
+	attachaside(c);
 	attachstack(c);
 	focus(NULL);
 	arrange(NULL);
@@ -4315,6 +4340,12 @@ tagtoright(const Arg *arg) {
 	}
 	c->x = oldx;
 
+}
+
+// toggle attach new clients to stack area
+void
+toggleattachaside(void) {
+    isattachaside = !isattachaside;
 }
 
 // toggle tag icon view
@@ -4969,7 +5000,7 @@ updategeom(void)
 					m->clients = c->next;
 					detachstack(c);
 					c->mon = mons;
-					attach(c);
+					attachaside(c);
 					attachstack(c);
 				}
 				if (m == selmon)

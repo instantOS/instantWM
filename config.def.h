@@ -13,6 +13,7 @@ static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
 static const char *fonts[] = {"Cantarell-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
+static int isattachaside = 0;
 static int barheight;
 static char xresourcesfont[30];
 
@@ -327,6 +328,7 @@ static Key keys[] = {
 	{MODKEY | ShiftMask | Mod1Mask, XK_d, toggledoubledraw, {0} },
 	{MODKEY|ShiftMask, XK_w, warpfocus, {0} },
 	{MODKEY|Mod1Mask, XK_w, centerwindow, {0} },
+	{MODKEY|Mod1Mask, XK_a, toggleattachaside, {0} },
 	{MODKEY|ShiftMask|ControlMask, XK_s, toggleshowtags, { .ui = 2 } },
 	{MODKEY, XK_i, incnmaster, {.i = +1}},
 	{MODKEY, XK_d, incnmaster, {.i = -1}},
