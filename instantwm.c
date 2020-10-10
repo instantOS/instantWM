@@ -4321,7 +4321,11 @@ tagtoright(const Arg *arg) {
 void
 togglealttag(const Arg *arg)
 {
-	showalttag = !showalttag;
+    if (arg->ui < 2)
+        showalttag = arg->ui;
+    else
+        showalttag = !showalttag;
+
 	Monitor *m;
 	for (m = mons; m; m = m->next)
 		drawbar(m);
@@ -4511,9 +4515,12 @@ centerwindow() {
 
 // toggle vacant tags
 void
-toggleshowtags()
+toggleshowtags(const Arg *arg)
 {
-	selmon->showtags = !selmon->showtags;
+    if (arg->ui < 2)
+        selmon->showtags = arg->ui;
+    else
+        selmon->showtags = !selmon->showtags;
 	drawbar(selmon);
 }
 

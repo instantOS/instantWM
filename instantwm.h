@@ -298,7 +298,7 @@ void toggleanimated(const Arg *arg);
 void toggledoubledraw(const Arg *arg);
 void togglefakefullscreen(const Arg *arg);
 void togglelocked(const Arg *arg);
-void toggleshowtags();
+void toggleshowtags(const Arg *arg);
 void togglebar(const Arg *arg);
 void togglefloating(const Arg *arg);
 void togglesticky(const Arg *arg);
