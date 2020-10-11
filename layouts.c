@@ -362,7 +362,9 @@ tile(Monitor *m)
 		return;
 
 	if (n > m->nmaster)
-		mw = m->nmaster ? m->ww * m->mfact : 0;
+		mw = m->nmaster
+            ? m->ww * (m->rmaster ? 1.0 - m->mfact : m->mfact)
+            : 0;
 	else {
 		mw = m->ww;
 		if (n > 1 && n < m->nmaster) {
@@ -375,7 +377,8 @@ tile(Monitor *m)
 		if (i < m->nmaster) {
 			// client is in the master
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+			animateclient(c, m->rmaster ? m->wx + m->ww - mw : m->wx,
+                    m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
 			if (m->nmaster == 1 && n > 1) {
 				mw = c->w + c->bw * 2;
 			}
@@ -384,7 +387,8 @@ tile(Monitor *m)
 		} else {
 			// client is in the stack
 			h = (m->wh - ty) / (n - i);
-			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+			animateclient(c, m->rmaster ? m->wx : m->wx + mw,
+                    m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
 			if (ty + HEIGHT(c) < m->wh)
 				ty += HEIGHT(c);
 		}
