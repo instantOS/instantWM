@@ -547,6 +547,11 @@ void focuslastclient(const Arg *arg) {
 
 	c = lastclient;
 
+    if (c->tags & 1 << 20) {
+        togglescratchpad(NULL);
+        return;
+    }
+
 	const Arg a = {.ui = c->tags};
 	if (selmon != c->mon) {
 		unfocus(selmon->sel, 0);
