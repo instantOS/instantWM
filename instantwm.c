@@ -419,6 +419,7 @@ showoverlay() {
     c->mon = selmon;
 	attach(c);
 	attachstack(c);
+    selmon->overlay->isfloating = 1;
 
 	if (c->islocked) {
             switch (selmon->overlaymode) {
