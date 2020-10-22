@@ -2081,7 +2081,7 @@ killclient(const Arg *arg)
 {
 	if (!selmon->sel || selmon->sel->islocked)
 		return;
-    if (animated && selmon->sel != animclient) {
+    if (animated && selmon->sel != animclient && !selmon->sel->isfullscreen) {
         animclient = selmon->sel;
 		animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
     }
