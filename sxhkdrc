@@ -1,0 +1,285 @@
+# For installation instructions, see sxhkd section in README.md
+super + Escape
+    pkill -USR1 -x sxhkd; \
+    notify-send "sxhkd restarted"
+
+super + mod1 + {h,j,k,l}
+    instantwmctrl keyresize {3,0,1,2}
+
+super + ctrl + d
+    instantwmctrl distributeclients
+
+super + shift + d
+    instantwmctrl drawwindow
+
+super + shift + Escape
+    ~/.config/instantos/default/systemmonitor
+
+super + r
+    st -e ranger
+
+super + ctrl + mod1 + r
+    instantwmctrl redrawwin
+
+super + n
+    ~/.config/instantos/default/filemanager
+
+super + ctrl + q
+    instantshutdown
+
+super + y
+    ~/.config/instantos/default/appmenu
+
+super + a
+    instantassist
+
+super + shift + a
+    instantrepeat
+
+super + ctrl + i
+    instantpacman
+
+super + shift + i
+    instantshare snap
+
+super + w
+    instantwmctrl setoverlay
+
+super + ctrl + w
+    instantwmctrl createoverlay
+
+super + g
+    instantnotify
+
+super + ctrl + Space
+    instantmenu_run
+
+super + shift + v
+    instantclipmenu
+
+super + Space
+    instantmenu_smartrun
+
+super + minus
+    instantmenu_run_st
+
+super + x
+    rofi -show window -kb-row-down "Alt+Tab,Down" -kb-row-up "Alt+Ctrl+Tab,Up" -kb-accept-entry "!Alt_L,!Alt+Tab,Return" -me-select-entry "" -me-accept-entry "MousePrimary" 
+
+mod1 + Tab
+    iswitch
+
+super + mod1 + ctrl + shift + Tab
+    instantwmctrl alttabfree
+
+super + ctrl + l
+    ilock
+
+super + ctrl + h
+    instantwmctrl hidewin
+
+super + mod1 + ctrl + h
+    instantwmctrl unhideall
+
+super + mod1 + ctrl + l
+    ilayout
+
+super + Return
+    ~/.config/instantos/default/terminal
+
+super + v
+    quickmenu
+
+super + b
+    instantwmctrl togglebar
+
+super + {j,k}
+    instantwmctrl focusstack {+,-}1
+
+super + {Down,Up}
+    instantwmctrl {downkey +1,upkey -1}
+
+super + shift + {Down,Up}
+    instantwmctrl {downpress,uppress}
+
+super + ctrl + {j,k}
+    instantwmctrl {pushdown,pushup}
+
+super + mod1 + s
+    instantwmctrl togglealttag 
+
+super + shift + mod1 + s
+    instantwmctrl toggleanimated
+
+super + ctrl + s
+    instantwmctrl togglesticky
+
+super + shift + s
+    instantwmctrl createscratchpad
+
+super + s
+    instantwmctrl togglescratchpad
+
+super + shift + f
+    instantwmctrl togglefakefullscreen
+
+super + ctrl + f
+    instantmctrl tempfullscreen
+
+super + shift + mod1 + d
+    instantwmctrl toggledoubledraw
+
+super + shift + w
+    instantwmctrl warpfocus
+
+super + mod1 + w
+    instantwmctrl centerwindow
+
+super + shift + ctrl + s
+    instantwmctrl toggleshowtags
+
+super + {i,d}
+    instantwmctrl incnmaster {+,-}1
+
+super + {h,l}
+    instantwmctrl setmfact {-,+}0.05
+
+super + shift + Return
+    instantwmctrl zoom
+
+super + Tab
+    instantwmctrl lastview
+
+super + shift + Tab
+    instantwmctrl focuslastclient
+
+super + mod1 + Tab
+    instantwmctrl followview
+
+super + q
+    instantwmctrl shutkill
+
+mod1 + F4 
+    instantwmctrl killclient
+
+super + F1
+   instanthotkeys gui
+
+super + F2
+    instantwmctrl toggleprefix
+
+super + {t,c,f,m}
+    instantwmctrl layout {tile,grid,float,monocle}
+
+super + shift + m
+    instantwmctrl movemouse
+
+super + mod1 + m
+    instantwmctrl resizemouse
+
+super + ctrl + c
+    instantsettings
+
+super + {Left,Right}
+    instantwmctrl {animleft,animright}
+
+super + e
+    instantwmctrl overtoggle
+
+super + shift + e
+    instantwmctrl fullovertoggle
+
+super + ctrl + {Left,Right}
+    instantwmctrl shiftview {-,+}1
+
+super + mod1 + {Left,Right}
+    instantwmctrl {moveleft,moveright}
+
+super + shift + {Left,Right}
+    instantwmctrl {tagtoleft,tagtoright}
+
+super + shift + {h,j,k,l}
+    instantwmctrl moveresive {3,0,1,2}
+
+super + ctrl + {comma,period}
+    instantwmctrl cyclelayout {-,+}1
+
+super + p
+    instantwmctrl setlayout
+
+super + shift + p
+    instantdisper
+
+super + shift + Space
+    instantwmctrl spacetoggle
+
+super + 0
+    instantwmctrl viewall
+
+super + shift + 0
+    instantwmctrl tagall
+
+super + {comma,period}
+    instantwmctrl focusmon {-,+}1
+
+super + shift + {comma,period}
+    instantwmctrl tagmon {-,+}1
+
+super + mod1 + {comma,period}
+    instantwmctrl followmon {-,+}1
+
+super + shift + ctrl + mod1 + period
+    instantwmctrl desktopset
+
+super + {1-9}
+    instantwmctrl view {1-9}
+
+super + ctrl + {1-9}
+    instantwmctrl toggleview {1-9}
+
+super + shift + {1-9}
+    instantwmctrl tag {1-9}
+
+super + mod1 + {1-9}
+    instantwmctrl followtag {1-9}
+
+super + ctrl + shift + {1-9}
+    instantwmctrl toggletag {1-9}
+
+super + shift + ctrl + q
+    instantwmctrl quit
+
+# Media Keys
+XF86MonBrightnessUp
+    /usr/share/instantassist/utils/b.sh +
+XF86MonBrightnessDown
+    /usr/share/instantassist/utils/b.sh -
+XF86AudioLowerVolume
+    /usr/share/instantassist/utils/p.sh +
+XF86AudioRaiseVolume
+    /usr/share/instantassist/utils/p.sh -
+XF86AudioMute
+   /usr/share/instantassist/utils/p.sh m
+XF86AudioPlay
+    playerctl play-pause
+XF86AudioPause
+    playerctl play-pause
+XF86AudioNext
+    playerctl next
+XF86AudioPrev
+    playerctl previous
+XF86AudioMicMute
+    amixer set Capture togglemute
+
+
+super + shift + Print
+    /usr/share/instantassist/assists/s/m.sh
+super + Print
+    /usr/share/instantassist/assists/s/s.sh
+super + ctrl + Print
+    /usr/share/instantassist/assists/s/c.sh
+super + mod1 + Print
+    /usr/share/instantassist/assists/s/f.sh
+
+super + o
+    instantwmctrl winview

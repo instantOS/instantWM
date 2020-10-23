@@ -1983,6 +1983,7 @@ xcommand(void)
     char *indicator="c;:;";
 	char str_signum[16];
 	int i, v, signum, argnum;
+	float argfloat;
 	size_t len_command;
     Arg arg;
 
@@ -2024,6 +2025,14 @@ xcommand(void)
                             arg = commands[i].arg;
                         }
                         break;
+					case 2:
+						argfloat = atof(fcursor);
+						if (argfloat != 0.0) {
+							arg = ((Arg) { .f = argfloat });
+						} else {
+							arg = commands[i].arg;
+						}
+						break;
                     case 3:
                         argnum = atoi(fcursor);
                         if (argnum != 0 && fcursor[0] != '0') {
