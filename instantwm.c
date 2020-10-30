@@ -2081,7 +2081,7 @@ killclient(const Arg *arg)
 {
 	if (!selmon->sel || selmon->sel->islocked)
 		return;
-    if (animated && selmon->sel != animclient) {
+    if (animated && selmon->sel != animclient && !selmon->sel->isfullscreen) {
         animclient = selmon->sel;
 		animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10, 0);
     }
@@ -4672,7 +4672,8 @@ void togglescratchpad(const Arg *arg) {
 		selmon->scratchvisible = 1;
 
     for(c = selmon->clients; c; c = c->next) {
-        if (c->tags == 1 << 20) {
+        if (c->tags & 1 << 20) {
+            c->tags = 1 << 20;
             if (!scratchexists)
                 scratchexists = 1;
             c->issticky = selmon->scratchvisible;
@@ -4687,10 +4688,11 @@ void togglescratchpad(const Arg *arg) {
         return;
     }
 
+    arrange(selmon);
     if (selmon->scratchvisible) {
 
         for(c = selmon->clients; c; c = c->next) {
-            if (c->tags == 1 << 20) {
+            if (c->tags & 1 << 20) {
                 XRaiseWindow(dpy, c->win);
             }
         }
