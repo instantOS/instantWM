@@ -17,6 +17,15 @@ git clone --depth=1 https://github.com/instantOS/instantWM.git
 cd instantWM
 ./build.sh
 ```
+
+Or install from AUR:
+
+```
+git clone https://aur.archlinux.org/instantwm.git
+cd instantwm
+makepkg -si
+```
+
 You can use this to get access to new features early. 
 It can be used outside of instantOS but depends on instantassist, instantutils and slop. 
 
