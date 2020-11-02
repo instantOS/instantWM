@@ -3318,7 +3318,7 @@ removesystrayicon(Client *i)
 void
 resize(Client *c, int x, int y, int w, int h, int interact)
 {
-	if (applysizehints(c, &x, &y, &w, &h, interact))
+	if (applysizehints(c, &x, &y, &w, &h, interact) || selmon->clientcount == 1)
 		resizeclient(c, x, y, w, h);
 }
 
