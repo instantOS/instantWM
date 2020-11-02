@@ -476,7 +476,7 @@ showoverlay() {
 	}
 
 	c->bw = 0;
-	arrange(selmon);
+	/* arrange(selmon); */
 	focus(c);
 	XRaiseWindow(dpy, c->win);
 }
@@ -2479,6 +2479,7 @@ movemouse(const Arg *arg)
 			lasttime = ev.xmotion.time;
 
 			nx = ocx + (ev.xmotion.x - x);
+            // check if client is in snapping range
 			if (ev.xmotion.y_root > bh) {
 				ny = ocy + (ev.xmotion.y - y);
                                 if ((ev.xmotion.x_root < selmon->mx + 50 &&
@@ -2518,14 +2519,34 @@ movemouse(const Arg *arg)
 				ny = selmon->wy + selmon->wh - HEIGHT(c);
 			if (!c->isfloating && selmon->lt[selmon->sellt]->arrange
 			&& (abs(nx - c->x) > snap || abs(ny - c->y) > snap)) {
+                int tmpanimated;
+                float cursoraspectx, cursoraspecty;
 				if (animated) {
 					animated = 0;
-					togglefloating(NULL);
-					animated = 1;
+                    tmpanimated = 1;
 				} else {
-					togglefloating(NULL);
+                    tmpanimated = 0;
 				}
+                // cursor is within window dimensions
+                if (ev.xmotion.x_root > c->x && ev.xmotion.x_root < c->x + c->w && ev.xmotion.y_root > c->y && ev.xmotion.y_root < c->y + c->h ) {
+                    cursoraspectx=( (float)(ev.xmotion.x_root - ocx + 1) / c->w);
+                    cursoraspecty=( (float)(ev.xmotion.y_root - ocy + 1) / c->h);
+                    c->w = c->sfw;
+                    c->h = c->sfh;
+                    c->x = ev.xmotion.x_root - c->w * cursoraspectx;
+                    c->y = ev.xmotion.y_root - c->h * cursoraspecty;
+                    nx = c->x;
+                    ny = c->y;
+                    ocy = c->y;
+                    ocx = c->x;
+                    savefloating(c);
+                }
+                togglefloating(NULL);
+                if (tmpanimated) {
+                    animated = 1;
+                }
 			}
+
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
 				resize(c, nx, ny, c->w, c->h, 1);
 
@@ -2554,6 +2575,7 @@ movemouse(const Arg *arg)
 		}
 	} while (ev.type != ButtonRelease);
 
+    // user let go of the window
 	bardragging = 0;
 	if (ev.xmotion.y_root < selmon->my + bh) {
 		if (!tagwidth)
