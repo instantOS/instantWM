@@ -4,39 +4,32 @@
     <img width="300" height="300" src="https://raw.githubusercontent.com/instantOS/instantLOGO/master/png/wm.png">
 </div>
 
-instantWM the window manager of instantOS. 
+instantWM the window manager of instantOS.
 
 ![img](https://github.com/instantOS/instantLOGO/blob/master/screeenshots/screenshot1.png)
 
 ## Installation
+
 It is preinstalled on instantOS  
 You can manually install the git build by cloning the repo and then running build.sh
 
-```
+```sh
 git clone --depth=1 https://github.com/instantOS/instantWM.git
 cd instantWM
-./build.sh  # makepkg -si  # if you cloned from aur.archlinux.org/instantwm.git
 ```
-
-Alternatively, install from AUR:
-
-```
-yay -S instantwm
-```
-
-You can use this to get access to new features early. 
-It can be used outside of instantOS but depends on instantassist, instantutils and slop. 
 
 [Download latest release](https://github.com/instantOS/instantWM/releases/download/beta2/instantwm.pkg.tar.xz)
 
-## Documentation
+## [Documentation](instantos.io/document)
 
-Documentation for instantWM can be found in the general documentation for instantOS and the instructional screencasts. 
-It is not described in this README
+Documentation for instantWM can be found in the general documentation for
+instantOS and the instructional screencasts.  It is not described in this
+README
 
 ## Features
 
-This is just a quick list of some features. For a full list and explanation, please refer to the documentation. 
+This is just a quick list of some features. For a full list and explanation,
+please refer to the documentation.
 
 - General
   * hybrid-wm: tiling and floating mode
@@ -51,7 +44,7 @@ This is just a quick list of some features. For a full list and explanation, ple
   * Animations
   * Hover indicators
   * Status markup
-  * color indicators for sticky windows, tag status etc. 
+  * color indicators for sticky windows, tag status etc.
 - Mouse support
   * Drag windows by grabbing the title
   * Drag windows onto other tags
@@ -59,25 +52,26 @@ This is just a quick list of some features. For a full list and explanation, ple
 
 ## Background information
 
-instantWM is a dwm fork, but contains less than 40% original dwm code. 
-Most of the changed and added code is completely original which means there are no patches replicating the behaviour
-for dwm. It also makes instantWM incompatible with dwm patches.  
-Why go this route? Why not just use dwm patches?
-The features patches introduce are by nature completely isolated. They have no way of knowing what else is applied to the WM and therefore
-are limited in their usage of other parts of the WM. 
-Not relying on patches enables huge amounts of freedom. 
-Take for instance sticky windows. They are a simple concept, but need a few checks in some places that adjust behaviour based on wether a window
-is sticky or not. A patch can only apply this to code present in the barren vanilla version. 
-Other examples of this include animations and overlays or scratchpads. 
-Most features weren't available as patches anyway.
-instantWM has different goals than dwm.  
-It prioritizes stability, speed and features over lines of code. 
-It aims to have excellent mouse and touch screen support. 
-It contains graphical features like animations and hover indicators that make it look more appealing. 
-It is meant to be used as is. instantOS has every feature that a desktop enviroment
-has or offers a replacement and instantWM closely follows this "just works" approach
-and in many ways goes beyond the capabilities of a desktop environment. 
-This makes it a possible choice for new or casual users that cannot be bothered to learn C, vim, git, bash and loads of other
-stuff just to do their email. 
+instantWM is a dwm fork, but contains less than 40% original dwm code.  Most of
+the changed and added code is completely original which means there are no
+patches replicating the behaviour for dwm. It also makes instantWM incompatible
+with dwm patches.  Why go this route? Why not just use dwm patches?  The
+features patches introduce are by nature completely isolated. They have no way
+of knowing what else is applied to the WM and therefore are limited in their
+usage of other parts of the WM.  Not relying on patches enables huge amounts of
+freedom.  Take for instance sticky windows. They are a simple concept, but need
+a few checks in some places that adjust behaviour based on wether a window is
+sticky or not. A patch can only apply this to code present in the barren
+vanilla version.  Other examples of this include animations and overlays or
+scratchpads.  Most features weren't available as patches anyway.  instantWM has
+different goals than dwm.  It prioritizes stability, speed and features over
+lines of code.  It aims to have excellent mouse and touch screen support.  It
+contains graphical features like animations and hover indicators that make it
+look more appealing.  It is meant to be used as is. instantOS has every feature
+that a desktop enviroment has or offers a replacement and instantWM closely
+follows this "just works" approach and in many ways goes beyond the
+capabilities of a desktop environment.  This makes it a possible choice for new
+or casual users that cannot be bothered to learn C, vim, git, bash and loads of
+other stuff just to do their email.
 
 ### instantOS is still in early beta, contributions always welcome
