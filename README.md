@@ -15,8 +15,15 @@ You can manually install the git build by cloning the repo and then running buil
 ```
 git clone --depth=1 https://github.com/instantOS/instantWM.git
 cd instantWM
-./build.sh
+./build.sh  # makepkg -si  # if you cloned from aur.archlinux.org/instantwm.git
 ```
+
+Alternatively, install from AUR:
+
+```
+yay -S instantwm
+```
+
 You can use this to get access to new features early. 
 It can be used outside of instantOS but depends on instantassist, instantutils and slop. 
 
