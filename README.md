@@ -18,12 +18,10 @@ cd instantWM
 ./build.sh
 ```
 
-Or install from AUR:
+Alternatively, install from AUR:
 
 ```
-git clone https://aur.archlinux.org/instantwm.git
-cd instantwm
-makepkg -si
+yay -S instantwm
 ```
 
 You can use this to get access to new features early. 
