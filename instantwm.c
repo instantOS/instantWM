@@ -2013,6 +2013,7 @@ xcommand(void)
                     continue;
                 fcursor++;
                 switch (commands[i].type) {
+                    // no argument
                     case 0:
                         arg = commands[i].arg;
                         break;
@@ -4353,14 +4354,22 @@ tagtoright(const Arg *arg) {
 
 }
 
+void ctrltoggle(int *value, int arg) {
+    if (arg == 0 || arg == 2) {
+        *value = !*value;
+    } else {
+        if (arg == 1)
+            *value = 0;
+        else
+            *value = 1;
+    }
+}
+
 // toggle tag icon view
 void
 togglealttag(const Arg *arg)
 {
-    if (arg->ui < 2)
-        showalttag = arg->ui;
-    else
-        showalttag = !showalttag;
+    ctrltoggle(&showalttag, arg->ui);
 
 	Monitor *m;
 	for (m = mons; m; m = m->next)
@@ -4370,16 +4379,7 @@ togglealttag(const Arg *arg)
 }
 
 void alttabfree(const Arg *arg) {
-
-    if (arg->ui < 2) {
-        freealttab = arg->ui;
-    } else {
-        if (!freealttab)
-            freealttab = 1;
-        else
-            freealttab = 0;
-    }
-
+    ctrltoggle(&freealttab, arg->ui);
 	grabkeys();
 }
 
@@ -4402,10 +4402,7 @@ void toggleprefix(const Arg *arg) {
 void
 toggleanimated(const Arg *arg)
 {
-    if (arg->ui == 2 || arg->ui > 1)
-	    animated = !animated;
-    else
-        animated = arg->ui;
+    ctrltoggle(&animated, arg->ui);
 }
 
 // double the window refresh rate
@@ -4553,10 +4550,9 @@ centerwindow() {
 void
 toggleshowtags(const Arg *arg)
 {
-    if (arg->ui < 2)
-        selmon->showtags = arg->ui;
-    else
-        selmon->showtags = !selmon->showtags;
+    int showtags = selmon->showtags;
+    ctrltoggle(&showtags, arg->ui);
+    selmon->showtags = showtags;
 	drawbar(selmon);
 }
 

@@ -220,7 +220,7 @@ ResourcePref resources[] = {
 };
 
 static Xcommand commands[] = {
-	/* signum       function        argument  */
+	/* signum       function        default argument  arg handler*/
 	{ "overlay",    setoverlay,      {0}, 0 },
 	{ "tag",        view,      { .ui = 2 }, 3 },
 	{ "animated",   toggleanimated,      { .ui = 2 }, 1 },
