@@ -5,7 +5,15 @@ Really basic tool to send commands to instantWM.
 
 Commands:
     help                     Display this help text
-    layout <number>|<name>   Change window layout to given argument, e.g. $0 layout monocle"
+    overlay
+    tag
+    animated
+    alttab
+    layout <number>|<name>   Change window layout to given argument, e.g. $0 layout monocle
+    prefix
+    allttag
+    hidetags"
+
 
 main() {
     case $1 in
