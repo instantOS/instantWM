@@ -1667,6 +1667,9 @@ focus(Client *c)
 			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColFloat].pixel);
 
 		setfocus(c);
+        if (c->tags & 1 << 20) {
+            selmon->activescratchpad = c;
+        }
 	} else {
 		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
@@ -1689,6 +1692,7 @@ focus(Client *c)
 		isdesktop = 0;
 		grabkeys();
 	}
+
 }
 
 /* there are some broken focus acquiring clients needing extra handling */
@@ -4678,6 +4682,7 @@ toggletag(const Arg *arg)
 
 void togglescratchpad(const Arg *arg) {
 	Client *c;
+    Client *activescratchpad;
     int scratchexists;
     scratchexists = 0;
 	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
@@ -4715,20 +4720,26 @@ void togglescratchpad(const Arg *arg) {
             }
         }
 
-        for(c = selmon->clients; c; c = c->next) {
-            if (c->tags == 1 << 20) {
-                if ((!selmon->sel || !selmon->sel->isfullscreen) && c->issticky) {
-                    selmon->sel = c;
-                    arrange(selmon);
-                    focus(c);
-                    warp(c);
-                } else {
-                    arrange(selmon);
+        if (selmon->activescratchpad) {
+            activescratchpad = selmon->activescratchpad;
+        } else {
+            for(c = selmon->clients; c; c = c->next) {
+                if (c->tags == 1 << 20) {
+                    if ((!selmon->sel || !selmon->sel->isfullscreen) && c->issticky) {
+                        activescratchpad = c;
+                    } else {
+                        arrange(selmon);
+                    }
+                    break;
                 }
-                break;
             }
         }
-
+        if (activescratchpad) {
+            selmon->sel = activescratchpad;
+            arrange(selmon);
+            focus(activescratchpad);
+            warp(activescratchpad);
+        }
     } else {
         focus(NULL);
         arrange(selmon);
@@ -4750,6 +4761,7 @@ void createscratchpad(const Arg *arg) {
 		arrange(selmon);
 	focus(NULL);
     if (!selmon->scratchvisible) {
+
         togglescratchpad(NULL);
     }
 

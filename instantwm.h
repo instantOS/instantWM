@@ -140,6 +140,7 @@ struct Monitor {
 	Client *clients;
 	Client *sel;
 	Client *overlay;
+	Client *activescratchpad;
 	Client *fullscreen;
 	int overlaystatus;
     int overlaymode;
