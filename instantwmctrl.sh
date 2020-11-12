@@ -18,7 +18,7 @@ Commands:
 main() {
     case $1 in
         help) usage -h ;;
-        layout) layout $2; exit ;;
+        layout) layout "$2"; exit ;;
     esac
     xsetroot -name "c;:;$1;$2"
 }

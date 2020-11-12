@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# ./theme.sh "$1"
+# compile and install instantWM
 
 make clean &>/dev/null
 
