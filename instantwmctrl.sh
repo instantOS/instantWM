@@ -5,14 +5,14 @@ Really basic tool to send commands to instantWM.
 
 Commands:
     help                     Display this help text
-    overlay
-    tag
-    animated
-    alttab
+    alttab                   Toggle graphical Alt + Tab menu
+    animated                 Toggle animations
+    hidetags
     layout <number>|<name>   Change window layout to given argument, e.g. $0 layout monocle
     prefix
-    allttag
-    hidetags"
+    overlay                  Toggle overlay
+    tag <number>             Swich to tag
+    allttag"
 
 
 main() {
