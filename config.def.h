@@ -230,6 +230,7 @@ static Xcommand commands[] = {
 	{ "prefix",   commandprefix,      { .ui = 1 }, 1 },
 	{ "alttag",   togglealttag,      { .ui = 0 }, 1 },
 	{ "hidetags",   toggleshowtags,      { .ui = 0 }, 1 },
+	{ "specialnext",   setspecialnext,      { .ui = 0 }, 3 },
 };
 
 static Key dkeys[] = {

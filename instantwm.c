@@ -96,6 +96,8 @@ static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
 int animated = 1;
+int specialnext = 0;
+
 Client *animclient;
 
 int commandoffsets[10];
@@ -594,59 +596,68 @@ applyrules(Client *c)
 	class    = ch.res_class ? ch.res_class : broken;
 	instance = ch.res_name  ? ch.res_name  : broken;
 
-	for (i = 0; i < LENGTH(rules); i++) {
-		r = &rules[i];
-		if ((!r->title || strstr(c->name, r->title))
-		&& (!r->class || strstr(class, r->class))
-		&& (!r->instance || strstr(instance, r->instance)))
-		{
-			if (strstr(r->class, "ROX-Filer") != NULL) {
-				desktopicons = 1;
-				newdesktop = 1;
-			}
+    if (specialnext) {
+        switch (specialnext) {
+            case 1:
+                c->isfloating = 1;
+                break;
+        }
+        specialnext = 0;
+    } else {
+        for (i = 0; i < LENGTH(rules); i++) {
+            r = &rules[i];
+            if ((!r->title || strstr(c->name, r->title))
+            && (!r->class || strstr(class, r->class))
+            && (!r->instance || strstr(instance, r->instance)))
+            {
+                if (strstr(r->class, "ROX-Filer") != NULL) {
+                    desktopicons = 1;
+                    newdesktop = 1;
+                }
 
-			if (strstr(r->class, "Onboard") != NULL) {
-				c->issticky=1;
-			}
+                if (strstr(r->class, "Onboard") != NULL) {
+                    c->issticky=1;
+                }
 
-            switch (r->isfloating) {
-                case 2:
-                    selmon->sel = c;
-                    c->isfloating = 1;
-                    centerwindow();
-                    break;;
-                case 3:
-                    // fullscreen overlay
-                    selmon->sel = c;
-                    c->isfloating = 1;
-                    c->w = c->mon->mw;
-                    c->h = c->mon->wh - ( selmon->showbar ? bh : 0 );
-                    if (selmon->showbar)
-                        c->y = selmon->my + bh;
-                    c->x = selmon->mx;
-                    break;;
-                case 4:
-                    selmon->sel = c;
-                    c->tags = 1 << 20;
-                    selmon->scratchvisible = 1;
-                    c->issticky = 1;
-                    c->isfloating = 1;
-                    centerwindow();
-                    break;;
-                case 1:
-                    c->isfloating = 1;
-                    break;;
-                case 0:
-                    c->isfloating = 0;
-                    break;;
+                switch (r->isfloating) {
+                    case 2:
+                        selmon->sel = c;
+                        c->isfloating = 1;
+                        centerwindow();
+                        break;;
+                    case 3:
+                        // fullscreen overlay
+                        selmon->sel = c;
+                        c->isfloating = 1;
+                        c->w = c->mon->mw;
+                        c->h = c->mon->wh - ( selmon->showbar ? bh : 0 );
+                        if (selmon->showbar)
+                            c->y = selmon->my + bh;
+                        c->x = selmon->mx;
+                        break;;
+                    case 4:
+                        selmon->sel = c;
+                        c->tags = 1 << 20;
+                        selmon->scratchvisible = 1;
+                        c->issticky = 1;
+                        c->isfloating = 1;
+                        centerwindow();
+                        break;;
+                    case 1:
+                        c->isfloating = 1;
+                        break;;
+                    case 0:
+                        c->isfloating = 0;
+                        break;;
+                }
+
+                c->tags |= r->tags;
+                for (m = mons; m && m->num != r->monitor; m = m->next);
+                if (m)
+                    c->mon = m;
             }
-
-			c->tags |= r->tags;
-			for (m = mons; m && m->num != r->monitor; m = m->next);
-			if (m)
-				c->mon = m;
-		}
-	}
+        }
+    }
 	if (ch.res_class)
 		XFree(ch.res_class);
 	if (ch.res_name)
@@ -4367,6 +4378,10 @@ void ctrltoggle(int *value, int arg) {
         else
             *value = 1;
     }
+}
+
+void setspecialnext(const Arg *arg) {
+    specialnext = arg->ui;
 }
 
 // toggle tag icon view
