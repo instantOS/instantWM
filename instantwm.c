@@ -95,6 +95,7 @@ Display *dpy;
 static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
+static int focusfollowsmouse = 1;
 int animated = 1;
 int specialnext = 0;
 
@@ -801,9 +802,12 @@ buttonpress(XEvent *e)
 	click = ClkRootWin;
 	/* focus monitor if necessary */
 	if ((m = wintomon(ev->window)) && m != selmon) {
-		unfocus(selmon->sel, 1);
-		selmon = m;
-		focus(NULL);
+		/* if focus doesn't follow the mouse, the scroll wheel shouldn't switch focus */
+		if (focusfollowsmouse || ev->button <= Button3) {
+			unfocus(selmon->sel, 1);
+			selmon = m;
+			focus(NULL);
+		}
 	}
 
 	if (ev->window == selmon->barwin) {
@@ -861,8 +865,10 @@ buttonpress(XEvent *e)
 			}
 		}
 	} else if ((c = wintoclient(ev->window))) {
-		focus(c);
-		restack(selmon);
+		if (focusfollowsmouse || ev->button <= Button3) {
+			focus(c);
+			restack(selmon);
+		}
 		XAllowEvents(dpy, ReplayPointer, CurrentTime);
 		click = ClkClientWin;
 	} else if (ev->x > selmon->mx + selmon->mw - 50) {
@@ -1625,7 +1631,9 @@ enternotify(XEvent *e)
 	Client *c;
 	Monitor *m;
 	XCrossingEvent *ev = &e->xcrossing;
-
+	/* Only care about mouse motion if the focus follows the mouse */
+	if (!focusfollowsmouse)
+		return;
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
 	c = wintoclient(ev->window);
@@ -2287,12 +2295,14 @@ motionnotify(XEvent *e)
 		tagwidth = gettagwidth();
 
 	// detect mouse hovering over other monitor
-    m = recttomon(ev->x_root, ev->y_root, 1, 1);
-    if (m && m != selmon) {
-		unfocus(selmon->sel, 1);
-		selmon = m;
-		focus(NULL);
-		return;
+	if (focusfollowsmouse) {
+		m = recttomon(ev->x_root, ev->y_root, 1, 1);
+		if (m && m != selmon) {
+			unfocus(selmon->sel, 1);
+			selmon = m;
+			focus(NULL);
+			return;
+		}
 	}
 
 	// leave small deactivator zone
@@ -4424,6 +4434,12 @@ toggleanimated(const Arg *arg)
     ctrltoggle(&animated, arg->ui);
 }
 
+// disable/enable window focus following the mouse
+void
+togglefocusfollowsmouse(const Arg *arg)
+{
+	ctrltoggle(&focusfollowsmouse, arg->ui);
+}
 // double the window refresh rate
 void
 toggledoubledraw(const Arg *arg) {
