@@ -11,6 +11,7 @@ Commands:
     alttab
     layout <number>|<name>   Change window layout to given argument, e.g. $0 layout monocle
     prefix
+    focusfollowsmouse        Control if window focus will change with mouse movement
     allttag
     hidetags"
 
