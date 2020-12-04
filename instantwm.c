@@ -5927,9 +5927,11 @@ load_xresources(void)
 int
 main(int argc, char *argv[])
 {
-	if (argc == 2 && !strcmp("-v", argv[1]))
-		die("instantwm-"VERSION);
-	else if (argc != 1)
+	if ( argc == 2
+            && (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1]) ) ) {
+		puts("instantwm-"VERSION"\n");
+        return EXIT_SUCCESS;
+    } else if (argc != 1)
 		die("usage: instantwm [-v]");
 	if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
 		fputs("warning: no locale support\n", stderr);

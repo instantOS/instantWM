@@ -2,3 +2,5 @@
 config.h
 instantwm
 tags
+.envrc
+shell.nix
