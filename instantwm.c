@@ -2496,7 +2496,7 @@ movemouse(const Arg *arg)
 
 			nx = ocx + (ev.xmotion.x - x);
             // check if client is in snapping range
-			if (ev.xmotion.y_root > bh) {
+			if (ev.xmotion.y_root > (selmon->showbar ? bh : 5)) {
 				ny = ocy + (ev.xmotion.y - y);
                                 if ((ev.xmotion.x_root < selmon->mx + 50 &&
                                      ev.xmotion.x_root > selmon->mx - 1) ||
@@ -2517,7 +2517,7 @@ movemouse(const Arg *arg)
                                       scheme[SchemeSel][ColFloat].pixel);
                                 }
                         } else {
-				ny = bh;
+				ny = (selmon->showbar ? bh : 0);
 				if (!colorclient) {
 					colorclient = 1;
 					XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
