@@ -2517,7 +2517,7 @@ movemouse(const Arg *arg)
                                       scheme[SchemeSel][ColFloat].pixel);
                                 }
                         } else {
-				ny = (selmon->showbar ? bh : 0);
+				ny = selmon->showbar ? bh : 0;
 				if (!colorclient) {
 					colorclient = 1;
 					XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
