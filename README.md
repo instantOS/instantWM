@@ -10,7 +10,7 @@ instantWM the window manager of instantOS.
 
 ## Installation
 
-It is preinstalled on instantOS  
+It is preinstalled on instantOS
 You can manually install the git build by cloning the repo and then running build.sh
 
 ```sh
@@ -20,7 +20,7 @@ cd instantWM
 
 [Download latest release](https://github.com/instantOS/instantWM/releases/download/beta2/instantwm.pkg.tar.xz)
 
-## [Documentation](instantos.io/document)
+## [Documentation](https://instantos.io/documentation)
 
 Documentation for instantWM can be found in the general documentation for
 instantOS and the instructional screencasts.  It is not described in this
