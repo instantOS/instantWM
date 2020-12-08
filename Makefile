@@ -45,7 +45,7 @@ install: all
 	chmod 755 ${DESTDIR}${PREFIX}/bin/instantwm
 	chmod 755 ${DESTDIR}${PREFIX}/bin/instantwmctrl
 	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	sed "s/VERSION/${VERSION}/g" < instantwm.1 > ${DESTDIR}${MANPREFIX}/man1/instantwm.1
+	sed s/VERSION/${VERSION}/g < instantwm.1 > ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	chmod 644 ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	cp -f instantwm.desktop ${DESTDIR}/usr/share/xsessions
 	cp -f instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop

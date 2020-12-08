@@ -2454,6 +2454,8 @@ movemouse(const Arg *arg)
 	occ = 0;
 	tagx = 0;
 	colorclient = 0;
+
+    // some windows are immovable
 	if (!(c = selmon->sel) || (c->isfullscreen && !c->isfakefullscreen) || c == selmon->overlay)
 		return;
 
@@ -3781,7 +3783,8 @@ sendmon(Client *c, Monitor *m)
 	attach(c);
 	attachstack(c);
 	focus(NULL);
-	arrange(NULL);
+    if (!c->isfloating)
+	    arrange(NULL);
 }
 
 void
