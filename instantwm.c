@@ -1013,6 +1013,7 @@ clientmessage(XEvent *e)
 			}
 			showoverlay();
 		} else if (c->tags == 1 << 20) {
+            selmon = c->mon;
 			togglescratchpad(NULL);
 		} else {
 			if (HIDDEN(c))
