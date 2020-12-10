@@ -31,6 +31,7 @@ layout() {
             ["tile"]=0 ['grid']=1 ['float']=2 
             ['monocle']=3 ['tcl']=4 ['deck']=5
             ['overview']=6 ['bstack']=7 ['bstackhoriz']=8
+            ['spiral']=9 ['dwindle']=10
         )
         layout=${layouts[$1]}
         [ -z "$layout" ] &&

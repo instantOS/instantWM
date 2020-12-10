@@ -143,6 +143,189 @@ deck(Monitor *m)
 }
 
 void
+fibonacci(Monitor *m, int s) {
+	unsigned int i, n, mx, my, mw, mh, framecount, t;
+	Client *c;
+
+	if (animated && clientcount() > 4)
+		framecount = 4;
+	else
+		framecount = 7;
+
+	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	if(n == 0)
+		return;
+
+	my = m->wy;
+	if (n > m->nmaster) {
+		if (m->nmaster) {
+			mw = m->ww * m->mfact;
+			mx = m->wx + mw;
+		} else {
+			mx = m->wx;
+			mh = m->wh;
+			mw = m->ww;
+		}
+	} else {
+		if (n > 1 && n < m->nmaster) {
+			m->nmaster = n;
+			fibonacci(m, s);
+			return;
+		}
+		mw = m->ww;
+	}
+	
+	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+		if (i < m->nmaster) {
+			// client is in the master
+			mh = (m->wy + m->wh - my) / (MIN(n, m->nmaster) - i);
+			animateclient(c, m->wx, my, mw - (2*c->bw), mh - (2*c->bw), framecount, 0);
+			if (m->nmaster == 1 && n > 1) 
+				mx = m->wx + c->w + c->bw * 2;
+			if (my + HEIGHT(c) < m->wh)
+				my += HEIGHT(c);
+			if (i == m->nmaster - 1) {
+				my = m->wy;
+				mw = m->ww + m->wx - mx;
+				mh = m->wh;
+			}
+			i++;
+		} else {
+			// client is in the fibonacci part
+			if((!((i + m->nmaster) % 2) && mh / 2 > 2 * c->bw)
+			   || ((i + m->nmaster) % 2 && mw / 2 > 2 * c->bw)) {
+				if(i < n - 1) {
+					if((i - m->nmaster) % 2) {
+						t = mw % 2;	//checks the the number that is being divided is odd
+						mw /= 2;
+						mw += t;	// if so, add one pixel here because there will otherwise be a one pixel gap.
+					} else {
+						t = mh % 2;	// same thing here but for the height
+						mh /= 2;
+						mh += t;
+					} if((i - m->nmaster) % 4 == 1 && !s)
+						mx += mw - t;
+					else if((i - m->nmaster) % 4 == 2 && !s)
+						my += mh - t;
+				}
+				if((i - m->nmaster) % 4 == 0 && i != m->nmaster)
+					mx += mw;
+				else if((i - m->nmaster) % 4 == 1)
+					my += mh;
+				else if((i - m->nmaster) % 4 == 2) {
+					if(s)
+						mx += mw;
+					else
+						mx -= mw;
+				}
+				else if((i - m->nmaster) % 4 == 3) {
+					if(s)
+						my += mh;
+					else
+						my -= mh;
+				}
+				i++;
+			}
+			animateclient(c, mx, my, mw - 2 * c->bw, mh - 2 * c->bw, framecount, 0);
+			if((i - m->nmaster) % 2) {
+				if(mh / 2 > 2 * c->bw && (s || (i - m->nmaster) % 4 == 1)) {
+					my -= 2 * (mh - HEIGHT(c));	// these lines expands height if the client did not take up all the space
+					mh += mh - HEIGHT(c);
+				} if((i - m->nmaster) % 4 != 3 || s)
+					my += t;	// adds to y if we are doing the spiral layout and the next client is going above this one
+				mh -= t;	// removes the pixel that we added on earlier
+			} else {
+				if(mw / 2 > 2 * c->bw && (s || (i - m->nmaster) % 4 == 0)) {
+					mx -= 2 * (mw - (c->w + c->bw * 2));	//these lines do the same as above but for the x and width
+					mw += mw - (c->w + c->bw * 2);
+				} if((i - m->nmaster) % 4 != 2 || s)
+					mx += t;
+				mw -= t;
+			}
+		}
+	}
+}
+
+// this is the mostly unmodified code
+//void
+//fibonacci(Monitor *m, int s) {
+//	unsigned int i, n, mx, my, mw, mh, framecount;
+//	Client *c;
+//
+//	if (animated && clientcount() > 4)
+//		framecount = 4;
+//	else
+//		framecount = 7;
+//
+//	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+//	if(n == 0)
+//		return;
+//
+//	if (n > 1 && n < m->nmaster) {
+//		m->nmaster = n;
+//		fibonacci(m, s);
+//		return;
+//	}
+//	
+//	mx = m->wx;
+//	my = 0;
+//	mw = m->ww;
+//	mh = m->wh;
+//	
+//	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+//		if((!((i + m->nmaster) % 2) && mh / 2 > 2 * c->bw)
+//		   || ((i + m->nmaster) % 2 && mw / 2 > 2 * c->bw)) {
+//			if(i < n - 1) {
+//				if(i % 2)
+//					mh /= 2;
+//				else
+//					mw /= 2;
+//				if((i % 4) == 2 && !s)
+//					mx += mw;
+//				else if((i % 4) == 3 && !s)
+//					my += mh;
+//			}
+//			if((i % 4) == 0) {
+//				if(s)
+//					my += mh;
+//				else
+//					my -= mh;
+//			}
+//			else if((i % 4) == 1)
+//				mx += mw;
+//			else if((i % 4) == 2)
+//				my += mh;
+//			else if((i % 4) == 3) {
+//				if(s)
+//					mx += mw;
+//				else
+//					mx -= mw;
+//			}
+//			if(i == 0)
+//			{
+//				if(n != 1)
+//					mw = m->ww * m->mfact;
+//				my = m->wy;
+//			}
+//			else if(i == 1)
+//				mw = m->ww - mw;
+//			i++;
+//		}
+//		animateclient(c, mx, my, mw - 2 * c->bw, mh - 2 * c->bw, framecount, 0);
+//	}
+//}
+
+void
+dwindle(Monitor *m) {
+	fibonacci(m, 1);
+}
+
+void
+spiral(Monitor *m) {
+	fibonacci(m, 0);
+}
+
+void
 grid(Monitor *m) {
 	int i, n, rows, framecount;
 	unsigned int cols;
