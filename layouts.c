@@ -189,7 +189,7 @@ fibonacci(Monitor *m, int s) {
 			   || ((i + m->nmaster) % 2 && nw / 2 > 2 * c->bw)) {
 				if(i < n - 1) {
 					if((i - m->nmaster) % 2) {
-						t = nw % 2;	//checks the the number that is being divided is odd
+						t = nw % 2;	//checks if the number that is being divided is odd
 						nw /= 2;
 						nw += t;	// if so, add one pixel here because there will otherwise be a one pixel gap
 					} else {
@@ -222,21 +222,19 @@ fibonacci(Monitor *m, int s) {
 			animateclient(c, nx, ny, nw - 2 * c->bw, nh - 2 * c->bw, framecount, 0);
 			if((i - m->nmaster) % 2) {
 				if(nh / 2 > 2 * c->bw) {
-					if((i - m->nmaster) % 4 != 3 - s) {
+					if(s || (i - m->nmaster) % 4 == 1) {
 						ny -= 2 * (nh - HEIGHT(c));	// these lines expands height if the client did not take up all the space
 						nh += nh - HEIGHT(c);
-					} else if (s)
 						ny += t;	// adds to y if the next client is not going above this one
-					nh -= t;	// removes the pixel that we added on earlier for the next client
+					} nh -= t;	// removes the pixel that we added on earlier for the next client
 				}
 			} else {
 				if(nw / 2 > 2 * c->bw) {
-					if ((i - m->nmaster) % 4 != 2 - s) {
+					if (s || (i - m->nmaster) % 4 == 0) {
 						nx -= 2 * (nw - (c->w + c->bw * 2));	//these lines do the same as above but for the x and width
 						nw += nw - (c->w + c->bw * 2);
-					} else if (s)
 						nx += t;
-					nw -= t;
+					} nw -= t;
 				}
 			}
 		}
