@@ -5550,6 +5550,8 @@ shiftview(const Arg *arg)
 	} while (!visible && ++count < 10);
 
 	if (count < 10) {
+        if (nextseltags & (1 << 20))
+            nextseltags = nextseltags ^ (1<<20);
 		a.i = nextseltags;
 		view(&a);
 	}
