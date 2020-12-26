@@ -5,7 +5,7 @@
 ###############################################
 
 # used for shutdown
-echo $$ >/tmp/instantosrunning
+echo $$ >${XDG_RUNTIME_DIR}/instantosrunning
 
 # just in case, some systems might not do this
 cd
@@ -24,18 +24,18 @@ fi
 source ~/.instantsession
 
 # loop so crashing instantwm doesn't end the x session
-while [ -e /tmp/instantosrunning ]; do
+while [ -e ${XDG_RUNTIME_DIR}/instantosrunning ]; do
     # allow changing wm on the fly
-    if [ -e /tmp/wmoverride ]; then
-        if command -v "$(cat /tmp/wmoverride)" &>/dev/null; then
-            "$(cat /tmp/wmoverride)" 2>~/.instantos.log &
+    if [ -e ${XDG_RUNTIME_DIR}/wmoverride ]; then
+        if command -v "$(cat ${XDG_RUNTIME_DIR}/wmoverride)" &>/dev/null; then
+            "$(cat ${XDG_RUNTIME_DIR}/wmoverride)" 2>~/.instantos.log &
             WMPID="$!"
-            echo "$WMPID" >/tmp/wmpid
+            echo "$WMPID" >${XDG_RUNTIME_DIR}/wmpid
             while kill -0 "$WMPID"; do
                 sleep 1
             done
         fi
-        rm /tmp/wmoverride
+        rm ${XDG_RUNTIME_DIR}/wmoverride
     else
         # Log stderror or stdout to a file
         if ! [ -e .local/share ]; then
