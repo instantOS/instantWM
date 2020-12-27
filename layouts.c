@@ -178,9 +178,8 @@ grid(Monitor *m) {
 void
 monocle(Monitor *m)
 {
-	unsigned int n = 0, ccount;
+	unsigned int n = 0;
 	Client *c;
-	ccount = clientcount();
 
 	if (animated && selmon->sel)
 		XRaiseWindow(dpy, selmon->sel->win);
@@ -225,9 +224,8 @@ focusstack2(const Arg *arg)
 void
 overviewlayout(Monitor *m)
 {
-	int i, n, rows;
+	int n;
 	int gridwidth;
-	unsigned int cols;
 	unsigned int colwidth;
 	unsigned int lineheight;
 	int tmpx;
