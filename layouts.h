@@ -12,5 +12,11 @@ void overviewlayout(Monitor *m);
 void tcl(Monitor * m);
 void tile(Monitor *m);
 void floatl(Monitor *m);
-
+static inline Client* findVisibleClient(Client *c){
+	for (Client* client = c; client ; client = client->next){
+		if(ISVISIBLE(client))
+			return client;
+	}
+	return NULL;
+}
 #endif
