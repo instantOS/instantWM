@@ -268,8 +268,8 @@ void changesnap(Client *c, int snapmode) {
 }
 
 void tempfullscreen() {
-    Client *c;
     if (selmon->fullscreen) {
+        Client *c;
         c = selmon->fullscreen;
         if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange) {
             restorefloating(c);
@@ -585,8 +585,6 @@ void
 applyrules(Client *c)
 {
 	const char *class, *instance;
-	unsigned int i;
-	const Rule *r;
 	Monitor *m;
 	XClassHint ch = { NULL, NULL };
 
@@ -605,6 +603,8 @@ applyrules(Client *c)
         }
         specialnext = 0;
     } else {
+        unsigned int i;
+        const Rule *r;
         for (i = 0; i < LENGTH(rules); i++) {
             r = &rules[i];
             if ((!r->title || strstr(c->name, r->title))
@@ -750,7 +750,6 @@ arrange(Monitor *m)
 void
 arrangemon(Monitor *m)
 {
-    int tbw;
     strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
     if (m->lt[m->sellt]->arrange)
         m->lt[m->sellt]->arrange(m);
@@ -760,6 +759,7 @@ arrangemon(Monitor *m)
     if (m == selmon)
         selmon->clientcount = clientcount();
     if (m->fullscreen) {
+    int tbw;
         tbw = selmon->fullscreen->bw;
         if (m->fullscreen->isfloating)
             savefloating(selmon->fullscreen);
@@ -1409,7 +1409,7 @@ void
 drawbar(Monitor *m)
 {
 
-	int x, w, sw = 0, n = 0, stw = 0, scm, roundw, iconoffset;
+	int x, w, sw = 0, n = 0, stw = 0, roundw, iconoffset;
     unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
@@ -1559,6 +1559,7 @@ drawbar(Monitor *m)
 				x += (1.0 / (double)n) * w;
 
 				} else {
+                    int scm;
 					if (HIDDEN(c)) {
 						scm = SchemeHid;
 					} else{
@@ -3142,8 +3143,6 @@ void drawwindow(const Arg *arg) {
 		fprintf(stderr, "errror %s", strout);
 	}
 	memset(tmpstring,0,strlen(tmpstring));
-
-	counter = 0;
 }
 
 // drag the green tag mark to another tag
@@ -3306,7 +3305,6 @@ recttomon(int x, int y, int w, int h)
 {
 	Monitor *m, *r = selmon;
 	int a, area = 0;
-
 	for (m = mons; m; m = m->next)
 		if ((a = INTERSECT(x, y, w, h, m)) > area) {
 			area = a;
@@ -3695,11 +3693,12 @@ runAutostart(void) {
 void
 scan(void)
 {
-	unsigned int i, num;
+	unsigned int num;
 	Window d1, d2, *wins = NULL;
 	XWindowAttributes wa;
 
 	if (XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
+        unsigned int i;
 		for (i = 0; i < num; i++) {
 			if (!XGetWindowAttributes(dpy, wins[i], &wa)
 			|| wa.override_redirect || XGetTransientForHint(dpy, wins[i], &d1))
@@ -5368,7 +5367,6 @@ void
 animleft(const Arg *arg) {
 
 	Client *tempc;
-	int tmpcounter = 0;
 
 	// windows like behaviour in floating layout
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
@@ -5381,6 +5379,7 @@ animleft(const Arg *arg) {
 		return;
 
 	if (animated) {
+	int tmpcounter = 0;
 		for(tempc = selmon->clients; tempc; tempc = tempc->next) {
 			if (tempc->tags & 1 << (selmon->pertag->curtag - 2) && !tempc->isfloating && selmon->pertag &&
 				selmon->pertag->ltidxs[selmon->pertag->curtag - 1][0]->arrange != NULL) {
