@@ -213,26 +213,6 @@ focusstack2(const Arg *arg)
 		selmon->sel = nextVisibleClient;
 	}
 }
-void
-focusstack2(const Arg *arg)
-{
-	Client *c = NULL;
-
-	for (c = selmon->sel->next; c && !ISVISIBLE(c); c = c->next);
-	if (!c)
-		for (c = selmon->clients; c && !ISVISIBLE(c); c = c->next);
-
-	if (c) {
-		if (c) {
-			if (c->mon != selmon)
-				selmon = c->mon;
-			detachstack(c);
-			attachstack(c);
-		}
-
-		selmon->sel = c;
-	}
-}
 
 void
 overviewlayout(Monitor *m)
