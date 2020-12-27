@@ -349,8 +349,9 @@ resetoverlay() {
 
 }
 
-double easeOutQuint( double t ) {
-    return 1 + (--t) * t * t;
+double easeOutCubic( double t ) {
+    t--;
+    return 1 + t * t * t;
 }
 
 void checkanimate(Client *c, int x, int y, int w, int h, int frames, int resetpos) {
@@ -389,8 +390,8 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 			while (time < frames)
 			{
 				resize(c,
-					oldx + easeOutQuint(((double)time/frames)) * (x - oldx),
-					oldy + easeOutQuint(((double)time/frames)) * (y - oldy), width, height, 1);
+					oldx + easeOutCubic(((double)time/frames)) * (x - oldx),
+					oldy + easeOutCubic(((double)time/frames)) * (y - oldy), width, height, 1);
 				time++;
 				usleep(15000);
 			}
