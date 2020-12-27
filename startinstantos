@@ -9,10 +9,10 @@
 # try to obtain a temp dir unique to the user, to enable
 # instantOS xsessions for concurrent users on the same machine
 if [ -z "${XDG_RUNTIME_DIR}" ]; then
-    RTD=/tmp/instantos/${UID}
+    RTD=/tmp/${UID}/instantos
     [[ -d "${RTD}" ]] || mkdir -p "${RTD}"
 else
-    RTD=${XDG_RUNTIME_DIR}
+    RTD=${XDG_RUNTIME_DIR}/instantos
 fi
 
 echo $$ >${RTD}/instantosrunning
