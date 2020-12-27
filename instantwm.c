@@ -100,7 +100,7 @@ int specialnext = 0;
 
 Client *animclient;
 
-int commandoffsets[10];
+int commandoffsets[20];
 
 int forceresize = 0;
 Monitor *selmon;
