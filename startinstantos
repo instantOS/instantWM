@@ -5,7 +5,17 @@
 ###############################################
 
 # used for shutdown
-echo $$ >${XDG_RUNTIME_DIR}/instantosrunning
+
+# try to obtain a temp dir unique to the user, to enable
+# instantOS xsessions for concurrent users on the same machine
+if [ -z "${XDG_RUNTIME_DIR}" ]; then
+    RTD=/tmp/${UID}
+    [[ -d "${RTD}" ]] || mkdir -p "${RTD}"
+else
+    RTD=${XDG_RUNTIME_DIR}
+fi
+
+echo $$ >${RTD}/instantosrunning
 
 # just in case, some systems might not do this
 cd
@@ -24,18 +34,18 @@ fi
 source ~/.instantsession
 
 # loop so crashing instantwm doesn't end the x session
-while [ -e ${XDG_RUNTIME_DIR}/instantosrunning ]; do
+while [ -e ${RTD}/instantosrunning ]; do
     # allow changing wm on the fly
-    if [ -e ${XDG_RUNTIME_DIR}/wmoverride ]; then
-        if command -v "$(cat ${XDG_RUNTIME_DIR}/wmoverride)" &>/dev/null; then
-            "$(cat ${XDG_RUNTIME_DIR}/wmoverride)" 2>~/.instantos.log &
+    if [ -e ${RTD}/wmoverride ]; then
+        if command -v "$(cat ${RTD}/wmoverride)" &>/dev/null; then
+            "$(cat ${RTD}/wmoverride)" 2>~/.instantos.log &
             WMPID="$!"
-            echo "$WMPID" >${XDG_RUNTIME_DIR}/wmpid
+            echo "$WMPID" >${RTD}/wmpid
             while kill -0 "$WMPID"; do
                 sleep 1
             done
         fi
-        rm ${XDG_RUNTIME_DIR}/wmoverride
+        rm ${RTD}/wmoverride
     else
         # Log stderror or stdout to a file
         if ! [ -e .local/share ]; then
