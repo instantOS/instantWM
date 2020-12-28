@@ -5859,13 +5859,16 @@ zoom(const Arg *arg)
 		return;
 
 	XRaiseWindow(dpy, c->win);
-	if (!selmon->lt[selmon->sellt]->arrange
-	|| (selmon->sel && selmon->sel->isfloating)
-	|| (c == nexttiled(selmon->clients)
-	|| !(c = nexttiled(c->next)))
+	if (
+		!selmon->lt[selmon->sellt]->arrange
+		|| (selmon->sel && selmon->sel->isfloating)
+		|| (c == nexttiled(selmon->clients))
+		|| !(c = nexttiled(c->next))
+  )
 		return;
 	pop(c);
 }
+
 
 
 void
