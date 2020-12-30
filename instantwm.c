@@ -5851,25 +5851,21 @@ systraytomon(Monitor *m) {
 	return t;
 }
 
-void
-zoom(const Arg *arg)
-{
-	Client *c = selmon->sel;
-	if(!c)
-		return;
+void zoom(const Arg *arg) {
+  Client *c = selmon->sel;
 
-	XRaiseWindow(dpy, c->win);
-	if (
-		!selmon->lt[selmon->sellt]->arrange
-		|| (selmon->sel && selmon->sel->isfloating)
-		|| (c == nexttiled(selmon->clients))
-		|| !(c = nexttiled(c->next))
-  )
-		return;
-	pop(c);
+  if (!c)
+    return;
+
+  XRaiseWindow(dpy, c->win);
+
+  if ((!selmon->lt[selmon->sellt]->arrange ||
+       (selmon->sel && selmon->sel->isfloating)) ||
+      (c == nexttiled(selmon->clients) && (!c || !(c = nexttiled(c->next))))) {
+    return;
+  }
+  pop(c);
 }
-
-
 
 void
 resource_load(XrmDatabase db, char *name, enum resource_type rtype, void *dst)
