@@ -9,7 +9,11 @@
 # try to obtain a temp dir unique to the user, to enable
 # instantOS xsessions for concurrent users on the same machine
 RTD="$(instantruntimedir)"
-RTD="${RTD:/tmp/instantos}"
+
+if [ -z "$RTD" ]; then
+    mkdir -p /tmp/instantos
+    RTD="/tmp/instantos"
+fi
 
 echo $$ >"${RTD}"/instantosrunning
 
@@ -27,7 +31,7 @@ if iconf wmname; then
     wmname "$(iconf wmname)"
 fi
 
-source ~/.instantsession
+[ -e ~/.instantsession ] && source ~/.instantsession
 
 # loop so crashing instantwm doesn't end the x session
 while [ -e "${RTD}"/instantosrunning ]; do
