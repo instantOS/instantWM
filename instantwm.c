@@ -4601,6 +4601,13 @@ togglebar(const Arg *arg)
 	arrange(selmon);
 	if (tmpnoanim)
 		animated = 1;
+    if (selmon->overlaystatus) {
+        tmpnoanim = animated;
+        animated = 0;
+        selmon->overlaystatus = 0;
+        showoverlay();
+        animated = tmpnoanim;
+    }
 }
 
 void
