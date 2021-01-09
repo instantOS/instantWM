@@ -4721,6 +4721,8 @@ void togglescratchpad(const Arg *arg) {
             if (!scratchexists)
                 scratchexists = 1;
             c->issticky = selmon->scratchvisible;
+            if (c == selmon->fullscreen)
+                tempfullscreen();
             if (!c->isfloating)
                 c->isfloating = 1;
         }
