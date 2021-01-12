@@ -161,7 +161,7 @@ fibonacci(Monitor *m, int s) {
 	nh = m->wh;
 
 	if (n > m->nmaster) {
-		nx = m->nmaster ? m->wx + m->ww * m->mfact : 0;
+		nx = m->nmaster ? m->wx + m->ww * m->mfact : m->wx;
 		nw = m->ww + m->wx - nx;
 	} else {
 		if (n > 1 && n < m->nmaster) {
@@ -169,7 +169,7 @@ fibonacci(Monitor *m, int s) {
 			fibonacci(m, s);
 			return;
 		}
-		nx = m->ww;
+		nx = m->ww + m->wx;
 	}
 	
 	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
