@@ -411,11 +411,21 @@ showoverlay() {
 	if (!overlayexists() || selmon->overlaystatus)
 		return;
 
+    int yoffset = selmon->showbar ? bh : 0;
+
+    Client *c;
+	for (c = selmon->clients; c; c = c->next) {
+        if (c->tags & (1 << (selmon->pertag->curtag - 1)) && c->isfullscreen) {
+            yoffset = 0;
+            break;
+        }
+    }
+
 	for (m = mons; m; m = m->next) {
 		m->overlaystatus = 1;
 	}
 
-	Client *c = selmon->overlay;
+	c = selmon->overlay;
 
 	detach(c);
 	detachstack(c);
@@ -427,7 +437,7 @@ showoverlay() {
 	if (c->islocked) {
             switch (selmon->overlaymode) {
             case 0:
-                resize(c, selmon->mx + 20, selmon->my + (selmon->showbar ? bh : 0) - c->h,
+                resize(c, selmon->mx + 20, selmon->my + yoffset - c->h,
                     selmon->ww - 40, c->h, True);
                 break;
             case 1:
@@ -460,7 +470,7 @@ showoverlay() {
 		XRaiseWindow(dpy, c->win);
         switch (selmon->overlaymode) {
             case 0:
-			    animateclient(c, c->x, selmon->my + ( selmon->showbar ? bh : 0 ), 0, 0, 15, 0);
+			    animateclient(c, c->x, selmon->my + yoffset, 0, 0, 15, 0);
                 break;
             case 1:
                 animateclient(c, selmon->mx + selmon->mw - c->w, selmon->my + 40, 0, 0, 15, 0);
