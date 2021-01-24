@@ -1090,7 +1090,8 @@ void distributeclients(const Arg *arg) {
 	focus(NULL);
 
 	for (c = selmon->clients; c; c = c->next) {
-		if (c == selmon->overlay)
+        // overlays or scratchpads aren't on regular tags anyway
+		if (c == selmon->overlay || c-> tags  & 1 << 20)
 			continue;
 		if (tagcounter > 8) {
 			tagcounter = 0;
