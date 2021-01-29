@@ -368,6 +368,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 {
 	int time;
 	int oldx, oldy;
+	int oldw, oldh;
 	int width, height;
 	width = w ? w : c->w;
 	height = h ? h : c->h;
@@ -382,26 +383,24 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	time = 1;
 	oldx = c->x;
 	oldy = c->y;
+	oldw = c->w;
+	oldh = c->h;
 
-	if (animated && (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(w - c->w) > 10 || abs(h - c->h) > 10)) {
-		if (x == c->x && y == c->y && c->w < selmon->mw - 50) {
-			animateclient(c, c->x + (width - c->w), c->y + (height - c->h), 0, 0, frames, 0);
-		} else {
-			while (time < frames)
-			{
-				resize(c,
-					oldx + easeOutCubic(((double)time/frames)) * (x - oldx),
-					oldy + easeOutCubic(((double)time/frames)) * (y - oldy), width, height, 1);
-				time++;
-				usleep(15000);
-			}
+	if (animated && (abs(oldx - x) > 10 || abs(oldy - y) > 10 || abs(oldw - c->w) > 10 || abs(oldh - c->h) > 10)) {
+		while (time < frames)
+		{
+			double eoc = easeOutCubic(((double)time/frames));
+			resize(c,
+				oldx + eoc * (x - oldx),
+				oldy + eoc * (y - oldy),
+				oldw + eoc * (width - oldw),
+				oldh + eoc * (height - oldh), 1);
+			time++;
+			usleep(15000);
 		}
 	}
-
-	if (resetpos)
-		resize(c, oldx, oldy, width, height, 0);
-	else
-		resize(c, x, y, width, height, 1);
+	/* no need for reset pos */
+	resize(c, x, y, width, height, 1);
 
 }
 
