@@ -11,6 +11,7 @@ static const int systraypinningfailfirst = 1; /* 1: if pinning fails, display sy
 static const int showsystray = 1;			  /* 0 means no systray */
 static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
+static const int gappx = 10;
 static const char *fonts[] = {"Cantarell-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
 static int barheight;
@@ -414,6 +415,10 @@ static Key keys[] = {
 	{MODKEY|Mod1Mask, XK_Print, spawn, {.v = fclipscrotcmd}},
 
 	{ MODKEY, XK_o, winview, {0} },
+
+	{ MODKEY,                       XK_minus,  setgaps,        {.i = -5 } },
+    { MODKEY,                       XK_equal,  setgaps,        {.i = +5 } },
+	{ MODKEY|ShiftMask,             XK_equal,  setgaps,        {.i = 0  } },
 
 };
 
