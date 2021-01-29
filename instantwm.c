@@ -5691,7 +5691,7 @@ overtoggle(const Arg *arg){
 	Client *c;
 	c = selmon->sel;
 	unsigned int tmptag;
-
+    int showscratch = 0;
 
     if (!selmon->clients || (selmon->clients == selmon->overlay && !selmon->overlay->next)) {
         if (selmon->pertag->curtag == 0)
@@ -5699,8 +5699,16 @@ overtoggle(const Arg *arg){
         return;
     }
 
-	if (selmon->scratchvisible)
-		togglescratchpad(NULL);
+    if (selmon->scratchvisible) {
+        for(c = selmon->clients; c; c = c->next) {
+            if (c->tags & 1 << 20) {
+                showscratch = 1;
+                break;
+            }       
+        }
+        if (showscratch)
+            togglescratchpad(NULL);
+    }
 	if (selmon->fullscreen)
         tempfullscreen();
 	if (selmon->pertag->curtag == 0) {
