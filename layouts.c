@@ -340,7 +340,7 @@ tcl(Monitor * m)
 void
 tile(Monitor *m)
 {
-	unsigned int i, n, h, mw, my, ty, framecount;
+	unsigned int i, n, h, mw, my, ty, framecount, tmpanim;
 	Client *c;
 
 	if (animated && clientcount() > 5)
@@ -366,16 +366,24 @@ tile(Monitor *m)
 		if (i < m->nmaster) {
 			// client is in the master
 			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
+
+            if (n == 2) {
+                tmpanim = animated;
+                animated = 0;
+			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+                animated = tmpanim;
+            } else {
 			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
 			if (m->nmaster == 1 && n > 1) {
 				mw = c->w + c->bw * 2;
 			}
+            }
 			if (my + HEIGHT(c) < m->wh)
 				my += HEIGHT(c);
 		} else {
 			// client is in the stack
 			h = (m->wh - ty) / (n - i);
-			animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+            animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
 			if (ty + HEIGHT(c) < m->wh)
 				ty += HEIGHT(c);
 		}
