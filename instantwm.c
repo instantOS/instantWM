@@ -4791,7 +4791,11 @@ void togglescratchpad(const Arg *arg) {
             selmon->sel = activescratchpad;
             arrange(selmon);
             focus(activescratchpad);
-            warp(activescratchpad);
+			// if focusfollowsmouse is off, the mouse doesn't
+			// need to move to keep focus on the scratchpad
+			if (focusfollowsmouse) {
+            	warp(activescratchpad);
+			}
         }
     } else {
         focus(NULL);
