@@ -2,12 +2,17 @@
 .SH NAME
 instantWM \- Window manager for instantOS
 .SH SYNOPSIS
-.B iwm
+.B instantwm
 .RB [ \-v ]
 .SH DESCRIPTION
-instantWM is a dynamic window manager for X. It manages windows in tiled, monocle
-and floating layouts. Either layout can be applied dynamically, optimising the
-environment for the application in use and the task performed.
+instantWM is the window manager in use on the Linux Distribution instantOS.  It
+is a hybrid WM meaning it has an equal focus on tiling and floating and can
+freely mix between the two. Tiling works in a similar way to dwm. Windows are
+arranged by selecting from a set of rules called layouts. The floating
+functionality is somewhat similar to conventional desktop enviroments but
+brings a couple of own ideas to the table.  instantWM started out as a dwm fork
+and while some parts of the dwm code remain, it has changed drastically and
+does a lot of things different. 
 .P
 In tiled layouts windows are managed in a master and stacking area. The master
 area on the left contains one window by default, and the stacking area on the
@@ -182,4 +187,4 @@ or
 XToolkit/XAWT backend can recognize) or when using OpenJDK setting the environment variable
 .BR _JAVA_AWT_WM_NONREPARENTING=1 .
 .SH BUGS
-Send all bug reports with a patch to hackers@suckless.org.
+Report bugs at https://github.com/instantOS/instantWM or at any of the places listed on https://instantos.io/support

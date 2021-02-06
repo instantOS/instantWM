@@ -6,14 +6,19 @@ include config.mk
 SRC = drw.c instantwm.c layouts.c util.c
 OBJ = ${SRC:.c=.o}
 
+.PHONY: all
 all: options instantwm
 
+.PHONY: options
 options:
-	@echo instantwm build options:
-	@echo "CFLAGS   = ${CFLAGS}"
-	@echo "LDFLAGS  = ${LDFLAGS}"
-	@echo "CC       = ${CC}"
-	@echo "VERSION  = ${VERSION}"
+	${info instantwm build options}
+	${info CFLAGS   = ${CFLAGS}}
+	${info LDFLAGS  = ${LDFLAGS}}
+	${info DESTDIR  = ${DESTDIR}}
+	${info PREFIX   = ${PREFIX}}
+	${info CC       = ${CC}}
+	${info VERSION  = ${VERSION}}
+	@true
 
 .c.o:
 	${CC} -c ${CFLAGS} $<
@@ -26,34 +31,29 @@ config.h:
 instantwm: ${OBJ}
 	${CC} -o $@ ${OBJ} ${LDFLAGS}
 
+.PHONY: clean
 clean:
-	rm -f instantwm ${OBJ} instantwm-${VERSION}.tar.gz
+	rm -f instantwm ${OBJ} instantwm-${CMS_VERSION}.tar.gz
 
+.PHONY: dist
 dist: clean
-	mkdir -p instantwm-${VERSION}
-	cp -R LICENSE Makefile README config.def.h config.mk\
-		instantwm.1 drw.h util.h ${SRC} instantwm-${VERSION}
-	tar -cf instantwm-${VERSION}.tar instantwm-${VERSION}
-	gzip instantwm-${VERSION}.tar
-	rm -rf instantwm-${VERSION}
+	tar --transform 's|^|instantwm-${CMS_VERSION}/|' \
+		-czf instantwm-${CMS_VERSION}.tar.gz \
+		LICENSE Makefile README.md config.def.h config.mk\
+		instantwm.1 drw.h util.h ${SRC}
 
+.PHONY: install
 install: all
-	mkdir -p ${DESTDIR}${PREFIX}/bin
-	mkdir -p ${DESTDIR}/usr/share/xsessions
-	cp -f instantwm ${DESTDIR}${PREFIX}/bin
-	cp -f instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
-	chmod 755 ${DESTDIR}${PREFIX}/bin/instantwm
-	chmod 755 ${DESTDIR}${PREFIX}/bin/instantwmctrl
-	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-	sed "s/VERSION/${VERSION}/g" < instantwm.1 > ${DESTDIR}${MANPREFIX}/man1/instantwm.1
-	chmod 644 ${DESTDIR}${MANPREFIX}/man1/instantwm.1
-	cp -f instantwm.desktop ${DESTDIR}/usr/share/xsessions
-	cp -f instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop
-	chmod 644 ${DESTDIR}/usr/share/xsessions/instantwm.desktop
-	chmod 644 ${DESTDIR}/usr/share/xsessions/default.desktop
-	cp -f startinstantos ${DESTDIR}${PREFIX}/bin/startinstantos
-	chmod 755 ${DESTDIR}${PREFIX}/bin/startinstantos
+	install -d ${DESTDIR}{${PREFIX}/bin,/usr/share/xsessions,${MANPREFIX}/man1}
+	install -m  755 -s instantwm ${DESTDIR}${PREFIX}/bin/
+	install -Dm 755 instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
+	install -m  644 instantwm.1 ${DESTDIR}${MANPREFIX}/man1/
+	sed -i 's/VERSION/${VERSION}/g' ${DESTDIR}${MANPREFIX}/man1/instantwm.1
+	install -m  644 instantwm.desktop ${DESTDIR}/usr/share/xsessions
+	install -Dm 644 instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop
+	install -m  755 startinstantos ${DESTDIR}${PREFIX}/bin/
 
+.PHONY: uninstall
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
 		${DESTDIR}${PREFIX}/bin/instantwmctrl\
@@ -62,5 +62,3 @@ uninstall:
 		${DESTDIR}/usr/share/xsessions/instantwm.desktop\
 		${DESTDIR}/usr/share/xsessions/default.desktop
 
-
-.PHONY: all options clean dist install uninstall

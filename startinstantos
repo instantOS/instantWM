@@ -5,7 +5,17 @@
 ###############################################
 
 # used for shutdown
-echo $$ > /tmp/instantosrunning
+
+# try to obtain a temp dir unique to the user, to enable
+# instantOS xsessions for concurrent users on the same machine
+RTD="$(instantruntimedir)"
+
+if [ -z "$RTD" ]; then
+    mkdir -p /tmp/instantos
+    RTD="/tmp/instantos"
+fi
+
+echo $$ >"${RTD}"/instantosrunning
 
 # just in case, some systems might not do this
 cd
@@ -16,28 +26,33 @@ if ! command -v instantautostart &>/dev/null; then
     bash ~/.instantautostart
 fi &
 
+# needed to fix some misbehaving applications
+if iconf wmname; then
+    wmname "$(iconf wmname)"
+fi
+
+[ -e ~/.instantsession ] && source ~/.instantsession
+
 # loop so crashing instantwm doesn't end the x session
-while [ -e /tmp/instantosrunning ]; do
+while [ -e "${RTD}"/instantosrunning ]; do
     # allow changing wm on the fly
-    if [ -e /tmp/wmoverride ]; then
-        if command -v "$(cat /tmp/wmoverride)" &>/dev/null; then
-            "$(cat /tmp/wmoverride)" 2>~/.instantos.log &
+    if [ -e "${RTD}"/wmoverride ]; then
+        if command -v "$(cat "${RTD}"/wmoverride)" &>/dev/null; then
+            "$(cat ${RTD}/wmoverride)" 2>~/.instantos.log &
             WMPID="$!"
-            echo "$WMPID" >/tmp/wmpid
+            echo "$WMPID" >"${RTD}"/wmpid
             while kill -0 "$WMPID"; do
                 sleep 1
             done
         fi
-        rm /tmp/wmoverride
+        rm "${RTD}"/wmoverride
     else
         # Log stderror or stdout to a file
-        if ! [ -e .local/share ]
-        then
+        if ! [ -e .local/share ]; then
             mkdir -p ~/.local/share
         fi
 
-        if iconf -i debug
-        then
+        if iconf -i debug; then
             instantwm &>~/.local/share/instantos.log
         else
             instantwm 2>~/.local/share/instantos.log
