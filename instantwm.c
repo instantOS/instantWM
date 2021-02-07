@@ -95,6 +95,7 @@ Display *dpy;
 static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
+static int focusfollowsmouse = 1;
 int animated = 1;
 int specialnext = 0;
 
@@ -812,9 +813,12 @@ buttonpress(XEvent *e)
 	click = ClkRootWin;
 	/* focus monitor if necessary */
 	if ((m = wintomon(ev->window)) && m != selmon) {
-		unfocus(selmon->sel, 1);
-		selmon = m;
-		focus(NULL);
+		/* if focus doesn't follow the mouse, the scroll wheel shouldn't switch focus */
+		if (focusfollowsmouse || ev->button <= Button3) {
+			unfocus(selmon->sel, 1);
+			selmon = m;
+			focus(NULL);
+		}
 	}
 
 	if (ev->window == selmon->barwin) {
@@ -872,8 +876,10 @@ buttonpress(XEvent *e)
 			}
 		}
 	} else if ((c = wintoclient(ev->window))) {
-		focus(c);
-		restack(selmon);
+		if (focusfollowsmouse || ev->button <= Button3) {
+			focus(c);
+			restack(selmon);
+		}
 		XAllowEvents(dpy, ReplayPointer, CurrentTime);
 		click = ClkClientWin;
 	} else if (ev->x > selmon->mx + selmon->mw - 50) {
@@ -1638,7 +1644,9 @@ enternotify(XEvent *e)
 	Client *c;
 	Monitor *m;
 	XCrossingEvent *ev = &e->xcrossing;
-
+	/* Only care about mouse motion if the focus follows the mouse */
+	if (!focusfollowsmouse)
+		return;
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
 	c = wintoclient(ev->window);
@@ -2296,7 +2304,7 @@ motionnotify(XEvent *e)
 
 	// detect mouse hovering over other monitor
     m = recttomon(ev->x_root, ev->y_root, 1, 1);
-    if (m && m != selmon) {
+    if (m && m != selmon && focusfollowsmouse) {
 		unfocus(selmon->sel, 1);
 		selmon = m;
 		focus(NULL);
@@ -2584,6 +2592,7 @@ movemouse(const Arg *arg)
 					if ((m = recttomon(ev.xmotion.x_root, ev.xmotion.y_root, 2, 2)) != selmon) {
 						XRaiseWindow(dpy, c->win);
 						sendmon(c, m);
+						unfocus(selmon->sel, 0);
 						selmon = m;
 						focus(NULL);
 						drawbar(selmon);
@@ -2696,6 +2705,7 @@ movemouse(const Arg *arg)
 	XUngrabPointer(dpy, CurrentTime);
 	if (!tagclient && (m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
+		unfocus(selmon->sel, 0);
 		selmon = m;
 		focus(NULL);
 	}
@@ -3142,6 +3152,7 @@ void drawwindow(const Arg *arg) {
 	(abs(c->w - width) > 20 || abs(c->h - height) > 20 || abs(c->x - x) > 20 || abs(c->y - y) > 20)) {
 		if ((m = recttomon(x, y, width, height)) != selmon) {
 			sendmon(c, m);
+			unfocus(selmon->sel, 0);
 			selmon = m;
 			focus(NULL);
 		}
@@ -3547,6 +3558,7 @@ resizemouse(const Arg *arg)
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
+		unfocus(selmon->sel, 0);
 		selmon = m;
 		focus(NULL);
 	}
@@ -3639,6 +3651,7 @@ resizeaspectmouse(const Arg *arg)
 
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
+		unfocus(selmon->sel, 0);
 		selmon = m;
 		focus(NULL);
 	}
@@ -4433,6 +4446,12 @@ toggleanimated(const Arg *arg)
     ctrltoggle(&animated, arg->ui);
 }
 
+// disable/enable window focus following the mouse
+void
+togglefocusfollowsmouse(const Arg *arg)
+{
+	ctrltoggle(&focusfollowsmouse, arg->ui);
+}
 // double the window refresh rate
 void
 toggledoubledraw(const Arg *arg) {
@@ -4772,7 +4791,11 @@ void togglescratchpad(const Arg *arg) {
             selmon->sel = activescratchpad;
             arrange(selmon);
             focus(activescratchpad);
-            warp(activescratchpad);
+			// if focusfollowsmouse is off, the mouse doesn't
+			// need to move to keep focus on the scratchpad
+			if (focusfollowsmouse) {
+            	warp(activescratchpad);
+			}
         }
     } else {
         focus(NULL);
