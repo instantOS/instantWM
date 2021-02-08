@@ -4815,9 +4815,11 @@ void createscratchpad(const Arg *arg) {
 
 	c->tags = 1 << 20;
 	c->issticky = selmon->scratchvisible;
-	if (!c->isfloating)
+	if (!c->isfloating) {
+		c->sfy = c->mon->my + ( selmon->showbar ? bh : 0 );
+		c->sfx = c->mon->mx;
 		togglefloating(NULL);
-	else
+	} else
 		arrange(selmon);
 	focus(NULL);
     if (!selmon->scratchvisible) {
