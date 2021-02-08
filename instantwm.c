@@ -4668,6 +4668,7 @@ togglefloating(const Arg *arg)
 		return;
 	if (selmon->sel->isfullscreen && !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
 		return;
+    selmon->sel->bw = borderpx;
 	selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
 	if (selmon->sel->isfloating) {
 		/* restore last known float dimensions */
@@ -4676,6 +4677,8 @@ togglefloating(const Arg *arg)
 		       selmon->sel->sfw, selmon->sel->sfh, 7, 0);
 	}
 	else {
+        if (clientcount() == 1)
+            selmon->sel->bw = 0;
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 		/* save last known float dimensions */
 		selmon->sel->sfx = selmon->sel->x;
