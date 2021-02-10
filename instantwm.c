@@ -657,6 +657,7 @@ applyrules(Client *c)
                         break;;
                     case 1:
                         c->isfloating = 1;
+                        c->y = c->mon->my + ( selmon->showbar ? bh : 0 );
                         break;;
                     case 0:
                         c->isfloating = 0;
@@ -2212,7 +2213,7 @@ manage(Window w, XWindowAttributes *wa)
 	updatemotifhints(c);
 
 	c->sfx = c->x;
-	c->sfy = c->y;
+	c->sfy = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
 	c->sfw = c->w;
 	c->sfh = c->h;
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
