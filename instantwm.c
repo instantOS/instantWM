@@ -2213,7 +2213,7 @@ manage(Window w, XWindowAttributes *wa)
 	updatemotifhints(c);
 
 	c->sfx = c->x;
-	c->sfy = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
+	c->sfy = c->y = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
 	c->sfw = c->w;
 	c->sfh = c->h;
 	XSelectInput(dpy, w, EnterWindowMask|FocusChangeMask|PropertyChangeMask|StructureNotifyMask);
