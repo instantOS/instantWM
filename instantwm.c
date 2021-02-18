@@ -2491,9 +2491,11 @@ movemouse(const Arg *arg)
 			resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
         }
     }
+
 	restack(selmon);
 	ocx = c->x;
 	ocy = c->y;
+    // make pointer grabby shape
 	if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 		None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
 		return;
@@ -2613,10 +2615,12 @@ movemouse(const Arg *arg)
 
     // user let go of the window
 	bardragging = 0;
-	if (ev.xmotion.y_root < selmon->my + bh) {
+    // dragging on top of the bar
+	if (ev.xmotion.y_root < selmon->my + bh && ev.xmotion.y_root > selmon->my - 1) {
 		if (!tagwidth)
 			tagwidth = gettagwidth();
 
+        // drag on top of tag area
 		if (ev.xmotion.x_root < selmon->mx + tagwidth && ev.xmotion.x_root > selmon->mx) {
 			ti = 0;
 			tx = startmenusize;
@@ -2641,11 +2645,13 @@ movemouse(const Arg *arg)
 			tagclient = 1;
 
 		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw ) {
+            // drag on top right corner
 			resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40, (selmon->mh) / 3, True);
 			togglefloating(NULL);
 			createoverlay();
 			selmon->gesture = 11;
 		} else if (selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange) {
+            // drag on top of window area
 			notfloating = 1;
 		}
 	} else {
@@ -2779,7 +2785,7 @@ gesturemouse(const Arg *arg)
 // hover over the border to move/resize a window
 int
 resizeborder(const Arg *arg) {
-	if (!(selmon->sel && (selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange )))
+	if (!(selmon->sel && (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange )))
 		return 0;
 	XEvent ev;
 	Time lasttime = 0;
@@ -5552,13 +5558,15 @@ void spacetoggle(const Arg *arg) {
 			return;
 		Client *c;
 		c = selmon->sel;
-		if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 && c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
-			resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
-		} else {
-			savefloating(c);
-			XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
-			animateclient(c, selmon->mx, selmon->my + bh, selmon->mw, selmon->mh, 6, 0);
-		}
+
+        if (c->snapstatus) {
+            resetsnap(c);
+        } else {
+			XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
+            savefloating(c);
+            selmon->sel->snapstatus = 9;
+            arrange(selmon);
+        }
 	} else {
 		togglefloating(arg);
 	}
