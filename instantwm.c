@@ -3563,6 +3563,8 @@ resizemouse(const Arg *arg)
 				}
 			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
+                if (c->bw == 0)
+                    c->bw = borderpx;
 				if (!forceresize)
 					resize(c, nx, ny, nw, nh, 1);
 				else
