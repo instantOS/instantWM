@@ -223,10 +223,12 @@ ResourcePref resources[] = {
 
 static Xcommand commands[] = {
 	/* signum       function        default argument  arg handler*/
+    // 0 means off, 1 means toggle, 2 means on
 	{ "overlay",    setoverlay,      {0}, 0 },
 	{ "tag",        view,      { .ui = 2 }, 3 },
 	{ "animated",   toggleanimated,      { .ui = 2 }, 1 },
-	{ "focusfollowsmouse", togglefocusfollowsmouse, { .ui = 2 }, 1 },
+    { "focusfollowsmouse", togglefocusfollowsmouse, { .ui = 2 }, 1 },
+    { "focusfollowsfloatmouse", togglefocusfollowsfloatmouse, { .ui = 2 }, 1 },
 	{ "alttab",   alttabfree,      { .ui = 2 }, 1 },
 	{ "layout",   commandlayout,      { .ui = 0 }, 1 },
 	{ "prefix",   commandprefix,      { .ui = 1 }, 1 },

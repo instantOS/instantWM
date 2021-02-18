@@ -96,6 +96,7 @@ static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
 static int focusfollowsmouse = 1;
+static int focusfollowsfloatmouse = 0;
 int animated = 1;
 int specialnext = 0;
 
@@ -1645,17 +1646,27 @@ enternotify(XEvent *e)
 	Client *c;
 	Monitor *m;
 	XCrossingEvent *ev = &e->xcrossing;
+    int resizeexit = 0;
 	/* Only care about mouse motion if the focus follows the mouse */
-	if (!focusfollowsmouse)
-		return;
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
 	c = wintoclient(ev->window);
-	if (c && selmon->sel && ( selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange ) && c != selmon->sel &&
+	if (c && selmon->sel && ( selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange ) && c != selmon->sel &&
 	(ev->window == root || (c->tags & selmon->sel->tags && c->mon == selmon) || selmon->sel->issticky)) {
-		if (!resizeborder(NULL))
-			return;
+		resizeexit = resizeborder(NULL);
+        if (focusfollowsfloatmouse) {
+            if (!resizeexit)
+                return;
+            } else {
+                return;
+            }
 	}
+    if (!focusfollowsfloatmouse) {
+        if (ev->window != root && selmon->sel && c && c->isfloating)
+            return;
+    }
+	if (!focusfollowsmouse)
+		return;
 	m = c ? c->mon : wintomon(ev->window);
 	if (m != selmon) {
 		unfocus(selmon->sel, 1);
@@ -4459,6 +4470,14 @@ togglefocusfollowsmouse(const Arg *arg)
 {
 	ctrltoggle(&focusfollowsmouse, arg->ui);
 }
+
+// disable/enable window focus following the mouse
+void
+togglefocusfollowsfloatmouse(const Arg *arg)
+{
+	ctrltoggle(&focusfollowsfloatmouse, arg->ui);
+}
+
 // double the window refresh rate
 void
 toggledoubledraw(const Arg *arg) {
