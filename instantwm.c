@@ -3899,7 +3899,8 @@ setfullscreen(Client *c, int fullscreen)
 		c->isfullscreen = 1;
 
 		c->oldstate = c->isfloating;
-		c->oldbw = c->bw;
+        if (clientcount() != 1)
+            c->oldbw = c->bw;
 		if (!c->isfakefullscreen) {
 			c->bw = 0;
 			if (!c->isfloating)

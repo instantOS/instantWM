@@ -16,6 +16,7 @@ You can manually install the git build by cloning the repo and then running buil
 ```sh
 git clone --depth=1 https://github.com/instantOS/instantWM.git
 cd instantWM
+./build.sh
 ```
 
 [Download latest release](https://github.com/instantOS/instantWM/releases/download/beta2/instantwm.pkg.tar.xz)
