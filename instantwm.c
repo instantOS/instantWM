@@ -57,6 +57,7 @@ static int tagwidth = 0;
 static int doubledraw = 0;
 static int desktopicons = 0;
 static int newdesktop = 0;
+static int pausedraw = 0;
 
 static int statuswidth = 0;
 
@@ -1427,6 +1428,8 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 void
 drawbar(Monitor *m)
 {
+    if (pausedraw)
+        return;
 
 	int x, w, sw = 0, n = 0, stw = 0, roundw, iconoffset;
     unsigned int i, occ = 0, urg = 0;
@@ -1661,18 +1664,20 @@ enternotify(XEvent *e)
                 return;
             }
 	}
-    if (!focusfollowsfloatmouse) {
-        if (ev->window != root && selmon->sel && c && c->isfloating)
-            return;
-    }
 	if (!focusfollowsmouse)
 		return;
 	m = c ? c->mon : wintomon(ev->window);
 	if (m != selmon) {
 		unfocus(selmon->sel, 1);
 		selmon = m;
-	} else if (!c || c == selmon->sel)
+    } else{
+        if (!focusfollowsfloatmouse) {
+            if (ev->window != root && selmon->sel && c && c->isfloating)
+                return;
+        }
+        if (!c || c == selmon->sel)
 		return;
+    }
 	focus(c);
 }
 
@@ -2323,9 +2328,11 @@ motionnotify(XEvent *e)
 		return;
 	}
 
+    // hover below bar
+    // TODO: fix bar on bottom
 	// leave small deactivator zone
-	if (ev->y_root >= bh - 3) {
-		// hover near floating sel, don't do it if desktop is covered
+	if (ev->y_root >= selmon->my + bh - 3) {
+		// hover near floating sel to resize, don't do it if desktop is covered
  		if (selmon->sel && ( selmon->sel->isfloating || NULL == selmon->lt[selmon->sellt]->arrange )) {
 			Client *c;
 			int tilefound = 0;
@@ -2528,7 +2535,7 @@ movemouse(const Arg *arg)
 
 			nx = ocx + (ev.xmotion.x - x);
             // check if client is in snapping range
-			if (ev.xmotion.y_root > (selmon->showbar ? bh : 5)) {
+			if (ev.xmotion.y_root > (selmon->my + (selmon->showbar ? bh : 5))) {
 				ny = ocy + (ev.xmotion.y - y);
                                 if ((ev.xmotion.x_root < selmon->mx + 50 &&
                                      ev.xmotion.x_root > selmon->mx - 1) ||
@@ -2549,7 +2556,7 @@ movemouse(const Arg *arg)
                                       scheme[SchemeSel][ColFloat].pixel);
                                 }
                         } else {
-				ny = selmon->showbar ? bh : 0;
+				ny = selmon->my + ( selmon->showbar ? bh : 0 );
 				if (!colorclient) {
 					colorclient = 1;
 					XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeAddActive][ColBg].pixel);
@@ -2598,28 +2605,28 @@ movemouse(const Arg *arg)
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
 				resize(c, nx, ny, c->w, c->h, 1);
 
-			if (ev.xmotion.y_root < selmon->my + bh + 100) {
-				if (ev.xmotion.x_root < selmon->mx ||
-				ev.xmotion.x_root > selmon->mx + selmon->mw ||
-				ev.xmotion.y_root < selmon->my ||
-				ev.xmotion.y_root > selmon->my + selmon->mh) {
-					if ((m = recttomon(ev.xmotion.x_root, ev.xmotion.y_root, 2, 2)) != selmon) {
-						XRaiseWindow(dpy, c->win);
-						sendmon(c, m);
-						unfocus(selmon->sel, 0);
-						selmon = m;
-						focus(NULL);
-						drawbar(selmon);
-					}
-				}
-				if (ev.xmotion.y_root < selmon->my + bh &&
-					tagx != getxtag(ev.xmotion.x_root)) {
-					tagx = getxtag(ev.xmotion.x_root);
-					selmon->gesture = tagx + 1;
-					drawbar(selmon);
-				}
+            if (ev.xmotion.x_root < selmon->mx ||
+            ev.xmotion.x_root > selmon->mx + selmon->mw ||
+            ev.xmotion.y_root < selmon->my ||
+            ev.xmotion.y_root > selmon->my + selmon->mh) {
+                if ((m = recttomon(ev.xmotion.x_root, ev.xmotion.y_root, 2, 2)) != selmon) {
+                    pausedraw = 1;
+                    XRaiseWindow(dpy, c->win);
+                    sendmon(c, m);
+                    unfocus(selmon->sel, 0);
+                    selmon = m;
+                    focus(NULL);
+                    pausedraw = 0;
+                    drawbars();
+                }
+            }
+            if (ev.xmotion.y_root < selmon->my + bh &&
+                tagx != getxtag(ev.xmotion.x_root)) {
+                tagx = getxtag(ev.xmotion.x_root);
+                selmon->gesture = tagx + 1;
+                drawbar(selmon);
+            }
 
-			}
 			break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -2944,7 +2951,7 @@ dragmouse(const Arg *arg)
 
 	if (dragging) {
 		if (!c->isfloating) {
-			c->sfy = bh;
+			c->sfy = selmon->my + bh;
 			if (animated) {
 				animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
 		       		selmon->sel->sfw, selmon->sel->sfh, 5, 0);
@@ -3222,7 +3229,7 @@ dragtag(const Arg *arg)
 			if ((ev.xmotion.time - lasttime) <= (1000 / 60))
 				continue;
 			lasttime = ev.xmotion.time;
-			if (ev.xmotion.y_root > bh + 1)
+			if (ev.xmotion.y_root > selmon->my + bh + 1)
 				leftbar = 1;
 		}
 
@@ -3563,7 +3570,7 @@ resizemouse(const Arg *arg)
 				}
 			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
-                if (c->bw == 0)
+                if (c->bw == 0 && c != selmon->overlay)
                     c->bw = borderpx;
 				if (!forceresize)
 					resize(c, nx, ny, nw, nh, 1);
