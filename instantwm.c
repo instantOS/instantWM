@@ -161,7 +161,7 @@ void resetsnap(Client *c) {
         return;
     if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange ) {
         c->snapstatus = 0;
-        c->bw = borderpx;
+        c->bw = c->oldbw;
         restorefloating(c);
         applysize(c);
     }
@@ -199,7 +199,7 @@ void restoreallfloating(Monitor *m) {
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     if (c->snapstatus != 9)
-        c->bw = borderpx;
+        c->bw = c->oldbw;
     switch (c->snapstatus) {
         case 0:
             checkanimate(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
@@ -229,6 +229,7 @@ void applysnap(Client *c, Monitor *m) {
             checkanimate(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 9:
+            c->oldbw = c->bw;
             c->bw = 0;
             checkanimate(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
             if (c == selmon->sel)
@@ -323,6 +324,7 @@ createoverlay() {
 		m->overlaystatus = 0;
 	}
 
+    tempclient->oldbw = tempclient->bw;
 	tempclient->bw = 0;
 	tempclient->islocked = 1;
 	if (!selmon->overlay->isfloating) {
@@ -343,7 +345,7 @@ resetoverlay() {
 	if (!overlayexists())
 		return;
 	selmon->overlay->tags = selmon->tagset[selmon->seltags];
-	selmon->overlay->bw = borderpx;
+	selmon->overlay->bw = selmon->overlay->oldbw;
 	selmon->overlay->issticky = 0;
 	selmon->overlay->islocked = 0;
 	changefloating(selmon->overlay);
@@ -3571,7 +3573,7 @@ resizemouse(const Arg *arg)
 			}
 			if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
                 if (c->bw == 0 && c != selmon->overlay)
-                    c->bw = borderpx;
+                    c->bw = c->oldbw;
 				if (!forceresize)
 					resize(c, nx, ny, nw, nh, 1);
 				else
@@ -4500,7 +4502,7 @@ togglefakefullscreen(const Arg *arg) {
 			resizeclient(selmon->sel, selmon->mx + borderpx, selmon->my + borderpx, selmon->mw - 2 * borderpx, selmon->mh - 2 * borderpx);
 			XRaiseWindow(dpy, selmon->sel->win);
 		} else {
-			selmon->sel->bw = borderpx;
+			selmon->sel->bw = selmon->sel->oldbw;
 		}
 	}
 
@@ -4703,17 +4705,19 @@ togglefloating(const Arg *arg)
 		return;
 	if (selmon->sel->isfullscreen && !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
 		return;
-    selmon->sel->bw = borderpx;
 	selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
 	if (selmon->sel->isfloating) {
 		/* restore last known float dimensions */
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColFloat].pixel);
+        if (selmon->sel->bw == 0)
+            selmon->sel->bw = selmon->sel->oldbw;
 		animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
 		       selmon->sel->sfw, selmon->sel->sfh, 7, 0);
-	}
-	else {
-        if (clientcount() == 1)
+	} else {
+        if (clientcount() == 1) {
+            selmon->sel->oldbw = selmon->sel->bw;
             selmon->sel->bw = 0;
+        }
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
 		/* save last known float dimensions */
 		selmon->sel->sfx = selmon->sel->x;
