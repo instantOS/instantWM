@@ -1657,7 +1657,7 @@ enternotify(XEvent *e)
 		return;
 	c = wintoclient(ev->window);
 	if (c && selmon->sel && ( selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange ) && c != selmon->sel &&
-	(ev->window == root || (c->tags & selmon->sel->tags && c->mon == selmon) || selmon->sel->issticky)) {
+	(ev->window == root || selmon->sel->issticky)) {
 		resizeexit = resizeborder(NULL);
         if (focusfollowsfloatmouse) {
             if (!resizeexit)
@@ -1674,7 +1674,7 @@ enternotify(XEvent *e)
 		selmon = m;
     } else{
         if (!focusfollowsfloatmouse) {
-            if (ev->window != root && selmon->sel && c && c->isfloating)
+            if (ev->window != root && selmon->sel && c && c->isfloating && selmon->lt[selmon->sellt] != (Layout *)&layouts[6])
                 return;
         }
         if (!c || c == selmon->sel)
