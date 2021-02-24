@@ -339,6 +339,7 @@ void updatewmhints(Client *c);
 void view(const Arg *arg);
 void warp(const Client *c);
 void forcewarp(const Client *c);
+void warpinto(const Client *c);
 void warpfocus();
 void viewtoleft(const Arg *arg);
 void animleft(const Arg *arg);

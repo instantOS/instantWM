@@ -2859,12 +2859,23 @@ resizeborder(const Arg *arg) {
 	XUngrabPointer(dpy, CurrentTime);
 	if (ev.type == ButtonPress) {
         resetsnap(c);
-		if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
-			XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
-			movemouse(NULL);
-		} else {
-			resizemouse(NULL);
-		}
+        switch (ev.xbutton.button) {
+            case Button3:
+                warpinto(c);
+                movemouse(NULL);
+            break;
+            case Button2:
+                killclient(NULL);
+            break;
+            default:
+                if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 && x < c->x + (c->w * 0.5) + c->w / 4) {
+                    XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
+                    movemouse(NULL);
+                } else {
+                    resizemouse(NULL);
+                }
+                break;
+        }
 		return 0;
 	} else {
 		return 1;
@@ -4549,6 +4560,21 @@ warp(const Client *c)
 
 void forcewarp(const Client *c){
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, 10);
+}
+
+void warpinto(const Client *c) {
+    int x, y;
+    getrootptr(&x, &y);
+    if (x< c->x)
+        x = c->x + 10;
+    else if (x > c->x + c->w)
+        x = c->x + c->w - 10;
+
+    if (y< c->y)
+        y = c->y + 10;
+    else if (y > c->y + c->h)
+        y = c->y + c->h - 10;
+    XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, y);
 }
 
 void
