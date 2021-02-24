@@ -4641,7 +4641,7 @@ keyresize(const Arg *arg) {
 
 void
 centerwindow() {
-	if (!selmon->sel)
+	if (!selmon->sel || selmon->sel == selmon->overlay)
 		return;
 	Client *c;
 	c = selmon->sel;
