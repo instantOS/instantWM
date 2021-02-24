@@ -4600,11 +4600,11 @@ moveresize(const Arg *arg) {
 
 	if (nx < selmon->mx)
 		nx = selmon->mx;
-	if (ny < 0)
-		ny = 0;
+	if (ny < selmon->my)
+		ny = selmon->my;
 
-	if ((ny + c->h) > selmon->mh)
-		ny = (selmon->mh - c->h);
+	if ((ny + c->h) > (selmon->my + selmon->mh))
+		ny = ((selmon->mh + selmon->my) - c->h);
 
 	if ((nx + c->w) > (selmon->mx + selmon->mw))
 		nx = ((selmon->mw + selmon->mx) - c->w);
