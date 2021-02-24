@@ -246,6 +246,17 @@ int checkfloating(Client *c) {
     return 0;
 }
 
+int visible(Client *c) {
+    Monitor *m;
+    if (!c)
+        return 0;
+	for (m = mons; m; m = m->next) {
+        if (c->tags & m->seltags && c->mon == m)
+            return 1;
+    }
+    return 0;
+}
+
 void changesnap(Client *c, int snapmode) {
     int snapmatrix[10][4] = {
         {9, 3, 5, 7}, // normal
@@ -1657,14 +1668,14 @@ enternotify(XEvent *e)
 		return;
 	c = wintoclient(ev->window);
 	if (c && selmon->sel && ( selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange ) && c != selmon->sel &&
-	(ev->window == root || selmon->sel->issticky)) {
+	(ev->window == root || visible(c) || ISVISIBLE(c) || selmon->sel->issticky)) {
 		resizeexit = resizeborder(NULL);
         if (focusfollowsfloatmouse) {
             if (!resizeexit)
                 return;
-            } else {
-                return;
-            }
+        } else {
+            return;
+        }
 	}
 	if (!focusfollowsmouse)
 		return;
@@ -2730,12 +2741,6 @@ movemouse(const Arg *arg)
 	}
 
 	XUngrabPointer(dpy, CurrentTime);
-	if (!tagclient && (m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-		sendmon(c, m);
-		unfocus(selmon->sel, 0);
-		selmon = m;
-		focus(NULL);
-	}
 
 	if (notfloating) {
 		if (NULL != selmon->lt[selmon->sellt]->arrange) {
