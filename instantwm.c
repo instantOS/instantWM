@@ -3915,8 +3915,7 @@ setfullscreen(Client *c, int fullscreen)
 		c->isfullscreen = 1;
 
 		c->oldstate = c->isfloating;
-        if (clientcount() != 1)
-            c->oldbw = c->bw;
+        savebw(c);
 		if (!c->isfakefullscreen) {
 			c->bw = 0;
 			if (!c->isfloating)
@@ -3933,7 +3932,7 @@ setfullscreen(Client *c, int fullscreen)
 		c->isfullscreen = 0;
 
 		c->isfloating = c->oldstate;
-		c->bw = c->oldbw;
+        restorebw(c);
 		c->x = c->oldx;
 		c->y = c->oldy;
 		c->w = c->oldw;
@@ -4723,6 +4722,18 @@ restorefloating(Client *c) {
 	c->y = c->sfy;
 	c->w = c->sfw;
 	c->h = c->sfh;
+}
+
+void savebw(Client *c) {
+    if (!c || c->bw == 0)
+        return;
+    c->oldbw = c->bw;
+}
+
+void restorebw(Client *c) {
+    if (!c || c->oldbw == 0)
+        return;
+    c->bw = c->oldbw;
 }
 
 void

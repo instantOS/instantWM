@@ -380,6 +380,9 @@ void tempfullscreen();
 void savefloating(Client *c);
 void restorefloating(Client *c);
 
+void savebw(Client *c);
+void restorebw(Client *c);
+
 void shiftview(const Arg *arg);
 void focuslastclient(const Arg *arg);
 
