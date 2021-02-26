@@ -4725,13 +4725,13 @@ restorefloating(Client *c) {
 }
 
 void savebw(Client *c) {
-    if (!c || c->bw == 0)
+    if (!c->bw || c->bw == 0)
         return;
     c->oldbw = c->bw;
 }
 
 void restorebw(Client *c) {
-    if (!c || c->oldbw == 0)
+    if (!c->oldbw || c->oldbw == 0)
         return;
     c->bw = c->oldbw;
 }
