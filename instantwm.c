@@ -4766,7 +4766,7 @@ applysize(Client *c) {
 void
 togglefloating(const Arg *arg)
 {
-	if (!selmon->sel)
+	if (!selmon->sel || selmon->sel == selmon->overlay)
 		return;
 	if (selmon->sel->isfullscreen && !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
 		return;
