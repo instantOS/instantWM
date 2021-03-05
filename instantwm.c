@@ -97,7 +97,7 @@ static Drw *drw;
 static Monitor *mons;
 static Window root, wmcheckwin;
 static int focusfollowsmouse = 1;
-static int focusfollowsfloatmouse = 0;
+static int focusfollowsfloatmouse = 1;
 int animated = 1;
 int specialnext = 0;
 
@@ -1673,6 +1673,9 @@ enternotify(XEvent *e)
         if (focusfollowsfloatmouse) {
             if (!resizeexit)
                 return;
+            Client *newc = getcursorclient();
+            if (newc && newc != selmon->sel)
+                c = newc;
         } else {
             return;
         }
@@ -1689,7 +1692,7 @@ enternotify(XEvent *e)
                 return;
         }
         if (!c || c == selmon->sel)
-		return;
+            return;
     }
 	focus(c);
 }
@@ -1853,6 +1856,21 @@ getrootptr(int *x, int *y)
 	Window dummy;
 
 	return XQueryPointer(dpy, root, &dummy, &dummy, x, y, &di, &di, &dui);
+}
+
+Client *getcursorclient() {
+	int di;
+    int dum;
+	unsigned int dui;
+	Window dummy;
+	Window returnwin;
+    Client *c;
+
+	XQueryPointer(dpy, root, &dummy, &returnwin, &dum, &dum, &di, &di, &dui);
+    if (returnwin == root)
+        return NULL;
+    else
+        return wintoclient(returnwin);
 }
 
 long
@@ -2355,8 +2373,12 @@ motionnotify(XEvent *e)
 					break;
 				}
 			}
-			if (!tilefound)
-				resizeborder(NULL);			
+            if (!tilefound) {
+				resizeborder(NULL);
+                Client *newc = getcursorclient();
+                if (newc && newc != selmon->sel)
+                    focus(newc);
+            }
 		}
 		// hover over right side of desktop for slider
 		if (ev->x_root > selmon->mx + selmon->mw - 50) {
