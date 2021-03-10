@@ -161,7 +161,7 @@ void resetsnap(Client *c) {
         return;
     if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange ) {
         c->snapstatus = 0;
-        c->bw = c->oldbw;
+        restorebw(c);
         restorefloating(c);
         applysize(c);
     }
@@ -199,7 +199,7 @@ void restoreallfloating(Monitor *m) {
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     if (c->snapstatus != 9)
-        c->bw = c->oldbw;
+        restorebw(c);
     switch (c->snapstatus) {
         case 0:
             checkanimate(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
@@ -229,7 +229,7 @@ void applysnap(Client *c, Monitor *m) {
             checkanimate(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
             break;
         case 9:
-            c->oldbw = c->bw;
+            savebw(c);
             c->bw = 0;
             checkanimate(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7, 0);
             if (c == selmon->sel)
@@ -4779,8 +4779,8 @@ togglefloating(const Arg *arg)
 		animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
 		       selmon->sel->sfw, selmon->sel->sfh, 7, 0);
 	} else {
-        if (clientcount() == 1) {
-            selmon->sel->oldbw = selmon->sel->bw;
+        if (clientcount() == 1 && !selmon->sel->snapstatus) {
+            savebw(selmon->sel);
             selmon->sel->bw = 0;
         }
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBorder].pixel);
