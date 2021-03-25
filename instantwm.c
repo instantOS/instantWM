@@ -2909,10 +2909,11 @@ resizeborder(const Arg *arg) {
 void
 dragmouse(const Arg *arg)
 {
-	int x, y, starty, startx, dragging, isactive, sinit;
+	int x, y, starty, startx, dragging, tabdragging, isactive, sinit;
 	starty = 100;
 	sinit = 0;
 	dragging = 0;
+	tabdragging = 0;
 	XEvent ev;
 	Time lasttime = 0;
 
@@ -2980,14 +2981,71 @@ dragmouse(const Arg *arg)
                           if ((abs((starty - ev.xmotion.y_root) *
                                    (starty - ev.xmotion.y_root)) +
                                abs((startx - ev.xmotion.x_root) *
-                                   (startx - ev.xmotion.x_root))) > 4069)
+                                   (startx - ev.xmotion.x_root))) > 4069) {
                             dragging = 1;
+							if (barheight ? ev.xmotion.y_root < barheight : ev.xmotion.y_root < 12) {
+								tabdragging = 1;
+							}
+						  }
                           if (starty > 10 && ev.xmotion.y_root == 0 &&
                               c->isfloating)
                             dragging = 1;
 			}
 		}
 	} while (ev.type != ButtonRelease && !dragging);
+
+	if (tabdragging) {
+		int prev_slot = -1;
+		int switched = 0;
+		int tempanim = animated;
+		animated = 0;
+		do {
+			XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+			switch(ev.type) {
+			case ConfigureRequest:
+			case Expose:
+			case MapRequest:
+				handler[ev.type](&ev);
+				break;
+			case MotionNotify:
+				if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+					continue;
+				lasttime = ev.xmotion.time;
+				if (barheight ? ev.xmotion.y_root >= barheight : ev.xmotion.y_root >= 12) {
+					tabdragging = 0;
+					break;
+				}
+				int x = ev.xmotion.x_root;
+				int left = selmon->mx + tagwidth + startmenusize;
+				int right = left + selmon->btw;
+				if (x < left || x > right) {
+					tabdragging = 0;
+					break;
+				}
+				int slot = (x - left) * selmon->bt / selmon->btw;
+				if (slot != prev_slot) {
+					switched = 1;
+					prev_slot = slot;
+					detach(c);
+					int i = 0;
+					// walk to slot #
+					Client **tc = &selmon->clients;
+					while (*tc && i < slot) {
+						tc = &(*tc)->next;
+						i++;
+					}
+					c->next = *tc;
+					*tc = c;
+					arrange(selmon);
+				}
+				break;
+			case ButtonRelease:
+				dragging = 0;
+				tabdragging = switched;
+			}
+		} while (dragging && tabdragging);
+		animated = tempanim;
+	}
 
 	if (dragging) {
 		if (!c->isfloating) {
@@ -3012,7 +3070,8 @@ dragmouse(const Arg *arg)
 				forcewarp(c);
 		movemouse(NULL);
 
-	} else {
+	}
+	if (!dragging && !tabdragging) {
 		if (isactive)
 			hide(tempc);
 	}
