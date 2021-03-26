@@ -2996,9 +2996,9 @@ dragmouse(const Arg *arg)
 
 	if (tabdragging) {
 		int prev_slot = -1;
-		int switched = 0;
 		int tempanim = animated;
 		animated = 0;
+		tagwidth = gettagwidth();
 		do {
 			XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 			switch(ev.type) {
@@ -3016,24 +3016,21 @@ dragmouse(const Arg *arg)
 					break;
 				}
 				int x = ev.xmotion.x_root;
-				int left = selmon->mx + tagwidth + startmenusize;
+				// startmenu + tags + layout indicator
+				int left = selmon->mx + startmenusize + tagwidth + bh;
 				int right = left + selmon->btw;
-				if (x < left || x > right) {
+				if (x < left || x >= right) {
 					tabdragging = 0;
 					break;
 				}
 				int slot = (x - left) * selmon->bt / selmon->btw;
 				if (slot != prev_slot) {
-					switched = 1;
 					prev_slot = slot;
 					detach(c);
-					int i = 0;
-					// walk to slot #
+					// walk down linked list to the slot #
 					Client **tc = &selmon->clients;
-					while (*tc && i < slot) {
+					for (int i = 0; i < slot && *tc; i++)
 						tc = &(*tc)->next;
-						i++;
-					}
 					c->next = *tc;
 					*tc = c;
 					arrange(selmon);
@@ -3041,7 +3038,6 @@ dragmouse(const Arg *arg)
 				break;
 			case ButtonRelease:
 				dragging = 0;
-				tabdragging = switched;
 			}
 		} while (dragging && tabdragging);
 		animated = tempanim;
