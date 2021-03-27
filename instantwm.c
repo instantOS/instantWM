@@ -3029,8 +3029,12 @@ dragmouse(const Arg *arg)
 					detach(c);
 					// walk down linked list to the slot #
 					Client **tc = &selmon->clients;
-					for (int i = 0; i < slot && *tc; i++)
+					int i = 0;
+					while (i < slot && *tc) {
+						if (*tc && ISVISIBLE((*tc)))
+							i++;
 						tc = &(*tc)->next;
+					}
 					c->next = *tc;
 					*tc = c;
 					arrange(selmon);
