@@ -2998,7 +2998,7 @@ dragmouse(const Arg *arg)
 		int prev_slot = -1;
 		int tempanim = animated;
 		animated = 0;
-		tagwidth = gettagwidth();
+		drawbar(c->mon);
 		do {
 			XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 			switch(ev.type) {
