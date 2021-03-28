@@ -2983,7 +2983,7 @@ dragmouse(const Arg *arg)
                                abs((startx - ev.xmotion.x_root) *
                                    (startx - ev.xmotion.x_root))) > 4069) {
                             dragging = 1;
-							if (ev.xmotion.y_root < bh) {
+							if (ev.xmotion.y_root < selmon->wy) {
 								tabdragging = 1;
 							}
 						  }
@@ -3011,7 +3011,7 @@ dragmouse(const Arg *arg)
 				if ((ev.xmotion.time - lasttime) <= (1000 / 60))
 					continue;
 				lasttime = ev.xmotion.time;
-				if (ev.xmotion.y_root >= bh) {
+				if (ev.xmotion.y_root >= selmon->wy) {
 					tabdragging = 0;
 					break;
 				}
