@@ -359,6 +359,8 @@ void fullovertoggle(const Arg *arg);
 
 void setspecialnext(const Arg *arg);
 
+void directionfocus(const Arg *arg);
+
 Client *wintoclient(Window w);
 Monitor *wintomon(Window w);
 Client *wintosystrayicon(Window w);

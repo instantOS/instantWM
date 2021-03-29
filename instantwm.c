@@ -182,6 +182,59 @@ void saveallfloating(Monitor *m) {
     }
 }
 
+void directionfocus(const Arg *arg) {
+    Client *c;
+    Client *sc;
+    Client *outclient;
+    Monitor *m;
+    int minscore;
+    int score;
+    int foundone = 0;
+    int direction = arg->ui;
+
+    if (!selmon->sel)
+        return;
+    m = selmon;
+    sc = selmon->sel;
+    minscore = 0;
+
+    int cx, cy;
+    int sx, sy;
+    sx = sc->x + (sc->w / 2);
+    sy = sc->y + (sc->h / 2);
+
+    for(c = m->clients; c; c = c->next) {
+        if (!(ISVISIBLE(c)))
+            continue;
+
+        cx = c->x + (c->w / 2);
+        cy = c->y + (c->h / 2);
+
+        if (c == sc || (direction == 0 && cy > sy) || (direction == 1 && cx < sx) || (direction == 2 && cy < sy) || (direction == 3 && cx > sx))
+            continue;
+
+        if (direction % 2 == 0) {
+            score = abs(sx - cx) + abs(sy - cy) / 4;
+            if (abs(sx - cx) > abs(sy - cy))
+                continue;
+        } else {
+            score = abs(sy - cy) + abs(sx - cx) / 4;
+            if (abs(sy - cy) > abs(sx - cx))
+                continue;
+        }
+
+        if (score < minscore || minscore == 0) {
+            outclient = c;
+            foundone = 1;
+            minscore = score;
+        }
+
+    }
+    if (outclient && foundone) {
+        focus(outclient);
+    }
+}
+
 void restoreallfloating(Monitor *m) {
     int i;
     Client *c;
