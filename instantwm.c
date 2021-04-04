@@ -4426,9 +4426,24 @@ void resetsticky(Client *c) {
 void
 tagmon(const Arg *arg)
 {
-	if (!selmon->sel || !mons->next)
-		return;
-	sendmon(selmon->sel, dirtomon(arg->i));
+    if (!selmon->sel || !mons->next)
+        return;
+
+    if (selmon->sel->isfloating) {
+        Client *c;
+        Monitor *m;
+        float xfact, yfact;
+        c = selmon->sel;
+        xfact = (float)(c->x - selmon->mx) / selmon->ww;
+        yfact = (float)(c->y - selmon->my) / selmon->wh;
+
+        sendmon(selmon->sel, dirtomon(arg->i));
+        c->x = c->mon->mx + c->mon->ww * xfact;
+        c->y = c->mon->my + c->mon->wh * yfact;
+        arrange(c->mon);
+    } else {
+        sendmon(selmon->sel, dirtomon(arg->i));
+    }
 }
 
 void setoverlaymode(int mode) {
