@@ -152,6 +152,7 @@ static const char *instantpacmancmd[] = {"instantpacman", NULL};
 static const char *instantsharecmd[] = {"instantshare", "snap", NULL};
 static const char *nautiluscmd[] = {".config/instantos/default/filemanager", NULL};
 static const char *slockcmd[] = {".config/instantos/default/lockscreen", NULL};
+static const char *onekeylock[] = {"ilock", "-o", NULL};
 static const char *langswitchcmd[] = {"ilayout", NULL};
 static const char *oslockcmd[] = {"instantlock", "-o", NULL};
 static const char *helpcmd[] = {"instanthotkeys", "gui", NULL};
@@ -309,12 +310,13 @@ static Key keys[] = {
 	{MODKEY|Mod1Mask|ControlMask|ShiftMask, XK_Tab,             alttabfree,           {0}},
 	{MODKEY,                                XK_dead_circumflex, spawn,                {.v = caretinstantswitchcmd}},
 	{MODKEY|ControlMask,                    XK_l,               spawn,                {.v = slockcmd}},
+	{MODKEY|ControlMask|ShiftMask,          XK_l,               spawn,                {.v = onekeylock}},
 	{MODKEY|ControlMask,                    XK_h,               hidewin,              {0}},
 	{MODKEY|Mod1Mask|ControlMask,           XK_h,               unhideall,            {0}},
 	{MODKEY|Mod1Mask|ControlMask,           XK_l,               spawn,                {.v = langswitchcmd}},
 	{MODKEY,                                XK_Return,          spawn,                {.v = termcmd}},
 	{MODKEY,                                XK_v,               spawn,                {.v = quickmenucmd}},
-	{MODKEY,                                XK_b,               directionfocus,            {0}},
+	{MODKEY,                                XK_b,               togglebar,            {0}},
 	{MODKEY,                                XK_j,               focusstack,           {.i = +1}},
 	{MODKEY,                                XK_Down,            downkey,              {.i = +1}},
 	{MODKEY|ShiftMask,                      XK_Down,            downpress,            {0}},
