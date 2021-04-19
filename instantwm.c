@@ -4441,6 +4441,7 @@ tagmon(const Arg *arg)
         c->x = c->mon->mx + c->mon->ww * xfact;
         c->y = c->mon->my + c->mon->wh * yfact;
         arrange(c->mon);
+        XRaiseWindow(dpy, c->win);
     } else {
         sendmon(selmon->sel, dirtomon(arg->i));
     }
