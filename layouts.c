@@ -131,15 +131,15 @@ deck(Monitor *m)
 	if(n > m->nmaster)
 		mw = m->nmaster ? m->ww * m->mfact : 0;
 	else
-		mw = m->ww;
-	for(i = my = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+		mw = m->ww - m->gappx;
+	for(i = 0, my = m->gappx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if(i < m->nmaster) {
-			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-			resize(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), False);
-			my += HEIGHT(c);
+			h = (m->wh - my) / (MIN(n, m->nmaster) - i) - m->gappx;
+			resize(c, m->wx + m->gappx, m->wy + my, mw - (2*c->bw) - m->gappx, h - (2*c->bw), False);
+			my += HEIGHT(c) + m->gappx;
 		}
 		else
-			resize(c, m->wx + mw, m->wy, m->ww - mw - (2*c->bw), m->wh - (2*c->bw), False);
+			resize(c, m->wx + mw + m->gappx, m->wy, m->ww - mw - (2*c->bw) - 2*m->gappx, m->wh - (2*c->bw), False);
 }
 
 void
@@ -353,38 +353,39 @@ tile(Monitor *m)
 		return;
 
 	if (n > m->nmaster)
-		mw = m->nmaster ? m->ww * m->mfact : 0;
+		mw = m->nmaster ? m->ww * m->mfact - m->gappx : 0;
 	else {
-		mw = m->ww;
+		mw = m->ww - m->gappx;
 		if (n > 1 && n < m->nmaster) {
 			m->nmaster = n;
 			tile(m);
 			return;
 		}
 	}
-	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+	for (i = 0, my = ty = m->gappx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
 			// client is in the master
-			h = (m->wh - my) / (MIN(n, m->nmaster) - i);
+			h = (m->wh - my) / (MIN(n, m->nmaster) - i) - m->gappx;
+			animateclient(c, m->wx + m->gappx, m->wy + my, mw - (2*c->bw) - m->gappx, h - (2*c->bw), framecount, 0);
 
             if (n == 2) {
                 tmpanim = animated;
                 animated = 0;
-			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+			animateclient(c, m->wx + m->gappx, m->wy + my, mw - (2*c->bw) - m->gappx, h - (2*c->bw), framecount, 0);
                 animated = tmpanim;
             } else {
-			animateclient(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+			animateclient(c, m->wx + m->gappx, m->wy + my, mw - (2*c->bw) - m->gappx, h - (2*c->bw), framecount, 0);
 			if (m->nmaster == 1 && n > 1) {
-				mw = c->w + c->bw * 2;
+				mw = c->w + c->bw * 2 + m->gappx;
 			}
             }
 			if (my + HEIGHT(c) < m->wh)
-				my += HEIGHT(c);
+				my += HEIGHT(c) + m->gappx;
 		} else {
 			// client is in the stack
-			h = (m->wh - ty) / (n - i);
-            animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), framecount, 0);
+			h = (m->wh - ty) / (n - i) - m->gappx;
+			animateclient(c, m->wx + mw + m->gappx, m->wy + ty, m->ww - mw - (2*c->bw) - 2*m->gappx, h - (2*c->bw), framecount, 0);
 			if (ty + HEIGHT(c) < m->wh)
-				ty += HEIGHT(c);
+				ty += HEIGHT(c) + m->gappx;
 		}
 }
