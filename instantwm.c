@@ -124,18 +124,6 @@ void
 keyrelease(XEvent *e) {
 }
 
-void
-printArg(char *s, const Arg *arg) {
-    FILE * tmplog = fopen("/tmp/instantfocus.log", "a");
-    if(tmplog == NULL) perror("printArg: cannot opent logilfe!");
-    if (arg == NULL)
-    fprintf(tmplog, "%s\n", s);
-    else
-    fprintf(tmplog, "%s\n" "i: %i\n" "ui: %u\n" "f: %f\n" "*v: %p\n",
-	            s,     arg->i,    arg->ui,  arg->f,   arg->v     );
-    fclose(tmplog);
-}
-
 int overlayexists() {
 	Client *c;
 	Monitor *m;
@@ -1838,7 +1826,6 @@ focusin(XEvent *e)
 void
 followmon(const Arg *arg)
 {
-        printArg("followmon", arg);
 	Client *c;
 	if (!selmon->sel)
 		return;
@@ -1854,7 +1841,6 @@ followmon(const Arg *arg)
 void
 focusmon(const Arg *arg)
 {
-        printArg("focusmon", arg);
 	Monitor *m;
 
 	if (!mons->next)
@@ -2142,19 +2128,13 @@ xcommand()
     }
     fcursor = command + strlen(indicator); // got command for us, strip indicator
 
-    printArg("\n===========", NULL);
-    printArg(command, NULL);
     // Check if a command was found, and if so handle it
     for (i = 0; i < LENGTH(commands); i++) {
-	printArg("\n", NULL);
-	printArg(commands[i].cmd, NULL);
-	printArg(fcursor, NULL);
         if ( !startswith(fcursor, commands[i].cmd) )
 	    continue;
         
 	fcursor += strlen(commands[i].cmd);
 	// no args
-	printArg("loop", &(commands[i].arg));
 	if (!strlen(fcursor)) {
 	    arg = commands[i].arg;
 	} else {
@@ -2186,7 +2166,6 @@ xcommand()
 		    break;
 	    }
 	}
-	printArg("execute", &arg);
 	commands[i].func(&(arg));
 	break;
     }
@@ -4444,7 +4423,6 @@ void resetsticky(Client *c) {
 void
 tagmon(const Arg *arg)
 {
-    printArg("tagmon", arg);
     if (!selmon->sel || !mons->next)
         return;
 
