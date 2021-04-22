@@ -442,11 +442,11 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	height = h ? h : c->h;
 
 	// prevent oversizing when minimizing/unminimizing
-	if (width > selmon->mw - (2 * c->bw))
-		width = selmon->ww - (2 * c->bw);
+	if (width > c->mon->mw - (2 * c->bw))
+		width = c->mon->ww - (2 * c->bw);
 
-	if (height > selmon->wh - (2 * c->bw))
-		height = selmon->wh - (2 * c->bw);
+	if (height > c->mon->wh - (2 * c->bw))
+		height = c->mon->wh - (2 * c->bw);
 
 	time = 1;
 	oldx = c->x;
