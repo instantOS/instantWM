@@ -23,6 +23,7 @@
 #==============================================================================#
 
 	default_behavior() {
+		make && \
 		"$SUPERU" make install
 	}
 
@@ -54,9 +55,14 @@
 	}
 
 	delete_config() {
-		rm config.h &>/dev/null && \
-		make && \
-		"$SUPERU" make install
+		if [[ -e config.h ]] ; then
+			rm config.h &>/dev/null && \
+			make && \
+			"$SUPERU" make install
+		else
+			make && \
+			"$SUPERU" make install
+		fi
 	}
 
 	get_help() {
@@ -75,7 +81,6 @@
 		echo "   [2m-h[0m, [2m--help[0m           -  Print this help menu"
 		echo ""
 		echo "Note: [2m-d[0m creates [3miterated[0m backups.  These stack up if not careful."
-		echo ""
 	}
 
 
