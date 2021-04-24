@@ -8,6 +8,21 @@ instantWM the window manager of instantOS.
 
 ![img](https://github.com/instantOS/instantLOGO/blob/master/screeenshots/screenshot1.png)
 
+## Scarbrough Branch
+
+The Scarbrough Branch is my personal brach of instantWM.  Chiefly, I seek to
+change the keybindings to be Dvorak compatible.
+
+Major differences:
+
+  1. Have fixed typo in `Makefile`.
+  2. Have rewritten `build.sh` to have more straight-forward and extended
+  functionality.
+
+`build.sh` now can iteratively backup `config.h` before compiling with the
+default `config.def.h`, and it now defaults to creating `config.h` if it does
+not exist, but then will not remove it unless specified.
+
 ## Installation
 
 It is preinstalled on instantOS
