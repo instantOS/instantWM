@@ -4405,6 +4405,59 @@ void followtag(const Arg *arg)
 	}
 }
 
+void
+swaptags(const Arg *arg)
+{
+	int ui = computeprefix(arg);
+	unsigned int newtag = ui & TAGMASK;
+	unsigned int curtag = selmon->tagset[selmon->seltags];
+
+	if (newtag == curtag || !curtag || (curtag & (curtag-1)))
+		return;
+
+	for (Client *c = selmon->clients; c != NULL; c = c->next) {
+		if((c->tags & newtag) || (c->tags & curtag))
+			c->tags ^= curtag ^ newtag;
+
+		if(!c->tags) c->tags = newtag;
+	}
+
+	selmon->tagset[selmon->seltags] = newtag;
+
+	int i, tmpnmaster, tmpsellt, tmpshowbar;
+	float tmpmfact;
+	const Layout *tmplt[2];
+	for (i = 0; !(ui & 1 << i); i++);
+
+	tmpnmaster = selmon->pertag->nmasters[selmon->pertag->curtag];
+	tmpmfact = selmon->pertag->mfacts[selmon->pertag->curtag];
+	tmpsellt = selmon->pertag->sellts[selmon->pertag->curtag];
+	tmplt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
+	tmplt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
+	tmpshowbar = selmon->pertag->showbars[selmon->pertag->curtag];
+
+	selmon->pertag->nmasters[selmon->pertag->curtag] = selmon->pertag->nmasters[i + 1];
+	selmon->pertag->mfacts[selmon->pertag->curtag] = selmon->pertag->mfacts[i + 1];
+	selmon->pertag->sellts[selmon->pertag->curtag] = selmon->pertag->sellts[i + 1];
+	selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = selmon->pertag->ltidxs[i + 1][selmon->sellt];
+	selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1] = selmon->pertag->ltidxs[i + 1][selmon->sellt^1];
+	selmon->pertag->showbars[selmon->pertag->curtag] = selmon->pertag->showbars[i + 1];
+
+	selmon->pertag->nmasters[i + 1] = tmpnmaster;
+	selmon->pertag->mfacts[i + 1] = tmpmfact;
+	selmon->pertag->sellts[i + 1] = tmpsellt;
+	selmon->pertag->ltidxs[i + 1][selmon->sellt] = tmplt[selmon->sellt];
+	selmon->pertag->ltidxs[i + 1][selmon->sellt^1] = tmplt[selmon->sellt^1];
+	selmon->pertag->showbars[i + 1] = tmpshowbar;
+
+	if (selmon->pertag->prevtag == i + 1)
+		selmon->pertag->prevtag = selmon->pertag->curtag;
+	selmon->pertag->curtag = i + 1;
+
+	focus(NULL);
+	arrange(selmon);
+}
+
 void followview(const Arg *arg)
 {
 	if (!selmon->sel)
