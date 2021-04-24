@@ -2467,12 +2467,12 @@ motionnotify(XEvent *e)
 	}
 
 	// cursor is to the left of window titles
-	if (ev->x_root < selmon->mx + tagwidth + startmenusize) {
+	if (ev->x_root < selmon->mx + tagwidth + 60) {
 		if (selmon->hoverclient)
 			selmon->hoverclient = NULL;
 
 		// don't animate if vacant tags are hidden
-		if (ev->x_root < selmon->activeoffset - 50 && !selmon->showtags) {
+		if (ev->x_root < selmon->mx + tagwidth && !selmon->showtags) {
 			// hover over start menu
 			if (ev->x_root < selmon->mx + startmenusize) {
 				selmon->gesture = 13;
@@ -2490,7 +2490,8 @@ motionnotify(XEvent *e)
 					drawbar(selmon);
 				}
 			}
-		}
+		} else
+            resetbar();
 	} else if (selmon->sel && ev->x_root < selmon->mx + 60 + tagwidth + selmon->btw) {
 		// cursor is on window titles
 
