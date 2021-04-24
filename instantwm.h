@@ -293,6 +293,7 @@ Client *getcursorclient();
 void tag(const Arg *arg);
 void tagall(const Arg *arg);
 void followtag(const Arg *arg);
+void swaptags(const Arg *arg);
 void followview(const Arg *arg);
 void tagmon(const Arg *arg);
 void tagtoleft(const Arg *arg);
