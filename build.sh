@@ -51,7 +51,6 @@
 			make
 			"$SUPERU" make install
 		fi
-
 	}
 
 	delete_config() {
