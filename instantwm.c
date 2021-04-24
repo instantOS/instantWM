@@ -3352,7 +3352,20 @@ dragtag(const Arg *arg)
 	if (!tagwidth)
 		tagwidth = gettagwidth();
 	if ((arg->ui & TAGMASK) != selmon->tagset[selmon->seltags]) {
-		view(arg);
+		unsigned int state;
+		int x;
+		Window dummy;
+		XQueryPointer(dpy, root, &dummy, &dummy, &x, &x, &x, &x, &state);
+		if ((state & ShiftMask) && (state & ControlMask))
+			toggletag(arg);
+		else if (state & ShiftMask)
+			tag(arg);
+		else if (state & ControlMask)
+			toggleview(arg);
+		else if (state & Mod1Mask)
+			followtag(arg);
+		else
+			view(arg);
 		return;
 	}
 
@@ -3396,10 +3409,19 @@ dragtag(const Arg *arg)
 
 	if (!leftbar) {
 		if (ev.xmotion.x_root < selmon->mx + tagwidth) {
-			if (ev.xmotion.state & ShiftMask) {
+			if ((ev.xmotion.state & ShiftMask) && (ev.xmotion.state & ControlMask)) {
+				if (tagprefix) {
+					tagall(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+					tagprefix = 1;
+				} else
+					tagall(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+				view(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+			} else if (ev.xmotion.state & ShiftMask) {
 				followtag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
 			} else if (ev.xmotion.state & ControlMask) {
 				tagall(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
+			} else if (ev.xmotion.state & Mod1Mask) {
+				swaptags(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
 			} else {
 				tag(&((Arg) { .ui = 1 << getxtag(ev.xmotion.x_root) }));
 			}
