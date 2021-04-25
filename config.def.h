@@ -225,18 +225,21 @@ ResourcePref resources[] = {
 
 static Xcommand commands[] = {
 	/* signum       function        default argument  arg handler*/
-    // 0 means off, 1 means toggle, 2 means on
+	// 0 means off, 1 means toggle, 2 means on
 	{ "overlay",                setoverlay,                   {0},         0 },
 	{ "tag",                    view,                         { .ui = 2 }, 3 },
 	{ "animated",               toggleanimated,               { .ui = 2 }, 1 },
-    { "focusfollowsmouse",      togglefocusfollowsmouse,      { .ui = 2 }, 1 },
-    { "focusfollowsfloatmouse", togglefocusfollowsfloatmouse, { .ui = 2 }, 1 },
+	{ "focusfollowsmouse",      togglefocusfollowsmouse,      { .ui = 2 }, 1 },
+	{ "focusfollowsfloatmouse", togglefocusfollowsfloatmouse, { .ui = 2 }, 1 },
 	{ "alttab",                 alttabfree,                   { .ui = 2 }, 1 },
 	{ "layout",                 commandlayout,                { .ui = 0 }, 1 },
 	{ "prefix",                 commandprefix,                { .ui = 1 }, 1 },
 	{ "alttag",                 togglealttag,                 { .ui = 0 }, 1 },
 	{ "hidetags",               toggleshowtags,               { .ui = 0 }, 1 },
 	{ "specialnext",            setspecialnext,               { .ui = 0 }, 3 },
+	{ "tagmon",                 tagmon,                       { .i = +1 }, 0 },
+	{ "followmon",              followmon,                    { .i = +1 }, 0 },
+	{ "focusmon",               focusmon,                     { .i = +1 }, 0 },
 };
 
 static Key dkeys[] = {

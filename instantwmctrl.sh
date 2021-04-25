@@ -6,15 +6,19 @@ Really basic tool to send commands to instantWM.
 Commands:
     help                     Display this help text
     overlay
-    tag
-    animated
+    tag <number>             Switch to tag described by <number>
+    animated                 Toggle animations
     alttab
     layout <number>|<name>   Change window layout to given argument, e.g. $0 layout monocle
     prefix
-    focusfollowsmouse        Control if window focus will change with mouse movement
+    focusfollowsmouse        Toggle window focus will change with mouse movement
+    focusfollowsfloatmouse   As above but only for flowting windows
+    focusmon                 Switch focus to other monitor
+    tagmon                   Move window to other monitor
+    followmon                As above but follow focus
     allttag
     hidetags"
-
+# See config.def.c and look for "Xcommand commands"
 
 main() {
     case $1 in
