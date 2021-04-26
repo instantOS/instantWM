@@ -125,7 +125,7 @@ static const Layout layouts[] = {
 /* key definitions */
 #define MODKEY Mod4Mask
 #define TAGKEYS(KEY, TAG)                                          \
-		{MODKEY, KEY, view, {.ui = 1 << TAG}},                     \
+		{MODKEY, KEY, keyview, {.ui = 1 << TAG}},                     \
 		{MODKEY|ControlMask, KEY, toggleview, {.ui = 1 << TAG}}, \
 		{MODKEY|ShiftMask, KEY, tag, {.ui = 1 << TAG}},          \
 		{MODKEY|Mod1Mask, KEY, followtag, {.ui = 1 << TAG}},          \
@@ -270,15 +270,15 @@ static Key dkeys[] = {
 	{0,          XK_Up,     shiftview,   {.i = +1 } },
 	{0,          XK_Down,   shiftview,   {.i = -1 } },
 
-	{0,          XK_1,      view,        {.ui = 1 << 0}},
-	{0,          XK_2,      view,        {.ui = 1 << 1}},
-	{0,          XK_3,      view,        {.ui = 1 << 2}},
-	{0,          XK_4,      view,        {.ui = 1 << 3}},
-	{0,          XK_5,      view,        {.ui = 1 << 4}},
-	{0,          XK_6,      view,        {.ui = 1 << 5}},
-	{0,          XK_7,      view,        {.ui = 1 << 6}},
-	{0,          XK_8,      view,        {.ui = 1 << 7}},
-	{0,          XK_9,      view,        {.ui = 1 << 8}},
+	{0,          XK_1,      keyview,     {.ui = 1 << 0}},
+	{0,          XK_2,      keyview,     {.ui = 1 << 1}},
+	{0,          XK_3,      keyview,     {.ui = 1 << 2}},
+	{0,          XK_4,      keyview,     {.ui = 1 << 3}},
+	{0,          XK_5,      keyview,     {.ui = 1 << 4}},
+	{0,          XK_6,      keyview,     {.ui = 1 << 5}},
+	{0,          XK_7,      keyview,     {.ui = 1 << 6}},
+	{0,          XK_8,      keyview,     {.ui = 1 << 7}},
+	{0,          XK_9,      keyview,     {.ui = 1 << 8}},
 
 };
 
