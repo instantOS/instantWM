@@ -1678,14 +1678,14 @@ drawbar(Monitor *m)
 			if (!selmon->clients) {
                           int titlewidth =
                               TEXTW("Press space to launch an application") <
-                                      selmon->btw
+                                      m->btw
                                   ? TEXTW(
                                         "Press space to launch an application")
-                                  : (selmon->btw - bh);
+                                  : (m->btw - bh);
                           drw_text(
                               drw,
                               x + bh +
-                                  ((selmon->btw - bh) - titlewidth + 1) / 2,
+                                  ((m->btw - bh) - titlewidth + 1) / 2,
                               0, titlewidth, bh, 0,
                               "Press space to launch an application", 0, 0);
                         }
