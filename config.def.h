@@ -163,6 +163,9 @@ static const char *keylayoutswitchcmd[] = {"instantkeyswitch", NULL};
 static const char *iswitchcmd[] = {"iswitch", NULL};
 static const char *instantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", NULL};
 static const char *caretinstantswitchcmd[] = {"rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rofi/appmenu.rasi", NULL};
+static const char *notificationclose[] = {"dunstctl", "close", NULL};
+static const char *notificationpop[] = {"dunstctl", "history-pop", NULL};
+static const char *notificationaction[] = {"dunstctl", "context", NULL};
 static const char *onboardcmd[] = {"onboard", NULL};
 static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 static const char *systemmonitorcmd[] = {".config/instantos/default/systemmonitor", NULL};
@@ -287,6 +290,9 @@ static Key dkeys[] = {
 static Key keys[] = {
 	/* modifier                             key                 function              argument */
 
+	{MODKEY|ControlMask,                    XK_Up,              spawn,                {.v = notificationclose}},
+	{MODKEY|ControlMask,                    XK_Down,            spawn,                {.v = notificationpop}},
+	{MODKEY|ControlMask,                    XK_Return,          spawn,                {.v = notificationaction}},
 	{MODKEY|Mod1Mask,                       XK_j,               keyresize,            {.i = 0}},
 	{MODKEY|Mod1Mask,                       XK_k,               keyresize,            {.i = 1}},
 	{MODKEY|Mod1Mask,                       XK_l,               keyresize,            {.i = 2}},
