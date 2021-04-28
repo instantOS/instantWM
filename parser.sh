@@ -35,7 +35,7 @@ clear_to_tagkey_comment='s/,.*\/\*\s*/: /'
 
 (
 for i in $(sed "$only_mouse;$remove_semicolons;$remove_comments;$remove_whitespace;$remove_empty_lines;$remove_braces"';s/,.*//' < $CONFIG_FILE | sort | uniq); do
-	echo "$section_prefix"$i$'\n' | sed "$change_Clk_area"
+	echo "$section_prefix$i"$'\n' | sed "$change_Clk_area"
 	sed "$remove_whitespace;$remove_comments;$remove_semicolons;$remove_braces;$change_modifiers;$change_buttons;$bar_to_plus;$comma_to_plus;$comma_to_plus;$remove_zero;$clear_to_comment" < $CONFIG_FILE | grep "$i" | sed "s/^$i+//;$remove_Clk_area"
 	echo
 done
