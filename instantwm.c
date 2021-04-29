@@ -3283,7 +3283,7 @@ void drawwindow(const Arg *arg) {
 
 	if (!selmon->sel)
 		return;
-	FILE *fp = popen("instantslop", "r");
+	FILE *fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
 
     while (fgets(str, 100, fp) != NULL) {
     	strcat(strout, str);
