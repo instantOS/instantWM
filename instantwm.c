@@ -185,7 +185,7 @@ void saveallfloating(Monitor *m) {
 void directionfocus(const Arg *arg) {
     Client *c;
     Client *sc;
-    Client *outclient;
+    Client *outclient = NULL;
     Monitor *m;
     int minscore;
     int score;
@@ -303,7 +303,7 @@ int visible(Client *c) {
     Monitor *m;
     if (!c)
         return 0;
-	for (m = mons; m; m = m->next) {
+    for (m = mons; m; m = m->next) {
         if (c->tags & m->seltags && c->mon == m)
             return 1;
     }
@@ -1494,11 +1494,11 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 void
 drawbar(Monitor *m)
 {
-    if (pausedraw)
-        return;
+	if (pausedraw)
+		return;
 
 	int x, w, sw = 0, n = 0, stw = 0, roundw, iconoffset;
-    unsigned int i, occ = 0, urg = 0;
+	unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
 	if(showsystray && m == systraytomon(m))
@@ -1678,14 +1678,14 @@ drawbar(Monitor *m)
 			if (!selmon->clients) {
                           int titlewidth =
                               TEXTW("Press space to launch an application") <
-                                      selmon->btw
+                                      m->btw
                                   ? TEXTW(
                                         "Press space to launch an application")
-                                  : (selmon->btw - bh);
+                                  : (m->btw - bh);
                           drw_text(
                               drw,
                               x + bh +
-                                  ((selmon->btw - bh) - titlewidth + 1) / 2,
+                                  ((m->btw - bh) - titlewidth + 1) / 2,
                               0, titlewidth, bh, 0,
                               "Press space to launch an application", 0, 0);
                         }
@@ -1917,7 +1917,6 @@ Client *getcursorclient() {
 	unsigned int dui;
 	Window dummy;
 	Window returnwin;
-    Client *c;
 
 	XQueryPointer(dpy, root, &dummy, &returnwin, &dum, &dum, &di, &di, &dui);
     if (returnwin == root)
@@ -2564,12 +2563,11 @@ void resetbar(){
 void
 movemouse(const Arg *arg)
 {
-	int x, y, ocx, ocy, nx, ny, ti, tx, occ, tagclient, colorclient, tagx, notfloating;
+	int x, y, ocx, ocy, nx, ny, ti, tx, occ, colorclient, tagx, notfloating;
 	Client *c;
 	Monitor *m;
 	XEvent ev;
 	Time lasttime = 0;
-	tagclient = 0;
 	notfloating = 0;
 	occ = 0;
 	tagx = 0;
@@ -2746,7 +2744,6 @@ movemouse(const Arg *arg)
 				tag(&((Arg) { .ui = 1 << ti }));
 			else
 				followtag(&((Arg) { .ui = 1 << ti }));
-			tagclient = 1;
 
 		} else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50 && ev.xmotion.x_root < selmon->mx + selmon->mw ) {
             // drag on top right corner
@@ -4482,7 +4479,6 @@ tagmon(const Arg *arg)
 
     if (selmon->sel->isfloating) {
         Client *c;
-        Monitor *m;
         float xfact, yfact;
         c = selmon->sel;
         xfact = (float)(c->x - selmon->mx) / selmon->ww;

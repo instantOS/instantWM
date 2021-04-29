@@ -20,6 +20,7 @@ static char xresourcesfont[30];
 static char col_background[] = "#292f3a"; /* top bar dark background*/
 // fonts
 static char col_white[] = "#ffffff";/*white for fonts*/
+static char col_gray[] = "#747c90"; /*top bar minimized foreground*/
 
 // border active and inactive
 static char col_pastel_blue[] = "#747c90";/*unsaturated for focused border*/
@@ -57,7 +58,7 @@ static const char *colors[][4] = {
 	/*                    fg               bg              border 	           float*/
 	[SchemeNorm]      = { col_white,       col_background, col_pastel_blue,    col_green },
 	[SchemeSel]       = { col_white,       col_blue,       col_light_blue,     col_green },
-	[SchemeHid]       = { col_pastel_blue, col_background, col_pastel_blue,    col_green },
+	[SchemeHid]       = { col_gray,        col_background, col_pastel_blue,    col_green },
 	[SchemeTags]      = { col_white,       col_blue,       col_light_blue,     col_dark_blue },
 	[SchemeActive]    = { col_white,       col_green,      col_light_blue,     col_dark_green },
 	[SchemeAddActive] = { col_white,       col_orange,     col_light_blue,     col_dark_orange },
@@ -201,6 +202,7 @@ ResourcePref resources[] = {
 
 		{ "minimize",         STRING,  &col_orange },
 		{ "darkminimize",     STRING,  &col_dark_orange },
+		{ "minimizedcolor",   STRING,  &col_gray },
 
 		{ "border",           STRING,  &col_pastel_blue },
 		{ "activeborder",     STRING,  &col_light_blue },
