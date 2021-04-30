@@ -3419,6 +3419,39 @@ void shutkill(const Arg *arg) {
 		killclient(arg);
 }
 
+void
+nametag(const Arg *arg) {
+	char *p, name[MAX_TAGLEN];
+	FILE *f;
+	int i;
+
+	errno = 0; // popen(3p) says on failure it "may" set errno
+	if(!(f = popen("instantmenu -c -w 250 -bw 3 -q 'Enter tag name' < /dev/null", "r"))) {
+		fprintf(stderr, "instantwm: popen 'instantmenu < /dev/null' failed%s%s\n", errno ? ": " : "", errno ? strerror(errno) : "");
+		return;
+	}
+	if (!(p = fgets(name, MAX_TAGLEN, f)) && (i = errno) && ferror(f))
+		fprintf(stderr, "instantwm: fgets failed: %s\n", strerror(i));
+	if (pclose(f) < 0)
+		fprintf(stderr, "instantwm: pclose failed: %s\n", strerror(errno));
+	if(!p)
+		return;
+	if((p = strchr(name, '\n')))
+		*p = '\0';
+
+	for(i = 0; i < LENGTH(tags); i++) {
+		if(selmon->tagset[selmon->seltags] & (1 << i))
+		{
+			if (strlen(name) > 0)
+				strcpy(tags[i], name);
+			else
+				strcpy(tags[i], tags_default[i]);
+		}
+    }
+	drawbars();
+}
+
+
 Client *
 nexttiled(Client *c)
 {
@@ -4237,6 +4270,7 @@ setup(void)
 	/* init system tray */
 	updatesystray();
 	/* init bars */
+	verifytagsxres();
 	updatebars();
 	updatestatus();
 	/* supporting window for NetWMCheck */
@@ -5246,6 +5280,19 @@ unmapnotify(XEvent *e)
 		 * _not_ destroy them. We map those windows back */
 		XMapRaised(dpy, c->win);
 		updatesystray();
+	}
+}
+
+void
+verifytagsxres(void)
+{
+	for (int i = 0; i < 9; i++)
+	{
+		int len = strlen(tags[i]);
+		if (len > MAX_TAGLEN - 1 || len == 0)
+		{
+			strcpy((char *)&tags[i], "Xres err");
+		}
 	}
 }
 
