@@ -3490,7 +3490,7 @@ propertynotify(XEvent *e)
 void
 quit(const Arg *arg)
 {
-	running = 0;
+	exit(0);
 }
 
 // return monitor that a rectangle is on
