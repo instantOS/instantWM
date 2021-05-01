@@ -415,6 +415,7 @@ static Key keys[] = {
 	{MODKEY|Mod1Mask,                       XK_comma,           followmon,            {.i = -1}},
 	{MODKEY|Mod1Mask,                       XK_period,                       followmon,  {.i = +1}},
 	{MODKEY|ShiftMask,                      XK_t,               nametag,              {0}},
+	{MODKEY|ControlMask,                    XK_t,               resetnametag,         {0}},
 
 	{MODKEY|ShiftMask|ControlMask|Mod1Mask, XK_period,                       desktopset, {0}},
 	TAGKEYS(XK_1, 0)

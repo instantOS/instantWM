@@ -245,6 +245,7 @@ void moveresize(const Arg *arg);
 void distributeclients(const Arg *arg);
 void keyresize(const Arg *arg);
 void centerwindow();
+void resetnametag(const Arg *arg);
 void nametag(const Arg *arg);
 Client *nexttiled(Client *c);
 void pop(Client *);
