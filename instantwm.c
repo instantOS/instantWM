@@ -3447,7 +3447,8 @@ nametag(const Arg *arg) {
 			else
 				strcpy(tags[i], tags_default[i]);
 		}
-    }
+	}
+	tagwidth = gettagwidth();
 	drawbars();
 }
 
@@ -3456,6 +3457,7 @@ resetnametag(const Arg *arg)
 {
 	for (int i = 0; i < 21; i++)
 		strcpy((char *)&tags[i], tags_default[i]);
+	tagwidth = gettagwidth();
 	drawbars();
 }
 
