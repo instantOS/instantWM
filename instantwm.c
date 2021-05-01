@@ -4800,10 +4800,10 @@ moveresize(const Arg *arg) {
 		ny = selmon->my;
 
 	if ((ny + c->h) > (selmon->my + selmon->mh))
-		ny = ((selmon->mh + selmon->my) - c->h);
+		ny = ((selmon->mh + selmon->my) - c->h - c->bw * 2);
 
 	if ((nx + c->w) > (selmon->mx + selmon->mw))
-		nx = ((selmon->mw + selmon->mx) - c->w);
+		nx = ((selmon->mw + selmon->mx) - c->w - c->bw * 2);
 
 	animateclient(c, nx, ny, c->w, c->h, 5, 0);
 	warp(c);
