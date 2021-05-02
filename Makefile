@@ -35,6 +35,11 @@ instantwm: ${OBJ}
 clean:
 	rm -f instantwm ${OBJ} instantwm-${CMS_VERSION}.tar.gz
 
+.PHONY: documentation
+documentation:
+	./parser.sh
+	./manpage.sh
+
 .PHONY: dist
 dist: clean
 	tar --transform 's|^|instantwm-${CMS_VERSION}/|' \

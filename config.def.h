@@ -125,13 +125,13 @@ static const Layout layouts[] = {
 
 /* key definitions */
 #define MODKEY Mod4Mask
-#define TAGKEYS(KEY, TAG)                                          \
-		{MODKEY, KEY, view, {.ui = 1 << TAG}},                     \
-		{MODKEY|ControlMask, KEY, toggleview, {.ui = 1 << TAG}}, \
-		{MODKEY|ShiftMask, KEY, tag, {.ui = 1 << TAG}},          \
-		{MODKEY|Mod1Mask, KEY, followtag, {.ui = 1 << TAG}},          \
-		{MODKEY|ControlMask|ShiftMask, KEY, toggletag, {.ui = 1 << TAG}}, \
-		{MODKEY|Mod1Mask|ShiftMask, KEY, swaptags, {.ui = 1 << TAG}},
+#define TAGKEYS(KEY, TAG)\
+		{MODKEY, KEY, view, {.ui = 1 << TAG}}, /* view tag [n] */\
+		{MODKEY|ControlMask, KEY, toggleview, {.ui = 1 << TAG}}, /* toggle view tag [n] */\
+		{MODKEY|ShiftMask, KEY, tag, {.ui = 1 << TAG}},       /* send current window to tag [n]*/\
+		{MODKEY|Mod1Mask, KEY, followtag, {.ui = 1 << TAG}},  /* send current window to tag and follow [n]*/\
+		{MODKEY|ControlMask|ShiftMask, KEY, toggletag, {.ui = 1 << TAG}},/* toggle whether the current window is on tag [n]*/ \
+		{MODKEY|Mod1Mask|ShiftMask, KEY, swaptags, {.ui = 1 << TAG}}, /* swap the current tag with tag [n] */
 
 
 #define SHCMD(cmd)                                           \
@@ -246,165 +246,164 @@ static Xcommand commands[] = {
 
 static Key dkeys[] = {
 	/* modifier  key        function     argument */
-	{0,          XK_r,      spawn,       {.v = rangercmd } },
-	{0,          XK_e,      spawn,       {.v = editorcmd } },
-	{0,          XK_n,      spawn,       {.v = nautiluscmd } },
-	{0,          XK_space,  spawn,       {.v = panther} },
-	{0,          XK_f,      spawn,       {.v = firefoxcmd} },
-	{0,          XK_a,      spawn,       {.v = instantassistcmd} },
-	{0,          XK_F1,     spawn,       {.v = helpcmd} },
-	{0,          XK_m,      spawn,       {.v = spoticli} },
-	{0,          XK_Return, spawn,       {.v = termcmd} },
-	{0,          XK_plus,   spawn,       {.v = upvol} },
-	{0,          XK_minus,  spawn,       {.v = downvol} },
-	{0,          XK_Tab,    spawn,       {.v = caretinstantswitchcmd} },
-	{0,          XK_c,      spawn,       {.v = codecmd} },
-	{0,          XK_y,      spawn,       {.v = smartcmd} },
-	{0,          XK_v,      spawn,       {.v = quickmenucmd} },
+	{0,          XK_r,      spawn,       {.v = rangercmd } },// open terminal file manager
+	{0,          XK_e,      spawn,       {.v = editorcmd } },// open text editor
+	{0,          XK_n,      spawn,       {.v = nautiluscmd } },// open file browser
+	{0,          XK_space,  spawn,       {.v = panther} },// open app launcher
+	{0,          XK_f,      spawn,       {.v = firefoxcmd} },// open browser
+	{0,          XK_a,      spawn,       {.v = instantassistcmd} },// instantassist
+	{0,          XK_F1,     spawn,       {.v = helpcmd} },// help
+	{0,          XK_m,      spawn,       {.v = spoticli} },// open spotify
+	{0,          XK_Return, spawn,       {.v = termcmd} },// open terminal
+	{0,          XK_plus,   spawn,       {.v = upvol} },// increase volume
+	{0,          XK_minus,  spawn,       {.v = downvol} },// decrease volume
+	{0,          XK_Tab,    spawn,       {.v = caretinstantswitchcmd} },// window swtiching menu
+	{0,          XK_c,      spawn,       {.v = codecmd} },// open vscode
+	{0,          XK_y,      spawn,       {.v = smartcmd} },// open smart text-based launcher
+	{0,          XK_v,      spawn,       {.v = quickmenucmd} },// quickmenu
 
-	{0,          XK_h,      viewtoleft,  {0}},
-	{0,          XK_l,      viewtoright, {0}},
-	{0,          XK_k,      shiftview,   {.i = +1 } },
-	{0,          XK_j,      shiftview,   {.i = -1 } },
+	{0,          XK_h,      viewtoleft,  {0}},// move 1 tag to the left
+	{0,          XK_l,      viewtoright, {0}},// move 1 tag to the right
+	{0,          XK_k,      shiftview,   {.i = +1 } },// move to next occupied tag on the right
+	{0,          XK_j,      shiftview,   {.i = -1 } },// move to next occupied tag on the left
 
-	{0,          XK_Left,   viewtoleft,  {0}},
-	{0,          XK_Right,  viewtoright, {0}},
-	{0,          XK_Up,     shiftview,   {.i = +1 } },
-	{0,          XK_Down,   shiftview,   {.i = -1 } },
+	{0,          XK_Left,   viewtoleft,  {0}},// move 1 tag to the left
+	{0,          XK_Right,  viewtoright, {0}},// move 1 tag to the right
+	{0,          XK_Up,     shiftview,   {.i = +1 } },// move to next occupied tag on the right
+	{0,          XK_Down,   shiftview,   {.i = -1 } },// move to next occupied tag on the left
 
-	{0,          XK_1,      view,        {.ui = 1 << 0}},
-	{0,          XK_2,      view,        {.ui = 1 << 1}},
-	{0,          XK_3,      view,        {.ui = 1 << 2}},
-	{0,          XK_4,      view,        {.ui = 1 << 3}},
-	{0,          XK_5,      view,        {.ui = 1 << 4}},
-	{0,          XK_6,      view,        {.ui = 1 << 5}},
-	{0,          XK_7,      view,        {.ui = 1 << 6}},
-	{0,          XK_8,      view,        {.ui = 1 << 7}},
-	{0,          XK_9,      view,        {.ui = 1 << 8}},
-
+	{0,          XK_1,      view,        {.ui = 1 << 0}},// open tag 1
+	{0,          XK_2,      view,        {.ui = 1 << 1}},// open tag 2
+	{0,          XK_3,      view,        {.ui = 1 << 2}},// open tag 3
+	{0,          XK_4,      view,        {.ui = 1 << 3}},// open tag 4
+	{0,          XK_5,      view,        {.ui = 1 << 4}},// open tag 5
+	{0,          XK_6,      view,        {.ui = 1 << 5}},// open tag 6
+	{0,          XK_7,      view,        {.ui = 1 << 6}},// open tag 7
+	{0,          XK_8,      view,        {.ui = 1 << 7}},// open tag 8
+	{0,          XK_9,      view,        {.ui = 1 << 8}},// open tag 9
 };
 
 static Key keys[] = {
 	/* modifier                             key                 function              argument */
 
-	{MODKEY|Mod1Mask,                       XK_j,               keyresize,            {.i = 0}},
-	{MODKEY|Mod1Mask,                       XK_k,               keyresize,            {.i = 1}},
-	{MODKEY|Mod1Mask,                       XK_l,               keyresize,            {.i = 2}},
-	{MODKEY|Mod1Mask,                       XK_h,               keyresize,            {.i = 3}},
-	{MODKEY|ControlMask,                    XK_d,               distributeclients,    {0}},
-	{MODKEY|ShiftMask,                      XK_d,               drawwindow,           {0}},
-	{MODKEY|ShiftMask,                      XK_Escape,          spawn,                {.v = systemmonitorcmd}},
+	{MODKEY|Mod1Mask,                       XK_j,               keyresize,            {.i = 0}},// expand floating window down
+	{MODKEY|Mod1Mask,                       XK_k,               keyresize,            {.i = 1}},// shrink floating window up
+	{MODKEY|Mod1Mask,                       XK_l,               keyresize,            {.i = 2}},// expand floating window right
+	{MODKEY|Mod1Mask,                       XK_h,               keyresize,            {.i = 3}},// shrink floating window left
+	{MODKEY|ControlMask,                    XK_d,               distributeclients,    {0}},// distribute clients different tags
+	{MODKEY|ShiftMask,                      XK_d,               drawwindow,           {0}},// use a screenshot-like interface to resize the current window
+	{MODKEY|ShiftMask,                      XK_Escape,          spawn,                {.v = systemmonitorcmd}},//open system monitor
 
-	{MODKEY,                                XK_r,               spawn,                {.v = rangercmd } },
-	{MODKEY|ControlMask|Mod1Mask,           XK_r,               redrawwin,            {0} },
-	{MODKEY,                                XK_n,               spawn,                {.v = nautiluscmd } },
-	{MODKEY|ControlMask,                    XK_q,               spawn,                {.v = instantshutdowncmd } },
-	{MODKEY,                                XK_y,               spawn,                {.v = panther} },
-	{MODKEY,                                XK_a,               spawn,                {.v = instantassistcmd} },
-	{MODKEY|ShiftMask,                      XK_a,               spawn,                {.v = instantrepeatcmd} },
-	{MODKEY|ControlMask,                    XK_i,               spawn,                {.v = instantpacmancmd} },
-	{MODKEY|ShiftMask,                      XK_i,               spawn,                {.v = instantsharecmd} },
-	{MODKEY,                                XK_w,               setoverlay,           {0} },
-	{MODKEY|ControlMask,                    XK_w,               createoverlay,        {0} },
-	{MODKEY,                                XK_g,               spawn,                {.v = notifycmd} },
-	{MODKEY|ControlMask,                    XK_space,           spawn,                {.v = instantmenucmd}},
-	{MODKEY|ShiftMask,                      XK_v,               spawn,                {.v = clipmenucmd}},
-	{MODKEY,                                XK_space,           spawn,                {.v = smartcmd}},
-	{MODKEY,                                XK_minus,           spawn,                {.v = instantmenustcmd}},
-	{MODKEY,                                XK_x,               spawn,                {.v = instantswitchcmd}},
-	{Mod1Mask,                              XK_Tab,             spawn,                {.v = iswitchcmd}},
-	{MODKEY|Mod1Mask|ControlMask|ShiftMask, XK_Tab,             alttabfree,           {0}},
-	{MODKEY,                                XK_dead_circumflex, spawn,                {.v = caretinstantswitchcmd}},
-	{MODKEY|ControlMask,                    XK_l,               spawn,                {.v = slockcmd}},
-	{MODKEY|ControlMask|ShiftMask,          XK_l,               spawn,                {.v = onekeylock}},
-	{MODKEY|ControlMask,                    XK_h,               hidewin,              {0}},
-	{MODKEY|Mod1Mask|ControlMask,           XK_h,               unhideall,            {0}},
-	{MODKEY|Mod1Mask|ControlMask,           XK_l,               spawn,                {.v = langswitchcmd}},
-	{MODKEY,                                XK_Return,          spawn,                {.v = termcmd}},
-	{MODKEY,                                XK_v,               spawn,                {.v = quickmenucmd}},
-	{MODKEY,                                XK_b,               togglebar,            {0}},
-	{MODKEY,                                XK_j,               focusstack,           {.i = +1}},
-	{MODKEY,                                XK_Down,            downkey,              {.i = +1}},
-	{MODKEY|ShiftMask,                      XK_Down,            downpress,            {0}},
-	{MODKEY,                                XK_k,               focusstack,           {.i = -1}},
-	{MODKEY,                                XK_Up,              upkey,                {.i = -1}},
-	{MODKEY|ShiftMask,                      XK_Up,              uppress,              {0}},
-	{MODKEY|ControlMask,                    XK_j,               pushdown,             {0} },
-	{MODKEY|ControlMask,                    XK_k,               pushup,               {0} },
-	{MODKEY|Mod1Mask,                       XK_s,               togglealttag,         { .ui = 2 } },
-	{MODKEY|ShiftMask|Mod1Mask,             XK_s,               toggleanimated,       { .ui = 2 } },
-	{MODKEY|ControlMask,                    XK_s,               togglesticky,         {0} },
-	{MODKEY|ShiftMask,                      XK_s,               createscratchpad,     {0}},
-	{MODKEY,                                XK_s,               togglescratchpad,     {0}},
-	{MODKEY|ShiftMask,                      XK_f,               togglefakefullscreen, {0} },
-	{MODKEY|ControlMask,                    XK_f,               tempfullscreen,       {0} },
-	{MODKEY|Mod1Mask,                       XK_f,               spawn,                { .v = searchcmd } },
-	{MODKEY|Mod1Mask,                       XK_space,           spawn,                { .v = keylayoutswitchcmd } },
-	{MODKEY|ShiftMask|Mod1Mask,             XK_d,               toggledoubledraw,     {0} },
-	{MODKEY|ShiftMask,                      XK_w,               warpfocus,            {0} },
-	{MODKEY|Mod1Mask,                       XK_w,               centerwindow,         {0} },
-	{MODKEY|ShiftMask|ControlMask,          XK_s,               toggleshowtags,       { .ui = 2 } },
-	{MODKEY,                                XK_i,               incnmaster,           {.i = +1}},
-	{MODKEY,                                XK_d,               incnmaster,           {.i = -1}},
-	{MODKEY,                                XK_h,               setmfact,             {.f = -0.05}},
-	{MODKEY,                                XK_l,               setmfact,             {.f = +0.05}},
-	{MODKEY|ShiftMask,                      XK_Return,          zoom,                 {0}},
-	{MODKEY,                                XK_Tab,             lastview,             {0}},
-	{MODKEY|ShiftMask,                      XK_Tab,             focuslastclient,      {0}},
-	{MODKEY|Mod1Mask,                       XK_Tab,             followview,           {0}},
-	{MODKEY,                                XK_q,               shutkill,             {0}},
-	{Mod1Mask,                              XK_F4,              killclient,           {0}},
-	{MODKEY,                                XK_F1,              spawn,                {.v = helpcmd}},
-	{MODKEY,                                XK_F2,              toggleprefix,         {0}},
-	{MODKEY,                                XK_t,               setlayout,            {.v = &layouts[0]}},
-	{MODKEY,                                XK_f,               setlayout,            {.v = &layouts[2]}},
-	{MODKEY,                                XK_m,               setlayout,            {.v = &layouts[3]}},
-	{MODKEY|ShiftMask,                      XK_m,               movemouse,            {0}},
-	{MODKEY|Mod1Mask,                       XK_m,               resizemouse,          {0}},
-	{MODKEY,                                XK_c,               setlayout,            {.v = &layouts[1]}},
-	{MODKEY|ControlMask,                    XK_c,               spawn,                {.v = controlcentercmd}},
+	{MODKEY,                                XK_r,               spawn,                {.v = rangercmd } },// open terminal file manage
+	{MODKEY|ControlMask|Mod1Mask,           XK_r,               redrawwin,            {0} },// fix drawing issues with wine games
+	{MODKEY,                                XK_n,               spawn,                {.v = nautiluscmd } },// open file browser
+	{MODKEY|ControlMask,                    XK_q,               spawn,                {.v = instantshutdowncmd } },// open shutdown menu
+	{MODKEY,                                XK_y,               spawn,                {.v = panther} },//open app launcher
+	{MODKEY,                                XK_a,               spawn,                {.v = instantassistcmd} },// launch instantassist
+	{MODKEY|ShiftMask,                      XK_a,               spawn,                {.v = instantrepeatcmd} },// repeat last assist
+	{MODKEY|ControlMask,                    XK_i,               spawn,                {.v = instantpacmancmd} },// open instantpacman
+	{MODKEY|ShiftMask,                      XK_i,               spawn,                {.v = instantsharecmd} },// open instantshare
+	{MODKEY,                                XK_w,               setoverlay,           {0} },// toggle overlay
+	{MODKEY|ControlMask,                    XK_w,               createoverlay,        {0} },// turn the current window into an overlay
+	{MODKEY,                                XK_g,               spawn,                {.v = notifycmd} },// open notification menu
+	{MODKEY|ControlMask,                    XK_space,           spawn,                {.v = instantmenucmd}},// minimal text based launcher
+	{MODKEY|ShiftMask,                      XK_v,               spawn,                {.v = clipmenucmd}},// open clipboard manager
+	{MODKEY,                                XK_space,           spawn,                {.v = smartcmd}},// open smart text-based launcher
+	{MODKEY,                                XK_minus,           spawn,                {.v = instantmenustcmd}},// this does not seem to exist for me
+	{MODKEY,                                XK_x,               spawn,                {.v = instantswitchcmd}},// rofi window switcher
+	{Mod1Mask,                              XK_Tab,             spawn,                {.v = iswitchcmd}},// alt-tab window switcher
+	{MODKEY|Mod1Mask|ControlMask|ShiftMask, XK_Tab,             alttabfree,           {0}},// clear alt tab or something idk
+	{MODKEY,                                XK_dead_circumflex, spawn,                {.v = caretinstantswitchcmd}},// no clue how this gets launched
+	{MODKEY|ControlMask,                    XK_l,               spawn,                {.v = slockcmd}},// lock screen
+	{MODKEY|ControlMask|ShiftMask,          XK_l,               spawn,                {.v = onekeylock}},//"lock" screen, one key press unlocks
+	{MODKEY|ControlMask,                    XK_h,               hidewin,              {0}},//minimize current window
+	{MODKEY|Mod1Mask|ControlMask,           XK_h,               unhideall,            {0}},// unminimze all windows
+	{MODKEY|Mod1Mask|ControlMask,           XK_l,               spawn,                {.v = langswitchcmd}},// this one seems broken
+	{MODKEY,                                XK_Return,          spawn,                {.v = termcmd}},// open terminal
+	{MODKEY,                                XK_v,               spawn,                {.v = quickmenucmd}},// quickmenu
+	{MODKEY,                                XK_b,               togglebar,            {0}},// toggle bar
+	{MODKEY,                                XK_j,               focusstack,           {.i = +1}},// focus next window
+	{MODKEY,                                XK_Down,            downkey,              {.i = +1}},// focus next window, also adjust snapping in floating mode
+	{MODKEY|ShiftMask,                      XK_Down,            downpress,            {0}},// unminimize window, remove snap, or make floating
+	{MODKEY,                                XK_k,               focusstack,           {.i = -1}},// focus previous window
+	{MODKEY,                                XK_Up,              upkey,                {.i = -1}},// focus previous window, also adjust snapping in floating mode
+	{MODKEY|ShiftMask,                      XK_Up,              uppress,              {0}},// make tiled, remove snap, or minimize window
+	{MODKEY|ControlMask,                    XK_j,               pushdown,             {0} },// send window down in the stack
+	{MODKEY|ControlMask,                    XK_k,               pushup,               {0} },// send window up in the stack
+	{MODKEY|Mod1Mask,                       XK_s,               togglealttag,         { .ui = 2 } },// toggle tag icons
+	{MODKEY|ShiftMask|Mod1Mask,             XK_s,               toggleanimated,       { .ui = 2 } },// toggle animations
+	{MODKEY|ControlMask,                    XK_s,               togglesticky,         {0} },// toggle sticky window
+	{MODKEY|ShiftMask,                      XK_s,               createscratchpad,     {0}},// send current window to scratcpad
+	{MODKEY,                                XK_s,               togglescratchpad,     {0}},// toggle scratchpad
+	{MODKEY|ShiftMask,                      XK_f,               togglefakefullscreen, {0} },// very confused by this one
+	{MODKEY|ControlMask,                    XK_f,               tempfullscreen,       {0} },// toggle dirty maximization
+	{MODKEY|Mod1Mask,                       XK_f,               spawn,                { .v = searchcmd } },// open instantsearch
+	{MODKEY|Mod1Mask,                       XK_space,           spawn,                { .v = keylayoutswitchcmd } },// switch keyboard layout
+	{MODKEY|ShiftMask|Mod1Mask,             XK_d,               toggledoubledraw,     {0} },// double window refresh rate
+	{MODKEY|ShiftMask,                      XK_w,               warpfocus,            {0} },// warp point to center of current window if not on it
+	{MODKEY|Mod1Mask,                       XK_w,               centerwindow,         {0} },// center floating window
+	{MODKEY|ShiftMask|ControlMask,          XK_s,               toggleshowtags,       { .ui = 2 } },// toggle showing unused tags
+	{MODKEY,                                XK_i,               incnmaster,           {.i = +1}},// increase number of windows in the master half
+	{MODKEY,                                XK_d,               incnmaster,           {.i = -1}},// decrease number of windows in the master half
+	{MODKEY,                                XK_h,               setmfact,             {.f = -0.05}},// expand the master area
+	{MODKEY,                                XK_l,               setmfact,             {.f = +0.05}},// shrink the master area
+	{MODKEY|ShiftMask,                      XK_Return,          zoom,                 {0}},// move current to the top of the stack
+	{MODKEY,                                XK_Tab,             lastview,             {0}},// move to previous tag
+	{MODKEY|ShiftMask,                      XK_Tab,             focuslastclient,      {0}},// move to previously focused client
+	{MODKEY|Mod1Mask,                       XK_Tab,             followview,           {0}},// move to previously focused client and bring the current window
+	{MODKEY,                                XK_q,               shutkill,             {0}},// close window, open shutdown window if no windows exist
+	{Mod1Mask,                              XK_F4,              killclient,           {0}},// close window
+	{MODKEY,                                XK_F1,              spawn,                {.v = helpcmd}},// help
+	{MODKEY,                                XK_F2,              toggleprefix,         {0}},// toggle prefix, used to access higher number tags
+	{MODKEY,                                XK_t,               setlayout,            {.v = &layouts[0]}},// set layout to tiling
+	{MODKEY,                                XK_f,               setlayout,            {.v = &layouts[2]}},// set layout to floating
+	{MODKEY,                                XK_m,               setlayout,            {.v = &layouts[3]}},// set layout to monocle
+	{MODKEY|ShiftMask,                      XK_m,               movemouse,            {0}},// enter move mode
+	{MODKEY|Mod1Mask,                       XK_m,               resizemouse,          {0}},// enter resize mode
+	{MODKEY,                                XK_c,               setlayout,            {.v = &layouts[1]}},// set layout to grid
+	{MODKEY|ControlMask,                    XK_c,               spawn,                {.v = controlcentercmd}},// open settings
 
-	{MODKEY,                                XK_Left,            animleft,             {0}},
-	{MODKEY,                                XK_Right,           animright,            {0}},
+	{MODKEY,                                XK_Left,            animleft,             {0}},// switch to tag on the left
+	{MODKEY,                                XK_Right,           animright,            {0}},// switch to tag on the right
 
-	{MODKEY,                                XK_e,               overtoggle,           {.ui = ~0}},
-	{MODKEY|ShiftMask,                      XK_e,               fullovertoggle,       {.ui = ~0}},
+	{MODKEY,                                XK_e,               overtoggle,           {.ui = ~0}},// toggle overview
+	{MODKEY|ShiftMask,                      XK_e,               fullovertoggle,       {.ui = ~0}},// toggle overview with a layout
 
-	{MODKEY|ControlMask,                    XK_Left,            directionfocus,            {.ui = 3 }},
-	{MODKEY|ControlMask,                    XK_Right,           directionfocus,            {.ui = 1 }},
-	{MODKEY|ControlMask,                    XK_Up,              directionfocus,            {.ui = 0 }},
-	{MODKEY|ControlMask,                    XK_Down,            directionfocus,            {.ui = 2 }},
+	{MODKEY|ControlMask,                    XK_Left,            directionfocus,       {.ui = 3 }},//focus window to the left
+	{MODKEY|ControlMask,                    XK_Right,           directionfocus,       {.ui = 1 }},//focus window to the right
+	{MODKEY|ControlMask,                    XK_Up,              directionfocus,       {.ui = 0 }},//focus window to above
+	{MODKEY|ControlMask,                    XK_Down,            directionfocus,       {.ui = 2 }},//focus window to below
 
-	{MODKEY|ShiftMask|ControlMask,                    XK_Right,           shiftview,            {.i = +1 }},
-	{MODKEY|ShiftMask|ControlMask,                    XK_Left,           shiftview,            {.i = -1 }},
+	{MODKEY|ShiftMask|ControlMask,          XK_Right,           shiftview,            {.i = +1 }},//switch to the next tag that has windows on the right
+	{MODKEY|ShiftMask|ControlMask,          XK_Left,            shiftview,            {.i = -1 }},// switch to the next tag that has windows on the left
 
-	{MODKEY|Mod1Mask,                       XK_Left,            moveleft,             {0}},
-	{MODKEY|Mod1Mask,                       XK_Right,           moveright,            {0}},
+	{MODKEY|Mod1Mask,                       XK_Left,            moveleft,             {0}},// switch to the tag on the left and bring the current window
+	{MODKEY|Mod1Mask,                       XK_Right,           moveright,            {0}},// switch to the tag on the right and bring the current window
 
-	{MODKEY|ShiftMask,                      XK_Left,            tagtoleft,            {0}},
-	{MODKEY|ShiftMask,                      XK_Right,           tagtoright,           {0}},
+	{MODKEY|ShiftMask,                      XK_Left,            tagtoleft,            {0}},//send to current window to the tag on the left
+	{MODKEY|ShiftMask,                      XK_Right,           tagtoright,           {0}},//send to current window to the tag on the right
 
-	{MODKEY|ShiftMask,                      XK_j,               moveresize,           {.i = 0}},
-	{MODKEY|ShiftMask,                      XK_k,               moveresize,           {.i = 1}},
-	{MODKEY|ShiftMask,                      XK_l,               moveresize,           {.i = 2}},
-	{MODKEY|ShiftMask,                      XK_h,               moveresize,           {.i = 3}},
+	{MODKEY|ShiftMask,                      XK_j,               moveresize,           {.i = 0}},// move floating window down
+	{MODKEY|ShiftMask,                      XK_k,               moveresize,           {.i = 1}},// move floating window up
+	{MODKEY|ShiftMask,                      XK_l,               moveresize,           {.i = 2}},// move floating window left
+	{MODKEY|ShiftMask,                      XK_h,               moveresize,           {.i = 3}},// move floating window right
 
 
-	{MODKEY|ControlMask,                    XK_comma,           cyclelayout,          {.i = -1 } },
-	{MODKEY|ControlMask,                    XK_period,          cyclelayout,          {.i = +1 } },
-	{MODKEY,                                XK_p,               setlayout,            {0}},
-	{MODKEY|ShiftMask,                      XK_p,               spawn,                {.v = displaycmd }},
-	{MODKEY|ShiftMask,                      XK_space,           spacetoggle,          {0}},
-	{MODKEY,                                XK_0,               view,                 {.ui = ~0}},
-	{MODKEY|ShiftMask,                      XK_0,               tag,                  {.ui = ~0}},
-	{MODKEY,                                XK_comma,           focusmon,             {.i = -1}},
-	{MODKEY,                                XK_period,          focusmon,             {.i = +1}},
-	{MODKEY|ShiftMask,                      XK_comma,           tagmon,               {.i = -1}},
-	{MODKEY|ShiftMask,                      XK_period,          tagmon,               {.i = +1}},
-	{MODKEY|Mod1Mask,                       XK_comma,           followmon,            {.i = -1}},
-	{MODKEY|Mod1Mask,                       XK_period,                       followmon,  {.i = +1}},
+	{MODKEY|ControlMask,                    XK_comma,           cyclelayout,          {.i = -1 } },// cycle through layouts
+	{MODKEY|ControlMask,                    XK_period,          cyclelayout,          {.i = +1 } },// cycle through layouts (opposite of comma)
+	{MODKEY,                                XK_p,               setlayout,            {0}},// switch to previous layout
+	{MODKEY|ShiftMask,                      XK_p,               spawn,                {.v = displaycmd }},// open quick monitor settings
+	{MODKEY|ShiftMask,                      XK_space,           spacetoggle,          {0}},// toggle floating for current window (toggles maximize in floating mode)
+	{MODKEY,                                XK_0,               view,                 {.ui = ~0}},// enter overview mode
+	{MODKEY|ShiftMask,                      XK_0,               tag,                  {.ui = ~0}},// send window to all tags
+	{MODKEY,                                XK_comma,           focusmon,             {.i = -1}},// focus previous monitor
+	{MODKEY,                                XK_period,          focusmon,             {.i = +1}},// focus next monitor
+	{MODKEY|ShiftMask,                      XK_comma,           tagmon,               {.i = -1}},// send window to previous monitor
+	{MODKEY|ShiftMask,                      XK_period,          tagmon,               {.i = +1}},// send window to next monitor
+	{MODKEY|Mod1Mask,                       XK_comma,           followmon,            {.i = -1}},// send window to previous monitor and follow it
+	{MODKEY|Mod1Mask,                       XK_period,                       followmon,  {.i = +1}},// send window to previous monitor and follow it
 
-	{MODKEY|ShiftMask|ControlMask|Mod1Mask, XK_period,                       desktopset, {0}},
+	{MODKEY|ShiftMask|ControlMask|Mod1Mask, XK_period,                       desktopset, {0}},// set current window as desktop, DON'T USE
 	TAGKEYS(XK_1, 0)
 	TAGKEYS(XK_2, 1)
 	TAGKEYS(XK_3, 2)
@@ -414,23 +413,23 @@ static Key keys[] = {
 	TAGKEYS(XK_7, 6)
 	TAGKEYS(XK_8, 7)
 	TAGKEYS(XK_9, 8)
-    {MODKEY|ShiftMask|ControlMask, XK_q,                     quit,    {0}},
-	{0,                            XF86XK_MonBrightnessUp,   spawn,   {.v = upbright}},
-	{0,                            XF86XK_MonBrightnessDown, spawn,   {.v = downbright}},
-	{0,                            XF86XK_AudioLowerVolume,  spawn,   {.v = downvol}},
-	{0,                            XF86XK_AudioMute,         spawn,   {.v = mutevol}},
-	{0,                            XF86XK_AudioRaiseVolume,  spawn,   {.v = upvol}},
-	{0,                            XF86XK_AudioPlay,         spawn,   {.v = playerpause}},
-	{0,                            XF86XK_AudioPause,        spawn,   {.v = playerpause}},
-	{0,                            XF86XK_AudioNext,         spawn,   {.v = playernext}},
-	{0,                            XF86XK_AudioPrev,         spawn,   {.v = playerprevious}},
+    {MODKEY|ShiftMask|ControlMask, XK_q,                     quit,    {0}},// quit instantwm
+	{0,                            XF86XK_MonBrightnessUp,   spawn,   {.v = upbright}},// increase brightness
+	{0,                            XF86XK_MonBrightnessDown, spawn,   {.v = downbright}},// decrease brightness
+	{0,                            XF86XK_AudioLowerVolume,  spawn,   {.v = downvol}},// lower volume
+	{0,                            XF86XK_AudioMute,         spawn,   {.v = mutevol}},// mute volume
+	{0,                            XF86XK_AudioRaiseVolume,  spawn,   {.v = upvol}},// raise volume
+	{0,                            XF86XK_AudioPlay,         spawn,   {.v = playerpause}},// toggle play media
+	{0,                            XF86XK_AudioPause,        spawn,   {.v = playerpause}},// toggle play media
+	{0,                            XF86XK_AudioNext,         spawn,   {.v = playernext}},// next media track
+	{0,                            XF86XK_AudioPrev,         spawn,   {.v = playerprevious}},// previous media track
 
-	{MODKEY|ShiftMask,             XK_Print,                 spawn,   {.v = fscrotcmd}},
-	{MODKEY,                       XK_Print,                 spawn,   {.v = scrotcmd}},
-	{MODKEY|ControlMask,           XK_Print,                 spawn,   {.v = clipscrotcmd}},
-	{MODKEY|Mod1Mask,              XK_Print,                 spawn,   {.v = fclipscrotcmd}},
+	{MODKEY|ShiftMask,             XK_Print,                 spawn,   {.v = fscrotcmd}},// fullscreen screenshot into clipboard
+	{MODKEY,                       XK_Print,                 spawn,   {.v = scrotcmd}},// select a region of the screen to screenshot (saves to pictures folder)
+	{MODKEY|ControlMask,           XK_Print,                 spawn,   {.v = clipscrotcmd}},// select a region of the screen to screenshot (saves to clipboard)
+	{MODKEY|Mod1Mask,              XK_Print,                 spawn,   {.v = fclipscrotcmd}},// save a fullscreen screenshot to pictures folder
 
-	{ MODKEY,                      XK_o,                     winview, {0} },
+	{ MODKEY,                      XK_o,                     winview, {0} },// select all tags that the current window belongs to
 
 };
 
@@ -438,61 +437,61 @@ static Key keys[] = {
 /* click can be ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle, ClkClientWin, or ClkRootWin */
 static Button buttons[] = {
 	/* click          event mask          button   function           argument */
-	{ ClkLtSymbol,    0,                  Button1, cyclelayout,       {.i = -1 } },
-	{ ClkLtSymbol,    0,                  Button3, cyclelayout,       {.i = +1 } },
-	{ ClkLtSymbol,    MODKEY,             Button1, createoverlay,     {0} },
-	{ ClkLtSymbol,    0,                  Button2, setlayout,         {.v = &layouts[0]} },
-	{ ClkWinTitle,    0,                  Button1, dragmouse,         {0} },
-	{ ClkWinTitle,    MODKEY,             Button1, setoverlay,        {0} },
-	{ ClkWinTitle,    MODKEY,             Button3, spawn,             {.v = notifycmd } },
-	{ ClkStatusText,  0,                  Button3, spawn,             {.v = caretinstantswitchcmd } },
-	{ ClkWinTitle,    0,                  Button2, closewin,          {0} },
-	{ ClkCloseButton, 0,                  Button1, killclient,        {0} },
-	{ ClkCloseButton, 0,                  Button3, togglelocked,      {0} },
-	{ ClkWinTitle,    0,                  Button3, dragrightmouse,    {0} },
-	{ ClkWinTitle,    0,                  Button5, focusstack,        {.i = +1} },
-	{ ClkWinTitle,    0,                  Button4, focusstack,        {.i = -1} },
-	{ ClkWinTitle,    ShiftMask,          Button5, pushdown,          {0} },
-	{ ClkWinTitle,    ShiftMask,          Button4, pushup,            {0} },
-	{ ClkWinTitle,    ControlMask,        Button5, downscaleclient,   {0} },
-	{ ClkWinTitle,    ControlMask,        Button4, upscaleclient,     {0} },
-	{ ClkStatusText,  0,                  Button2, spawn,             {.v = termcmd } },
-	{ ClkStatusText,  0,                  Button4, spawn,             {.v = upvol } },
-	{ ClkStatusText,  0,                  Button5, spawn,             {.v = downvol } },
-	{ ClkStatusText,  MODKEY,             Button2, spawn,             {.v = mutevol } },
-	{ ClkStatusText,  0,                  Button1, spawn,             {.v = panther } },
-	{ ClkStatusText,  MODKEY|ShiftMask,   Button1, spawn,             {.v = pavucontrol } },
-	{ ClkStatusText,  MODKEY|ControlMask, Button1, spawn,             {.v = notifycmd } },
-	{ ClkStatusText,  MODKEY,             Button1, spawn,             {.v = instantsettings } },
-	{ ClkStatusText,  MODKEY,             Button3, spawn,             {.v = spoticli } },
-	{ ClkStatusText,  MODKEY,             Button4, spawn,             {.v = upbright } },
-	{ ClkStatusText,  MODKEY,             Button5, spawn,             {.v = downbright } },
-	{ ClkRootWin,     MODKEY,             Button3, spawn,             {.v = notifycmd } },
-	{ ClkRootWin,     0,                  Button1, spawn,             {.v = panther } },
-	{ ClkRootWin,     MODKEY,             Button1, setoverlay,        {0} },
-	{ ClkRootWin,     0,                  Button3, spawn,             {.v = smartcmd } },
-	{ ClkRootWin,     0,                  Button5, showoverlay,       {0} },
-	{ ClkRootWin,     0,                  Button4, hideoverlay,       {0} },
-	{ ClkRootWin,     0,                  Button2, spawn,             {.v = instantmenucmd } },
-	{ ClkClientWin,   MODKEY,             Button1, movemouse,         {0} },
-	{ ClkClientWin,   MODKEY,             Button2, togglefloating,    {0} },
-	{ ClkClientWin,   MODKEY,             Button3, resizemouse,       {0} },
-	{ ClkClientWin,   MODKEY|Mod1Mask,    Button3, forceresizemouse,  {0} },
-	{ ClkClientWin,   MODKEY|ShiftMask,   Button3, resizeaspectmouse, {0} },
-	{ ClkTagBar,      0,                  Button1, dragtag,           {0} },
-	{ ClkTagBar,      0,                  Button5, viewtoright,       {0} },
-	{ ClkTagBar,      MODKEY,             Button4, shiftview,         {.i = -1 } },
-	{ ClkTagBar,      MODKEY,             Button5, shiftview,         {.i = +1 } },
-	{ ClkTagBar,      0,                  Button4, viewtoleft,        {0} },
-	{ ClkTagBar,      0,                  Button3, toggleview,        {0} },
-	{ ClkTagBar,      MODKEY,             Button1, tag,               {0} },
-	{ ClkTagBar,      Mod1Mask,           Button1, followtag,         {0} },
-	{ ClkTagBar,      MODKEY,             Button3, toggletag,         {0} },
-	{ ClkShutDown,    0,                  Button1, spawn,             {.v = instantshutdowncmd } },
-	{ ClkShutDown,    0,                  Button3, spawn,             {.v = slockcmd } },
-	{ ClkShutDown,    0,                  Button2, spawn,             {.v = oslockcmd } },
-	{ ClkSideBar,     0,                  Button1, gesturemouse,      {0} },
-	{ ClkStartMenu,   0,                  Button1, spawn,             {.v = startmenucmd}},
-	{ ClkStartMenu,   ShiftMask,          Button1, toggleprefix,      {0}},
-	{ ClkStartMenu,   0,                  Button3, spawn,             {.v = quickmenucmd}},
+	{ ClkLtSymbol,    0,                  Button1, cyclelayout,       {.i = -1 } },// cycle layouts
+	{ ClkLtSymbol,    0,                  Button3, cyclelayout,       {.i = +1 } },// cycle layouts (other direction)
+	{ ClkLtSymbol,    MODKEY,             Button1, createoverlay,     {0} },// create overlay
+	{ ClkLtSymbol,    0,                  Button2, setlayout,         {.v = &layouts[0]} },// set layout to tiling
+	{ ClkWinTitle,    0,                  Button1, dragmouse,         {0} },// drag current window or focus other window
+	{ ClkWinTitle,    MODKEY,             Button1, setoverlay,        {0} },// toggle overlay
+	{ ClkWinTitle,    MODKEY,             Button3, spawn,             {.v = notifycmd } },// open notification menu
+	{ ClkStatusText,  0,                  Button3, spawn,             {.v = caretinstantswitchcmd } },// open window switching menu
+	{ ClkWinTitle,    0,                  Button2, closewin,          {0} },// close window
+	{ ClkCloseButton, 0,                  Button1, killclient,        {0} },// close window
+	{ ClkCloseButton, 0,                  Button3, togglelocked,      {0} },// toggle if the window can be closed
+	{ ClkWinTitle,    0,                  Button3, dragrightmouse,    {0} },// resize window
+	{ ClkWinTitle,    0,                  Button5, focusstack,        {.i = +1} },// focus next window in the stack
+	{ ClkWinTitle,    0,                  Button4, focusstack,        {.i = -1} },// focus previous window in the stack
+	{ ClkWinTitle,    ShiftMask,          Button5, pushdown,          {0} },// send window down in the stack
+	{ ClkWinTitle,    ShiftMask,          Button4, pushup,            {0} },// send window up in the stack
+	{ ClkWinTitle,    ControlMask,        Button5, downscaleclient,   {0} },// shrink window
+	{ ClkWinTitle,    ControlMask,        Button4, upscaleclient,     {0} },// expand window
+	{ ClkStatusText,  0,                  Button2, spawn,             {.v = termcmd } },//open terminal
+	{ ClkStatusText,  0,                  Button4, spawn,             {.v = upvol } },//increase volume
+	{ ClkStatusText,  0,                  Button5, spawn,             {.v = downvol } },// decrease volume
+	{ ClkStatusText,  MODKEY,             Button2, spawn,             {.v = mutevol } },// toggle mute volume
+	{ ClkStatusText,  0,                  Button1, spawn,             {.v = panther } },// open launcher
+	{ ClkStatusText,  MODKEY|ShiftMask,   Button1, spawn,             {.v = pavucontrol } },// open volume control
+	{ ClkStatusText,  MODKEY|ControlMask, Button1, spawn,             {.v = notifycmd } },// open notification menu
+	{ ClkStatusText,  MODKEY,             Button1, spawn,             {.v = instantsettings } },// open settings
+	{ ClkStatusText,  MODKEY,             Button3, spawn,             {.v = spoticli } },// open spotify
+	{ ClkStatusText,  MODKEY,             Button4, spawn,             {.v = upbright } },// increase brightness
+	{ ClkStatusText,  MODKEY,             Button5, spawn,             {.v = downbright } },// decrease brightness
+	{ ClkRootWin,     MODKEY,             Button3, spawn,             {.v = notifycmd } },// open notification menu
+	{ ClkRootWin,     0,                  Button1, spawn,             {.v = panther } },// open launcher
+	{ ClkRootWin,     MODKEY,             Button1, setoverlay,        {0} },// toggle overlay
+	{ ClkRootWin,     0,                  Button3, spawn,             {.v = smartcmd } },// smart text launcher
+	{ ClkRootWin,     0,                  Button5, showoverlay,       {0} },// show overlay
+	{ ClkRootWin,     0,                  Button4, hideoverlay,       {0} },// hide overlay
+	{ ClkRootWin,     0,                  Button2, spawn,             {.v = instantmenucmd } },// text launcher
+	{ ClkClientWin,   MODKEY,             Button1, movemouse,         {0} },// move window
+	{ ClkClientWin,   MODKEY,             Button2, togglefloating,    {0} },// toggle floating
+	{ ClkClientWin,   MODKEY,             Button3, resizemouse,       {0} },// resize window
+	{ ClkClientWin,   MODKEY|Mod1Mask,    Button3, forceresizemouse,  {0} },// forcibly resize window
+	{ ClkClientWin,   MODKEY|ShiftMask,   Button3, resizeaspectmouse, {0} },// resize window while preserving aspect ration
+	{ ClkTagBar,      0,                  Button1, dragtag,           {0} },// drag green tag to send current window, click on other tags to focus
+	{ ClkTagBar,      0,                  Button5, viewtoright,       {0} },// view tag on the right
+	{ ClkTagBar,      MODKEY,             Button4, shiftview,         {.i = -1 } },// view next occupied tag on the right
+	{ ClkTagBar,      MODKEY,             Button5, shiftview,         {.i = +1 } },// view next occupied tag on the left
+	{ ClkTagBar,      0,                  Button4, viewtoleft,        {0} },// view tag on the left
+	{ ClkTagBar,      0,                  Button3, toggleview,        {0} },// toggle view tag
+	{ ClkTagBar,      MODKEY,             Button1, tag,               {0} },// send current window to tag
+	{ ClkTagBar,      Mod1Mask,           Button1, followtag,         {0} },// send current window to tag and follwo
+	{ ClkTagBar,      MODKEY,             Button3, toggletag,         {0} },// toggle send window to tag
+	{ ClkShutDown,    0,                  Button1, spawn,             {.v = instantshutdowncmd } },// shutdown menu
+	{ ClkShutDown,    0,                  Button3, spawn,             {.v = slockcmd } },// lock screen
+	{ ClkShutDown,    0,                  Button2, spawn,             {.v = oslockcmd } },// "lock" screen and unlock with one key press
+	{ ClkSideBar,     0,                  Button1, gesturemouse,      {0} },// click for window switcher, drag up/down to adjust volume, drag left for onscreen keyboard
+	{ ClkStartMenu,   0,                  Button1, spawn,             {.v = startmenucmd}},// start menu
+	{ ClkStartMenu,   ShiftMask,          Button1, toggleprefix,      {0}},// toggle prefix key for higher tags
+	{ ClkStartMenu,   0,                  Button3, spawn,             {.v = quickmenucmd}},// quickmenu
 };
