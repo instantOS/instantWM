@@ -147,12 +147,20 @@ grid(Monitor *m) {
 	int i, n, rows, framecount;
 	unsigned int cols;
 	Client *c;
+
+	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
+		n++;
+
+	if (n == 2 && m->mw > m->mh)
+	{
+		tile(m);
+		return;
+	}
+
 	if (animated && clientcount() > 5)
 		framecount = 3;
 	else
 		framecount = 6;
-	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
-		n++;
 
 	/* grid dimensions */
 	for(rows = 0; rows <= n/2; rows++)
