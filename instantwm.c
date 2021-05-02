@@ -5335,6 +5335,7 @@ updategeom(void)
 				else
 					mons = createmon();
 			}
+			statmon = mons;
 			for (i = 0, m = mons; i < nn && m; m = m->next, i++)
 			{
 				if (i >= n
@@ -5349,7 +5350,7 @@ updategeom(void)
 					m->mh = m->wh = unique[i].height;
 					updatebarpos(m);
 				}
-				if (i == statmonval)
+				if ((m->mw > statmon->mw && statmonval <= 0) || i == statmonval - 1)
 					statmon = m;
 			}
 		} else { /* less monitors available nn < n */

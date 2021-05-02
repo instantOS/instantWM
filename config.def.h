@@ -69,7 +69,7 @@ static const char *colors[][4] = {
 };
 
 /* staticstatus */
-static const int statmonval = 0;
+static const unsigned int statmonval = 0; /* 0 for autodetection by largest monitor width, 1, 2, or more for specific monitors */
 
 /* tagging */
 static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "s" };
