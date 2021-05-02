@@ -147,6 +147,13 @@ grid(Monitor *m) {
 	int i, n, rows, framecount;
 	unsigned int cols;
 	Client *c;
+    
+	if (m->clientcount <= 2 && m->mw > m->mh)
+	{
+		tile(m);
+		return;
+	}
+
 	if (animated && clientcount() > 5)
 		framecount = 3;
 	else

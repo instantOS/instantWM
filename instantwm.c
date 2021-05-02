@@ -830,14 +830,14 @@ arrange(Monitor *m)
 void
 arrangemon(Monitor *m)
 {
+    if (m == selmon)
+        selmon->clientcount = clientcount();
     strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
     if (m->lt[m->sellt]->arrange)
         m->lt[m->sellt]->arrange(m);
     else
         floatl(m);
 
-    if (m == selmon)
-        selmon->clientcount = clientcount();
     if (m->fullscreen) {
     int tbw;
         tbw = selmon->fullscreen->bw;
