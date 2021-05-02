@@ -331,6 +331,8 @@ int updategeom(void);
 void updatemotifhints(Client *c);
 void updatenumlockmask(void);
 void updatesizehints(Client *c);
+void statusbarmontoggle(const Arg *arg);
+void cyclestatusbarmon(const Arg *arg);
 void updatestatus(void);
 void updatesystray(void);
 void updatesystrayicongeom(Client *i, int w, int h);
