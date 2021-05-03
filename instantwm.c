@@ -440,7 +440,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetp
 	height = h ? h : c->h;
 
 	// halve frames if enough events are queried
-	frames = frames / 1 + (XEventsQueued(dpy, QueuedAlready) < 50);
+	frames = frames / 1 + (XEventsQueued(dpy, QueuedAlready) > 50);
 
 	// No animation if even more events are queried
     if (!frames || XEventsQueued(dpy, QueuedAlready) > 100) {
