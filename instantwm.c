@@ -3931,7 +3931,7 @@ run(void)
 	/* main event loop */
 	XSync(dpy, False);
 	while (running && !XNextEvent(dpy, &ev))
-		if (handler[ev.type] && XEventsQueued(dpy, QueuedAlready) < 250)
+		if (handler[ev.type] && XEventsQueued(dpy, QueuedAlready) < 125)
 			handler[ev.type](&ev); /* call handler */
 }
 
