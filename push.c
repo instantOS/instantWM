@@ -17,6 +17,7 @@ prevc(Client *c, float f) {
 	return r;
 }
 
+// get amount of tiled clients
 int clientcount()
 {
 	int n;

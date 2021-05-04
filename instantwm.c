@@ -3547,13 +3547,21 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	c->oldh = c->h; c->h = wc.height = h;
 	wc.border_width = c->bw;
 
-	if ((!c->isfullscreen && !c->isfloating) &&
-	((nexttiled(c->mon->clients) == c && !nexttiled(c->next) && NULL != c->mon->lt[c->mon->sellt]->arrange) ||
-	&monocle == c->mon->lt[c->mon->sellt]->arrange)) {
-		c->w = wc.width += c->bw * 2;
-		c->h = wc.height += c->bw * 2;
-		wc.border_width = 0;
-	}
+    if (!c->isfloating) {
+        if (!c->isfullscreen &&
+        (c->mon->clientcount == 1 && NULL != c->mon->lt[c->mon->sellt]->arrange) ||
+        &monocle == c->mon->lt[c->mon->sellt]->arrange && c->bw != 0) {
+            c->w = wc.width += c->bw * 2;
+            c->h = wc.height += c->bw * 2;
+            wc.border_width = 0;
+        } else {
+            if (c->oldbw && c->oldbw != 0) {
+                c->bw = c->oldbw;
+                c->w = wc.width -= (c->bw);
+                c->h = wc.height -= (c->bw);
+            }
+        }
+    }
 
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
@@ -4947,14 +4955,13 @@ togglefloating(const Arg *arg)
 		return;
 	selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
 	if (selmon->sel->isfloating) {
-		/* restore last known float dimensions */
+        restorebw(selmon->sel);
 		XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColFloat].pixel);
-        if (selmon->sel->bw == 0)
-            selmon->sel->bw = selmon->sel->oldbw;
 		animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
 		       selmon->sel->sfw, selmon->sel->sfh, 7, 0);
 	} else {
-        if (clientcount() == 1 && !selmon->sel->snapstatus) {
+        selmon->clientcount = clientcount();
+        if (selmon->clientcount <= 1 && !selmon->sel->snapstatus) {
             savebw(selmon->sel);
             selmon->sel->bw = 0;
         }
