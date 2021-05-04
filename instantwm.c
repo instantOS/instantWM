@@ -830,8 +830,20 @@ arrange(Monitor *m)
 void
 arrangemon(Monitor *m)
 {
-    if (m == selmon)
-        selmon->clientcount = clientcount();
+
+    Client *c;
+    m->clientcount = clientcountmon(m);
+
+    for(c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+        if (!c->isfloating && !c->isfullscreen && 
+                ((c->mon->clientcount == 1 && NULL != c->mon->lt[c->mon->sellt]->arrange) || &monocle == c->mon->lt[c->mon->sellt]->arrange)) {
+            savebw(c);
+            c->bw = 0;
+        } else {
+            restorebw(c);
+        }
+    }
+
     strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
     if (m->lt[m->sellt]->arrange)
         m->lt[m->sellt]->arrange(m);
@@ -3546,22 +3558,6 @@ resizeclient(Client *c, int x, int y, int w, int h)
 	c->oldw = c->w; c->w = wc.width = w;
 	c->oldh = c->h; c->h = wc.height = h;
 	wc.border_width = c->bw;
-
-    if (!c->isfloating) {
-        if (!c->isfullscreen &&
-        (c->mon->clientcount == 1 && NULL != c->mon->lt[c->mon->sellt]->arrange) ||
-        &monocle == c->mon->lt[c->mon->sellt]->arrange && c->bw != 0) {
-            c->w = wc.width += c->bw * 2;
-            c->h = wc.height += c->bw * 2;
-            wc.border_width = 0;
-        } else {
-            if (c->oldbw && c->oldbw != 0) {
-                c->bw = c->oldbw;
-                c->w = wc.width -= (c->bw);
-                c->h = wc.height -= (c->bw);
-            }
-        }
-    }
 
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
