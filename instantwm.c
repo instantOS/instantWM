@@ -2463,7 +2463,7 @@ motionnotify(XEvent *e)
 	}
 
 	// toggle overlay gesture
-	if (ev->y_root == 0 && ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
+	if (ev->y_root == selmon->my && ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
 		if (selmon->gesture != 11) {
 			selmon->gesture = 11;
 			setoverlay();
