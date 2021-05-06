@@ -3928,11 +3928,19 @@ void
 run(void)
 {
 	XEvent ev;
+	int ratelimit = 200;
+	int currentrate = 0;
 	/* main event loop */
 	XSync(dpy, False);
 	while (running && !XNextEvent(dpy, &ev))
-		if (handler[ev.type] && XEventsQueued(dpy, QueuedAlready) < 125)
+	{
+		currentrate = XEventsQueued(dpy, QueuedAlready);
+		if (handler[ev.type] && currentrate < ratelimit)
+		{
 			handler[ev.type](&ev); /* call handler */
+			ratelimit = currentrate > 150 ? 10 : 200;
+		}
+	}
 }
 
 void
