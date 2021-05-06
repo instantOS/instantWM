@@ -69,7 +69,9 @@ static const char *colors[][4] = {
 };
 
 /* tagging */
-static const char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "s" };
+#define MAX_TAGLEN 16
+static const char *tags_default[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "s"};
+static char tags[][MAX_TAGLEN] = { "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "s" };
 /* ffox, programming1, term, music, steam, folder, play icon, document, message  */
 static const char *tagsalt[] = { "", "{}", "$", "", "", "", "", "", "" };
 
@@ -223,6 +225,15 @@ ResourcePref resources[] = {
 		{ "barheight",        INTEGER, &barheight },
 		{ "font",             STRING,  &xresourcesfont },
 
+		{ "tag1",             STRING,  &tags[0] },
+		{ "tag2",             STRING,  &tags[1] },
+		{ "tag3",             STRING,  &tags[2] },
+		{ "tag4",             STRING,  &tags[3] },
+		{ "tag5",             STRING,  &tags[4] },
+		{ "tag6",             STRING,  &tags[5] },
+		{ "tag7",             STRING,  &tags[6] },
+		{ "tag8",             STRING,  &tags[7] },
+		{ "tag9",             STRING,  &tags[8] },
 };
 
 static Xcommand commands[] = {
@@ -403,6 +414,8 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,                      XK_period,          tagmon,               {.i = +1}},
 	{MODKEY|Mod1Mask,                       XK_comma,           followmon,            {.i = -1}},
 	{MODKEY|Mod1Mask,                       XK_period,                       followmon,  {.i = +1}},
+	{MODKEY|ShiftMask,                      XK_t,               nametag,              {0}},
+	{MODKEY|ControlMask,                    XK_t,               resetnametag,         {0}},
 
 	{MODKEY|ShiftMask|ControlMask|Mod1Mask, XK_period,                       desktopset, {0}},
 	TAGKEYS(XK_1, 0)
