@@ -236,6 +236,7 @@ ResourcePref resources[] = {
 		{ "tag9",             STRING,  &tags[8] },
 };
 
+// instantwmctrl commands
 static Xcommand commands[] = {
 	/* signum       function        default argument  arg handler*/
 	// 0 means off, 1 means toggle, 2 means on
@@ -253,6 +254,8 @@ static Xcommand commands[] = {
 	{ "tagmon",                 tagmon,                       { .i = +1 }, 0 },
 	{ "followmon",              followmon,                    { .i = +1 }, 0 },
 	{ "focusmon",               focusmon,                     { .i = +1 }, 0 },
+	{ "nametag",                nametag,                      { .v = "tag" }, 4 },
+	{ "resetnametag",           resetnametag,                 {0}, 0 },
 };
 
 static Key dkeys[] = {
@@ -414,8 +417,6 @@ static Key keys[] = {
 	{MODKEY|ShiftMask,                      XK_period,          tagmon,               {.i = +1}},
 	{MODKEY|Mod1Mask,                       XK_comma,           followmon,            {.i = -1}},
 	{MODKEY|Mod1Mask,                       XK_period,                       followmon,  {.i = +1}},
-	{MODKEY|ShiftMask,                      XK_t,               nametag,              {0}},
-	{MODKEY|ControlMask,                    XK_t,               resetnametag,         {0}},
 
 	{MODKEY|ShiftMask|ControlMask|Mod1Mask, XK_period,                       desktopset, {0}},
 	TAGKEYS(XK_1, 0)

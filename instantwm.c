@@ -2188,6 +2188,9 @@ xcommand()
 			arg = commands[i].arg;
 		    }
 		    break;
+        case 4: //string argument
+            arg = ((Arg) { .v = fcursor });
+            break;
 	    }
 	}
 	commands[i].func(&(arg));
@@ -3446,23 +3449,14 @@ void shutkill(const Arg *arg) {
 
 void
 nametag(const Arg *arg) {
-	char *p, name[MAX_TAGLEN];
+	char *p;
 	FILE *f;
 	int i;
 
-	errno = 0; // popen(3p) says on failure it "may" set errno
-	if(!(f = popen("instantmenu -c -w 250 -bw 3 -q 'Enter tag name' < /dev/null", "r"))) {
-		fprintf(stderr, "instantwm: popen 'instantmenu < /dev/null' failed%s%s\n", errno ? ": " : "", errno ? strerror(errno) : "");
-		return;
-	}
-	if (!(p = fgets(name, MAX_TAGLEN, f)) && (i = errno) && ferror(f))
-		fprintf(stderr, "instantwm: fgets failed: %s\n", strerror(i));
-	if (pclose(f) < 0)
-		fprintf(stderr, "instantwm: pclose failed: %s\n", strerror(errno));
-	if(!p)
-		return;
-	if((p = strchr(name, '\n')))
-		*p = '\0';
+    char* name = (char*)arg->v;
+
+    if (strlen(name) >= MAX_TAGLEN)
+        return;
 
 	for(i = 0; i < LENGTH(tags); i++) {
 		if(selmon->tagset[selmon->seltags] & (1 << i))
