@@ -17,7 +17,9 @@ Commands:
     tagmon                   Move window to other monitor
     followmon                Two above combined
     alttag                   Display tag symbols instead of numbers
-    hidetags 0|1             Hide tags that have no windows on current monitor (0 means hide)"
+    hidetags 0|1             Hide tags that have no windows on current monitor (0 means hide)
+    nametag <name>           change the name/icon of the current tag
+    resetnametag             reset all tag names to default"
 # See config.def.c and look for "Xcommand commands"
 
 main() {
