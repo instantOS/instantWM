@@ -7,7 +7,7 @@
 <p align="center">
 	  <a href="https://github.com/SCOTT-HAMILTON/instantWM/actions"><img alt="Build Status" src="https://img.shields.io/github/workflow/status/SCOTT-HAMILTON/instantWM/CI?logo=github-actions&style=for-the-badge" /></a>
 	  <a href="https://www.codacy.com/gh/SCOTT-HAMILTON/instantWM/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=SCOTT-HAMILTON/instantWM&amp;utm_campaign=Badge_Grade"><img alt="Code Quality" src="https://img.shields.io/codacy/grade/608dd690cce84f46b798f5786bb2df01?logo=codacy&style=for-the-badge" /></a>
-	  <a href="https://www.codacy.com/gh/SCOTT-HAMILTON/instantWM/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=SCOTT-HAMILTON/instantWM&amp;utm_campaign=Badge_Grade"><img alt="Code Quality" src="https://img.shields.io/codacy/coverage/608dd690cce84f46b798f5786bb2df01?logo=codacy&style=for-the-badge" /></a>
+	  <a href="https://www.codacy.com/gh/SCOTT-HAMILTON/instantWM/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=SCOTT-HAMILTON/instantWM&amp;utm_campaign=Badge_Grade"><img alt="Code Coverage" src="https://img.shields.io/codacy/coverage/608dd690cce84f46b798f5786bb2df01?logo=codacy&style=for-the-badge" /></a>
 </p>
 
 instantWM the window manager of instantOS.

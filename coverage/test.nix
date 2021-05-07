@@ -5,13 +5,9 @@ let
     url = "http://github.com/NixOS/nixpkgs/archive/389249fa9b35b3071b4ccf71a3c065e7791934df.tar.gz";
     sha256 = "1z087f1m1k4pii2v2xai8n0yd3m57svgslzzbm7fwdjjzhn8g2rl";
   };
-  shamilton = import (builtins.fetchTarball {
-    url = "https://github.com/SCOTT-HAMILTON/nur-packages/tarball/9bd7ba3";
-    sha256 = "1mimljrgffmhm0hv60h9bjiiwhb069m7g1fxnss4nfr5vz1yjady";
-  }) {};
   instantnix = import (builtins.fetchTarball {
-    url = "https://github.com/instantOS/instantNIX/tarball/b27d2b6";
-    sha256 = "0x0yv408680qafxfg0na8428sl4q8z43gv5lb11rsii2lkj87rx8";
+    url = "https://github.com/instantOS/instantNIX/tarball/1ef1b32";
+    sha256 = "1a75wn0fq85wiw3d6m18aba6za6wzyplwwzavmmqk410nfqmx2rs";
   }) {};
   pkgs = import nixpkgs {};
   instrumented-instantwm = with pkgs; callPackage ../. {
@@ -54,6 +50,7 @@ in
         xdotool
         killall
       ] ++ [
+        instantnix.imenu
         instantnix.instantconf
         instantnix.instantdata
         instantnix.instantmenu
@@ -83,12 +80,18 @@ in
       machine.sleep(sleep_time * 5)
       machine.screenshot("screen1")
       
-      ### Normal Use case sequences
+      ## Normal Use case sequences
       machine.send_key("ctrl-shift-ret")
+      machine.sleep(sleep_time * 3)
+      ### Accept VM popup
+      machine.send_key("ret")
+      machine.sleep(sleep_time * 3)
+      machine.screenshot("screen2")
+      ### Close WM
       machine.sleep(sleep_time * 3)
       machine.send_key("alt-f4")
       machine.sleep(sleep_time * 3)
-      machine.screenshot("screen2")
+      machine.screenshot("screen3")
 
       machine.succeed(
           "llvm-profdata merge -sparse *.profraw -o instantwm.profdata",
@@ -99,6 +102,6 @@ in
       machine.copy_from_vm("instantwm.profdata", "coverage_data")
       out_dir = os.environ.get("out", os.getcwd())
       eprint('Coverage data written to "{}/coverage_data/instantwm.lcov"'.format(out_dir))
-      machine.screenshot("screen3")
+      machine.screenshot("screen4")
     '';
 })

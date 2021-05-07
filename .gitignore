@@ -12,3 +12,4 @@ coverage/*.lcov
 coverage/result
 coverage/test
 coverage/res
+result
