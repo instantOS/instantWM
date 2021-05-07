@@ -1,5 +1,5 @@
 let
-  str_sleep_time = builtins.toString 1;
+  str_sleep_time = builtins.toString 5;
   # For extra determinism
   nixpkgs = builtins.fetchTarball {
     url = "http://github.com/NixOS/nixpkgs/archive/389249fa9b35b3071b4ccf71a3c065e7791934df.tar.gz";
@@ -89,11 +89,6 @@ in
       machine.send_key("alt-f4")
       machine.sleep(sleep_time * 3)
       machine.screenshot("screen2")
-
-      ### Cleanup
-      machine.succeed("killall .instantautostart-wrapped")
-      machine.succeed("killall .instantstatus-wrapped")
-      machine.succeed("killall Xephyr")
 
       machine.succeed(
           "llvm-profdata merge -sparse *.profraw -o instantwm.profdata",
