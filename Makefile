@@ -18,6 +18,7 @@ options:
 	${info PREFIX   = ${PREFIX}}
 	${info CC       = ${CC}}
 	${info VERSION  = ${VERSION}}
+	@echo CC VERSION : `${CC} --version`
 	@true
 
 .c.o:
@@ -44,15 +45,20 @@ dist: clean
 
 .PHONY: install
 install: all
-	install -d ${DESTDIR}{${PREFIX}/bin,/usr/share/xsessions,${MANPREFIX}/man1}
+	install -d ${DESTDIR}{${PREFIX}/bin,${PREFIX}/share/xsessions,${MANPREFIX}/man1}
 	install -m  755 -s instantwm ${DESTDIR}${PREFIX}/bin/
 	install -Dm 755 instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
 	ln -sf ${DESTDIR}${PREFIX}/bin/instantwmctrl ${DESTDIR}${PREFIX}/bin/instantwmctl
 	install -m  644 instantwm.1 ${DESTDIR}${MANPREFIX}/man1/
 	sed -i 's/VERSION/${VERSION}/g' ${DESTDIR}${MANPREFIX}/man1/instantwm.1
-	install -m  644 instantwm.desktop ${DESTDIR}/usr/share/xsessions
-	install -Dm 644 instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop
+	install -m  644 instantwm.desktop ${PREFIX}/share/xsessions
+	install -Dm 644 instantwm.desktop ${PREFIX}/share/xsessions/default.desktop
 	install -m  755 startinstantos ${DESTDIR}${PREFIX}/bin/
+ifdef BUILD_INSTRUMENTED_COVERAGE
+	@mkdir -p "${DESTDIR}${GCNOPREFIX}"
+	@echo installing gcov files
+	find . -name "*.gcno" -exec mv {} "${DESTDIR}${GCNOPREFIX}" \;
+endif
 
 .PHONY: uninstall
 uninstall:
@@ -61,6 +67,10 @@ uninstall:
 		${DESTDIR}${PREFIX}/bin/instantwmctl\
 		${DESTDIR}${MANPREFIX}/man1/instantwm.1\
 		${DESTDIR}${PREFIX}/bin/startinstantos\
-		${DESTDIR}/usr/share/xsessions/instantwm.desktop\
-		${DESTDIR}/usr/share/xsessions/default.desktop
+		${DESTDIR}/share/xsessions/instantwm.desktop\
+		${DESTDIR}/share/xsessions/default.desktop
+ifdef BUILD_INSTRUMENTED_COVERAGE
+	@echo installing gcov files
+	find "${DESTDIR}${GCNOPREFIX}" -name "*.gcno" -exec rm {} \;
+endif
 

@@ -6,3 +6,9 @@ tags
 shell.nix
 .nvimlog
 cscope.out
+coverage/*.profraw
+coverage/*.profdata
+coverage/*.lcov
+coverage/result
+coverage/test
+coverage/res

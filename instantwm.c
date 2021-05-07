@@ -2237,6 +2237,11 @@ keypress(XEvent *e)
 void
 killclient(const Arg *arg)
 {
+#ifdef BUILD_INSTRUMENTED_COVERAGE
+	XSync(dpy, False);
+	XUngrabServer(dpy);
+	quit(NULL);
+#endif
 	if (!selmon->sel || selmon->sel->islocked)
 		return;
     if (animated && selmon->sel != animclient && !selmon->sel->isfullscreen) {
