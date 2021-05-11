@@ -5527,12 +5527,10 @@ updatesizehints(Client *c)
 	if (size.flags & PMaxSize) {
 		c->maxw = size.max_width;
 		c->maxh = size.max_height;
-	} else
+	} else {
 		c->maxw = c->maxh = 0;
-	if (size.flags & PMinSize) {
-		c->minw = size.min_width;
-		c->minh = size.min_height;
-	} else if (size.flags & PBaseSize) {
+	}
+	if (size.flags & PBaseSize) {
 		c->minw = size.base_width;
 		c->minh = size.base_height;
 	} else
