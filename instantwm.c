@@ -388,7 +388,7 @@ createoverlay() {
 		m->overlaystatus = 0;
 	}
 
-    tempclient->oldbw = tempclient->bw;
+    savebw(tempclient);
 	tempclient->bw = 0;
 	tempclient->islocked = 1;
 	if (!selmon->overlay->isfloating) {
@@ -2327,7 +2327,12 @@ manage(Window w, XWindowAttributes *wa)
 		&& (c->x + (c->w / 2) < c->mon->wx + c->mon->ww)) ? bh : c->mon->my);
 	c->bw = borderpx;
 
-	wc.border_width = c->bw;
+    if (!c->isfloating && &monocle == c->mon->lt[c->mon->sellt]->arrange) {
+        wc.border_width = 0;
+    } else {
+        wc.border_width = c->bw;
+    }
+
 	XConfigureWindow(dpy, w, CWBorderWidth, &wc);
 	XSetWindowBorder(dpy, w, scheme[SchemeNorm][ColBorder].pixel);
 	configure(c); /* propagates border_width, if size doesn't change */
