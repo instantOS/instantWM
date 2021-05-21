@@ -2327,8 +2327,9 @@ manage(Window w, XWindowAttributes *wa)
 		&& (c->x + (c->w / 2) < c->mon->wx + c->mon->ww)) ? bh : c->mon->my);
 	c->bw = borderpx;
 
-    if (!c->isfloating && &monocle == c->mon->lt[c->mon->sellt]->arrange && 
-            c->w > c->mon->mw - 30 && c->h > c->mon->mh - 30) {
+    if (!c->isfloating && &monocle == c->mon->lt[c->mon->sellt]->arrange 
+            && c->w > c->mon->mw - 30 && c->h > (c->mon->mh - 30 - bh)
+            ) {
         wc.border_width = 0;
     } else {
         wc.border_width = c->bw;
