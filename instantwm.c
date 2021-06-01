@@ -5765,6 +5765,12 @@ moveleft(const Arg *arg) {
 void
 animleft(const Arg *arg) {
 
+
+	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+        directionfocus(&((Arg) { .ui = 3 }));
+        return;
+    }
+
 	Client *tempc;
 
 	// windows like behaviour in floating layout
@@ -5798,6 +5804,11 @@ animright(const Arg *arg) {
 
 	Client *tempc;
 	int tmpcounter = 0;
+
+	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+        directionfocus(&((Arg) { .ui = 1 }));
+        return;
+    }
 
 	if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
           XSetWindowBorder(dpy, selmon->sel->win,
@@ -5861,6 +5872,12 @@ viewtoleft(const Arg *arg) {
 void upkey(const Arg *arg) {
 	if (!selmon->sel)
 		return;
+
+	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+        directionfocus(&((Arg) { .ui = 0 }));
+        return;
+    }
+
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
 		Client *c;
 		c = selmon->sel;
@@ -5888,6 +5905,12 @@ int unhideone()
 }
 
 void downkey(const Arg *arg) {
+
+	if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+        directionfocus(&((Arg) { .ui = 2 }));
+        return;
+    }
+
 	if (NULL == selmon->lt[selmon->sellt]->arrange) {
 		if (!selmon->sel)
 			return;
