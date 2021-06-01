@@ -497,7 +497,7 @@ showoverlay() {
 
     Client *c;
 	for (c = selmon->clients; c; c = c->next) {
-        if (c->tags & (1 << (selmon->pertag->curtag - 1)) && c->isfullscreen) {
+        if (c->tags & (1 << (selmon->pertag->curtag - 1)) && c->isfullscreen && !c->isfakefullscreen) {
             yoffset = 0;
             break;
         }
