@@ -2175,21 +2175,28 @@ xcommand()
 		case 1:  // toggle-type argument
 		    argnum = atoi(fcursor);
 		    if (argnum != 0 && fcursor[0] != '0') {
-			arg = ((Arg) { .ui = atoi(fcursor) });
+                arg = ((Arg) { .ui = atoi(fcursor) });
 		    } else {
-			arg = commands[i].arg;
+                arg = commands[i].arg;
 		    }
 		    break;
 		case 3:  // tag-type argument (bitmask)
 		    argnum = atoi(fcursor);
 		    if (argnum != 0 && fcursor[0] != '0') {
-			arg = ((Arg) { .ui = ( 1 << (atoi(fcursor) - 1) ) });
+                arg = ((Arg) { .ui = ( 1 << (atoi(fcursor) - 1) ) });
 		    } else {
-			arg = commands[i].arg;
+                arg = commands[i].arg;
 		    }
 		    break;
         case 4: //string argument
             arg = ((Arg) { .v = fcursor });
+            break;
+        case 5: // integer argument
+		    if (fcursor[0] != '\0') {
+                arg = ((Arg) { .i = atoi(fcursor) });
+		    } else {
+                arg = commands[i].arg;
+		    }
             break;
 	    }
 	}
@@ -4137,6 +4144,7 @@ setfullscreen(Client *c, int fullscreen)
 
 void commandprefix(const Arg *arg) {
     tagprefix = arg->ui;
+    drawbar(selmon);
 }
 
 void
@@ -4747,6 +4755,19 @@ void
 toggleanimated(const Arg *arg)
 {
     ctrltoggle(&animated, arg->ui);
+}
+
+void setborderwidth(const Arg *arg) {
+    Client *c;
+    int width;
+    int d;
+    if (!selmon->sel)
+        return;
+    c = selmon->sel;
+    width = c->bw;
+    c->bw = arg->i;
+    d = width - c->bw;
+    resize(c, c->x, c->y, c->w + 2 * d, c->h + 2 * d, 0);
 }
 
 // disable/enable window focus following the mouse
@@ -5721,6 +5742,7 @@ view(const Arg *arg)
 
 	int ui = computeprefix(arg);
 	int i;
+    printf("%d\n", (int)(arg->ui));
 
 	selmon->seltags ^= 1; /* toggle sel tagset */
 	if (ui & TAGMASK) {

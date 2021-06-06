@@ -243,6 +243,7 @@ static Xcommand commands[] = {
 	{ "overlay",                setoverlay,                   {0},         0 },
 	{ "tag",                    view,                         { .ui = 2 }, 3 },
 	{ "animated",               toggleanimated,               { .ui = 2 }, 1 },
+	{ "border",                 setborderwidth,               { .i =  borderpx  }, 5 },
 	{ "focusfollowsmouse",      togglefocusfollowsmouse,      { .ui = 2 }, 1 },
 	{ "focusfollowsfloatmouse", togglefocusfollowsfloatmouse, { .ui = 2 }, 1 },
 	{ "alttab",                 alttabfree,                   { .ui = 2 }, 1 },

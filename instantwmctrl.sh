@@ -16,6 +16,7 @@ Commands:
     focusmon                 Switch focus to other monitor
     tagmon                   Move window to other monitor
     followmon                Two above combined
+    border <number>          Set window border width to <number>
     alttag                   Display tag symbols instead of numbers
     hidetags 0|1             Hide tags that have no windows on current monitor (0 means hide)
     nametag <name>           change the name/icon of the current tag
