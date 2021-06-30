@@ -6,6 +6,7 @@ Really basic tool to send commands to instantWM.
 Commands:
     help                     Display this help text
     overlay                  Toggle overlay (Super + Ctrl + W to define a widnow as overlay)
+    warpfocus                Warp mouse to currently focussed window
     tag <number>             Switch to tag described by <number>
     animated                 Toggle animations
     alttab                   

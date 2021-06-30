@@ -241,6 +241,7 @@ static Xcommand commands[] = {
 	/* signum       function        default argument  arg handler*/
 	// 0 means off, 1 means toggle, 2 means on
 	{ "overlay",                setoverlay,                   {0},         0 },
+	{ "warpfocus",              warpfocus,                   {0},         0 },
 	{ "tag",                    view,                         { .ui = 2 }, 3 },
 	{ "animated",               toggleanimated,               { .ui = 2 }, 1 },
 	{ "border",                 setborderwidth,               { .i =  borderpx  }, 5 },
