@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+       - master
+  schedule:
+       # Once a week on saturday
+       - cron: '7 13 * * 6' 
+  workflow_dispatch:
+
+env:
+  CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: cachix/install-nix-action@v13
+        with:
+          nix_path: nixpkgs=channel:nixos-20.09
+          extra_nix_config: "system-features = nixos-test benchmark big-parallel kvm"
+      - uses: cachix/cachix-action@v9
+        with:
+          name: instantos
+      - name: Run coverage with Nix test-driver
+        run: |
+          nix-build coverage/test.nix
+          cp -Lr result results
+          ls -lh
+          ls -lh results
+      - name: Archive code coverage results
+        uses: actions/upload-artifact@v2
+        with:
+          name: code-coverage-report
+          path: |
+            results
+      - name: Push coverage data to Codacy
+        uses: codacy/codacy-coverage-reporter-action@v1
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: result/coverage_data/instantwm.lcov
