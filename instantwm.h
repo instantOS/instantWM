@@ -213,6 +213,7 @@ void expose(XEvent *e);
 void focus(Client *c);
 void focusin(XEvent *e);
 void focusmon(const Arg *arg);
+void focusnmon(const Arg *arg);
 void followmon(const Arg *arg);
 void focusstack(const Arg *arg);
 void upkey(const Arg *arg);

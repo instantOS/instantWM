@@ -241,6 +241,12 @@ ResourcePref resources[] = {
 static Xcommand commands[] = {
 	/* signum       function        default argument  arg handler*/
 	// 0 means off, 1 means toggle, 2 means on
+    // arg handlers:
+    // 0  no argument
+    // 1  binary toggle
+    // 3  tag number (bitmask)
+    // 4  string
+    // 5  integer
 	{ "overlay",                setoverlay,                   {0},         0 },
 	{ "warpfocus",              warpfocus,                   {0},         0 },
 	{ "tag",                    view,                         { .ui = 2 }, 3 },
@@ -257,6 +263,7 @@ static Xcommand commands[] = {
 	{ "tagmon",                 tagmon,                       { .i = +1 }, 0 },
 	{ "followmon",              followmon,                    { .i = +1 }, 0 },
 	{ "focusmon",               focusmon,                     { .i = +1 }, 0 },
+	{ "focusnmon",               focusnmon,                   { .i = 0 }, 5 },
 	{ "nametag",                nametag,                      { .v = "tag" }, 4 },
 	{ "resetnametag",           resetnametag,                 {0}, 0 },
 };

@@ -1878,6 +1878,31 @@ focusmon(const Arg *arg)
 }
 
 void
+focusnmon(const Arg *arg)
+{
+	Monitor *m;
+    int i;
+
+	if (!mons->next)
+		return;
+
+    m = mons;
+    
+    for (i = 0; i < arg->i; ++i) {
+        if (m->next) {
+            m = m->next;
+        } else {
+            break;
+        }
+    }
+    
+	unfocus(selmon->sel, 0);
+	selmon = m;
+	focus(NULL);
+}
+
+
+void
 focusstack(const Arg *arg)
 {
 	Client *c = NULL, *i;

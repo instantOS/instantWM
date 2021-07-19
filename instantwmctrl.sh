@@ -15,6 +15,7 @@ Commands:
     focusfollowsmouse        Toggle window focus will change with mouse movement
     focusfollowsfloatmouse   As above but only for flowting windows
     focusmon                 Switch focus to other monitor
+    focusnmon                Focus monitor with index n
     tagmon                   Move window to other monitor
     followmon                Two above combined
     border <number>          Set window border width to <number>
