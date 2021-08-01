@@ -98,6 +98,7 @@ static Monitor *mons;
 static Window root, wmcheckwin;
 static int focusfollowsmouse = 1;
 static int focusfollowsfloatmouse = 1;
+static int barleavestatus = 0;
 int animated = 1;
 int specialnext = 0;
 
@@ -1740,7 +1741,11 @@ enternotify(XEvent *e)
 	Client *c;
 	Monitor *m;
 	XCrossingEvent *ev = &e->xcrossing;
-    int resizeexit = 0;
+	int resizeexit = 0;
+	if (barleavestatus && ev->y_root >= selmon->my + bh - 3) {
+		resetbar();
+		barleavestatus = 0;
+	}
 	/* Only care about mouse motion if the focus follows the mouse */
 	if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) && ev->window != root)
 		return;
@@ -2515,6 +2520,8 @@ motionnotify(XEvent *e)
 			resetcursor();
 		}
 		return;
+	} else {
+		barleavestatus = 1;
 	}
 
 	// toggle overlay gesture
