@@ -1742,7 +1742,7 @@ enternotify(XEvent *e)
 	Monitor *m;
 	XCrossingEvent *ev = &e->xcrossing;
 	int resizeexit = 0;
-	if (barleavestatus && ev->y_root >= selmon->my + bh - 3) {
+	if (barleavestatus) {
 		resetbar();
 		barleavestatus = 0;
 	}
