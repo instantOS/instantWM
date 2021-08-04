@@ -289,6 +289,7 @@ static const Rule rules[] = {
 	 *	WM_CLASS(STRING) = instance, class
 	 *	WM_NAME(STRING) = title
 	 */
+<<<<<<< HEAD
 	/* class                        instance  title  tags mask  isfloating  monitor */
 	{"Pavucontrol",                 NULL,     NULL,  0,         1,          -1},
 	{"Onboard",                     NULL,     NULL,  0,         1,          -1},
@@ -304,6 +305,25 @@ static const Rule rules[] = {
 	{"org-wellkord-globonote-Main", NULL,     NULL,  0,         1,          -1},
 	{"Peek",                        NULL,     NULL,  0,         1,          -1},
 	{"ROX-Filer",                   NULL,     NULL,  0,         0,          -1},
+=======
+	/* class      instance    title       tags mask     isfloating   monitor */
+	{"Pavucontrol", NULL,     NULL,       0,            1,           -1},
+	{"Onboard", NULL,     NULL,       0,                1,           -1},
+	{"floatmenu", NULL,     NULL,        0,            1,           -1},
+	{"Welcome.py", NULL,     NULL,        0,            1,           -1},
+	{"Pamac-installer", NULL,     NULL,        0,            1,           -1},
+	{"xpad", NULL,     NULL,        0,            1,           -1},
+	{"instantfloat", NULL,     NULL,        0,            2,           -1},
+	{scratchpadname, NULL,     NULL,        0,            4,           -1},
+	{"kdeconnect.daemon", NULL,     NULL,        0,            3,           -1},
+	{"Panther", NULL,     NULL,        0,            3,           -1},
+	{"org-wellkord-globonote-Main", NULL,     NULL,        0,            1,           -1},
+	{"Peek", NULL,     NULL,        0,            1,           -1},
+	{"ROX-Filer", NULL,     NULL,        0,            0,           -1},
+	{"qjackctl", NULL,     NULL,       0,            1,           -1},
+	{"keepassxc", NULL,     NULL,       0,            1,           -1},
+	{"ardour-6.5.0", NULL,     NULL,       0,            1,           -1},
+>>>>>>> 2ff4897 (Update config.def.h: added a few floating window classes)
 };
 
 /* layout(s) */
