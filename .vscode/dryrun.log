@@ -1,0 +1,19 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory '/home/jeroen/devel/github.com/ppenguin/instantWM'
+ 
+instantwm build options
+CFLAGS   = -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os -I/usr/X11R6/include -I/usr/include/freetype2 -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\""instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"\" -DXINERAMA
+LDFLAGS  = -L/usr/X11R6/lib -lX11 -lXinerama -lfontconfig -lXft -lm
+DESTDIR  = 
+PREFIX   = /usr/local
+CC       = cc
+VERSION  = "instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"
+true
+cp config.def.h config.h
+cc -c -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os -I/usr/X11R6/include -I/usr/include/freetype2 -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\""instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"\" -DXINERAMA drw.c
+cc -c -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os -I/usr/X11R6/include -I/usr/include/freetype2 -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\""instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"\" -DXINERAMA instantwm.c
+cc -c -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os -I/usr/X11R6/include -I/usr/include/freetype2 -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\""instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"\" -DXINERAMA layouts.c
+cc -c -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os -I/usr/X11R6/include -I/usr/include/freetype2 -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\""instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"\" -DXINERAMA util.c
+cc -o instantwm drw.o instantwm.o layouts.o util.o -L/usr/X11R6/lib -lX11 -lXinerama -lfontconfig -lXft -lm
+make: Leaving directory '/home/jeroen/devel/github.com/ppenguin/instantWM'
+ 

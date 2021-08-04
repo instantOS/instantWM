@@ -1,0 +1,568 @@
+make all --print-data-base --no-builtin-variables --no-builtin-rules --question
+instantwm build options
+CFLAGS   = -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os -I/usr/X11R6/include -I/usr/include/freetype2 -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\""instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"\" -DXINERAMA
+LDFLAGS  = -L/usr/X11R6/lib -lX11 -lXinerama -lfontconfig -lXft -lm
+DESTDIR  = 
+PREFIX   = /usr/local
+CC       = cc
+VERSION  = "instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"
+# GNU Make 4.3
+# Built for x86_64-pc-linux-gnu
+# Copyright (C) 1988-2020 Free Software Foundation, Inc.
+# License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+# This is free software: you are free to change and redistribute it.
+# There is NO WARRANTY, to the extent permitted by law.
+
+# Make data base, printed on Thu Aug  5 00:13:05 2021
+
+# Variables
+
+# environment
+TMUX_PANE = %9
+# environment
+JAVA_HOME = /usr/lib/jvm/java-15-openjdk/
+# makefile (from 'Makefile', line 7)
+OBJ = ${SRC:.c=.o}
+# environment
+LC_ALL = C
+# environment
+NO_AT_BRIDGE = 1
+# makefile (from 'Makefile', line 6)
+SRC = drw.c instantwm.c layouts.c util.c
+# environment
+LOG_LEVEL = info
+# environment
+CHROME_EXECUTABLE = chromium
+# makefile (from 'config.mk', line 20)
+FREETYPEINC = /usr/include/freetype2
+# environment
+CSF_EXCEPTION_PROMPT = 1
+# environment
+VSCODE_IPC_HOOK_EXTHOST = /run/user/1000/vscode-ipc-ebc9960f-a7db-4b0c-bc6a-f0ba0cdd1dbd.sock
+# environment
+CSF_XmlOcafResource = /usr/share/opencascade/resources/XmlOcafResource
+# environment
+VSCODE_CWD = /home/jeroen/devel/github.com/instantOS/instantOS
+# environment
+WINDOWID = 37748742
+# makefile (from 'config.mk', line 26)
+LIBS = -L${X11LIB} -lX11 ${XINERAMALIBS} ${FREETYPELIBS} -lm
+# environment
+MMGT_CLEAR = 1
+# environment
+CSF_XCAFDefaults = /usr/share/opencascade/resources/StdResource
+# environment
+CSF_PluginDefaults = /usr/share/opencascade/resources/StdResource
+# environment
+CASROOT = /usr
+# environment
+NVM_DIR = /home/jeroen/.nvm
+# default
+MAKE_COMMAND := make
+# environment
+GTK3_MODULES = xapp-gtk3-module
+# environment
+GOPATH = /home/jeroen/go
+# automatic
+@D = $(patsubst %/,%,$(dir $@))
+# environment
+GDK_DPI_SCALE = 1
+# environment
+VSCODE_HANDLES_UNCAUGHT_ERRORS = true
+# default
+.VARIABLES := 
+# environment
+PWD = /home/jeroen/devel/github.com/ppenguin/instantWM
+# automatic
+%D = $(patsubst %/,%,$(dir $%))
+# environment
+GI_TYPELIB_PATH = /nix/store/0cq5dbv477zsvvq97km8jz23cwg8b2qy-gtk+3-3.24.27/lib/girepository-1.0:/nix/store/5m40qbs3386sfgha7d9864fqq56q32cp-librsvg-2.50.1/lib/girepository-1.0:/nix/store/95mn3ddjmkpar4l9b5czfhrbppng8svy-libsecret-0.20.4/lib/girepository-1.0:/nix/store/q7ba9v6ilf8yibsk3v26a18k8r7xx642-harfbuzz-2.8.0/lib/girepository-1.0:/nix/store/giz68wxfkxg21rq38cbwhjrs8nyh4ih1-pango-1.48.3/lib/girepository-1.0:/nix/store/70rjmwippnbf69mdy6scx5qxcd22p3dw-gdk-pixbuf-2.42.2/lib/girepository-1.0:/nix/store/3i52y1ky0rf8m7bd5727jy9d5rj9klzx-atk-2.36.0/lib/girepository-1.0:/nix/store/z1cgaslpbaljrqiyawzzf6pzx1ks0nj2-gtk+-2.24.32/lib/girepository-1.0:/nix/store/8xzzj0p420zf7y1xngbd9zk5x8325i8q-gsettings-desktop-schemas-3.38.0/lib/girepository-1.0:/nix/store/v2l5lsaa2az5pnbrlc4yyikwwmhzx86a-gobject-introspection-1.66.1/lib/girepository-1.0:/nix/store/62s683q5vkb3cwlzi37k1ib13m80wj1f-libgnome-keyring-3.12.0/lib/girepository-1.0:/nix/store/6qaxlsxp19vrbjmzy81i2bixc4r48w03-libnotify-0.7.9/lib/girepository-1.0:/nix/store/67m8khxs36m091540bacp455j1363b3n-at-spi2-core-2.38.0/lib/girepository-1.0:/nix/store/p1g8jhjx9mw2k08bvm5brbzpz4qb85mr-libdbusmenu-glib-16.04.0/lib/girepository-1.0
+# environment
+LSCOLORS = Gxfxcxdxbxegedabagacad
+# environment
+MAIL = /var/spool/mail/jeroen
+# environment
+XDG_DATA_DIRS = /nix/store/1r7lpsa0ab6kdr4y7ks6ny7j34zbpdjr-vscode-1.55.2/share:/nix/store/0cq5dbv477zsvvq97km8jz23cwg8b2qy-gtk+3-3.24.27/share/gsettings-schemas/gtk+3-3.24.27:/nix/store/8xzzj0p420zf7y1xngbd9zk5x8325i8q-gsettings-desktop-schemas-3.38.0/share/gsettings-schemas/gsettings-desktop-schemas-3.38.0:/home/jeroen/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:/var/lib/snapd/desktop
+# environment
+OLDPWD = /home/jeroen/devel/github.com/instantOS
+# automatic
+^D = $(patsubst %/,%,$(dir $^))
+# environment
+VSCODE_LOG_STACK = false
+# automatic
+%F = $(notdir $%)
+# makefile (from 'config.mk', line 19)
+FREETYPELIBS = -lfontconfig -lXft
+# environment
+NVM_INC = /home/jeroen/.nvm/versions/node/v15.14.0/include/node
+# environment
+XDG_SESSION_PATH = /org/freedesktop/DisplayManager/Session3
+# environment
+CSF_ShadersDirectory = /usr/share/opencascade/resources/Shaders
+# environment
+LANG = C
+# environment
+XAUTHORITY = /home/jeroen/.Xauthority
+# default
+.LOADED := 
+# default
+.INCLUDE_DIRS = /usr/include /usr/local/include /usr/include
+# makefile
+MAKEFLAGS = pqrR
+# makefile (from 'config.mk', line 2)
+CMS_VERSION := beta2-290-g1d418
+# makefile
+CURDIR := /home/jeroen/devel/github.com/ppenguin/instantWM
+# environment
+VSCODE_PIPE_LOGGING = true
+# environment
+APPLICATION_INSIGHTS_NO_DIAGNOSTIC_CHANNEL = true
+# automatic
+*D = $(patsubst %/,%,$(dir $*))
+# makefile (from 'config.mk', line 3)
+VERSION := "instantOS beta2-290-g1d418 - Build Thu, Aug  5 2021, 00:13:05 +0200 on jmanji"
+# environment
+MFLAGS = -pqrR
+# environment
+SSH_AUTH_SOCK = /run/user/1000/keyring/ssh
+# default
+.SHELLFLAGS := -c
+# environment
+CSF_MDTVTexturesDirectory = /usr/share/opencascade/resources/Textures
+# environment
+NVM_BIN = /home/jeroen/.nvm/versions/node/v15.14.0/bin
+# environment
+QT_LINUX_ACCESSIBILITY_ALWAYS_ON = 1
+# automatic
++D = $(patsubst %/,%,$(dir $+))
+# environment
+P9K_SSH = 0
+# environment
+XDG_SESSION_DESKTOP = 
+# environment
+VSCODE_CRASH_REPORTER_START_OPTIONS = {"companyName":"Microsoft","productName":"VSCode","submitURL":"appcenter://code?aid=fba07a4d-84bd-4fc8-a125-9640fc8ce171&uid=55709576-43f3-42eb-b7e9-1087ac07d0f7&iid=55709576-43f3-42eb-b7e9-1087ac07d0f7&sid=55709576-43f3-42eb-b7e9-1087ac07d0f7","uploadToServer":true}
+# makefile (from 'config.mk', line 1)
+MAKEFILE_LIST := Makefile config.mk
+# automatic
+@F = $(notdir $@)
+# environment
+LOCALE_ARCHIVE_2_27 = /nix/store/7dz31dq4n1r0wqq3r28r7975cql68n8w-glibc-locales-2.32-40/lib/locale/locale-archive
+# environment
+ZSH = /home/jeroen/.oh-my-zsh
+# environment
+VSCODE_VERBOSE_LOGGING = true
+# environment
+VSCODE_PID = 1537837
+# environment
+XDG_SESSION_TYPE = x11
+# environment
+TMUX = /tmp/tmux-1000/default,2511016,9
+# automatic
+?D = $(patsubst %/,%,$(dir $?))
+# environment
+CSF_XSMessage = /usr/share/opencascade/resources/XSMessage
+# environment
+DRAWDEFAULT = /usr/share/opencascade/resources/DrawResources/DrawDefault
+# automatic
+*F = $(notdir $*)
+# environment
+QT_QPA_PLATFORMTHEME = qt5ct
+# environment
+CHROME_DESKTOP = code-url-handler.desktop
+# environment
+CSF_SHMessage = /usr/share/opencascade/resources/SHMessage
+# environment
+DBUS_SESSION_BUS_ADDRESS = unix:abstract=/tmp/dbus-Lh8IRJJBUl,guid=ddb9c2bf2a13fe23e4d98914610ad728
+# automatic
+<D = $(patsubst %/,%,$(dir $<))
+# environment
+P9K_TTY = old
+# environment
+VSCODE_NLS_CONFIG = {"locale":"en-gb","availableLanguages":{},"_languagePackSupport":true}
+# environment
+BREAKPAD_DUMP_LOCATION = /home/jeroen/.config/Code/exthost Crash Reports
+# default
+MAKE_HOST := x86_64-pc-linux-gnu
+# makefile
+SHELL = /bin/sh
+# default
+MAKECMDGOALS := all
+# environment
+SHLVL = 4
+# environment
+CSF_TObjDefaults = /usr/share/opencascade/resources/StdResource
+# environment
+MAKELEVEL := 0
+# environment
+DBUS_SESSION_BUS_PID = 2502761
+# default
+MAKE = $(MAKE_COMMAND)
+# environment
+PATH = /home/jeroen/.nvm/versions/node/v15.14.0/bin:/home/jeroen/bin:/home/jeroen/go/bin:/home/jeroen/.local/opt/flutter/bin:/home/jeroen/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/home/jeroen/.local/bin:/home/jeroen/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/home/jeroen/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/var/lib/flatpak/exports/bin:/usr/lib/jvm/default/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:/var/lib/snapd/snap/bin:/usr/lib/jvm/default/bin:/home/jeroen/.gem/ruby/2.7.0/bin
+# environment
+NIX_SSL_CERT_FILE = /etc/ssl/certs/ca-certificates.crt
+# default
+MAKEFILES := 
+# environment
+LC_MONETARY = de_DE.UTF-8
+# environment
+CSF_OCCTResourcePath = /usr/share/opencascade/resources
+# environment
+MOTD_SHOWN = pam
+# automatic
+^F = $(notdir $^)
+# makefile (from 'config.mk', line 16)
+XINERAMAFLAGS = -DXINERAMA
+# environment
+GRADLE_HOME = /usr/share/java/gradle
+# makefile (from 'config.mk', line 8)
+PREFIX = /usr/local
+# makefile (from 'config.mk', line 25)
+INCS = -I${X11INC} -I${FREETYPEINC}
+# environment
+_JAVA_AWT_WM_NONREPARENTING = 1
+# environment
+VSCODE_LOG_NATIVE = false
+# environment
+TERM_PROGRAM = tmux
+# environment
+CSF_StandardLiteDefaults = /usr/share/opencascade/resources/StdResource
+# environment
+CSF_STEPDefaults = /usr/share/opencascade/resources/XSTEPResource
+# environment
+GDK_SCALE = 1
+# automatic
+?F = $(notdir $?)
+# environment
+AUTOJUMP_SOURCED = 1
+# environment
+XDG_SEAT = seat0
+# environment
+XDG_CURRENT_DESKTOP = 
+# environment
+CSF_MIGRATION_TYPES = /usr/share/opencascade/resources/StdResource/MigrationSheet.txt
+# environment
+LS_COLORS = no=00:fi=00:di=36:ln=35:pi=30;44:so=35;44:do=35;44:bd=33;44:cd=37;44:or=05;37;41:mi=05;37;41:ex=01;31:*.cmd=01;31:*.exe=01;31:*.com=01;31:*.bat=01;31:*.reg=01;31:*.app=01;31:*.txt=32:*.org=32:*.md=32:*.mkd=32:*.h=32:*.hpp=32:*.c=32:*.C=32:*.cc=32:*.cpp=32:*.cxx=32:*.objc=32:*.cl=32:*.sh=32:*.bash=32:*.csh=32:*.zsh=32:*.el=32:*.vim=32:*.java=32:*.pl=32:*.pm=32:*.py=32:*.rb=32:*.hs=32:*.php=32:*.htm=32:*.html=32:*.shtml=32:*.erb=32:*.haml=32:*.xml=32:*.rdf=32:*.css=32:*.sass=32:*.scss=32:*.less=32:*.js=32:*.coffee=32:*.man=32:*.0=32:*.1=32:*.2=32:*.3=32:*.4=32:*.5=32:*.6=32:*.7=32:*.8=32:*.9=32:*.l=32:*.n=32:*.p=32:*.pod=32:*.tex=32:*.go=32:*.sql=32:*.csv=32:*.sv=32:*.svh=32:*.v=32:*.vh=32:*.vhd=32:*.bmp=33:*.cgm=33:*.dl=33:*.dvi=33:*.emf=33:*.eps=33:*.gif=33:*.jpeg=33:*.jpg=33:*.JPG=33:*.mng=33:*.pbm=33:*.pcx=33:*.pdf=33:*.pgm=33:*.png=33:*.PNG=33:*.ppm=33:*.pps=33:*.ppsx=33:*.ps=33:*.svg=33:*.svgz=33:*.tga=33:*.tif=33:*.tiff=33:*.xbm=33:*.xcf=33:*.xpm=33:*.xwd=33:*.xwd=33:*.yuv=33:*.aac=33:*.au=33:*.flac=33:*.m4a=33:*.mid=33:*.midi=33:*.mka=33:*.mp3=33:*.mpa=33:*.mpeg=33:*.mpg=33:*.ogg=33:*.opus=33:*.ra=33:*.wav=33:*.anx=33:*.asf=33:*.avi=33:*.axv=33:*.flc=33:*.fli=33:*.flv=33:*.gl=33:*.m2v=33:*.m4v=33:*.mkv=33:*.mov=33:*.MOV=33:*.mp4=33:*.mp4v=33:*.mpeg=33:*.mpg=33:*.nuv=33:*.ogm=33:*.ogv=33:*.ogx=33:*.qt=33:*.rm=33:*.rmvb=33:*.swf=33:*.vob=33:*.webm=33:*.wmv=33:*.doc=31:*.docx=31:*.rtf=31:*.odt=31:*.dot=31:*.dotx=31:*.ott=31:*.xls=31:*.xlsx=31:*.ods=31:*.ots=31:*.ppt=31:*.pptx=31:*.odp=31:*.otp=31:*.fla=31:*.psd=31:*.7z=1;35:*.apk=1;35:*.arj=1;35:*.bin=1;35:*.bz=1;35:*.bz2=1;35:*.cab=1;35:*.deb=1;35:*.dmg=1;35:*.gem=1;35:*.gz=1;35:*.iso=1;35:*.jar=1;35:*.msi=1;35:*.rar=1;35:*.rpm=1;35:*.tar=1;35:*.tbz=1;35:*.tbz2=1;35:*.tgz=1;35:*.tx=1;35:*.war=1;35:*.xpi=1;35:*.xz=1;35:*.z=1;35:*.Z=1;35:*.zip=1;35:*.ANSI-30-black=30:*.ANSI-01;30-brblack=01;30:*.ANSI-31-red=31:*.ANSI-01;31-brred=01;31:*.ANSI-32-green=32:*.ANSI-01;32-brgreen=01;32:*.ANSI-33-yellow=33:*.ANSI-01;33-bryellow=01;33:*.ANSI-34-blue=34:*.ANSI-01;34-brblue=01;34:*.ANSI-35-magenta=35:*.ANSI-01;35-brmagenta=01;35:*.ANSI-36-cyan=36:*.ANSI-01;36-brcyan=01;36:*.ANSI-37-white=37:*.ANSI-01;37-brwhite=01;37:*.log=01;32:*~=01;32:*#=01;32:*.bak=01;36:*.BAK=01;36:*.old=01;36:*.OLD=01;36:*.org_archive=01;36:*.off=01;36:*.OFF=01;36:*.dist=01;36:*.DIST=01;36:*.orig=01;36:*.ORIG=01;36:*.swp=01;36:*.swo=01;36:*,v=01;36:*.gpg=34:*.gpg=34:*.pgp=34:*.asc=34:*.3des=34:*.aes=34:*.enc=34:*.sqlite=34:
+# automatic
++F = $(notdir $+)
+# environment
+XDG_SEAT_PATH = /org/freedesktop/DisplayManager/Seat0
+# environment
+LESS = -R
+# environment
+DESKTOP_SESSION = default
+# environment
+ORIGINAL_XDG_CURRENT_DESKTOP = 
+# environment
+JULIA_LOAD_PATH = /usr/share/gmsh/api/julia/:/usr/share/gmsh/api/julia/:
+# 'override' directive
+GNUMAKEFLAGS := 
+# environment
+GIO_EXTRA_MODULES = /nix/store/h6ig9f0rhscr8gi286fk5zyankkx99ym-gconf-3.2.6/lib/gio/modules:/nix/store/2q1jcmnsqd2hsa61f1d0cq0x6qas2bjj-dconf-0.38.0-lib/lib/gio/modules:/nix/store/h6ig9f0rhscr8gi286fk5zyankkx99ym-gconf-3.2.6/lib/gio/modules:/nix/store/2q1jcmnsqd2hsa61f1d0cq0x6qas2bjj-dconf-0.38.0-lib/lib/gio/modules
+# environment
+LOGNAME = jeroen
+# makefile (from 'config.mk', line 11)
+X11INC = /usr/X11R6/include
+# environment
+CSF_LANGUAGE = us
+# environment
+LOG_DST = /home/jeroen/.config/Code/logs/20210805T000751/exthost3/dendron.dendron/dendron.log
+# makefile (from 'config.mk', line 29)
+CPPFLAGS = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\"${VERSION}\" ${XINERAMAFLAGS}
+# environment
+XDG_VTNR = 1
+# makefile
+.DEFAULT_GOAL := all
+# environment
+AUTOJUMP_ERROR_PATH = /home/jeroen/.local/share/autojump/errors.log
+# environment
+CSF_TObjMessage = /usr/share/opencascade/resources/TObj
+# environment
+EDITOR = vim
+# environment
+DISPLAY = :0
+ 
+# environment
+GTK_MODULES = canberra-gtk-module
+# environment
+USER = jeroen
+# default
+MAKE_VERSION := 4.3
+# 'override' directive
+.SHELLSTATUS := 0
+# environment
+NIX_PROFILES = /nix/var/nix/profiles/default /home/jeroen/.nix-profile
+# makefile (from 'config.mk', line 32)
+LDFLAGS = ${LIBS}
+# environment
+PAGER = less
+# environment
+ZSH_DIRCOLORS_DIR = /home/jeroen/.zsh/zsh-dircolors/dircolors
+# environment
+VSCODE_NODE_CACHED_DATA_DIR = /home/jeroen/.config/Code/CachedData/3c4e3df9e89829dce27b7b5c24508306b151f30d
+# environment
+_ = /usr/bin/make
+# environment
+XDG_RUNTIME_DIR = /run/user/1000
+# makefile (from 'config.mk', line 31)
+CFLAGS = -std=c99 -pedantic -Wall -Wunused -Wno-deprecated-declarations -Os ${INCS} ${CPPFLAGS}
+# environment
+GDK_PIXBUF_MODULE_FILE = /nix/store/5m40qbs3386sfgha7d9864fqq56q32cp-librsvg-2.50.1/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
+# environment
+CSF_DrawPluginDefaults = /usr/share/opencascade/resources/DrawResources
+# environment
+CSF_IGESDefaults = /usr/share/opencascade/resources/XSTEPResource
+# environment
+NVM_CD_FLAGS = -q
+# environment
+XDG_SESSION_CLASS = user
+# environment
+MKL_DEBUG_CPU_TYPE = 5
+# environment
+VSCODE_AMD_ENTRYPOINT = vs/workbench/services/extensions/node/extensionHostProcess
+# environment
+HOME = /home/jeroen
+# makefile (from 'config.mk', line 9)
+MANPREFIX = ${PREFIX}/share/man
+# environment
+ELECTRON_RUN_AS_NODE = 1
+# environment
+DRAWHOME = /usr/share/opencascade/resources/DrawResources
+# environment
+VSCODE_IPC_HOOK = /run/user/1000/vscode-aa6f6fee-1.55.2-main.sock
+# environment
+TERM = screen-256color
+# environment
+HG = /usr/bin/hg
+# environment
+XDG_SESSION_ID = 32
+# default
+.RECIPEPREFIX := 
+# automatic
+<F = $(notdir $<)
+# environment
+NIX_PATH = nixpkgs=/nix/var/nix/profiles/per-user/root/channels/nixpkgs:/nix/var/nix/profiles/per-user/root/channels
+# default
+SUFFIXES := 
+# makefile (from 'config.mk', line 12)
+X11LIB = /usr/X11R6/lib
+# environment
+_P9K_TTY = /dev/pts/14
+# environment
+VSCODE_CLI = 1
+# environment
+ELECTRON_NO_ATTACH_CONSOLE = 1
+# environment
+CSF_StandardDefaults = /usr/share/opencascade/resources/StdResource
+# default
+.FEATURES := target-specific order-only second-expansion else-if shortest-stem undefine oneshell nocomment grouped-target extra-prereqs archives jobserver output-sync check-symlink guile load
+# makefile (from 'config.mk', line 39)
+CC = cc
+# environment
+__HM_SESS_VARS_SOURCED = 1
+# environment
+XDG_MENU_PREFIX = gnome-
+# environment
+TERM_PROGRAM_VERSION = 3.2a
+# makefile (from 'config.mk', line 15)
+XINERAMALIBS = -lXinerama
+# variable set hash-table stats:
+# Load=174/1024=17%, Rehash=0, Collisions=40/241=17%
+
+# Pattern-specific Variable Values
+
+# No pattern-specific variable values.
+
+# Directories
+
+# . (device 66307, inode 4146592): 34 files, no impossibilities.
+
+# 34 files, no impossibilities in 1 directories.
+
+# Implicit Rules
+
+# No implicit rules.
+
+# Files
+
+dist: clean
+#  Phony target (prerequisite of .PHONY).
+#  Implicit rule search has not been done.
+#  File does not exist.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 40):
+	tar --transform 's|^|instantwm-${CMS_VERSION}/|' \
+		-czf instantwm-${CMS_VERSION}.tar.gz \
+		LICENSE Makefile README.md config.def.h config.mk\
+		instantwm.1 drw.h util.h ${SRC}
+
+.c.o:
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 24):
+	${CC} -c ${CFLAGS} $<
+
+# Not a target:
+Makefile:
+#  Implicit rule search has been done.
+#  Last modified 2020-12-27 12:19:26.986064702
+#  File has been updated.
+#  Successfully updated.
+
+instantwm: drw.o instantwm.o layouts.o util.o
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 32):
+	${CC} -o $@ ${OBJ} ${LDFLAGS}
+
+util.o: config.h config.mk
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+uninstall:
+#  Phony target (prerequisite of .PHONY).
+#  Implicit rule search has not been done.
+#  File does not exist.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 58):
+	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
+		${DESTDIR}${PREFIX}/bin/instantwmctrl\
+		${DESTDIR}${MANPREFIX}/man1/instantwm.1\
+		${DESTDIR}${PREFIX}/bin/startinstantos\
+		${DESTDIR}/usr/share/xsessions/instantwm.desktop\
+		${DESTDIR}/usr/share/xsessions/default.desktop
+
+clean:
+#  Phony target (prerequisite of .PHONY).
+#  Implicit rule search has not been done.
+#  File does not exist.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 36):
+	rm -f instantwm ${OBJ} instantwm-${CMS_VERSION}.tar.gz
+
+# Not a target:
+.DEFAULT:
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+drw.o: config.h config.mk
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+all: options instantwm
+#  Phony target (prerequisite of .PHONY).
+#  Command line target.
+#  Implicit rule search has not been done.
+#  File does not exist.
+#  File has been updated.
+#  Needs to be updated (-q is set).
+# variable set hash-table stats:
+# Load=0/32=0%, Rehash=0, Collisions=0/19=0%
+
+# Not a target:
+config.mk:
+#  Implicit rule search has been done.
+#  Last modified 2020-12-27 12:19:26.986064702
+#  File has been updated.
+#  Successfully updated.
+
+layouts.o: config.h config.mk
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+config.h:
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 29):
+	cp config.def.h $@
+
+install: all
+#  Phony target (prerequisite of .PHONY).
+#  Implicit rule search has not been done.
+#  File does not exist.
+#  File has not been updated.
+#  recipe to execute (from 'Makefile', line 47):
+	install -d ${DESTDIR}{${PREFIX}/bin,/usr/share/xsessions,${MANPREFIX}/man1}
+	install -m  755 -s instantwm ${DESTDIR}${PREFIX}/bin/
+	install -Dm 755 instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
+	install -m  644 instantwm.1 ${DESTDIR}${MANPREFIX}/man1/
+	sed -i 's/VERSION/${VERSION}/g' ${DESTDIR}${MANPREFIX}/man1/instantwm.1
+	install -m  644 instantwm.desktop ${DESTDIR}/usr/share/xsessions
+	install -Dm 644 instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop
+	install -m  755 startinstantos ${DESTDIR}${PREFIX}/bin/
+
+instantwm.o: config.h config.mk
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+# Not a target:
+.SUFFIXES:
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+.PHONY: all options clean dist install uninstall
+#  Implicit rule search has not been done.
+#  Modification time never checked.
+#  File has not been updated.
+
+options:
+#  Phony target (prerequisite of .PHONY).
+#  Implicit rule search has not been done.
+#  Implicit/static pattern stem: ''
+#  File does not exist.
+#  File has been updated.
+#  Needs to be updated (-q is set).
+# automatic
+# @ := options
+# automatic
+# * := 
+# automatic
+# < := 
+# automatic
+# + := 
+# automatic
+# % := 
+# automatic
+# ^ := 
+# automatic
+# ? := 
+# automatic
+# | := 
+# variable set hash-table stats:
+# Load=8/32=25%, Rehash=0, Collisions=18/27=67%
+#  recipe to execute (from 'Makefile', line 14):
+	${info instantwm build options}
+	${info CFLAGS   = ${CFLAGS}}
+	${info LDFLAGS  = ${LDFLAGS}}
+	${info DESTDIR  = ${DESTDIR}}
+	${info PREFIX   = ${PREFIX}}
+	${info CC       = ${CC}}
+	${info VERSION  = ${VERSION}}
+	@true
+
+# files hash-table stats:
+# Load=18/1024=2%, Rehash=0, Collisions=0/59=0%
+# VPATH Search Paths
+
+# No 'vpath' search paths.
+
+# No general ('VPATH' variable) search path.
+
+# strcache buffers: 1 (0) / strings = 46 / storage = 432 B / avg = 9 B
+# current buf: size = 8162 B / used = 432 B / count = 46 / avg = 9 B
+
+# strcache performance: lookups = 100 / hit rate = 54%
+# hash-table stats:
+# Load=46/8192=1%, Rehash=0, Collisions=0/100=0%
+# Finished Make data base on Thu Aug  5 00:13:05 2021
+
+ 
