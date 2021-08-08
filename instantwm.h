@@ -344,6 +344,7 @@ void updatetitle(Client *c);
 void updatewindowtype(Client *c);
 void updatewmhints(Client *c);
 void view(const Arg *arg);
+void keyview(const Arg *arg);
 void warp(const Client *c);
 void forcewarp(const Client *c);
 void warpinto(const Client *c);

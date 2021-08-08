@@ -5779,6 +5779,16 @@ updatewmhints(Client *c)
 }
 
 void
+keyview(const Arg *arg) {
+	int ui = computeprefix(arg);
+	if (ui == selmon->tagset[selmon->seltags]) {
+		if (selmon->pertag->curtag != selmon->pertag->prevtag)
+			lastview(NULL);
+	} else
+		view(&((Arg) { .ui = ui }));
+}
+
+void
 view(const Arg *arg)
 {
 
