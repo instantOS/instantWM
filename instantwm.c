@@ -4193,6 +4193,15 @@ commandlayout(const Arg *arg) {
 }
 
 void
+settcltilelayout(const Arg *arg)
+{
+	if (strcmp(selmon->lt[selmon->sellt]->symbol, layouts[0].symbol) != 0)
+		setlayout(arg);
+	else
+		setlayout(&((Arg) { .v = &layouts[4]}));
+}
+
+void
 setlayout(const Arg *arg)
 {
     int multimon;
