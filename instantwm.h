@@ -55,7 +55,7 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurClick, CurHor, CurVert, CurTL, CurTR, CurBL, CurBR, CurLast }; /* cursor */
-enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /* color schemes */
+/* enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /1* color schemes *1/ */
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
@@ -64,6 +64,20 @@ enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkStartMenu, ClkLast }; /* clicks */
+
+// each element has the possibility of a hover over
+enum { SchemeHover, SchemeNoHover };
+// tag states
+enum { SchemeTagInactive, SchemeTagFilled, SchemeTagFocus, SchemeTagNoFocus, SchemeTagEmpty };
+// window states
+enum { SchemeWinFocus, SchemeWinMinimized, SchemeWinNormal,
+    SchemeWinStickyFocus, SchemeWinSticky, SchemeWinOverlay, SchemeWinOverlayFocus };
+// close button
+enum { SchemeCloseNormal, SchemeCloseLocked };
+// scheme enum used for all text/button elements
+enum { SchemeText, SchemeBg, SchemeDetail };
+// window border states
+enum { SchemeBorderNormal, SchemeBorderFloatFocus, SchemeBorderTileFocus };
 
 typedef union {
 	int i;

@@ -4,6 +4,12 @@ typedef struct {
 	Cursor cursor;
 } Cur;
 
+typedef struct {
+    char *text;
+    char *bg;
+    char *detail;
+} ColorScheme;
+
 typedef struct Fnt {
 	Display *dpy;
 	unsigned int h;

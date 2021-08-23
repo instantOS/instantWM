@@ -24,10 +24,8 @@ static char col_gray[] = "#747c90"; /*top bar minimized foreground*/
 
 // border active and inactive
 static char col_pastel_blue[] = "#747c90";/*unsaturated for focused border*/
-static char col_light_blue[] = "#4dadd4";/*focused windows d */
 
 // blue window indicator
-static char col_blue[] = "#5294E2";/*focused instantmenu or topbar d */
 static char col_dark_blue[] = "#3579CB";/*focused instantmenu or topbar d */
 
 // hover over blue window indicator
@@ -35,7 +33,6 @@ static char col_hover_blue[] = "#7CA8DC";/*focused instantmenu or topbar d */
 static char col_hover_dark_blue[] = "#578BC9";/*focused instantmenu or topbar d */
 
 // sticky window indicator
-static char col_green[] = "#52E167";/*focused instantmenu or topbar d */
 static char col_dark_green[] = "#35CB4B";/*focused instantmenu or topbar d */
 
 // unfocused sticky indicator
@@ -43,7 +40,6 @@ static char col_orange[] = "#E1A052";/*focused instantmenu or topbar d */
 static char col_dark_orange[] = "#CB8735";/*focused instantmenu or topbar d */
 
 // close button
-static char col_red[] = "#E1527E";/*focused instantmenu or topbar d */
 static char col_dark_red[] = "#CB3563";/*focused instantmenu or topbar d */
 
 // hover over close button
@@ -67,6 +63,200 @@ static const char *colors[][4] = {
 	[SchemeClose]     = { col_hover_red,   col_red,        col_hover_dark_red, col_dark_red },
 	[SchemeHoverTags] = { col_white,       col_hover_blue, col_light_blue,     col_hover_dark_blue },
 };
+
+static char col_bg[] = "#121212";
+static char col_text[] = "#DFDFDF";
+static char col_black[] = "#000000";
+
+static char col_bg_accent[] = "#384252";
+
+static char col_light_blue[] = "#89B3F7";
+static char col_blue[] = "#536DFE";
+
+static char col_light_green[] = "#81c995";
+static char col_green[] = "#1e8e3e";
+
+static char col_light_yellow[] = "#fdd663";
+static char col_yellow[] = "#f9ab00";
+
+static char col_light_red[] = "#f28b82";
+static char col_red[] = "#d93025";
+
+static const char *tagcolors[][][] = {
+    [SchemeNoHover] = {
+        [SchemeTagInactive] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg,
+            [SchemeDetail] = col_bg,
+        },
+        [SchemeTagFilled] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg_accent,
+            [SchemeDetail] = col_light_blue,
+        },
+        [SchemeTagFocus] = {
+            [SchemeText] = col_black,
+            [SchemeBg] = col_light_green,
+            [SchemeDetail] = col_green,
+        },
+        [SchemeTagNoFocus] = {
+            [SchemeText] = col_black,
+            [SchemeBg] = col_light_yellow,
+            [SchemeDetail] = col_yellow,
+        },
+        [SchemeTagEmpty] = {
+            [SchemeText] = col_black,
+            [SchemeBg] = col_light_red,
+            [SchemeDetail] = col_red,
+        }
+    },
+    // TODO: change hover colors
+    [SchemeHover] = {
+        [SchemeTagInactive] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg,
+            [SchemeDetail] = col_bg,
+        },
+        [SchemeTagFilled] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg_accent,
+            [SchemeDetail] = col_light_blue,
+        },
+        [SchemeTagFocus] = {
+            [SchemeText] = col_black,
+            [SchemeBg] = col_light_green,
+            [SchemeDetail] = col_green,
+        },
+        [SchemeTagNoFocus] = {
+            [SchemeText] = col_black,
+            [SchemeBg] = col_light_yellow,
+            [SchemeDetail] = col_yellow,
+        },
+        [SchemeTagEmpty] = {
+            [SchemeText] = col_black,
+            [SchemeBg] = col_light_red,
+            [SchemeDetail] = col_red,
+        }
+    }
+};
+
+static const char *windowcolors[][][] = {
+    [SchemeNoHover] = {
+        [SchemeWinFocus] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg_accent,
+            [SchemeDetail] = col_light_blue,
+        },
+        [SchemeWinNormal] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg,
+            [SchemeDetail] = col_bg,
+        },
+        [SchemeWinMinimized] = {
+            [ SchemeText ] = col_bg_accent,
+            [ SchemeBg ] = col_bg,
+            [ SchemeDetail ] = col_bg,
+        },
+        [SchemeWinSticky] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_yellow,
+            [ SchemeDetail ] = col_yellow,
+        },
+        [ SchemeWinStickyFocus ] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_green,
+            [ SchemeDetail ] = col_green
+        },
+        [SchemeWinOverlay] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_yellow,
+            [ SchemeDetail ] = col_yellow,
+        },
+        [SchemeWinOverlayFocus] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_green,
+            [ SchemeDetail ] = col_green,
+        },
+    },
+    //TODO: different hover colors
+    [SchemeHover] = {
+        [SchemeWinFocus] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg_accent,
+            [SchemeDetail] = col_light_blue,
+        },
+        [SchemeWinNormal] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_bg,
+            [SchemeDetail] = col_bg,
+        },
+        [SchemeWinMinimized] = {
+            [ SchemeText ] = col_bg_accent,
+            [ SchemeBg ] = col_bg,
+            [ SchemeDetail ] = col_bg,
+        },
+        [SchemeWinSticky] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_yellow,
+            [ SchemeDetail ] = col_yellow,
+        },
+        [ SchemeWinStickyFocus ] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_green,
+            [ SchemeDetail ] = col_green
+        },
+        [SchemeWinOverlay] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_yellow,
+            [ SchemeDetail ] = col_yellow,
+        },
+        [SchemeWinOverlayFocus] = {
+            [ SchemeText ] = col_black,
+            [ SchemeBg ] = col_light_green,
+            [ SchemeDetail ] = col_green,
+        },
+    }
+};
+
+static const char *closebuttoncolors[][][] = {
+    [SchemeNoHover] = {
+        [ SchemeCloseNormal ] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_light_red,
+            [SchemeDetail] = col_red,
+        }, 
+        [ SchemeCloseLocked ] = {
+            [ SchemeText ] = col_text, 
+            [ SchemeBg ] = col_light_yellow,
+            [ SchemeDetail ] = col_yellow
+        }
+    }, 
+    [ SchemeHover ] = {
+        [ SchemeCloseNormal ] = {
+            [SchemeText] = col_text,
+            [SchemeBg] = col_light_red,
+            [SchemeDetail] = col_red,
+        }, 
+        [ SchemeCloseLocked ] = {
+            [ SchemeText ] = col_text, 
+            [ SchemeBg ] = col_light_yellow,
+            [ SchemeDetail ] = col_yellow
+        }
+    }
+};
+
+static const char *bordercolors[] = {
+    [ SchemeBorderNormal ] = col_bg_accent,
+    [ SchemeBorderTileFocus ] = col_light_blue,
+    [ SchemeBorderFloatFocus ] = col_light_green
+};
+
+static const char *statusbarcolors[] = {
+    [ SchemeText ] = col_text,
+    [ SchemeBg ] = col_bg,
+    [ SchemeDetail ] = col_bg
+};
+
 
 /* tagging */
 #define MAX_TAGLEN 16
