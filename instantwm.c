@@ -21,6 +21,8 @@
  * To understand everything else, start reading main().
  */
 
+#include <X11/Xlib.h>
+#include <X11/Xresource.h>
 #include <errno.h>
 #include <locale.h>
 #include <math.h>
@@ -1656,7 +1658,8 @@ void drawbar(Monitor *m) {
                 if (!ISVISIBLE(c))
                     continue;
 
-                ishover = selmon->hoverclient && !selmon->gesture && c == selmon->hoverclient
+                ishover = selmon->hoverclient && !selmon->gesture &&
+                                  c == selmon->hoverclient
                               ? SchemeHover
                               : SchemeNoHover;
 
@@ -4252,9 +4255,86 @@ void setmfact(const Arg *arg) {
         animated = 1;
 }
 
+void load_xresources(void) {
+    Display *display;
+    char *resm;
+    XrmDatabase db;
+    ResourcePref *p;
+
+    int i, u, q;
+
+    for (i = 0; i < LENGTH(schemehovertypes); i++) {
+        for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+            for (q = 0; q < LENGTH(schemecolortypes); q++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
+                         schemehovertypes[i].name, schemewindowtypes[u].name,
+                         schemecolortypes[q].name);
+                printf("\n\n\n propname: %s \n\n\n", propname);
+            }
+        }
+    }
+
+    display = XOpenDisplay(NULL);
+    resm = XResourceManagerString(display);
+    if (!resm)
+        return;
+
+    db = XrmGetStringDatabase(resm);
+
+    for (i = 0; i < LENGTH(schemehovertypes); i++) {
+        for (q = 0; q < LENGTH(schemecolortypes); q++) {
+            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
+                         schemehovertypes[i].name, schemewindowtypes[u].name,
+                         schemecolortypes[q].name);
+                resource_load(db, propname, STRING,
+                              (void *)(windowcolors[schemehovertypes[i].type]
+                                                   [schemewindowtypes[u].type]
+                                                   [schemecolortypes[q].type]));
+            }
+
+            for (u = 0; u < LENGTH(schemetagtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
+                         schemehovertypes[i].name, schemetagtypes[u].name,
+                         schemecolortypes[q].name);
+                resource_load(db, propname, STRING,
+                              (void *)(tagcolors[schemehovertypes[i].type]
+                                                [schemetagtypes[u].type]
+                                                [schemecolortypes[q].type]));
+            }
+
+            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
+                         schemehovertypes[i].name, schemeclosetypes[u].name,
+                         schemecolortypes[q].name);
+                resource_load(db, propname, STRING,
+                              (void *)(closebuttoncolors[schemehovertypes[i].type]
+                                                [schemeclosetypes[u].type]
+                                                [schemecolortypes[q].type]));
+            }
+        }
+    }
+
+    resource_load(db, "normal.border", STRING, (void *)bordercolors[SchemeBorderNormal]);
+    resource_load(db, "focus.tile.border", STRING, (void *)bordercolors[SchemeBorderTileFocus]);
+    resource_load(db, "focus.float.border", STRING, (void *)bordercolors[SchemeBorderFloatFocus]);
+    resource_load(db, "snap.border", STRING, (void *)bordercolors[SchemeBorderSnap]);
+
+    resource_load(db, "status.fg", STRING, (void *)statusbarcolors[ColFg]);
+    resource_load(db, "status.bg", STRING, (void *)statusbarcolors[ColBg]);
+    resource_load(db, "status.detail", STRING, (void *)statusbarcolors[ColDetail]);
+
+    XCloseDisplay(display);
+}
+
 void setup(void) {
     int i;
     int u;
+
     XSetWindowAttributes wa;
     Atom utf8string;
 
@@ -4322,13 +4402,13 @@ void setup(void) {
     cursor[CurTL] = drw_cur_create(drw, XC_top_left_corner);
     cursor[CurTR] = drw_cur_create(drw, XC_top_right_corner);
 
-    /* init appearance */
-
     /* scheme = ecalloc(LENGTH(colors) + 1, sizeof(Clr *)); */
     /* scheme[LENGTH(colors)] = drw_scm_create(drw, colors[0], 4); */
 
     /* for (i = 0; i < LENGTH(colors); i++) */
     /*     scheme[i] = drw_scm_create(drw, colors[i], 4); */
+
+    load_xresources();
 
     borderscheme = drw_scm_create(drw, bordercolors, 4);
     statusscheme = drw_scm_create(drw, statusbarcolors, 3);

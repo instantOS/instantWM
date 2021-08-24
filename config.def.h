@@ -232,22 +232,39 @@ static const char *statusbarcolors[] = {
     [ ColDetail ] = col_bg
 };
 
-
-static const char *xreshovertype[SchemeHoverLast] = {
-    "nohover",
-    "hover",
+SchemePref schemehovertypes[] = {
+    { "hover", SchemeHover }, 
+    { "nohover", SchemeNoHover }
 };
 
-static const char *xrescolortype[ColLast] = {
-    "fg",
-    "bg",
-    "detail"
+SchemePref schemewindowtypes[] = {
+    {"normal", SchemeWinNormal},
+    {"minimized", SchemeWinMinimized},
+    {"sticky", SchemeWinSticky},
+    {"focus", SchemeWinFocus},
+    {"stickyfocus", SchemeWinStickyFocus},
+    {"overlay", SchemeWinOverlay},
+    {"overlayfocus", SchemeWinOverlayFocus},
 };
 
-static const char *xrestagtype[SchemeTagLast] = {
-    "inactive",
-    "filled",
-    "focus",
+SchemePref schemetagtypes[] = {
+    {"inactive", SchemeTagInactive},
+    {"filled", SchemeTagFilled},
+    {"focus", SchemeTagFocus},
+    {"nofocus", SchemeTagNoFocus},
+    {"empty", SchemeTagEmpty},
+};
+
+SchemePref schemeclosetypes[] = {
+    {"normal", SchemeCloseNormal},
+    {"locked", SchemeCloseLocked},
+    {"fullscreen", SchemeCloseFullscreen},
+};
+
+SchemePref schemecolortypes[] = {
+    {"fg", ColFg},
+    {"bg", ColBg},
+    {"detail", ColDetail},
 };
 
 

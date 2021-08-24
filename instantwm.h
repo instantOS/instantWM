@@ -192,6 +192,11 @@ typedef struct {
 	void *dst;
 } ResourcePref;
 
+typedef struct {
+    char *name;
+    int type;
+} SchemePref;
+
 typedef struct Systray   Systray;
 struct Systray {
 	Window win;
