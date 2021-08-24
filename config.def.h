@@ -85,57 +85,57 @@ static char col_red[] = "#d93025";
 static const char *tagcolors[][][] = {
     [SchemeNoHover] = {
         [SchemeTagInactive] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg,
-            [SchemeDetail] = col_bg,
+            [ColText] = col_text,
+            [ColBg] = col_bg,
+            [ColDetail] = col_bg,
         },
         [SchemeTagFilled] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg_accent,
-            [SchemeDetail] = col_light_blue,
+            [ColText] = col_text,
+            [ColBg] = col_bg_accent,
+            [ColDetail] = col_light_blue,
         },
         [SchemeTagFocus] = {
-            [SchemeText] = col_black,
-            [SchemeBg] = col_light_green,
-            [SchemeDetail] = col_green,
+            [ColText] = col_black,
+            [ColBg] = col_light_green,
+            [ColDetail] = col_green,
         },
         [SchemeTagNoFocus] = {
-            [SchemeText] = col_black,
-            [SchemeBg] = col_light_yellow,
-            [SchemeDetail] = col_yellow,
+            [ColText] = col_black,
+            [ColBg] = col_light_yellow,
+            [ColDetail] = col_yellow,
         },
         [SchemeTagEmpty] = {
-            [SchemeText] = col_black,
-            [SchemeBg] = col_light_red,
-            [SchemeDetail] = col_red,
+            [ColText] = col_black,
+            [ColBg] = col_light_red,
+            [ColDetail] = col_red,
         }
     },
     // TODO: change hover colors
     [SchemeHover] = {
         [SchemeTagInactive] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg,
-            [SchemeDetail] = col_bg,
+            [ColText] = col_text,
+            [ColBg] = col_bg,
+            [ColDetail] = col_bg,
         },
         [SchemeTagFilled] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg_accent,
-            [SchemeDetail] = col_light_blue,
+            [ColText] = col_text,
+            [ColBg] = col_bg_accent,
+            [ColDetail] = col_light_blue,
         },
         [SchemeTagFocus] = {
-            [SchemeText] = col_black,
-            [SchemeBg] = col_light_green,
-            [SchemeDetail] = col_green,
+            [ColText] = col_black,
+            [ColBg] = col_light_green,
+            [ColDetail] = col_green,
         },
         [SchemeTagNoFocus] = {
-            [SchemeText] = col_black,
-            [SchemeBg] = col_light_yellow,
-            [SchemeDetail] = col_yellow,
+            [ColText] = col_black,
+            [ColBg] = col_light_yellow,
+            [ColDetail] = col_yellow,
         },
         [SchemeTagEmpty] = {
-            [SchemeText] = col_black,
-            [SchemeBg] = col_light_red,
-            [SchemeDetail] = col_red,
+            [ColText] = col_black,
+            [ColBg] = col_light_red,
+            [ColDetail] = col_red,
         }
     }
 };
@@ -143,77 +143,77 @@ static const char *tagcolors[][][] = {
 static const char *windowcolors[][][] = {
     [SchemeNoHover] = {
         [SchemeWinFocus] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg_accent,
-            [SchemeDetail] = col_light_blue,
+            [ColText] = col_text,
+            [ColBg] = col_bg_accent,
+            [ColDetail] = col_light_blue,
         },
         [SchemeWinNormal] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg,
-            [SchemeDetail] = col_bg,
+            [ColText] = col_text,
+            [ColBg] = col_bg,
+            [ColDetail] = col_bg,
         },
         [SchemeWinMinimized] = {
-            [ SchemeText ] = col_bg_accent,
-            [ SchemeBg ] = col_bg,
-            [ SchemeDetail ] = col_bg,
+            [ ColText ] = col_bg_accent,
+            [ ColBg ] = col_bg,
+            [ ColDetail ] = col_bg,
         },
         [SchemeWinSticky] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_yellow,
-            [ SchemeDetail ] = col_yellow,
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow,
         },
         [ SchemeWinStickyFocus ] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_green,
-            [ SchemeDetail ] = col_green
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_green,
+            [ ColDetail ] = col_green
         },
         [SchemeWinOverlay] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_yellow,
-            [ SchemeDetail ] = col_yellow,
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow,
         },
         [SchemeWinOverlayFocus] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_green,
-            [ SchemeDetail ] = col_green,
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_green,
+            [ ColDetail ] = col_green,
         },
     },
     //TODO: different hover colors
     [SchemeHover] = {
         [SchemeWinFocus] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg_accent,
-            [SchemeDetail] = col_light_blue,
+            [ColText] = col_text,
+            [ColBg] = col_bg_accent,
+            [ColDetail] = col_light_blue,
         },
         [SchemeWinNormal] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_bg,
-            [SchemeDetail] = col_bg,
+            [ColText] = col_text,
+            [ColBg] = col_bg,
+            [ColDetail] = col_bg,
         },
         [SchemeWinMinimized] = {
-            [ SchemeText ] = col_bg_accent,
-            [ SchemeBg ] = col_bg,
-            [ SchemeDetail ] = col_bg,
+            [ ColText ] = col_bg_accent,
+            [ ColBg ] = col_bg,
+            [ ColDetail ] = col_bg,
         },
         [SchemeWinSticky] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_yellow,
-            [ SchemeDetail ] = col_yellow,
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow,
         },
         [ SchemeWinStickyFocus ] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_green,
-            [ SchemeDetail ] = col_green
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_green,
+            [ ColDetail ] = col_green
         },
         [SchemeWinOverlay] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_yellow,
-            [ SchemeDetail ] = col_yellow,
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow,
         },
         [SchemeWinOverlayFocus] = {
-            [ SchemeText ] = col_black,
-            [ SchemeBg ] = col_light_green,
-            [ SchemeDetail ] = col_green,
+            [ ColText ] = col_black,
+            [ ColBg ] = col_light_green,
+            [ ColDetail ] = col_green,
         },
     }
 };
@@ -221,27 +221,37 @@ static const char *windowcolors[][][] = {
 static const char *closebuttoncolors[][][] = {
     [SchemeNoHover] = {
         [ SchemeCloseNormal ] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_light_red,
-            [SchemeDetail] = col_red,
+            [ColText] = col_text,
+            [ColBg] = col_light_red,
+            [ColDetail] = col_red,
         }, 
         [ SchemeCloseLocked ] = {
-            [ SchemeText ] = col_text, 
-            [ SchemeBg ] = col_light_yellow,
-            [ SchemeDetail ] = col_yellow
-        }
+            [ ColText ] = col_text, 
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow
+        }, 
+        [ SchemeCloseFullscreen ] = {
+            [ColText] = col_text,
+            [ColBg] = col_light_red,
+            [ColDetail] = col_red,
+        }, 
     }, 
     [ SchemeHover ] = {
         [ SchemeCloseNormal ] = {
-            [SchemeText] = col_text,
-            [SchemeBg] = col_light_red,
-            [SchemeDetail] = col_red,
+            [ColText] = col_text,
+            [ColBg] = col_light_red,
+            [ColDetail] = col_red,
         }, 
         [ SchemeCloseLocked ] = {
-            [ SchemeText ] = col_text, 
-            [ SchemeBg ] = col_light_yellow,
-            [ SchemeDetail ] = col_yellow
-        }
+            [ ColText ] = col_text, 
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow
+        },
+        [ SchemeCloseFullscreen ] = {
+            [ColText] = col_text,
+            [ColBg] = col_light_red,
+            [ColDetail] = col_red,
+        }, 
     }
 };
 
@@ -255,6 +265,24 @@ static const char *statusbarcolors[] = {
     [ SchemeText ] = col_text,
     [ SchemeBg ] = col_bg,
     [ SchemeDetail ] = col_bg
+};
+
+
+static const char *xreshovertype[SchemeHoverLast] = {
+    "nohover",
+    "hover",
+};
+
+static const char *xrescolortype[ColLast] = {
+    "fg",
+    "bg",
+    "detail"
+};
+
+static const char *xrestagtype[SchemeTagLast] = {
+    "inactive",
+    "filled",
+    "focus",
 };
 
 
@@ -416,6 +444,7 @@ ResourcePref resources[] = {
 		{ "barheight",        INTEGER, &barheight },
 		{ "font",             STRING,  &xresourcesfont },
 
+        // set tag labels
 		{ "tag1",             STRING,  &tags[0] },
 		{ "tag2",             STRING,  &tags[1] },
 		{ "tag3",             STRING,  &tags[2] },

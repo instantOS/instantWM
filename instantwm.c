@@ -20,6 +20,7 @@
  *
  * To understand everything else, start reading main().
  */
+
 #include <errno.h>
 #include <locale.h>
 #include <signal.h>
@@ -91,7 +92,15 @@ void (*handler[LASTEvent]) (XEvent *) = {
 static Atom wmatom[WMLast], netatom[NetLast], xatom[XLast], motifatom;
 static int running = 1;
 static Cur *cursor[CurLast];
+
 static Clr **scheme;
+static Clr ***tagscheme;
+static Clr ***windowscheme;
+static Clr ***closebuttonscheme;
+static Clr *borderscheme;
+static Clr *statusscheme;
+
+
 Display *dpy;
 static Drw *drw;
 static Monitor *mons;
@@ -1437,8 +1446,7 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 	w += 2; /* 1px padding on both sides */
 	ret = x = m->ww - w - getsystraywidth();
 
-	drw_setscheme(drw, scheme[LENGTH(colors)]);
-	drw->scheme[ColFg] = scheme[SchemeNorm][ColFg];
+	drw_setscheme(drw, statusscheme);
 	drw_rect(drw, x, 0, w, bh, 1, 1);
 	x++;
 
@@ -1511,7 +1519,7 @@ drawstatusbar(Monitor *m, int bh, char* stext) {
 		drw_text(drw, x, 0, w, bh, 0, text, 0, 0);
 	}
 
-	drw_setscheme(drw, scheme[SchemeNorm]);
+	drw_setscheme(drw, statusscheme);
 	free(p);
 
 	return ret;
@@ -1523,7 +1531,8 @@ drawbar(Monitor *m)
 	if (pausedraw)
 		return;
 
-	int x, w, sw = 0, n = 0, stw = 0, roundw, iconoffset;
+	int x, w, sw = 0, n = 0, stw = 0, roundw, iconoffset, ishover;
+
 	unsigned int i, occ = 0, urg = 0;
 	Client *c;
 
@@ -1536,9 +1545,9 @@ drawbar(Monitor *m)
 
 	}
 
-	//draw start menu icon
+	//draw start menu icon with instantOS logo
 	if (tagprefix)
-		drw_setscheme(drw, scheme[SchemeActive]);
+		drw_setscheme(drw, tagscheme[SchemeNoHover][SchemeTagFocus]);
 	iconoffset = (bh - 20) / 2;
 	int startmenuinvert = (selmon->gesture == 13);
 	drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0:1);
@@ -1547,6 +1556,8 @@ drawbar(Monitor *m)
 	drw_rect(drw, 19, iconoffset + 14, 6, 6, 1, startmenuinvert ? 1:0);
 
 	resizebarwin(m);
+
+    // check for clients on tag
 	for (c = m->clients; c; c = c->next) {
 		if (ISVISIBLE(c))
 			n++;
@@ -1555,7 +1566,11 @@ drawbar(Monitor *m)
 		if (c->isurgent)
 			urg |= c->tags;
 	}
+
 	x = startmenusize;
+
+    ishover = i == selmon->gesture - 1 ? SchemeHover : SchemeNoHover;
+    // render all tag indicators
 	for (i = 0; i < LENGTH(tags); i++) {
 		if (i >= 9)
 			continue;
@@ -1570,132 +1585,109 @@ drawbar(Monitor *m)
 
 		w = TEXTW(tags[i]);
 
+        // tag has client
 		if (occ & 1 << i) {
 			if (m == selmon && selmon->sel && selmon->sel->tags & 1 << i) {
-				drw_setscheme(drw, scheme[SchemeActive]);
+				drw_setscheme(drw, tagscheme[ishover][SchemeTagFocus]);
 			} else {
+                // tag is active, has clients but is not in focus
 				if (m->tagset[m->seltags] & 1 << i) {
-					drw_setscheme(drw, scheme[SchemeAddActive]);
+					drw_setscheme(drw, tagscheme[ishover][SchemeTagNoFocus]);
 				} else {
 					// do not color tags if vacant tags are hidden
 					if(!selmon->showtags){
-						drw_setscheme(drw, scheme[SchemeTags]);
+						drw_setscheme(drw, tagscheme[ishover][SchemeTagFilled]);
 					} else {
-						drw_setscheme(drw, scheme[SchemeNorm]);
+						drw_setscheme(drw, tagscheme[ishover][SchemeTagInactive]);
 					}
 				}
 			}
-		} else {
+		} else { // tag does not have a client
 			if (m->tagset[m->seltags] & 1 << i) {
-				drw_setscheme(drw, scheme[SchemeEmpty]);
+				drw_setscheme(drw, tagscheme[ishover][SchemeTagEmpty]);
 			} else {
-				drw_setscheme(drw, scheme[SchemeNorm]);
+				drw_setscheme(drw, tagscheme[ishover][SchemeTagInactive]);
 			}
 		}
 
 		if (i == selmon->gesture - 1) {
 			roundw = 8;
 			if (bardragging) {
-				drw_setscheme(drw, scheme[SchemeHoverTags]);
-			} else {
-				if (drw->scheme == scheme[SchemeTags]) {
-							drw_setscheme(drw, scheme[SchemeHoverTags]);
-				} else if (drw->scheme == scheme[SchemeNorm]) {
-					drw_setscheme(drw, scheme[SchemeHover]);
-					roundw = 2;
-				}
-			}
-
+				drw_setscheme(drw, tagscheme[SchemeHover][SchemeTagFilled]);
+			} 
 			drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, roundw);
 
 		} else {
-                  drw_text(drw, x, 0, w, bh, lrpad / 2,
-                           (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i,
-                           drw->scheme == scheme[SchemeNorm] ? 0 : 4);
-                }
+            drw_text(drw, x, 0, w, bh, lrpad / 2, (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
+        }
 		x += w;
 	}
+
+    // render layout indicator
 	w = blw = 60;
-	drw_setscheme(drw, scheme[SchemeNorm]);
+	drw_setscheme(drw, statusscheme);
 	x = drw_text(drw, x, 0, w, bh, (w - TEXTW(m->ltsymbol)) * 0.5 + 10, m->ltsymbol, 0, 0);
 
 	if ((w = m->ww - sw - x - stw) > bh) {
 		if (n > 0) {
+            // render all window titles
 			for (c = m->clients; c; c = c->next) {
 				if (!ISVISIBLE(c))
 					continue;
+
+                ishover = selmon->hoverclient && !selmon->gesture ? SchemeHover : SchemeNoHover;
+
 				if (m->sel == c) {
+                    if ( c == selmon->overlay ) {
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinOverlayFocus]);
+                    } else if (c->issticky) {
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinStickyFocus]);
+                    } else {
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinFocus]);
+                    }
+                } else {
+                    if ( c == selmon->overlay ) {
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinOverlay]);
+                    } else if (c->issticky) {
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinSticky]);
+                    } else if (HIDDEN(c)){
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinMinimized]);
+                    } else {
+                        drw_setscheme(drw, windowscheme[ishover][SchemeWinNormal]);
+                    }
+                }
 
-					//background color rectangles to draw circle on
-					if (!c->issticky) {
-						if (c == selmon->hoverclient && !selmon->gesture)
-							drw_setscheme(drw, scheme[SchemeHoverTags]);
-						else
-							drw_setscheme(drw, scheme[SchemeTags]);
-					}
-					else
-						drw_setscheme(drw, scheme[SchemeActive]);
+                // don't center text if it is too long
+                if (TEXTW(c->name) < (1.0 / (double)n) * w - 64){
+                    drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 4);
+                } else {
+                    drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2 + 20, c->name, 0, 4);
+                }
 
-					if (TEXTW(c->name) < (1.0 / (double)n) * w - 64){
-						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 4);
-					} else {
-						drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh, lrpad / 2 + 20, c->name, 0, 4);
-					}
-
+                if (m->sel == c) {
 					// render close button
-					if (!c->islocked) {
-                        if (c == selmon->fullscreen)
-                            drw_setscheme(drw, scheme[SchemeActive]);
-                        else
-                            drw_setscheme(drw, scheme[SchemeClose]);
-						if (selmon->gesture != 12) {
-							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2, 20, 16);
-							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2 + 16, 20, 4);
-						} else {
-							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFg].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x +  6, (bh - 20) / 2 - 2, 20, 16);
-							XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBorder].pixel);
-							XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + 6, (bh - 20) / 2 + 14, 20, 6);
-						}
-					} else {
-						drw_setscheme(drw, scheme[SchemeAddActive]);
-						XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
-						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, 4, 20, 16);
-						XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
-						XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, 20, 20, 4);
+                    ishover = selmon->gesture == 12 ? SchemeHover : SchemeNoHover;
 
-					}
+                    if (c->islocked) {
+                        drw_setscheme(drw, closebuttonscheme[ishover][SchemeCloseLocked]);
+                    } else if (c == selmon->fullscreen) {
+                        drw_setscheme(drw, closebuttonscheme[ishover][SchemeCloseFullscreen]);
+                    }
 
+                    XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
+                    XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2, 20, 16);
+                    XSetForeground(drw->dpy, drw->gc, drw->scheme[ColDetail].pixel);
+                    XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6, (bh - 20) / 2 + 16, 20, 4);
+
+
+                    // save position of focussed window title on bar
 					m->activeoffset = selmon->mx + x;
 
-				x += (1.0 / (double)n) * w;
-
-				} else {
-                    int scm;
-					if (HIDDEN(c)) {
-						scm = SchemeHid;
-					} else{
-						if (c->issticky)
-							scm = SchemeAddActive;
-						else if (c == selmon->hoverclient && !selmon->gesture)
-							scm = SchemeHover;
-						else
-							scm = SchemeNorm;
-					}
-					drw_setscheme(drw, scheme[scm]);
-					if (TEXTW(c->name) < (1.0 / (double)n) * w){
-						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5, c->name, 0, 0);
-					} else {
-						drw_text(drw, x, 0, (1.0 / (double)n) * w, bh, lrpad / 2, c->name, 0, 0);
-					}
-					x += (1.0 / (double)n) * w;
-
-				}
+                } 
+                x += (1.0 / (double)n) * w;
 			}
 		} else {
-			drw_setscheme(drw, scheme[SchemeNorm]);
+			drw_setscheme(drw, statusscheme);
 			drw_rect(drw, x, 0, w, bh, 1, 1);
 			//drw_setscheme(drw, scheme[SchemeTags]);
 			// render shutdown button
@@ -1719,7 +1711,7 @@ drawbar(Monitor *m)
 	}
 
     // prevscheme = scheme[SchemeNorm];
-	drw_setscheme(drw, scheme[SchemeNorm]);
+	drw_setscheme(drw, statusscheme);
 
 	m->bt = n;
 	m->btw = w;
@@ -4265,6 +4257,7 @@ void
 setup(void)
 {
 	int i;
+    int u;
 	XSetWindowAttributes wa;
 	Atom utf8string;
 
@@ -4334,6 +4327,34 @@ setup(void)
 
 	for (i = 0; i < LENGTH(colors); i++)
 		scheme[i] = drw_scm_create(drw, colors[i], 4);
+
+	borderscheme = drw_scm_create(drw, bordercolors[i], 3);
+	statusscheme = drw_scm_create(drw, statusbarcolors[i], 3);
+
+    tagscheme = ecalloc(2, sizeof(**Clr));
+    for (i = 0; i< LENGTH(tagcolors); i++) {
+        tagscheme[i] = ecalloc(LENGTH(tagcolors[i]) + 1, sizeof(**Clr));
+        for (u = 0; u<LENGTH(tagcolors[i]); u++) {
+            tagscheme[i][u] = drw_scm_create(drw, tagcolors[i][u], 3);
+        }
+    }
+
+    windowscheme = ecalloc(2, sizeof(**Clr));
+    for (i = 0; i< LENGTH(windowcolors); i++) {
+        windowscheme[i] = ecalloc(LENGTH(windowcolors[i]) + 1, sizeof(**Clr));
+        for (u = 0; u<LENGTH(windowcolors[i]); u++) {
+            windowscheme[i][u] = drw_scm_create(drw, windowcolors[i][u], 3);
+        }
+    }
+
+    closebuttonscheme = ecalloc(2, sizeof(**Clr));
+    for (i = 0; i< LENGTH(closebuttoncolors); i++) {
+        closebuttonscheme[i] = ecalloc(LENGTH(closebuttoncolors[i]) + 1, sizeof(**Clr));
+        for (u = 0; u<LENGTH(closebuttoncolors[i]); u++) {
+            closebuttonscheme[i][u] = drw_scm_create(drw, closebuttoncolors[i][u], 3);
+        }
+    }
+
 	/* init system tray */
 	updatesystray();
 	/* init bars */
@@ -6433,7 +6454,8 @@ main(int argc, char *argv[])
 		die("instantwm: cannot open display");
 	checkotherwm();
 	XrmInitialize();
-	load_xresources();
+    // TODO: reenable xresources with new theming
+	// load_xresources();
 	setup();
 #ifdef __OpenBSD__
 	if (pledge("stdio rpath proc exec", NULL) == -1)

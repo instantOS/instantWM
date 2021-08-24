@@ -65,17 +65,18 @@ enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms *
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkStartMenu, ClkLast }; /* clicks */
 
+
+
+////// Colorscheme enums ////// 
 // each element has the possibility of a hover over
-enum { SchemeHover, SchemeNoHover };
+enum { SchemeHover, SchemeNoHover, SchemeHoverLast };
 // tag states
-enum { SchemeTagInactive, SchemeTagFilled, SchemeTagFocus, SchemeTagNoFocus, SchemeTagEmpty };
+enum { SchemeTagInactive, SchemeTagFilled, SchemeTagFocus, SchemeTagNoFocus, SchemeTagEmpty, SchemeTagLast };
 // window states
 enum { SchemeWinFocus, SchemeWinMinimized, SchemeWinNormal,
     SchemeWinStickyFocus, SchemeWinSticky, SchemeWinOverlay, SchemeWinOverlayFocus };
 // close button
-enum { SchemeCloseNormal, SchemeCloseLocked };
-// scheme enum used for all text/button elements
-enum { SchemeText, SchemeBg, SchemeDetail };
+enum { SchemeCloseNormal, SchemeCloseLocked, SchemeCloseFullscreen, SchemeCloseLast };
 // window border states
 enum { SchemeBorderNormal, SchemeBorderFloatFocus, SchemeBorderTileFocus };
 
