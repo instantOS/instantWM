@@ -395,48 +395,22 @@ static const char *spoticli[] = { "spoticli", "m", NULL};
 
 #include "push.c"
 
-/* ResourcePref resources[] = { */
+ResourcePref resources[] = {
+    { "barheight",        INTEGER, &barheight },
+    { "font",             STRING,  &xresourcesfont },
 
-/* 		{ "bgcolor",          STRING,  &col_background }, */
-/* 		{ "hoverbgcolor",     STRING,  &col_hover }, */
-/* 		{ "hovershadowcolor", STRING,  &col_hover_shadow }, */
+    // set tag labels
+    { "tag1",             STRING,  &tags[0] },
+    { "tag2",             STRING,  &tags[1] },
+    { "tag3",             STRING,  &tags[2] },
+    { "tag4",             STRING,  &tags[3] },
+    { "tag5",             STRING,  &tags[4] },
+    { "tag6",             STRING,  &tags[5] },
+    { "tag7",             STRING,  &tags[6] },
+    { "tag8",             STRING,  &tags[7] },
+    { "tag9",             STRING,  &tags[8] },
 
-/* 		{ "fontcolor",        STRING,  &col_white }, */
-
-/* 		{ "minimize",         STRING,  &col_orange }, */
-/* 		{ "darkminimize",     STRING,  &col_dark_orange }, */
-/* 		{ "minimizedcolor",   STRING,  &col_gray }, */
-
-/* 		{ "border",           STRING,  &col_pastel_blue }, */
-/* 		{ "activeborder",     STRING,  &col_light_blue }, */
-
-/* 		{ "activetag",        STRING,  &col_green }, */
-/* 		{ "darkactivetag",    STRING,  &col_dark_green }, */
-
-/* 		{ "close",            STRING,  &col_red }, */
-/* 		{ "darkclose",        STRING,  &col_dark_red }, */
-/* 		{ "hoverclose",       STRING,  &col_hover_red }, */
-/* 		{ "darkhoverclose",   STRING,  &col_hover_dark_red }, */
-
-/* 		{ "focus",            STRING,  &col_blue }, */
-/* 		{ "darkfocus",        STRING,  &col_dark_blue }, */
-/* 		{ "hoverfocus",       STRING,  &col_hover_blue }, */
-/* 		{ "darkhoverfocus",   STRING,  &col_hover_dark_blue }, */
-
-/* 		{ "barheight",        INTEGER, &barheight }, */
-/* 		{ "font",             STRING,  &xresourcesfont }, */
-
-/*         // set tag labels */
-/* 		{ "tag1",             STRING,  &tags[0] }, */
-/* 		{ "tag2",             STRING,  &tags[1] }, */
-/* 		{ "tag3",             STRING,  &tags[2] }, */
-/* 		{ "tag4",             STRING,  &tags[3] }, */
-/* 		{ "tag5",             STRING,  &tags[4] }, */
-/* 		{ "tag6",             STRING,  &tags[5] }, */
-/* 		{ "tag7",             STRING,  &tags[6] }, */
-/* 		{ "tag8",             STRING,  &tags[7] }, */
-/* 		{ "tag9",             STRING,  &tags[8] }, */
-/* }; */
+};
 
 // instantwmctrl commands
 static Xcommand commands[] = {

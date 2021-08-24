@@ -4328,6 +4328,9 @@ void load_xresources(void) {
     resource_load(db, "status.bg", STRING, (void *)statusbarcolors[ColBg]);
     resource_load(db, "status.detail", STRING, (void *)statusbarcolors[ColDetail]);
 
+    for (p = resources; p < resources + LENGTH(resources); p++)
+		resource_load(db, p->name, p->type, p->dst);
+
     XCloseDisplay(display);
 }
 
@@ -4408,7 +4411,6 @@ void setup(void) {
     /* for (i = 0; i < LENGTH(colors); i++) */
     /*     scheme[i] = drw_scm_create(drw, colors[i], 4); */
 
-    load_xresources();
 
     borderscheme = drw_scm_create(drw, bordercolors, 4);
     statusscheme = drw_scm_create(drw, statusbarcolors, 3);
@@ -6406,23 +6408,6 @@ void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
     }
 }
 
-/* void load_xresources(void) { */
-/*     Display *display; */
-/*     char *resm; */
-/*     XrmDatabase db; */
-/*     ResourcePref *p; */
-
-/*     display = XOpenDisplay(NULL); */
-/*     resm = XResourceManagerString(display); */
-/*     if (!resm) */
-/*         return; */
-
-/*     db = XrmGetStringDatabase(resm); */
-/*     for (p = resources; p < resources + LENGTH(resources); p++) */
-/*         resource_load(db, p->name, p->type, p->dst); */
-/*     XCloseDisplay(display); */
-/* } */
-
 int main(int argc, char *argv[]) {
     if (argc == 2 &&
         (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1]))) {
@@ -6436,9 +6421,7 @@ int main(int argc, char *argv[]) {
         die("instantwm: cannot open display");
     checkotherwm();
     XrmInitialize();
-    // TODO: reenable xresources with new \
-    // theming
-    // load_xresources( BETWEEN 1 AND 10 );
+    load_xresources();
     setup();
 #ifdef __OpenBSD__
     if (pledge("stdio rpath proc exec", NULL) == -1)
