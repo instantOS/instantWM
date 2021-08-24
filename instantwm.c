@@ -1024,8 +1024,9 @@ void cleanup(void) {
     }
     for (i = 0; i < CurLast; i++)
         drw_cur_free(drw, cursor[i]);
-    for (i = 0; i < LENGTH(colors) + 1; i++)
-        free(scheme[i]);
+    /* for (i = 0; i < LENGTH(colors) + 1; i++) */
+    /*     free(scheme[i]); */
+    //TODO: free other colors
     XDestroyWindow(dpy, wmcheckwin);
     drw_free(drw);
     XSync(dpy, False);
@@ -1085,7 +1086,7 @@ void clientmessage(XEvent *e) {
                              ResizeRedirectMask);
             XReparentWindow(dpy, c->win, systray->win, 0, 0);
             /* use parents background color */
-            swa.background_pixel = scheme[SchemeNorm][ColBg].pixel;
+            swa.background_pixel = statusscheme[ColBg].pixel;
             XChangeWindowAttributes(dpy, c->win, CWBackPixel, &swa);
             sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
                       XEMBED_EMBEDDED_NOTIFY, 0, systray->win,
@@ -1456,7 +1457,7 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
                     drw_clr_create(drw, &drw->scheme[ColBg], buf);
                     i += 7;
                 } else if (text[i] == 'd') {
-                    drw->scheme[ColBg] = scheme[SchemeNorm][ColBg];
+                    drw->scheme[ColBg] = statusscheme[ColBg];
                 } else if (text[i] == 'r') {
                     int rx = atoi(text + ++i);
                     while (text[++i] != ',')
@@ -1709,7 +1710,6 @@ void drawbar(Monitor *m) {
         }
     }
 
-    // prevscheme = scheme[SchemeNorm];
     drw_setscheme(drw, statusscheme);
 
     m->bt = n;
@@ -1799,9 +1799,9 @@ void focus(Client *c) {
         attachstack(c);
         grabbuttons(c, 1);
         if (!c->isfloating)
-            XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
+            XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderTileFocus].pixel);
         else
-            XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColFloat].pixel);
+            XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderFloatFocus].pixel);
 
         setfocus(c);
         if (c->tags & 1 << 20) {
@@ -2325,7 +2325,7 @@ void manage(Window w, XWindowAttributes *wa) {
     }
 
     XConfigureWindow(dpy, w, CWBorderWidth, &wc);
-    XSetWindowBorder(dpy, w, scheme[SchemeNorm][ColBorder].pixel);
+    XSetWindowBorder(dpy, w, borderscheme[SchemeBorderNormal].pixel);
     configure(c); /* propagates border_width, if size doesn't change */
     updatewindowtype(c);
     updatesizehints(c);
@@ -2654,20 +2654,20 @@ void movemouse(const Arg *arg) {
                      ev.xmotion.x_root < selmon->mx + selmon->mw)) {
                     if (!colorclient) {
                         XSetWindowBorder(dpy, selmon->sel->win,
-                                         scheme[SchemeAddActive][ColBg].pixel);
+                                         borderscheme[SchemeBorderSnap].pixel);
                         colorclient = 1;
                     }
                 } else if (colorclient) {
                     colorclient = 0;
                     XSetWindowBorder(dpy, selmon->sel->win,
-                                     scheme[SchemeSel][ColFloat].pixel);
+                                     borderscheme[SchemeBorderFloatFocus].pixel);
                 }
             } else {
                 ny = selmon->my + (selmon->showbar ? bh : 0);
                 if (!colorclient) {
                     colorclient = 1;
                     XSetWindowBorder(dpy, selmon->sel->win,
-                                     scheme[SchemeAddActive][ColBg].pixel);
+                                     borderscheme[SchemeBorderSnap].pixel);
                 }
             }
 
@@ -2797,7 +2797,7 @@ void movemouse(const Arg *arg) {
             if (ev.xmotion.state & ShiftMask ||
                 NULL == c->mon->lt[c->mon->sellt]->arrange) {
                 XSetWindowBorder(dpy, selmon->sel->win,
-                                 scheme[SchemeSel][ColBorder].pixel);
+                                 borderscheme[SchemeBorderTileFocus].pixel);
 
                 c->sfh = c->h;
                 c->sfw = c->w;
@@ -2826,7 +2826,7 @@ void movemouse(const Arg *arg) {
             if (ev.xmotion.state & ShiftMask ||
                 NULL == c->mon->lt[c->mon->sellt]->arrange) {
                 XSetWindowBorder(dpy, selmon->sel->win,
-                                 scheme[SchemeSel][ColBorder].pixel);
+                                 borderscheme[SchemeBorderTileFocus].pixel);
 
                 c->sfh = c->h;
                 c->sfw = c->w;
@@ -2859,7 +2859,7 @@ void movemouse(const Arg *arg) {
         } else {
             // maximize window
             XSetWindowBorder(dpy, selmon->sel->win,
-                             scheme[SchemeSel][ColBorder].pixel);
+                             borderscheme[SchemeBorderTileFocus].pixel);
             savefloating(c);
             selmon->sel->snapstatus = 9;
             arrange(selmon);
@@ -4285,35 +4285,35 @@ void setup(void) {
 
     /* init appearance */
 
-    scheme = ecalloc(LENGTH(colors) + 1, sizeof(Clr *));
-    scheme[LENGTH(colors)] = drw_scm_create(drw, colors[0], 4);
+    /* scheme = ecalloc(LENGTH(colors) + 1, sizeof(Clr *)); */
+    /* scheme[LENGTH(colors)] = drw_scm_create(drw, colors[0], 4); */
 
-    for (i = 0; i < LENGTH(colors); i++)
-        scheme[i] = drw_scm_create(drw, colors[i], 4);
+    /* for (i = 0; i < LENGTH(colors); i++) */
+    /*     scheme[i] = drw_scm_create(drw, colors[i], 4); */
 
-    borderscheme = drw_scm_create(drw, bordercolors[i], 3);
-    statusscheme = drw_scm_create(drw, statusbarcolors[i], 3);
+    borderscheme = drw_scm_create(drw, bordercolors, 3);
+    statusscheme = drw_scm_create(drw, statusbarcolors, 3);
 
-    tagscheme = ecalloc(2, sizeof(**Clr));
+    tagscheme = ecalloc(2, sizeof(Clr**));
     for (i = 0; i < LENGTH(tagcolors); i++) {
-        tagscheme[i] = ecalloc(LENGTH(tagcolors[i]) + 1, sizeof(**Clr));
+        tagscheme[i] = ecalloc(LENGTH(tagcolors[i]) + 1, sizeof(Clr**));
         for (u = 0; u < LENGTH(tagcolors[i]); u++) {
             tagscheme[i][u] = drw_scm_create(drw, tagcolors[i][u], 3);
         }
     }
 
-    windowscheme = ecalloc(2, sizeof(**Clr));
+    windowscheme = ecalloc(2, sizeof(Clr**));
     for (i = 0; i < LENGTH(windowcolors); i++) {
-        windowscheme[i] = ecalloc(LENGTH(windowcolors[i]) + 1, sizeof(**Clr));
+        windowscheme[i] = ecalloc(LENGTH(windowcolors[i]) + 1, sizeof(Clr**));
         for (u = 0; u < LENGTH(windowcolors[i]); u++) {
             windowscheme[i][u] = drw_scm_create(drw, windowcolors[i][u], 3);
         }
     }
 
-    closebuttonscheme = ecalloc(2, sizeof(**Clr));
+    closebuttonscheme = ecalloc(2, sizeof(Clr**));
     for (i = 0; i < LENGTH(closebuttoncolors); i++) {
         closebuttonscheme[i] =
-            ecalloc(LENGTH(closebuttoncolors[i]) + 1, sizeof(**Clr));
+            ecalloc(LENGTH(closebuttoncolors[i]) + 1, sizeof(Clr**));
         for (u = 0; u < LENGTH(closebuttoncolors[i]); u++) {
             closebuttonscheme[i][u] =
                 drw_scm_create(drw, closebuttoncolors[i][u], 3);
@@ -4997,19 +4997,21 @@ void togglefloating(const Arg *arg) {
         return;
     selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
     if (selmon->sel->isfloating) {
+        // make window float
         restorebw(selmon->sel);
         XSetWindowBorder(dpy, selmon->sel->win,
-                         scheme[SchemeSel][ColFloat].pixel);
+                         borderscheme[SchemeBorderFloatFocus].pixel);
         animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
                       selmon->sel->sfw, selmon->sel->sfh, 7, 0);
     } else {
+        // make window tile
         selmon->clientcount = clientcount();
         if (selmon->clientcount <= 1 && !selmon->sel->snapstatus) {
             savebw(selmon->sel);
             selmon->sel->bw = 0;
         }
         XSetWindowBorder(dpy, selmon->sel->win,
-                         scheme[SchemeSel][ColBorder].pixel);
+                         borderscheme[SchemeBorderTileFocus].pixel);
         /* save last known float dimensions */
         selmon->sel->sfx = selmon->sel->x;
         selmon->sel->sfy = selmon->sel->y;
@@ -5240,7 +5242,7 @@ void unfocus(Client *c, int setfocus) {
         return;
     lastclient = c;
     grabbuttons(c, 0);
-    XSetWindowBorder(dpy, c->win, scheme[SchemeNorm][ColBorder].pixel);
+    XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderNormal].pixel);
     if (setfocus) {
         XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
         XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
@@ -5583,10 +5585,10 @@ void updatesystray(void) {
         if (!(systray = (Systray *)calloc(1, sizeof(Systray))))
             die("fatal: could not malloc() %u bytes\n", sizeof(Systray));
         systray->win = XCreateSimpleWindow(dpy, root, x, m->by, w, bh, 0, 0,
-                                           scheme[SchemeSel][ColBg].pixel);
+                                           tagscheme[SchemeNoHover][SchemeTagFilled][ColBg].pixel);
         wa.event_mask = ButtonPressMask | ExposureMask;
         wa.override_redirect = True;
-        wa.background_pixel = scheme[SchemeNorm][ColBg].pixel;
+        wa.background_pixel = statusscheme[ColBg].pixel;
         XSelectInput(dpy, systray->win, SubstructureNotifyMask);
         XChangeProperty(dpy, systray->win, netatom[NetSystemTrayOrientation],
                         XA_CARDINAL, 32, PropModeReplace,
@@ -5611,7 +5613,7 @@ void updatesystray(void) {
     }
     for (w = 0, i = systray->icons; i; i = i->next) {
         /* make sure the background color stays the same */
-        wa.background_pixel = scheme[SchemeNorm][ColBg].pixel;
+        wa.background_pixel = statusscheme[ColBg].pixel;
         XChangeWindowAttributes(dpy, i->win, CWBackPixel, &wa);
         XMapRaised(dpy, i->win);
         w += systrayspacing;
@@ -5636,7 +5638,7 @@ void updatesystray(void) {
     XMapWindow(dpy, systray->win);
     XMapSubwindows(dpy, systray->win);
     /* redraw background */
-    XSetForeground(dpy, drw->gc, scheme[SchemeNorm][ColBg].pixel);
+    XSetForeground(dpy, drw->gc, statusscheme[ColBg].pixel);
     XFillRectangle(dpy, systray->win, drw->gc, 0, 0, w, bh);
     XSync(dpy, False);
 }
@@ -5734,7 +5736,7 @@ void animleft(const Arg *arg) {
 
     // windows like behaviour in floating layout
     if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
-        XSetWindowBorder(dpy, selmon->sel->win, scheme[SchemeSel][ColBg].pixel);
+        XSetWindowBorder(dpy, selmon->sel->win, borderscheme[SchemeBorderTileFocus].pixel);
         changesnap(selmon->sel, 3);
         return;
     }
@@ -5770,9 +5772,10 @@ void animright(const Arg *arg) {
         return;
     }
 
+    // snap window to the right
     if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
         XSetWindowBorder(dpy, selmon->sel->win,
-                         scheme[SchemeSel][ColBorder].pixel);
+                         borderscheme[SchemeBorderTileFocus].pixel);
         changesnap(selmon->sel, 1);
         return;
     }
@@ -5845,7 +5848,7 @@ void upkey(const Arg *arg) {
     if (NULL == selmon->lt[selmon->sellt]->arrange) {
         Client *c;
         c = selmon->sel;
-        XSetWindowBorder(dpy, c->win, scheme[SchemeSel][ColBorder].pixel);
+        XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderTileFocus].pixel);
         changesnap(c, 0);
         return;
     }
@@ -5895,7 +5898,7 @@ void spacetoggle(const Arg *arg) {
             resetsnap(c);
         } else {
             XSetWindowBorder(dpy, selmon->sel->win,
-                             scheme[SchemeSel][ColBorder].pixel);
+                             borderscheme[SchemeBorderTileFocus].pixel);
             savefloating(c);
             selmon->sel->snapstatus = 9;
             arrange(selmon);

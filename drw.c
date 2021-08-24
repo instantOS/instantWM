@@ -244,7 +244,7 @@ drw_rect(Drw *drw, int x, int y, unsigned int w, unsigned int h, int filled, int
 {
 	if (!drw || !drw->scheme)
 		return;
-	XSetForeground(drw->dpy, drw->gc, invert ? drw->scheme[ColBg].pixel : drw->scheme[ColText].pixel);
+	XSetForeground(drw->dpy, drw->gc, invert ? drw->scheme[ColBg].pixel : drw->scheme[ColFg].pixel);
 	if (filled)
 		XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h);
 	else
@@ -291,7 +291,7 @@ drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h, unsigned int lp
 
 		if (rounded) {
 			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h - rounded);
-			XSetForeground(drw->dpy, drw->gc, drw->scheme[ColFloat].pixel);
+			XSetForeground(drw->dpy, drw->gc, drw->scheme[ColDetail].pixel);
 			XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y + h - rounded, w, rounded);
 
 		} else {

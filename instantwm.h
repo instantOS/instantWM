@@ -78,7 +78,7 @@ enum { SchemeWinFocus, SchemeWinMinimized, SchemeWinNormal,
 // close button
 enum { SchemeCloseNormal, SchemeCloseLocked, SchemeCloseFullscreen, SchemeCloseLast };
 // window border states
-enum { SchemeBorderNormal, SchemeBorderFloatFocus, SchemeBorderTileFocus };
+enum { SchemeBorderNormal, SchemeBorderFloatFocus, SchemeBorderTileFocus, SchemeBorderSnap, SchemeBorderLast };
 
 typedef union {
 	int i;
@@ -276,6 +276,7 @@ void resetsticky(Client *c);
 void applysnap(Client *c, Monitor *m);
 int unhideone();
 int allclientcount();
+int clientcountmon(Monitor *m);
 void resizebarwin(Monitor *m);
 void resizeclient(Client *c, int x, int y, int w, int h);
 void resizemouse(const Arg *arg);
