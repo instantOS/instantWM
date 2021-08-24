@@ -6284,22 +6284,22 @@ void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
     }
 }
 
-void load_xresources(void) {
-    Display *display;
-    char *resm;
-    XrmDatabase db;
-    ResourcePref *p;
+/* void load_xresources(void) { */
+/*     Display *display; */
+/*     char *resm; */
+/*     XrmDatabase db; */
+/*     ResourcePref *p; */
 
-    display = XOpenDisplay(NULL);
-    resm = XResourceManagerString(display);
-    if (!resm)
-        return;
+/*     display = XOpenDisplay(NULL); */
+/*     resm = XResourceManagerString(display); */
+/*     if (!resm) */
+/*         return; */
 
-    db = XrmGetStringDatabase(resm);
-    for (p = resources; p < resources + LENGTH(resources); p++)
-        resource_load(db, p->name, p->type, p->dst);
-    XCloseDisplay(display);
-}
+/*     db = XrmGetStringDatabase(resm); */
+/*     for (p = resources; p < resources + LENGTH(resources); p++) */
+/*         resource_load(db, p->name, p->type, p->dst); */
+/*     XCloseDisplay(display); */
+/* } */
 
 int main(int argc, char *argv[]) {
     if (argc == 2 &&
