@@ -23,6 +23,7 @@ static char col_text[] = "#DFDFDF";
 static char col_black[] = "#000000";
 
 static char col_bg_accent[] = "#384252";
+static char col_bg_hover[] = "#1C1C1C";
 
 static char col_light_blue[] = "#89B3F7";
 static char col_blue[] = "#536DFE";
@@ -64,11 +65,10 @@ static const char *tagcolors[2][5][3] = {
             [ColDetail] = col_red,
         }
     },
-    // TODO: change hover colors
     [SchemeHover] = {
         [SchemeTagInactive] = {
             [ColFg] = col_text,
-            [ColBg] = col_bg,
+            [ColBg] = col_bg_hover,
             [ColDetail] = col_bg,
         },
         [SchemeTagFilled] = {
