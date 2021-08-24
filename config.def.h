@@ -23,19 +23,29 @@ static char col_text[] = "#DFDFDF";
 static char col_black[] = "#000000";
 
 static char col_bg_accent[] = "#384252";
+static char col_bg_accent_hover[] = "#4C5564";
 static char col_bg_hover[] = "#1C1C1C";
 
 static char col_light_blue[] = "#89B3F7";
+static char col_light_blue_hover[] = "#a1c2f9";
 static char col_blue[] = "#536DFE";
+static char col_blue_hover[] = "#758afe";
+
 
 static char col_light_green[] = "#81c995";
+static char col_light_green_hover[] = "#99d3aa";
 static char col_green[] = "#1e8e3e";
+static char col_green_hover[] = "#4ba465";
 
 static char col_light_yellow[] = "#fdd663";
+static char col_light_yellow_hover[] = "#fddd82";
 static char col_yellow[] = "#f9ab00";
+static char col_yellow_hover[] = "#f9bb33";
 
 static char col_light_red[] = "#f28b82";
+static char col_light_red_hover[] = "#f4a19a";
 static char col_red[] = "#d93025";
+static char col_red_hover[] = "#e05951";
 
 static const char *tagcolors[2][5][3] = {
     [SchemeNoHover] = {
@@ -73,23 +83,23 @@ static const char *tagcolors[2][5][3] = {
         },
         [SchemeTagFilled] = {
             [ColFg] = col_text,
-            [ColBg] = col_bg_accent,
-            [ColDetail] = col_light_blue,
+            [ColBg] = col_bg_accent_hover,
+            [ColDetail] = col_light_blue_hover,
         },
         [SchemeTagFocus] = {
             [ColFg] = col_black,
-            [ColBg] = col_light_green,
-            [ColDetail] = col_green,
+            [ColBg] = col_light_green_hover,
+            [ColDetail] = col_green_hover,
         },
         [SchemeTagNoFocus] = {
             [ColFg] = col_black,
-            [ColBg] = col_light_yellow,
-            [ColDetail] = col_yellow,
+            [ColBg] = col_light_yellow_hover,
+            [ColDetail] = col_yellow_hover,
         },
         [SchemeTagEmpty] = {
             [ColFg] = col_black,
-            [ColBg] = col_light_red,
-            [ColDetail] = col_red,
+            [ColBg] = col_light_red_hover,
+            [ColDetail] = col_red_hover,
         }
     }
 };
@@ -136,38 +146,38 @@ static const char *windowcolors[2][7][3] = {
     [SchemeHover] = {
         [SchemeWinFocus] = {
             [ColFg] = col_text,
-            [ColBg] = col_bg_accent,
-            [ColDetail] = col_light_blue,
+            [ColBg] = col_bg_accent_hover,
+            [ColDetail] = col_light_blue_hover,
         },
         [SchemeWinNormal] = {
             [ColFg] = col_text,
-            [ColBg] = col_bg,
-            [ColDetail] = col_bg,
+            [ColBg] = col_bg_hover,
+            [ColDetail] = col_bg_hover,
         },
         [SchemeWinMinimized] = {
-            [ ColFg ] = col_bg_accent,
+            [ ColFg ] = col_bg_accent_hover,
             [ ColBg ] = col_bg,
             [ ColDetail ] = col_bg,
         },
         [SchemeWinSticky] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_yellow,
-            [ ColDetail ] = col_yellow,
+            [ ColBg ] = col_light_yellow_hover,
+            [ ColDetail ] = col_yellow_hover,
         },
         [ SchemeWinStickyFocus ] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_green,
-            [ ColDetail ] = col_green
+            [ ColBg ] = col_light_green_hover,
+            [ ColDetail ] = col_green_hover
         },
         [SchemeWinOverlay] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_yellow,
-            [ ColDetail ] = col_yellow,
+            [ ColBg ] = col_light_yellow_hover,
+            [ ColDetail ] = col_yellow_hover,
         },
         [SchemeWinOverlayFocus] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_green,
-            [ ColDetail ] = col_green,
+            [ ColBg ] = col_light_green_hover,
+            [ ColDetail ] = col_green_hover,
         },
     }
 };
@@ -193,18 +203,18 @@ static const char *closebuttoncolors[2][3][3] = {
     [ SchemeHover ] = {
         [ SchemeCloseNormal ] = {
             [ColFg] = col_text,
-            [ColBg] = col_light_red,
-            [ColDetail] = col_red,
+            [ColBg] = col_light_red_hover,
+            [ColDetail] = col_red_hover,
         }, 
         [ SchemeCloseLocked ] = {
             [ ColFg ] = col_text, 
-            [ ColBg ] = col_light_yellow,
-            [ ColDetail ] = col_yellow
+            [ ColBg ] = col_light_yellow_hover,
+            [ ColDetail ] = col_yellow_hover
         },
         [ SchemeCloseFullscreen ] = {
             [ColFg] = col_text,
-            [ColBg] = col_light_red,
-            [ColDetail] = col_red,
+            [ColBg] = col_light_red_hover,
+            [ColDetail] = col_red_hover,
         }, 
     }
 };

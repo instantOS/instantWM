@@ -1656,7 +1656,7 @@ void drawbar(Monitor *m) {
                 if (!ISVISIBLE(c))
                     continue;
 
-                ishover = selmon->hoverclient && !selmon->gesture
+                ishover = selmon->hoverclient && !selmon->gesture && c == selmon->hoverclient
                               ? SchemeHover
                               : SchemeNoHover;
 
@@ -1700,7 +1700,7 @@ void drawbar(Monitor *m) {
                 if (m->sel == c) {
                     // render close button
                     ishover =
-                        selmon->gesture != 12 ? SchemeHover : SchemeNoHover;
+                        selmon->gesture != 12 ? SchemeNoHover : SchemeHover;
 
                     if (c->islocked) {
                         drw_setscheme(
@@ -1716,12 +1716,12 @@ void drawbar(Monitor *m) {
 
                     XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
                     XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6,
-                                   (bh - 20) / 2 - ishover * 4, 20, 16);
+                                   (bh - 20) / 2 - !ishover * 4, 20, 16);
                     XSetForeground(drw->dpy, drw->gc,
                                    drw->scheme[ColDetail].pixel);
                     XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6,
-                                   (bh - 20) / 2 + 16 - ishover * 4, 20,
-                                   4 + ishover * 4);
+                                   (bh - 20) / 2 + 16 - !ishover * 4, 20,
+                                   4 + !ishover * 4);
 
                     // save position of focussed window title on bar
                     m->activeoffset = selmon->mx + x;
@@ -4330,7 +4330,7 @@ void setup(void) {
     /* for (i = 0; i < LENGTH(colors); i++) */
     /*     scheme[i] = drw_scm_create(drw, colors[i], 4); */
 
-    borderscheme = drw_scm_create(drw, bordercolors, 3);
+    borderscheme = drw_scm_create(drw, bordercolors, 4);
     statusscheme = drw_scm_create(drw, statusbarcolors, 3);
 
     tagscheme = ecalloc(2, sizeof(Clr **));
@@ -6356,8 +6356,9 @@ int main(int argc, char *argv[]) {
         die("instantwm: cannot open display");
     checkotherwm();
     XrmInitialize();
-    // TODO: reenable xresources with new theming
-    // load_xresources();
+    // TODO: reenable xresources with new \
+    // theming
+    // load_xresources( BETWEEN 1 AND 10 );
     setup();
 #ifdef __OpenBSD__
     if (pledge("stdio rpath proc exec", NULL) == -1)
