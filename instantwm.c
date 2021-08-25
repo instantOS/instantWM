@@ -1768,7 +1768,8 @@ void enternotify(XEvent *e) {
     Monitor *m;
     XCrossingEvent *ev = &e->xcrossing;
     int resizeexit = 0;
-    if (barleavestatus) {
+    // deactivate area at the top to prevent overlay gesture from glitching out
+    if (barleavestatus && ev->y_root >= selmon->my + 5) {
         resetbar();
         barleavestatus = 0;
     }
