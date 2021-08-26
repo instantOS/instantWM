@@ -1483,8 +1483,16 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
                     customcolor = 1;
                     drw_clr_create(drw, &drw->scheme[ColBg], buf);
                     i += 7;
+                } else if (text[i] == 't') {
+                    char buf[8];
+                    memcpy(buf, (char *)text + i + 1, 7);
+                    buf[7] = '\0';
+                    customcolor = 1;
+                    drw_clr_create(drw, &drw->scheme[ColFg], buf);
+                    i += 7;
                 } else if (text[i] == 'd') {
-                    drw->scheme[ColBg] = statusscheme[ColBg];
+                    drw_clr_create(drw, &drw->scheme[ColBg], statusbarcolors[ColBg]);
+                    drw_clr_create(drw, &drw->scheme[ColFg], statusbarcolors[ColFg]);
                 } else if (text[i] == 'r') {
                     int rx = atoi(text + ++i);
                     while (text[++i] != ',')
@@ -1516,6 +1524,7 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
 
     if (customcolor) {
         drw_clr_create(drw, &drw->scheme[ColBg], statusbarcolors[ColBg]);
+        drw_clr_create(drw, &drw->scheme[ColFg], statusbarcolors[ColFg]);
     }
 
     if (cmdcounter < 20) {
@@ -4309,28 +4318,34 @@ void load_xresources(void) {
 
             for (u = 0; u < LENGTH(schemeclosetypes); u++) {
                 char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
+                snprintf(propname, sizeof(propname), "%s.%s.close.%s",
                          schemehovertypes[i].name, schemeclosetypes[u].name,
                          schemecolortypes[q].name);
-                resource_load(db, propname, STRING,
-                              (void *)(closebuttoncolors[schemehovertypes[i].type]
-                                                [schemeclosetypes[u].type]
-                                                [schemecolortypes[q].type]));
+                resource_load(
+                    db, propname, STRING,
+                    (void *)(closebuttoncolors[schemehovertypes[i].type]
+                                              [schemeclosetypes[u].type]
+                                              [schemecolortypes[q].type]));
             }
         }
     }
 
-    resource_load(db, "normal.border", STRING, (void *)bordercolors[SchemeBorderNormal]);
-    resource_load(db, "focus.tile.border", STRING, (void *)bordercolors[SchemeBorderTileFocus]);
-    resource_load(db, "focus.float.border", STRING, (void *)bordercolors[SchemeBorderFloatFocus]);
-    resource_load(db, "snap.border", STRING, (void *)bordercolors[SchemeBorderSnap]);
+    resource_load(db, "normal.border", STRING,
+                  (void *)bordercolors[SchemeBorderNormal]);
+    resource_load(db, "focus.tile.border", STRING,
+                  (void *)bordercolors[SchemeBorderTileFocus]);
+    resource_load(db, "focus.float.border", STRING,
+                  (void *)bordercolors[SchemeBorderFloatFocus]);
+    resource_load(db, "snap.border", STRING,
+                  (void *)bordercolors[SchemeBorderSnap]);
 
     resource_load(db, "status.fg", STRING, (void *)statusbarcolors[ColFg]);
     resource_load(db, "status.bg", STRING, (void *)statusbarcolors[ColBg]);
-    resource_load(db, "status.detail", STRING, (void *)statusbarcolors[ColDetail]);
+    resource_load(db, "status.detail", STRING,
+                  (void *)statusbarcolors[ColDetail]);
 
     for (p = resources; p < resources + LENGTH(resources); p++)
-		resource_load(db, p->name, p->type, p->dst);
+        resource_load(db, p->name, p->type, p->dst);
 
     XCloseDisplay(display);
 }
@@ -4411,7 +4426,6 @@ void setup(void) {
 
     /* for (i = 0; i < LENGTH(colors); i++) */
     /*     scheme[i] = drw_scm_create(drw, colors[i], 4); */
-
 
     borderscheme = drw_scm_create(drw, bordercolors, 4);
     statusscheme = drw_scm_create(drw, statusbarcolors, 3);
