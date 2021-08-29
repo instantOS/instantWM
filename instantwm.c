@@ -1491,8 +1491,10 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
                     drw_clr_create(drw, &drw->scheme[ColFg], buf);
                     i += 7;
                 } else if (text[i] == 'd') {
-                    drw_clr_create(drw, &drw->scheme[ColBg], statusbarcolors[ColBg]);
-                    drw_clr_create(drw, &drw->scheme[ColFg], statusbarcolors[ColFg]);
+                    drw_clr_create(drw, &drw->scheme[ColBg],
+                                   statusbarcolors[ColBg]);
+                    drw_clr_create(drw, &drw->scheme[ColFg],
+                                   statusbarcolors[ColFg]);
                 } else if (text[i] == 'r') {
                     int rx = atoi(text + ++i);
                     while (text[++i] != ',')
@@ -4075,20 +4077,38 @@ int getxtag(int ix) {
 
 // send client to another monitor
 void sendmon(Client *c, Monitor *m) {
+    int isscratchpad = 0;
+    Monitor *prevmon = selmon;
     if (c->mon == m)
         return;
 
-    resetsticky(c);
+    prevmon = selmon;
+
     unfocus(c, 1);
     detach(c);
     detachstack(c);
     c->mon = m;
-    c->tags = m->tagset[m->seltags]; /* assign tags of target monitor */
+    // make scratchpad windows reappear on the other monitor scratchpad
+    if (c->tags != (1 << 20)) {
+        c->tags = m->tagset[m->seltags]; /* assign tags of target monitor */
+        resetsticky(c);
+    } else {
+        isscratchpad = 1;
+    }
     attach(c);
     attachstack(c);
     focus(NULL);
     if (!c->isfloating)
         arrange(NULL);
+    if (isscratchpad && !c->mon->scratchvisible) {
+        unfocus(selmon->sel, 0);
+        selmon = m;
+        togglescratchpad(NULL);
+        focus(NULL);
+        unfocus(selmon->sel, 0);
+        selmon = prevmon;
+        focus(NULL);
+    }
 }
 
 void setclientstate(Client *c, long state) {
@@ -5277,6 +5297,7 @@ void createscratchpad(const Arg *arg) {
         return;
     c = selmon->sel;
 
+    // turn scratchpad back into normal window
     if (c->tags == 1 << 20) {
         tag(&((Arg){.ui = 1 << (selmon->pertag->curtag - 1)}));
         return;
@@ -5290,7 +5311,6 @@ void createscratchpad(const Arg *arg) {
         arrange(selmon);
     focus(NULL);
     if (!selmon->scratchvisible) {
-
         togglescratchpad(NULL);
     }
 }
