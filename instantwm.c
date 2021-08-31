@@ -4293,18 +4293,6 @@ void load_xresources(void) {
 
     int i, u, q;
 
-    for (i = 0; i < LENGTH(schemehovertypes); i++) {
-        for (u = 0; u < LENGTH(schemewindowtypes); u++) {
-            for (q = 0; q < LENGTH(schemecolortypes); q++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
-                         schemehovertypes[i].name, schemewindowtypes[u].name,
-                         schemecolortypes[q].name);
-                printf("\n\n\n propname: %s \n\n\n", propname);
-            }
-        }
-    }
-
     display = XOpenDisplay(NULL);
     resm = XResourceManagerString(display);
     if (!resm)
@@ -6410,6 +6398,39 @@ void zoom(const Arg *arg) {
     pop(c);
 }
 
+void list_xresources() {
+
+    int i, u, q;
+    for (i = 0; i < LENGTH(schemehovertypes); i++) {
+        for (q = 0; q < LENGTH(schemecolortypes); q++) {
+            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
+                         schemehovertypes[i].name, schemewindowtypes[u].name,
+                         schemecolortypes[q].name);
+                printf("instantwm.%s\n", propname);
+            }
+            for (u = 0; u < LENGTH(schemetagtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
+                         schemehovertypes[i].name, schemetagtypes[u].name,
+                         schemecolortypes[q].name);
+                printf("instantwm.%s\n", propname);
+            }
+            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.close.%s",
+                         schemehovertypes[i].name, schemeclosetypes[u].name,
+                         schemecolortypes[q].name);
+                printf("instantwm.%s\n", propname);
+            }
+        }
+    }
+    printf(
+        "normal.border\nfocus.tile.border\nfocus.float.border\nsnap.border\n");
+    printf("status.fg\nstatus.bg\nstatus.detail\n");
+}
+
 void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
                    void *dst) {
     char *sdst = NULL;
@@ -6444,10 +6465,16 @@ void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
 }
 
 int main(int argc, char *argv[]) {
-    if (argc == 2 &&
-        (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1]))) {
-        puts("instantwm-" VERSION "\n");
-        return EXIT_SUCCESS;
+    if (argc == 2) {
+        if (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1])) {
+            puts("instantwm-" VERSION "\n");
+            return EXIT_SUCCESS;
+        } else if (!strcmp("-X", argv[1]) || !strcmp("--xresources", argv[1])) {
+            list_xresources();
+            return EXIT_SUCCESS;
+        } else {
+            die("usage: instantwm [-v]");
+        }
     } else if (argc != 1)
         die("usage: instantwm [-v]");
     if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
