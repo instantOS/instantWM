@@ -4300,6 +4300,7 @@ void load_xresources(void) {
 
     db = XrmGetStringDatabase(resm);
 
+
     for (i = 0; i < LENGTH(schemehovertypes); i++) {
         for (q = 0; q < LENGTH(schemecolortypes); q++) {
             for (u = 0; u < LENGTH(schemewindowtypes); u++) {
@@ -4307,6 +4308,18 @@ void load_xresources(void) {
                 snprintf(propname, sizeof(propname), "%s.%s.win.%s",
                          schemehovertypes[i].name, schemewindowtypes[u].name,
                          schemecolortypes[q].name);
+
+                // duplicate default value to avoid reading xresource into
+                // multiple colors
+                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
+                strcpy(tmpstring, windowcolors[schemehovertypes[i].type]
+                                              [schemewindowtypes[u].type]
+                                              [schemecolortypes[q].type]);
+
+                windowcolors[schemehovertypes[i].type]
+                            [schemewindowtypes[u].type]
+                            [schemecolortypes[q].type] = tmpstring;
+
                 resource_load(db, propname, STRING,
                               (void *)(windowcolors[schemehovertypes[i].type]
                                                    [schemewindowtypes[u].type]
@@ -4318,6 +4331,16 @@ void load_xresources(void) {
                 snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
                          schemehovertypes[i].name, schemetagtypes[u].name,
                          schemecolortypes[q].name);
+
+                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
+                
+                strcpy(tmpstring, tagcolors[schemehovertypes[i].type]
+                                              [schemetagtypes[u].type]
+                                              [schemecolortypes[q].type]);
+
+                tagcolors[schemehovertypes[i].type]
+                            [schemetagtypes[u].type]
+                            [schemecolortypes[q].type] = tmpstring;
                 resource_load(db, propname, STRING,
                               (void *)(tagcolors[schemehovertypes[i].type]
                                                 [schemetagtypes[u].type]
@@ -4329,6 +4352,15 @@ void load_xresources(void) {
                 snprintf(propname, sizeof(propname), "%s.%s.close.%s",
                          schemehovertypes[i].name, schemeclosetypes[u].name,
                          schemecolortypes[q].name);
+
+                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
+                strcpy(tmpstring, closebuttoncolors[schemehovertypes[i].type]
+                                              [schemeclosetypes[u].type]
+                                              [schemecolortypes[q].type]);
+
+                closebuttoncolors[schemehovertypes[i].type]
+                            [schemeclosetypes[u].type]
+                            [schemecolortypes[q].type] = tmpstring;
                 resource_load(
                     db, propname, STRING,
                     (void *)(closebuttoncolors[schemehovertypes[i].type]
