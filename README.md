@@ -1,12 +1,12 @@
 <div align="center">
     <h1>instantWM</h1>
     <p>Window manager for instantOS</p>
-    <img width="300" height="300" src="https://raw.githubusercontent.com/instantOS/instantLOGO/master/png/wm.png">
+    <img width="300" height="300" src="https://raw.githubusercontent.com/instantOS/instantLOGO/main/png/wm.png">
 </div>
 
 instantWM the window manager of instantOS.
 
-![img](https://github.com/instantOS/instantLOGO/blob/master/screeenshots/screenshot1.png)
+![img](https://github.com/instantOS/instantLOGO/blob/main/screeenshots/screenshot1.png)
 
 ## Installation
 
