@@ -18,7 +18,7 @@ fi
 echo $$ >"${RTD}"/instantosrunning
 
 # just in case, some systems might not do this
-cd
+cd || echo "failed to access home directory"
 
 # execute autostart even if instantautostart doesn't work
 if ! command -v instantautostart &>/dev/null; then
@@ -51,6 +51,8 @@ while [ -e "${RTD}"/instantosrunning ]; do
         if ! [ -e .local/share ]; then
             mkdir -p ~/.local/share
         fi
+
+        export XDG_CURRENT_DESKTOP="instantwm"
 
         if iconf -i debug; then
             instantwm &>~/.local/share/instantos.log
