@@ -10,8 +10,10 @@ instantWM the window manager of instantOS.
 
 ## Installation
 
-It is preinstalled on instantOS
-You can manually install the git build by cloning the repo and then running build.sh
+It is preinstalled on instantOS.
+You can manually install the git build at your own risk by cloning the repo and then running build.sh,
+however you'll likely be missing a lot of other tools if you're not on instantOS.
+It is not recommended to use instantWM with other distributions.
 
 ```sh
 git clone --depth=1 https://github.com/instantOS/instantWM.git
