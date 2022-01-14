@@ -296,6 +296,7 @@ static const Rule rules[] = {
 	{"Welcome.py",                  NULL,     NULL,  0,         1,          -1},
 	{"Pamac-installer",             NULL,     NULL,  0,         1,          -1},
 	{"xpad",                        NULL,     NULL,  0,         1,          -1},
+	{"Guake",                       NULL,     NULL,  0,         1,          -1},
 	{"instantfloat",                NULL,     NULL,  0,         2,          -1},
 	{scratchpadname,                NULL,     NULL,  0,         4,          -1},
 	{"kdeconnect.daemon",           NULL,     NULL,  0,         3,          -1},
