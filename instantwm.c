@@ -23,6 +23,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xresource.h>
+#include <X11/extensions/Xrandr.h>
 #include <errno.h>
 #include <locale.h>
 #include <math.h>
@@ -447,11 +448,22 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
     width = w ? w : c->w;
     height = h ? h : c->h;
 
-    // halve frames if enough events are queried
-    frames = frames / 1 + (XEventsQueued(dpy, QueuedAlready) > 50);
+    XRRScreenConfiguration *conf = XRRGetScreenInfo(dpy, RootWindow(dpy, 0));
+    short refresh_rate = XRRConfigCurrentRate(conf);
+    
+    //? scale the framerate properly for !=60Hz displays
+    frames = frames * (refresh_rate / 60);
+    double usecs = (1 / (double)refresh_rate) * 1000000;
+
+    // halve framerate if enough events are queried
+    if (XEventsQueued(dpy, QueuedAlready) > 50) {
+        frames = frames / 2; 
+        usecs  = usecs  * 2;
+    }
 
     // No animation if even more events are queried
     if (!frames || XEventsQueued(dpy, QueuedAlready) > 100) {
+        usecs = 0;
         if (resetpos)
             resize(c, c->x, c->y, width, height, 0);
         else
@@ -486,7 +498,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
                     oldy + easeOutCubic(((double)time / frames)) * (y - oldy),
                     width, height, 1);
                 time++;
-                usleep(15000);
+                usleep(usecs);
             }
         }
     }
