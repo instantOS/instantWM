@@ -7,45 +7,45 @@ static const unsigned int borderpx = 3;		  /* border pixel of windows */
 static const unsigned int snap = 32;		  /* snap pixel */
 static const unsigned int startmenusize = 30;		  /* snap pixel */
 static const unsigned int systraypinning = 0; /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor X */
-static const unsigned int systrayspacing = 2; /* systray spacing */
+static const unsigned int systrayspacing = 0; /* systray spacing */
 static const int systraypinningfailfirst = 1; /* 1: if pinning fails, display systray on the first monitor, False: display systray on the last monitor*/
 static const int showsystray = 1;			  /* 0 means no systray */
 static const int showbar = 1;				  /* 0 means no bar */
 static const int topbar = 1;				  /* 0 means bottom bar */
-static const char *fonts[] = {"Ubuntu Light:size=12", "Cascadia Code:style=SemiLight:size=12"};
+static const char *fonts[] = {"Inter-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
 static int barheight;
 static char xresourcesfont[30];
 
 
-static char col_bg[] = "#161923";
-static char col_text[] = "#B7BCD4";
-static char col_black[] = "#161923";
+static char col_bg[] = "#121212";
+static char col_text[] = "#DFDFDF";
+static char col_black[] = "#000000";
 
-static char col_bg_accent[] = "#1F2437";
-static char col_bg_accent_hover[] = "#2C334D";
-static char col_bg_hover[] = "#1F2437";
+static char col_bg_accent[] = "#384252";
+static char col_bg_accent_hover[] = "#4C5564";
+static char col_bg_hover[] = "#1C1C1C";
 
-static char col_light_blue[] = "#8A8BBE";
-static char col_light_blue_hover[] = "#A886C3";
-static char col_blue[] = "#67689F";
-static char col_blue_hover[] = "#8762A5";
+static char col_light_blue[] = "#89B3F7";
+static char col_light_blue_hover[] = "#a1c2f9";
+static char col_blue[] = "#536DFE";
+static char col_blue_hover[] = "#758afe";
 
 
-static char col_light_green[] = "#D879B4";
-static char col_light_green_hover[] = "#E675A8";
-static char col_green[] = "#BC5294";
-static char col_green_hover[] = "#CB4A85";
+static char col_light_green[] = "#81c995";
+static char col_light_green_hover[] = "#99d3aa";
+static char col_green[] = "#1e8e3e";
+static char col_green_hover[] = "#4ba465";
 
-static char col_light_yellow[] = "#F1739A";
-static char col_light_yellow_hover[] = "#F9728A";
-static char col_yellow[] = "#D84572";
-static char col_yellow_hover[] = "#E2415D";
+static char col_light_yellow[] = "#fdd663";
+static char col_light_yellow_hover[] = "#fddd82";
+static char col_yellow[] = "#f9ab00";
+static char col_yellow_hover[] = "#f9bb33";
 
-static char col_light_red[] = "#FE7478";
-static char col_light_red_hover[] = "#FF7965";
-static char col_red[] = "#E84045";
-static char col_red_hover[] = "#E84C34";
+static char col_light_red[] = "#f28b82";
+static char col_light_red_hover[] = "#f4a19a";
+static char col_red[] = "#d93025";
+static char col_red_hover[] = "#e05951";
 
 static const char *tagcolors[2][5][3] = {
     [SchemeNoHover] = {
@@ -57,22 +57,22 @@ static const char *tagcolors[2][5][3] = {
         [SchemeTagFilled] = {
             [ColFg] = col_text,
             [ColBg] = col_bg_accent,
-            [ColDetail] = col_light_yellow,
+            [ColDetail] = col_light_blue,
         },
         [SchemeTagFocus] = {
+            [ColFg] = col_black,
+            [ColBg] = col_light_green,
+            [ColDetail] = col_green,
+        },
+        [SchemeTagNoFocus] = {
             [ColFg] = col_black,
             [ColBg] = col_light_yellow,
             [ColDetail] = col_yellow,
         },
-        [SchemeTagNoFocus] = {
+        [SchemeTagEmpty] = {
             [ColFg] = col_black,
             [ColBg] = col_light_red,
             [ColDetail] = col_red,
-        },
-        [SchemeTagEmpty] = {
-            [ColFg] = col_black,
-            [ColBg] = col_light_blue,
-            [ColDetail] = col_blue,
         }
     },
     [SchemeHover] = {
@@ -84,22 +84,22 @@ static const char *tagcolors[2][5][3] = {
         [SchemeTagFilled] = {
             [ColFg] = col_text,
             [ColBg] = col_bg_accent_hover,
-            [ColDetail] = col_light_yellow_hover,
+            [ColDetail] = col_light_blue_hover,
         },
         [SchemeTagFocus] = {
+            [ColFg] = col_black,
+            [ColBg] = col_light_green_hover,
+            [ColDetail] = col_green_hover,
+        },
+        [SchemeTagNoFocus] = {
             [ColFg] = col_black,
             [ColBg] = col_light_yellow_hover,
             [ColDetail] = col_yellow_hover,
         },
-        [SchemeTagNoFocus] = {
+        [SchemeTagEmpty] = {
             [ColFg] = col_black,
             [ColBg] = col_light_red_hover,
             [ColDetail] = col_red_hover,
-        },
-        [SchemeTagEmpty] = {
-            [ColFg] = col_black,
-            [ColBg] = col_light_blue_hover,
-            [ColDetail] = col_blue_hover,
         }
     }
 };
@@ -109,7 +109,7 @@ static const char *windowcolors[2][7][3] = {
         [SchemeWinFocus] = {
             [ColFg] = col_text,
             [ColBg] = col_bg_accent,
-            [ColDetail] = col_light_yellow,
+            [ColDetail] = col_light_blue,
         },
         [SchemeWinNormal] = {
             [ColFg] = col_text,
@@ -117,14 +117,14 @@ static const char *windowcolors[2][7][3] = {
             [ColDetail] = col_bg,
         },
         [SchemeWinMinimized] = {
-            [ ColFg ] = col_light_blue,
+            [ ColFg ] = col_bg_accent,
             [ ColBg ] = col_bg,
             [ ColDetail ] = col_bg,
         },
         [SchemeWinSticky] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_green,
-            [ ColDetail ] = col_bg,
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow,
         },
         [ SchemeWinStickyFocus ] = {
             [ ColFg ] = col_black,
@@ -134,12 +134,12 @@ static const char *windowcolors[2][7][3] = {
         [SchemeWinOverlay] = {
             [ ColFg ] = col_black,
             [ ColBg ] = col_light_yellow,
-            [ ColDetail ] = col_bg,
+            [ ColDetail ] = col_yellow,
         },
         [SchemeWinOverlayFocus] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_yellow,
-            [ ColDetail ] = col_yellow,
+            [ ColBg ] = col_light_green,
+            [ ColDetail ] = col_green,
         },
     },
     //TODO: different hover colors
@@ -147,7 +147,7 @@ static const char *windowcolors[2][7][3] = {
         [SchemeWinFocus] = {
             [ColFg] = col_text,
             [ColBg] = col_bg_accent_hover,
-            [ColDetail] = col_light_yellow_hover,
+            [ColDetail] = col_light_blue_hover,
         },
         [SchemeWinNormal] = {
             [ColFg] = col_text,
@@ -155,14 +155,14 @@ static const char *windowcolors[2][7][3] = {
             [ColDetail] = col_bg_hover,
         },
         [SchemeWinMinimized] = {
-            [ ColFg ] = col_light_blue_hover,
-            [ ColBg ] = col_bg_hover,
-            [ ColDetail ] = col_bg_hover,
+            [ ColFg ] = col_bg_accent_hover,
+            [ ColBg ] = col_bg,
+            [ ColDetail ] = col_bg,
         },
         [SchemeWinSticky] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_green_hover,
-            [ ColDetail ] = col_bg_hover,
+            [ ColBg ] = col_light_yellow_hover,
+            [ ColDetail ] = col_yellow_hover,
         },
         [ SchemeWinStickyFocus ] = {
             [ ColFg ] = col_black,
@@ -172,12 +172,12 @@ static const char *windowcolors[2][7][3] = {
         [SchemeWinOverlay] = {
             [ ColFg ] = col_black,
             [ ColBg ] = col_light_yellow_hover,
-            [ ColDetail ] = col_bg_hover,
+            [ ColDetail ] = col_yellow_hover,
         },
         [SchemeWinOverlayFocus] = {
             [ ColFg ] = col_black,
-            [ ColBg ] = col_light_yellow_hover,
-            [ ColDetail ] = col_yellow_hover,
+            [ ColBg ] = col_light_green_hover,
+            [ ColDetail ] = col_green_hover,
         },
     }
 };
@@ -191,8 +191,8 @@ static const char *closebuttoncolors[2][3][3] = {
         }, 
         [ SchemeCloseLocked ] = {
             [ ColFg ] = col_text, 
-            [ ColBg ] = col_light_green,
-            [ ColDetail ] = col_green
+            [ ColBg ] = col_light_yellow,
+            [ ColDetail ] = col_yellow
         }, 
         [ SchemeCloseFullscreen ] = {
             [ColFg] = col_text,
@@ -208,8 +208,8 @@ static const char *closebuttoncolors[2][3][3] = {
         }, 
         [ SchemeCloseLocked ] = {
             [ ColFg ] = col_text, 
-            [ ColBg ] = col_light_green_hover,
-            [ ColDetail ] = col_green_hover
+            [ ColBg ] = col_light_yellow_hover,
+            [ ColDetail ] = col_yellow_hover
         },
         [ SchemeCloseFullscreen ] = {
             [ColFg] = col_text,
@@ -220,10 +220,10 @@ static const char *closebuttoncolors[2][3][3] = {
 };
 
 static const char *bordercolors[] = {
-    [ SchemeBorderNormal ] = col_bg,
-    [ SchemeBorderTileFocus ] = col_light_yellow,
+    [ SchemeBorderNormal ] = col_bg_accent,
+    [ SchemeBorderTileFocus ] = col_light_blue,
     [ SchemeBorderFloatFocus ] = col_light_green,
-    [ SchemeBorderSnap ] = col_light_blue
+    [ SchemeBorderSnap ] = col_light_yellow
 };
 
 static const char *statusbarcolors[] = {

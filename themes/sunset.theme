@@ -1,7 +1,0 @@
-static const char *fonts[] = {"Ubuntu Light:size=12", "Cascadia Code SemiLight:style=SemiLight:size=12"};
-static const char col_gray1[] = "#1F2437"; /* top bar d */
-static const char col_gray2[] = "#B7BCD4";/*unfocused fonts d */
-static const char col_gray3[] = "#1F2437";/*unfocused border d */
-static const char col_gray4[] = "#B7BCD4";/*focused fonts d */
-static const char col_gray5[] = "#F1739A";/*focused windows d */
-static const char col_cyan[] = "#F1739A";/*focused instantmenu or topbar d */
