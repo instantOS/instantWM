@@ -451,7 +451,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
     XRRScreenConfiguration *conf = XRRGetScreenInfo(dpy, RootWindow(dpy, 0));
     short refresh_rate = XRRConfigCurrentRate(conf);
     
-    //? scale the framerate properly for !=60Hz displays
+    // scale the framerate properly for !=60Hz displays
     frames = frames * (refresh_rate / 60);
     double usecs = (1 / (double)refresh_rate) * 1000000;
 
