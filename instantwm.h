@@ -59,7 +59,7 @@ enum { CurNormal, CurResize, CurMove, CurClick, CurHor, CurVert, CurTL, CurTR, C
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
-       NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetClientList, NetClientInfo, NetLast }; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
@@ -299,6 +299,7 @@ void sendmon(Client *c, Monitor *m);
 int gettagwidth();
 int getxtag(int ix);
 void setclientstate(Client *c, long state);
+void setclienttagprop(Client *c);
 void setfocus(Client *c);
 void setfullscreen(Client *c, int fullscreen);
 void setlayout(const Arg *arg);
