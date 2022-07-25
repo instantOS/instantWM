@@ -4655,6 +4655,12 @@ void swaptags(const Arg *arg) {
         return;
 
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
+        if (selmon->overlay == c)
+		{
+			if (ISVISIBLE(c))
+				hideoverlay();
+			continue;
+		}
         if ((c->tags & newtag) || (c->tags & curtag))
             c->tags ^= curtag ^ newtag;
 
