@@ -800,6 +800,8 @@ int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact) {
     if (*w < bh)
         *w = bh;
     if (resizehints || c->isfloating || !c->mon->lt[c->mon->sellt]->arrange) {
+        if (!c->hintsvalid)
+            updatesizehints(c);
         /* see last two sentences in ICCCM 4.1.2.3 */
         int baseismin = c->basew == c->minw && c->baseh == c->minh;
         if (!baseismin) { /* temporarily remove base dimensions */
@@ -2386,7 +2388,6 @@ void manage(Window w, XWindowAttributes *wa) {
     XSetWindowBorder(dpy, w, borderscheme[SchemeBorderNormal].pixel);
     configure(c); /* propagates border_width, if size doesn't change */
     updatewindowtype(c);
-    updatesizehints(c);
     updatewmhints(c);
 
     {
@@ -3624,7 +3625,7 @@ void propertynotify(XEvent *e) {
                 arrange(c->mon);
             break;
         case XA_WM_NORMAL_HINTS:
-            updatesizehints(c);
+            c->hintsvalid = 0;
             break;
         case XA_WM_HINTS:
             updatewmhints(c);
@@ -5740,6 +5741,7 @@ void updatesizehints(Client *c) {
         c->maxa = c->mina = 0.0;
     c->isfixed =
         (c->maxw && c->maxh && c->maxw == c->minw && c->maxh == c->minh);
+    c->hintsvalid = 1;
 }
 
 void updatestatus(void) {
