@@ -21,6 +21,7 @@
  * To understand everything else, start reading main().
  */
 
+#include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xresource.h>
 #include <errno.h>
@@ -2388,6 +2389,7 @@ void manage(Window w, XWindowAttributes *wa) {
     XSetWindowBorder(dpy, w, borderscheme[SchemeBorderNormal].pixel);
     configure(c); /* propagates border_width, if size doesn't change */
     updatewindowtype(c);
+    updatesizehints(c);
     updatewmhints(c);
 
     {
@@ -2421,7 +2423,7 @@ void manage(Window w, XWindowAttributes *wa) {
                      StructureNotifyMask);
     grabbuttons(c, 0);
     if (!c->isfloating)
-        c->isfloating = c->oldstate = t || c->isfixed;
+        c->isfloating = c->oldstate = trans != None || c->isfixed;
     if (c->isfloating)
         XRaiseWindow(dpy, c->win);
     attach(c);
@@ -5596,43 +5598,40 @@ int updategeom(void) {
                 memcpy(&unique[j++], &info[i], sizeof(XineramaScreenInfo));
         XFree(info);
         nn = j;
-        if (n <= nn) { /* new monitors available */
-            for (i = 0; i < (nn - n); i++) {
-                for (m = mons; m && m->next; m = m->next)
-                    ;
-                if (m)
-                    m->next = createmon();
-                else
-                    mons = createmon();
+        for (i = n; i < nn; i++) {
+            for (m = mons; m && m->next; m = m->next)
+                ;
+            if (m)
+                m->next = createmon();
+            else
+                mons = createmon();
+        }
+        for (i = 0, m = mons; i < nn && m; m = m->next, i++)
+            if (i >= n || unique[i].x_org != m->mx ||
+                unique[i].y_org != m->my || unique[i].width != m->mw ||
+                unique[i].height != m->mh) {
+                dirty = 1;
+                m->num = i;
+                m->mx = m->wx = unique[i].x_org;
+                m->my = m->wy = unique[i].y_org;
+                m->mw = m->ww = unique[i].width;
+                m->mh = m->wh = unique[i].height;
+                updatebarpos(m);
             }
-            for (i = 0, m = mons; i < nn && m; m = m->next, i++)
-                if (i >= n || unique[i].x_org != m->mx ||
-                    unique[i].y_org != m->my || unique[i].width != m->mw ||
-                    unique[i].height != m->mh) {
-                    dirty = 1;
-                    m->num = i;
-                    m->mx = m->wx = unique[i].x_org;
-                    m->my = m->wy = unique[i].y_org;
-                    m->mw = m->ww = unique[i].width;
-                    m->mh = m->wh = unique[i].height;
-                    updatebarpos(m);
-                }
-        } else { /* less monitors available nn < n */
-            for (i = nn; i < n; i++) {
-                for (m = mons; m && m->next; m = m->next)
-                    ;
-                while ((c = m->clients)) {
-                    dirty = 1;
-                    m->clients = c->next;
-                    detachstack(c);
-                    c->mon = mons;
-                    attach(c);
-                    attachstack(c);
-                }
-                if (m == selmon)
-                    selmon = mons;
-                cleanupmon(m);
+        for (i = nn; i < n; i++) {
+            for (m = mons; m && m->next; m = m->next)
+                ;
+            while ((c = m->clients)) {
+                dirty = 1;
+                m->clients = c->next;
+                detachstack(c);
+                c->mon = mons;
+                attach(c);
+                attachstack(c);
             }
+            if (m == selmon)
+                selmon = mons;
+            cleanupmon(m);
         }
         free(unique);
     } else
