@@ -6547,7 +6547,7 @@ void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
 
 int main(int argc, char *argv[]) {
     if (argc == 2) {
-        if (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1])) {
+        if (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1]) || !strcmp("-v", argv[1])) {
             puts("instantwm-" VERSION "\n");
             return EXIT_SUCCESS;
         } else if (!strcmp("-X", argv[1]) || !strcmp("--xresources", argv[1])) {
