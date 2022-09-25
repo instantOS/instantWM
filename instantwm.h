@@ -59,7 +59,7 @@ enum { CurNormal, CurResize, CurMove, CurClick, CurHor, CurVert, CurTL, CurTR, C
 enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
        NetWMFullscreen, NetActiveWindow, NetWMWindowType,
-       NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
+       NetWMWindowTypeDialog, NetClientList, NetClientInfo, NetLast }; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
 enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
@@ -103,7 +103,7 @@ struct Client {
 	int x, y, w, h;
 	int sfx, sfy, sfw, sfh; /* stored float geometry, used on mode revert */
 	int oldx, oldy, oldw, oldh;
-	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
+	int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
 	int bw, oldbw;
 	unsigned int tags;
 	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen, islocked, issticky, snapstatus;
@@ -299,6 +299,7 @@ void sendmon(Client *c, Monitor *m);
 int gettagwidth();
 int getxtag(int ix);
 void setclientstate(Client *c, long state);
+void setclienttagprop(Client *c);
 void setfocus(Client *c);
 void setfullscreen(Client *c, int fullscreen);
 void setlayout(const Arg *arg);

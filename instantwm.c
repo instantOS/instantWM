@@ -21,6 +21,7 @@
  * To understand everything else, start reading main().
  */
 
+#include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xresource.h>
 #include <X11/extensions/Xrandr.h>
@@ -809,6 +810,8 @@ int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact) {
     if (*w < bh)
         *w = bh;
     if (resizehints || c->isfloating || !c->mon->lt[c->mon->sellt]->arrange) {
+        if (!c->hintsvalid)
+            updatesizehints(c);
         /* see last two sentences in ICCCM 4.1.2.3 */
         int baseismin = c->basew == c->minw && c->baseh == c->minh;
         if (!baseismin) { /* temporarily remove base dimensions */
@@ -1058,8 +1061,10 @@ void cleanup(void) {
     free(statusscheme);
     free(borderscheme);
 
+    //TODO figure out how to do this with the custom theming code (this only frees dwm schemes)
     /* for (i = 0; i < LENGTH(colors) + 1; i++) */
     /*     free(scheme[i]); */
+    // free(scheme)
     XDestroyWindow(dpy, wmcheckwin);
     drw_free(drw);
     XSync(dpy, False);
@@ -1572,6 +1577,9 @@ void drawbar(Monitor *m) {
 
     unsigned int i, occ = 0, urg = 0;
     Client *c;
+
+    if (!m->showbar)
+        return;
 
     if (showsystray && m == systraytomon(m))
         stw = getsystraywidth();
@@ -2392,6 +2400,27 @@ void manage(Window w, XWindowAttributes *wa) {
     updatewindowtype(c);
     updatesizehints(c);
     updatewmhints(c);
+
+    {
+        int format;
+        unsigned long *data, n, extra;
+        Monitor *m;
+        Atom atom;
+        if (XGetWindowProperty(dpy, c->win, netatom[NetClientInfo], 0L, 2L, False, XA_CARDINAL,
+                &atom, &format, &n, &extra, (unsigned char **)&data) == Success && n == 2) {
+            c->tags = *data;
+            for (m = mons; m; m = m->next) {
+                if (m->num == *(data+1)) {
+                    c->mon = m;
+                    break;
+                }
+            }
+        }
+        if (n > 0)
+            XFree(data);
+    }
+    setclienttagprop(c);
+
     updatemotifhints(c);
 
     c->sfx = c->x;
@@ -3607,7 +3636,7 @@ void propertynotify(XEvent *e) {
                 arrange(c->mon);
             break;
         case XA_WM_NORMAL_HINTS:
-            updatesizehints(c);
+            c->hintsvalid = 0;
             break;
         case XA_WM_HINTS:
             updatewmhints(c);
@@ -4106,6 +4135,7 @@ void sendmon(Client *c, Monitor *m) {
     }
     attach(c);
     attachstack(c);
+    setclienttagprop(c);
     focus(NULL);
     if (!c->isfloating)
         arrange(NULL);
@@ -4453,6 +4483,7 @@ void setup(void) {
     netatom[NetWMWindowTypeDialog] =
         XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
     netatom[NetClientList] = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
+    netatom[NetClientInfo] = XInternAtom(dpy, "_NET_CLIENT_INFO", False);
     motifatom = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
 
     xatom[Manager] = XInternAtom(dpy, "MANAGER", False);
@@ -4523,6 +4554,7 @@ void setup(void) {
     XChangeProperty(dpy, root, netatom[NetSupported], XA_ATOM, 32,
                     PropModeReplace, (unsigned char *)netatom, NetLast);
     XDeleteProperty(dpy, root, netatom[NetClientList]);
+    XDeleteProperty(dpy, root, netatom[NetClientInfo]);
     /* select events */
     wa.cursor = cursor[CurNormal]->cursor;
     wa.event_mask = SubstructureRedirectMask | SubstructureNotifyMask |
@@ -4612,12 +4644,24 @@ int computeprefix(const Arg *arg) {
     }
 }
 
+
+void
+setclienttagprop(Client *c)
+{
+	long data[] = { (long) c->tags, (long) c->mon->num };
+	XChangeProperty(dpy, c->win, netatom[NetClientInfo], XA_CARDINAL, 32,
+			PropModeReplace, (unsigned char *) data, 2);
+}
+
 void tag(const Arg *arg) {
     int ui = computeprefix(arg);
+    Client *c;
     if (selmon->sel && ui & TAGMASK) {
         if (selmon->sel->tags == 1 << 20)
             selmon->sel->issticky = 0;
+        c = selmon->sel;
         selmon->sel->tags = ui & TAGMASK;
+        setclienttagprop(c);
         focus(NULL);
         arrange(selmon);
     }
@@ -4664,6 +4708,12 @@ void swaptags(const Arg *arg) {
         return;
 
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
+        if (selmon->overlay == c)
+		{
+			if (ISVISIBLE(c))
+				hideoverlay();
+			continue;
+		}
         if ((c->tags & newtag) || (c->tags & curtag))
             c->tags ^= curtag ^ newtag;
 
@@ -5241,6 +5291,7 @@ void toggletag(const Arg *arg) {
     newtags = selmon->sel->tags ^ (ui & TAGMASK);
     if (newtags) {
         selmon->sel->tags = newtags;
+        setclienttagprop(selmon->sel);
         focus(NULL);
         arrange(selmon);
     }
@@ -5556,43 +5607,40 @@ int updategeom(void) {
                 memcpy(&unique[j++], &info[i], sizeof(XineramaScreenInfo));
         XFree(info);
         nn = j;
-        if (n <= nn) { /* new monitors available */
-            for (i = 0; i < (nn - n); i++) {
-                for (m = mons; m && m->next; m = m->next)
-                    ;
-                if (m)
-                    m->next = createmon();
-                else
-                    mons = createmon();
+        for (i = n; i < nn; i++) {
+            for (m = mons; m && m->next; m = m->next)
+                ;
+            if (m)
+                m->next = createmon();
+            else
+                mons = createmon();
+        }
+        for (i = 0, m = mons; i < nn && m; m = m->next, i++)
+            if (i >= n || unique[i].x_org != m->mx ||
+                unique[i].y_org != m->my || unique[i].width != m->mw ||
+                unique[i].height != m->mh) {
+                dirty = 1;
+                m->num = i;
+                m->mx = m->wx = unique[i].x_org;
+                m->my = m->wy = unique[i].y_org;
+                m->mw = m->ww = unique[i].width;
+                m->mh = m->wh = unique[i].height;
+                updatebarpos(m);
             }
-            for (i = 0, m = mons; i < nn && m; m = m->next, i++)
-                if (i >= n || unique[i].x_org != m->mx ||
-                    unique[i].y_org != m->my || unique[i].width != m->mw ||
-                    unique[i].height != m->mh) {
-                    dirty = 1;
-                    m->num = i;
-                    m->mx = m->wx = unique[i].x_org;
-                    m->my = m->wy = unique[i].y_org;
-                    m->mw = m->ww = unique[i].width;
-                    m->mh = m->wh = unique[i].height;
-                    updatebarpos(m);
-                }
-        } else { /* less monitors available nn < n */
-            for (i = nn; i < n; i++) {
-                for (m = mons; m && m->next; m = m->next)
-                    ;
-                while ((c = m->clients)) {
-                    dirty = 1;
-                    m->clients = c->next;
-                    detachstack(c);
-                    c->mon = mons;
-                    attach(c);
-                    attachstack(c);
-                }
-                if (m == selmon)
-                    selmon = mons;
-                cleanupmon(m);
+        for (i = nn; i < n; i++) {
+            for (m = mons; m && m->next; m = m->next)
+                ;
+            while ((c = m->clients)) {
+                dirty = 1;
+                m->clients = c->next;
+                detachstack(c);
+                c->mon = mons;
+                attach(c);
+                attachstack(c);
             }
+            if (m == selmon)
+                selmon = mons;
+            cleanupmon(m);
         }
         free(unique);
     } else
@@ -5701,6 +5749,7 @@ void updatesizehints(Client *c) {
         c->maxa = c->mina = 0.0;
     c->isfixed =
         (c->maxw && c->maxh && c->maxw == c->minw && c->maxh == c->minh);
+    c->hintsvalid = 1;
 }
 
 void updatestatus(void) {
@@ -6514,10 +6563,10 @@ int main(int argc, char *argv[]) {
             list_xresources();
             return EXIT_SUCCESS;
         } else {
-            die("usage: instantwm [-v]");
+            die("usage: instantwm [-VX]");
         }
     } else if (argc != 1)
-        die("usage: instantwm [-v]");
+        die("usage: instantwm [-VX]");
     if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
         fputs("warning: no locale support\n", stderr);
     if (!(dpy = XOpenDisplay(NULL)))
