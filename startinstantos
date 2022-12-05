@@ -41,7 +41,7 @@ fi
 
 if [ -z "$INSTANTDEBUG" ]; then
 	if [ -e "$ILOGFILE" ] && [ "$(du -sm "$ILOGFILE" | grep -o '^[0-9]*')" -gt 20 ]; then
-        echo "log file has gotten out of hand, clearing logs"
+		echo "log file has gotten out of hand, clearing logs"
 		echo "start of log file" >"$ILOGFILE"
 	fi
 fi
@@ -75,5 +75,6 @@ while [ -e "${RTD}"/instantosrunning ]; do
 			export WMEXITCODE="$?"
 		fi
 	fi
-	echo "$(date): window manager was restarted or crashed" >>~/.local/share/instantos.log
+	echo "$(date): window manager was restarted or crashed" >>"$ILOGFILE"
+	echo "window manager exit code: $WMEXITCODE" >>"$ILOGFILE"
 done
