@@ -269,7 +269,7 @@ void centerwindow();
 void resetnametag(const Arg *arg);
 void nametag(const Arg *arg);
 Client *nexttiled(Client *c);
-void pop(Client *);
+void pop(Client *c);
 void shutkill(const Arg *arg);
 void propertynotify(XEvent *e);
 void quit(const Arg *arg);
