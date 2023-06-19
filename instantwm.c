@@ -2056,14 +2056,11 @@ int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
     text[0] = '\0';
     if (!XGetTextProperty(dpy, w, &name, atom) || !name.nitems)
         return 0;
-    if (name.encoding == XA_STRING)
+    if (name.encoding == XA_STRING) {
         strncpy(text, (char *)name.value, size - 1);
-    else {
-        if (XmbTextPropertyToTextList(dpy, &name, &list, &n) >= Success &&
-            n > 0 && *list) {
-            strncpy(text, *list, size - 1);
-            XFreeStringList(list);
-        }
+    } else if (XmbTextPropertyToTextList(dpy, &name, &list, &n) >= Success && n > 0 && *list) {
+		strncpy(text, *list, size - 1);
+		XFreeStringList(list);
     }
     text[size - 1] = '\0';
     XFree(name.value);
@@ -2371,11 +2368,7 @@ void manage(Window w, XWindowAttributes *wa) {
         c->y = c->mon->my + c->mon->mh - HEIGHT(c);
     c->x = MAX(c->x, c->mon->mx);
     /* only fix client y-offset, if the client center might cover the bar */
-    c->y = MAX(c->y, ((c->mon->by == c->mon->my) &&
-                      (c->x + (c->w / 2) >= c->mon->wx) &&
-                      (c->x + (c->w / 2) < c->mon->wx + c->mon->ww))
-                         ? bh
-                         : c->mon->my);
+    c->y = MAX(c->y, c->mon->wy);
     c->bw = borderpx;
 
     if (!c->isfloating && &monocle == c->mon->lt[c->mon->sellt]->arrange &&
@@ -2478,10 +2471,9 @@ void maprequest(XEvent *e) {
         updatesystray();
     }
 
-    if (!XGetWindowAttributes(dpy, ev->window, &wa))
+    if (!XGetWindowAttributes(dpy, ev->window, &wa) || wa.override_redirect)
         return;
-    if (wa.override_redirect)
-        return;
+
     if (!wintoclient(ev->window))
         manage(ev->window, &wa);
 }
@@ -4620,9 +4612,8 @@ void spawn(const Arg *arg) {
             close(ConnectionNumber(dpy));
         setsid();
         execvp(((char **)arg->v)[0], (char **)arg->v);
-        fprintf(stderr, "instantwm: execvp %s", ((char **)arg->v)[0]);
-        perror(" failed");
-        exit(EXIT_SUCCESS);
+		die("instantwm: execvp '%s' failed:", ((char **)arg->v)[0]);
+
     }
 }
 
@@ -5492,6 +5483,7 @@ void unmanage(Client *c, int destroyed) {
         wc.border_width = c->oldbw;
         XGrabServer(dpy); /* avoid race conditions */
         XSetErrorHandler(xerrordummy);
+		XSelectInput(dpy, c->win, NoEventMask);
         XConfigureWindow(dpy, c->win, CWBorderWidth, &wc); /* restore border */
         XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
         setclientstate(c, WithdrawnState);
@@ -6554,10 +6546,10 @@ int main(int argc, char *argv[]) {
             list_xresources();
             return EXIT_SUCCESS;
         } else {
-            die("usage: instantwm [-v]");
+            die("usage: instantwm [-VX]");
         }
     } else if (argc != 1)
-        die("usage: instantwm [-v]");
+        die("usage: instantwm [-VX]");
     if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
         fputs("warning: no locale support\n", stderr);
     if (!(dpy = XOpenDisplay(NULL)))

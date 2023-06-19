@@ -53,6 +53,11 @@ please refer to the documentation.
   * Drag windows onto other tags
   * Rio-like drawing feature
 
+## TODO
+
+- [ ] look at if hack to fix rendering locking up on unknown characters is still needed
+
+
 ## Background information
 
 instantWM is a dwm fork, but contains less than 40% original dwm code.  Most of
