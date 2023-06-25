@@ -310,7 +310,6 @@ void setup(void);
 void seturgent(Client *c, int urg);
 void show(Client *c);
 void showhide(Client *c);
-void sigchld(int unused);
 void spawn(const Arg *arg);
 void clickstatus(const Arg *arg);
 Monitor *systraytomon(Monitor *m);
