@@ -2095,30 +2095,41 @@ void grabbuttons(Client *c, int focused) {
 void grabkeys(void) {
     updatenumlockmask();
     {
-        unsigned int i, j;
+        unsigned int i, j, k;
         unsigned int modifiers[] = {0, LockMask, numlockmask,
                                     numlockmask | LockMask};
-        KeyCode code;
+        int start, end, skip;
+        KeySym *syms;
 
         XUngrabKey(dpy, AnyKey, AnyModifier, root);
-        for (i = 0; i < LENGTH(keys); i++) {
-            if ((code = XKeysymToKeycode(dpy, keys[i].keysym)))
-                for (j = 0; j < LENGTH(modifiers); j++) {
-                    if (freealttab && keys[i].mod == Mod1Mask)
-                        continue;
-                    XGrabKey(dpy, code, keys[i].mod | modifiers[j], root, True,
-                             GrabModeAsync, GrabModeAsync);
-                }
-        }
+        XDisplayKeycodes(dpy, &start, &end);
+        syms = XGetKeyboardMapping(dpy, start, end - start + 1, &skip);
+        if (!syms)
+            return;
 
-        if (!selmon->sel) {
-            for (i = 0; i < LENGTH(dkeys); i++) {
-                if ((code = XKeysymToKeycode(dpy, dkeys[i].keysym)))
-                    for (j = 0; j < LENGTH(modifiers); j++)
-                        XGrabKey(dpy, code, dkeys[i].mod | modifiers[j], root,
-                                 True, GrabModeAsync, GrabModeAsync);
+        for (k = start; k <= end; k++) {
+            for (i = 0; i < LENGTH(keys); i++) {
+                if (keys[i].keysym == syms[(k - start) * skip])
+                    for (j = 0; j < LENGTH(modifiers); j++) {
+                        if (freealttab && keys[i].mod == Mod1Mask)
+                            continue;
+                        XGrabKey(dpy, k, keys[i].mod | modifiers[j], root, True,
+                                 GrabModeAsync, GrabModeAsync);
+                    }
+            }
+
+            // add keyboard shortcuts without modifiers when tag is empty
+            if (!selmon->sel) {
+                for (i = 0; i < LENGTH(dkeys); i++) {
+                    if (dkeys[i].keysym == syms[(k - start) * skip])
+                        for (j = 0; j < LENGTH(modifiers); j++)
+                            XGrabKey(dpy, k, dkeys[i].mod | modifiers[j], root,
+                                     True, GrabModeAsync, GrabModeAsync);
+                }
             }
         }
+
+        XFree(syms);
     }
 }
 
