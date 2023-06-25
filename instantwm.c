@@ -68,7 +68,7 @@ static int isdesktop = 0;
 
 static int screen;
 static int sw, sh; /* X display screen geometry width, height */
-int bh, blw = 0;   /* bar geometry */
+int bh;            /* bar height */
 static int lrpad;  /* sum of left and right padding for text */
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static unsigned int numlockmask = 0;
@@ -189,6 +189,8 @@ void saveallfloating(Monitor *m) {
         }
     }
 }
+
+int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
 
 void directionfocus(const Arg *arg) {
     Client *c;
@@ -908,6 +910,7 @@ void buttonpress(XEvent *e) {
     Client *c;
     Monitor *m;
     XButtonPressedEvent *ev = &e->xbutton;
+    int blw = get_blw(selmon);
 
     click = ClkRootWin;
     /* focus monitor if necessary */
@@ -1052,7 +1055,8 @@ void cleanup(void) {
     free(statusscheme);
     free(borderscheme);
 
-    //TODO figure out how to do this with the custom theming code (this only frees dwm schemes)
+    // TODO figure out how to do this with the custom theming code (this only
+    // frees dwm schemes)
     /* for (i = 0; i < LENGTH(colors) + 1; i++) */
     /*     free(scheme[i]); */
     // free(scheme)
@@ -1665,7 +1669,7 @@ void drawbar(Monitor *m) {
     }
 
     // render layout indicator
-    w = blw = 60;
+    w = get_blw(m);
     drw_setscheme(drw, statusscheme);
     x = drw_text(drw, x, 0, w, bh, (w - TEXTW(m->ltsymbol)) * 0.5 + 10,
                  m->ltsymbol, 0, 0);
@@ -2058,9 +2062,10 @@ int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
         return 0;
     if (name.encoding == XA_STRING) {
         strncpy(text, (char *)name.value, size - 1);
-    } else if (XmbTextPropertyToTextList(dpy, &name, &list, &n) >= Success && n > 0 && *list) {
-		strncpy(text, *list, size - 1);
-		XFreeStringList(list);
+    } else if (XmbTextPropertyToTextList(dpy, &name, &list, &n) >= Success &&
+               n > 0 && *list) {
+        strncpy(text, *list, size - 1);
+        XFreeStringList(list);
     }
     text[size - 1] = '\0';
     XFree(name.value);
@@ -2390,11 +2395,13 @@ void manage(Window w, XWindowAttributes *wa) {
         unsigned long *data, n, extra;
         Monitor *m;
         Atom atom;
-        if (XGetWindowProperty(dpy, c->win, netatom[NetClientInfo], 0L, 2L, False, XA_CARDINAL,
-                &atom, &format, &n, &extra, (unsigned char **)&data) == Success && n == 2) {
+        if (XGetWindowProperty(dpy, c->win, netatom[NetClientInfo], 0L, 2L,
+                               False, XA_CARDINAL, &atom, &format, &n, &extra,
+                               (unsigned char **)&data) == Success &&
+            n == 2) {
             c->tags = *data;
             for (m = mons; m; m = m->next) {
-                if (m->num == *(data+1)) {
+                if (m->num == *(data + 1)) {
                     c->mon = m;
                     break;
                 }
@@ -4322,7 +4329,6 @@ void load_xresources(void) {
 
     db = XrmGetStringDatabase(resm);
 
-
     for (i = 0; i < LENGTH(schemehovertypes); i++) {
         for (q = 0; q < LENGTH(schemecolortypes); q++) {
             for (u = 0; u < LENGTH(schemewindowtypes); u++) {
@@ -4355,14 +4361,14 @@ void load_xresources(void) {
                          schemecolortypes[q].name);
 
                 char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
-                
-                strcpy(tmpstring, tagcolors[schemehovertypes[i].type]
-                                              [schemetagtypes[u].type]
-                                              [schemecolortypes[q].type]);
 
-                tagcolors[schemehovertypes[i].type]
-                            [schemetagtypes[u].type]
-                            [schemecolortypes[q].type] = tmpstring;
+                strcpy(
+                    tmpstring,
+                    tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
+                             [schemecolortypes[q].type]);
+
+                tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
+                         [schemecolortypes[q].type] = tmpstring;
                 resource_load(db, propname, STRING,
                               (void *)(tagcolors[schemehovertypes[i].type]
                                                 [schemetagtypes[u].type]
@@ -4377,12 +4383,12 @@ void load_xresources(void) {
 
                 char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
                 strcpy(tmpstring, closebuttoncolors[schemehovertypes[i].type]
-                                              [schemeclosetypes[u].type]
-                                              [schemecolortypes[q].type]);
+                                                   [schemeclosetypes[u].type]
+                                                   [schemecolortypes[q].type]);
 
                 closebuttoncolors[schemehovertypes[i].type]
-                            [schemeclosetypes[u].type]
-                            [schemecolortypes[q].type] = tmpstring;
+                                 [schemeclosetypes[u].type]
+                                 [schemecolortypes[q].type] = tmpstring;
                 resource_load(
                     db, propname, STRING,
                     (void *)(closebuttoncolors[schemehovertypes[i].type]
@@ -4612,8 +4618,7 @@ void spawn(const Arg *arg) {
             close(ConnectionNumber(dpy));
         setsid();
         execvp(((char **)arg->v)[0], (char **)arg->v);
-		die("instantwm: execvp '%s' failed:", ((char **)arg->v)[0]);
-
+        die("instantwm: execvp '%s' failed:", ((char **)arg->v)[0]);
     }
 }
 
@@ -4626,13 +4631,10 @@ int computeprefix(const Arg *arg) {
     }
 }
 
-
-void
-setclienttagprop(Client *c)
-{
-	long data[] = { (long) c->tags, (long) c->mon->num };
-	XChangeProperty(dpy, c->win, netatom[NetClientInfo], XA_CARDINAL, 32,
-			PropModeReplace, (unsigned char *) data, 2);
+void setclienttagprop(Client *c) {
+    long data[] = {(long)c->tags, (long)c->mon->num};
+    XChangeProperty(dpy, c->win, netatom[NetClientInfo], XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)data, 2);
 }
 
 void tag(const Arg *arg) {
@@ -4690,12 +4692,11 @@ void swaptags(const Arg *arg) {
         return;
 
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
-        if (selmon->overlay == c)
-		{
-			if (ISVISIBLE(c))
-				hideoverlay();
-			continue;
-		}
+        if (selmon->overlay == c) {
+            if (ISVISIBLE(c))
+                hideoverlay();
+            continue;
+        }
         if ((c->tags & newtag) || (c->tags & curtag))
             c->tags ^= curtag ^ newtag;
 
@@ -5483,7 +5484,7 @@ void unmanage(Client *c, int destroyed) {
         wc.border_width = c->oldbw;
         XGrabServer(dpy); /* avoid race conditions */
         XSetErrorHandler(xerrordummy);
-		XSelectInput(dpy, c->win, NoEventMask);
+        XSelectInput(dpy, c->win, NoEventMask);
         XConfigureWindow(dpy, c->win, CWBorderWidth, &wc); /* restore border */
         XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
         setclientstate(c, WithdrawnState);

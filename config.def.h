@@ -444,7 +444,7 @@ static Xcommand commands[] = {
 	{ "resetnametag",           resetnametag,                 {0}, 0 },
 };
 
-static Key dkeys[] = {
+static const Key dkeys[] = {
 	/* modifier  key        function     argument */
 	{0,          XK_r,      spawn,       {.v = rangercmd } },
 	{0,          XK_e,      spawn,       {.v = editorcmd } },
@@ -637,7 +637,7 @@ static Key keys[] = {
 
 /* button definitions */
 /* click can be ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle, ClkClientWin, or ClkRootWin */
-static Button buttons[] = {
+static const Button buttons[] = {
 	/* click          event mask          button   function           argument */
 	{ ClkLtSymbol,    0,                  Button1, cyclelayout,       {.i = -1 } },
 	{ ClkLtSymbol,    0,                  Button3, cyclelayout,       {.i = +1 } },
