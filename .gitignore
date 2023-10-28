@@ -6,3 +6,4 @@ tags
 shell.nix
 .nvimlog
 cscope.out
+.ccls-cache
