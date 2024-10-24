@@ -1676,10 +1676,23 @@ void drawbar(Monitor *m) {
 
     if ((w = m->ww - sw - x - stw) > bh) {
         if (n > 0) {
+            // Calculate the base width and remainder before the loop
+            int total_width = w;            // Total available width for titles
+            int each_width = total_width / n;  // Base width for each title
+            int remainder = total_width % n;   // Remainder to distribute extra pixels
+
+          
             // render all window titles
             for (c = m->clients; c; c = c->next) {
                 if (!ISVISIBLE(c))
                     continue;
+
+                int this_width = each_width;
+                
+                if (remainder > 0) {
+                    this_width++;  // Add one pixel to account for the remainder
+                    remainder--;
+                }
 
                 ishover = selmon->hoverclient && !selmon->gesture &&
                                   c == selmon->hoverclient
@@ -1714,12 +1727,12 @@ void drawbar(Monitor *m) {
                 }
 
                 // don't center text if it is too long
-                if (TEXTW(c->name) < (1.0 / (double)n) * w - 64) {
-                    drw_text(drw, x, 0, (1.0 / (double)n) * w, bh,
-                             ((1.0 / (double)n) * w - TEXTW(c->name)) * 0.5,
+                if (TEXTW(c->name) < this_width - 64) {
+                    drw_text(drw, x, 0, this_width, bh,
+                             (this_width - TEXTW(c->name)) * 0.5,
                              c->name, 0, 4);
                 } else {
-                    drw_text(drw, x, 0, (1.0 / ((double)n) * w), bh,
+                    drw_text(drw, x, 0, this_width, bh,
                              lrpad / 2 + 20, c->name, 0, 4);
                 }
 
@@ -1752,7 +1765,7 @@ void drawbar(Monitor *m) {
                     // save position of focussed window title on bar
                     m->activeoffset = selmon->mx + x;
                 }
-                x += (1.0 / (double)n) * w;
+                x += this_width;
             }
         } else {
             drw_setscheme(drw, statusscheme);
