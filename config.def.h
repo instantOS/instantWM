@@ -323,6 +323,8 @@ static const Layout layouts[] = {
 	{ "O",        overviewlayout },
 	{ "TTT",      bstack },
 	{ "===",      bstackhoriz },
+	{ "[@]",      spiral },
+ 	{ "[\\]",      dwindle },
 	{ NULL,       NULL },
 };
 
