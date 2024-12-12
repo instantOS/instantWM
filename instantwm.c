@@ -1677,7 +1677,7 @@ void drawbar(Monitor *m) {
     if ((w = m->ww - sw - x - stw) > bh) {
         if (n > 0) {
             // Calculate the base width and remainder before the loop
-            int total_width = w + 1;            // Total available width for titles
+            int total_width = w + 12;            // Total available width for titles
             int each_width = total_width / n;  // Base width for each title
             int remainder = total_width % n;   // Remainder to distribute extra pixels
 
