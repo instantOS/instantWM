@@ -7,18 +7,7 @@ SRC = drw.c instantwm.c layouts.c util.c
 OBJ = ${SRC:.c=.o}
 
 .PHONY: all
-all: options instantwm
-
-.PHONY: options
-options:
-	${info instantwm build options}
-	${info CFLAGS   = ${CFLAGS}}
-	${info LDFLAGS  = ${LDFLAGS}}
-	${info DESTDIR  = ${DESTDIR}}
-	${info PREFIX   = ${PREFIX}}
-	${info CC       = ${CC}}
-	${info VERSION  = ${VERSION}}
-	@true
+all: instantwm
 
 .c.o:
 	${CC} -c ${CFLAGS} $<

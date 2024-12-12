@@ -5590,7 +5590,7 @@ void updatebarpos(Monitor *m) {
         m->by = -bh;
 }
 
-void updateclientlist() {
+void updateclientlist(void) {
     Client *c;
     Monitor *m;
 
