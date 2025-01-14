@@ -17,18 +17,18 @@ prevc(Client *c, float f) {
 	return r;
 }
 
-// get amount of tiled clients
-int clientcount()
-{
-	return clientcountmon(selmon);
-}
-
 int clientcountmon(Monitor *m)
 {
 	int n;
 	Client *c;
 	for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
 	return n;
+}
+
+// get amount of tiled clients
+int clientcount()
+{
+	return clientcountmon(selmon);
 }
 
 int allclientcount()
