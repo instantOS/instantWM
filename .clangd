@@ -1,3 +1,0 @@
-CompileFlags:                     # Tweak the parse settings
-  Add: [-xc, -std=c11, -I/usr/include/freetype2]  # treat all files as C, enable more warnings, add FreeType2 include path
-

@@ -1,0 +1,13 @@
+[package]
+name = "instantwm-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+smithay = { version = "0.4.4", features = ["backend_winit", "renderer_glow"] }
+winit = "0.29"
+sctk-adwaita = "0.8"
+toml = "0.8.12"
+serde = { version = "1.0.197", features = ["derive"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"

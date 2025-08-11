@@ -1,0 +1,65 @@
+Date: 2025-08-10 UTC
+[12:26:38.350] weston 13.0.0
+               https://wayland.freedesktop.org
+               Bug reports to: https://gitlab.freedesktop.org/wayland/weston/issues/
+               Build: 13.0.0
+[12:26:38.350] Command line: weston --backend=x11-backend.so
+[12:26:38.350] OS: Linux, 6.8.0, #1 SMP PREEMPT_DYNAMIC Fri Jul 25 17:45:49 UTC 2025, x86_64
+[12:26:38.350] Flight recorder: enabled
+[12:26:38.350] Starting with no config file.
+[12:26:38.350] Output repaint window is 7 ms maximum.
+[12:26:38.350] Loading module '/usr/lib/x86_64-linux-gnu/libweston-13/x11-backend.so'
+[12:26:38.356] Loading module '/usr/lib/x86_64-linux-gnu/libweston-13/gl-renderer.so'
+[12:26:38.410] warning: failed to query rendering device from EGL
+[12:26:38.410] EGL version: 1.5
+[12:26:38.410] EGL vendor: Mesa Project
+[12:26:38.410] EGL client APIs: OpenGL OpenGL_ES
+[12:26:38.410] warning: Disabling render GPU timeline and explicit synchronization due to missing EGL_ANDROID_native_fence_sync extension
+[12:26:38.410] EGL features:
+               EGL Wayland extension: no
+               context priority: no
+               buffer age: yes
+               partial update: no
+               swap buffers with damage: yes
+               configless context: yes
+               surfaceless context: yes
+               dmabuf support: no
+[12:26:38.948] GL version: OpenGL ES 3.2 Mesa 25.0.7-0ubuntu0.24.04.1
+[12:26:38.948] GLSL version: OpenGL ES GLSL ES 3.20
+[12:26:38.948] GL vendor: Mesa
+[12:26:38.948] GL renderer: llvmpipe (LLVM 19.1.1, 256 bits)
+[12:26:38.966] GL ES 3.2 - renderer features:
+               read-back format: ARGB8888
+               glReadPixels supports y-flip: yes
+               wl_shm 10 bpc formats: yes
+               wl_shm 16 bpc formats: yes
+               wl_shm half-float formats: yes
+               internal R and RG formats: yes
+               OES_EGL_image_external: yes
+[12:26:38.966] Using GL renderer
+[12:26:38.975] Registered plugin API 'weston_windowed_output_api_v2' of size 16
+[12:26:38.975] Color manager: no-op
+[12:26:38.975] Output 'screen0' attempts EOTF mode: SDR
+[12:26:38.975] Output 'screen0' using color profile: stock sRGB color profile
+[12:26:38.976] Chosen EGL config details: id:  11 rgba: 8 8 8 0 buf: 24 dep:  0 stcl: 0 int: 1-1 type: win|pix|pbf|swap_preserved vis_id: 0x21
+[12:26:38.976] x11 output 1024x600, window id 2097157
+[12:26:38.976] Output 'screen0' enabled with head(s) screen0
+[12:26:38.976] Compositor capabilities:
+               arbitrary surface rotation: yes
+               screen capture uses y-flip: yes
+               cursor planes: no
+               arbitrary resolutions: no
+               view mask clipping: yes
+               explicit sync: no
+               color operations: yes
+               presentation clock: CLOCK_MONOTONIC_RAW, id 4
+               presentation clock resolution: 0.000000001 s
+[12:26:38.976] Loading module '/usr/lib/x86_64-linux-gnu/weston/desktop-shell.so'
+[12:26:38.977] launching '/usr/libexec/weston-keyboard'
+[12:26:38.983] launching '/usr/libexec/weston-desktop-shell'
+could not load cursor 'dnd-move'
+could not load cursor 'dnd-copy'
+could not load cursor 'dnd-none'
+could not load cursor 'dnd-move'
+could not load cursor 'dnd-copy'
+could not load cursor 'dnd-none'
