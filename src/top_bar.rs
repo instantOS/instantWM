@@ -290,7 +290,7 @@ mod tests {
     #[test]
     fn test_top_bar_geometry() {
         let config = Config::default();
-        let screen_geometry = smithay::utils::Rectangle::from_size((1920, 1080));
+        let screen_geometry = smithay::utils::Rectangle::from_size((1920, 1080).into());
         let window_manager = Arc::new(Mutex::new(
             WindowManager::new(config.clone(), screen_geometry).unwrap(),
         ));
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn test_top_bar_visibility_toggle() {
         let config = Config::default();
-        let screen_geometry = smithay::utils::Rectangle::from_size((1920, 1080));
+        let screen_geometry = smithay::utils::Rectangle::from_size((1920, 1080).into());
         let window_manager = Arc::new(Mutex::new(
             WindowManager::new(config.clone(), screen_geometry).unwrap(),
         ));
