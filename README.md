@@ -1,85 +1,184 @@
-<div align="center">
-    <h1>instantWM</h1>
-    <p>Window manager for instantOS</p>
-    <img width="300" height="300" src="https://raw.githubusercontent.com/instantOS/instantLOGO/main/png/wm.png">
-</div>
+# instantWM - Rust/Wayland Implementation
 
-instantWM the window manager of instantOS.
-
-![img](https://github.com/instantOS/instantLOGO/blob/main/screeenshots/screenshot1.png)
-
-## Installation
-
-It is preinstalled on instantOS.
-You can manually install the git build at your own risk by cloning the repo and then running build.sh,
-however you'll likely be missing a lot of other tools if you're not on instantOS.
-It is not recommended to use instantWM with other distributions.
-
-```sh
-git clone --depth=1 https://github.com/instantOS/instantWM.git
-cd instantWM
-./build.sh
-```
-
-[Download latest release](https://github.com/instantOS/instantWM/releases/download/beta2/instantwm.pkg.tar.xz)
-
-## [Documentation](https://instantos.io/documentation)
-
-Documentation for instantWM can be found in the general documentation for
-instantOS and the instructional screencasts.  It is not described in this
-README
+A fast and lightweight Wayland compositor inspired by instantWM, rewritten in Rust using the Smithay framework.
 
 ## Features
 
-This is just a quick list of some features. For a full list and explanation,
-please refer to the documentation.
+- **Tiling Window Management**: Automatic tiling with multiple layouts
+- **Tag-based Workspaces**: Organize windows using tags instead of traditional workspaces
+- **Floating Windows**: Support for floating windows alongside tiling
+- **Mouse Interactions**: Drag, resize, and hover behaviors
+- **Top Bar**: Customizable top bar with drag-and-drop functionality
+- **CLI Control**: Command-line interface similar to `swaymsg`
+- **TOML Configuration**: Easy-to-edit configuration files
+- **Theme Support**: Customizable appearance and themes
 
-- General
-  * hybrid-wm: tiling and floating mode
-  * Keyboard and Mouse based workflows
-  * start menu
-  * desktop bindings
-  * full multi monitor support
-  * tag system
-  * overview mode
-  * overlays
-- Graphical Features
-  * Animations
-  * Hover indicators
-  * Status markup
-  * color indicators for sticky windows, tag status etc.
-- Mouse support
-  * Drag windows by grabbing the title
-  * Drag windows onto other tags
-  * Rio-like drawing feature
+## Installation
 
-## TODO
+### From Source
 
-- [ ] look at if hack to fix rendering locking up on unknown characters is still needed
+```bash
+# Clone the repository
+git clone https://github.com/instantos/instantwm-rs
+cd instantwm-rs
 
+# Build
+cargo build --release
 
-## Background information
+# Install
+sudo install -m 755 target/release/instantwm /usr/bin/
+sudo install -m 755 target/release/instantctl /usr/bin/
+sudo install -m 755 scripts/instantwm-session /usr/bin/
+```
 
-instantWM is a dwm fork, but contains less than 40% original dwm code.  Most of
-the changed and added code is completely original which means there are no
-patches replicating the behaviour for dwm. It also makes instantWM incompatible
-with dwm patches.  Why go this route? Why not just use dwm patches?  The
-features patches introduce are by nature completely isolated. They have no way
-of knowing what else is applied to the WM and therefore are limited in their
-usage of other parts of the WM.  Not relying on patches enables huge amounts of
-freedom.  Take for instance sticky windows. They are a simple concept, but need
-a few checks in some places that adjust behaviour based on wether a window is
-sticky or not. A patch can only apply this to code present in the barren
-vanilla version.  Other examples of this include animations and overlays or
-scratchpads.  Most features weren't available as patches anyway.  instantWM has
-different goals than dwm.  It prioritizes stability, speed and features over
-lines of code.  It aims to have excellent mouse and touch screen support.  It
-contains graphical features like animations and hover indicators that make it
-look more appealing.  It is meant to be used as is. instantOS has every feature
-that a desktop enviroment has or offers a replacement and instantWM closely
-follows this "just works" approach and in many ways goes beyond the
-capabilities of a desktop environment.  This makes it a possible choice for new
-or casual users that cannot be bothered to learn C, vim, git, bash and loads of
-other stuff just to do their email.
+### Configuration
 
-### instantOS is still in early beta, contributions always welcome
+Copy the example configuration:
+
+```bash
+mkdir -p ~/.config/instantwm
+cp config.toml.example ~/.config/instantwm/config.toml
+```
+
+## Usage
+
+### Starting instantWM
+
+From a display manager:
+- Select "instantWM" from the session menu
+
+From the command line:
+```bash
+instantwm
+```
+
+### CLI Commands
+
+```bash
+# Switch to tag 1
+instantctl tag 1
+
+# Move focused window to tag 2
+instantctl move-to-tag 2
+
+# Toggle floating mode
+instantctl toggle-floating
+
+# Close focused window
+instantctl close
+
+# Spawn applications
+instantctl spawn firefox
+
+# Get current state
+instantctl get tag
+instantctl get windows
+instantctl get focused
+
+# Set configuration
+instantctl set layout monocle
+instantctl set gap 10
+instantctl set border 2
+```
+
+### Key Bindings
+
+The default key bindings are defined in the configuration file. Common bindings include:
+
+- `Super+1-9`: Switch to tag
+- `Super+Shift+1-9`: Move window to tag
+- `Super+Enter`: Spawn terminal
+- `Super+q`: Close window
+- `Super+f`: Toggle floating
+- `Super+Space`: Cycle layouts
+- `Super+Shift+c`: Reload configuration
+- `Super+Shift+e`: Exit instantWM
+
+## Configuration
+
+Configuration is done through TOML files located at `~/.config/instantwm/config.toml`.
+
+### Example Configuration
+
+```toml
+# General settings
+general = { mod_key = "Super", terminal = "alacritty", menu = "rofi -show drun" }
+
+# Layouts
+[layouts]
+tall = { name = "Tall", type = "Tall", master_factor = 0.6 }
+monocle = { name = "Monocle", type = "Monocle" }
+grid = { name = "Grid", type = "Grid" }
+
+# Tags
+tags = [
+    { name = "1", key = "1" },
+    { name = "2", key = "2" },
+    { name = "3", key = "3" },
+    { name = "4", key = "4" },
+    { name = "5", key = "5" },
+    { name = "6", key = "6" },
+    { name = "7", key = "7" },
+    { name = "8", key = "8" },
+    { name = "9", key = "9" },
+]
+
+# Appearance
+[appearance]
+gaps = 5
+border_width = 2
+border_color = "#ff0000"
+focus_color = "#00ff00"
+background_color = "#1a1a1a"
+
+# Top bar
+[top_bar]
+height = 25
+background = "#2a2a2a"
+foreground = "#ffffff"
+font = "monospace 10"
+```
+
+## Development
+
+### Building
+
+```bash
+# Debug build
+cargo build
+
+# Release build
+cargo build --release
+
+# Run with logging
+RUST_LOG=debug cargo run
+```
+
+### Testing
+
+```bash
+# Run tests
+cargo test
+
+# Run with specific features
+cargo test --features=debug
+```
+
+## Architecture
+
+The instantWM codebase is organized into several modules:
+
+- `compositor`: Core Wayland compositor using Smithay
+- `window_manager`: Window management logic (tiling, floating, tags)
+- `input`: Input handling (keyboard, mouse)
+- `top_bar`: Top bar implementation
+- `config`: Configuration management
+- `cli`: Command-line interface
+
+## License
+
+GPL-3.0 License - see LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please read CONTRIBUTING.md for guidelines.

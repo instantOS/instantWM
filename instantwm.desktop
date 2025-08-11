@@ -1,7 +1,7 @@
 [Desktop Entry]
-Encoding=UTF-8
 Name=instantWM
-Comment=instantOS window manager
-Exec=startinstantos
-Icon=instantwm
-Type=XSession
+Comment=Fast and lightweight Wayland compositor
+Exec=instantwm-session
+Type=Application
+DesktopNames=instantWM
+X-GNOME-SessionName=instantWM

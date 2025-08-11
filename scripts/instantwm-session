@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# instantWM session script
+# This script is sourced by display managers to start instantWM
+
+# Set environment variables
+export XDG_CURRENT_DESKTOP=instantWM
+export XDG_SESSION_TYPE=wayland
+export XDG_SESSION_DESKTOP=instantWM
+
+# Start D-Bus session bus
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    eval $(dbus-launch --sh-syntax --exit-with-session)
+fi
+
+# Start pipewire
+if command -v pipewire >/dev/null 2>&1; then
+    pipewire &
+    pipewire-pulse &
+    wireplumber &
+fi
+
+# Start xdg-desktop-portal
+if command -v xdg-desktop-portal >/dev/null 2>&1; then
+    xdg-desktop-portal &
+fi
+
+# Start polkit agent
+if command -v /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 >/dev/null 2>&1; then
+    /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &
+elif command -v lxpolkit >/dev/null 2>&1; then
+    lxpolkit &
+fi
+
+# Start instantWM
+exec instantwm

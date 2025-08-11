@@ -1,0 +1,79 @@
+[general]
+# Modifier key (Mod1 = Alt, Mod4 = Super/Windows)
+mod_key = "Mod4"
+terminal = "alacritty"
+browser = "firefox"
+launcher = "rofi -show drun"
+screenshot = "grim"
+
+[tags]
+# Tag names and default layouts
+names = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+layouts = ["tiling", "floating", "monocle"]
+
+[appearance]
+# Window decorations
+border_width = 2
+border_focus = "#ff5555"
+border_normal = "#333333"
+gap_size = 5
+inner_gap = 0
+
+# Top bar
+bar_height = 24
+bar_background = "#222222"
+bar_foreground = "#ffffff"
+bar_font = "monospace"
+bar_font_size = 12
+
+[layouts.tiling]
+type = "tiling"
+master_ratio = 0.6
+master_count = 1
+
+[layouts.floating]
+type = "floating"
+
+[layouts.monocle]
+type = "monocle"
+
+[keybindings]
+# Window management
+"Mod4+Return" = "spawn terminal"
+"Mod4+q" = "close_window"
+"Mod4+f" = "toggle_floating"
+"Mod4+space" = "toggle_layout"
+
+# Tag management
+"Mod4+1" = "switch_tag 1"
+"Mod4+2" = "switch_tag 2"
+"Mod4+3" = "switch_tag 3"
+"Mod4+4" = "switch_tag 4"
+"Mod4+5" = "switch_tag 5"
+"Mod4+6" = "switch_tag 6"
+"Mod4+7" = "switch_tag 7"
+"Mod4+8" = "switch_tag 8"
+"Mod4+9" = "switch_tag 9"
+"Mod4+Shift+1" = "move_to_tag 1"
+"Mod4+Shift+2" = "move_to_tag 2"
+"Mod4+Shift+3" = "move_to_tag 3"
+"Mod4+Shift+4" = "move_to_tag 4"
+"Mod4+Shift+5" = "move_to_tag 5"
+"Mod4+Shift+6" = "move_to_tag 6"
+"Mod4+Shift+7" = "move_to_tag 7"
+"Mod4+Shift+8" = "move_to_tag 8"
+"Mod4+Shift+9" = "move_to_tag 9"
+
+# Layout management
+"Mod4+h" = "focus_left"
+"Mod4+j" = "focus_down"
+"Mod4+k" = "focus_up"
+"Mod4+l" = "focus_right"
+"Mod4+Shift+h" = "move_left"
+"Mod4+Shift+j" = "move_down"
+"Mod4+Shift+k" = "move_up"
+"Mod4+Shift+l" = "move_right"
+
+# System
+"Mod4+Shift+r" = "reload_config"
+"Mod4+Shift+e" = "exit"

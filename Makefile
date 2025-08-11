@@ -1,55 +1,58 @@
-# instantWM - window manager for instantOS
-# See LICENSE file for copyright and license details.
+.PHONY: all build install clean test check fmt clippy
 
-include config.mk
+# Default target
+all: build
 
-SRC = drw.c instantwm.c layouts.c util.c
-OBJ = ${SRC:.c=.o}
+# Build the project
+build:
+	cargo build --release
 
-.PHONY: all
-all: instantwm
+# Install binaries and files
+install: build
+	sudo install -m 755 target/release/instantwm /usr/bin/
+	sudo install -m 755 target/release/instantctl /usr/bin/
+	sudo install -m 755 scripts/instantwm-session /usr/bin/
+	sudo install -m 644 systemd/instantwm.service /usr/lib/systemd/user/
+	sudo mkdir -p /usr/share/wayland-sessions
+	sudo install -m 644 instantwm.desktop /usr/share/wayland-sessions/
 
-.c.o:
-	${CC} -c ${CFLAGS} $<
-
-${OBJ}: config.h config.mk
-
-config.h:
-	cp config.def.h $@
-
-instantwm: ${OBJ}
-	${CC} -o $@ ${OBJ} ${LDFLAGS}
-
-.PHONY: clean
-clean:
-	rm -f instantwm ${OBJ} instantwm-${CMS_VERSION}.tar.gz
-
-.PHONY: dist
-dist: clean
-	tar --transform 's|^|instantwm-${CMS_VERSION}/|' \
-		-czf instantwm-${CMS_VERSION}.tar.gz \
-		LICENSE Makefile README.md config.def.h config.mk\
-		instantwm.1 drw.h util.h ${SRC}
-
-.PHONY: install
-install: all
-	install -d ${DESTDIR}{${PREFIX}/bin,/usr/share/xsessions,${MANPREFIX}/man1}
-	install -m  755 -s instantwm ${DESTDIR}${PREFIX}/bin/
-	install -Dm 755 instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
-	ln -sf ${DESTDIR}${PREFIX}/bin/instantwmctrl ${DESTDIR}${PREFIX}/bin/instantwmctl
-	install -m  644 instantwm.1 ${DESTDIR}${MANPREFIX}/man1/
-	sed -i 's/VERSION/${VERSION}/g' ${DESTDIR}${MANPREFIX}/man1/instantwm.1
-	install -m  644 instantwm.desktop ${DESTDIR}/usr/share/xsessions
-	install -Dm 644 instantwm.desktop ${DESTDIR}/usr/share/xsessions/default.desktop
-	install -m  755 startinstantos ${DESTDIR}${PREFIX}/bin/
-
-.PHONY: uninstall
+# Uninstall
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
-		${DESTDIR}${PREFIX}/bin/instantwmctrl\
-		${DESTDIR}${PREFIX}/bin/instantwmctl\
-		${DESTDIR}${MANPREFIX}/man1/instantwm.1\
-		${DESTDIR}${PREFIX}/bin/startinstantos\
-		${DESTDIR}/usr/share/xsessions/instantwm.desktop\
-		${DESTDIR}/usr/share/xsessions/default.desktop
+	sudo rm -f /usr/bin/instantwm
+	sudo rm -f /usr/bin/instantctl
+	sudo rm -f /usr/bin/instantwm-session
+	sudo rm -f /usr/lib/systemd/user/instantwm.service
+	sudo rm -f /usr/share/wayland-sessions/instantwm.desktop
 
+# Clean build artifacts
+clean:
+	cargo clean
+
+# Run tests
+test:
+	cargo test
+
+# Check code
+check:
+	cargo check
+
+# Format code
+fmt:
+	cargo fmt
+
+# Run clippy
+clippy:
+	cargo clippy -- -D warnings
+
+# Development build
+dev:
+	cargo build
+
+# Run with debug logging
+run:
+	RUST_LOG=debug cargo run
+
+# Install for development
+install-dev: dev
+	sudo install -m 755 target/debug/instantwm /usr/bin/
+	sudo install -m 755 target/debug/instantctl /usr/bin/

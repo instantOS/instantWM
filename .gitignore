@@ -1,9 +1,28 @@
-*.o
-config.h
-instantwm
-tags
-.envrc
-shell.nix
-.nvimlog
-cscope.out
-.ccls-cache
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.out
+*.err
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Configuration (keep example)
+/config.toml

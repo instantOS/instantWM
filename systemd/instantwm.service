@@ -1,0 +1,21 @@
+[Unit]
+Description=instantWM - Fast and lightweight Wayland compositor
+Documentation=man:instantwm(1)
+After=systemd-user-sessions.service
+Requires=systemd-user-sessions.service
+Wants=pipewire.socket
+Wants=xdg-desktop-portal.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/instantwm
+Restart=on-failure
+RestartSec=1
+TimeoutStopSec=10
+KillMode=mixed
+Environment=XDG_CURRENT_DESKTOP=instantWM
+Environment=XDG_SESSION_TYPE=wayland
+Environment=XDG_SESSION_DESKTOP=instantWM
+
+[Install]
+WantedBy=graphical-session.target
