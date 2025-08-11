@@ -1,11 +1,5 @@
 use serde::{Deserialize, Serialize};
-use slotmap::{new_key_type, SlotMap};
 use std::collections::HashMap;
-
-new_key_type! {
-    pub struct WindowId;
-    pub struct TagId;
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LayoutType {
@@ -21,28 +15,6 @@ pub struct LayoutConfig {
     pub master_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tag {
-    pub id: TagId,
-    pub name: String,
-    pub layout: LayoutConfig,
-    pub windows: Vec<WindowId>,
-    pub focused_window: Option<WindowId>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WindowState {
-    pub id: WindowId,
-    pub title: String,
-    pub class: String,
-    pub floating: bool,
-    pub minimized: bool,
-    pub fullscreen: bool,
-    pub tag: TagId,
-    pub geometry: Rectangle,
-    pub requested_geometry: Rectangle,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rectangle {
     pub x: i32,
@@ -52,18 +24,13 @@ pub struct Rectangle {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Keybinding {
-    pub keys: Vec<String>,
-    pub action: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub general: GeneralConfig,
     pub tags: TagsConfig,
     pub appearance: AppearanceConfig,
     pub keybindings: HashMap<String, String>,
     pub layouts: HashMap<String, LayoutConfig>,
+    pub rules: Vec<WindowRule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +63,24 @@ pub struct AppearanceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowRule {
+    pub class: Option<String>,
+    pub instance: Option<String>,
+    pub title: Option<String>,
+    pub floating: bool,
+    pub tag: Option<u32>,
+}
+
+impl WindowRule {
+    pub fn matches(&self, class: &str, title: &str) -> bool {
+        let class_matches = self.class.as_ref().map_or(true, |c| c == class);
+        let title_matches = self.title.as_ref().map_or(true, |t| title.contains(t));
+
+        class_matches && title_matches
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IpcMessage {
     pub command: String,
     pub args: Vec<String>,
@@ -110,20 +95,25 @@ pub struct IpcResponse {
 
 impl Rectangle {
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn contains(&self, point: (i32, i32)) -> bool {
-        point.0 >= self.x && 
-        point.0 < self.x + self.width as i32 && 
-        point.1 >= self.y && 
-        point.1 < self.y + self.height as i32
+        point.0 >= self.x
+            && point.0 < self.x + self.width as i32
+            && point.1 >= self.y
+            && point.1 < self.y + self.height as i32
     }
 
     pub fn intersects(&self, other: &Rectangle) -> bool {
-        self.x < other.x + other.width as i32 &&
-        self.x + self.width as i32 > other.x &&
-        self.y < other.y + other.height as i32 &&
-        self.y + self.height as i32 > other.y
+        self.x < other.x + other.width as i32
+            && self.x + self.width as i32 > other.x
+            && self.y < other.y + other.height as i32
+            && self.y + self.height as i32 > other.y
     }
 }

@@ -1,13 +1,12 @@
 use clap::Parser;
 use instantwm_rs::cli::{Cli, Commands};
-use std::process;
 
 fn main() {
     let cli = Cli::parse();
-    
+
     // TODO: Implement actual socket communication with running instantWM
     // For now, just print what would be executed
-    
+
     match cli.command {
         Commands::Tag { number } => {
             println!("Switching to tag {}", number);
@@ -26,9 +25,6 @@ fn main() {
         }
         Commands::Get { what } => {
             println!("Getting: {:?}", what);
-        }
-        Commands::Set { what } => {
-            println!("Setting: {:?}", what);
         }
         Commands::Reload => {
             println!("Reloading configuration");

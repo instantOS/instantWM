@@ -1,52 +1,25 @@
-use crate::config::Config;
-use crate::types::{Rectangle, WindowId};
-use crate::window_manager::{TagId, WindowManager};
-use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, AxisSource, Event as InputEvent, InputBackend, KeyState,
-    KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
-};
-use smithay::input::{
-    keyboard::{keysyms, FilterResult, KeysymHandle, ModifiersState},
-    pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
-};
-use smithay::reexports::wayland_server::protocol::wl_pointer;
-use smithay::utils::{Logical, Point};
-use std::process::Command;
-use std::sync::{Arc, Mutex};
+//! Input handling for InstantWM
+//!
+//! This module handles input events from keyboards, mice, and other input devices.
+//! It processes raw input events and translates them into window manager actions.
 
+use crate::types::Config;
+use crate::window_manager::WindowManager;
+use smithay::{
+    backend::input::{KeyState, KeyboardKeyEvent, PointerButtonEvent},
+    input::keyboard::ModifiersState,
+    utils::Point,
+};
+use std::sync::{Arc, Mutex};
+use tracing::debug;
+use xkbcommon::xkb::Keysym;
+
+/// Input handler for managing keyboard and pointer input
 pub struct InputHandler {
     pub window_manager: Arc<Mutex<WindowManager>>,
     pub config: Config,
-    pub mod_key_pressed: bool,
-    pub drag_state: Option<DragState>,
-    pub resize_state: Option<ResizeState>,
-}
-
-#[derive(Debug, Clone)]
-pub struct DragState {
-    pub window_id: WindowId,
-    pub start_pos: Point<i32, Logical>,
-    pub start_geometry: Rectangle,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResizeState {
-    pub window_id: WindowId,
-    pub start_pos: Point<i32, Logical>,
-    pub start_geometry: Rectangle,
-    pub edge: ResizeEdge,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ResizeEdge {
-    Top,
-    Bottom,
-    Left,
-    Right,
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
+    pub pointer_location: Point<f64, smithay::utils::Logical>,
+    pub modifiers_state: ModifiersState,
 }
 
 impl InputHandler {
@@ -54,332 +27,129 @@ impl InputHandler {
         Self {
             window_manager,
             config,
-            mod_key_pressed: false,
-            drag_state: None,
-            resize_state: None,
+            pointer_location: (0.0, 0.0).into(),
+            modifiers_state: ModifiersState::default(),
         }
     }
 
-    pub fn handle_keyboard_event<B: InputBackend>(
+    /// Handle a keyboard key event
+    pub fn handle_keyboard_key(
         &mut self,
-        event: impl KeyboardKeyEvent<B>,
-    ) -> bool {
-        let keycode = event.key_code();
-        let state = event.state();
-        let keysym = event.keysym();
-        
-        match state {
-            KeyState::Pressed => {
-                if keysym == keysyms::KEY_Super_L || keysym == keysyms::KEY_Super_R {
-                    self.mod_key_pressed = true;
-                    return false;
-                }
-                
-                if self.mod_key_pressed {
-                    self.handle_keybinding(keysym)
-                } else {
-                    false
-                }
-            }
-            KeyState::Released => {
-                if keysym == keysyms::KEY_Super_L || keysym == keysyms::KEY_Super_R {
-                    self.mod_key_pressed = false;
-                }
-                false
+        _keycode: u32,
+        key_state: KeyState,
+        keysym: Keysym,
+        modifiers: ModifiersState,
+    ) {
+        self.modifiers_state = modifiers;
+
+        if key_state == KeyState::Pressed {
+            debug!("Key pressed: {:?} (modifiers: {:?})", keysym, modifiers);
+
+            if let Ok(mut wm) = self.window_manager.lock() {
+                wm.handle_keybinding(keysym, modifiers);
             }
         }
     }
 
-    fn handle_keybinding(&mut self, keysym: KeysymHandle) -> bool {
-        let key_str = match keysym.raw() {
-            keysyms::KEY_1 => "1",
-            keysyms::KEY_2 => "2",
-            keysyms::KEY_3 => "3",
-            keysyms::KEY_4 => "4",
-            keysyms::KEY_5 => "5",
-            keysyms::KEY_6 => "6",
-            keysyms::KEY_7 => "7",
-            keysyms::KEY_8 => "8",
-            keysyms::KEY_9 => "9",
-            keysyms::KEY_Return => "Return",
-            keysyms::KEY_q => "q",
-            keysyms::KEY_f => "f",
-            keysyms::KEY_space => "space",
-            keysyms::KEY_h => "h",
-            keysyms::KEY_j => "j",
-            keysyms::KEY_k => "k",
-            keysyms::KEY_l => "l",
-            keysyms::KEY_r => "r",
-            keysyms::KEY_e => "e",
-            _ => return false,
-        };
-        
-        let binding = format!("Mod4+{}", key_str);
-        
-        if let Some(action) = self.config.keybindings.get(&binding) {
-            self.execute_action(action);
-            true
-        } else {
-            false
-        }
+    /// Handle pointer motion
+    pub fn handle_pointer_motion(&mut self, location: Point<f64, smithay::utils::Logical>) {
+        self.pointer_location = location;
+        debug!("Pointer motion: {:?}", location);
     }
 
-    fn execute_action(&mut self, action: &str) {
-        let parts: Vec<&str> = action.split_whitespace().collect();
-        if parts.is_empty() {
-            return;
-        }
-        
-        match parts[0] {
-            "spawn" => {
-                if parts.len() > 1 {
-                    let _ = Command::new(parts[1]).spawn();
-                }
-            }
-            "close_window" => {
-                let mut wm = self.window_manager.lock().unwrap();
-                if let Some(focused) = wm.get_focused_window() {
-                    let _ = wm.remove_window(focused);
-                }
-            }
-            "toggle_floating" => {
-                let mut wm = self.window_manager.lock().unwrap();
-                if let Some(focused) = wm.get_focused_window() {
-                    let _ = wm.toggle_floating(focused);
-                }
-            }
-            "switch_tag" => {
-                if parts.len() > 1 {
-                    if let Ok(tag_num) = parts[1].parse::<usize>() {
-                        let mut wm = self.window_manager.lock().unwrap();
-                        let tag_id = TagId::new((tag_num - 1) as u32);
-                        wm.switch_tag(tag_id);
-                    }
-                }
-            }
-            "move_to_tag" => {
-                if parts.len() > 1 {
-                    if let Ok(tag_num) = parts[1].parse::<usize>() {
-                        let mut wm = self.window_manager.lock().unwrap();
-                        if let Some(focused) = wm.get_focused_window() {
-                            let tag_id = TagId::new((tag_num - 1) as u32);
-                            let _ = wm.move_window_to_tag(focused, tag_id);
-                        }
-                    }
-                }
-            }
-            "focus_left" => self.focus_direction(-1, 0),
-            "focus_down" => self.focus_direction(0, 1),
-            "focus_up" => self.focus_direction(0, -1),
-            "focus_right" => self.focus_direction(1, 0),
-            "move_left" => self.move_direction(-1, 0),
-            "move_down" => self.move_direction(0, 1),
-            "move_up" => self.move_direction(0, -1),
-            "move_right" => self.move_direction(1, 0),
-            "reload_config" => {
-                // TODO: Reload config
-            }
-            "exit" => {
-                // TODO: Graceful exit
-            }
-            _ => {}
-        }
-    }
-
-    fn focus_direction(&mut self, dx: i32, dy: i32) {
-        let wm = self.window_manager.lock().unwrap();
-        if let Some(current) = wm.get_focused_window() {
-            if let Some(window) = wm.get_window(current) {
-                let current_center = (
-                    window.geometry.x + window.geometry.width as i32 / 2,
-                    window.geometry.y + window.geometry.height as i32 / 2,
-                );
-                
-                let mut closest = None;
-                let mut min_distance = i32::MAX;
-                
-                for &window_id in &wm.get_windows_for_tag(window.tag) {
-                    if window_id == current {
-                        continue;
-                    }
-                    
-                    if let Some(other) = wm.get_window(window_id) {
-                        let other_center = (
-                            other.geometry.x + other.geometry.width as i32 / 2,
-                            other.geometry.y + other.geometry.height as i32 / 2,
-                        );
-                        
-                        let distance = if dx != 0 {
-                            if (dx > 0 && other_center.0 > current_center.0) || 
-                               (dx < 0 && other_center.0 < current_center.0) {
-                                (other_center.0 - current_center.0).abs()
-                            } else {
-                                continue;
-                            }
-                        } else if dy != 0 {
-                            if (dy > 0 && other_center.1 > current_center.1) || 
-                               (dy < 0 && other_center.1 < current_center.1) {
-                                (other_center.1 - current_center.1).abs()
-                            } else {
-                                continue;
-                            }
-                        } else {
-                            continue;
-                        };
-                        
-                        if distance < min_distance {
-                            min_distance = distance;
-                            closest = Some(window_id);
-                        }
-                    }
-                }
-                
-                if let Some(closest_id) = closest {
-                    drop(wm);
-                    let mut wm = self.window_manager.lock().unwrap();
-                    let _ = wm.focus_window(closest_id);
-                }
-            }
-        }
-    }
-
-    fn move_direction(&mut self, dx: i32, dy: i32) {
-        // TODO: Implement window movement
-    }
-
-    pub fn handle_pointer_motion<B: InputBackend>(
+    /// Handle pointer button press/release
+    pub fn handle_pointer_button(
         &mut self,
-        event: impl PointerMotionEvent<B>,
-    ) -> bool {
-        let pos = event.position();
-        
-        if let Some(drag) = &self.drag_state {
-            let delta_x = pos.x as i32 - drag.start_pos.x;
-            let delta_y = pos.y as i32 - drag.start_pos.y;
-            
-            let mut wm = self.window_manager.lock().unwrap();
-            if let Some(window) = wm.get_window_mut(drag.window_id) {
-                window.geometry.x = drag.start_geometry.x + delta_x;
-                window.geometry.y = drag.start_geometry.y + delta_y;
-            }
-            return true;
-        }
-        
-        if let Some(resize) = &self.resize_state {
-            let delta_x = pos.x as i32 - resize.start_pos.x;
-            let delta_y = pos.y as i32 - resize.start_pos.y;
-            
-            let mut wm = self.window_manager.lock().unwrap();
-            if let Some(window) = wm.get_window_mut(resize.window_id) {
-                match resize.edge {
-                    ResizeEdge::Right => {
-                        window.geometry.width = (resize.start_geometry.width as i32 + delta_x).max(100) as u32;
-                    }
-                    ResizeEdge::Bottom => {
-                        window.geometry.height = (resize.start_geometry.height as i32 + delta_y).max(100) as u32;
-                    }
-                    ResizeEdge::BottomRight => {
-                        window.geometry.width = (resize.start_geometry.width as i32 + delta_x).max(100) as u32;
-                        window.geometry.height = (resize.start_geometry.height as i32 + delta_y).max(100) as u32;
-                    }
-                    _ => {}
-                }
-            }
-            return true;
-        }
-        
-        false
+        button: u32,
+        state: smithay::backend::input::ButtonState,
+    ) {
+        debug!("Pointer button {} {:?}", button, state);
+
+        // Handle window focus on click
+        // This would be implemented with proper surface detection in a real compositor
     }
 
-    pub fn handle_pointer_button<B: InputBackend>(
+    /// Handle pointer axis (scroll wheel) - simplified version
+    pub fn handle_pointer_axis(&mut self) {
+        debug!("Pointer axis event");
+    }
+
+    /// Get current pointer location
+    pub fn pointer_location(&self) -> Point<f64, smithay::utils::Logical> {
+        self.pointer_location
+    }
+
+    /// Get current modifiers state
+    pub fn modifiers_state(&self) -> ModifiersState {
+        self.modifiers_state
+    }
+
+    /// Handle keyboard events - simplified version
+    pub fn handle_keyboard_event<B: smithay::backend::input::InputBackend>(
         &mut self,
-        event: impl PointerButtonEvent<B>,
-    ) -> bool {
-        let pos = event.position();
-        let button = event.button();
-        let state = event.state();
-        
-        match (button, state) {
-            (0x110, wl_pointer::ButtonState::Pressed) => { // Left button
-                self.start_drag_or_focus(pos)
-            }
-            (0x111, wl_pointer::ButtonState::Pressed) => { // Right button
-                self.start_resize(pos)
-            }
-            (0x110, wl_pointer::ButtonState::Released) => {
-                self.drag_state = None;
-                self.resize_state = None;
-                false
-            }
-            _ => false,
-        }
+        event: &dyn KeyboardKeyEvent<B>,
+    ) {
+        debug!("Keyboard event: keycode {:?}", event.key_code());
     }
 
-    fn start_drag_or_focus(&mut self, pos: Point<f64, Logical>) -> bool {
-        let mut wm = self.window_manager.lock().unwrap();
-        
-        // Find window under cursor
-        for &window_id in &wm.get_windows_for_tag(wm.current_tag) {
-            if let Some(window) = wm.get_window(window_id) {
-                let rect = &window.geometry;
-                if rect.contains((pos.x as i32, pos.y as i32)) {
-                    let _ = wm.focus_window(window_id);
-                    
-                    if window.floating {
-                        self.drag_state = Some(DragState {
-                            window_id,
-                            start_pos: (pos.x as i32, pos.y as i32).into(),
-                            start_geometry: rect.clone(),
-                        });
-                        return true;
-                    }
-                }
-            }
-        }
-        
-        false
+    /// Handle pointer motion events
+    pub fn handle_pointer_motion_event<B: smithay::backend::input::InputBackend>(
+        &mut self,
+        _event: &dyn smithay::backend::input::PointerMotionEvent<B>,
+    ) {
+        self.handle_pointer_motion((0.0, 0.0).into()); // Simplified for now
     }
 
-    fn start_resize(&mut self, pos: Point<f64, Logical>) -> bool {
-        let wm = self.window_manager.lock().unwrap();
-        
-        for &window_id in &wm.get_windows_for_tag(wm.current_tag) {
-            if let Some(window) = wm.get_window(window_id) {
-                let rect = &window.geometry;
-                if rect.contains((pos.x as i32, pos.y as i32)) {
-                    if window.floating {
-                        // Determine resize edge based on cursor position
-                        let edge = self.determine_resize_edge(rect, (pos.x as i32, pos.y as i32));
-                        
-                        self.resize_state = Some(ResizeState {
-                            window_id,
-                            start_pos: (pos.x as i32, pos.y as i32).into(),
-                            start_geometry: rect.clone(),
-                            edge,
-                        });
-                        return true;
-                    }
-                }
-            }
+    /// Handle pointer button events
+    pub fn handle_pointer_button_event<B: smithay::backend::input::InputBackend>(
+        &mut self,
+        event: &dyn PointerButtonEvent<B>,
+    ) {
+        if let Some(button) = event.button() {
+            // Convert MouseButton to u32 - simplified mapping
+            let button_code = match button {
+                smithay::backend::input::MouseButton::Left => 1,
+                smithay::backend::input::MouseButton::Right => 2,
+                smithay::backend::input::MouseButton::Middle => 3,
+                smithay::backend::input::MouseButton::Forward => 8,
+                smithay::backend::input::MouseButton::Back => 9,
+                _ => 0, // Default for any future variants
+            };
+            self.handle_pointer_button(button_code, event.state());
         }
-        
-        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_input_handler_creation() {
+        let config = Config::default();
+        let screen_geometry =
+            smithay::utils::Rectangle::from_size(smithay::utils::Size::from((1920, 1080)));
+        let window_manager = Arc::new(Mutex::new(
+            WindowManager::new(config.clone(), screen_geometry).unwrap(),
+        ));
+
+        let input_handler = InputHandler::new(window_manager, config);
+        assert_eq!(input_handler.pointer_location, (0.0, 0.0).into());
     }
 
-    fn determine_resize_edge(&self, rect: &Rectangle, pos: (i32, i32)) -> ResizeEdge {
-        let edge_threshold = 10;
-        
-        let right_edge = rect.x + rect.width as i32;
-        let bottom_edge = rect.y + rect.height as i32;
-        
-        let near_right = (pos.0 - right_edge).abs() <= edge_threshold;
-        let near_bottom = (pos.1 - bottom_edge).abs() <= edge_threshold;
-        
-        match (near_right, near_bottom) {
-            (true, true) => ResizeEdge::BottomRight,
-            (true, false) => ResizeEdge::Right,
-            (false, true) => ResizeEdge::Bottom,
-            _ => ResizeEdge::Right, // Default
-        }
+    #[test]
+    fn test_pointer_motion() {
+        let config = Config::default();
+        let screen_geometry =
+            smithay::utils::Rectangle::from_size(smithay::utils::Size::from((1920, 1080)));
+        let window_manager = Arc::new(Mutex::new(
+            WindowManager::new(config.clone(), screen_geometry).unwrap(),
+        ));
+
+        let mut input_handler = InputHandler::new(window_manager, config);
+        let new_location = (100.0, 200.0).into();
+
+        input_handler.handle_pointer_motion(new_location);
+        assert_eq!(input_handler.pointer_location(), new_location);
     }
 }

@@ -4,18 +4,28 @@ version = "0.1.0"
 edition = "2021"
 authors = ["instantWM Rust Rewrite"]
 description = "A fast, lightweight Wayland compositor inspired by instantWM"
-license = "MIT"
+license = "GPL-3.0"
 
 [[bin]]
 name = "instantwm"
 path = "src/main.rs"
 
 [[bin]]
-name = "instantmsg"
-path = "src/bin/instantmsg.rs"
+name = "instantctl"
+path = "src/bin/instantctl.rs"
 
 [dependencies]
-smithay = { version = "0.3", features = ["backend_winit", "backend_drm", "backend_session", "desktop", "renderer_glow", "wayland_frontend"] }
+smithay = { version = "0.7", features = [
+    "backend_winit",
+    "backend_drm",
+    "backend_session",
+    "backend_egl",
+    "wayland_frontend",
+    "desktop",
+    "renderer_gl",
+    "renderer_pixman",
+    "xwayland"
+] }
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
@@ -25,17 +35,21 @@ clap = { version = "4.0", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "1.0"
 slotmap = "1.0"
-calloop = "0.12"
+calloop = "0.14"
 wayland-client = "0.31"
-wayland-protocols = { version = "0.31", features = ["client", "server"] }
-smithay-client-toolkit = "0.18"
+wayland-protocols = { version = "0.32", features = ["client", "server"] }
+wayland-server = "0.31"
+smithay-client-toolkit = "0.19"
 tiny-skia = "0.11"
-cosmic-text = "0.11"
+cosmic-text = "0.12"
 fontdb = "0.16"
-nix = { version = "0.27", features = ["fs", "socket", "poll"] }
+nix = { version = "0.29", features = ["fs", "socket", "poll"] }
 serde_json = "1.0"
 dirs = "5.0"
-xkbcommon = "0.7"
+xkbcommon = "0.8"
+slog = "2.7.0"
+ctrlc = "3.4"
+rustix = "1.0"
 
 [dev-dependencies]
 tempfile = "3.8"

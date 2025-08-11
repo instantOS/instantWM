@@ -1,34 +1,44 @@
+# InstantWM Configuration File
+# This is the example configuration for InstantWM Rust/Wayland implementation
+
 [general]
-# Modifier key (Mod1 = Alt, Mod4 = Super/Windows)
+# Modifier key (Mod1 = Alt, Mod4 = Super/Windows key)
 mod_key = "Mod4"
+
+# Default applications
 terminal = "alacritty"
 browser = "firefox"
 launcher = "rofi -show drun"
 screenshot = "grim"
 
 [tags]
-# Tag names and default layouts
+# Tag names - these will be displayed in the top bar
 names = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+# Available layouts for cycling through
 layouts = ["tiling", "floating", "monocle"]
 
 [appearance]
 # Window decorations
-border_width = 2
-border_focus = "#ff5555"
-border_normal = "#333333"
-gap_size = 5
-inner_gap = 0
+border_width = 3
+border_focus = "#536DFE"  # Blue color for focused windows
+border_normal = "#384252" # Gray color for normal windows
 
-# Top bar
+# Gaps between windows
+gap_size = 5
+inner_gap = 5
+
+# Top bar appearance
 bar_height = 24
-bar_background = "#222222"
-bar_foreground = "#ffffff"
-bar_font = "monospace"
+bar_background = "#121212"  # Dark background
+bar_foreground = "#DFDFDF"  # Light text
+bar_font = "Inter-Regular"
 bar_font_size = 12
 
+# Layout configurations
 [layouts.tiling]
 type = "tiling"
-master_ratio = 0.6
+master_ratio = 0.55
 master_count = 1
 
 [layouts.floating]
@@ -37,14 +47,21 @@ type = "floating"
 [layouts.monocle]
 type = "monocle"
 
+# Keybindings
 [keybindings]
-# Window management
+# Application launching
 "Mod4+Return" = "spawn terminal"
-"Mod4+q" = "close_window"
-"Mod4+f" = "toggle_floating"
-"Mod4+space" = "toggle_layout"
+"Mod4+d" = "spawn launcher"
+"Mod4+Shift+Return" = "spawn browser"
 
-# Tag management
+# Window management
+"Mod4+q" = "close_window"
+"Mod4+Shift+q" = "close_window"
+"Mod4+f" = "toggle_floating"
+"Mod4+Shift+f" = "toggle_fullscreen"
+"Mod4+space" = "cycle_layout"
+
+# Tag switching (1-9)
 "Mod4+1" = "switch_tag 1"
 "Mod4+2" = "switch_tag 2"
 "Mod4+3" = "switch_tag 3"
@@ -54,6 +71,8 @@ type = "monocle"
 "Mod4+7" = "switch_tag 7"
 "Mod4+8" = "switch_tag 8"
 "Mod4+9" = "switch_tag 9"
+
+# Moving windows to tags
 "Mod4+Shift+1" = "move_to_tag 1"
 "Mod4+Shift+2" = "move_to_tag 2"
 "Mod4+Shift+3" = "move_to_tag 3"
@@ -64,16 +83,98 @@ type = "monocle"
 "Mod4+Shift+8" = "move_to_tag 8"
 "Mod4+Shift+9" = "move_to_tag 9"
 
-# Layout management
+# Focus navigation
 "Mod4+h" = "focus_left"
 "Mod4+j" = "focus_down"
 "Mod4+k" = "focus_up"
 "Mod4+l" = "focus_right"
+
+# Window movement
 "Mod4+Shift+h" = "move_left"
 "Mod4+Shift+j" = "move_down"
 "Mod4+Shift+k" = "move_up"
 "Mod4+Shift+l" = "move_right"
 
-# System
+# Master area management
+"Mod4+comma" = "increase_master_count"
+"Mod4+period" = "decrease_master_count"
+"Mod4+Left" = "decrease_master"
+"Mod4+Right" = "increase_master"
+
+# Additional window management
+"Mod4+Tab" = "focus_next"
+"Mod4+Shift+Tab" = "focus_prev"
+"Mod4+m" = "toggle_minimize"
+"Mod4+o" = "toggle_sticky"
+
+# System controls
 "Mod4+Shift+r" = "reload_config"
 "Mod4+Shift+e" = "exit"
+"Mod4+Shift+c" = "reload_config"
+
+# Screenshot controls
+"Print" = "spawn grim"
+"Shift+Print" = "spawn grim -g \"$(slurp)\""
+
+# Media keys
+"XF86AudioRaiseVolume" = "spawn pactl set-sink-volume @DEFAULT_SINK@ +5%"
+"XF86AudioLowerVolume" = "spawn pactl set-sink-volume @DEFAULT_SINK@ -5%"
+"XF86AudioMute" = "spawn pactl set-sink-mute @DEFAULT_SINK@ toggle"
+
+# Brightness keys
+"XF86MonBrightnessUp" = "spawn brightnessctl set 5%+"
+"XF86MonBrightnessDown" = "spawn brightnessctl set 5%-"
+
+# Window rules - applications that should float or go to specific tags
+[[rules]]
+class = "Pavucontrol"
+floating = true
+
+[[rules]]
+class = "Onboard"
+floating = true
+
+[[rules]]
+class = "floatmenu"
+floating = true
+
+[[rules]]
+class = "Welcome.py"
+floating = true
+
+[[rules]]
+class = "Pamac-installer"
+floating = true
+
+[[rules]]
+class = "xpad"
+floating = true
+
+[[rules]]
+class = "Guake"
+floating = true
+
+[[rules]]
+class = "instantfloat"
+floating = true
+
+[[rules]]
+class = "Peek"
+floating = true
+
+[[rules]]
+class = "kdeconnect.daemon"
+floating = true
+
+[[rules]]
+class = "Panther"
+floating = true
+
+[[rules]]
+class = "org-wellkord-globonote-Main"
+floating = true
+
+# ROX-Filer should be tiled (not floating)
+[[rules]]
+class = "ROX-Filer"
+floating = false
