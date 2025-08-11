@@ -5,7 +5,7 @@
 
 use crate::types::Config;
 use crate::window_manager::WindowManager;
-use smithay::{desktop::Window, utils::Rectangle};
+use smithay::utils::Rectangle;
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 

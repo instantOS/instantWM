@@ -1,6 +1,6 @@
 use crate::error::{InstantError, Result};
 use crate::types::{Config, LayoutConfig, LayoutType, WindowRule};
-use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;

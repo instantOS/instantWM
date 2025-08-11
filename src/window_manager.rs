@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::types::{Config, LayoutConfig, LayoutType, WindowRule};
+use crate::types::{Config, LayoutType};
 use smithay::{
     desktop::Window,
     input::keyboard::ModifiersState,
