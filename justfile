@@ -23,3 +23,7 @@ uninstall:
 # Create distribution package
 dist:
     make dist
+
+# Generate compilation database using bear
+compile_commands:
+    bear -- make -B

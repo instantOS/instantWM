@@ -6,3 +6,4 @@ shell.nix
 .nvimlog
 cscope.out
 .ccls-cache
+compile_commands.json
