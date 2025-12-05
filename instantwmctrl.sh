@@ -22,7 +22,10 @@ Commands:
     alttag                   Display tag symbols instead of numbers
     hidetags 0|1             Hide tags that have no windows on current monitor (0 means hide)
     nametag <name>           change the name/icon of the current tag
-    resetnametag             reset all tag names to default"
+    resetnametag             reset all tag names to default
+    showscratchpad           Show the scratchpad
+    hidescratchpad           Hide the scratchpad
+    scratchpadstatus         Get scratchpad visibility (read via xprop -root WM_NAME)"
 # See config.def.c and look for "Xcommand commands"
 
 main() {

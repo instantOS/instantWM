@@ -514,6 +514,9 @@ static Xcommand commands[] = {
     {"focusnmon", focusnmon, {.i = 0}, 5},
     {"nametag", nametag, {.v = "tag"}, 4},
     {"resetnametag", resetnametag, {0}, 0},
+    {"showscratchpad", showscratchpad, {0}, 0},
+    {"hidescratchpad", hidescratchpad, {0}, 0},
+    {"scratchpadstatus", scratchpadstatus, {0}, 0},
 };
 
 static Key dkeys[] = {

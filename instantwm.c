@@ -5409,6 +5409,25 @@ void createscratchpad(const Arg *arg) {
     }
 }
 
+void showscratchpad(const Arg *arg) {
+    if (!selmon->scratchvisible) {
+        togglescratchpad(NULL);
+    }
+}
+
+void hidescratchpad(const Arg *arg) {
+    if (selmon->scratchvisible) {
+        togglescratchpad(NULL);
+    }
+}
+
+void scratchpadstatus(const Arg *arg) {
+    char status[32];
+    snprintf(status, sizeof(status), "scratchpad:%d", selmon->scratchvisible);
+    XStoreName(dpy, root, status);
+    XFlush(dpy);
+}
+
 void toggleview(const Arg *arg) {
     unsigned int newtagset =
         selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK);
