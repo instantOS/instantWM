@@ -90,7 +90,7 @@ enum {
     NetClientList,
     NetClientInfo,
     NetLast
-};                                           /* EWMH atoms */
+}; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum {
     WMProtocols,
