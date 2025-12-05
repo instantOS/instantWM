@@ -1677,20 +1677,20 @@ void drawbar(Monitor *m) {
     if ((w = m->ww - sw - x - stw) > bh) {
         if (n > 0) {
             // Calculate the base width and remainder before the loop
-            int total_width = w + 1;            // Total available width for titles
-            int each_width = total_width / n;  // Base width for each title
-            int remainder = total_width % n;   // Remainder to distribute extra pixels
+            int total_width = w + 1; // Total available width for titles
+            int each_width = total_width / n; // Base width for each title
+            int remainder =
+                total_width % n; // Remainder to distribute extra pixels
 
-          
             // render all window titles
             for (c = m->clients; c; c = c->next) {
                 if (!ISVISIBLE(c))
                     continue;
 
                 int this_width = each_width;
-                
+
                 if (remainder > 0) {
-                    this_width++;  // Add one pixel to account for the remainder
+                    this_width++; // Add one pixel to account for the remainder
                     remainder--;
                 }
 
@@ -1729,11 +1729,11 @@ void drawbar(Monitor *m) {
                 // don't center text if it is too long
                 if (TEXTW(c->name) < this_width - 64) {
                     drw_text(drw, x, 0, this_width, bh,
-                             (this_width - TEXTW(c->name)) * 0.5,
-                             c->name, 0, 4);
+                             (this_width - TEXTW(c->name)) * 0.5, c->name, 0,
+                             4);
                 } else {
-                    drw_text(drw, x, 0, this_width, bh,
-                             lrpad / 2 + 20, c->name, 0, 4);
+                    drw_text(drw, x, 0, this_width, bh, lrpad / 2 + 20, c->name,
+                             0, 4);
                 }
 
                 if (m->sel == c) {
@@ -4458,7 +4458,8 @@ void setup(void) {
     sigaction(SIGCHLD, &sa, NULL);
 
     /* clean up any zombies (inherited from .xinitrc etc) immediately */
-    while (waitpid(-1, NULL, WNOHANG) > 0);
+    while (waitpid(-1, NULL, WNOHANG) > 0)
+        ;
 
     /* init screen */
     screen = DefaultScreen(dpy);

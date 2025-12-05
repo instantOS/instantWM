@@ -1,14 +1,14 @@
 #ifndef INSTANTWM_H
 #define INSTANTWM_H
 
-#include <X11/cursorfont.h>
-#include <X11/keysym.h>
 #include <X11/Xatom.h>
 #include <X11/Xft/Xft.h>
 #include <X11/Xlib.h>
 #include <X11/Xproto.h>
 #include <X11/Xresource.h>
 #include <X11/Xutil.h>
+#include <X11/cursorfont.h>
+#include <X11/keysym.h>
 
 #ifdef XINERAMA
 #include <X11/extensions/Xinerama.h>
@@ -16,180 +16,247 @@
 
 #include "drw.h"
 
-
 /* macros */
-#define BUTTONMASK              (ButtonPressMask|ButtonReleaseMask)
-#define CLEANMASK(mask)         (mask & ~(numlockmask|LockMask) & (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
-#define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
-                               * MAX(0, MIN((y)+(h),(m)->wy+(m)->wh) - MAX((y),(m)->wy)))
-#define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]) || C->issticky)
-#define HIDDEN(C)               ((getstate(C->win) == IconicState))
-#define LENGTH(X)               (sizeof X / sizeof X[0])
-#define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
-#define WIDTH(X)                ((X)->w + 2 * (X)->bw)
-#define HEIGHT(X)               ((X)->h + 2 * (X)->bw)
-#define TAGMASK                 ((1 << LENGTH(tags)) - 1)
-#define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
+#define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
+#define CLEANMASK(mask)                                                        \
+    (mask & ~(numlockmask | LockMask) &                                        \
+     (ShiftMask | ControlMask | Mod1Mask | Mod2Mask | Mod3Mask | Mod4Mask |    \
+      Mod5Mask))
+#define INTERSECT(x, y, w, h, m)                                               \
+    (MAX(0, MIN((x) + (w), (m)->wx + (m)->ww) - MAX((x), (m)->wx)) *           \
+     MAX(0, MIN((y) + (h), (m)->wy + (m)->wh) - MAX((y), (m)->wy)))
+#define ISVISIBLE(C)                                                           \
+    ((C->tags & C->mon->tagset[C->mon->seltags]) || C->issticky)
+#define HIDDEN(C) ((getstate(C->win) == IconicState))
+#define LENGTH(X) (sizeof X / sizeof X[0])
+#define MOUSEMASK (BUTTONMASK | PointerMotionMask)
+#define WIDTH(X) ((X)->w + 2 * (X)->bw)
+#define HEIGHT(X) ((X)->h + 2 * (X)->bw)
+#define TAGMASK ((1 << LENGTH(tags)) - 1)
+#define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
 
-#define MWM_HINTS_FLAGS_FIELD       0
+#define MWM_HINTS_FLAGS_FIELD 0
 #define MWM_HINTS_DECORATIONS_FIELD 2
-#define MWM_HINTS_DECORATIONS       (1 << 1)
-#define MWM_DECOR_ALL               (1 << 0)
-#define MWM_DECOR_BORDER            (1 << 1)
-#define MWM_DECOR_TITLE             (1 << 3)
+#define MWM_HINTS_DECORATIONS (1 << 1)
+#define MWM_DECOR_ALL (1 << 0)
+#define MWM_DECOR_BORDER (1 << 1)
+#define MWM_DECOR_TITLE (1 << 3)
 
 /* XEMBED messages */
-#define XEMBED_EMBEDDED_NOTIFY      0
-#define XEMBED_WINDOW_ACTIVATE      1
-#define XEMBED_FOCUS_IN             4
-#define XEMBED_MODALITY_ON         10
+#define XEMBED_EMBEDDED_NOTIFY 0
+#define XEMBED_WINDOW_ACTIVATE 1
+#define XEMBED_FOCUS_IN 4
+#define XEMBED_MODALITY_ON 10
 
-#define XEMBED_MAPPED              (1 << 0)
-#define XEMBED_WINDOW_ACTIVATE      1
-#define XEMBED_WINDOW_DEACTIVATE    2
+#define XEMBED_MAPPED (1 << 0)
+#define XEMBED_WINDOW_ACTIVATE 1
+#define XEMBED_WINDOW_DEACTIVATE 2
 
-#define VERSION_MAJOR               0
-#define VERSION_MINOR               0
+#define VERSION_MAJOR 0
+#define VERSION_MINOR 0
 #define XEMBED_EMBEDDED_VERSION (VERSION_MAJOR << 16) | VERSION_MINOR
-#define SYSTEM_TRAY_REQUEST_DOCK    0
+#define SYSTEM_TRAY_REQUEST_DOCK 0
 
 /* enums */
-enum { CurNormal, CurResize, CurMove, CurClick, CurHor, CurVert, CurTL, CurTR, CurBL, CurBR, CurLast }; /* cursor */
-/* enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive, SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags }; /1* color schemes *1/ */
-enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
-       NetSystemTray, NetSystemTrayOP, NetSystemTrayOrientation, NetSystemTrayOrientationHorz,
-       NetWMFullscreen, NetActiveWindow, NetWMWindowType,
-       NetWMWindowTypeDialog, NetClientList, NetClientInfo, NetLast }; /* EWMH atoms */
+enum {
+    CurNormal,
+    CurResize,
+    CurMove,
+    CurClick,
+    CurHor,
+    CurVert,
+    CurTL,
+    CurTR,
+    CurBL,
+    CurBR,
+    CurLast
+}; /* cursor */
+/* enum { SchemeNorm, SchemeSel, SchemeHid, SchemeTags, SchemeActive,
+ * SchemeAddActive, SchemeEmpty, SchemeHover, SchemeClose, SchemeHoverTags };
+ * /1* color schemes *1/ */
+enum {
+    NetSupported,
+    NetWMName,
+    NetWMState,
+    NetWMCheck,
+    NetSystemTray,
+    NetSystemTrayOP,
+    NetSystemTrayOrientation,
+    NetSystemTrayOrientationHorz,
+    NetWMFullscreen,
+    NetActiveWindow,
+    NetWMWindowType,
+    NetWMWindowTypeDialog,
+    NetClientList,
+    NetClientInfo,
+    NetLast
+};                                           /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
-enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
-enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
-       ClkClientWin, ClkRootWin, ClkCloseButton, ClkShutDown, ClkSideBar, ClkStartMenu, ClkLast }; /* clicks */
+enum {
+    WMProtocols,
+    WMDelete,
+    WMState,
+    WMTakeFocus,
+    WMLast
+}; /* default atoms */
+enum {
+    ClkTagBar,
+    ClkLtSymbol,
+    ClkStatusText,
+    ClkWinTitle,
+    ClkClientWin,
+    ClkRootWin,
+    ClkCloseButton,
+    ClkShutDown,
+    ClkSideBar,
+    ClkStartMenu,
+    ClkLast
+}; /* clicks */
 
-
-
-////// Colorscheme enums ////// 
+////// Colorscheme enums //////
 // each element has the possibility of a hover over
 enum { SchemeHover, SchemeNoHover, SchemeHoverLast };
 // tag states
-enum { SchemeTagInactive, SchemeTagFilled, SchemeTagFocus, SchemeTagNoFocus, SchemeTagEmpty, SchemeTagLast };
+enum {
+    SchemeTagInactive,
+    SchemeTagFilled,
+    SchemeTagFocus,
+    SchemeTagNoFocus,
+    SchemeTagEmpty,
+    SchemeTagLast
+};
 // window states
-enum { SchemeWinFocus, SchemeWinMinimized, SchemeWinNormal,
-    SchemeWinStickyFocus, SchemeWinSticky, SchemeWinOverlay, SchemeWinOverlayFocus };
+enum {
+    SchemeWinFocus,
+    SchemeWinMinimized,
+    SchemeWinNormal,
+    SchemeWinStickyFocus,
+    SchemeWinSticky,
+    SchemeWinOverlay,
+    SchemeWinOverlayFocus
+};
 // close button
-enum { SchemeCloseNormal, SchemeCloseLocked, SchemeCloseFullscreen, SchemeCloseLast };
+enum {
+    SchemeCloseNormal,
+    SchemeCloseLocked,
+    SchemeCloseFullscreen,
+    SchemeCloseLast
+};
 // window border states
-enum { SchemeBorderNormal, SchemeBorderFloatFocus, SchemeBorderTileFocus, SchemeBorderSnap, SchemeBorderLast };
+enum {
+    SchemeBorderNormal,
+    SchemeBorderFloatFocus,
+    SchemeBorderTileFocus,
+    SchemeBorderSnap,
+    SchemeBorderLast
+};
 
 typedef union {
-	int i;
-	unsigned int ui;
-	float f;
-	const void *v;
+    int i;
+    unsigned int ui;
+    float f;
+    const void *v;
 } Arg;
 
 typedef struct {
-	unsigned int click;
-	unsigned int mask;
-	unsigned int button;
-	void (*func)(const Arg *arg);
-	const Arg arg;
+    unsigned int click;
+    unsigned int mask;
+    unsigned int button;
+    void (*func)(const Arg *arg);
+    const Arg arg;
 } Button;
 
 typedef struct Monitor Monitor;
 typedef struct Client Client;
 struct Client {
-	char name[256];
-	float mina, maxa;
-	int x, y, w, h;
-	int sfx, sfy, sfw, sfh; /* stored float geometry, used on mode revert */
-	int oldx, oldy, oldw, oldh;
-	int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
-	int bw, oldbw;
-	unsigned int tags;
-	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isfakefullscreen, islocked, issticky, snapstatus;
-	Client *next;
-	Client *snext;
-	Monitor *mon;
-	Window win;
+    char name[256];
+    float mina, maxa;
+    int x, y, w, h;
+    int sfx, sfy, sfw, sfh; /* stored float geometry, used on mode revert */
+    int oldx, oldy, oldw, oldh;
+    int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
+    int bw, oldbw;
+    unsigned int tags;
+    int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen,
+        isfakefullscreen, islocked, issticky, snapstatus;
+    Client *next;
+    Client *snext;
+    Monitor *mon;
+    Window win;
 };
 
 typedef struct {
-	unsigned int mod;
-	KeySym keysym;
-	void (*func)(const Arg *);
-	const Arg arg;
+    unsigned int mod;
+    KeySym keysym;
+    void (*func)(const Arg *);
+    const Arg arg;
 } Key;
-
 
 typedef struct {
     char *cmd;
-	void (*func)(const Arg *);
-	const Arg arg;
+    void (*func)(const Arg *);
+    const Arg arg;
     unsigned int type;
 } Xcommand;
 
 typedef struct {
-	const char *symbol;
-	void (*arrange)(Monitor *);
+    const char *symbol;
+    void (*arrange)(Monitor *);
 } Layout;
 
 typedef struct Pertag Pertag;
 struct Monitor {
-	char ltsymbol[16];
-	float mfact;
-	int nmaster;
-	int num;
-	int by;               /* bar geometry */
-	int btw;              /* width of tasks portion of bar */
-	int bt;               /* number of tasks */
-	int mx, my, mw, mh;   /* screen size */
-	int wx, wy, ww, wh;   /* window area  */
-	unsigned int seltags;
-	unsigned int sellt;
-	unsigned int tagset[2];
-	unsigned int activeoffset;
-	unsigned int titleoffset;
-	unsigned int clientcount;
-	int showbar;
-	int topbar;
-	Client *clients;
-	Client *sel;
-	Client *overlay;
-	Client *activescratchpad;
-	Client *fullscreen;
-	int overlaystatus;
+    char ltsymbol[16];
+    float mfact;
+    int nmaster;
+    int num;
+    int by;             /* bar geometry */
+    int btw;            /* width of tasks portion of bar */
+    int bt;             /* number of tasks */
+    int mx, my, mw, mh; /* screen size */
+    int wx, wy, ww, wh; /* window area  */
+    unsigned int seltags;
+    unsigned int sellt;
+    unsigned int tagset[2];
+    unsigned int activeoffset;
+    unsigned int titleoffset;
+    unsigned int clientcount;
+    int showbar;
+    int topbar;
+    Client *clients;
+    Client *sel;
+    Client *overlay;
+    Client *activescratchpad;
+    Client *fullscreen;
+    int overlaystatus;
     int overlaymode;
-	int scratchvisible;
-	int gesture;
-	Client *stack;
-	Client *hoverclient;
-	Monitor *next;
-	Window barwin;
-	const Layout *lt[2];
-	unsigned int showtags;
-	Pertag *pertag;
+    int scratchvisible;
+    int gesture;
+    Client *stack;
+    Client *hoverclient;
+    Monitor *next;
+    Window barwin;
+    const Layout *lt[2];
+    unsigned int showtags;
+    Pertag *pertag;
 };
 
 typedef struct {
-	const char *class;
-	const char *instance;
-	const char *title;
-	unsigned int tags;
-	int isfloating;
-	int monitor;
+    const char *class;
+    const char *instance;
+    const char *title;
+    unsigned int tags;
+    int isfloating;
+    int monitor;
 } Rule;
 
 /* Xresources preferences */
-enum resource_type {
-	STRING = 0,
-	INTEGER = 1,
-	FLOAT = 2
-};
+enum resource_type { STRING = 0, INTEGER = 1, FLOAT = 2 };
 
 typedef struct {
-	char *name;
-	enum resource_type type;
-	void *dst;
+    char *name;
+    enum resource_type type;
+    void *dst;
 } ResourcePref;
 
 typedef struct {
@@ -197,10 +264,10 @@ typedef struct {
     int type;
 } SchemePref;
 
-typedef struct Systray   Systray;
+typedef struct Systray Systray;
 struct Systray {
-	Window win;
-	Client *icons;
+    Window win;
+    Client *icons;
 };
 
 /* function declarations */
@@ -227,7 +294,7 @@ void detachstack(Client *c);
 Monitor *dirtomon(int dir);
 void drawbar(Monitor *m);
 void drawbars(void);
-int drawstatusbar(Monitor *m, int bh, char* text);
+int drawstatusbar(Monitor *m, int bh, char *text);
 void enternotify(XEvent *e);
 void expose(XEvent *e);
 void focus(Client *c);
@@ -289,12 +356,15 @@ void forceresizemouse(const Arg *arg);
 void resizeaspectmouse(const Arg *arg);
 void resizerequest(XEvent *e);
 void restack(Monitor *m);
-void animateclient(Client *c, int x, int y, int w, int h, int frames, int resetpos);
-void checkanimate(Client *c, int x, int y, int w, int h, int frames, int resetpos);
+void animateclient(Client *c, int x, int y, int w, int h, int frames,
+                   int resetpos);
+void checkanimate(Client *c, int x, int y, int w, int h, int frames,
+                  int resetpos);
 void run(void);
 void runAutostart(void);
 void scan(void);
-int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3, long d4);
+int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3,
+              long d4);
 void sendmon(Client *c, Monitor *m);
 int gettagwidth();
 int getxtag(int ix);
@@ -391,14 +461,15 @@ void directionfocus(const Arg *arg);
 Client *wintoclient(Window w);
 Monitor *wintomon(Window w);
 Client *wintosystrayicon(Window w);
-void winview(const Arg* arg);
+void winview(const Arg *arg);
 
 int xerror(Display *dpy, XErrorEvent *ee);
 int xerrordummy(Display *dpy, XErrorEvent *ee);
 int xerrorstart(Display *dpy, XErrorEvent *ee);
 void zoom(const Arg *arg);
 void load_xresources(void);
-void resource_load(XrmDatabase db, char *name, enum resource_type rtype, void *dst);
+void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
+                   void *dst);
 
 void keyrelease(XEvent *e);
 void setoverlay();
