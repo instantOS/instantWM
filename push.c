@@ -1,3 +1,6 @@
+/* See LICENSE file for copyright and license details. */
+#include <math.h>
+
 Client *nextc(Client *c, float f) {
     if (!f)
         return nexttiled(c);
