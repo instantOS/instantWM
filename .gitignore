@@ -1,5 +1,4 @@
 *.o
-config.h
 instantwm
 tags
 .envrc

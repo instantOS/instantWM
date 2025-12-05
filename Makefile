@@ -14,9 +14,6 @@ all: instantwm
 
 ${OBJ}: config.h config.mk
 
-config.h:
-	cp config.def.h $@
-
 instantwm: ${OBJ}
 	${CC} -o $@ ${OBJ} ${LDFLAGS}
 
@@ -28,7 +25,7 @@ clean:
 dist: clean
 	tar --transform 's|^|instantwm-${CMS_VERSION}/|' \
 		-czf instantwm-${CMS_VERSION}.tar.gz \
-		LICENSE Makefile README.md config.def.h config.mk\
+		LICENSE Makefile README.md config.h config.mk\
 		instantwm.1 drw.h util.h ${SRC}
 
 .PHONY: install
