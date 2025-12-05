@@ -3,5 +3,6 @@ Encoding=UTF-8
 Name=instantWM
 Comment=instantOS window manager
 Exec=startinstantos
+DesktopNames=instantwm
 Icon=instantwm
 Type=XSession
