@@ -1,5 +1,9 @@
 /* See LICENSE file for copyright and license details. */
+#ifndef CONFIG_H
+#define CONFIG_H
+
 #include "instantwm.h"
+#include "layouts.h"
 #include <X11/XF86keysym.h>
 
 /* appearance */
@@ -759,3 +763,4 @@ static Button buttons[] = {
     {ClkStartMenu, ShiftMask, Button1, toggleprefix, {0}},
     {ClkStartMenu, 0, Button3, spawn, {.v = quickmenucmd}},
 };
+#endif

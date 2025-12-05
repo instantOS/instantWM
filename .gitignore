@@ -7,3 +7,4 @@ shell.nix
 cscope.out
 .ccls-cache
 compile_commands.json
+.cache/clangd/index
