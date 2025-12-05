@@ -437,7 +437,7 @@ static const char *notifycmd[] = {"instantnotify", NULL};
 static const char *rangercmd[] = {".config/instantos/default/termfilemanager",
                                   NULL};
 static const char *panther[] = {".config/instantos/default/appmenu", NULL};
-static const char *controlcentercmd[] = {"instantsettings", NULL};
+static const char *controlcentercmd[] = {"ins settings --gui", NULL};
 static const char *displaycmd[] = {"instantdisper", NULL};
 static const char *pavucontrol[] = {"pavucontrol", NULL};
 static const char *instantsettings[] = {"instantsettings", NULL};
