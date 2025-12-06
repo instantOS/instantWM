@@ -14,7 +14,7 @@ clean:
 
 # Install the project
 install:
-    make install
+        sudo make install
 
 # Uninstall the project
 uninstall:

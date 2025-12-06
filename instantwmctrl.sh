@@ -32,6 +32,7 @@ main() {
     case $1 in
         help) usage -h ;;
         layout) layout "$2"; exit ;;
+        scratchpadstatus) handle_scratchpad_status; exit ;;
     esac
     xsetroot -name "c;:;$1;$2"
 }
@@ -50,6 +51,17 @@ layout() {
             { echo "Error: Unknown layout '$1'"; exit 1; }
     fi 
     xsetroot -name "c;:;layout;$layout"
+}
+
+handle_scratchpad_status() {
+    xsetroot -name "c;:;scratchpadstatus"
+    for i in {1..20}; do
+        if xprop -root -notype WM_NAME | grep -q 'ipc:scratchpad:'; then
+            xprop -root -notype WM_NAME | sed -n 's/.*ipc:scratchpad:\([0-9]*\).*/scratchpad:\1/p'
+            break
+        fi
+        sleep 0.05
+    done
 }
 
 usage() {

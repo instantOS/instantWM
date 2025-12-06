@@ -5423,9 +5423,23 @@ void hidescratchpad(const Arg *arg) {
 
 void scratchpadstatus(const Arg *arg) {
     char status[32];
-    snprintf(status, sizeof(status), "scratchpad:%d", selmon->scratchvisible);
+    snprintf(status, sizeof(status), "ipc:scratchpad:%d", selmon->scratchvisible);
     XStoreName(dpy, root, status);
     XFlush(dpy);
+}
+
+void updatestatus(void) {
+    char text[512];
+    if (!gettextprop(root, XA_WM_NAME, text, sizeof(text))) {
+        strcpy(stext, "instantwm-" VERSION);
+    } else {
+        if (strncmp(text, "ipc:", 4) == 0)
+            return;
+        strncpy(stext, text, sizeof(stext) - 1);
+        stext[sizeof(stext) - 1] = '\0';
+    }
+    drawbar(selmon);
+    updatesystray();
 }
 
 void toggleview(const Arg *arg) {
@@ -5786,12 +5800,6 @@ void updatesizehints(Client *c) {
     c->hintsvalid = 1;
 }
 
-void updatestatus(void) {
-    if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext)))
-        strcpy(stext, "instantwm-" VERSION);
-    drawbar(selmon);
-    updatesystray();
-}
 
 void updatesystrayicongeom(Client *i, int w, int h) {
     if (i) {
