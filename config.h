@@ -485,7 +485,7 @@ ResourcePref resources[] = {
 
 };
 
-// instantwmctrl commands
+// instantwmctl commands
 static Xcommand commands[] = {
     /* signum       function        default argument  arg handler*/
     // 0 means off, 1 means toggle, 2 means on

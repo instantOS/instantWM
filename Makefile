@@ -32,8 +32,7 @@ dist: clean
 install: all
 	install -d ${DESTDIR}{${PREFIX}/bin,/usr/share/xsessions,${MANPREFIX}/man1}
 	install -m  755 -s instantwm ${DESTDIR}${PREFIX}/bin/
-	install -Dm 755 instantwmctrl.sh ${DESTDIR}${PREFIX}/bin/instantwmctrl
-	ln -sf ${DESTDIR}${PREFIX}/bin/instantwmctrl ${DESTDIR}${PREFIX}/bin/instantwmctl
+	install -Dm 755 instantwmctl.sh ${DESTDIR}${PREFIX}/bin/instantwmctl
 	install -m  644 instantwm.1 ${DESTDIR}${MANPREFIX}/man1/
 	sed -i 's/VERSION/${VERSION}/g' ${DESTDIR}${MANPREFIX}/man1/instantwm.1
 	install -m  644 instantwm.desktop ${DESTDIR}/usr/share/xsessions
@@ -43,7 +42,6 @@ install: all
 .PHONY: uninstall
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/instantwm\
-		${DESTDIR}${PREFIX}/bin/instantwmctrl\
 		${DESTDIR}${PREFIX}/bin/instantwmctl\
 		${DESTDIR}${MANPREFIX}/man1/instantwm.1\
 		${DESTDIR}${PREFIX}/bin/startinstantos\
