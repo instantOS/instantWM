@@ -102,8 +102,6 @@ void (*handler[LASTEvent])(XEvent *) = {[ButtonPress] = buttonpress,
 static Atom wmatom[WMLast], netatom[NetLast], xatom[XLast], motifatom;
 static int running = 1;
 static Cur *cursor[CurLast];
-
-static Clr **scheme;
 static Clr ***tagscheme;
 static Clr ***windowscheme;
 static Clr ***closebuttonscheme;
@@ -902,7 +900,7 @@ Monitor *createmon(void) {
     m->pertag = ecalloc(1, sizeof(Pertag));
     m->pertag->curtag = m->pertag->prevtag = 1;
 
-    for (i = 0; i <= LENGTH(tags); i++) {
+    for (i = 0; i < MAX_TAGS; i++) {
         m->pertag->nmasters[i] = m->nmaster;
         m->pertag->mfacts[i] = m->mfact;
 
@@ -3138,8 +3136,6 @@ void shutkill(const Arg *arg) {
 }
 
 void nametag(const Arg *arg) {
-    char *p;
-    FILE *f;
     int i;
 
     char *name = (char *)arg->v;
