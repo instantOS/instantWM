@@ -33,6 +33,7 @@
 #define WIDTH(X) ((X)->w + 2 * (X)->bw)
 #define HEIGHT(X) ((X)->h + 2 * (X)->bw)
 #define TAGMASK ((1 << LENGTH(tags)) - 1)
+#define MAX_TAGS 21 /* Fixed size for Pertag arrays (20 tags + 1) */
 #define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
 
 #define MWM_HINTS_FLAGS_FIELD 0
@@ -204,7 +205,17 @@ typedef struct {
     void (*arrange)(Monitor *);
 } Layout;
 
+struct Pertag {
+    unsigned int curtag, prevtag;   /* current and previous tag */
+    int nmasters[MAX_TAGS]; /* number of windows in master area */
+    float mfacts[MAX_TAGS]; /* mfacts per tag */
+    unsigned int sellts[MAX_TAGS]; /* selected layouts */
+    const Layout
+        *ltidxs[MAX_TAGS][2]; /* matrix of tags and layouts indexes  */
+    int showbars[MAX_TAGS];   /* display bar for the current tag */
+};
 typedef struct Pertag Pertag;
+
 struct Monitor {
     char ltsymbol[16];
     float mfact;

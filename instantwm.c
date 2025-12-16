@@ -107,12 +107,12 @@ static Clr **scheme;
 static Clr ***tagscheme;
 static Clr ***windowscheme;
 static Clr ***closebuttonscheme;
-static Clr *borderscheme;
+Clr *borderscheme; /* exported for modules */
 static Clr *statusscheme;
 
 Display *dpy;
 static Drw *drw;
-static Monitor *mons;
+Monitor *mons; /* exported for modules */
 static Window root, wmcheckwin;
 static int focusfollowsmouse = 1;
 static int focusfollowsfloatmouse = 1;
@@ -127,15 +127,7 @@ int commandoffsets[20];
 int forceresize = 0;
 Monitor *selmon;
 
-struct Pertag {
-    unsigned int curtag, prevtag;   /* current and previous tag */
-    int nmasters[LENGTH(tags) + 1]; /* number of windows in master area */
-    float mfacts[LENGTH(tags) + 1]; /* mfacts per tag */
-    unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
-    const Layout
-        *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
-    int showbars[LENGTH(tags) + 1];   /* display bar for the current tag */
-};
+/* Pertag is now defined in instantwm.h */
 
 /* compile-time check if all tags fit into an unsigned int bit array. */
 struct NumTags {
@@ -144,22 +136,7 @@ struct NumTags {
 
 void keyrelease(XEvent *e) {}
 
-int overlayexists() {
-    Client *c;
-    Monitor *m;
-    if (!selmon->overlay)
-        return 0;
-
-    for (m = mons; m; m = m->next) {
-        for (c = m->clients; c; c = c->next) {
-            if (c == m->overlay) {
-                return 1;
-            }
-        }
-    }
-
-    return 0;
-}
+/* overlayexists() moved to overlay.c */
 
 void createdesktop() {
     Client *c;
@@ -387,274 +364,14 @@ void tempfullscreen(const Arg *arg) {
         XRaiseWindow(dpy, selmon->fullscreen->win);
 }
 
-void createoverlay(const Arg *arg) {
-    Monitor *m;
-    Monitor *tm;
-    if (!selmon->sel)
-        return;
-    if (selmon->sel == selmon->fullscreen)
-        tempfullscreen(NULL);
-    if (selmon->sel == selmon->overlay) {
-        resetoverlay();
-        for (tm = mons; tm; tm = tm->next) {
-            tm->overlay = NULL;
-        }
-        return;
-    }
-
-    Client *tempclient = selmon->sel;
-
-    resetoverlay();
-
-    for (m = mons; m; m = m->next) {
-        m->overlay = tempclient;
-        m->overlaystatus = 0;
-    }
-
-    savebw(tempclient);
-    tempclient->bw = 0;
-    tempclient->islocked = 1;
-    if (!selmon->overlay->isfloating) {
-        changefloating(selmon->overlay);
-    }
-
-    if (selmon->overlaymode == 0 || selmon->overlaymode == 2)
-        selmon->overlay->h = ((selmon->wh) / 3);
-    else
-        selmon->overlay->w = ((selmon->ww) / 3);
-
-    XRaiseWindow(dpy, tempclient->win);
-    showoverlay(NULL);
-}
-
-void resetoverlay() {
-    if (!overlayexists())
-        return;
-    selmon->overlay->tags = selmon->tagset[selmon->seltags];
-    selmon->overlay->bw = selmon->overlay->oldbw;
-    selmon->overlay->issticky = 0;
-    selmon->overlay->islocked = 0;
-    changefloating(selmon->overlay);
-    arrange(selmon);
-    focus(selmon->overlay);
-}
-
-double easeOutCubic(double t) {
-    t--;
-    return 1 + t * t * t;
-}
-
-void checkanimate(Client *c, int x, int y, int w, int h, int frames,
-                  int resetpos) {
-    if (c->x == x && c->y == y && c->w == w && c->h == h) {
-        return;
-    } else {
-        animateclient(c, x, y, w, h, frames, resetpos);
-    }
-}
-
-// move client to position within a set amount of frames
-void animateclient(Client *c, int x, int y, int w, int h, int frames,
-                   int resetpos) {
-    int width, height;
-    width = w ? w : c->w;
-    height = h ? h : c->h;
-
-    // halve frames if enough events are queried
-    frames = frames / 1 + (XEventsQueued(dpy, QueuedAlready) > 50);
-
-    // No animation if even more events are queried
-    if (!frames || XEventsQueued(dpy, QueuedAlready) > 100) {
-        if (resetpos)
-            resize(c, c->x, c->y, width, height, 0);
-        else
-            resize(c, x, y, width, height, 1);
-        return;
-    }
-
-    int time;
-    int oldx, oldy;
-
-    // prevent oversizing when minimizing/unminimizing
-    if (width > c->mon->mw - (2 * c->bw))
-        width = c->mon->ww - (2 * c->bw);
-
-    if (height > c->mon->wh - (2 * c->bw))
-        height = c->mon->wh - (2 * c->bw);
-
-    time = 1;
-    oldx = c->x;
-    oldy = c->y;
-
-    if (animated && (abs(oldx - x) > 10 || abs(oldy - y) > 10 ||
-                     abs(w - c->w) > 10 || abs(h - c->h) > 10)) {
-        if (x == c->x && y == c->y && c->w < selmon->mw - 50) {
-            animateclient(c, c->x + (width - c->w), c->y + (height - c->h), 0,
-                          0, frames, 0);
-        } else {
-            while (time < frames) {
-                resize(
-                    c,
-                    oldx + easeOutCubic(((double)time / frames)) * (x - oldx),
-                    oldy + easeOutCubic(((double)time / frames)) * (y - oldy),
-                    width, height, 1);
-                time++;
-                usleep(15000);
-            }
-        }
-    }
-
-    if (resetpos)
-        resize(c, oldx, oldy, width, height, 0);
-    else
-        resize(c, x, y, width, height, 1);
-}
-
-void showoverlay(const Arg *arg) {
-    Monitor *m;
-    if (!overlayexists() || selmon->overlaystatus)
-        return;
-
-    int yoffset = selmon->showbar ? bh : 0;
-
-    Client *c;
-    for (c = selmon->clients; c; c = c->next) {
-        if (c->tags & (1 << (selmon->pertag->curtag - 1)) && c->isfullscreen &&
-            !c->isfakefullscreen) {
-            yoffset = 0;
-            break;
-        }
-    }
-
-    for (m = mons; m; m = m->next) {
-        m->overlaystatus = 1;
-    }
-
-    c = selmon->overlay;
-
-    detach(c);
-    detachstack(c);
-    c->mon = selmon;
-    attach(c);
-    attachstack(c);
-    selmon->overlay->isfloating = 1;
-
-    if (c->islocked) {
-        switch (selmon->overlaymode) {
-        case 0:
-            resize(c, selmon->mx + 20, selmon->my + yoffset - c->h,
-                   selmon->ww - 40, c->h, True);
-            break;
-        case 1:
-            resize(c, selmon->mx + selmon->mw - 20, selmon->my + 40, c->w,
-                   selmon->mh - 80, True);
-            break;
-        case 2:
-            resize(c, selmon->mx + 20, selmon->my + selmon->mh, selmon->ww - 40,
-                   c->h, True);
-            break;
-        case 3:
-            resize(c, selmon->mx - c->w + 20, selmon->my + 40, c->w,
-                   selmon->mh - 80, True);
-            break;
-        default:
-            selmon->overlaymode = 0;
-            break;
-        }
-    }
-
-    c->tags = selmon->tagset[selmon->seltags];
-
-    if (!c->isfloating) {
-        changefloating(selmon->overlay);
-    }
-
-    if (c->islocked) {
-        XRaiseWindow(dpy, c->win);
-        switch (selmon->overlaymode) {
-        case 0:
-            animateclient(c, c->x, selmon->my + yoffset, 0, 0, 15, 0);
-            break;
-        case 1:
-            animateclient(c, selmon->mx + selmon->mw - c->w, selmon->my + 40, 0,
-                          0, 15, 0);
-            break;
-        case 2:
-            animateclient(c, selmon->mx + 20, selmon->my + selmon->mh - c->h, 0,
-                          0, 15, 0);
-            break;
-        case 3:
-            animateclient(c, selmon->mx, selmon->my + 40, 0, 0, 15, 0);
-            break;
-        default:
-            selmon->overlaymode = 0;
-            break;
-        }
-        c->issticky = 1;
-    }
-
-    c->bw = 0;
-    /* arrange(selmon); */
-    focus(c);
-    XRaiseWindow(dpy, c->win);
-}
-
-void hideoverlay(const Arg *arg) {
-    if (!overlayexists() || !selmon->overlaystatus)
-        return;
-
-    Client *c;
-    Monitor *m;
-    c = selmon->overlay;
-    c->issticky = 0;
-    if (c == selmon->fullscreen)
-        tempfullscreen(NULL);
-    if (c->islocked) {
-        switch (selmon->overlaymode) {
-        case 0:
-            animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
-            break;
-        case 1:
-            animateclient(c, selmon->mx + selmon->mw, selmon->mx + selmon->mw,
-                          0, 0, 15, 0);
-            break;
-        case 2:
-            animateclient(c, c->x, selmon->mh + selmon->my, 0, 0, 15, 0);
-            break;
-        case 3:
-            animateclient(c, selmon->mx - c->w, 40, 0, 0, 15, 0);
-            break;
-        default:
-            selmon->overlaymode = 0;
-            break;
-        }
-    }
-
-    for (m = mons; m; m = m->next) {
-        m->overlaystatus = 0;
-    }
-
-    selmon->overlay->tags = 0;
-    focus(NULL);
-    arrange(selmon);
-}
-
-void setoverlay(const Arg *arg) {
-
-    if (!overlayexists()) {
-        return;
-    }
-
-    if (!selmon->overlaystatus) {
-        showoverlay(NULL);
-    } else {
-        if (ISVISIBLE(selmon->overlay)) {
-            hideoverlay(NULL);
-        } else {
-            showoverlay(NULL);
-        }
-    }
-}
+/* createoverlay() moved to overlay.c */
+/* resetoverlay() moved to overlay.c */
+/* easeOutCubic() moved to animation.c */
+/* checkanimate() moved to animation.c */
+/* animateclient() moved to animation.c */
+/* showoverlay() moved to overlay.c */
+/* hideoverlay() moved to overlay.c */
+/* setoverlay() moved to overlay.c */
 
 void focuslastclient(const Arg *arg) {
     Client *c;
@@ -3293,32 +3010,7 @@ void dragmouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
 }
 
-void resetoverlaysize() {
-    if (!selmon->overlay)
-        return;
-    Client *c;
-    c = selmon->overlay;
-    selmon->overlay->isfloating = 1;
-    switch (selmon->overlaymode) {
-    case 0:
-        resize(c, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
-        break;
-    case 1:
-        resize(c, selmon->mx + selmon->mw - c->w, 40, selmon->mw / 3,
-               selmon->mh - 80, True);
-        break;
-    case 2:
-        resize(c, selmon->mx + 20, selmon->my + selmon->mh - c->h,
-               selmon->ww - 40, (selmon->wh) / 3, True);
-        break;
-    case 3:
-        resize(c, selmon->mx, 40, selmon->mw / 3, selmon->mh - 80, True);
-        break;
-    default:
-        selmon->overlaymode = 0;
-        break;
-    }
-}
+/* resetoverlaysize() moved to overlay.c */
 
 // drag on the top bar with the right mouse
 void dragrightmouse(const Arg *arg) {
@@ -4829,25 +4521,7 @@ void tagmon(const Arg *arg) {
     }
 }
 
-void setoverlaymode(int mode) {
-    Monitor *m;
-    for (m = mons; m; m = m->next) {
-        m->overlaymode = mode;
-    }
-
-    if (!selmon->overlay)
-        return;
-
-    if (mode == 0 || mode == 2)
-        selmon->overlay->h = selmon->wh / 3;
-    else
-        selmon->overlay->w = selmon->ww / 3;
-
-    if (selmon->overlaystatus) {
-        hideoverlay(NULL);
-        showoverlay(NULL);
-    }
-}
+/* setoverlaymode() moved to overlay.c */
 
 void tagtoleft(const Arg *arg) {
 
@@ -6196,81 +5870,8 @@ void moveleft(const Arg *arg) {
     viewtoleft(arg);
 }
 
-void animleft(const Arg *arg) {
-
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
-        directionfocus(&((Arg){.ui = 3}));
-        return;
-    }
-
-    Client *tempc;
-
-    // windows like behaviour in floating layout
-    if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
-        XSetWindowBorder(dpy, selmon->sel->win,
-                         borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(selmon->sel, 3);
-        return;
-    }
-
-    if (selmon->pertag->curtag == 1 || selmon->pertag->curtag == 0)
-        return;
-
-    if (animated) {
-        int tmpcounter = 0;
-        for (tempc = selmon->clients; tempc; tempc = tempc->next) {
-            if (tempc->tags & 1 << (selmon->pertag->curtag - 2) &&
-                !tempc->isfloating && selmon->pertag &&
-                selmon->pertag->ltidxs[selmon->pertag->curtag - 1][0]
-                        ->arrange != NULL) {
-                if (!tmpcounter) {
-                    tmpcounter = 1;
-                    tempc->x = tempc->x - 200;
-                }
-            }
-        }
-    }
-
-    viewtoleft(arg);
-}
-
-void animright(const Arg *arg) {
-
-    Client *tempc;
-    int tmpcounter = 0;
-
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
-        directionfocus(&((Arg){.ui = 1}));
-        return;
-    }
-
-    // snap window to the right
-    if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
-        XSetWindowBorder(dpy, selmon->sel->win,
-                         borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(selmon->sel, 1);
-        return;
-    }
-
-    if (selmon->pertag->curtag >= 20 || selmon->pertag->curtag == 0)
-        return;
-
-    if (animated) {
-        for (tempc = selmon->clients; tempc; tempc = tempc->next) {
-            if (tempc->tags & 1 << selmon->pertag->curtag &&
-                !tempc->isfloating && selmon->pertag &&
-                selmon->pertag->ltidxs[selmon->pertag->curtag + 1][0]
-                        ->arrange != NULL) {
-                if (!tmpcounter) {
-                    tmpcounter = 1;
-                    tempc->x = tempc->x + 200;
-                }
-            }
-        }
-    }
-
-    viewtoright(arg);
-}
+/* animleft() moved to animation.c */
+/* animright() moved to animation.c */
 
 void viewtoleft(const Arg *arg) {
     int i;
