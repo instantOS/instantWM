@@ -58,54 +58,38 @@ void clickstatus(const Arg *arg) {
             commandoffsets[i]);
 }
 
-int drawstatusbar(Monitor *m, int bh, char *stext) {
-    int ret, i, w, x, len, cmdcounter;
+/* Helper: Compute the width of the status text, handling custom formatting codes */
+static int calculate_status_width(char *text) {
+    int w = 0, i = -1;
     short isCode = 0;
-    char *text;
-    char *p;
+    char *p = text;
 
-    len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len)))
-        die("malloc");
-    p = text;
-    memcpy(text, stext, len);
-
-    /* compute width of the status text */
-    w = 0;
-    i = -1;
-    while (text[++i]) {
-        if (text[i] == '^') {
+    while (p[++i]) {
+        if (p[i] == '^') {
             if (!isCode) {
                 isCode = 1;
-                text[i] = '\0';
-                w += TEXTW(text) - lrpad;
-                text[i] = '^';
-                if (text[++i] == 'f')
-                    w += atoi(text + ++i);
+                p[i] = '\0';
+                w += TEXTW(p) - lrpad;
+                p[i] = '^';
+                if (p[++i] == 'f')
+                    w += atoi(p + ++i);
             } else {
                 isCode = 0;
-                text = text + i + 1;
+                p = p + i + 1;
                 i = -1;
             }
         }
     }
     if (!isCode)
-        w += TEXTW(text) - lrpad;
-    else
-        isCode = 0;
-    text = p;
-    statuswidth = w;
-    w += 2; /* 1px padding on both sides */
-    ret = x = m->ww - w - getsystraywidth();
+        w += TEXTW(p) - lrpad;
 
-    drw_setscheme(drw, statusscheme);
-    drw_rect(drw, x, 0, w, bh, 1, 1);
-    x++;
+    return w;
+}
 
-    /* process status text */
-    i = -1;
-    cmdcounter = 0;
-
+/* Helper: Draw the status text with formatting codes */
+static void render_status_text(char *text, int x, int bh) {
+    int w = 0, i = -1, cmdcounter = 0;
+    short isCode = 0;
     int customcolor = 0;
 
     while (text[++i]) {
@@ -192,9 +176,30 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
         w = TEXTW(text) - lrpad;
         drw_text(drw, x, 0, w, bh, 0, text, 0, 0);
     }
+}
+
+int drawstatusbar(Monitor *m, int bh, char *stext) {
+    int ret, w, x, len;
+    char *text;
+
+    len = strlen(stext) + 1;
+    if (!(text = (char *)malloc(sizeof(char) * len)))
+        die("malloc");
+    memcpy(text, stext, len);
+
+    w = calculate_status_width(text);
+    statuswidth = w;
+    w += 2; /* 1px padding on both sides */
+    ret = x = m->ww - w - getsystraywidth();
 
     drw_setscheme(drw, statusscheme);
-    free(p);
+    drw_rect(drw, x, 0, w, bh, 1, 1);
+    x++;
+
+    render_status_text(text, x, bh);
+
+    drw_setscheme(drw, statusscheme);
+    free(text);
 
     return ret;
 }
@@ -284,15 +289,6 @@ static int draw_layout_indicator(Monitor *m, int x) {
                     m->ltsymbol, 0, 0);
 }
 
-/* Helper: Draw tags and layout indicators, returning the new x position */
-static int draw_tags_and_layout(Monitor *m, unsigned int occ,
-                                unsigned int urg) {
-    int x = startmenusize;
-    x = draw_tag_indicators(m, x, occ, urg);
-    x = draw_layout_indicator(m, x);
-    return x;
-}
-
 /* Helper: Get the color scheme for a window title based on its state */
 static Clr *get_window_scheme(Client *c, int ishover) {
     if (c->mon->sel == c) {
@@ -359,38 +355,6 @@ static void draw_window_title(Monitor *m, Client *c, int x, int width) {
     }
 }
 
-/* Helper: Collect statistics about clients (count, occupancy, urgency) */
-static void collect_client_stats(Monitor *m, int *n, unsigned int *occ,
-                                 unsigned int *urg) {
-    Client *c;
-    *n = 0;
-    *occ = 0;
-    *urg = 0;
-    for (c = m->clients; c; c = c->next) {
-        if (ISVISIBLE(c))
-            (*n)++;
-        *occ |= c->tags == 255 ? 0 : c->tags;
-        if (c->isurgent)
-            *urg |= c->tags;
-    }
-}
-
-/* Helper: Draw status bar text if on selected monitor and return its width */
-static int draw_status_label(Monitor *m, int stw) {
-    if (m == selmon) {
-        return m->ww - stw - drawstatusbar(m, bh, stext);
-    }
-    return 0;
-}
-
-/* Helper: Get systray width if applicable */
-static int get_systray_width_for_monitor(Monitor *m) {
-    if (showsystray && m == systraytomon(m)) {
-        return getsystraywidth();
-    }
-    return 0;
-}
-
 /* Helper: Draw all window titles in the bar */
 static void draw_window_titles(Monitor *m, int x, int w, int n) {
     if (n > 0) {
@@ -429,42 +393,49 @@ static void draw_window_titles(Monitor *m, int x, int w, int n) {
     }
 }
 
-/* Helper: Calculate available width and draw client area (window titles) */
-static int draw_client_area(Monitor *m, int x, int sw, int stw, int n) {
-    int w = m->ww - sw - x - stw;
-    if (w > bh) {
-        draw_window_titles(m, x, w, n);
-    }
-    return w;
-}
-
-/* Helper: Finalize bar drawing by mapping the buffer and updating monitor state */
-static void finalize_bar_drawing(Monitor *m, int w, int n) {
-    drw_setscheme(drw, statusscheme);
-    m->bt = n;
-    m->btw = w;
-    drw_map(drw, m->barwin, 0, 0, m->ww, bh);
-}
-
 void drawbar(Monitor *m) {
-    if (pausedraw || !m->showbar)
+    if (pausedraw)
         return;
 
-    int x, w, sw, n, stw;
-    unsigned int occ, urg;
+    int x, w, sw = 0, n = 0, stw = 0;
+    unsigned int occ = 0, urg = 0;
+    Client *c;
 
-    stw = get_systray_width_for_monitor(m);
-    sw = draw_status_label(m, stw);
+    if (!m->showbar)
+        return;
+
+    if (showsystray && m == systraytomon(m))
+        stw = getsystraywidth();
+
+    /* Draw status first so it can be overdrawn by tags later */
+    if (m == selmon) {
+        sw = m->ww - stw - drawstatusbar(m, bh, stext);
+    }
 
     draw_startmenu_icon();
     resizebarwin(m);
 
-    collect_client_stats(m, &n, &occ, &urg);
+    /* Collect client info for tags */
+    for (c = m->clients; c; c = c->next) {
+        if (ISVISIBLE(c))
+            n++;
+        occ |= c->tags == 255 ? 0 : c->tags;
+        if (c->isurgent)
+            urg |= c->tags;
+    }
 
-    x = draw_tags_and_layout(m, occ, urg);
-    w = draw_client_area(m, x, sw, stw, n);
+    x = startmenusize;
+    x = draw_tag_indicators(m, x, occ, urg);
+    x = draw_layout_indicator(m, x);
 
-    finalize_bar_drawing(m, w, n);
+    if ((w = m->ww - sw - x - stw) > bh) {
+        draw_window_titles(m, x, w, n);
+    }
+
+    drw_setscheme(drw, statusscheme);
+    m->bt = n;
+    m->btw = w;
+    drw_map(drw, m->barwin, 0, 0, m->ww, bh);
 }
 
 void drawbars(void) {
