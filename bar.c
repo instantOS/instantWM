@@ -350,6 +350,30 @@ static void draw_window_title(Monitor *m, Client *c, int x, int width) {
     }
 }
 
+/* Helper: Collect statistics about clients (count, occupancy, urgency) */
+static void collect_client_stats(Monitor *m, int *n, unsigned int *occ,
+                                 unsigned int *urg) {
+    Client *c;
+    *n = 0;
+    *occ = 0;
+    *urg = 0;
+    for (c = m->clients; c; c = c->next) {
+        if (ISVISIBLE(c))
+            (*n)++;
+        *occ |= c->tags == 255 ? 0 : c->tags;
+        if (c->isurgent)
+            *urg |= c->tags;
+    }
+}
+
+/* Helper: Draw status bar text if on selected monitor and return its width */
+static int draw_status_label(Monitor *m, int stw) {
+    if (m == selmon) {
+        return m->ww - stw - drawstatusbar(m, bh, stext);
+    }
+    return 0;
+}
+
 /* Helper: Draw all window titles in the bar */
 static void draw_window_titles(Monitor *m, int x, int w, int n) {
     if (n > 0) {
@@ -389,35 +413,22 @@ static void draw_window_titles(Monitor *m, int x, int w, int n) {
 }
 
 void drawbar(Monitor *m) {
-    if (pausedraw)
+    if (pausedraw || !m->showbar)
         return;
 
     int x, w, sw = 0, n = 0, stw = 0;
     unsigned int occ = 0, urg = 0;
-    Client *c;
-
-    if (!m->showbar)
-        return;
 
     if (showsystray && m == systraytomon(m))
         stw = getsystraywidth();
 
     /* Draw status first so it can be overdrawn by tags later */
-    if (m == selmon) {
-        sw = m->ww - stw - drawstatusbar(m, bh, stext);
-    }
+    sw = draw_status_label(m, stw);
 
     draw_startmenu_icon();
     resizebarwin(m);
 
-    /* Collect client info for tags */
-    for (c = m->clients; c; c = c->next) {
-        if (ISVISIBLE(c))
-            n++;
-        occ |= c->tags == 255 ? 0 : c->tags;
-        if (c->isurgent)
-            urg |= c->tags;
-    }
+    collect_client_stats(m, &n, &occ, &urg);
 
     x = startmenusize;
     x = draw_tag_indicators(m, x, occ, urg);
