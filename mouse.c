@@ -58,6 +58,28 @@ extern void unfocus(Client *c, int setfocus);
 extern void focus(Client *c);
 extern void resetbar();
 
+/* Handle window drop on bar: move to tag or re-tile */
+static void handle_bar_drop(Client *c) {
+    int x, y;
+    getrootptr(&x, &y);
+
+    if (y < selmon->my || y >= selmon->my + bh)
+        return;
+
+    /* Check if dropped on a tag indicator */
+    int droptag = getxtag(x);
+    if (droptag >= 0 && x < selmon->mx + gettagwidth()) {
+        /* Move window to that tag and make it tiled */
+        tag(&((Arg){.ui = 1 << droptag}));
+        if (c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+            togglefloating(NULL);
+        }
+    } else if (c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+        /* Dropped elsewhere on bar - make it tiled again */
+        togglefloating(NULL);
+    }
+}
+
 void movemouse(const Arg *arg) {
     int x, y, ocx, ocy, nx, ny, ti, tx, occ, colorclient, tagx, notfloating;
     Client *c;
@@ -118,6 +140,12 @@ void movemouse(const Arg *arg) {
 
             nx = ocx + (ev.xmotion.x - x);
             ny = ocy + (ev.xmotion.y - y);
+
+            /* If cursor is on the bar, offset window below the bar */
+            if (ev.xmotion.y_root >= selmon->my && ev.xmotion.y_root < selmon->my + bh) {
+                ny = selmon->my + bh;
+            }
+
             if (abs(selmon->wx - nx) < snap)
                 nx = selmon->wx;
             else if (abs((selmon->wx + selmon->ww) - (nx + WIDTH(c))) < snap)
@@ -143,19 +171,8 @@ void movemouse(const Arg *arg) {
     } while (ev.type != ButtonRelease);
     XUngrabPointer(dpy, CurrentTime);
 
-    /* If dropped on the bar, check for special actions */
-    getrootptr(&x, &y);
-    if (y >= selmon->my && y < selmon->my + bh) {
-        /* Check if dropped on a tag indicator */
-        int droptag = getxtag(x);
-        if (droptag >= 0 && x < selmon->mx + gettagwidth()) {
-            /* Move window to that tag */
-            tag(&((Arg){.ui = 1 << droptag}));
-        } else if (c->isfloating && selmon->lt[selmon->sellt]->arrange) {
-            /* Dropped elsewhere on bar - make it tiled again */
-            togglefloating(NULL);
-        }
-    }
+    /* Handle drop on bar (tag move, re-tile) */
+    handle_bar_drop(c);
 
     if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
         sendmon(c, m);
