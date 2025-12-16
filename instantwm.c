@@ -54,20 +54,20 @@
 #include "config.h"
 
 /* variables */
-static Systray *systray = NULL;
+Systray *systray = NULL;
 static const char broken[] = "broken";
 static char stext[1024];
 
-static int showalttag = 0;
-static int freealttab = 0;
+int showalttag = 0;
+int freealttab = 0;
 
 static Client *lastclient;
 
-static int tagprefix = 0;
+int tagprefix = 0;
 static int bardragging = 0;
 static int altcursor = 0;
-static int tagwidth = 0;
-static int doubledraw = 0;
+int tagwidth = 0;
+int doubledraw = 0;
 static int desktopicons = 0;
 static int newdesktop = 0;
 static int pausedraw = 0;
@@ -114,7 +114,7 @@ Monitor *mons; /* exported for modules */
 Window root;   /* exported for modules */
 static Window wmcheckwin;
 int focusfollowsmouse = 1; /* exported for modules */
-static int focusfollowsfloatmouse = 1;
+int focusfollowsfloatmouse = 1;
 static int barleavestatus = 0;
 int animated = 1;
 int specialnext = 0;
@@ -4486,77 +4486,19 @@ void tagtoright(const Arg *arg) {
     c->x = oldx;
 }
 
-void ctrltoggle(int *value, int arg) {
-    if (arg == 0 || arg == 2) {
-        *value = !*value;
-    } else {
-        if (arg == 1)
-            *value = 0;
-        else
-            *value = 1;
-    }
-}
+/* ctrltoggle() moved to toggles.c */
 
 void setspecialnext(const Arg *arg) { specialnext = arg->ui; }
 
-// toggle tag icon view
-void togglealttag(const Arg *arg) {
-    ctrltoggle(&showalttag, arg->ui);
-
-    Monitor *m;
-    for (m = mons; m; m = m->next)
-        drawbar(m);
-
-    tagwidth = gettagwidth();
-}
-
-void alttabfree(const Arg *arg) {
-    ctrltoggle(&freealttab, arg->ui);
-    grabkeys();
-}
-
-// make client show on all tags
-void togglesticky(const Arg *arg) {
-    if (!selmon->sel)
-        return;
-    selmon->sel->issticky = !selmon->sel->issticky;
-    arrange(selmon);
-}
-
-void toggleprefix(const Arg *arg) {
-    tagprefix ^= 1;
-    drawbar(selmon);
-}
-
-// disable/enable animations
-void toggleanimated(const Arg *arg) { ctrltoggle(&animated, arg->ui); }
-
-void setborderwidth(const Arg *arg) {
-    Client *c;
-    int width;
-    int d;
-    if (!selmon->sel)
-        return;
-    c = selmon->sel;
-    width = c->bw;
-    c->bw = arg->i;
-    d = width - c->bw;
-    resize(c, c->x, c->y, c->w + 2 * d, c->h + 2 * d, 0);
-}
-
-// disable/enable window focus following the mouse
-void togglefocusfollowsmouse(const Arg *arg) {
-    ctrltoggle(&focusfollowsmouse, arg->ui);
-}
-
-// disable/enable window focus following the mouse
-void togglefocusfollowsfloatmouse(const Arg *arg) {
-    ctrltoggle(&focusfollowsfloatmouse, arg->ui);
-}
-
-// double the window refresh rate
-void toggledoubledraw(const Arg *arg) { doubledraw = !doubledraw; }
-
+/* togglealttag() moved to toggles.c */
+/* alttabfree() moved to toggles.c */
+/* togglesticky() moved to toggles.c */
+/* toggleprefix() moved to toggles.c */
+/* toggleanimated() moved to toggles.c */
+/* setborderwidth() moved to toggles.c */
+/* togglefocusfollowsmouse() moved to toggles.c */
+/* togglefocusfollowsfloatmouse() moved to toggles.c */
+/* toggledoubledraw() moved to toggles.c */
 void togglefakefullscreen(const Arg *arg) {
     if (selmon->sel->isfullscreen) {
         if (selmon->sel->isfakefullscreen) {
@@ -4571,14 +4513,7 @@ void togglefakefullscreen(const Arg *arg) {
 
     selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
-
-// lock prevents windows from getting closed until unlocked
-void togglelocked(const Arg *arg) {
-    if (!selmon->sel)
-        return;
-    selmon->sel->islocked = !selmon->sel->islocked;
-    drawbar(selmon);
-}
+/* togglelocked() moved to toggles.c */
 
 void warp(const Client *c) {
     int x, y;
@@ -4680,14 +4615,7 @@ void keyresize(const Arg *arg) {
 
 /* centerwindow() moved to floating.c */
 
-// toggle vacant tags
-void toggleshowtags(const Arg *arg) {
-    int showtags = selmon->showtags;
-    ctrltoggle(&showtags, arg->ui);
-    selmon->showtags = showtags;
-    tagwidth = gettagwidth();
-    drawbar(selmon);
-}
+/* toggleshowtags() moved to toggles.c */
 
 void togglebar(const Arg *arg) {
     int tmpnoanim;
