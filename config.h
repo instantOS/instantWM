@@ -514,8 +514,10 @@ static Xcommand commands[] = {
     {"focusnmon", focusnmon, {.i = 0}, 5},
     {"nametag", nametag, {.v = "tag"}, 4},
     {"resetnametag", resetnametag, {0}, 0},
-    {"showscratchpad", showscratchpad, {0}, 0},
-    {"hidescratchpad", hidescratchpad, {0}, 0},
+    {"makescratchpad", makescratchpad, {0}, 4},
+    {"togglescratchpad", togglescratchpad, {0}, 4},
+    {"showscratchpad", showscratchpad, {0}, 4},
+    {"hidescratchpad", hidescratchpad, {0}, 4},
     {"scratchpadstatus", scratchpadstatus, {0}, 0},
 };
 

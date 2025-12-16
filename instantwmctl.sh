@@ -23,8 +23,10 @@ Commands:
     hidetags 0|1             Hide tags that have no windows on current monitor (0 means hide)
     nametag <name>           change the name/icon of the current tag
     resetnametag             reset all tag names to default
-    showscratchpad           Show the scratchpad
-    hidescratchpad           Hide the scratchpad
+    makescratchpad <name>    Make window with class scratchpad_<name> a scratchpad
+    togglescratchpad <name>  Toggle scratchpad with class scratchpad_<name>
+    showscratchpad <name>    Show the scratchpad (optional: specific name)
+    hidescratchpad <name>    Hide the scratchpad (optional: specific name)
     scratchpadstatus         Get scratchpad visibility (read via xprop -root WM_NAME)"
 # See config.def.c and look for "Xcommand commands"
 
