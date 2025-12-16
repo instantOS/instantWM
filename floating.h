@@ -10,6 +10,7 @@ void saveallfloating(Monitor *m);
 void restoreallfloating(Monitor *m);
 void applysnap(Client *c, Monitor *m);
 int checkfloating(Client *c);
+int visible(Client *c);
 void changesnap(Client *c, int snapmode);
 void tempfullscreen(const Arg *arg);
 void savefloating(Client *c);
