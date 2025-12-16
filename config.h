@@ -297,9 +297,9 @@ SchemePref schemecolortypes[] = {
 
 /* tagging */
 #define MAX_TAGLEN 16
-static const char *tags_default[] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
-                                     "8",  "9",  "10", "11", "12", "13", "14",
-                                     "15", "16", "17", "18", "19", "20", "s"};
+const char *tags_default[] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
+                              "8",  "9",  "10", "11", "12", "13", "14",
+                              "15", "16", "17", "18", "19", "20", "s"};
 char tags[][MAX_TAGLEN] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
                            "8",  "9",  "10", "11", "12", "13", "14",
                            "15", "16", "17", "18", "19", "20", "s"};
@@ -351,7 +351,7 @@ static const int resizehints =
     1; /* 1 means respect size hints in tiled resizals */
 static const int decorhints = 1; /* 1 means respect decoration hints */
 
-static const Layout layouts[] = {
+const Layout layouts[] = {
     /* symbol     arrange function */
     {"+", tile},                        /* first entry is default */
     {"#", grid},           {"-", NULL}, /* no layout function means floating
