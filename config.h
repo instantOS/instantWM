@@ -384,8 +384,8 @@ static const char *clipmenucmd[] = {"instantclipmenu", NULL};
 static const char *smartcmd[] = {"instantmenu_smartrun", NULL};
 static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 static const char *termcmd[] = {".config/instantos/default/terminal", NULL};
-const char *termscratchcmd[] = {".config/instantos/default/terminal",
-                                       "-c", scratchpadname, NULL};
+const char *termscratchcmd[] = {".config/instantos/default/terminal", "-c",
+                                scratchpadname, NULL};
 static const char *quickmenucmd[] = {"quickmenu", NULL};
 static const char *instantassistcmd[] = {"instantassist", NULL};
 static const char *instantrepeatcmd[] = {"instantrepeat", NULL};

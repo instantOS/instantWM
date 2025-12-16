@@ -2,9 +2,9 @@
 
 #include <string.h>
 
-#include "scratchpad.h"
 #include "floating.h"
 #include "layouts.h"
+#include "scratchpad.h"
 
 /* External declarations for variables defined in instantwm.c */
 extern Display *dpy;

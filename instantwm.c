@@ -113,7 +113,7 @@ static Clr *statusscheme;
 Display *dpy;
 static Drw *drw;
 Monitor *mons; /* exported for modules */
-Window root; /* exported for modules */
+Window root;   /* exported for modules */
 static Window wmcheckwin;
 int focusfollowsmouse = 1; /* exported for modules */
 static int focusfollowsfloatmouse = 1;
