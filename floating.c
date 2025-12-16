@@ -2,6 +2,7 @@
 
 #include "floating.h"
 #include "animation.h"
+#include "focus.h"
 #include "push.h"
 
 /* External declarations for variables defined in instantwm.c */
@@ -269,3 +270,130 @@ void centerwindow(const Arg *arg) {
         resize(c, selmon->mx + (mw / 2) - (w / 2),
                selmon->my + (mh / 2) - (h / 2) - bh, c->w, c->h, True);
 }
+
+// move a client with the mouse and keyboard
+void moveresize(const Arg *arg) {
+    /* only floating windows can be moved */
+    Client *c;
+    c = selmon->sel;
+
+    if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+        return;
+
+    int mstrength = 40;
+    int mpositions[4][2] = {{0, mstrength},
+                            {0, (-1) * mstrength},
+                            {mstrength, 0},
+                            {(-1) * mstrength, 0}};
+    int nx = (c->x + mpositions[arg->i][0]);
+    int ny = (c->y + mpositions[arg->i][1]);
+
+    if (nx < selmon->mx)
+        nx = selmon->mx;
+    if (ny < selmon->my)
+        ny = selmon->my;
+
+    if ((ny + c->h) > (selmon->my + selmon->mh))
+        ny = ((selmon->mh + selmon->my) - c->h - c->bw * 2);
+
+    if ((nx + c->w) > (selmon->mx + selmon->mw))
+        nx = ((selmon->mw + selmon->mx) - c->w - c->bw * 2);
+
+    animateclient(c, nx, ny, c->w, c->h, 5, 0);
+    warp(c);
+}
+
+void keyresize(const Arg *arg) {
+
+    if (!selmon->sel)
+        return;
+
+    Client *c;
+    c = selmon->sel;
+
+    int mstrength = 40;
+    int mpositions[4][2] = {{0, mstrength},
+                            {0, (-1) * mstrength},
+                            {mstrength, 0},
+                            {(-1) * mstrength, 0}};
+
+    int nw = (c->w + mpositions[arg->i][0]);
+    int nh = (c->h + mpositions[arg->i][1]);
+
+    resetsnap(c);
+
+    if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+        return;
+
+    warp(c);
+
+    resize(c, c->x, c->y, nw, nh, True);
+}
+
+void upscaleclient(const Arg *arg) {
+    Client *c;
+
+    if (!arg->v) {
+        if (selmon->sel)
+            c = selmon->sel;
+        else
+            return;
+    } else {
+        c = (Client *)arg->v;
+    }
+
+    scaleclient(c, 30);
+}
+
+void downscaleclient(const Arg *arg) {
+    Client *c;
+
+    if (!arg->v) {
+        if (selmon->sel)
+            c = selmon->sel;
+        else
+            return;
+    } else {
+        c = (Client *)arg->v;
+    }
+
+    if (!c->isfloating) {
+        focus(c);
+        togglefloating(NULL);
+    }
+
+    scaleclient(c, -30);
+}
+
+void scaleclient(Client *c, int scale) {
+    int x, y, w, h;
+    if (!c->isfloating)
+        return;
+
+    w = c->w + scale;
+    h = c->h + scale;
+    x = c->x - (scale / 2);
+    y = c->y - (scale / 2);
+
+    if ((double)c->h / c->w < 0.25 || (double)c->h / c->w < 0.25) {
+        h = c->h + scale;
+        h = c->x - scale / 2;
+        h = c->y - scale / 2;
+    }
+
+    if (x < selmon->mx)
+        x = selmon->mx;
+
+    if (w > selmon->mw)
+        w = selmon->mw;
+
+    if (h > selmon->mh)
+        h = selmon->mh;
+    if ((h + y) > selmon->my + selmon->mh)
+        y = selmon->mh - h;
+
+    if (y < bh)
+        y = bh;
+    animateclient(c, x, y, w, h, 3, 0);
+}
+

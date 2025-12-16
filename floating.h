@@ -24,5 +24,7 @@ void centerwindow(const Arg *arg);
 void scaleclient(Client *c, int scale);
 void upscaleclient(const Arg *arg);
 void downscaleclient(const Arg *arg);
+void moveresize(const Arg *arg);
+void keyresize(const Arg *arg);
 
 #endif
