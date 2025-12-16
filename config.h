@@ -8,7 +8,7 @@
 
 /* appearance */
 static const unsigned int borderpx = 3; /* border pixel of windows */
-static const unsigned int snap = 32;    /* snap pixel */
+const unsigned int snap = 32;    /* snap pixel */
 const unsigned int startmenusize = 30;  /* snap pixel */
 const unsigned int systraypinning =
     0; /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor
@@ -310,8 +310,8 @@ const char *tagsalt[] = {"", "{}",  "$",   "", "",
 
 static const char scratchpadname[] = "instantscratchpad";
 
-static const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
-static const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-",
+const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
+const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-",
                                 NULL};
 static const char *mutevol[] = {"/usr/share/instantassist/utils/p.sh", "m",
                                 NULL};
@@ -347,7 +347,7 @@ static const Rule rules[] = {
 /* layout(s) */
 static const float mfact = 0.55; /* factor of master area size [0.05..0.95] */
 static const int nmaster = 1;    /* number of clients in master area */
-static const int resizehints =
+const int resizehints =
     1; /* 1 means respect size hints in tiled resizals */
 static const int decorhints = 1; /* 1 means respect decoration hints */
 

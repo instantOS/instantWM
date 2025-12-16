@@ -3,8 +3,7 @@
 
 include config.mk
 
-SRC = drw.c instantwm.c layouts.c util.c overlay.c animation.c floating.c mouse.c scratchpad.c bar.c systray.c tags.c xresources.c toggles.c
-OBJ = ${SRC:.c=.o}
+OBJ = drw.o instantwm.o layouts.o util.o overlay.o animation.o floating.o mouse.o scratchpad.o bar.o systray.o tags.o xresources.o toggles.o
 
 .PHONY: all
 all: instantwm

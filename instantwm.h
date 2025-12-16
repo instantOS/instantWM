@@ -16,6 +16,8 @@
 
 #include "drw.h"
 
+
+
 /* macros */
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define CLEANMASK(mask)                                                        \
@@ -332,13 +334,7 @@ void manage(Window w, XWindowAttributes *wa);
 void mappingnotify(XEvent *e);
 void maprequest(XEvent *e);
 void motionnotify(XEvent *e);
-void movemouse(const Arg *arg);
-void dragmouse(const Arg *arg);
-void gesturemouse(const Arg *arg);
-int resizeborder(const Arg *arg);
-void dragrightmouse(const Arg *arg);
-void drawwindow(const Arg *arg);
-void dragtag(const Arg *arg);
+
 void moveresize(const Arg *arg);
 void distributeclients(const Arg *arg);
 void keyresize(const Arg *arg);
@@ -361,9 +357,7 @@ int allclientcount();
 int clientcountmon(Monitor *m);
 void resizebarwin(Monitor *m);
 void resizeclient(Client *c, int x, int y, int w, int h);
-void resizemouse(const Arg *arg);
-void forceresizemouse(const Arg *arg);
-void resizeaspectmouse(const Arg *arg);
+
 void resizerequest(XEvent *e);
 void restack(Monitor *m);
 void animateclient(Client *c, int x, int y, int w, int h, int frames,
@@ -511,5 +505,7 @@ extern Monitor *selmon;
 extern int bh;
 extern int animated;
 extern Display *dpy;
+
+#include "mouse.h"
 
 #endif
