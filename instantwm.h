@@ -16,8 +16,6 @@
 
 #include "drw.h"
 
-
-
 /* macros */
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define CLEANMASK(mask)                                                        \
@@ -116,9 +114,9 @@ enum {
     ClkLast
 }; /* clicks */
 enum {
-    AltCurNone,      /* 0: normal cursor */
-    AltCurResize,    /* 1: resize cursor near floating window */
-    AltCurSidebar    /* 2: vertical cursor for sidebar slider */
+    AltCurNone,   /* 0: normal cursor */
+    AltCurResize, /* 1: resize cursor near floating window */
+    AltCurSidebar /* 2: vertical cursor for sidebar slider */
 }; /* altcursor states */
 
 ////// Colorscheme enums //////

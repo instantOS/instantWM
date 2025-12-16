@@ -1,13 +1,13 @@
 /* See LICENSE file for copyright and license details. */
-#include "instantwm.h"
 #include "mouse.h"
-#include "util.h"
+#include "instantwm.h"
 #include "layouts.h"
+#include "util.h"
 
+#include <X11/XF86keysym.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <X11/XF86keysym.h>
 
 /* extern variables */
 extern Monitor *selmon;
@@ -190,8 +190,8 @@ void gesturemouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
 }
 
-// Check if cursor is in the resize border zone around the selected floating window
-// Returns 1 if in border zone, 0 if not or no valid floating selection
+// Check if cursor is in the resize border zone around the selected floating
+// window Returns 1 if in border zone, 0 if not or no valid floating selection
 int isinresizeborder() {
     if (!(selmon->sel &&
           (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)))
@@ -426,7 +426,8 @@ void drawwindow(const Arg *arg) {
         return;
     FILE *fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
 
-    if (!fp) return;
+    if (!fp)
+        return;
 
     while (fgets(str, 100, fp) != NULL) {
         strcat(strout, str);

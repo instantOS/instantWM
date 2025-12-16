@@ -396,4 +396,3 @@ void scaleclient(Client *c, int scale) {
         y = bh;
     animateclient(c, x, y, w, h, 3, 0);
 }
-

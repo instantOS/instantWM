@@ -499,8 +499,9 @@ void buttonpress(XEvent *e) {
         click = ClkSideBar;
     }
     // Handle resize click when cursor is in resize mode near floating window
-    if (click == ClkRootWin && altcursor == AltCurResize && ev->button == Button1 &&
-        selmon->sel && (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)) {
+    if (click == ClkRootWin && altcursor == AltCurResize &&
+        ev->button == Button1 && selmon->sel &&
+        (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)) {
         resetcursor();
         resizemouse(NULL);
         return;
@@ -1640,7 +1641,7 @@ static int handlefloatingresizehover(Monitor *m) {
     if (!(selmon->sel && (selmon->sel->isfloating ||
                           NULL == selmon->lt[selmon->sellt]->arrange)))
         return 0;
-    
+
     Client *c;
     int tilefound = 0;
     for (c = m->clients; c; c = c->next) {
@@ -1652,7 +1653,7 @@ static int handlefloatingresizehover(Monitor *m) {
     }
     if (tilefound)
         return 0;
-    
+
     if (isinresizeborder()) {
         if (altcursor != AltCurResize) {
             XDefineCursor(dpy, root, cursor[CurResize]->cursor);
@@ -1732,7 +1733,8 @@ static void handletagbarhover(XMotionEvent *ev) {
     }
 }
 
-// Helper: handle window title bar hover (close button, resize widget, client hover)
+// Helper: handle window title bar hover (close button, resize widget, client
+// hover)
 static void handletitlebarhover(XMotionEvent *ev) {
     // hover over close button
     if (ev->x_root > selmon->activeoffset &&
@@ -1749,7 +1751,7 @@ static void handletitlebarhover(XMotionEvent *ev) {
         double titlewidth = (1.0 / (double)selmon->bt) * selmon->btw;
         int resizeStart = selmon->activeoffset + titlewidth - 30;
         int resizeEnd = selmon->activeoffset + titlewidth;
-        
+
         if (altcursor == AltCurNone) {
             if (ev->x_root > resizeStart && ev->x_root < resizeEnd) {
                 XDefineCursor(dpy, root, cursor[CurResize]->cursor);
@@ -1821,7 +1823,8 @@ void motionnotify(XEvent *e) {
     // cursor is to the left of window titles (tags area)
     if (ev->x_root < selmon->mx + tagwidth + 60) {
         handletagbarhover(ev);
-    } else if (selmon->sel && ev->x_root < selmon->mx + 60 + tagwidth + selmon->btw) {
+    } else if (selmon->sel &&
+               ev->x_root < selmon->mx + 60 + tagwidth + selmon->btw) {
         // cursor is on window titles
         handletitlebarhover(ev);
     } else {
