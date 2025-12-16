@@ -482,10 +482,10 @@ void attachstack(Client *c) {
 }
 
 void resetcursor() {
-    if (!altcursor)
+    if (altcursor == AltCurNone)
         return;
     XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
-    altcursor = 0;
+    altcursor = AltCurNone;
 }
 
 void buttonpress(XEvent *e) {
@@ -573,6 +573,13 @@ void buttonpress(XEvent *e) {
         click = ClkClientWin;
     } else if (ev->x > selmon->mx + selmon->mw - 50) {
         click = ClkSideBar;
+    }
+    // Handle resize click when cursor is in resize mode near floating window
+    if (click == ClkRootWin && altcursor == AltCurResize && ev->button == Button1 &&
+        selmon->sel && (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)) {
+        resetcursor();
+        resizemouse(NULL);
+        return;
     }
     for (i = 0; i < LENGTH(buttons); i++)
         if (click == buttons[i].click && buttons[i].func &&
@@ -1703,13 +1710,156 @@ void maprequest(XEvent *e) {
         manage(ev->window, &wa);
 }
 
+// Helper: handle hover near floating window for resize cursor
+// Returns 1 if handled (should return from motionnotify), 0 otherwise
+static int handlefloatingresizehover(Monitor *m) {
+    if (!(selmon->sel && (selmon->sel->isfloating ||
+                          NULL == selmon->lt[selmon->sellt]->arrange)))
+        return 0;
+    
+    Client *c;
+    int tilefound = 0;
+    for (c = m->clients; c; c = c->next) {
+        if (ISVISIBLE(c) &&
+            !(c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange)) {
+            tilefound = 1;
+            break;
+        }
+    }
+    if (tilefound)
+        return 0;
+    
+    if (isinresizeborder()) {
+        if (altcursor != AltCurResize) {
+            XDefineCursor(dpy, root, cursor[CurResize]->cursor);
+            altcursor = AltCurResize;
+        }
+        Client *newc = getcursorclient();
+        if (newc && newc != selmon->sel)
+            focus(newc);
+        return 1; // Handled
+    } else if (altcursor == AltCurResize) {
+        resetcursor();
+    }
+    return 0;
+}
+
+// Helper: handle sidebar slider cursor
+// Returns 1 if handled (should return from motionnotify), 0 otherwise
+static int handlesidebarhover(XMotionEvent *ev) {
+    if (ev->x_root > selmon->mx + selmon->mw - 50) {
+        if (altcursor == AltCurNone && ev->y_root > bh + 60) {
+            altcursor = AltCurSidebar;
+            XDefineCursor(dpy, root, cursor[CurVert]->cursor);
+        }
+        return 1;
+    } else if (altcursor == AltCurSidebar) {
+        altcursor = AltCurNone;
+        XUndefineCursor(dpy, root);
+        XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+        return 1;
+    }
+    return 0;
+}
+
+// Helper: handle overlay corner gesture
+// Returns 1 if handled (should return from motionnotify), 0 otherwise
+static int handleoverlaygesture(XMotionEvent *ev) {
+    if (ev->y_root == selmon->my &&
+        ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
+        if (selmon->gesture != 11) {
+            selmon->gesture = 11;
+            setoverlay(NULL);
+        }
+        return 1;
+    } else if (selmon->gesture == 11 &&
+               ev->x_root >= selmon->mx + selmon->ww - 24 - getsystraywidth()) {
+        selmon->gesture = 0;
+        return 1;
+    }
+    return 0;
+}
+
+// Helper: handle tag bar hover (start menu and tag indicators)
+static void handletagbarhover(XMotionEvent *ev) {
+    if (selmon->hoverclient)
+        selmon->hoverclient = NULL;
+
+    if (ev->x_root < selmon->mx + tagwidth && !selmon->showtags) {
+        // hover over start menu
+        if (ev->x_root < selmon->mx + startmenusize) {
+            selmon->gesture = 13;
+            drawbar(selmon);
+        } else {
+            // hover over tag indicators
+            int i = 0;
+            int x = selmon->mx + startmenusize;
+            do {
+                x += TEXTW(tags[i]);
+            } while (ev->x_root >= x && ++i < 8);
+
+            if (i != selmon->gesture - 1) {
+                selmon->gesture = i + 1;
+                drawbar(selmon);
+            }
+        }
+    } else {
+        resetbar();
+    }
+}
+
+// Helper: handle window title bar hover (close button, resize widget, client hover)
+static void handletitlebarhover(XMotionEvent *ev) {
+    // hover over close button
+    if (ev->x_root > selmon->activeoffset &&
+        ev->x_root < (selmon->activeoffset + 32)) {
+        if (selmon->gesture != 12) {
+            selmon->gesture = 12;
+            drawbar(selmon);
+        }
+    } else if (selmon->gesture == 12) {
+        selmon->gesture = 0;
+        drawbar(selmon);
+    } else {
+        // hover over resize widget on title bar
+        double titlewidth = (1.0 / (double)selmon->bt) * selmon->btw;
+        int resizeStart = selmon->activeoffset + titlewidth - 30;
+        int resizeEnd = selmon->activeoffset + titlewidth;
+        
+        if (altcursor == AltCurNone) {
+            if (ev->x_root > resizeStart && ev->x_root < resizeEnd) {
+                XDefineCursor(dpy, root, cursor[CurResize]->cursor);
+                altcursor = AltCurResize;
+            }
+        } else if (ev->x_root < resizeStart || ev->x_root > resizeEnd) {
+            XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+            altcursor = AltCurNone;
+        }
+    }
+
+    // indicator when hovering over clients
+    if (selmon->stack) {
+        int x = selmon->mx + tagwidth + 60;
+        Client *c = selmon->clients;
+        do {
+            if (!ISVISIBLE(c))
+                continue;
+            else
+                x += (1.0 / (double)selmon->bt) * selmon->btw;
+        } while (ev->x_root > x && (c = c->next));
+
+        if (c && c != selmon->hoverclient) {
+            selmon->hoverclient = c;
+            selmon->gesture = 0;
+            drawbar(selmon);
+        }
+    }
+}
+
 // gets triggered on mouse movement
 void motionnotify(XEvent *e) {
     Monitor *m;
-    Client *c;
     XMotionEvent *ev = &e->xmotion;
-    int x;
-    int i;
 
     if (ev->window != root)
         return;
@@ -1726,148 +1876,30 @@ void motionnotify(XEvent *e) {
         return;
     }
 
-    // hover below bar
-    // TODO: fix bar on bottom
-    // leave small deactivator zone
+    // hover below bar (in desktop area)
     if (ev->y_root >= selmon->my + bh - 3) {
-        // hover near floating sel to resize, don't do it if desktop is covered
-        if (selmon->sel && (selmon->sel->isfloating ||
-                            NULL == selmon->lt[selmon->sellt]->arrange)) {
-            Client *c;
-            int tilefound = 0;
-            for (c = m->clients; c; c = c->next) {
-                if (ISVISIBLE(c) &&
-                    !(c->isfloating ||
-                      NULL == selmon->lt[selmon->sellt]->arrange)) {
-                    tilefound = 1;
-                    break;
-                }
-            }
-            if (!tilefound) {
-                resizeborder(NULL);
-                Client *newc = getcursorclient();
-                if (newc && newc != selmon->sel)
-                    focus(newc);
-            }
-        }
-        // hover over right side of desktop for slider
-        if (ev->x_root > selmon->mx + selmon->mw - 50) {
-            if (!altcursor && ev->y_root > bh + 60) {
-                altcursor = 2;
-                XDefineCursor(dpy, root, cursor[CurVert]->cursor);
-            }
+        if (handlefloatingresizehover(m))
             return;
-        } else if (altcursor == 2 || altcursor == 1) {
-            altcursor = 0;
-            XUndefineCursor(dpy, root);
-            XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
+        if (handlesidebarhover(ev))
             return;
-        }
         resetbar();
-        // return to default cursor after resize hover
-        if (altcursor == 2) {
+        if (altcursor == AltCurSidebar)
             resetcursor();
-        }
         return;
     } else {
         barleavestatus = 1;
     }
 
-    // toggle overlay gesture
-    if (ev->y_root == selmon->my &&
-        ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
-        if (selmon->gesture != 11) {
-            selmon->gesture = 11;
-            setoverlay(NULL);
-        }
+    // hover in bar area
+    if (handleoverlaygesture(ev))
         return;
-    } else if (selmon->gesture == 11 &&
-               ev->x_root >= selmon->mx + selmon->ww - 24 - getsystraywidth()) {
-        selmon->gesture = 0;
-        return;
-    }
 
-    // cursor is to the left of window titles
+    // cursor is to the left of window titles (tags area)
     if (ev->x_root < selmon->mx + tagwidth + 60) {
-        if (selmon->hoverclient)
-            selmon->hoverclient = NULL;
-
-        // don't animate if vacant tags are hidden
-        if (ev->x_root < selmon->mx + tagwidth && !selmon->showtags) {
-            // hover over start menu
-            if (ev->x_root < selmon->mx + startmenusize) {
-                selmon->gesture = 13;
-                drawbar(selmon);
-            } else {
-                // hover over tag indicators
-                i = 0;
-                int x = selmon->mx + startmenusize;
-                do {
-                    x += TEXTW(tags[i]);
-                } while (ev->x_root >= x && ++i < 8);
-
-                if (i != selmon->gesture - 1) {
-                    selmon->gesture = i + 1;
-                    drawbar(selmon);
-                }
-            }
-        } else
-            resetbar();
-    } else if (selmon->sel &&
-               ev->x_root < selmon->mx + 60 + tagwidth + selmon->btw) {
+        handletagbarhover(ev);
+    } else if (selmon->sel && ev->x_root < selmon->mx + 60 + tagwidth + selmon->btw) {
         // cursor is on window titles
-
-        // hover over close button
-        if (ev->x_root > selmon->activeoffset &&
-            ev->x_root < (selmon->activeoffset + 32)) {
-            if (selmon->gesture != 12) {
-                selmon->gesture = 12;
-                drawbar(selmon);
-            }
-        } else if (selmon->gesture == 12) {
-            selmon->gesture = 0;
-            drawbar(selmon);
-        } else {
-            // hover over resize widget
-            if (!altcursor) {
-                if (ev->x_root > selmon->activeoffset +
-                                     (1.0 / (double)selmon->bt) * selmon->btw -
-                                     30 &&
-                    ev->x_root < selmon->activeoffset +
-                                     (1.0 / (double)selmon->bt) * selmon->btw) {
-                    XDefineCursor(dpy, root, cursor[CurResize]->cursor);
-                    altcursor = 1;
-                }
-            } else if (ev->x_root <
-                           selmon->activeoffset +
-                               (1.0 / (double)selmon->bt) * selmon->btw - 30 ||
-                       ev->x_root >
-                           selmon->activeoffset +
-                               (1.0 / (double)selmon->bt) * selmon->btw) {
-                XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
-                altcursor = 0;
-            }
-        }
-
-        // indicator when hovering over clients
-        if (selmon->stack) {
-            x = selmon->mx + tagwidth + 60;
-            c = selmon->clients;
-            do {
-                if (!ISVISIBLE(c))
-                    continue;
-                else
-                    x += (1.0 / (double)selmon->bt) * selmon->btw;
-            } while (ev->x_root > x && (c = c->next));
-
-            if (c) {
-                if (c != selmon->hoverclient) {
-                    selmon->hoverclient = c;
-                    selmon->gesture = 0;
-                    drawbar(selmon);
-                }
-            }
-        }
+        handletitlebarhover(ev);
     } else {
         resetbar();
     }

@@ -190,24 +190,34 @@ void gesturemouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
 }
 
-int resizeborder(const Arg *arg) {
+// Check if cursor is in the resize border zone around the selected floating window
+// Returns 1 if in border zone, 0 if not or no valid floating selection
+int isinresizeborder() {
     if (!(selmon->sel &&
           (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)))
         return 0;
-    XEvent ev;
-    Time lasttime = 0;
-    Client *c;
-    int inborder = 1;
     int x, y;
     getrootptr(&x, &y);
-    c = selmon->sel;
-
+    Client *c = selmon->sel;
+    // Not in border if: on bar, inside window, or too far from window
     if ((selmon->showbar && y < selmon->my + bh) ||
         (y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) ||
         y < c->y - 30 || x < c->x - 30 || y > c->y + c->h + 30 ||
         x > c->x + c->w + 30) {
-        return 1;
+        return 0;
     }
+    return 1;
+}
+
+int resizeborder(const Arg *arg) {
+    if (!isinresizeborder())
+        return 1;
+
+    XEvent ev;
+    Time lasttime = 0;
+    Client *c = selmon->sel;
+    int inborder = 1;
+    int x, y;
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurResize]->cursor,
@@ -231,8 +241,11 @@ int resizeborder(const Arg *arg) {
                 inborder = 0;
             break;
         case ButtonPress:
-            if (ev.xbutton.button == 1)
-                inborder = 0;
+            if (ev.xbutton.button == 1) {
+                XUngrabPointer(dpy, CurrentTime);
+                resizemouse(NULL);
+                return 0;
+            }
             break;
         case MotionNotify:
             if ((ev.xmotion.time - lasttime) <=

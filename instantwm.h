@@ -115,6 +115,11 @@ enum {
     ClkStartMenu,
     ClkLast
 }; /* clicks */
+enum {
+    AltCurNone,      /* 0: normal cursor */
+    AltCurResize,    /* 1: resize cursor near floating window */
+    AltCurSidebar    /* 2: vertical cursor for sidebar slider */
+}; /* altcursor states */
 
 ////// Colorscheme enums //////
 // each element has the possibility of a hover over
