@@ -412,16 +412,8 @@ void resetcursor() {
     altcursor = AltCurNone;
 }
 
-void buttonpress(XEvent *e) {
-    unsigned int i, x, click, occ = 0;
-    Arg arg = {0};
-    Client *c;
+static void handle_focus_monitor(XButtonPressedEvent *ev) {
     Monitor *m;
-    XButtonPressedEvent *ev = &e->xbutton;
-    int blw = get_blw(selmon);
-
-    click = ClkRootWin;
-    /* focus monitor if necessary */
     if ((m = wintomon(ev->window)) && m != selmon) {
         /* if focus doesn't follow the mouse, the scroll wheel shouldn't switch
          * focus */
@@ -431,70 +423,95 @@ void buttonpress(XEvent *e) {
             focus(NULL);
         }
     }
+}
+
+static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
+                             Arg *arg) {
+    unsigned int i, x, occ = 0;
+    Client *c;
+    Monitor *m = selmon; /* Since ev->window == selmon->barwin, m is selmon */
+    int blw = get_blw(selmon);
+
+    i = 0;
+    x = startmenusize;
+    for (c = m->clients; c; c = c->next)
+        occ |= c->tags == 255 ? 0 : c->tags;
+    do {
+        /* do not reserve space for vacant tags */
+        if (i >= 9)
+            continue;
+        if (selmon->showtags) {
+            if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+                continue;
+        }
+
+        x += TEXTW(tags[i]);
+    } while (ev->x >= x && ++i < LENGTH(tags));
+    if (ev->x < startmenusize) {
+        *click = ClkStartMenu;
+        selmon->gesture = 0;
+        drawbar(selmon);
+    } else if (i < LENGTH(tags)) {
+        *click = ClkTagBar;
+        arg->ui = 1 << i;
+    } else if (ev->x < x + blw)
+        *click = ClkLtSymbol;
+    else if (!selmon->sel && ev->x > x + blw && ev->x < x + blw + bh)
+        *click = ClkShutDown;
+    /* 2px right padding */
+    else if (ev->x > selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
+        *click = ClkStatusText;
+    else {
+        if (selmon->stack) {
+            x += blw;
+            c = m->clients;
+
+            do {
+                if (!ISVISIBLE(c))
+                    continue;
+                else
+                    x += (1.0 / (double)m->bt) * m->btw;
+            } while (ev->x > x && (c = c->next));
+
+            if (c) {
+                arg->v = c;
+                if (c != selmon->sel ||
+                    ev->x > x - (1.0 / (double)m->bt) * m->btw + 32) {
+                    *click = ClkWinTitle;
+                } else {
+                    *click = ClkCloseButton;
+                }
+            }
+        } else {
+            *click = ClkRootWin;
+        }
+    }
+}
+
+static void handle_client_click(XButtonPressedEvent *ev, Client *c,
+                                unsigned int *click) {
+    if (focusfollowsmouse || ev->button <= Button3) {
+        focus(c);
+        restack(selmon);
+    }
+    XAllowEvents(dpy, ReplayPointer, CurrentTime);
+    *click = ClkClientWin;
+}
+
+void buttonpress(XEvent *e) {
+    unsigned int i, click;
+    Arg arg = {0};
+    Client *c;
+    XButtonPressedEvent *ev = &e->xbutton;
+
+    click = ClkRootWin;
+    /* focus monitor if necessary */
+    handle_focus_monitor(ev);
 
     if (ev->window == selmon->barwin) {
-        i = 0;
-        x = startmenusize;
-        for (c = m->clients; c; c = c->next)
-            occ |= c->tags == 255 ? 0 : c->tags;
-        do {
-            /* do not reserve space for vacant tags */
-            if (i >= 9)
-                continue;
-            if (selmon->showtags) {
-                if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
-                    continue;
-            }
-
-            x += TEXTW(tags[i]);
-        } while (ev->x >= x && ++i < LENGTH(tags));
-        if (ev->x < startmenusize) {
-            click = ClkStartMenu;
-            selmon->gesture = 0;
-            drawbar(selmon);
-        } else if (i < LENGTH(tags)) {
-            click = ClkTagBar;
-            arg.ui = 1 << i;
-        } else if (ev->x < x + blw)
-            click = ClkLtSymbol;
-        else if (!selmon->sel && ev->x > x + blw && ev->x < x + blw + bh)
-            click = ClkShutDown;
-        /* 2px right padding */
-        else if (ev->x >
-                 selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
-            click = ClkStatusText;
-        else {
-            if (selmon->stack) {
-                x += blw;
-                c = m->clients;
-
-                do {
-                    if (!ISVISIBLE(c))
-                        continue;
-                    else
-                        x += (1.0 / (double)m->bt) * m->btw;
-                } while (ev->x > x && (c = c->next));
-
-                if (c) {
-                    arg.v = c;
-                    if (c != selmon->sel ||
-                        ev->x > x - (1.0 / (double)m->bt) * m->btw + 32) {
-                        click = ClkWinTitle;
-                    } else {
-                        click = ClkCloseButton;
-                    }
-                }
-            } else {
-                click = ClkRootWin;
-            }
-        }
+        handle_bar_click(ev, &click, &arg);
     } else if ((c = wintoclient(ev->window))) {
-        if (focusfollowsmouse || ev->button <= Button3) {
-            focus(c);
-            restack(selmon);
-        }
-        XAllowEvents(dpy, ReplayPointer, CurrentTime);
-        click = ClkClientWin;
+        handle_client_click(ev, c, &click);
     } else if (ev->x > selmon->mx + selmon->mw - 50) {
         click = ClkSideBar;
     }
