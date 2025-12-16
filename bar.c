@@ -284,6 +284,15 @@ static int draw_layout_indicator(Monitor *m, int x) {
                     m->ltsymbol, 0, 0);
 }
 
+/* Helper: Draw tags and layout indicators, returning the new x position */
+static int draw_tags_and_layout(Monitor *m, unsigned int occ,
+                                unsigned int urg) {
+    int x = startmenusize;
+    x = draw_tag_indicators(m, x, occ, urg);
+    x = draw_layout_indicator(m, x);
+    return x;
+}
+
 /* Helper: Get the color scheme for a window title based on its state */
 static Clr *get_window_scheme(Client *c, int ishover) {
     if (c->mon->sel == c) {
@@ -374,6 +383,14 @@ static int draw_status_label(Monitor *m, int stw) {
     return 0;
 }
 
+/* Helper: Get systray width if applicable */
+static int get_systray_width_for_monitor(Monitor *m) {
+    if (showsystray && m == systraytomon(m)) {
+        return getsystraywidth();
+    }
+    return 0;
+}
+
 /* Helper: Draw all window titles in the bar */
 static void draw_window_titles(Monitor *m, int x, int w, int n) {
     if (n > 0) {
@@ -412,17 +429,31 @@ static void draw_window_titles(Monitor *m, int x, int w, int n) {
     }
 }
 
+/* Helper: Calculate available width and draw client area (window titles) */
+static int draw_client_area(Monitor *m, int x, int sw, int stw, int n) {
+    int w = m->ww - sw - x - stw;
+    if (w > bh) {
+        draw_window_titles(m, x, w, n);
+    }
+    return w;
+}
+
+/* Helper: Finalize bar drawing by mapping the buffer and updating monitor state */
+static void finalize_bar_drawing(Monitor *m, int w, int n) {
+    drw_setscheme(drw, statusscheme);
+    m->bt = n;
+    m->btw = w;
+    drw_map(drw, m->barwin, 0, 0, m->ww, bh);
+}
+
 void drawbar(Monitor *m) {
     if (pausedraw || !m->showbar)
         return;
 
-    int x, w, sw = 0, n = 0, stw = 0;
-    unsigned int occ = 0, urg = 0;
+    int x, w, sw, n, stw;
+    unsigned int occ, urg;
 
-    if (showsystray && m == systraytomon(m))
-        stw = getsystraywidth();
-
-    /* Draw status first so it can be overdrawn by tags later */
+    stw = get_systray_width_for_monitor(m);
     sw = draw_status_label(m, stw);
 
     draw_startmenu_icon();
@@ -430,18 +461,10 @@ void drawbar(Monitor *m) {
 
     collect_client_stats(m, &n, &occ, &urg);
 
-    x = startmenusize;
-    x = draw_tag_indicators(m, x, occ, urg);
-    x = draw_layout_indicator(m, x);
+    x = draw_tags_and_layout(m, occ, urg);
+    w = draw_client_area(m, x, sw, stw, n);
 
-    if ((w = m->ww - sw - x - stw) > bh) {
-        draw_window_titles(m, x, w, n);
-    }
-
-    drw_setscheme(drw, statusscheme);
-    m->bt = n;
-    m->btw = w;
-    drw_map(drw, m->barwin, 0, 0, m->ww, bh);
+    finalize_bar_drawing(m, w, n);
 }
 
 void drawbars(void) {
