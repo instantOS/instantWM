@@ -561,14 +561,137 @@ void forceresizemouse(const Arg *arg) {
     forceresize = 0;
 }
 
+static int get_resize_direction(Client *c, int nx, int ny) {
+    if (ny > c->h / 2) {     // bottom
+        if (nx < c->w / 3) { // left
+            if (ny < 2 * c->h / 3)
+                return 7; // side
+            else
+                return 6; // corner
+        } else if (nx > 2 * c->w / 3) { // right
+            if (ny < 2 * c->h / 3)
+                return 3; // side
+            else
+                return 4; // corner
+        } else {
+            // middle
+            return 5;
+        }
+    } else {                 // top
+        if (nx < c->w / 3) { // left
+            if (ny > c->h / 3)
+                return 7; // side
+            else
+                return 0; // corner
+        } else if (nx > 2 * c->w / 3) { // right
+            if (ny > c->h / 3)
+                return 3; // side
+            else
+                return 2; // corner
+        } else {
+            // cursor on middle
+            return 1;
+        }
+    }
+}
+
+static Cursor get_resize_cursor(int corner) {
+    switch (corner) {
+    case 0:
+        return cursor[CurTL]->cursor;
+    case 1:
+        return cursor[CurVert]->cursor;
+    case 2:
+        return cursor[CurTR]->cursor;
+    case 3:
+        return cursor[CurHor]->cursor;
+    case 4:
+        return cursor[CurBR]->cursor;
+    case 5:
+        return cursor[CurVert]->cursor;
+    case 6:
+        return cursor[CurBL]->cursor;
+    case 7:
+        return cursor[CurHor]->cursor;
+    default:
+        return cursor[CurMove]->cursor;
+    }
+}
+
+static void warp_pointer_resize(Client *c, int corner) {
+    int x_off, y_off;
+    switch (corner) {
+    case 0:
+        x_off = -c->bw;
+        y_off = -c->bw;
+        break;
+    case 1:
+        x_off = (c->w + c->bw - 1) / 2;
+        y_off = -c->bw;
+        break;
+    case 2:
+        x_off = c->w + c->bw - 1;
+        y_off = -c->bw;
+        break;
+    case 3:
+        x_off = c->w + c->bw - 1;
+        y_off = (c->h + c->bw - 1) / 2;
+        break;
+    case 4:
+        x_off = c->w + c->bw - 1;
+        y_off = c->h + c->bw - 1;
+        break;
+    case 5:
+        x_off = (c->w + c->bw - 1) / 2;
+        y_off = c->h + c->bw - 1;
+        break;
+    case 6:
+        x_off = -c->bw;
+        y_off = c->h + c->bw - 1;
+        break;
+    case 7:
+        x_off = -c->bw;
+        y_off = (c->h + c->bw - 1) / 2;
+        break;
+    default:
+        return;
+    }
+    XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, x_off, y_off);
+}
+
+static void calc_resize_geometry(Client *c, XEvent *ev, int corner, int ocx,
+                                 int ocy, int ocx2, int ocy2, int *nx, int *ny,
+                                 int *nw, int *nh) {
+    int horizcorner = (corner == 0 || corner == 6 || corner == 7);
+    int vertcorner = (corner == 0 || corner == 1 || corner == 2);
+
+    if (corner != 1 && corner != 5) {
+        *nx = horizcorner ? ev->xmotion.x : c->x;
+        *nw = MAX(horizcorner ? (ocx2 - *nx)
+                              : (ev->xmotion.x - ocx - 2 * c->bw + 1),
+                  1);
+    } else {
+        *nx = c->x;
+        *nw = c->w;
+    }
+
+    if (corner != 7 && corner != 3) {
+        *ny = vertcorner ? ev->xmotion.y : c->y;
+        *nh = MAX(vertcorner ? (ocy2 - *ny)
+                             : (ev->xmotion.y - ocy - 2 * c->bw + 1),
+                  1);
+    } else {
+        *ny = c->y;
+        *nh = c->h;
+    }
+}
+
 void resizemouse(const Arg *arg) {
     int ocx, ocy, nw, nh;
     int ocx2, ocy2, nx, ny;
     Client *c;
     Monitor *m;
     XEvent ev;
-    Cursor cur;
-    int horizcorner, vertcorner;
     int corner;
     int di;
     unsigned int dui;
@@ -597,72 +720,14 @@ void resizemouse(const Arg *arg) {
     if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
         return;
 
-    if (ny > c->h / 2) {     // bottom
-        if (nx < c->w / 3) { // left
-            if (ny < 2 * c->h / 3) {
-                corner = 7; // side
-                cur = cursor[CurHor]->cursor;
-            } else {
-                corner = 6; // corner
-                cur = cursor[CurBL]->cursor;
-            }
-        } else if (nx > 2 * c->w / 3) { // right
-            if (ny < 2 * c->h / 3) {
-                corner = 3; // side
-                cur = cursor[CurHor]->cursor;
-            } else {
-                corner = 4; // corner
-                cur = cursor[CurBR]->cursor;
-            }
-        } else {
-            // middle
-            corner = 5;
-            cur = cursor[CurVert]->cursor;
-        }
-    } else {                 // top
-        if (nx < c->w / 3) { // left
-            if (ny > c->h / 3) {
-                corner = 7; // side
-                cur = cursor[CurHor]->cursor;
-            } else {
-                corner = 0; // corner
-                cur = cursor[CurTL]->cursor;
-            }
-        } else if (nx > 2 * c->w / 3) { // right
-            if (ny > c->h / 3) {
-                corner = 3; // side
-                cur = cursor[CurHor]->cursor;
-            } else {
-                corner = 2; // corner
-                cur = cursor[CurTR]->cursor;
-            }
-        } else {
-            // cursor on middle
-            corner = 1;
-            cur = cursor[CurVert]->cursor;
-        }
-    }
+    corner = get_resize_direction(c, nx, ny);
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cur, CurrentTime) != GrabSuccess)
+                     None, get_resize_cursor(corner),
+                     CurrentTime) != GrabSuccess)
         return;
 
-    horizcorner = nx < c->w / 2;
-    vertcorner = ny < c->h / 2;
-    if (corner == 0 || corner == 2 || corner == 4 || corner == 6) {
-        XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
-                     horizcorner ? (-c->bw) : (c->w + c->bw - 1),
-                     vertcorner ? (-c->bw) : (c->h + c->bw - 1));
-    } else {
-        if (corner == 1 || corner == 5) {
-            XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, (c->w + c->bw - 1) / 2,
-                         vertcorner ? (-c->bw) : (c->h + c->bw - 1));
-        } else if (corner == 3 || corner == 7) {
-            XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
-                         horizcorner ? (-c->bw) : (c->w + c->bw - 1),
-                         (c->h + c->bw - 1) / 2);
-        }
-    }
+    warp_pointer_resize(c, corner);
 
     do {
         XMaskEvent(dpy, MOUSEMASK | ExposureMask | SubstructureRedirectMask,
@@ -679,25 +744,8 @@ void resizemouse(const Arg *arg) {
                 continue;
             lasttime = ev.xmotion.time;
 
-            if (corner != 1 && corner != 5) {
-                nx = horizcorner ? ev.xmotion.x : c->x;
-                nw = MAX(horizcorner ? (ocx2 - nx)
-                                     : (ev.xmotion.x - ocx - 2 * c->bw + 1),
-                         1);
-            } else {
-                nx = c->x;
-                nw = c->w;
-            }
-
-            if (corner != 7 && corner != 3) {
-                ny = vertcorner ? ev.xmotion.y : c->y;
-                nh = MAX(vertcorner ? (ocy2 - ny)
-                                    : (ev.xmotion.y - ocy - 2 * c->bw + 1),
-                         1);
-            } else {
-                ny = c->y;
-                nh = c->h;
-            }
+            calc_resize_geometry(c, &ev, corner, ocx, ocy, ocx2, ocy2, &nx, &ny,
+                                 &nw, &nh);
 
             if (c->mon->wx + nw >= selmon->wx &&
                 c->mon->wx + nw <= selmon->wx + selmon->ww &&
