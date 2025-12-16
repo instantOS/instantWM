@@ -65,7 +65,7 @@ char stext[1024];
 int showalttag = 0;
 int freealttab = 0;
 
-static Client *lastclient;
+Client *lastclient;
 
 int tagprefix = 0;
 int bardragging = 0;
