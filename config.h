@@ -7,9 +7,9 @@
 #include <X11/XF86keysym.h>
 
 /* appearance */
-static const unsigned int borderpx = 3;       /* border pixel of windows */
-static const unsigned int snap = 32;          /* snap pixel */
-static const unsigned int startmenusize = 30; /* snap pixel */
+static const unsigned int borderpx = 3; /* border pixel of windows */
+static const unsigned int snap = 32;    /* snap pixel */
+const unsigned int startmenusize = 30;  /* snap pixel */
 const unsigned int systraypinning =
     0; /* 0: sloppy systray follows selected monitor, >0: pin systray to monitor
           X */
@@ -261,7 +261,7 @@ static const char *bordercolors[] = {[SchemeBorderNormal] = col_bg_accent,
                                      [SchemeBorderFloatFocus] = col_light_green,
                                      [SchemeBorderSnap] = col_light_yellow};
 
-static const char *statusbarcolors[] = {
+const char *statusbarcolors[] = {
     [ColFg] = col_text, [ColBg] = col_bg, [ColDetail] = col_bg};
 
 SchemePref schemehovertypes[] = {{"hover", SchemeHover},
@@ -300,13 +300,13 @@ SchemePref schemecolortypes[] = {
 static const char *tags_default[] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
                                      "8",  "9",  "10", "11", "12", "13", "14",
                                      "15", "16", "17", "18", "19", "20", "s"};
-static char tags[][MAX_TAGLEN] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
-                                  "8",  "9",  "10", "11", "12", "13", "14",
-                                  "15", "16", "17", "18", "19", "20", "s"};
+char tags[][MAX_TAGLEN] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
+                           "8",  "9",  "10", "11", "12", "13", "14",
+                           "15", "16", "17", "18", "19", "20", "s"};
 /* ffox, programming1, term, music, steam, folder, play icon, document, message
  */
-static const char *tagsalt[] = {"", "{}",  "$",   "", "",
-                                "", "", "", ""};
+const char *tagsalt[] = {"", "{}",  "$",   "", "",
+                         "", "", "", ""};
 
 static const char scratchpadname[] = "instantscratchpad";
 
