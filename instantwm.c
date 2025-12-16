@@ -39,6 +39,16 @@
 #include "instantwm.h"
 #include "layouts.h"
 #include "util.h"
+#include "overlay.h"
+#include "animation.h"
+#include "floating.h"
+#include "mouse.h"
+#include "scratchpad.h"
+#include "bar.h"
+#include "systray.h"
+#include "tags.h"
+#include "xresources.h"
+#include "toggles.h"
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
@@ -348,7 +358,7 @@ void changesnap(Client *c, int snapmode) {
     focus(c);
 }
 
-void tempfullscreen() {
+void tempfullscreen(const Arg *arg) {
     if (selmon->fullscreen) {
         Client *c;
         c = selmon->fullscreen;
@@ -377,13 +387,13 @@ void tempfullscreen() {
         XRaiseWindow(dpy, selmon->fullscreen->win);
 }
 
-void createoverlay() {
+void createoverlay(const Arg *arg) {
     Monitor *m;
     Monitor *tm;
     if (!selmon->sel)
         return;
     if (selmon->sel == selmon->fullscreen)
-        tempfullscreen();
+        tempfullscreen(NULL);
     if (selmon->sel == selmon->overlay) {
         resetoverlay();
         for (tm = mons; tm; tm = tm->next) {
@@ -414,7 +424,7 @@ void createoverlay() {
         selmon->overlay->w = ((selmon->ww) / 3);
 
     XRaiseWindow(dpy, tempclient->win);
-    showoverlay();
+    showoverlay(NULL);
 }
 
 void resetoverlay() {
@@ -500,7 +510,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
         resize(c, x, y, width, height, 1);
 }
 
-void showoverlay() {
+void showoverlay(const Arg *arg) {
     Monitor *m;
     if (!overlayexists() || selmon->overlaystatus)
         return;
@@ -589,7 +599,7 @@ void showoverlay() {
     XRaiseWindow(dpy, c->win);
 }
 
-void hideoverlay() {
+void hideoverlay(const Arg *arg) {
     if (!overlayexists() || !selmon->overlaystatus)
         return;
 
@@ -598,7 +608,7 @@ void hideoverlay() {
     c = selmon->overlay;
     c->issticky = 0;
     if (c == selmon->fullscreen)
-        tempfullscreen();
+        tempfullscreen(NULL);
     if (c->islocked) {
         switch (selmon->overlaymode) {
         case 0:
@@ -629,19 +639,19 @@ void hideoverlay() {
     arrange(selmon);
 }
 
-void setoverlay() {
+void setoverlay(const Arg *arg) {
 
     if (!overlayexists()) {
         return;
     }
 
     if (!selmon->overlaystatus) {
-        showoverlay();
+        showoverlay(NULL);
     } else {
         if (ISVISIBLE(selmon->overlay)) {
-            hideoverlay();
+            hideoverlay(NULL);
         } else {
-            showoverlay();
+            showoverlay(NULL);
         }
     }
 }
@@ -723,7 +733,7 @@ void applyrules(Client *c) {
                 case 2:
                     selmon->sel = c;
                     c->isfloating = 1;
-                    centerwindow();
+                    centerwindow(NULL);
                     break;
                     ;
                 case 3:
@@ -744,7 +754,7 @@ void applyrules(Client *c) {
                     c->issticky = 1;
                     c->isfloating = 1;
                     selmon->activescratchpad = c;
-                    centerwindow();
+                    centerwindow(NULL);
                     break;
                     ;
                 case 1:
@@ -1158,7 +1168,7 @@ void clientmessage(XEvent *e) {
                 selmon = c->mon;
                 focus(NULL);
             }
-            showoverlay();
+            showoverlay(NULL);
         } else if (c->tags == 1 << 20) {
             selmon = c->mon;
             togglescratchpad(NULL);
@@ -2585,7 +2595,7 @@ void motionnotify(XEvent *e) {
         ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
         if (selmon->gesture != 11) {
             selmon->gesture = 11;
-            setoverlay();
+            setoverlay(NULL);
         }
         return;
     } else if (selmon->gesture == 11 &&
@@ -2708,7 +2718,7 @@ void movemouse(const Arg *arg) {
         return;
 
     if (c == selmon->fullscreen) {
-        tempfullscreen();
+        tempfullscreen(NULL);
         return;
     }
 
@@ -2890,7 +2900,7 @@ void movemouse(const Arg *arg) {
             resize(selmon->sel, selmon->mx + 20, bh, selmon->ww - 40,
                    (selmon->mh) / 3, True);
             togglefloating(NULL);
-            createoverlay();
+            createoverlay(NULL);
             selmon->gesture = 11;
         } else if (selmon->sel->isfloating ||
                    NULL == selmon->lt[selmon->sellt]->arrange) {
@@ -3134,7 +3144,7 @@ void dragmouse(const Arg *arg) {
     }
 
     if (tempc == selmon->overlay) {
-        setoverlay();
+        setoverlay(NULL);
         return;
     }
 
@@ -3562,9 +3572,9 @@ void dragtag(const Arg *arg) {
             }
         } else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
             if (selmon->sel == selmon->overlay) {
-                setoverlay();
+                setoverlay(NULL);
             } else {
-                createoverlay();
+                createoverlay(NULL);
                 selmon->gesture = 11;
             }
         }
@@ -3752,7 +3762,7 @@ void resizemouse(const Arg *arg) {
         return;
 
     if (c == selmon->fullscreen) {
-        tempfullscreen();
+        tempfullscreen(NULL);
         return;
     }
 
@@ -4726,7 +4736,7 @@ void swaptags(const Arg *arg) {
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
         if (selmon->overlay == c) {
             if (ISVISIBLE(c))
-                hideoverlay();
+                hideoverlay(NULL);
             continue;
         }
         if ((c->tags & newtag) || (c->tags & curtag))
@@ -4834,8 +4844,8 @@ void setoverlaymode(int mode) {
         selmon->overlay->w = selmon->ww / 3;
 
     if (selmon->overlaystatus) {
-        hideoverlay();
-        showoverlay();
+        hideoverlay(NULL);
+        showoverlay(NULL);
     }
 }
 
@@ -5143,7 +5153,7 @@ void keyresize(const Arg *arg) {
     resize(c, c->x, c->y, nw, nh, True);
 }
 
-void centerwindow() {
+void centerwindow(const Arg *arg) {
     if (!selmon->sel || selmon->sel == selmon->overlay)
         return;
     Client *c;
@@ -5206,7 +5216,7 @@ void togglebar(const Arg *arg) {
         tmpnoanim = animated;
         animated = 0;
         selmon->overlaystatus = 0;
-        showoverlay();
+        showoverlay(NULL);
         animated = tmpnoanim;
     }
 }
@@ -5313,7 +5323,7 @@ void toggletag(const Arg *arg) {
 }
 
 // Update scratchvisible flag for a monitor
-static void updatescratchvisible(Monitor *m) {
+void updatescratchvisible(Monitor *m) {
     Client *c;
     m->scratchvisible = 0;
     for (c = m->clients; c; c = c->next) {
@@ -5325,7 +5335,7 @@ static void updatescratchvisible(Monitor *m) {
 }
 
 // Find a client with class scratchpad_<name>
-static Client *findnamedscratchpad(const char *name) {
+Client *findnamedscratchpad(const char *name) {
     if (!name || strlen(name) == 0)
         return NULL;
 
@@ -6540,7 +6550,7 @@ void overtoggle(const Arg *arg) {
             togglescratchpad(NULL);
     }
     if (selmon->fullscreen)
-        tempfullscreen();
+        tempfullscreen(NULL);
     if (selmon->pertag->curtag == 0) {
         tmptag = selmon->pertag->prevtag;
         restoreallfloating(selmon);

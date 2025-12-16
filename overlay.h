@@ -6,11 +6,11 @@
 #include "instantwm.h"
 
 int overlayexists(void);
-void createoverlay(void);
+void createoverlay(const Arg *arg);
 void resetoverlay(void);
-void showoverlay(void);
-void hideoverlay(void);
-void setoverlay(void);
+void showoverlay(const Arg *arg);
+void hideoverlay(const Arg *arg);
+void setoverlay(const Arg *arg);
 void setoverlaymode(int mode);
 void resetoverlaysize(void);
 
