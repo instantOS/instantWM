@@ -36,19 +36,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "animation.h"
+#include "bar.h"
+#include "floating.h"
 #include "instantwm.h"
 #include "layouts.h"
-#include "util.h"
-#include "overlay.h"
-#include "animation.h"
-#include "floating.h"
 #include "mouse.h"
+#include "overlay.h"
 #include "scratchpad.h"
-#include "bar.h"
 #include "systray.h"
 #include "tags.h"
-#include "xresources.h"
 #include "toggles.h"
+#include "util.h"
+#include "xresources.h"
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"

@@ -206,13 +206,12 @@ typedef struct {
 } Layout;
 
 struct Pertag {
-    unsigned int curtag, prevtag;   /* current and previous tag */
-    int nmasters[MAX_TAGS]; /* number of windows in master area */
-    float mfacts[MAX_TAGS]; /* mfacts per tag */
-    unsigned int sellts[MAX_TAGS]; /* selected layouts */
-    const Layout
-        *ltidxs[MAX_TAGS][2]; /* matrix of tags and layouts indexes  */
-    int showbars[MAX_TAGS];   /* display bar for the current tag */
+    unsigned int curtag, prevtag;      /* current and previous tag */
+    int nmasters[MAX_TAGS];            /* number of windows in master area */
+    float mfacts[MAX_TAGS];            /* mfacts per tag */
+    unsigned int sellts[MAX_TAGS];     /* selected layouts */
+    const Layout *ltidxs[MAX_TAGS][2]; /* matrix of tags and layouts indexes  */
+    int showbars[MAX_TAGS];            /* display bar for the current tag */
 };
 typedef struct Pertag Pertag;
 
