@@ -142,6 +142,21 @@ void movemouse(const Arg *arg) {
         }
     } while (ev.type != ButtonRelease);
     XUngrabPointer(dpy, CurrentTime);
+
+    /* If dropped on the bar, check for special actions */
+    getrootptr(&x, &y);
+    if (y >= selmon->my && y < selmon->my + bh) {
+        /* Check if dropped on a tag indicator */
+        int droptag = getxtag(x);
+        if (droptag >= 0 && x < selmon->mx + gettagwidth()) {
+            /* Move window to that tag */
+            tag(&((Arg){.ui = 1 << droptag}));
+        } else if (c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+            /* Dropped elsewhere on bar - make it tiled again */
+            togglefloating(NULL);
+        }
+    }
+
     if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
         sendmon(c, m);
         unfocus(selmon->sel, 0);
@@ -286,27 +301,28 @@ int resizeborder(const Arg *arg) {
 }
 
 void dragmouse(const Arg *arg) {
-    int x, y, starty, startx, dragging, tabdragging, isactive, sinit;
-    starty = 100;
-    sinit = 0;
-    dragging = 0;
-    tabdragging = 0;
+    int x, y, startx, starty;
     XEvent ev;
-    Time lasttime = 0;
 
-    if (selmon->sel && selmon->sel->isfloating) {
-        movemouse(NULL);
+    /* Focus the clicked window - use hoverclient since hover detection works correctly */
+    Client *c = selmon->hoverclient;
+    if (c) {
+        focus(c);
+        restack(selmon);
+    }
+
+    /* Grab pointer to detect if user drags or just clicks */
+    if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+                     None, cursor[CurNormal]->cursor, CurrentTime) != GrabSuccess)
+        return;
+    if (!getrootptr(&startx, &starty)) {
+        XUngrabPointer(dpy, CurrentTime);
         return;
     }
 
-    if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
-        return;
-    if (!getrootptr(&x, &y))
-        return;
+    /* Wait for mouse movement or button release */
     do {
-        XMaskEvent(dpy, MOUSEMASK | ExposureMask | SubstructureRedirectMask,
-                   &ev);
+        XMaskEvent(dpy, MOUSEMASK | ExposureMask | SubstructureRedirectMask, &ev);
         switch (ev.type) {
         case ConfigureRequest:
         case Expose:
@@ -314,35 +330,18 @@ void dragmouse(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            if ((ev.xmotion.time - lasttime) <= (1000 / 60))
-                continue;
-            lasttime = ev.xmotion.time;
-            if (!sinit) {
-                startx = ev.xmotion.x_root;
-                starty = ev.xmotion.y_root;
-                sinit = 1;
+            getrootptr(&x, &y);
+            /* If mouse moved beyond threshold, start moving the window */
+            if (abs(x - startx) > 5 || abs(y - starty) > 5) {
+                XUngrabPointer(dpy, CurrentTime);
+                movemouse(NULL);
+                return;
             }
-
-            if (abs(ev.xmotion.x_root - startx) > (selmon->mw / 4) + 10) {
-                if (!dragging) {
-                    Arg a = {.i = (ev.xmotion.x_root < startx) ? -1 : 1};
-                    viewtoleft(&a);
-                    dragging = 1;
-                }
-            } else if (abs(ev.xmotion.y_root - starty) > 200) {
-                if (!tabdragging) {
-                    if (ev.xmotion.y_root > starty) {
-                        togglescratchpad(NULL);
-                    } else {
-                        // overtoggle(NULL);
-                    }
-                    tabdragging = 1;
-                }
-            }
-
             break;
         }
     } while (ev.type != ButtonRelease);
+
+    /* Button released without significant movement - just focus (already done) */
     XUngrabPointer(dpy, CurrentTime);
 }
 
