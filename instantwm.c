@@ -5512,6 +5512,33 @@ void createscratchpad(const Arg *arg) {
 }
 
 void showscratchpad(const Arg *arg) {
+    const char *name = arg ? arg->v : NULL;
+
+    // Handle named scratchpad
+    if (name && strlen(name) > 0) {
+        Client *named = findnamedscratchpad(name);
+        if (named) {
+            named->issticky = 1;
+            if (!named->isfloating)
+                named->isfloating = 1;
+            // Move to current monitor if on different monitor
+            if (named->mon != selmon) {
+                detach(named);
+                detachstack(named);
+                named->mon = selmon;
+                attach(named);
+                attachstack(named);
+            }
+            focus(named);
+            arrange(selmon);
+            restack(selmon);
+            if (focusfollowsmouse)
+                warp(named);
+        }
+        return;
+    }
+
+    // Default behavior
     if (selmon->scratchvisible) {
         Client *c;
         for (c = selmon->clients; c; c = c->next) {
@@ -5529,6 +5556,21 @@ void showscratchpad(const Arg *arg) {
 }
 
 void hidescratchpad(const Arg *arg) {
+    const char *name = arg ? arg->v : NULL;
+
+    // Handle named scratchpad
+    if (name && strlen(name) > 0) {
+        Client *named = findnamedscratchpad(name);
+        if (named && named->issticky) {
+            named->issticky = 0;
+            named->tags = 1 << 20;
+            focus(NULL);
+            arrange(named->mon);
+        }
+        return;
+    }
+
+    // Default behavior: hide all visible scratchpads
     Client *c;
     int changed = 0;
     for (c = selmon->clients; c; c = c->next) {
