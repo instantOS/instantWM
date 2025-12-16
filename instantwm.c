@@ -5312,6 +5312,18 @@ void toggletag(const Arg *arg) {
     }
 }
 
+// Update scratchvisible flag for a monitor
+static void updatescratchvisible(Monitor *m) {
+    Client *c;
+    m->scratchvisible = 0;
+    for (c = m->clients; c; c = c->next) {
+        if ((c->tags & (1 << 20)) && c->issticky) {
+            m->scratchvisible = 1;
+            break;
+        }
+    }
+}
+
 // Find a client with class scratchpad_<name>
 static Client *findnamedscratchpad(const char *name) {
     if (!name || strlen(name) == 0)
@@ -5414,6 +5426,8 @@ void togglescratchpad(const Arg *arg) {
                 if (focusfollowsmouse)
                     warp(named);
             }
+
+            updatescratchvisible(named->mon);
         }
         return;
     }
@@ -5470,15 +5484,8 @@ void togglescratchpad(const Arg *arg) {
         }
     }
 
-    if (handled_action) {
-        selmon->scratchvisible = 0;
-        for (c = selmon->clients; c; c = c->next) {
-            if ((c->tags & (1 << 20)) && c->issticky) {
-                selmon->scratchvisible = 1;
-                break;
-            }
-        }
-    }
+    if (handled_action)
+        updatescratchvisible(selmon);
 }
 
 void createscratchpad(const Arg *arg) {
@@ -5491,14 +5498,7 @@ void createscratchpad(const Arg *arg) {
     if (c->tags == 1 << 20) {
         tag(&((Arg){.ui = 1 << (selmon->pertag->curtag - 1)}));
 
-        selmon->scratchvisible = 0;
-        Client *tc;
-        for (tc = selmon->clients; tc; tc = tc->next) {
-            if ((tc->tags & (1 << 20)) && tc->issticky) {
-                selmon->scratchvisible = 1;
-                break;
-            }
-        }
+        updatescratchvisible(selmon);
         return;
     }
 
@@ -5534,6 +5534,8 @@ void showscratchpad(const Arg *arg) {
             restack(selmon);
             if (focusfollowsmouse)
                 warp(named);
+
+            updatescratchvisible(named->mon);
         }
         return;
     }
@@ -5566,6 +5568,8 @@ void hidescratchpad(const Arg *arg) {
             named->tags = 1 << 20;
             focus(NULL);
             arrange(named->mon);
+
+            updatescratchvisible(named->mon);
         }
         return;
     }
@@ -5589,8 +5593,19 @@ void hidescratchpad(const Arg *arg) {
 
 void scratchpadstatus(const Arg *arg) {
     char status[32];
-    snprintf(status, sizeof(status), "ipc:scratchpad:%d",
-             selmon->scratchvisible);
+    const char *name = arg ? arg->v : NULL;
+
+    // If named scratchpad requested, check its specific visibility
+    if (name && strlen(name) > 0) {
+        Client *named = findnamedscratchpad(name);
+        int visible = named && named->issticky;
+        snprintf(status, sizeof(status), "ipc:scratchpad:%d", visible);
+    } else {
+        // Default behavior: check if any scratchpad is visible on current
+        // monitor
+        snprintf(status, sizeof(status), "ipc:scratchpad:%d",
+                 selmon->scratchvisible);
+    }
     XStoreName(dpy, root, status);
     XFlush(dpy);
 }
