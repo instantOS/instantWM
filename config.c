@@ -1,9 +1,9 @@
 /* See LICENSE file for copyright and license details. */
 
+#include "config.h"
 #include "instantwm.h"
 #include "layouts.h"
 #include "push.h"
-#include "config.h"
 
 /* variables calculated from config.h arrays */
 unsigned int tagmask = TAGMASK;

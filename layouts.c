@@ -1,16 +1,16 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "layouts.h"
-#include "globals.h"
-#include "push.h"
-#include "util.h"
 #include "bar.h"
 #include "client.h"
 #include "floating.h"
+#include "globals.h"
 #include "monitors.h"
-#include <string.h>
+#include "push.h"
+#include "util.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 void bstack(Monitor *m) {
     int w, h, mh, mx, tx, ty, tw, framecount;

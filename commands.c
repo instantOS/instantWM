@@ -2,18 +2,18 @@
 
 #include "commands.h"
 #include "bar.h"
+#include "client.h"
+#include "focus.h"
 #include "globals.h"
 #include "layouts.h"
-#include "util.h"
+#include "monitors.h"
+#include "scratchpad.h"
 #include "tags.h"
 #include "toggles.h"
-#include "focus.h"
-#include "client.h"
-#include "scratchpad.h"
-#include "monitors.h"
+#include "util.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
 /* extern variables from instantwm.c */
 extern int gettextprop(Window w, Atom atom, char *text, unsigned int size);

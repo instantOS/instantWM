@@ -2,18 +2,18 @@
 
 #include "client.h"
 #include "animation.h"
+#include "bar.h"
 #include "globals.h"
 #include "layouts.h"
 #include "monitors.h"
+#include "mouse.h"
+#include "push.h"
 #include "scratchpad.h"
 #include "util.h"
-#include "bar.h"
-#include "push.h"
 #include "xresources.h"
-#include "mouse.h"
-#include <string.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern Client *lastclient;
 extern const char broken[];
@@ -639,7 +639,7 @@ void togglefakefullscreen(const Arg *arg) {
 }
 
 // minimize window
-void hidewin(const Arg *arg) {
+void hide_window(const Arg *arg) {
     if (!selmon->sel)
         return;
     Client *c = selmon->sel;
@@ -667,7 +667,7 @@ void redrawwin(const Arg *arg) {
         animated = 1;
 }
 
-void unhideall(const Arg *arg) {
+void unhide_all(const Arg *arg) {
 
     Client *c;
     for (c = selmon->clients; c; c = c->next) {

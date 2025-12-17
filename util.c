@@ -1,16 +1,16 @@
 /* See LICENSE file for copyright and license details. */
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <signal.h>
+#include <unistd.h>
 
-#include "util.h"
-#include "instantwm.h"
 #include "globals.h"
+#include "instantwm.h"
+#include "util.h"
 
 void *ecalloc(size_t nmemb, size_t size) {
     void *p;

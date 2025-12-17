@@ -1,14 +1,14 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "monitors.h"
+#include "bar.h"    // For cleanupmon
+#include "client.h" // For sendmon, etc
 #include "focus.h"
 #include "globals.h"
+#include "layouts.h" // For createmon
 #include "scratchpad.h"
 #include "tags.h"
 #include "util.h"
-#include "layouts.h" // For createmon
-#include "client.h" // For sendmon, etc
-#include "bar.h" // For cleanupmon
 #include <stdlib.h>
 #include <string.h>
 

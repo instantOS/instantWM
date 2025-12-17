@@ -109,7 +109,7 @@ int getxtag(int ix) {
     return -1;
 }
 
-//TODO: come up with better name
+// TODO: come up with better name
 void tag(const Arg *arg) {
     int ui = computeprefix(arg);
     Client *c;
@@ -142,8 +142,8 @@ void tagall(const Arg *arg) {
     }
 }
 
-//TODO: functions with *arg arguments should be thin wrappers around functions
-// with actual readable types
+// TODO: functions with *arg arguments should be thin wrappers around functions
+//  with actual readable types
 void followtag(const Arg *arg) {
     if (!selmon->sel)
         return;
@@ -158,7 +158,7 @@ void followtag(const Arg *arg) {
     }
 }
 
-//TODO: this has too many responsibilities, refactor
+// TODO: this has too many responsibilities, refactor
 void swaptags(const Arg *arg) {
     int ui = computeprefix(arg);
     unsigned int newtag = ui & tagmask;
@@ -263,8 +263,8 @@ void tagmon(const Arg *arg) {
     }
 }
 
-//TODO: what does this do?
-//come up with better name and maybe comment
+// TODO: what does this do?
+// come up with better name and maybe comment
 void tagtoleft(const Arg *arg) {
 
     int oldx;
@@ -303,7 +303,7 @@ void tagtoleft(const Arg *arg) {
     c->x = oldx;
 }
 
-//TODO: could this be merged with the left version and a parameter
+// TODO: could this be merged with the left version and a parameter
 void tagtoright(const Arg *arg) {
 
     int oldx;
