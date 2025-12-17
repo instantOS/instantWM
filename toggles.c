@@ -1,9 +1,9 @@
 /* See LICENSE file for copyright and license details. */
 
-#include "globals.h"
 #include "toggles.h"
 #include "bar.h"
 #include "floating.h"
+#include "globals.h"
 #include "overlay.h"
 #include "push.h"
 

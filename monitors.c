@@ -1,8 +1,8 @@
 /* See LICENSE file for copyright and license details. */
 
-#include "globals.h"
 #include "monitors.h"
 #include "focus.h"
+#include "globals.h"
 #include "scratchpad.h"
 #include "tags.h"
 #include "util.h"

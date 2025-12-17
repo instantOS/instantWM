@@ -1,8 +1,8 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "client.h"
-#include "globals.h"
 #include "animation.h"
+#include "globals.h"
 extern Client *lastclient;
 extern const char broken[];
 

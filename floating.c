@@ -1,9 +1,9 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "floating.h"
-#include "globals.h"
 #include "animation.h"
 #include "focus.h"
+#include "globals.h"
 #include "layouts.h"
 #include "push.h"
 
@@ -198,7 +198,8 @@ void temp_fullscreen(const Arg *arg) {
         XRaiseWindow(dpy, selmon->fullscreen->win);
 }
 
-static void apply_float_change(Client *c, int floating, int animate, int update_borders) {
+static void apply_float_change(Client *c, int floating, int animate,
+                               int update_borders) {
     if (floating) {
         c->isfloating = 1;
         if (update_borders) {
