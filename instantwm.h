@@ -256,6 +256,10 @@ typedef struct {
     const Arg arg;
 } Key;
 
+extern Key keys[];
+extern Key dkeys[];
+extern unsigned int numlockmask;
+
 typedef struct {
     char *cmd;
     void (*func)(const Arg *);

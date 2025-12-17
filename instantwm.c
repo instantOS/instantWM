@@ -43,6 +43,7 @@
 #include "floating.h"
 #include "focus.h"
 #include "instantwm.h"
+#include "keyboard.h"
 #include "layouts.h"
 #include "monitors.h"
 #include "mouse.h"
@@ -87,7 +88,7 @@ int sw, sh; /* X display screen geometry width, height */
 int bh;     /* bar height */
 int lrpad;  /* sum of left and right padding for text */
 static int (*xerrorxlib)(Display *, XErrorEvent *);
-static unsigned int numlockmask = 0;
+unsigned int numlockmask = 0;
 void (*handler[LASTEvent])(XEvent *) = {[ButtonPress] = buttonpress,
                                         [ButtonRelease] = keyrelease,
                                         [ClientMessage] = clientmessage,
@@ -138,33 +139,7 @@ struct NumTags {
     char limitexceeded[LENGTH(tags) > 31 ? -1 : 1];
 };
 
-void keyrelease(XEvent *e) {}
-
-/* overlayexists() moved to overlay.c */
-
-/* resetsnap() moved to floating.c */
-/* saveallfloating() moved to floating.c */
-/* restoreallfloating() moved to floating.c */
-/* applysnap() moved to floating.c */
-/* checkfloating() moved to floating.c */
-/* visible() moved to floating.c */
-/* changesnap() moved to floating.c */
-/* tempfullscreen() moved to floating.c */
-
 int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
-
-/* directionfocus() moved to focus.c */
-
-/* createoverlay() moved to overlay.c */
-/* resetoverlay() moved to overlay.c */
-/* easeOutCubic() moved to animation.c */
-/* checkanimate() moved to animation.c */
-/* animateclient() moved to animation.c */
-/* showoverlay() moved to overlay.c */
-/* hideoverlay() moved to overlay.c */
-/* setoverlay() moved to overlay.c */
-
-/* focuslastclient() moved to focus.c */
 
 void desktopset() {
     Client *c = selmon->sel;
@@ -371,10 +346,6 @@ void arrangemon(Monitor *m) {
     }
 }
 
-/* attach() moved to client.c */
-
-/* attachstack() moved to client.c */
-
 void resetcursor() {
     if (altcursor == AltCurNone)
         return;
@@ -493,6 +464,7 @@ void buttonpress(XEvent *e) {
         resizemouse(NULL);
         return;
     }
+    // TODO: document what this does and why it does it
     for (i = 0; i < LENGTH(buttons); i++)
         if (click == buttons[i].click && buttons[i].func &&
             buttons[i].button == ev->button &&
@@ -570,14 +542,6 @@ void cleanup(void) {
     XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 }
 
-/* cleanupmon() moved to monitors.c */
-
-/* clientmessage() moved to events.c */
-
-/* configure() moved to client.c */
-
-/* configurenotify() moved to events.c */
-
 void distributeclients(const Arg *arg) {
     Client *c;
     int tagcounter = 0;
@@ -598,8 +562,6 @@ void distributeclients(const Arg *arg) {
     focus(NULL);
     arrange(selmon);
 }
-
-/* configurerequest() moved to events.c */
 
 Monitor *createmon(void) {
     Monitor *m;
@@ -659,26 +621,6 @@ void cyclelayout(const Arg *arg) {
     }
 }
 
-/* destroynotify() moved to events.c */
-
-/* detach() moved to client.c */
-
-/* detachstack() moved to client.c */
-
-/* dirtomon() moved to monitors.c */
-
-/* clickstatus() moved to bar.c */
-
-/* drawstatusbar() moved to bar.c */
-
-/* drawbar() moved to bar.c */
-
-/* drawbars() moved to bar.c */
-
-/* enternotify() moved to events.c */
-
-/* expose() moved to events.c */
-
 void focus(Client *c) {
     resetcursor();
     if (!c || !ISVISIBLE(c) || HIDDEN(c))
@@ -728,14 +670,6 @@ void focus(Client *c) {
         grabkeys();
     }
 }
-
-/* focusin() moved to events.c */
-
-/* followmon() moved to monitors.c */
-
-/* focusmon() moved to monitors.c */
-
-/* focusnmon() moved to monitors.c */
 
 void focusstack(const Arg *arg) {
     Client *c = NULL, *i;
@@ -827,8 +761,6 @@ long getstate(Window w) {
     return result;
 }
 
-/* getsystraywidth() moved to systray.c */
-
 int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
     char **list = NULL;
     int n;
@@ -871,49 +803,6 @@ void grabbuttons(Client *c, int focused) {
     }
 }
 
-void grabkeys(void) {
-    updatenumlockmask();
-    {
-        unsigned int i, j, k;
-        unsigned int modifiers[] = {0, LockMask, numlockmask,
-                                    numlockmask | LockMask};
-        int start, end, skip;
-        KeySym *syms;
-
-        XUngrabKey(dpy, AnyKey, AnyModifier, root);
-        XDisplayKeycodes(dpy, &start, &end);
-        syms = XGetKeyboardMapping(dpy, start, end - start + 1, &skip);
-        if (!syms)
-            return;
-
-        for (k = start; k <= end; k++) {
-            for (i = 0; i < LENGTH(keys); i++) {
-                if (keys[i].keysym == syms[(k - start) * skip])
-                    for (j = 0; j < LENGTH(modifiers); j++) {
-                        if (freealttab && keys[i].mod == Mod1Mask)
-                            continue;
-                        XGrabKey(dpy, k, keys[i].mod | modifiers[j], root, True,
-                                 GrabModeAsync, GrabModeAsync);
-                    }
-            }
-
-            // add keyboard shortcuts without modifiers when tag is empty
-            if (!selmon->sel) {
-                for (i = 0; i < LENGTH(dkeys); i++) {
-                    if (dkeys[i].keysym == syms[(k - start) * skip])
-                        for (j = 0; j < LENGTH(modifiers); j++)
-                            XGrabKey(dpy, k, dkeys[i].mod | modifiers[j], root,
-                                     True, GrabModeAsync, GrabModeAsync);
-                }
-            }
-        }
-
-        XFree(syms);
-    }
-}
-
-/* hide() moved to client.c */
-
 void incnmaster(const Arg *arg) {
     int ccount;
     ccount = clientcount();
@@ -939,8 +828,6 @@ static int isuniquegeom(XineramaScreenInfo *unique, size_t n,
     return 1;
 }
 #endif /* XINERAMA */
-
-/* startswith() moved to util.c */
 
 int xcommand() {
     char command[256];
@@ -1009,31 +896,6 @@ int xcommand() {
         break;
     }
     return 1;
-}
-
-void keypress(XEvent *e) {
-
-    unsigned int i;
-    KeySym keysym;
-    XKeyEvent *ev;
-
-    ev = &e->xkey;
-    keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
-    for (i = 0; i < LENGTH(keys); i++) {
-        if (keysym == keys[i].keysym &&
-            CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func) {
-            keys[i].func(&(keys[i].arg));
-        }
-    }
-
-    if (!selmon->sel) {
-        for (i = 0; i < LENGTH(dkeys); i++) {
-            if (keysym == dkeys[i].keysym &&
-                CLEANMASK(dkeys[i].mod) == CLEANMASK(ev->state) &&
-                dkeys[i].func)
-                dkeys[i].func(&(dkeys[i].arg));
-        }
-    }
 }
 
 // close selected client
@@ -1188,38 +1050,6 @@ void manage(Window w, XWindowAttributes *wa) {
     }
 }
 
-/* mappingnotify() moved to events.c */
-
-/* maprequest() moved to events.c */
-
-/* motionnotify() and helpers moved to events.c */
-
-/* resetbar() moved to bar.c */
-
-// drag a window around using the mouse
-/* movemouse() moved to mouse.c */
-
-// drag up and down on the desktop to
-// change volume or start onboard by dragging to the right
-/* gesturemouse() moved to mouse.c */
-
-// hover over the border to move/resize a window
-/* resizeborder() moved to mouse.c */
-
-// drag clients around the top bar
-/* dragmouse() moved to mouse.c */
-
-/* resetoverlaysize() moved to overlay.c */
-
-// drag on the top bar with the right mouse
-/* dragrightmouse() moved to mouse.c */
-
-// drag out an area using slop and resize the selected window to it.
-/* drawwindow() moved to mouse.c */
-
-// drag the green tag mark to another tag
-/* dragtag() moved to mouse.c */
-
 void shutkill(const Arg *arg) {
     if (!selmon->clients)
         spawn(&((Arg){.v = instantshutdowncmd}));
@@ -1227,23 +1057,7 @@ void shutkill(const Arg *arg) {
         killclient(arg);
 }
 
-/* nametag() moved to tags.c */
-
-/* resetnametag() moved to tags.c */
-
-/* nexttiled() moved to client.c */
-
-/* pop() moved to client.c */
-
-/* propertynotify() moved to events.c */
-
 void quit(const Arg *arg) { running = 0; }
-
-/* recttomon() moved to monitors.c */
-
-/* removesystrayicon() moved to systray.c */
-
-/* resize() moved to client.c */
 
 void resizebarwin(Monitor *m) {
     unsigned int w = m->ww;
@@ -1251,16 +1065,6 @@ void resizebarwin(Monitor *m) {
         w -= getsystraywidth();
     XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, w, bh);
 }
-
-/* resizeclient() moved to client.c */
-
-/* forceresizemouse() moved to mouse.c */
-
-/* resizemouse() moved to mouse.c */
-
-/* resizeaspectmouse() moved to mouse.c */
-
-/* resizerequest() moved to events.c */
 
 void restack(Monitor *m) {
     if (&overviewlayout == m->lt[m->sellt]->arrange)
@@ -1329,18 +1133,6 @@ void scan(void) {
             XFree(wins);
     }
 }
-
-/* gettagwidth() moved to tags.c */
-
-/* getxtag() moved to tags.c */
-
-/* sendmon() moved to monitors.c */
-
-/* setclientstate() moved to client.c */
-
-/* sendevent() moved to client.c */
-
-/* setfocus() moved to client.c */
 
 void setfullscreen(Client *c, int fullscreen) {
     if (fullscreen && !c->isfullscreen) {
@@ -1464,110 +1256,6 @@ void setmfact(const Arg *arg) {
     arrange(selmon);
     if (tmpanim)
         animated = 1;
-}
-
-void load_xresources(void) {
-    Display *display;
-    char *resm;
-    XrmDatabase db;
-    ResourcePref *p;
-
-    int i, u, q;
-
-    display = XOpenDisplay(NULL);
-    resm = XResourceManagerString(display);
-    if (!resm)
-        return;
-
-    db = XrmGetStringDatabase(resm);
-
-    for (i = 0; i < LENGTH(schemehovertypes); i++) {
-        for (q = 0; q < LENGTH(schemecolortypes); q++) {
-            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
-                         schemehovertypes[i].name, schemewindowtypes[u].name,
-                         schemecolortypes[q].name);
-
-                // duplicate default value to avoid reading xresource into
-                // multiple colors
-                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
-                strcpy(tmpstring, windowcolors[schemehovertypes[i].type]
-                                              [schemewindowtypes[u].type]
-                                              [schemecolortypes[q].type]);
-
-                windowcolors[schemehovertypes[i].type]
-                            [schemewindowtypes[u].type]
-                            [schemecolortypes[q].type] = tmpstring;
-
-                resource_load(db, propname, STRING,
-                              (void *)(windowcolors[schemehovertypes[i].type]
-                                                   [schemewindowtypes[u].type]
-                                                   [schemecolortypes[q].type]));
-            }
-
-            for (u = 0; u < LENGTH(schemetagtypes); u++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
-                         schemehovertypes[i].name, schemetagtypes[u].name,
-                         schemecolortypes[q].name);
-
-                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
-
-                strcpy(
-                    tmpstring,
-                    tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
-                             [schemecolortypes[q].type]);
-
-                tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
-                         [schemecolortypes[q].type] = tmpstring;
-                resource_load(db, propname, STRING,
-                              (void *)(tagcolors[schemehovertypes[i].type]
-                                                [schemetagtypes[u].type]
-                                                [schemecolortypes[q].type]));
-            }
-
-            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.close.%s",
-                         schemehovertypes[i].name, schemeclosetypes[u].name,
-                         schemecolortypes[q].name);
-
-                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
-                strcpy(tmpstring, closebuttoncolors[schemehovertypes[i].type]
-                                                   [schemeclosetypes[u].type]
-                                                   [schemecolortypes[q].type]);
-
-                closebuttoncolors[schemehovertypes[i].type]
-                                 [schemeclosetypes[u].type]
-                                 [schemecolortypes[q].type] = tmpstring;
-                resource_load(
-                    db, propname, STRING,
-                    (void *)(closebuttoncolors[schemehovertypes[i].type]
-                                              [schemeclosetypes[u].type]
-                                              [schemecolortypes[q].type]));
-            }
-        }
-    }
-
-    resource_load(db, "normal.border", STRING,
-                  (void *)bordercolors[SchemeBorderNormal]);
-    resource_load(db, "focus.tile.border", STRING,
-                  (void *)bordercolors[SchemeBorderTileFocus]);
-    resource_load(db, "focus.float.border", STRING,
-                  (void *)bordercolors[SchemeBorderFloatFocus]);
-    resource_load(db, "snap.border", STRING,
-                  (void *)bordercolors[SchemeBorderSnap]);
-
-    resource_load(db, "status.fg", STRING, (void *)statusbarcolors[ColFg]);
-    resource_load(db, "status.bg", STRING, (void *)statusbarcolors[ColBg]);
-    resource_load(db, "status.detail", STRING,
-                  (void *)statusbarcolors[ColDetail]);
-
-    for (p = resources; p < resources + LENGTH(resources); p++)
-        resource_load(db, p->name, p->type, p->dst);
-
-    XCloseDisplay(display);
 }
 
 void setup(void) {
@@ -1728,11 +1416,6 @@ void seturgent(Client *c, int urg) {
     XFree(wmh);
 }
 
-// unminimize window
-/* show() moved to client.c */
-
-/* showhide() moved to client.c */
-
 void spawn(const Arg *arg) {
     struct sigaction sa;
     if (arg->v == instantmenucmd)
@@ -1750,80 +1433,8 @@ void spawn(const Arg *arg) {
     }
 }
 
-/* computeprefix() moved to tags.c */
-
-/* setclienttagprop() moved to client.c */
-
-/* tag() moved to tags.c */
-
-/* tagall() moved to tags.c */
-
-/* followtag() moved to tags.c */
-
-/* swaptags() moved to tags.c */
-
-/* followview() moved to tags.c */
-
-/* resetsticky() moved to tags.c */
-
-/* tagmon() moved to tags.c */
-
-/* setoverlaymode() moved to overlay.c */
-
-/* tagtoleft() moved to tags.c */
-
-void uppress(const Arg *arg) {
-    if (!selmon->sel)
-        return;
-    if (selmon->sel == selmon->overlay) {
-        setoverlaymode(0);
-        return;
-    }
-    if (selmon->sel->isfloating) {
-        togglefloating(NULL);
-        return;
-    } else {
-        hide(selmon->sel);
-        return;
-    }
-}
-
-void downpress(const Arg *arg) {
-    if (unhideone())
-        return;
-    if (!selmon->sel)
-        return;
-
-    if (selmon->sel->snapstatus) {
-        resetsnap(selmon->sel);
-        return;
-    }
-
-    if (selmon->sel == selmon->overlay) {
-        setoverlaymode(OverlayBottom);
-        return;
-    }
-    if (!selmon->sel->isfloating) {
-        togglefloating(NULL);
-        return;
-    }
-}
-
-/* tagtoright() moved to tags.c */
-
-/* ctrltoggle() moved to toggles.c */
-
 void setspecialnext(const Arg *arg) { specialnext = arg->ui; }
 
-/* togglealttag() moved to toggles.c */
-/* alttabfree() moved to toggles.c */
-/* togglesticky() moved to toggles.c */
-/* toggleprefix() moved to toggles.c */
-/* toggleanimated() moved to toggles.c */
-/* setborderwidth() moved to toggles.c */
-/* togglefocusfollowsmouse() moved to toggles.c */
-/* togglefocusfollowsfloatmouse() moved to toggles.c */
-/* toggledoubledraw() moved to toggles.c */
 void togglefakefullscreen(const Arg *arg) {
     if (selmon->sel->isfullscreen) {
         if (selmon->sel->isfakefullscreen) {
@@ -1838,20 +1449,6 @@ void togglefakefullscreen(const Arg *arg) {
 
     selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
-/* togglelocked() moved to toggles.c */
-
-/* warp() moved to focus.c */
-/* forcewarp() moved to focus.c */
-/* warpinto() moved to focus.c */
-/* warpfocus() moved to focus.c */
-
-/* moveresize() moved to floating.c */
-
-/* keyresize() moved to floating.c */
-
-/* centerwindow() moved to floating.c */
-
-/* toggleshowtags() moved to toggles.c */
 
 void togglebar(const Arg *arg) {
     int tmpnoanim;
@@ -1888,29 +1485,6 @@ void togglebar(const Arg *arg) {
         animated = tmpnoanim;
     }
 }
-
-/* savefloating() moved to floating.c */
-/* restorefloating() moved to floating.c */
-/* savebw() moved to floating.c */
-/* restorebw() moved to floating.c */
-/* applysize() moved to floating.c */
-/* togglefloating() moved to floating.c */
-/* changefloating() moved to floating.c */
-
-/* toggletag() moved to tags.c */
-
-/* updatescratchvisible() moved to scratchpad.c */
-/* findnamedscratchpad() moved to scratchpad.c */
-/* makescratchpad() moved to scratchpad.c */
-/* togglescratchpad() moved to scratchpad.c */
-/* createscratchpad() moved to scratchpad.c */
-/* showscratchpad() moved to scratchpad.c */
-/* hidescratchpad() moved to scratchpad.c */
-/* scratchpadstatus() moved to scratchpad.c */
-
-/* updatestatus() moved to bar.c */
-
-/* toggleview() moved to tags.c */
 
 // minimize window
 void hidewin(const Arg *arg) {
@@ -1952,8 +1526,6 @@ void unhideall(const Arg *arg) {
     restack(selmon);
 }
 
-/* unfocus() moved to client.c */
-
 void unmanage(Client *c, int destroyed) {
     Monitor *m = c->mon;
     XWindowChanges wc;
@@ -1987,17 +1559,6 @@ void unmanage(Client *c, int destroyed) {
     arrange(m);
 }
 
-/* unmapnotify() moved to events.c */
-
-void verifytagsxres(void) {
-    for (int i = 0; i < 9; i++) {
-        int len = strlen(tags[i]);
-        if (len > MAX_TAGLEN - 1 || len == 0) {
-            strcpy((char *)&tags[i], "Xres err");
-        }
-    }
-}
-
 void updatebars(void) {
     unsigned int w;
     Monitor *m;
@@ -2022,8 +1583,6 @@ void updatebars(void) {
         XSetClassHint(dpy, m->barwin, &ch);
     }
 }
-
-/* updatebarpos() moved to bar.c */
 
 void updateclientlist(void) {
     Client *c;
@@ -2201,12 +1760,7 @@ void updatesizehints(Client *c) {
     c->hintsvalid = 1;
 }
 
-/* updatesystrayicongeom() moved to systray.c */
-
-/* updatesystrayiconstate() moved to systray.c */
-
-/* updatesystray() moved to systray.c */
-
+// TODO: can this be moved?
 void updatetitle(Client *c) {
     if (!gettextprop(c->win, netatom[NetWMName], c->name, sizeof c->name))
         gettextprop(c->win, XA_WM_NAME, c->name, sizeof c->name);
@@ -2241,32 +1795,6 @@ void updatewmhints(Client *c) {
     }
 }
 
-/* view() moved to tags.c */
-
-/* moveleft() moved to tags.c */
-
-/* viewtoleft() moved to tags.c */
-
-void upkey(const Arg *arg) {
-    if (!selmon->sel)
-        return;
-
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
-        directionfocus(&((Arg){.ui = 0}));
-        return;
-    }
-
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
-        Client *c;
-        c = selmon->sel;
-        XSetWindowBorder(dpy, c->win,
-                         borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(c, 0);
-        return;
-    }
-    focusstack(arg);
-}
-
 int unhideone() {
     if (selmon->sel && selmon->sel == selmon->overlay)
         return 0;
@@ -2281,69 +1809,6 @@ int unhideone() {
     }
     return 0;
 }
-
-void downkey(const Arg *arg) {
-
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
-        directionfocus(&((Arg){.ui = 2}));
-        return;
-    }
-
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
-        if (!selmon->sel)
-            return;
-        // unmaximize
-        changesnap(selmon->sel, 2);
-        return;
-    }
-    focusstack(arg);
-}
-
-void spacetoggle(const Arg *arg) {
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
-        if (!selmon->sel)
-            return;
-        Client *c;
-        c = selmon->sel;
-
-        if (c->snapstatus) {
-            resetsnap(c);
-        } else {
-            XSetWindowBorder(dpy, selmon->sel->win,
-                             borderscheme[SchemeBorderTileFocus].pixel);
-            savefloating(c);
-            selmon->sel->snapstatus = SnapMaximized;
-            arrange(selmon);
-        }
-    } else {
-        togglefloating(arg);
-    }
-}
-
-/* shiftview() moved to tags.c */
-
-/* viewtoright() moved to tags.c */
-
-/* moveright() moved to tags.c */
-
-/* upscaleclient() moved to floating.c */
-
-/* downscaleclient() moved to floating.c */
-
-/* scaleclient() moved to floating.c */
-
-// toggle overview like layout
-/* overtoggle() moved to tags.c */
-
-/* lastview() moved to tags.c */
-
-/* fullovertoggle() moved to tags.c */
-
-/* wintoclient() moved to client.c */
-
-/* wintomon() moved to monitors.c */
-
-/* winview() moved to tags.c */
 
 /* There's no way to check accesses to destroyed windows, thus those cases are
  * ignored (especially on UnmapNotify's). Other types of errors call Xlibs
@@ -2374,8 +1839,6 @@ int xerrorstart(Display *dpy, XErrorEvent *ee) {
     return -1;
 }
 
-/* systraytomon() moved to systray.c */
-
 void zoom(const Arg *arg) {
     Client *c = selmon->sel;
 
@@ -2391,72 +1854,6 @@ void zoom(const Arg *arg) {
         return;
     }
     pop(c);
-}
-
-void list_xresources() {
-
-    int i, u, q;
-    for (i = 0; i < LENGTH(schemehovertypes); i++) {
-        for (q = 0; q < LENGTH(schemecolortypes); q++) {
-            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
-                         schemehovertypes[i].name, schemewindowtypes[u].name,
-                         schemecolortypes[q].name);
-                printf("instantwm.%s\n", propname);
-            }
-            for (u = 0; u < LENGTH(schemetagtypes); u++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
-                         schemehovertypes[i].name, schemetagtypes[u].name,
-                         schemecolortypes[q].name);
-                printf("instantwm.%s\n", propname);
-            }
-            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
-                char propname[100] = "";
-                snprintf(propname, sizeof(propname), "%s.%s.close.%s",
-                         schemehovertypes[i].name, schemeclosetypes[u].name,
-                         schemecolortypes[q].name);
-                printf("instantwm.%s\n", propname);
-            }
-        }
-    }
-    printf(
-        "normal.border\nfocus.tile.border\nfocus.float.border\nsnap.border\n");
-    printf("status.fg\nstatus.bg\nstatus.detail\n");
-}
-
-void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
-                   void *dst) {
-    char *sdst = NULL;
-    int *idst = NULL;
-    float *fdst = NULL;
-
-    sdst = dst;
-    idst = dst;
-    fdst = dst;
-
-    char fullname[256];
-    char *type;
-    XrmValue ret;
-
-    snprintf(fullname, sizeof(fullname), "%s.%s", "instantwm", name);
-    fullname[sizeof(fullname) - 1] = '\0';
-
-    XrmGetResource(db, fullname, "*", &type, &ret);
-    if (!(ret.addr == NULL || strncmp("String", type, 64))) {
-        switch (rtype) {
-        case STRING:
-            strcpy(sdst, ret.addr);
-            break;
-        case INTEGER:
-            *idst = strtoul(ret.addr, NULL, 10);
-            break;
-        case FLOAT:
-            *fdst = strtof(ret.addr, NULL);
-            break;
-        }
-    }
 }
 
 int main(int argc, char *argv[]) {

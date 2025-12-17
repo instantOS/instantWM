@@ -89,7 +89,6 @@ static void handle_bar_drop(Client *c) {
 void movemouse(const Arg *arg) {
     int x, y, ocx, ocy, nx, ny, ti, tx, occ, colorclient, tagx, notfloating;
     Client *c;
-    Monitor *m;
     XEvent ev;
     Time lasttime = 0;
     notfloating = 0;
@@ -114,8 +113,10 @@ void movemouse(const Arg *arg) {
 
     if (NULL == selmon->lt[selmon->sellt]->arrange) {
         // unmaximize in floating layout
-        if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 &&
-            c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
+        if (c->x >= selmon->mx - MAX_UNMAXIMIZE_OFFSET &&
+            c->y >= selmon->my + bh - MAX_UNMAXIMIZE_OFFSET &&
+            c->w >= selmon->mw - MAX_UNMAXIMIZE_OFFSET &&
+            c->h >= selmon->mh - MAX_UNMAXIMIZE_OFFSET) {
             resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
         }
     }
@@ -140,7 +141,7 @@ void movemouse(const Arg *arg) {
             break;
         case MotionNotify:
             if ((ev.xmotion.time - lasttime) <=
-                (1000 / (doubledraw ? 240 : 120)))
+                (1000 / (doubledraw ? REFRESH_RATE_HI : REFRESH_RATE_LO)))
                 continue;
             lasttime = ev.xmotion.time;
 
@@ -181,12 +182,7 @@ void movemouse(const Arg *arg) {
     /* Handle drop on bar (tag move, re-tile) */
     handle_bar_drop(c);
 
-    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-        sendmon(c, m);
-        unfocus(selmon->sel, 0);
-        selmon = m;
-        focus(NULL);
-    }
+    handle_client_monitor_switch(c);
 }
 
 void gesturemouse(const Arg *arg) {
@@ -211,7 +207,7 @@ void gesturemouse(const Arg *arg) {
             break;
         case MotionNotify:
             if ((ev.xmotion.time - lasttime) <=
-                (1000 / (doubledraw ? 240 : 120)))
+                (1000 / (doubledraw ? REFRESH_RATE_HI : REFRESH_RATE_LO)))
                 continue;
             lasttime = ev.xmotion.time;
             if (abs(lasty - ev.xmotion.y_root) > selmon->mh / 30) {
@@ -241,22 +237,21 @@ int isinresizeborder() {
     // Not in border if: on bar, inside window, or too far from window
     if ((selmon->showbar && y < selmon->my + bh) ||
         (y > c->y && y < c->y + c->h && x > c->x && x < c->x + c->w) ||
-        y < c->y - 30 || x < c->x - 30 || y > c->y + c->h + 30 ||
-        x > c->x + c->w + 30) {
+        y < c->y - RESIZE_BORDER_ZONE || x < c->x - RESIZE_BORDER_ZONE ||
+        y > c->y + c->h + RESIZE_BORDER_ZONE ||
+        x > c->x + c->w + RESIZE_BORDER_ZONE) {
         return 0;
     }
     return 1;
 }
 
-int resizeborder(const Arg *arg) {
+int hoverresizemouse(const Arg *arg) {
     if (!isinresizeborder())
-        return 1;
+        return 0;
 
     XEvent ev;
     Time lasttime = 0;
-    Client *c = selmon->sel;
     int inborder = 1;
-    int x, y;
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurResize]->cursor,
@@ -275,53 +270,37 @@ int resizeborder(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case KeyPress:
-            handler[ev.type](&ev);
-            if (ev.xkey.keycode == 9)
+            if (ev.xkey.keycode == KEYCODE_ESCAPE) { // Escape key
                 inborder = 0;
+                break;
+            }
+            handler[ev.type](&ev);
             break;
         case ButtonPress:
-            if (ev.xbutton.button == 1) {
+            if (ev.xbutton.button == Button1) {
                 XUngrabPointer(dpy, CurrentTime);
                 resizemouse(NULL);
-                return 0;
+                return 1;
             }
             break;
         case MotionNotify:
             if ((ev.xmotion.time - lasttime) <=
-                (1000 / (doubledraw ? 240 : 120)))
+                (1000 / (doubledraw ? REFRESH_RATE_HI : REFRESH_RATE_LO)))
                 continue;
             lasttime = ev.xmotion.time;
 
-            getrootptr(&x, &y);
-
-            if (y > c->y + c->h) // bottom
-                c->h = y - c->y;
-
-            if (y < c->y) { // top
-                c->h = c->y + c->h - y;
-                c->y = y;
+            if (!isinresizeborder()) {
+                inborder = 0;
+                Client *newc = getcursorclient();
+                if (newc && newc != selmon->sel)
+                    focus(newc);
+                break;
             }
-
-            if (x > c->x + c->w) // right
-                c->w = x - c->x;
-
-            if (x < c->x) { // left
-                c->w = c->x + c->w - x;
-                c->x = x;
-            }
-
-            if (c->w < 50)
-                c->w = 50;
-            if (c->h < 50)
-                c->h = 50;
-
-            resize(c, c->x, c->y, c->w, c->h, 1);
-            break;
         }
     } while (ev.type != ButtonRelease && inborder);
 
     XUngrabPointer(dpy, CurrentTime);
-    return 0;
+    return 1;
 }
 
 void dragmouse(const Arg *arg) {
@@ -360,12 +339,16 @@ void dragmouse(const Arg *arg) {
         case MotionNotify:
             getrootptr(&x, &y);
             /* If mouse moved beyond threshold, start moving the window */
-            if (abs(x - startx) > 5 || abs(y - starty) > 5) {
+            if (abs(x - startx) > DRAG_THRESHOLD ||
+                abs(y - starty) > DRAG_THRESHOLD) {
                 XUngrabPointer(dpy, CurrentTime);
                 if (was_hidden)
                     show(c);
                 focus(c);
                 restack(selmon);
+                if (c)
+                    XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+                                 c->x + c->w / 2, c->y + c->h / 2);
                 movemouse(NULL);
                 return;
             }
@@ -423,7 +406,7 @@ void dragrightmouse(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+            if ((ev.xmotion.time - lasttime) <= (1000 / REFRESH_RATE_DRAG))
                 continue;
             lasttime = ev.xmotion.time;
             if (!sinit) {
@@ -438,7 +421,7 @@ void dragrightmouse(const Arg *arg) {
                     tagtoleft(&a);
                     dragging = 1;
                 }
-            } else if (abs(ev.xmotion.y_root - starty) > 200) {
+            } else if (abs(ev.xmotion.y_root - starty) > GESTURE_THRESHOLD) {
                 // down
                 if (ev.xmotion.y_root > starty) {
                     hidewin(NULL);
@@ -454,35 +437,18 @@ void dragrightmouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
 }
 
-void drawwindow(const Arg *arg) {
-
-    char str[100];
-    int i;
+/* Helper functions for drawwindow */
+int parse_slop_output(const char *output, int dimensions[4]) {
     char strout[100] = {0};
-    int dimensions[4];
-    int width, height, x, y;
     char tmpstring[30] = {0};
     int firstchar = 0;
     int counter = 0;
-    Monitor *m;
-    Client *c;
+    int i;
 
-    if (!selmon->sel)
-        return;
-    FILE *fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
+    if (!output || strlen(output) < 6)
+        return 0;
 
-    if (!fp)
-        return;
-
-    while (fgets(str, 100, fp) != NULL) {
-        strcat(strout, str);
-    }
-
-    pclose(fp);
-
-    if (strlen(strout) < 6) {
-        return;
-    }
+    strcpy(strout, output);
 
     for (i = 0; i < strlen(strout); i++) {
         if (!firstchar) {
@@ -501,6 +467,72 @@ void drawwindow(const Arg *arg) {
         }
     }
 
+    return counter == 4;
+}
+
+int is_valid_window_size(int x, int y, int width, int height, Client *c) {
+    return (width > MIN_WINDOW_SIZE && height > MIN_WINDOW_SIZE &&
+            x > -SLOP_MARGIN && y > -SLOP_MARGIN &&
+            width < selmon->mw + SLOP_MARGIN &&
+            height < selmon->mh + SLOP_MARGIN &&
+            (abs(c->w - width) > 20 || abs(c->h - height) > 20 ||
+             abs(c->x - x) > 20 || abs(c->y - y) > 20));
+}
+
+void handle_monitor_switch(Client *c, int x, int y, int width, int height) {
+    Monitor *m;
+
+    if ((m = recttomon(x, y, width, height)) != selmon) {
+        sendmon(c, m);
+        unfocus(selmon->sel, 0);
+        selmon = m;
+        focus(NULL);
+    }
+}
+
+void handle_client_monitor_switch(Client *c) {
+    Monitor *m;
+
+    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
+        sendmon(c, m);
+        unfocus(selmon->sel, 0);
+        selmon = m;
+        focus(NULL);
+    }
+}
+
+void apply_window_resize(Client *c, int x, int y, int width, int height) {
+    if (c->isfloating) {
+        resize(c, x, y, width, height, 1);
+    } else {
+        togglefloating(NULL);
+        resize(c, x, y, width, height, 1);
+    }
+}
+
+void drawwindow(const Arg *arg) {
+    char str[100];
+    char strout[100] = {0};
+    int dimensions[4];
+    int width, height, x, y;
+    Client *c;
+    FILE *fp;
+
+    if (!selmon->sel)
+        return;
+
+    fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
+    if (!fp)
+        return;
+
+    while (fgets(str, 100, fp) != NULL) {
+        strcat(strout, str);
+    }
+    pclose(fp);
+
+    if (!parse_slop_output(strout, dimensions))
+        return;
+
     x = dimensions[0];
     y = dimensions[1];
     width = dimensions[2];
@@ -511,23 +543,9 @@ void drawwindow(const Arg *arg) {
 
     c = selmon->sel;
 
-    if (width > 50 && height > 50 && x > -40 && y > -40 &&
-        width < selmon->mw + 40 && height < selmon->mh + 40 &&
-        (abs(c->w - width) > 20 || abs(c->h - height) > 20 ||
-         abs(c->x - x) > 20 || abs(c->y - y) > 20)) {
-        if ((m = recttomon(x, y, width, height)) != selmon) {
-            sendmon(c, m);
-            unfocus(selmon->sel, 0);
-            selmon = m;
-            focus(NULL);
-        }
-
-        if (c->isfloating) {
-            resize(c, x, y, width, height, 1);
-        } else {
-            togglefloating(NULL);
-            resize(c, x, y, width, height, 1);
-        }
+    if (is_valid_window_size(x, y, width, height, c)) {
+        handle_monitor_switch(c, x, y, width, height);
+        apply_window_resize(c, x, y, width, height);
     }
 }
 
@@ -563,7 +581,7 @@ void dragtag(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+            if ((ev.xmotion.time - lasttime) <= (1000 / REFRESH_RATE_DRAG))
                 continue;
             lasttime = ev.xmotion.time;
             if (ev.xmotion.y_root > selmon->my + bh + 1)
@@ -587,7 +605,8 @@ void dragtag(const Arg *arg) {
             } else {
                 tag(&((Arg){.ui = 1 << getxtag(ev.xmotion.x_root)}));
             }
-        } else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+        } else if (ev.xmotion.x_root >
+                   selmon->mx + selmon->mw - OVERLAY_ZONE_WIDTH) {
             if (selmon->sel == selmon->overlay) {
                 setoverlay(NULL);
             } else {
@@ -735,7 +754,6 @@ void resizemouse(const Arg *arg) {
     int ocx, ocy, nw, nh;
     int ocx2, ocy2, nx, ny;
     Client *c;
-    Monitor *m;
     XEvent ev;
     int corner;
     int di;
@@ -785,7 +803,7 @@ void resizemouse(const Arg *arg) {
             break;
         case MotionNotify:
             if ((ev.xmotion.time - lasttime) <=
-                (1000 / (doubledraw ? 240 : 120)))
+                (1000 / (doubledraw ? REFRESH_RATE_HI : REFRESH_RATE_LO)))
                 continue;
             lasttime = ev.xmotion.time;
 
@@ -822,12 +840,7 @@ void resizemouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
     while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
         ;
-    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-        sendmon(c, m);
-        unfocus(selmon->sel, 0);
-        selmon = m;
-        focus(NULL);
-    }
+    handle_client_monitor_switch(c);
 
     if (NULL == selmon->lt[selmon->sellt]->arrange) {
         savefloating(c);
@@ -839,7 +852,6 @@ void resizeaspectmouse(const Arg *arg) {
     int ocx, ocy, nw, nh;
     int ocx2, ocy2, nx, ny;
     Client *c;
-    Monitor *m;
     XEvent ev;
     int di;
     unsigned int dui;
@@ -879,7 +891,7 @@ void resizeaspectmouse(const Arg *arg) {
             break;
         case MotionNotify:
             if ((ev.xmotion.time - lasttime) <=
-                (1000 / (doubledraw ? 240 : 120)))
+                (1000 / (doubledraw ? REFRESH_RATE_HI : REFRESH_RATE_LO)))
                 continue;
             lasttime = ev.xmotion.time;
 
@@ -931,10 +943,5 @@ void resizeaspectmouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
     while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
         ;
-    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-        sendmon(c, m);
-        unfocus(selmon->sel, 0);
-        selmon = m;
-        focus(NULL);
-    }
+    handle_client_monitor_switch(c);
 }
