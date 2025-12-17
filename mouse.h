@@ -23,7 +23,7 @@ void gesturemouse(const Arg *arg);
 int hoverresizemouse(const Arg *arg);
 int isinresizeborder(void);
 void window_title_mouse_handler(const Arg *arg);
-void handle_window_title_right_mouse(const Arg *arg);
+void window_title_mouse_handler_right(const Arg *arg);
 void drawwindow(const Arg *arg);
 void dragtag(const Arg *arg);
 void forceresizemouse(const Arg *arg);

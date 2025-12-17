@@ -712,7 +712,7 @@ static Button buttons[] = {
     {ClkWinTitle, 0, Button2, closewin, {0}},
     {ClkCloseButton, 0, Button1, killclient, {0}},
     {ClkCloseButton, 0, Button3, togglelocked, {0}},
-    {ClkWinTitle, 0, Button3, handle_window_title_right_mouse, {0}},
+    {ClkWinTitle, 0, Button3, window_title_mouse_handler_right, {0}},
     {ClkWinTitle, 0, Button5, focusstack, {.i = +1}},
     {ClkWinTitle, 0, Button4, focusstack, {.i = -1}},
     {ClkWinTitle, ShiftMask, Button5, pushdown, {0}},

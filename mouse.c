@@ -379,10 +379,8 @@ void window_title_mouse_handler(const Arg *arg) {
     click_window_title(c, was_hidden, was_focused);
 }
 
-static void right_drag_window_title(XMotionEvent *motion, int *startx, int *starty, 
+static void right_drag_window_title(XMotionEvent *motion, int *startx, int *starty,
                                     int *sinit, int *dragging, Time *lasttime) {
-    if ((motion->time - *lasttime) <= (1000 / REFRESH_RATE_DRAG))
-        return;
     *lasttime = motion->time;
     if (!*sinit) {
         *startx = motion->x_root;
@@ -405,9 +403,11 @@ static void right_drag_window_title(XMotionEvent *motion, int *startx, int *star
     }
 }
 
-void handle_window_title_right_mouse(const Arg *arg) {
-    int x, y, starty, startx, dragging, sinit;
-    starty = 100;
+void window_title_mouse_handler_right(const Arg *arg) {
+    int x, y, start_y, startx, dragging, sinit;
+    start_y = 100;
+
+    //TODO: what does sinit do? Rename
     sinit = 0;
     dragging = 0;
     XEvent ev;
@@ -437,10 +437,10 @@ void handle_window_title_right_mouse(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            right_drag_window_title(&ev.xmotion, &startx, &starty, &sinit, 
+            right_drag_window_title(&ev.xmotion, &startx, &start_y, &sinit,
                                    &dragging, &lasttime);
-            if (ev.xmotion.y_root != starty && 
-                abs(ev.xmotion.y_root - starty) > GESTURE_THRESHOLD)
+            if (ev.xmotion.y_root != start_y &&
+                abs(ev.xmotion.y_root - start_y) > GESTURE_THRESHOLD)
                 return;
             break;
         }
@@ -582,6 +582,7 @@ void dragtag(const Arg *arg) {
     if (!getrootptr(&x, &y))
         return;
     bardragging = 1;
+    //TODO: this kind of drag loop is really common and duplicated, refactor and deduplicate
     do {
         XMaskEvent(dpy, MOUSEMASK | ExposureMask | SubstructureRedirectMask,
                    &ev);
