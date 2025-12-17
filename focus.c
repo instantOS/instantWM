@@ -140,4 +140,4 @@ void warp_into(const Client *c) {
     XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, y);
 }
 
-void warp_focus() { warp_cursor_to_client(selmon->sel); }
+void warp_to_focus() { warp_cursor_to_client(selmon->sel); }

@@ -52,7 +52,7 @@ void followmon(const Arg *arg) {
     focus(NULL);
     focus(c);
     XRaiseWindow(dpy, c->win);
-    warp(c);
+    warp_to_client(c);
 }
 
 void focusmon(const Arg *arg) {

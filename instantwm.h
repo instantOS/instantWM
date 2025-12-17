@@ -30,8 +30,8 @@
 #define HIDDEN(C) ((getstate(C->win) == IconicState))
 #define LENGTH(X) (sizeof X / sizeof X[0])
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
-#define WIDTH(X) ((X)->w + 2 * (X)->bw)
-#define HEIGHT(X) ((X)->h + 2 * (X)->bw)
+#define WIDTH(X) ((X)->w + 2 * (X)->border_width)
+#define HEIGHT(X) ((X)->h + 2 * (X)->border_width)
 #define TAGMASK ((1 << LENGTH(tags)) - 1)
 #define MAX_TAGS 21 /* Fixed size for Pertag arrays (20 tags + 1) */
 #define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
@@ -513,7 +513,7 @@ void view(const Arg *arg);
 void warp(const Client *c);
 void forcewarp(const Client *c);
 void warpinto(const Client *c);
-void warp_focus();
+void warp_to_focus();
 void viewtoleft(const Arg *arg);
 void animleft(const Arg *arg);
 void animright(const Arg *arg);

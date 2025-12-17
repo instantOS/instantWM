@@ -487,7 +487,7 @@ static Xcommand commands[] = {
     // 4  string
     // 5  integer
     {"overlay", setoverlay, {0}, 0},
-    {"warpfocus", warp_focus, {0}, 0},
+    {"warpfocus", warp_to_focus, {0}, 0},
     {"tag", view, {.ui = 2}, 3},
     {"animated", toggleanimated, {.ui = 2}, 1},
     {"border", setborderwidth, {.i = borderpx}, 5},
@@ -610,7 +610,7 @@ Key keys[] = {
     {MODKEY | Mod1Mask, XK_f, spawn, {.v = searchcmd}},
     {MODKEY | Mod1Mask, XK_space, spawn, {.v = keylayoutswitchcmd}},
     {MODKEY | ShiftMask | Mod1Mask, XK_d, toggledoubledraw, {0}},
-    {MODKEY | ShiftMask, XK_w, warp_focus, {0}},
+    {MODKEY | ShiftMask, XK_w, warp_to_focus, {0}},
     {MODKEY | Mod1Mask, XK_w, centerwindow, {0}},
     {MODKEY | ShiftMask | ControlMask, XK_s, toggleshowtags, {.ui = 2}},
     {MODKEY, XK_i, incnmaster, {.i = +1}},
