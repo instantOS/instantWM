@@ -102,8 +102,8 @@ void applysnap(Client *c, Monitor *m) {
         restorebw(c);
     switch (c->snapstatus) {
     case SnapNone:
-        checkanimate(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
-                     c->saved_float_height, 7, 0);
+        checkanimate(c, c->saved_float_x, c->saved_float_y,
+                     c->saved_float_width, c->saved_float_height, 7, 0);
         break;
     case SnapTop:
         checkanimate(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
@@ -210,7 +210,8 @@ void togglefloating(const Arg *arg) {
         restorebw(selmon->sel);
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderFloatFocus].pixel);
-        animateclient(selmon->sel, selmon->sel->saved_float_x, selmon->sel->saved_float_y,
+        animateclient(selmon->sel, selmon->sel->saved_float_x,
+                      selmon->sel->saved_float_y,
                       selmon->sel->saved_float_width,
                       selmon->sel->saved_float_height, 7, 0);
     } else {
@@ -240,8 +241,8 @@ void changefloating(Client *c) {
     c->isfloating = !c->isfloating || c->isfixed;
     if (c->isfloating)
         /* restore last known float dimensions */
-        resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width, c->saved_float_height,
-               False);
+        resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
+               c->saved_float_height, False);
     else {
         /* save last known float dimensions */
         c->saved_float_x = c->x;
@@ -263,8 +264,8 @@ void setfloating(Client *c, int should_arrange) {
 
     c->isfloating = 1;
     /* restore last known float dimensions */
-    resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width, c->saved_float_height,
-           False);
+    resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
+           c->saved_float_height, False);
 
     if (should_arrange)
         arrange(selmon);
