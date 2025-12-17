@@ -309,11 +309,12 @@ void dragmouse(const Arg *arg) {
 
     /* Focus the clicked window - use hoverclient since hover detection works
      * correctly */
-    Client *c = selmon->hoverclient;
-    if (c) {
-        focus(c);
-        restack(selmon);
-    }
+    Client *c = (Client *)arg->v;
+    if (!c)
+        return;
+
+    int was_focused = (selmon->sel == c);
+    int was_hidden = HIDDEN(c);
 
     /* Grab pointer to detect if user drags or just clicks */
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
@@ -341,6 +342,10 @@ void dragmouse(const Arg *arg) {
             if (abs(x - startx) > DRAG_THRESHOLD ||
                 abs(y - starty) > DRAG_THRESHOLD) {
                 XUngrabPointer(dpy, CurrentTime);
+                if (was_hidden)
+                    show(c);
+                focus(c);
+                restack(selmon);
                 if (c)
                     XWarpPointer(dpy, None, root, 0, 0, 0, 0,
                                  c->x + c->w / 2, c->y + c->h / 2);
@@ -354,6 +359,19 @@ void dragmouse(const Arg *arg) {
     /* Button released without significant movement - just focus (already done)
      */
     XUngrabPointer(dpy, CurrentTime);
+
+    if (was_hidden) {
+        show(c);
+        focus(c);
+        restack(selmon);
+    } else {
+        if (was_focused) {
+            hide(c);
+        } else {
+            focus(c);
+            restack(selmon);
+        }
+    }
 }
 
 void dragrightmouse(const Arg *arg) {
