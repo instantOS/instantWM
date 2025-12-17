@@ -341,10 +341,8 @@ void moveresize(const Arg *arg) {
 
     int move_step = 40;
     /* Delta offsets for each direction: [direction][x_delta, y_delta] */
-    int move_deltas[4][2] = {{0, move_step},
-                             {0, -move_step},
-                             {move_step, 0},
-                             {-move_step, 0}};
+    int move_deltas[4][2] = {
+        {0, move_step}, {0, -move_step}, {move_step, 0}, {-move_step, 0}};
     int nx = (c->x + move_deltas[arg->i][0]);
     int ny = (c->y + move_deltas[arg->i][1]);
 

@@ -66,105 +66,122 @@ extern long getstate(Window w);
 extern int getrootptr(int *x, int *y);
 extern Client *getcursorclient(void);
 
-// TODO: this has too many responsibilities, refactor
-void clientmessage(XEvent *e) {
+/* Helper: Handle systray dock request message */
+static void handle_systray_dock_request(XClientMessageEvent *cme) {
     XWindowAttributes wa;
     XSetWindowAttributes swa;
-    XClientMessageEvent *cme = &e->xclient;
-    Client *c = wintoclient(cme->window);
+    Client *c;
+
+    if (!(c = (Client *)calloc(1, sizeof(Client))))
+        die("fatal: could not malloc() %u bytes\n", sizeof(Client));
+    if (!(c->win = cme->data.l[2])) {
+        free(c);
+        return;
+    }
+    c->mon = selmon;
+    c->next = systray->icons;
+    systray->icons = c;
+    XGetWindowAttributes(dpy, c->win, &wa);
+    c->x = c->oldx = c->y = c->oldy = 0;
+    c->w = c->oldw = wa.width;
+    c->h = c->oldh = wa.height;
+    c->old_border_width = wa.border_width;
+    c->border_width = 0;
+    c->isfloating = True;
+    /* reuse tags field as mapped status */
+    c->tags = 1;
+    updatesizehints(c);
+    updatesystrayicongeom(c, wa.width, wa.height);
+    XAddToSaveSet(dpy, c->win);
+    XSelectInput(dpy, c->win,
+                 StructureNotifyMask | PropertyChangeMask | ResizeRedirectMask);
+    XReparentWindow(dpy, c->win, systray->win, 0, 0);
+    /* use parents background color */
+    extern Clr *statusscheme;
+    swa.background_pixel = statusscheme[ColBg].pixel;
+    XChangeWindowAttributes(dpy, c->win, CWBackPixel, &swa);
+    sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
+              XEMBED_EMBEDDED_NOTIFY, 0, systray->win, XEMBED_EMBEDDED_VERSION);
+    /* FIXME not sure if I have to send these events, too */
+    sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
+              XEMBED_FOCUS_IN, 0, systray->win, XEMBED_EMBEDDED_VERSION);
+    sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
+              XEMBED_WINDOW_ACTIVATE, 0, systray->win, XEMBED_EMBEDDED_VERSION);
+    sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
+              XEMBED_MODALITY_ON, 0, systray->win, XEMBED_EMBEDDED_VERSION);
+    XSync(dpy, False);
+    resizebarwin(selmon);
+    updatesystray();
+    setclientstate(c, NormalState);
+}
+
+/* Helper: Handle _NET_WM_STATE message (fullscreen toggle) */
+static void handle_netWMstate(Client *c, XClientMessageEvent *cme) {
+    extern void setfullscreen(Client * c, int fullscreen);
+    if (cme->data.l[1] == netatom[NetWMFullscreen] ||
+        cme->data.l[2] == netatom[NetWMFullscreen])
+        setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
+                          || (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
+                              (!c->is_fullscreen || c->isfakefullscreen))));
+}
+
+/* Helper: Handle _NET_ACTIVE_WINDOW message for regular windows */
+static void handle_active_window_regular(Client *c) {
     unsigned int i;
 
+    if (HIDDEN(c))
+        show(c);
+    for (i = 0; i < numtags && !((1 << i) & c->tags); i++)
+        ;
+    if (i < numtags) {
+        const Arg a = {.ui = 1 << i};
+        if (selmon != c->mon) {
+            unfocus(selmon->sel, 0);
+            selmon = c->mon;
+        }
+        view(&a);
+        focus(c);
+        restack(selmon);
+    }
+}
+
+/* Helper: Handle _NET_ACTIVE_WINDOW message */
+static void handle_active_window(Client *c) {
+    if (c == c->mon->overlay) {
+        if (c->mon != selmon) {
+            unfocus(selmon->sel, 0);
+            selmon = c->mon;
+            focus(NULL);
+        }
+        showoverlay(NULL);
+    } else if (c->tags == SCRATCHPAD_MASK) {
+        selmon = c->mon;
+        togglescratchpad(NULL);
+    } else {
+        handle_active_window_regular(c);
+    }
+}
+
+/* Handle X client messages (systray, fullscreen, window activation). */
+void clientmessage(XEvent *e) {
+    XClientMessageEvent *cme = &e->xclient;
+    Client *c = wintoclient(cme->window);
+
+    /* Handle systray dock request */
     if (showsystray && cme->window == systray->win &&
         cme->message_type == netatom[NetSystemTrayOP]) {
-        /* add systray icons */
-        if (cme->data.l[1] == SYSTEM_TRAY_REQUEST_DOCK) {
-            if (!(c = (Client *)calloc(1, sizeof(Client))))
-                die("fatal: could not malloc() %u bytes\n", sizeof(Client));
-            if (!(c->win = cme->data.l[2])) {
-                free(c);
-                return;
-            }
-            c->mon = selmon;
-            c->next = systray->icons;
-            systray->icons = c;
-            XGetWindowAttributes(dpy, c->win, &wa);
-            c->x = c->oldx = c->y = c->oldy = 0;
-            c->w = c->oldw = wa.width;
-            c->h = c->oldh = wa.height;
-            c->old_border_width = wa.border_width;
-            c->border_width = 0;
-            c->isfloating = True;
-            /* reuse tags field as mapped status */
-            c->tags = 1;
-            updatesizehints(c);
-            updatesystrayicongeom(c, wa.width, wa.height);
-            XAddToSaveSet(dpy, c->win);
-            XSelectInput(dpy, c->win,
-                         StructureNotifyMask | PropertyChangeMask |
-                             ResizeRedirectMask);
-            XReparentWindow(dpy, c->win, systray->win, 0, 0);
-            /* use parents background color */
-            extern Clr *statusscheme;
-            swa.background_pixel = statusscheme[ColBg].pixel;
-            XChangeWindowAttributes(dpy, c->win, CWBackPixel, &swa);
-            sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
-                      XEMBED_EMBEDDED_NOTIFY, 0, systray->win,
-                      XEMBED_EMBEDDED_VERSION);
-            /* FIXME not sure if I have to send these events, too */
-            sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
-                      XEMBED_FOCUS_IN, 0, systray->win,
-                      XEMBED_EMBEDDED_VERSION);
-            sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
-                      XEMBED_WINDOW_ACTIVATE, 0, systray->win,
-                      XEMBED_EMBEDDED_VERSION);
-            sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
-                      XEMBED_MODALITY_ON, 0, systray->win,
-                      XEMBED_EMBEDDED_VERSION);
-            XSync(dpy, False);
-            resizebarwin(selmon);
-            updatesystray();
-            setclientstate(c, NormalState);
-        }
+        if (cme->data.l[1] == SYSTEM_TRAY_REQUEST_DOCK)
+            handle_systray_dock_request(cme);
         return;
     }
+
     if (!c)
         return;
-    if (cme->message_type == netatom[NetWMState]) {
-        extern void setfullscreen(Client * c, int fullscreen);
-        if (cme->data.l[1] == netatom[NetWMFullscreen] ||
-            cme->data.l[2] == netatom[NetWMFullscreen])
-            setfullscreen(c,
-                          (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
-                           || (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
-                               (!c->is_fullscreen || c->isfakefullscreen))));
-    } else if (cme->message_type == netatom[NetActiveWindow]) {
-        if (c == c->mon->overlay) {
-            if (c->mon != selmon) {
-                unfocus(selmon->sel, 0);
-                selmon = c->mon;
-                focus(NULL);
-            }
-            showoverlay(NULL);
-        } else if (c->tags == SCRATCHPAD_MASK) {
-            selmon = c->mon;
-            togglescratchpad(NULL);
-        } else {
-            if (HIDDEN(c))
-                show(c);
-            for (i = 0; i < numtags && !((1 << i) & c->tags); i++)
-                ;
-            if (i < numtags) {
-                const Arg a = {.ui = 1 << i};
-                if (selmon != c->mon) {
-                    unfocus(selmon->sel, 0);
-                    selmon = c->mon;
-                }
-                view(&a);
-                focus(c);
-                restack(selmon);
-            }
-        }
-    }
+
+    if (cme->message_type == netatom[NetWMState])
+        handle_netWMstate(c, cme);
+    else if (cme->message_type == netatom[NetActiveWindow])
+        handle_active_window(c);
 }
 
 void configurenotify(XEvent *e) {
