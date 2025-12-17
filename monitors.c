@@ -4,6 +4,7 @@
 #include "scratchpad.h"
 #include "tags.h"
 #include "util.h"
+#include "focus.h"
 #include <stdlib.h>
 
 /* extern declarations for variables from instantwm.c */
@@ -52,7 +53,7 @@ void followmon(const Arg *arg) {
     focus(NULL);
     focus(c);
     XRaiseWindow(dpy, c->win);
-    warp_to_client(c);
+    warp_cursor_to_client(c);
 }
 
 void focusmon(const Arg *arg) {

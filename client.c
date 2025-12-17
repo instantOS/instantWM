@@ -137,7 +137,7 @@ void configure(Client *c) {
     ce.y = c->y;
     ce.width = c->w;
     ce.height = c->h;
-    ce.border_width = c->bw;
+    ce.border_width = c->border_width;
     ce.above = None;
     ce.override_redirect = False;
     XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *)&ce);
@@ -172,7 +172,7 @@ void showhide(Client *c) {
         /* show clients top down */
         XMoveWindow(dpy, c->win, c->x, c->y);
         if ((!c->mon->lt[c->mon->sellt]->arrange || c->isfloating) &&
-            (!c->isfullscreen || c->isfakefullscreen))
+            (!c->is_fullscreen || c->isfakefullscreen))
             resize(c, c->x, c->y, c->w, c->h, 0);
         showhide(c->snext);
     } else {
@@ -250,7 +250,7 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
     c->w = wc.width = w;
     c->oldh = c->h;
     c->h = wc.height = h;
-    wc.border_width = c->bw;
+    wc.border_width = c->border_width;
 
     XConfigureWindow(dpy, c->win,
                      CWX | CWY | CWWidth | CWHeight | CWBorderWidth, &wc);

@@ -52,7 +52,7 @@ void createoverlay(const Arg *arg) {
     }
 
     savebw(tempclient);
-    tempclient->bw = 0;
+    tempclient->border_width = 0;
     tempclient->islocked = 1;
     if (!selmon->overlay->isfloating) {
         changefloating(selmon->overlay);
@@ -71,7 +71,7 @@ void resetoverlay() {
     if (!overlayexists())
         return;
     selmon->overlay->tags = selmon->tagset[selmon->seltags];
-    selmon->overlay->bw = selmon->overlay->oldbw;
+    selmon->overlay->border_width = selmon->overlay->old_border_width;
     selmon->overlay->issticky = 0;
     selmon->overlay->islocked = 0;
     changefloating(selmon->overlay);
@@ -88,7 +88,7 @@ void showoverlay(const Arg *arg) {
 
     Client *c;
     for (c = selmon->clients; c; c = c->next) {
-        if (c->tags & (1 << (selmon->pertag->curtag - 1)) && c->isfullscreen &&
+        if (c->tags & (1 << (selmon->pertag->curtag - 1)) && c->is_fullscreen &&
             !c->isfakefullscreen) {
             yoffset = 0;
             break;
@@ -162,7 +162,7 @@ void showoverlay(const Arg *arg) {
         c->issticky = 1;
     }
 
-    c->bw = 0;
+    c->border_width = 0;
     /* arrange(selmon); */
     focus(c);
     XRaiseWindow(dpy, c->win);

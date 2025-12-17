@@ -90,7 +90,7 @@ void clientmessage(XEvent *e) {
             c->x = c->oldx = c->y = c->oldy = 0;
             c->w = c->oldw = wa.width;
             c->h = c->oldh = wa.height;
-            c->oldbw = wa.border_width;
+            c->old_border_width = wa.border_width;
             c->bw = 0;
             c->isfloating = True;
             /* reuse tags field as mapped status */
