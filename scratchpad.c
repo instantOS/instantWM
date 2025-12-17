@@ -4,15 +4,11 @@
 
 #include "floating.h"
 #include "focus.h"
+#include "globals.h"
 #include "layouts.h"
 #include "scratchpad.h"
 
 /* External declarations for variables defined in instantwm.c */
-extern Display *dpy;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Window root;
-extern int focusfollowsmouse;
 extern const char *termscratchcmd[];
 
 // Update scratchvisible flag for a monitor

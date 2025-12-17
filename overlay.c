@@ -1,14 +1,9 @@
 /* See LICENSE file for copyright and license details. */
 
+#include "globals.h"
 #include "overlay.h"
 #include "animation.h"
 #include "floating.h"
-
-/* External declarations for variables defined in instantwm.c */
-extern Display *dpy;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern int bh;
 
 int overlayexists() {
     Client *c;

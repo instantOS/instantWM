@@ -1,18 +1,8 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "client.h"
+#include "globals.h"
 #include "animation.h"
-
-/* External declarations for variables defined in instantwm.c */
-extern Display *dpy;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Window root;
-extern int bh;
-extern int animated;
-extern Clr *borderscheme;
-extern Atom wmatom[];
-extern Atom netatom[];
 extern Client *lastclient;
 extern const char broken[];
 

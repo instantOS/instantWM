@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "globals.h"
 #include "instantwm.h"
 #include "xresources.h"
 

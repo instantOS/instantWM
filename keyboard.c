@@ -6,18 +6,15 @@
 #include "client.h"
 #include "floating.h"
 #include "focus.h"
+#include "globals.h"
 #include "instantwm.h"
 #include "keyboard.h"
 #include "layouts.h"
 #include "overlay.h"
 
 /* Extern declarations for variables from instantwm.c */
-extern Display *dpy;
-extern Window root;
-extern Monitor *selmon;
 extern int freealttab;
 extern int specialnext;
-extern Clr *borderscheme;
 
 #define CLEANMASK(mask)                                                        \
     (mask & ~(numlockmask | LockMask) &                                        \

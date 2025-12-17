@@ -1,19 +1,11 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "floating.h"
+#include "globals.h"
 #include "animation.h"
 #include "focus.h"
 #include "layouts.h"
 #include "push.h"
-
-/* External declarations for variables defined in instantwm.c */
-extern Display *dpy;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern int bh;
-extern int animated;
-extern Clr *borderscheme;
-extern int numtags;
 
 void savefloating(Client *c) {
     c->saved_float_x = c->x;

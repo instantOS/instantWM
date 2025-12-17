@@ -4,14 +4,9 @@
 
 #include "animation.h"
 #include "floating.h"
+#include "globals.h"
 #include "layouts.h"
 #include "tags.h"
-
-/* External declarations for variables defined in instantwm.c */
-extern Display *dpy;
-extern Monitor *selmon;
-extern int animated;
-extern Clr *borderscheme;
 
 double easeOutCubic(double t) {
     t--;

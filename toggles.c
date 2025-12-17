@@ -1,5 +1,6 @@
 /* See LICENSE file for copyright and license details. */
 
+#include "globals.h"
 #include "toggles.h"
 #include "bar.h"
 #include "floating.h"
@@ -7,17 +8,7 @@
 #include "push.h"
 
 /* extern declarations for variables from instantwm.c */
-extern int showalttag;
 extern int freealttab;
-extern int tagprefix;
-extern int doubledraw;
-extern int tagwidth;
-extern int focusfollowsmouse;
-extern int focusfollowsfloatmouse;
-extern int animated;
-extern Display *dpy;
-extern Monitor *selmon;
-extern Monitor *mons;
 
 void ctrltoggle(int *value, int arg) {
     if (arg == 0 || arg == 2) {
