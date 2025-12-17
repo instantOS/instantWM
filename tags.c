@@ -125,7 +125,7 @@ void tag(const Arg *arg) {
     int ui = computeprefix(arg);
     Client *c;
     if (selmon->sel && ui & tagmask) {
-        if (selmon->sel->tags == 1 << 20)
+        if (selmon->sel->tags == SCRATCHPAD_MASK)
             selmon->sel->issticky = 0;
         c = selmon->sel;
         selmon->sel->tags = ui & tagmask;
@@ -144,7 +144,7 @@ void tagall(const Arg *arg) {
         for (c = selmon->clients; c; c = c->next) {
             if (!(c->tags & 1 << (selmon->pertag->curtag - 1)))
                 continue;
-            if (c->tags == 1 << 20)
+            if (c->tags == SCRATCHPAD_MASK)
                 c->issticky = 0;
             c->tags = ui & tagmask;
         }
@@ -321,7 +321,7 @@ void tagtoright(const Arg *arg) {
         return;
 
     if (selmon->sel == selmon->overlay) {
-        setoverlaymode(1);
+        setoverlaymode(OverlayRight);
         return;
     }
     c = selmon->sel;
@@ -353,7 +353,7 @@ void toggletag(const Arg *arg) {
     if (!selmon->sel)
         return;
 
-    if (selmon->sel->tags == 1 << 20) {
+    if (selmon->sel->tags == SCRATCHPAD_MASK) {
         tag(arg);
         return;
     }
@@ -510,8 +510,8 @@ void shiftview(const Arg *arg) {
     } while (!visible && ++count < 10);
 
     if (count < 10) {
-        if (nextseltags & (1 << 20))
-            nextseltags = nextseltags ^ (1 << 20);
+        if (nextseltags & (SCRATCHPAD_MASK))
+            nextseltags = nextseltags ^ (SCRATCHPAD_MASK);
         a.i = nextseltags;
         view(&a);
     }
@@ -576,7 +576,7 @@ void overtoggle(const Arg *arg) {
 
     if (selmon->scratchvisible) {
         for (c = selmon->clients; c; c = c->next) {
-            if (c->tags & 1 << 20) {
+            if (c->tags & SCRATCHPAD_MASK) {
                 showscratch = 1;
                 break;
             }
@@ -646,7 +646,7 @@ void winview(const Arg *arg) {
         return;
 
     a.ui = c->tags;
-    if (c->tags == 1 << 20) {
+    if (c->tags == SCRATCHPAD_MASK) {
         view(&((Arg){.ui = 1 << (selmon->pertag->curtag - 1)}));
     } else {
         view(&a);

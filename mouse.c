@@ -568,7 +568,7 @@ void dragtag(const Arg *arg) {
                 setoverlay(NULL);
             } else {
                 createoverlay(NULL);
-                selmon->gesture = 11;
+                selmon->gesture = GestureOverlay;
             }
         }
     }
@@ -807,7 +807,7 @@ void resizemouse(const Arg *arg) {
 
     if (NULL == selmon->lt[selmon->sellt]->arrange) {
         savefloating(c);
-        c->snapstatus = 0;
+        c->snapstatus = SnapNone;
     }
 }
 

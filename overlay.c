@@ -110,24 +110,24 @@ void showoverlay(const Arg *arg) {
 
     if (c->islocked) {
         switch (selmon->overlaymode) {
-        case 0:
+        case OverlayTop:
             resize(c, selmon->mx + 20, selmon->my + yoffset - c->h,
                    selmon->ww - 40, c->h, True);
             break;
-        case 1:
+        case OverlayRight:
             resize(c, selmon->mx + selmon->mw - 20, selmon->my + 40, c->w,
                    selmon->mh - 80, True);
             break;
-        case 2:
+        case OverlayBottom:
             resize(c, selmon->mx + 20, selmon->my + selmon->mh, selmon->ww - 40,
                    c->h, True);
             break;
-        case 3:
+        case OverlayLeft:
             resize(c, selmon->mx - c->w + 20, selmon->my + 40, c->w,
                    selmon->mh - 80, True);
             break;
         default:
-            selmon->overlaymode = 0;
+            selmon->overlaymode = OverlayTop;
             break;
         }
     }
@@ -141,22 +141,22 @@ void showoverlay(const Arg *arg) {
     if (c->islocked) {
         XRaiseWindow(dpy, c->win);
         switch (selmon->overlaymode) {
-        case 0:
+        case OverlayTop:
             animateclient(c, c->x, selmon->my + yoffset, 0, 0, 15, 0);
             break;
-        case 1:
+        case OverlayRight:
             animateclient(c, selmon->mx + selmon->mw - c->w, selmon->my + 40, 0,
                           0, 15, 0);
             break;
-        case 2:
+        case OverlayBottom:
             animateclient(c, selmon->mx + 20, selmon->my + selmon->mh - c->h, 0,
                           0, 15, 0);
             break;
-        case 3:
+        case OverlayLeft:
             animateclient(c, selmon->mx, selmon->my + 40, 0, 0, 15, 0);
             break;
         default:
-            selmon->overlaymode = 0;
+            selmon->overlaymode = OverlayTop;
             break;
         }
         c->issticky = 1;
@@ -180,21 +180,21 @@ void hideoverlay(const Arg *arg) {
         tempfullscreen(NULL);
     if (c->islocked) {
         switch (selmon->overlaymode) {
-        case 0:
+        case OverlayTop:
             animateclient(c, c->x, 0 - c->h, 0, 0, 15, 0);
             break;
-        case 1:
+        case OverlayRight:
             animateclient(c, selmon->mx + selmon->mw, selmon->mx + selmon->mw,
                           0, 0, 15, 0);
             break;
-        case 2:
+        case OverlayBottom:
             animateclient(c, c->x, selmon->mh + selmon->my, 0, 0, 15, 0);
             break;
-        case 3:
+        case OverlayLeft:
             animateclient(c, selmon->mx - c->w, 40, 0, 0, 15, 0);
             break;
         default:
-            selmon->overlaymode = 0;
+            selmon->overlaymode = OverlayTop;
             break;
         }
     }
@@ -234,7 +234,7 @@ void setoverlaymode(int mode) {
     if (!selmon->overlay)
         return;
 
-    if (mode == 0 || mode == 2)
+    if (mode == OverlayTop || mode == OverlayBottom)
         selmon->overlay->h = selmon->wh / 3;
     else
         selmon->overlay->w = selmon->ww / 3;
@@ -252,22 +252,22 @@ void resetoverlaysize() {
     c = selmon->overlay;
     selmon->overlay->isfloating = 1;
     switch (selmon->overlaymode) {
-    case 0:
+    case OverlayTop:
         resize(c, selmon->mx + 20, bh, selmon->ww - 40, (selmon->wh) / 3, True);
         break;
-    case 1:
+    case OverlayRight:
         resize(c, selmon->mx + selmon->mw - c->w, 40, selmon->mw / 3,
                selmon->mh - 80, True);
         break;
-    case 2:
+    case OverlayBottom:
         resize(c, selmon->mx + 20, selmon->my + selmon->mh - c->h,
                selmon->ww - 40, (selmon->wh) / 3, True);
         break;
-    case 3:
+    case OverlayLeft:
         resize(c, selmon->mx, 40, selmon->mw / 3, selmon->mh - 80, True);
         break;
     default:
-        selmon->overlaymode = 0;
+        selmon->overlaymode = OverlayTop;
         break;
     }
 }

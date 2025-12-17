@@ -80,7 +80,7 @@ void focuslastclient(const Arg *arg) {
 
     c = lastclient;
 
-    if (c->tags & 1 << 20) {
+    if (c->tags & SCRATCHPAD_MASK) {
         togglescratchpad(NULL);
         return;
     }

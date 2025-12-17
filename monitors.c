@@ -113,7 +113,7 @@ void sendmon(Client *c, Monitor *m) {
     detachstack(c);
     c->mon = m;
     // make scratchpad windows reappear on the other monitor scratchpad
-    if (c->tags != (1 << 20)) {
+    if (c->tags != (SCRATCHPAD_MASK)) {
         c->tags = m->tagset[m->seltags]; /* assign tags of target monitor */
         resetsticky(c);
     } else {

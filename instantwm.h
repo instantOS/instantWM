@@ -157,6 +157,64 @@ enum {
     SchemeBorderLast
 };
 
+/* Scratchpad uses tag index 20 (21st tag) */
+#define SCRATCHPAD_TAG 20
+#define SCRATCHPAD_MASK (1 << SCRATCHPAD_TAG)
+
+/* Window snap positions for floating windows */
+enum {
+    SnapNone,        /* 0: Normal (not snapped) */
+    SnapTop,         /* 1: Top half */
+    SnapTopRight,    /* 2: Top right quarter */
+    SnapRight,       /* 3: Right half */
+    SnapBottomRight, /* 4: Bottom right quarter */
+    SnapBottom,      /* 5: Bottom half */
+    SnapBottomLeft,  /* 6: Bottom left quarter */
+    SnapLeft,        /* 7: Left half */
+    SnapTopLeft,     /* 8: Top left quarter */
+    SnapMaximized    /* 9: Maximized (fullscreen in floating) */
+};
+
+/* Overlay slide directions */
+enum {
+    OverlayTop,    /* 0: Dropdown from top */
+    OverlayRight,  /* 1: Slide from right */
+    OverlayBottom, /* 2: Popup from bottom */
+    OverlayLeft    /* 3: Slide from left */
+};
+
+/* Bar gesture states */
+enum {
+    GestureNone = 0,         /* No gesture active */
+    GestureOverlay = 11,     /* Overlay corner hover */
+    GestureCloseButton = 12, /* Close button hover */
+    GestureStartMenu = 13    /* Start menu hover */
+};
+
+/* Rule floating modes (for config.h rules) */
+enum {
+    RuleTiled,           /* 0: Tiled window */
+    RuleFloat,           /* 1: Floating window */
+    RuleFloatCenter,     /* 2: Floating and centered */
+    RuleFloatFullscreen, /* 3: Fullscreen overlay */
+    RuleScratchpad       /* 4: Scratchpad window */
+};
+
+/* Command argument types (for instantwmctl) */
+enum {
+    CmdArgNone = 0,   /* No argument */
+    CmdArgToggle = 1, /* Toggle-type (0/1/2) */
+    CmdArgTag = 3,    /* Tag number (bitmask) */
+    CmdArgString = 4, /* String argument */
+    CmdArgInt = 5     /* Integer argument */
+};
+
+/* SpecialNext window spawn modes */
+enum {
+    SpecialNone, /* 0: Normal spawn */
+    SpecialFloat /* 1: Force floating */
+};
+
 typedef union {
     int i;
     unsigned int ui;

@@ -84,8 +84,8 @@ static int isdesktop = 0;
 
 static int screen;
 int sw, sh; /* X display screen geometry width, height */
-int bh;            /* bar height */
-int lrpad;         /* sum of left and right padding for text */
+int bh;     /* bar height */
+int lrpad;  /* sum of left and right padding for text */
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static unsigned int numlockmask = 0;
 void (*handler[LASTEvent])(XEvent *) = {[ButtonPress] = buttonpress,
@@ -142,8 +142,6 @@ void keyrelease(XEvent *e) {}
 
 /* overlayexists() moved to overlay.c */
 
-
-
 /* resetsnap() moved to floating.c */
 /* saveallfloating() moved to floating.c */
 /* restoreallfloating() moved to floating.c */
@@ -192,11 +190,11 @@ void applyrules(Client *c) {
 
     if (specialnext) {
         switch (specialnext) {
-        case 1:
+        case SpecialFloat:
             c->isfloating = 1;
             break;
         }
-        specialnext = 0;
+        specialnext = SpecialNone;
     } else {
         unsigned int i;
         const Rule *r;
@@ -210,14 +208,13 @@ void applyrules(Client *c) {
                 }
 
                 switch (r->isfloating) {
-                case 2:
+                case RuleFloatCenter:
                     selmon->sel = c;
                     c->isfloating = 1;
                     centerwindow(NULL);
                     break;
-                    ;
-                case 3:
-                    // fullscreen overlay
+                case RuleFloatFullscreen:
+                    /* fullscreen overlay */
                     selmon->sel = c;
                     c->isfloating = 1;
                     c->w = c->mon->mw;
@@ -226,26 +223,22 @@ void applyrules(Client *c) {
                         c->y = selmon->my + bh;
                     c->x = selmon->mx;
                     break;
-                    ;
-                case 4:
+                case RuleScratchpad:
                     selmon->sel = c;
-                    c->tags = 1 << 20;
+                    c->tags = SCRATCHPAD_MASK;
                     selmon->scratchvisible = 1;
                     c->issticky = 1;
                     c->isfloating = 1;
                     selmon->activescratchpad = c;
                     centerwindow(NULL);
                     break;
-                    ;
-                case 1:
+                case RuleFloat:
                     c->isfloating = 1;
                     c->y = c->mon->my + (selmon->showbar ? bh : 0);
                     break;
-                    ;
-                case 0:
+                case RuleTiled:
                     c->isfloating = 0;
                     break;
-                    ;
                 }
 
                 c->tags |= r->tags;
@@ -426,7 +419,7 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
     } while (ev->x >= x && ++i < LENGTH(tags));
     if (ev->x < startmenusize) {
         *click = ClkStartMenu;
-        selmon->gesture = 0;
+        selmon->gesture = GestureNone;
         drawbar(selmon);
     } else if (i < LENGTH(tags)) {
         *click = ClkTagBar;
@@ -592,7 +585,7 @@ void distributeclients(const Arg *arg) {
 
     for (c = selmon->clients; c; c = c->next) {
         // overlays or scratchpads aren't on regular tags anyway
-        if (c == selmon->overlay || c->tags & 1 << 20)
+        if (c == selmon->overlay || c->tags & SCRATCHPAD_MASK)
             continue;
         if (tagcounter > 8) {
             tagcounter = 0;
@@ -709,7 +702,7 @@ void focus(Client *c) {
                              borderscheme[SchemeBorderFloatFocus].pixel);
 
         setfocus(c);
-        if (c->tags & 1 << 20) {
+        if (c->tags & SCRATCHPAD_MASK) {
             selmon->activescratchpad = c;
         }
     } else {
@@ -717,11 +710,11 @@ void focus(Client *c) {
         XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
     }
     selmon->sel = c;
-    if (selmon->gesture != 11 && selmon->gesture)
-        selmon->gesture = 0;
+    if (selmon->gesture != GestureOverlay && selmon->gesture)
+        selmon->gesture = GestureNone;
 
-    if (selmon->gesture < 9)
-        selmon->gesture = 0;
+    if (selmon->gesture < GestureOverlay)
+        selmon->gesture = GestureNone;
     selmon->hoverclient = NULL;
 
     drawbars();
@@ -981,10 +974,10 @@ int xcommand() {
             }
             fcursor++;
             switch (commands[i].type) {
-            case 0: // command without argument
+            case CmdArgNone:
                 arg = commands[i].arg;
                 break;
-            case 1: // toggle-type argument
+            case CmdArgToggle:
                 argnum = atoi(fcursor);
                 if (argnum != 0 && fcursor[0] != '0') {
                     arg = ((Arg){.ui = atoi(fcursor)});
@@ -992,7 +985,7 @@ int xcommand() {
                     arg = commands[i].arg;
                 }
                 break;
-            case 3: // tag-type argument (bitmask)
+            case CmdArgTag:
                 argnum = atoi(fcursor);
                 if (argnum != 0 && fcursor[0] != '0') {
                     arg = ((Arg){.ui = (1 << (atoi(fcursor) - 1))});
@@ -1000,10 +993,10 @@ int xcommand() {
                     arg = commands[i].arg;
                 }
                 break;
-            case 4: // string argument
+            case CmdArgString:
                 arg = ((Arg){.v = fcursor});
                 break;
-            case 5: // integer argument
+            case CmdArgInt:
                 if (fcursor[0] != '\0') {
                     arg = ((Arg){.i = atoi(fcursor)});
                 } else {
@@ -1807,7 +1800,7 @@ void downpress(const Arg *arg) {
     }
 
     if (selmon->sel == selmon->overlay) {
-        setoverlaymode(2);
+        setoverlaymode(OverlayBottom);
         return;
     }
     if (!selmon->sel->isfloating) {
@@ -2319,7 +2312,7 @@ void spacetoggle(const Arg *arg) {
             XSetWindowBorder(dpy, selmon->sel->win,
                              borderscheme[SchemeBorderTileFocus].pixel);
             savefloating(c);
-            selmon->sel->snapstatus = 9;
+            selmon->sel->snapstatus = SnapMaximized;
             arrange(selmon);
         }
     } else {

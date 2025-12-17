@@ -130,7 +130,7 @@ void clientmessage(XEvent *e) {
     if (!c)
         return;
     if (cme->message_type == netatom[NetWMState]) {
-        extern void setfullscreen(Client *c, int fullscreen);
+        extern void setfullscreen(Client * c, int fullscreen);
         if (cme->data.l[1] == netatom[NetWMFullscreen] ||
             cme->data.l[2] == netatom[NetWMFullscreen])
             setfullscreen(c,
@@ -145,7 +145,7 @@ void clientmessage(XEvent *e) {
                 focus(NULL);
             }
             showoverlay(NULL);
-        } else if (c->tags == 1 << 20) {
+        } else if (c->tags == SCRATCHPAD_MASK) {
             selmon = c->mon;
             togglescratchpad(NULL);
         } else {
@@ -272,7 +272,8 @@ void enternotify(XEvent *e) {
     int resizeexit = 0;
     static int barleavestatus = 0;
 
-    /* deactivate area at the top to prevent overlay gesture from glitching out */
+    /* deactivate area at the top to prevent overlay gesture from glitching out
+     */
     if (barleavestatus && ev->y_root >= selmon->my + 5) {
         resetbar();
         barleavestatus = 0;
@@ -423,7 +424,7 @@ static int handleoverlaygesture(XMotionEvent *ev) {
         return 1;
     } else if (selmon->gesture == 11 &&
                ev->x_root >= selmon->mx + selmon->ww - 24 - getsystraywidth()) {
-        selmon->gesture = 0;
+        selmon->gesture = GestureNone;
         return 1;
     }
     return 0;
@@ -437,7 +438,7 @@ static void handletagbarhover(XMotionEvent *ev) {
 
     if (ev->x_root < selmon->mx + tagwidth && !selmon->showtags) {
         if (ev->x_root < selmon->mx + startmenusize) {
-            selmon->gesture = 13;
+            selmon->gesture = GestureStartMenu;
             drawbar(selmon);
         } else {
             int i = 0;
@@ -466,7 +467,7 @@ static void handletitlebarhover(XMotionEvent *ev) {
             drawbar(selmon);
         }
     } else if (selmon->gesture == 12) {
-        selmon->gesture = 0;
+        selmon->gesture = GestureNone;
         drawbar(selmon);
     } else {
         /* hover over resize widget on title bar */
@@ -498,7 +499,7 @@ static void handletitlebarhover(XMotionEvent *ev) {
 
         if (c && c != selmon->hoverclient) {
             selmon->hoverclient = c;
-            selmon->gesture = 0;
+            selmon->gesture = GestureNone;
             drawbar(selmon);
         }
     }

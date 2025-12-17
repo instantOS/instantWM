@@ -202,7 +202,7 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
 /* Helper: Draw the start menu icon (instantOS logo) */
 static void draw_startmenu_icon(void) {
     int iconoffset = (bh - 20) / 2;
-    int startmenuinvert = (selmon->gesture == 13);
+    int startmenuinvert = (selmon->gesture == GestureStartMenu);
 
     if (tagprefix)
         drw_setscheme(drw, tagscheme[SchemeNoHover][SchemeTagFocus]);
@@ -444,7 +444,7 @@ void resetbar() {
     if (!selmon->hoverclient && !selmon->gesture)
         return;
     selmon->hoverclient = NULL;
-    selmon->gesture = 0;
+    selmon->gesture = GestureNone;
     if (altcursor)
         resetcursor();
     drawbar(selmon);

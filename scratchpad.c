@@ -19,7 +19,7 @@ void updatescratchvisible(Monitor *m) {
     Client *c;
     m->scratchvisible = 0;
     for (c = m->clients; c; c = c->next) {
-        if ((c->tags & (1 << 20)) && c->issticky) {
+        if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
             m->scratchvisible = 1;
             break;
         }
@@ -74,7 +74,7 @@ void makescratchpad(const Arg *arg) {
         return;
 
     // Move to scratchpad tag (tag 21)
-    c->tags = 1 << 20;
+    c->tags = SCRATCHPAD_MASK;
     c->issticky = 0;
 
     // Make it float if not already
@@ -106,7 +106,7 @@ void togglescratchpad(const Arg *arg) {
             if (named->issticky) {
                 // Hide the named scratchpad
                 named->issticky = 0;
-                named->tags = 1 << 20;
+                named->tags = SCRATCHPAD_MASK;
                 focus(NULL);
                 arrange(named->mon);
             } else {
@@ -138,14 +138,14 @@ void togglescratchpad(const Arg *arg) {
     if (selmon->sel && (selmon->sel->tags & (1 << 20))) {
         c = selmon->sel;
         c->issticky = 0;
-        c->tags = 1 << 20;
+        c->tags = SCRATCHPAD_MASK;
         selmon->activescratchpad = c;
         focus(NULL);
         arrange(selmon);
         handled_action = 1;
     } else {
         for (c = selmon->clients; c; c = c->next) {
-            if ((c->tags & (1 << 20)) && c->issticky) {
+            if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
                 focus(c);
                 restack(selmon);
                 handled_action = 1;
@@ -161,7 +161,7 @@ void togglescratchpad(const Arg *arg) {
 
             if (!found) {
                 for (c = selmon->clients; c; c = c->next) {
-                    if ((c->tags & (1 << 20)) && !c->issticky) {
+                    if ((c->tags & SCRATCHPAD_MASK) && !c->issticky) {
                         found = c;
                         break;
                     }
@@ -197,14 +197,14 @@ void createscratchpad(const Arg *arg) {
     c = selmon->sel;
 
     // turn scratchpad back into normal window
-    if (c->tags == 1 << 20) {
+    if (c->tags == SCRATCHPAD_MASK) {
         tag(&((Arg){.ui = 1 << (selmon->pertag->curtag - 1)}));
 
         updatescratchvisible(selmon);
         return;
     }
 
-    c->tags = 1 << 20;
+    c->tags = SCRATCHPAD_MASK;
     c->issticky = 0;
     if (!c->isfloating)
         togglefloating(NULL);
@@ -246,7 +246,7 @@ void showscratchpad(const Arg *arg) {
     if (selmon->scratchvisible) {
         Client *c;
         for (c = selmon->clients; c; c = c->next) {
-            if ((c->tags & (1 << 20)) && c->issticky) {
+            if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
                 focus(c);
                 restack(selmon);
                 if (focusfollowsmouse)
@@ -267,7 +267,7 @@ void hidescratchpad(const Arg *arg) {
         Client *named = findnamedscratchpad(name);
         if (named && named->issticky) {
             named->issticky = 0;
-            named->tags = 1 << 20;
+            named->tags = SCRATCHPAD_MASK;
             focus(NULL);
             arrange(named->mon);
 
@@ -280,9 +280,9 @@ void hidescratchpad(const Arg *arg) {
     Client *c;
     int changed = 0;
     for (c = selmon->clients; c; c = c->next) {
-        if ((c->tags & (1 << 20)) && c->issticky) {
+        if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
             c->issticky = 0;
-            c->tags = 1 << 20;
+            c->tags = SCRATCHPAD_MASK;
             changed = 1;
         }
     }

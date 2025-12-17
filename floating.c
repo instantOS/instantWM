@@ -97,39 +97,39 @@ void resetsnap(Client *c) {
 
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
-    if (c->snapstatus != 9)
+    if (c->snapstatus != SnapMaximized)
         restorebw(c);
     switch (c->snapstatus) {
-    case 0:
+    case SnapNone:
         checkanimate(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
         break;
-    case 1:
+    case SnapTop:
         checkanimate(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
         break;
-    case 2:
+    case SnapTopRight:
         checkanimate(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 7, 0);
         break;
-    case 3:
+    case SnapRight:
         checkanimate(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2,
                      m->wh - c->bw * 2, 7, 0);
         break;
-    case 4:
+    case SnapBottomRight:
         checkanimate(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2,
                      m->wh / 2, 7, 0);
         break;
-    case 5:
+    case SnapBottom:
         checkanimate(c, m->mx, mony + m->mh / 2, m->mw, m->mh / 2, 7, 0);
         break;
-    case 6:
+    case SnapBottomLeft:
         checkanimate(c, m->mx, mony + m->mh / 2, m->mw / 2, m->wh / 2, 7, 0);
         break;
-    case 7:
+    case SnapLeft:
         checkanimate(c, m->mx, mony, m->mw / 2, m->wh, 7, 0);
         break;
-    case 8:
+    case SnapTopLeft:
         checkanimate(c, m->mx, mony, m->mw / 2, m->mh / 2, 7, 0);
         break;
-    case 9:
+    case SnapMaximized:
         savebw(c);
         c->bw = 0;
         checkanimate(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7,
