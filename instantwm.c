@@ -2698,7 +2698,7 @@ void movemouse(const Arg *arg) {
     Time lasttime = 0;
     notfloating = 0;
     occ = 0;
-    tagx = 0;
+    tagx = -1;
     colorclient = 0;
 
     // some windows are immovable
@@ -2839,10 +2839,15 @@ void movemouse(const Arg *arg) {
                     drawbars();
                 }
             }
-            if (ev.xmotion.y_root < selmon->my + bh &&
-                tagx != getxtag(ev.xmotion.x_root)) {
-                tagx = getxtag(ev.xmotion.x_root);
-                selmon->gesture = tagx + 1;
+            if (ev.xmotion.y_root < selmon->my + bh) {
+                if (tagx != getxtag(ev.xmotion.x_root)) {
+                    tagx = getxtag(ev.xmotion.x_root);
+                    selmon->gesture = tagx + 1;
+                    drawbar(selmon);
+                }
+            } else if (tagx != -1) {
+                tagx = -1;
+                selmon->gesture = 0;
                 drawbar(selmon);
             }
 
