@@ -3092,12 +3092,38 @@ int resizeborder(const Arg *arg) {
             killclient(NULL);
             break;
         default:
-            if (y < c->y && x > c->x + (c->w * 0.5) - c->w / 4 &&
-                x < c->x + (c->w * 0.5) + c->w / 4) {
-                XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, c->y + 10);
-                movemouse(NULL);
-            } else {
-                resizemouse(NULL);
+            {
+                int pnt[8][2] = {
+                    {c->x, c->y},                     // TL
+                    {c->x + c->w / 2, c->y},          // TM
+                    {c->x + c->w, c->y},              // TR
+                    {c->x + c->w, c->y + c->h / 2},   // RM
+                    {c->x + c->w, c->y + c->h},       // BR
+                    {c->x + c->w / 2, c->y + c->h},   // BM
+                    {c->x, c->y + c->h},              // BL
+                    {c->x, c->y + c->h / 2}           // LM
+                };
+                long min_dist = -1;
+                int nearest = 0;
+                int i;
+                int mx = ev.xbutton.x_root;
+                int my = ev.xbutton.y_root;
+
+                for (i = 0; i < 8; i++) {
+                    long d = (long)(mx - pnt[i][0]) * (mx - pnt[i][0]) +
+                             (long)(my - pnt[i][1]) * (my - pnt[i][1]);
+                    if (min_dist == -1 || d < min_dist) {
+                        min_dist = d;
+                        nearest = i;
+                    }
+                }
+
+                if (nearest == 1) {
+                    XWarpPointer(dpy, None, root, 0, 0, 0, 0, mx, c->y + 10);
+                    movemouse(NULL);
+                } else {
+                    resizemouse(NULL);
+                }
             }
             break;
         }
