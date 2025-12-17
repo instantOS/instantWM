@@ -87,7 +87,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
 void animleft(const Arg *arg) {
 
     if (&overviewlayout == tiling_layout_func(selmon)) {
-        directionfocus(&((Arg){.ui = 3}));
+        direction_focus(&((Arg){.ui = 3}));
         return;
     }
 
@@ -128,7 +128,7 @@ void animright(const Arg *arg) {
     int tmpcounter = 0;
 
     if (&overviewlayout == tiling_layout_func(selmon)) {
-        directionfocus(&((Arg){.ui = 1}));
+        direction_focus(&((Arg){.ui = 1}));
         return;
     }
 

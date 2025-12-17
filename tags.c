@@ -585,7 +585,7 @@ void overtoggle(const Arg *arg) {
             togglescratchpad(NULL);
     }
     if (selmon->fullscreen)
-        tempfullscreen(NULL);
+        temp_fullscreen(NULL);
     if (selmon->pertag->curtag == 0) {
         tmptag = selmon->pertag->prevtag;
         restoreallfloating(selmon);
@@ -605,7 +605,7 @@ void overtoggle(const Arg *arg) {
 
 void lastview(const Arg *arg) {
     if (selmon->pertag->curtag == selmon->pertag->prevtag)
-        focuslastclient(NULL);
+        focus_last_client(NULL);
     else
         view(&((Arg){.ui = 1 << (selmon->pertag->prevtag - 1)}));
 }

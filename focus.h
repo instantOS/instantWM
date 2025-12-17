@@ -5,11 +5,11 @@
 
 #include "instantwm.h"
 
-void directionfocus(const Arg *arg);
-void focuslastclient(const Arg *arg);
+void direction_focus(const Arg *arg);
+void focus_last_client(const Arg *arg);
 void warp(const Client *c);
 void forcewarp(const Client *c);
 void warpinto(const Client *c);
-void warpfocus();
+void warp_focus();
 
 #endif

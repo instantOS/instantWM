@@ -35,6 +35,7 @@ void savebw(Client *c) {
     c->oldbw = c->bw;
 }
 
+//TODO: what does bw mean? More descriptive name
 void restorebw(Client *c) {
     if (!c->oldbw || c->oldbw == 0)
         return;
@@ -146,6 +147,7 @@ void applysnap(Client *c, Monitor *m) {
 }
 
 void changesnap(Client *c, int snapmode) {
+    //TODO: get rid of magic numbers, use existing enum if possible
     int snapmatrix[10][4] = {
         {9, 3, 5, 7}, // normal
         {9, 2, 0, 8}, // top half
@@ -166,11 +168,12 @@ void changesnap(Client *c, int snapmode) {
     tempsnap = c->snapstatus;
     c->snapstatus = snapmatrix[tempsnap][snapmode];
     applysnap(c, c->mon);
-    warp(c);
+    // TODO: ISO C99 and later do not support implicit function declarations (clang -Wimplicit-function-declaration)
+    warp_cursor_to_client(c);
     focus(c);
 }
 
-void tempfullscreen(const Arg *arg) {
+void temp_fullscreen(const Arg *arg) {
     if (selmon->fullscreen) {
         Client *c;
         c = selmon->fullscreen;
@@ -199,10 +202,10 @@ void tempfullscreen(const Arg *arg) {
         XRaiseWindow(dpy, selmon->fullscreen->win);
 }
 
-void togglefloating(const Arg *arg) {
+void toggle_floating(const Arg *arg) {
     if (!selmon->sel || selmon->sel == selmon->overlay)
         return;
-    if (selmon->sel->isfullscreen &&
+    if (selmon->sel->is_fullscreen &&
         !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
         return;
     selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
@@ -236,7 +239,7 @@ void togglefloating(const Arg *arg) {
 void changefloating(Client *c) {
     if (!c)
         return;
-    if (c->isfullscreen &&
+    if (c->is_fullscreen &&
         !c->isfakefullscreen) /* no support for fullscreen windows */
         return;
     c->isfloating = !c->isfloating || c->isfixed;
@@ -258,7 +261,7 @@ void changefloating(Client *c) {
 void setfloating(Client *c, int should_arrange) {
     if (!c)
         return;
-    if (c->isfullscreen && !c->isfakefullscreen)
+    if (c->is_fullscreen && !c->isfakefullscreen)
         return;
     if (c->isfloating)
         return; /* already floating */
@@ -276,7 +279,7 @@ void setfloating(Client *c, int should_arrange) {
 void settiled(Client *c, int should_arrange) {
     if (!c)
         return;
-    if (c->isfullscreen && !c->isfakefullscreen)
+    if (c->is_fullscreen && !c->isfakefullscreen)
         return;
     if (!c->isfloating && !c->isfixed)
         return; /* already tiled */
@@ -344,7 +347,7 @@ void moveresize(const Arg *arg) {
         nx = ((selmon->mw + selmon->mx) - c->w - c->bw * 2);
 
     animateclient(c, nx, ny, c->w, c->h, 5, 0);
-    warp(c);
+    warp_cursor_to_client(c);
 }
 
 void keyresize(const Arg *arg) {
@@ -369,7 +372,7 @@ void keyresize(const Arg *arg) {
     if (tiling_layout_func(selmon) && !c->isfloating)
         return;
 
-    warp(c);
+    warp_cursor_to_client(c);
 
     resize(c, c->x, c->y, nw, nh, True);
 }
@@ -403,7 +406,7 @@ void downscaleclient(const Arg *arg) {
 
     if (!c->isfloating) {
         focus(c);
-        togglefloating(NULL);
+        toggle_floating(NULL);
     }
 
     scaleclient(c, -30);

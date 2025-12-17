@@ -36,7 +36,7 @@ extern unsigned int tagmask;
 extern int bar_dragging;
 
 /* function declarations */
-extern void tempfullscreen(const Arg *arg);
+extern void temp_fullscreen(const Arg *arg);
 extern void resetsnap(Client *c);
 extern void resize(Client *c, int x, int y, int w, int h, int interact);
 extern void restack(Monitor *m);
@@ -56,7 +56,7 @@ extern Monitor *recttomon(int x, int y, int w, int h);
 extern void sendmon(Client *c, Monitor *m);
 extern void resizeclient(Client *c, int x, int y, int w, int h);
 extern void savefloating(Client *c);
-extern void togglefloating(const Arg *arg);
+extern void toggle_floating(const Arg *arg);
 extern void unfocus(Client *c, int setfocus);
 extern void focus(Client *c);
 extern void resetbar();
@@ -148,7 +148,7 @@ static void handle_bar_drop(Client *c) {
         settiled(c, 1);
     } else if (c->isfloating) {
         /* Dropped elsewhere on bar - make it tiled again */
-        togglefloating(NULL);
+        toggle_floating(NULL);
     }
 }
 
@@ -185,10 +185,10 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap)) {
         if (animated) {
             animated = 0;
-            togglefloating(NULL);
+            toggle_floating(NULL);
             animated = 1;
         } else {
-            togglefloating(NULL);
+            toggle_floating(NULL);
         }
     }
     if (!tiling_layout_func(selmon) || c->isfloating)
@@ -202,12 +202,12 @@ void movemouse(const Arg *arg) {
     Client *c;
 
     // some windows are immovable
-    if (!(c = selmon->sel) || (c->isfullscreen && !c->isfakefullscreen) ||
+    if (!(c = selmon->sel) || (c->is_fullscreen && !c->isfakefullscreen) ||
         c == selmon->overlay)
         return;
 
     if (c == selmon->fullscreen) {
-        tempfullscreen(NULL);
+        temp_fullscreen(NULL);
         return;
     }
 
@@ -501,7 +501,7 @@ void window_title_mouse_handler_right(const Arg *arg) {
 
     Client *tempc = (Client *)arg->v;
     resetbar();
-    if (tempc->isfullscreen &&
+    if (tempc->is_fullscreen &&
         !tempc->isfakefullscreen) /* no support moving fullscreen windows by
                                      mouse */
         return;
@@ -593,7 +593,7 @@ void apply_window_resize(Client *c, int x, int y, int width, int height) {
     if (c->isfloating) {
         resize(c, x, y, width, height, 1);
     } else {
-        togglefloating(NULL);
+        toggle_floating(NULL);
         resize(c, x, y, width, height, 1);
     }
 }
@@ -639,7 +639,7 @@ void drawwindow(const Arg *arg) {
 
 /* Data structure for dragtag motion handler */
 typedef struct {
-    int *leftbar;
+    int *cursor_on_bar;
     int *tagx;
     XMotionEvent *last_motion; /* Store last motion for post-loop processing */
 } DragtagData;
@@ -651,7 +651,7 @@ static DragResult dragtag_motion(XEvent *ev, void *data) {
     d->last_motion = &ev->xmotion;
 
     if (ev->xmotion.y_root > selmon->my + bh + 1)
-        *d->leftbar = 1;
+        *d->cursor_on_bar = 0;
 
     int newtag = getxtag(ev->xmotion.x_root);
     if (*d->tagx != newtag) {
@@ -660,7 +660,7 @@ static DragResult dragtag_motion(XEvent *ev, void *data) {
         drawbar(selmon);
     }
 
-    return *d->leftbar ? DRAG_BREAK : DRAG_CONTINUE;
+    return *d->cursor_on_bar ? DRAG_CONTINUE : DRAG_BREAK;
 }
 
 void dragtag(const Arg *arg) {
@@ -672,8 +672,7 @@ void dragtag(const Arg *arg) {
     }
 
     int x, y, tagx = 0;
-    //TODO: rename to cursor_on_bar (instead of cursor has left bar) and reverse the value
-    int leftbar = 0;
+    int cursor_on_bar = 1;
     XMotionEvent last_motion = {0};
     XMotionEvent *last_motion_ptr = NULL;
 
@@ -688,7 +687,7 @@ void dragtag(const Arg *arg) {
     bar_dragging = 1;
 
     DragtagData data = {
-        .leftbar = &leftbar, .tagx = &tagx, .last_motion = NULL};
+        .cursor_on_bar = &cursor_on_bar, .tagx = &tagx, .last_motion = NULL};
     DragContext ctx = {.data = &data};
 
     drag_loop(&ctx, dragtag_motion, NULL);
@@ -699,7 +698,7 @@ void dragtag(const Arg *arg) {
         last_motion_ptr = &last_motion;
     }
 
-    if (!leftbar && last_motion_ptr) {
+    if (cursor_on_bar && last_motion_ptr) {
         if (last_motion_ptr->x_root < selmon->mx + tagwidth) {
             if (last_motion_ptr->state & ShiftMask) {
                 followtag(
@@ -827,6 +826,28 @@ static void warp_pointer_resize(Client *c, int direction) {
     XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, x_off, y_off);
 }
 
+/**
+ * Calculate new window geometry during a resize operation.
+ *
+ * Based on the resize direction and current mouse position, this function
+ * computes the new x, y, width, and height for the window. For edge-only
+ * directions (Top, Bottom, Left, Right), only the relevant dimension changes.
+ * For corner directions (TopLeft, TopRight, BottomLeft, BottomRight), both
+ * dimensions change. The original corner positions (ocx, ocy, ocx2, ocy2) are
+ * used to calculate the new size relative to the fixed corner.
+ *
+ * @param c         The client being resized
+ * @param ev        The motion event containing current mouse position
+ * @param direction The resize direction (ResizeDirTopLeft, ResizeDirBottom, etc.)
+ * @param ocx       Original client x position (left edge)
+ * @param ocy       Original client y position (top edge)
+ * @param ocx2      Original client right edge (x + width)
+ * @param ocy2      Original client bottom edge (y + height)
+ * @param nx        Output: new x position
+ * @param ny        Output: new y position
+ * @param nw        Output: new width
+ * @param nh        Output: new height
+ */
 static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
                                  int ocy, int ocx2, int ocy2, int *nx, int *ny,
                                  int *nw, int *nh) {
@@ -858,6 +879,47 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
     }
 }
 
+/**
+ * Check if a window with the given dimensions would be within the selected
+ * monitor's work area bounds.
+ *
+ * This is used during resize operations to determine if the window should
+ * automatically toggle to floating mode (when dragged outside tiled area).
+ *
+ * @param c   The client being resized
+ * @param nw  The new width to check
+ * @param nh  The new height to check
+ * @return 1 if within bounds, 0 otherwise
+ */
+static int is_within_monitor_bounds(Client *c, int nw, int nh) {
+    return (c->mon->wx + nw >= selmon->wx &&
+            c->mon->wx + nw <= selmon->wx + selmon->ww &&
+            c->mon->wy + nh >= selmon->wy &&
+            c->mon->wy + nh <= selmon->wy + selmon->wh);
+}
+
+/**
+ * Clamp width and height values to respect a client's size hints.
+ *
+ * Applies minimum and maximum size constraints from the client's size hints.
+ * This is a simplified version of the clamping done in applysizehints(),
+ * intended for use during interactive resize operations.
+ *
+ * @param c   The client whose size hints to use
+ * @param nw  Pointer to width value (modified in place)
+ * @param nh  Pointer to height value (modified in place)
+ */
+static void clamp_size_hints(Client *c, int *nw, int *nh) {
+    if (c->minw && *nw < c->minw)
+        *nw = c->minw;
+    if (c->minh && *nh < c->minh)
+        *nh = c->minh;
+    if (c->maxw && *nw > c->maxw)
+        *nw = c->maxw;
+    if (c->maxh && *nh > c->maxh)
+        *nh = c->maxh;
+}
+
 /* Data structure for resizemouse motion handler */
 typedef struct {
     Client *c;
@@ -873,18 +935,15 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
     calc_resize_geometry(c, ev, d->corner, d->ocx, d->ocy, d->ocx2, d->ocy2,
                          &nx, &ny, &nw, &nh);
 
-    if (c->mon->wx + nw >= selmon->wx &&
-        c->mon->wx + nw <= selmon->wx + selmon->ww &&
-        c->mon->wy + nh >= selmon->wy &&
-        c->mon->wy + nh <= selmon->wy + selmon->wh) {
+    if (is_within_monitor_bounds(c, nw, nh)) {
         if (!c->isfloating && tiling_layout_func(selmon) &&
             (abs(nw - c->w) > snap || abs(nh - c->h) > snap)) {
             if (animated) {
                 animated = 0;
-                togglefloating(NULL);
+                toggle_floating(NULL);
                 animated = 1;
             } else {
-                togglefloating(NULL);
+                toggle_floating(NULL);
             }
         }
     }
@@ -912,11 +971,11 @@ void resizemouse(const Arg *arg) {
         return;
 
     if (c == selmon->fullscreen) {
-        tempfullscreen(NULL);
+        temp_fullscreen(NULL);
         return;
     }
 
-    if (c->isfullscreen &&
+    if (c->is_fullscreen &&
         !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse
                                */
         return;
@@ -982,23 +1041,12 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
 
     if (!c->isfloating && tiling_layout_func(selmon) &&
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
-        togglefloating(NULL);
+        toggle_floating(NULL);
     if (!tiling_layout_func(selmon) || c->isfloating) {
         nw = MAX(nx - d->ocx - 2 * c->bw + 1, 1);
         nh = MAX(ny - d->ocy - 2 * c->bw + 1, 1);
 
-        if (c->minw || c->minh) {
-            if (nw < c->minw)
-                nw = c->minw;
-            if (nh < c->minh)
-                nh = c->minh;
-        }
-        if (c->maxw || c->maxh) {
-            if (nw > c->maxw)
-                nw = c->maxw;
-            if (nh > c->maxh)
-                nh = c->maxh;
-        }
+        clamp_size_hints(c, &nw, &nh);
 
         if (c->mina != 0.0 && c->maxa != 0.0) {
             if (c->maxa < (float)nw / nh)
@@ -1023,7 +1071,7 @@ void resizeaspectmouse(const Arg *arg) {
     if (!(c = selmon->sel))
         return;
 
-    if (c->isfullscreen &&
+    if (c->is_fullscreen &&
         !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse
                                */
         return;

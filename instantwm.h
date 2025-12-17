@@ -242,7 +242,7 @@ struct Client {
     int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
     int bw, oldbw;
     unsigned int tags;
-    int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen,
+    int isfixed, isfloating, isurgent, neverfocus, oldstate, is_fullscreen,
         isfakefullscreen, islocked, issticky, snapstatus;
     Client *next;
     Client *snext;
@@ -477,7 +477,7 @@ void togglefakefullscreen(const Arg *arg);
 void togglelocked(const Arg *arg);
 void toggleshowtags(const Arg *arg);
 void togglebar(const Arg *arg);
-void togglefloating(const Arg *arg);
+void toggle_floating(const Arg *arg);
 void togglesticky(const Arg *arg);
 void toggleprefix(const Arg *arg);
 void toggletag(const Arg *arg);
@@ -513,7 +513,7 @@ void view(const Arg *arg);
 void warp(const Client *c);
 void forcewarp(const Client *c);
 void warpinto(const Client *c);
-void warpfocus();
+void warp_focus();
 void viewtoleft(const Arg *arg);
 void animleft(const Arg *arg);
 void animright(const Arg *arg);
@@ -531,7 +531,7 @@ void fullovertoggle(const Arg *arg);
 
 void setspecialnext(const Arg *arg);
 
-void directionfocus(const Arg *arg);
+void direction_focus(const Arg *arg);
 
 Client *wintoclient(Window w);
 Monitor *wintomon(Window w);
@@ -550,7 +550,7 @@ void keyrelease(XEvent *e);
 void setoverlay();
 void desktopset();
 void createoverlay();
-void tempfullscreen();
+void temp_fullscreen();
 
 void savefloating(Client *c);
 void restorefloating(Client *c);
@@ -559,7 +559,7 @@ void savebw(Client *c);
 void restorebw(Client *c);
 
 void shiftview(const Arg *arg);
-void focuslastclient(const Arg *arg);
+void focus_last_client(const Arg *arg);
 
 void resetoverlay();
 void showoverlay();

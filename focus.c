@@ -18,21 +18,22 @@ extern void focus(Client *c);
 extern void unfocus(Client *c, int setfocus);
 extern void restack(Monitor *m);
 
-void directionfocus(const Arg *arg) {
+void direction_focus(const Arg *arg) {
     Client *c;
+    //TODO: the name sc sucks, come up with something descriptive
     Client *sc;
-    Client *outclient = NULL;
+    Client *out_client = NULL;
     Monitor *m;
-    int minscore;
+    int min_score;
     int score;
-    int foundone = 0;
+    int found_one = 0;
     int direction = arg->ui;
 
     if (!selmon->sel)
         return;
     m = selmon;
     sc = selmon->sel;
-    minscore = 0;
+    min_score = 0;
 
     int cx, cy;
     int sx, sy;
@@ -47,6 +48,7 @@ void directionfocus(const Arg *arg) {
         cy = c->y + (c->h / 2);
 
         if (c == sc || (direction == 0 && cy > sy) ||
+            //TODO: get rid of direction magic numbers, use existing enums if possible
             (direction == 1 && cx < sx) || (direction == 2 && cy < sy) ||
             (direction == 3 && cx > sx))
             continue;
@@ -61,18 +63,18 @@ void directionfocus(const Arg *arg) {
                 continue;
         }
 
-        if (score < minscore || minscore == 0) {
-            outclient = c;
-            foundone = 1;
-            minscore = score;
+        if (score < min_score || min_score == 0) {
+            out_client = c;
+            found_one = 1;
+            min_score = score;
         }
     }
-    if (outclient && foundone) {
-        focus(outclient);
+    if (out_client && found_one) {
+        focus(out_client);
     }
 }
 
-void focuslastclient(const Arg *arg) {
+void focus_last_client(const Arg *arg) {
     Client *c;
 
     if (!lastclient)
@@ -99,7 +101,7 @@ void focuslastclient(const Arg *arg) {
     restack(selmon);
 }
 
-void warp(const Client *c) {
+void warp_cursor_to_client(const Client *c) {
     int x, y;
 
     if (!c) {
@@ -117,11 +119,11 @@ void warp(const Client *c) {
     XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 }
 
-void forcewarp(const Client *c) {
+void force_warp(const Client *c) {
     XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, 10);
 }
 
-void warpinto(const Client *c) {
+void warp_into(const Client *c) {
     int x, y;
     getrootptr(&x, &y);
     if (x < c->x)
@@ -136,4 +138,4 @@ void warpinto(const Client *c) {
     XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, y);
 }
 
-void warpfocus() { warp(selmon->sel); }
+void warp_focus() { warp_cursor_to_client(selmon->sel); }

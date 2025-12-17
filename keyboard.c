@@ -139,7 +139,7 @@ void upkey(const Arg *arg) {
         return;
 
     if (&overviewlayout == tiling_layout_func(selmon)) {
-        directionfocus(&((Arg){.ui = 0}));
+        direction_focus(&((Arg){.ui = 0}));
         return;
     }
 
@@ -156,7 +156,7 @@ void upkey(const Arg *arg) {
 
 void downkey(const Arg *arg) {
     if (&overviewlayout == tiling_layout_func(selmon)) {
-        directionfocus(&((Arg){.ui = 2}));
+        direction_focus(&((Arg){.ui = 2}));
         return;
     }
 
