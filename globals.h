@@ -35,7 +35,7 @@ extern int tagwidth;      /* cached tag area width */
 extern int statuswidth;   /* status text width */
 extern int showalttag;    /* show alternate tag icons */
 extern int tagprefix;     /* tag prefix mode active */
-extern char stext[];      /* status text buffer */
+extern char stext[1024]; /* status text buffer */
 
 /* ========== Atoms ========== */
 extern Atom wmatom[];
