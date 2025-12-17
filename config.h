@@ -54,7 +54,7 @@ static char col_light_red_hover[] = "#f4a19a";
 static char col_red[] = "#d93025";
 static char col_red_hover[] = "#e05951";
 
-static const char
+const char
     *tagcolors[2]
               [5][3] = {[SchemeNoHover] = {[SchemeTagInactive] =
                                                {
@@ -117,7 +117,7 @@ static const char
                                  [ColDetail] = col_red_hover,
                              }}};
 
-static const char *windowcolors[2][7]
+const char *windowcolors[2][7]
                                [3] = {[SchemeNoHover] =
                                           {
                                               [SchemeWinFocus] =
@@ -219,7 +219,7 @@ static const char *windowcolors[2][7]
                                                   },
                                           }};
 
-static const char *closebuttoncolors[2][3][3] = {
+const char *closebuttoncolors[2][3][3] = {
     [SchemeNoHover] =
         {
             [SchemeCloseNormal] =
@@ -256,7 +256,7 @@ static const char *closebuttoncolors[2][3][3] = {
             },
     }};
 
-static const char *bordercolors[] = {[SchemeBorderNormal] = col_bg_accent,
+const char *bordercolors[] = {[SchemeBorderNormal] = col_bg_accent,
                                      [SchemeBorderTileFocus] = col_light_blue,
                                      [SchemeBorderFloatFocus] = col_light_green,
                                      [SchemeBorderSnap] = col_light_yellow};

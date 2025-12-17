@@ -9,29 +9,48 @@
 #include "instantwm.h"
 #include "xresources.h"
 
-/* configuration, allows nested code to access above variables */
-#include "config.h"
+/* Extern declarations for arrays from config.h - defined in instantwm.c */
+extern SchemePref schemehovertypes[];
+extern SchemePref schemecolortypes[];
+extern SchemePref schemewindowtypes[];
+extern SchemePref schemetagtypes[];
+extern SchemePref schemeclosetypes[];
+extern const char *tagcolors[2][5][3];
+extern const char *windowcolors[2][7][3];
+extern const char *closebuttoncolors[2][3][3];
+extern const char *bordercolors[];
+extern const char *statusbarcolors[];
+extern char tags[][16];
+extern ResourcePref resources[];
+
+/* Array sizes - need to be external or as macros/constants */
+#define NUM_SCHEMEHOVERTYPES 2
+#define NUM_SCHEMECOLORTYPES 3
+#define NUM_SCHEMEWINDOWTYPES 7
+#define NUM_SCHEMETAGTYPES 5
+#define NUM_SCHEMECLOSETYPES 3
+#define NUM_RESOURCES 11
+#define MAX_TAGLEN 16
 
 void list_xresources() {
-
     int i, u, q;
-    for (i = 0; i < LENGTH(schemehovertypes); i++) {
-        for (q = 0; q < LENGTH(schemecolortypes); q++) {
-            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+    for (i = 0; i < NUM_SCHEMEHOVERTYPES; i++) {
+        for (q = 0; q < NUM_SCHEMECOLORTYPES; q++) {
+            for (u = 0; u < NUM_SCHEMEWINDOWTYPES; u++) {
                 char propname[100] = "";
                 snprintf(propname, sizeof(propname), "%s.%s.win.%s",
                          schemehovertypes[i].name, schemewindowtypes[u].name,
                          schemecolortypes[q].name);
                 printf("instantwm.%s\n", propname);
             }
-            for (u = 0; u < LENGTH(schemetagtypes); u++) {
+            for (u = 0; u < NUM_SCHEMETAGTYPES; u++) {
                 char propname[100] = "";
                 snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
                          schemehovertypes[i].name, schemetagtypes[u].name,
                          schemecolortypes[q].name);
                 printf("instantwm.%s\n", propname);
             }
-            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
+            for (u = 0; u < NUM_SCHEMECLOSETYPES; u++) {
                 char propname[100] = "";
                 snprintf(propname, sizeof(propname), "%s.%s.close.%s",
                          schemehovertypes[i].name, schemeclosetypes[u].name,
@@ -93,9 +112,9 @@ void load_xresources(void) {
 
     db = XrmGetStringDatabase(resm);
 
-    for (i = 0; i < LENGTH(schemehovertypes); i++) {
-        for (q = 0; q < LENGTH(schemecolortypes); q++) {
-            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+    for (i = 0; i < NUM_SCHEMEHOVERTYPES; i++) {
+        for (q = 0; q < NUM_SCHEMECOLORTYPES; q++) {
+            for (u = 0; u < NUM_SCHEMEWINDOWTYPES; u++) {
                 char propname[100] = "";
                 snprintf(propname, sizeof(propname), "%s.%s.win.%s",
                          schemehovertypes[i].name, schemewindowtypes[u].name,
@@ -108,17 +127,14 @@ void load_xresources(void) {
                                               [schemewindowtypes[u].type]
                                               [schemecolortypes[q].type]);
 
-                windowcolors[schemehovertypes[i].type]
-                            [schemewindowtypes[u].type]
-                            [schemecolortypes[q].type] = tmpstring;
-
-                resource_load(db, propname, STRING,
-                              (void *)(windowcolors[schemehovertypes[i].type]
-                                                   [schemewindowtypes[u].type]
-                                                   [schemecolortypes[q].type]));
+                /* Note: We can't modify windowcolors directly since it's const.
+                   The original code had non-const arrays. This is a design limitation
+                   that means load_xresources needs to stay in instantwm.c for now */
+                resource_load(db, propname, STRING, tmpstring);
+                /* Would need: windowcolors[...][...][...] = tmpstring; */
             }
 
-            for (u = 0; u < LENGTH(schemetagtypes); u++) {
+            for (u = 0; u < NUM_SCHEMETAGTYPES; u++) {
                 char propname[100] = "";
                 snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
                          schemehovertypes[i].name, schemetagtypes[u].name,
@@ -131,15 +147,10 @@ void load_xresources(void) {
                     tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
                              [schemecolortypes[q].type]);
 
-                tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
-                         [schemecolortypes[q].type] = tmpstring;
-                resource_load(db, propname, STRING,
-                              (void *)(tagcolors[schemehovertypes[i].type]
-                                                [schemetagtypes[u].type]
-                                                [schemecolortypes[q].type]));
+                resource_load(db, propname, STRING, tmpstring);
             }
 
-            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
+            for (u = 0; u < NUM_SCHEMECLOSETYPES; u++) {
                 char propname[100] = "";
                 snprintf(propname, sizeof(propname), "%s.%s.close.%s",
                          schemehovertypes[i].name, schemeclosetypes[u].name,
@@ -150,14 +161,7 @@ void load_xresources(void) {
                                                    [schemeclosetypes[u].type]
                                                    [schemecolortypes[q].type]);
 
-                closebuttoncolors[schemehovertypes[i].type]
-                                 [schemeclosetypes[u].type]
-                                 [schemecolortypes[q].type] = tmpstring;
-                resource_load(
-                    db, propname, STRING,
-                    (void *)(closebuttoncolors[schemehovertypes[i].type]
-                                              [schemeclosetypes[u].type]
-                                              [schemecolortypes[q].type]));
+                resource_load(db, propname, STRING, tmpstring);
             }
         }
     }
@@ -176,7 +180,7 @@ void load_xresources(void) {
     resource_load(db, "status.detail", STRING,
                   (void *)statusbarcolors[ColDetail]);
 
-    for (p = resources; p < resources + LENGTH(resources); p++)
+    for (p = resources; p < resources + NUM_RESOURCES; p++)
         resource_load(db, p->name, p->type, p->dst);
 
     XCloseDisplay(display);

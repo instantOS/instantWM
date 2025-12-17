@@ -2075,12 +2075,6 @@ void spacetoggle(const Arg *arg) {
 
 
 
-// toggle overview like layout
-
-
-
-
-
 
 /* There's no way to check accesses to destroyed windows, thus those cases are
  * ignored (especially on UnmapNotify's). Other types of errors call Xlibs
