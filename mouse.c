@@ -361,6 +361,9 @@ void dragmouse(const Arg *arg) {
             /* If mouse moved beyond threshold, start moving the window */
             if (abs(x - startx) > 5 || abs(y - starty) > 5) {
                 XUngrabPointer(dpy, CurrentTime);
+                if (c)
+                    XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+                                 c->x + c->w / 2, c->y + c->h / 2);
                 movemouse(NULL);
                 return;
             }
