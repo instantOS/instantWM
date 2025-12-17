@@ -1204,7 +1204,7 @@ void manage(Window w, XWindowAttributes *wa) {
 /* gesturemouse() moved to mouse.c */
 
 // hover over the border to move/resize a window
-/* resizeborder() moved to mouse.c */
+/* hoverresizemouse() moved to mouse.c */
 
 // drag clients around the top bar
 /* dragmouse() moved to mouse.c */

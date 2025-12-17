@@ -251,46 +251,13 @@ int isinresizeborder() {
     return 1;
 }
 
-/* Perform edge-based resize of floating window from border zone
- * Returns 1 if resize was started (and completed), 0 otherwise */
-//TODO: does this actually return anything? Should it return anything?
-static void apply_border_resize(Client *c, int x, int y, int *nx, int *ny,
-                                int *nw, int *nh) {
-    *nx = c->x;
-    *ny = c->y;
-    *nw = c->w;
-    *nh = c->h;
-
-    if (y > c->y + c->h) { // bottom
-        *nh = y - c->y;
-    } else if (y < c->y) { // top
-        *nh = c->y + c->h - y;
-        *ny = y;
-    }
-
-    if (x > c->x + c->w) { // right
-        *nw = x - c->x;
-    } else if (x < c->x) { // left
-        *nw = c->x + c->w - x;
-        *nx = x;
-    }
-
-    // Enforce minimum size
-    if (*nw < MIN_WINDOW_SIZE)
-        *nw = MIN_WINDOW_SIZE;
-    if (*nh < MIN_WINDOW_SIZE)
-        *nh = MIN_WINDOW_SIZE;
-}
-
-int resizeborder(const Arg *arg) {
+int hoverresizemouse(const Arg *arg) {
     if (!isinresizeborder())
         return 0;
 
     XEvent ev;
     Time lasttime = 0;
-    Client *c = selmon->sel;
     int inborder = 1;
-    int x, y, nx, ny, nw, nh;
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurResize]->cursor,
@@ -309,14 +276,14 @@ int resizeborder(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case KeyPress:
-            handler[ev.type](&ev);
-            //TODO: are these in the wrong order?
-            if (ev.xkey.keycode == KEYCODE_ESCAPE) // Escape key
+            if (ev.xkey.keycode == KEYCODE_ESCAPE) { // Escape key
                 inborder = 0;
+                break;
+            }
+            handler[ev.type](&ev);
             break;
         case ButtonPress:
-            //TODO: get rid of magic number with enum
-            if (ev.xbutton.button == 1) {
+            if (ev.xbutton.button == Button1) {
                 XUngrabPointer(dpy, CurrentTime);
                 resizemouse(NULL);
                 return 1;
@@ -328,13 +295,14 @@ int resizeborder(const Arg *arg) {
                 continue;
             lasttime = ev.xmotion.time;
 
-            // TODO: what is happening here? Shouldn't it just check if we are
-            // too far away from the window and break the loop to switch to the
-            // underlying window?
-            getrootptr(&x, &y);
-            apply_border_resize(c, x, y, &nx, &ny, &nw, &nh);
-            resize(c, nx, ny, nw, nh, 1);
-            break;
+            if (!isinresizeborder()) {
+                inborder = 0;
+                Client *newc = getcursorclient();
+                if (newc && newc != selmon->sel)
+                    focus(newc);
+                break;
+            }
+
         }
     } while (ev.type != ButtonRelease && inborder);
 
@@ -455,6 +423,8 @@ void dragrightmouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
 }
 
+//TODO: this has too many responsibilities, refactor
+//For instance the slop parsing could be a general function
 void drawwindow(const Arg *arg) {
 
     char str[100];

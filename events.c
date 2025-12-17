@@ -288,7 +288,7 @@ void enternotify(XEvent *e) {
         c != selmon->sel &&
         (ev->window == root || visible(c) || ISVISIBLE(c) ||
          selmon->sel->issticky)) {
-        resizeexit = resizeborder(NULL);
+        resizeexit = hoverresizemouse(NULL);
         if (focusfollowsfloatmouse) {
             if (resizeexit) // If resize was performed, don't change focus
                 return;

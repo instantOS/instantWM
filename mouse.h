@@ -20,7 +20,7 @@
 
 void movemouse(const Arg *arg);
 void gesturemouse(const Arg *arg);
-int resizeborder(const Arg *arg);
+int hoverresizemouse(const Arg *arg);
 int isinresizeborder(void);
 void dragmouse(const Arg *arg);
 void dragrightmouse(const Arg *arg);
