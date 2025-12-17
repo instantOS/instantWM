@@ -145,7 +145,7 @@ static void handle_bar_drop(Client *c) {
          * Note: tag() calls focus(NULL) which changes selmon->sel,
          * so we must use settiled() which operates on the specific client
          */
-        settiled(c, 1);
+        set_tiled(c, 1);
     } else if (c->isfloating) {
         /* Dropped elsewhere on bar - make it tiled again */
         toggle_floating(NULL);

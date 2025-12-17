@@ -66,6 +66,7 @@ extern long getstate(Window w);
 extern int getrootptr(int *x, int *y);
 extern Client *getcursorclient(void);
 
+//TODO: this has too many responsibilities, refactor
 void clientmessage(XEvent *e) {
     XWindowAttributes wa;
     XSetWindowAttributes swa;

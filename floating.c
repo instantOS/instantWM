@@ -148,24 +148,22 @@ void applysnap(Client *c, Monitor *m) {
 }
 
 /* Snap navigation matrix: [current_snap][direction] -> new_snap
- * Columns are directions: [Up, Right, Down, Left]
- * Rows are current snap positions (indices match Snap enum values):
- *   0=SnapNone, 1=SnapTop, 2=SnapTopRight, 3=SnapRight,
- *   4=SnapBottomRight, 5=SnapBottom, 6=SnapBottomLeft,
- *   7=SnapLeft, 8=SnapTopLeft, 9=SnapMaximized */
+ * Direction indices: 0=Up, 1=Right, 2=Down, 3=Left
+ * Each row comment shows: [from_snap] -> up/right/down/left */
+/* clang-format off */
 static const int snapmatrix[10][4] = {
-    /* Up                 Right              Down               Left */
-    {SnapMaximized,       SnapRight,         SnapBottom,        SnapLeft},        /* SnapNone */
-    {SnapMaximized,       SnapTopRight,      SnapNone,          SnapTopLeft},     /* SnapTop */
-    {SnapTopRight,        SnapTopRight,      SnapRight,         SnapTop},         /* SnapTopRight */
-    {SnapTopRight,        SnapRight,         SnapBottomRight,   SnapNone},        /* SnapRight */
-    {SnapRight,           SnapBottomRight,   SnapBottomRight,   SnapBottom},      /* SnapBottomRight */
-    {SnapNone,            SnapBottomRight,   SnapBottom,        SnapBottomLeft},  /* SnapBottom */
-    {SnapLeft,            SnapBottom,        SnapBottomLeft,    SnapBottomLeft},  /* SnapBottomLeft */
-    {SnapTopLeft,         SnapNone,          SnapBottomLeft,    SnapLeft},        /* SnapLeft */
-    {SnapTopLeft,         SnapTop,           SnapLeft,          SnapTop},         /* SnapTopLeft */
-    {SnapTop,             SnapRight,         SnapNone,          SnapLeft},        /* SnapMaximized */
+    {SnapMaximized, SnapRight, SnapBottom, SnapLeft},           // SnapNone
+    {SnapMaximized, SnapTopRight, SnapNone, SnapTopLeft},       // SnapTop
+    {SnapTopRight, SnapTopRight, SnapRight, SnapTop},           // SnapTopRight
+    {SnapTopRight, SnapRight, SnapBottomRight, SnapNone},       // SnapRight
+    {SnapRight, SnapBottomRight, SnapBottomRight, SnapBottom},  // SnapBottomRight
+    {SnapNone, SnapBottomRight, SnapBottom, SnapBottomLeft},    // SnapBottom
+    {SnapLeft, SnapBottom, SnapBottomLeft, SnapBottomLeft},     // SnapBottomLeft
+    {SnapTopLeft, SnapNone, SnapBottomLeft, SnapLeft},          // SnapLeft
+    {SnapTopLeft, SnapTop, SnapLeft, SnapTop},                  // SnapTopLeft
+    {SnapTop, SnapRight, SnapNone, SnapLeft},                   // SnapMaximized
 };
+/* clang-format on */
 
 void changesnap(Client *c, int snapmode) {
     int tempsnap;
@@ -242,6 +240,8 @@ void toggle_floating(const Arg *arg) {
     arrange(selmon);
 }
 
+//TODO: what is the different between this and togglefloating?
+// Investigate and potentially rename
 void changefloating(Client *c) {
     if (!c)
         return;
@@ -282,7 +282,7 @@ void setfloating(Client *c, int should_arrange) {
 }
 
 /* Set a client to tiled state (does nothing if already tiled) */
-void settiled(Client *c, int should_arrange) {
+void set_tiled(Client *c, int should_arrange) {
     if (!c)
         return;
     if (c->is_fullscreen && !c->isfakefullscreen)
@@ -364,6 +364,7 @@ void keyresize(const Arg *arg) {
     Client *c;
     c = selmon->sel;
 
+    //TODO: these variable names suck, come up with something better
     int mstrength = 40;
     int mpositions[4][2] = {{0, mstrength},
                             {0, (-1) * mstrength},
