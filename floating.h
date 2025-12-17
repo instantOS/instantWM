@@ -20,6 +20,8 @@ void restorebw(Client *c);
 void applysize(Client *c);
 void togglefloating(const Arg *arg);
 void changefloating(Client *c);
+void setfloating(Client *c, int should_arrange);
+void settiled(Client *c, int should_arrange);
 void centerwindow(const Arg *arg);
 void scaleclient(Client *c, int scale);
 void upscaleclient(const Arg *arg);

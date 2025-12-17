@@ -1,13 +1,16 @@
 /* See LICENSE file for copyright and license details. */
-#include "mouse.h"
-#include "instantwm.h"
-#include "layouts.h"
-#include "util.h"
+#define _POSIX_C_SOURCE 200809L
 
 #include <X11/XF86keysym.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "floating.h"
+#include "instantwm.h"
+#include "layouts.h"
+#include "mouse.h"
+#include "util.h"
 
 /* extern variables */
 extern Monitor *selmon;
@@ -69,12 +72,15 @@ static void handle_bar_drop(Client *c) {
     /* Check if dropped on a tag indicator */
     int droptag = getxtag(x);
     if (droptag >= 0 && x < selmon->mx + gettagwidth()) {
-        /* Move window to that tag and make it tiled */
+        /* Move window to that tag */
         tag(&((Arg){.ui = 1 << droptag}));
-        if (c->isfloating && selmon->lt[selmon->sellt]->arrange) {
-            togglefloating(NULL);
-        }
-    } else if (c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+
+        /* Make floating windows tiled when dropped on tag indicator
+         * Note: tag() calls focus(NULL) which changes selmon->sel,
+         * so we must use settiled() which operates on the specific client
+         */
+        settiled(c, 1);
+    } else if (c->isfloating) {
         /* Dropped elsewhere on bar - make it tiled again */
         togglefloating(NULL);
     }

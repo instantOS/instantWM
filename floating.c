@@ -248,6 +248,43 @@ void changefloating(Client *c) {
     arrange(selmon);
 }
 
+/* Set a client to floating state (does nothing if already floating) */
+void setfloating(Client *c, int should_arrange) {
+    if (!c)
+        return;
+    if (c->isfullscreen && !c->isfakefullscreen)
+        return;
+    if (c->isfloating)
+        return; /* already floating */
+
+    c->isfloating = 1;
+    /* restore last known float dimensions */
+    resize(c, c->sfx, c->sfy, c->sfw, c->sfh, False);
+
+    if (should_arrange)
+        arrange(selmon);
+}
+
+/* Set a client to tiled state (does nothing if already tiled) */
+void settiled(Client *c, int should_arrange) {
+    if (!c)
+        return;
+    if (c->isfullscreen && !c->isfakefullscreen)
+        return;
+    if (!c->isfloating && !c->isfixed)
+        return; /* already tiled */
+
+    c->isfloating = 0;
+    /* save last known float dimensions */
+    c->sfx = c->x;
+    c->sfy = c->y;
+    c->sfw = c->w;
+    c->sfh = c->h;
+
+    if (should_arrange)
+        arrange(selmon);
+}
+
 void centerwindow(const Arg *arg) {
     if (!selmon->sel || selmon->sel == selmon->overlay)
         return;
