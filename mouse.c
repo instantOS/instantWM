@@ -147,8 +147,24 @@ typedef struct {
     Client *c;
     int ocx, ocy;            /* Original client position */
     int startx, starty;      /* Initial pointer position */
-    int edge_snap_indicator; /* 0=none, 1=left, 2=right, 3=top */
+    int edge_snap_indicator; /* See SnapEdge enum */
 } MovemouseData;
+
+/**
+ * Check if cursor is at edge for snapping.
+ * Returns: SnapEdgeNone, SnapEdgeLeft, SnapEdgeRight, or SnapEdgeTop
+ */
+static int check_edge_snap(int x, int y, Monitor *m) {
+    if (x < m->mx + OVERLAY_ZONE_WIDTH && x > m->mx - 1) {
+        return SnapEdgeLeft;
+    } else if (x > m->mx + m->mw - OVERLAY_ZONE_WIDTH &&
+               x < m->mx + m->mw + 1) {
+        return SnapEdgeRight;
+    } else if (y <= m->my + (m->showbar ? bh : 5)) {
+        return SnapEdgeTop;
+    }
+    return SnapEdgeNone;
+}
 
 static DragResult movemouse_motion(XEvent *ev, void *data) {
     MovemouseData *d = (MovemouseData *)data;
@@ -159,16 +175,8 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
     ny = d->ocy + (ev->xmotion.y - d->starty);
 
     /* Check if cursor is at edge for snapping indicator */
-    int at_edge = 0;
-    if (ev->xmotion.x_root < selmon->mx + 50 &&
-        ev->xmotion.x_root > selmon->mx - 1) {
-        at_edge = 1; /* Left edge */
-    } else if (ev->xmotion.x_root > selmon->mx + selmon->mw - 50 &&
-               ev->xmotion.x_root < selmon->mx + selmon->mw + 1) {
-        at_edge = 2; /* Right edge */
-    } else if (ev->xmotion.y_root <= selmon->my + (selmon->showbar ? bh : 5)) {
-        at_edge = 3; /* Top edge/bar */
-    }
+    int at_edge =
+        check_edge_snap(ev->xmotion.x_root, ev->xmotion.y_root, selmon);
 
     /* Update border color to indicate snap */
     if (at_edge && !d->edge_snap_indicator) {
@@ -187,7 +195,7 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         ny = selmon->my + bh;
         if (!d->edge_snap_indicator) {
             XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderSnap].pixel);
-            d->edge_snap_indicator = 3;
+            d->edge_snap_indicator = SnapEdgeTop;
         }
         /* Update bar hover state while dragging */
         bar_dragging = 1;
@@ -302,10 +310,10 @@ void movemouse(const Arg *arg) {
         XQueryPointer(dpy, root, &dummy_win, &dummy_win, &dummy_int, &dummy_int,
                       &dummy_int, &dummy_int, &button_state);
 
-        int at_left_edge = (rootx < selmon->mx + 50 && rootx > selmon->mx - 1);
-        int at_right_edge = (rootx > selmon->mx + selmon->mw - 50 &&
-                             rootx < selmon->mx + selmon->mw + 1);
-        int at_top_edge = (rooty <= selmon->my + (selmon->showbar ? bh : 5));
+        int snap_direction = check_edge_snap(rootx, rooty, selmon);
+        int at_left_edge = (snap_direction == 1);
+        int at_right_edge = (snap_direction == 2);
+        int at_top_edge = (snap_direction == 3);
 
         if (at_left_edge || at_right_edge) {
             if (button_state & ShiftMask ||

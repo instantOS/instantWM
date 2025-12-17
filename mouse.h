@@ -32,6 +32,14 @@ enum {
     ResizeDirLeft = 7
 };
 
+/* Snap edge indicators */
+enum {
+    SnapEdgeNone = 0,
+    SnapEdgeLeft = 1,
+    SnapEdgeRight = 2,
+    SnapEdgeTop = 3
+};
+
 void movemouse(const Arg *arg);
 void gesturemouse(const Arg *arg);
 int hoverresizemouse(const Arg *arg);
