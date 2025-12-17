@@ -104,7 +104,7 @@ void uppress(const Arg *arg) {
         return;
     }
     if (selmon->sel->isfloating) {
-        togglefloating(NULL);
+        toggle_floating(NULL);
         return;
     } else {
         hide(selmon->sel);
@@ -129,7 +129,7 @@ void downpress(const Arg *arg) {
         return;
     }
     if (!selmon->sel->isfloating) {
-        togglefloating(NULL);
+        toggle_floating(NULL);
         return;
     }
 }
@@ -187,6 +187,6 @@ void spacetoggle(const Arg *arg) {
             arrange(selmon);
         }
     } else {
-        togglefloating(arg);
+        toggle_floating(arg);
     }
 }

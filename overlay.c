@@ -33,7 +33,7 @@ void createoverlay(const Arg *arg) {
     if (!selmon->sel)
         return;
     if (selmon->sel == selmon->fullscreen)
-        tempfullscreen(NULL);
+        temp_fullscreen(NULL);
     if (selmon->sel == selmon->overlay) {
         resetoverlay();
         for (tm = mons; tm; tm = tm->next) {
@@ -177,7 +177,7 @@ void hideoverlay(const Arg *arg) {
     c = selmon->overlay;
     c->issticky = 0;
     if (c == selmon->fullscreen)
-        tempfullscreen(NULL);
+        temp_fullscreen(NULL);
     if (c->islocked) {
         switch (selmon->overlaymode) {
         case OverlayTop:

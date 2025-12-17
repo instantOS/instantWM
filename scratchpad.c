@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "floating.h"
+#include "focus.h"
 #include "layouts.h"
 #include "scratchpad.h"
 
@@ -119,7 +120,7 @@ void togglescratchpad(const Arg *arg) {
                 arrange(selmon);
                 restack(selmon);
                 if (focusfollowsmouse)
-                    warp(named);
+                    warp_cursor_to_client(named);
             }
 
             updatescratchvisible(named->mon);
@@ -168,7 +169,7 @@ void togglescratchpad(const Arg *arg) {
                 arrange(selmon);
                 restack(selmon);
                 if (focusfollowsmouse)
-                    warp(found);
+                    warp_cursor_to_client(found);
                 selmon->activescratchpad = found;
                 handled_action = 1;
             } else {
@@ -199,7 +200,7 @@ void createscratchpad(const Arg *arg) {
     c->tags = SCRATCHPAD_MASK;
     c->issticky = 0;
     if (!c->isfloating)
-        togglefloating(NULL);
+        toggle_floating(NULL);
 
     focus(NULL);
     arrange(selmon);
@@ -226,7 +227,7 @@ void showscratchpad(const Arg *arg) {
             arrange(selmon);
             restack(selmon);
             if (focusfollowsmouse)
-                warp(named);
+                warp_cursor_to_client(named);
 
             updatescratchvisible(named->mon);
         }
@@ -241,7 +242,7 @@ void showscratchpad(const Arg *arg) {
                 focus(c);
                 restack(selmon);
                 if (focusfollowsmouse)
-                    warp(c);
+                    warp_cursor_to_client(c);
                 return;
             }
         }
