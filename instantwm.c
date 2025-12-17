@@ -43,6 +43,7 @@
 #include "floating.h"
 #include "focus.h"
 #include "instantwm.h"
+#include "keyboard.h"
 #include "layouts.h"
 #include "monitors.h"
 #include "mouse.h"
@@ -87,7 +88,7 @@ int sw, sh; /* X display screen geometry width, height */
 int bh;     /* bar height */
 int lrpad;  /* sum of left and right padding for text */
 static int (*xerrorxlib)(Display *, XErrorEvent *);
-static unsigned int numlockmask = 0;
+unsigned int numlockmask = 0;
 void (*handler[LASTEvent])(XEvent *) = {[ButtonPress] = buttonpress,
                                         [ButtonRelease] = keyrelease,
                                         [ClientMessage] = clientmessage,
@@ -138,14 +139,7 @@ struct NumTags {
     char limitexceeded[LENGTH(tags) > 31 ? -1 : 1];
 };
 
-void keyrelease(XEvent *e) {}
-
-
-
 int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
-
-
-
 
 void desktopset() {
     Client *c = selmon->sel;
@@ -352,8 +346,6 @@ void arrangemon(Monitor *m) {
     }
 }
 
-
-
 void resetcursor() {
     if (altcursor == AltCurNone)
         return;
@@ -472,7 +464,7 @@ void buttonpress(XEvent *e) {
         resizemouse(NULL);
         return;
     }
-    //TODO: document what this does and why it does it
+    // TODO: document what this does and why it does it
     for (i = 0; i < LENGTH(buttons); i++)
         if (click == buttons[i].click && buttons[i].func &&
             buttons[i].button == ev->button &&
@@ -550,10 +542,6 @@ void cleanup(void) {
     XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 }
 
-
-
-
-
 void distributeclients(const Arg *arg) {
     Client *c;
     int tagcounter = 0;
@@ -574,7 +562,6 @@ void distributeclients(const Arg *arg) {
     focus(NULL);
     arrange(selmon);
 }
-
 
 Monitor *createmon(void) {
     Monitor *m;
@@ -634,16 +621,6 @@ void cyclelayout(const Arg *arg) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 void focus(Client *c) {
     resetcursor();
     if (!c || !ISVISIBLE(c) || HIDDEN(c))
@@ -693,10 +670,6 @@ void focus(Client *c) {
         grabkeys();
     }
 }
-
-
-
-
 
 void focusstack(const Arg *arg) {
     Client *c = NULL, *i;
@@ -788,7 +761,6 @@ long getstate(Window w) {
     return result;
 }
 
-
 int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
     char **list = NULL;
     int n;
@@ -831,48 +803,6 @@ void grabbuttons(Client *c, int focused) {
     }
 }
 
-void grabkeys(void) {
-    updatenumlockmask();
-    {
-        unsigned int i, j, k;
-        unsigned int modifiers[] = {0, LockMask, numlockmask,
-                                    numlockmask | LockMask};
-        int start, end, skip;
-        KeySym *syms;
-
-        XUngrabKey(dpy, AnyKey, AnyModifier, root);
-        XDisplayKeycodes(dpy, &start, &end);
-        syms = XGetKeyboardMapping(dpy, start, end - start + 1, &skip);
-        if (!syms)
-            return;
-
-        for (k = start; k <= end; k++) {
-            for (i = 0; i < LENGTH(keys); i++) {
-                if (keys[i].keysym == syms[(k - start) * skip])
-                    for (j = 0; j < LENGTH(modifiers); j++) {
-                        if (freealttab && keys[i].mod == Mod1Mask)
-                            continue;
-                        XGrabKey(dpy, k, keys[i].mod | modifiers[j], root, True,
-                                 GrabModeAsync, GrabModeAsync);
-                    }
-            }
-
-            // add keyboard shortcuts without modifiers when tag is empty
-            if (!selmon->sel) {
-                for (i = 0; i < LENGTH(dkeys); i++) {
-                    if (dkeys[i].keysym == syms[(k - start) * skip])
-                        for (j = 0; j < LENGTH(modifiers); j++)
-                            XGrabKey(dpy, k, dkeys[i].mod | modifiers[j], root,
-                                     True, GrabModeAsync, GrabModeAsync);
-                }
-            }
-        }
-
-        XFree(syms);
-    }
-}
-
-
 void incnmaster(const Arg *arg) {
     int ccount;
     ccount = clientcount();
@@ -898,7 +828,6 @@ static int isuniquegeom(XineramaScreenInfo *unique, size_t n,
     return 1;
 }
 #endif /* XINERAMA */
-
 
 int xcommand() {
     char command[256];
@@ -967,31 +896,6 @@ int xcommand() {
         break;
     }
     return 1;
-}
-
-void keypress(XEvent *e) {
-
-    unsigned int i;
-    KeySym keysym;
-    XKeyEvent *ev;
-
-    ev = &e->xkey;
-    keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
-    for (i = 0; i < LENGTH(keys); i++) {
-        if (keysym == keys[i].keysym &&
-            CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func) {
-            keys[i].func(&(keys[i].arg));
-        }
-    }
-
-    if (!selmon->sel) {
-        for (i = 0; i < LENGTH(dkeys); i++) {
-            if (keysym == dkeys[i].keysym &&
-                CLEANMASK(dkeys[i].mod) == CLEANMASK(ev->state) &&
-                dkeys[i].func)
-                dkeys[i].func(&(dkeys[i].arg));
-        }
-    }
 }
 
 // close selected client
@@ -1146,18 +1050,6 @@ void manage(Window w, XWindowAttributes *wa) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 void shutkill(const Arg *arg) {
     if (!selmon->clients)
         spawn(&((Arg){.v = instantshutdowncmd}));
@@ -1165,15 +1057,7 @@ void shutkill(const Arg *arg) {
         killclient(arg);
 }
 
-
-
-
-
-
 void quit(const Arg *arg) { running = 0; }
-
-
-
 
 void resizebarwin(Monitor *m) {
     unsigned int w = m->ww;
@@ -1181,11 +1065,6 @@ void resizebarwin(Monitor *m) {
         w -= getsystraywidth();
     XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, w, bh);
 }
-
-
-
-
-
 
 void restack(Monitor *m) {
     if (&overviewlayout == m->lt[m->sellt]->arrange)
@@ -1254,12 +1133,6 @@ void scan(void) {
             XFree(wins);
     }
 }
-
-
-
-
-
-
 
 void setfullscreen(Client *c, int fullscreen) {
     if (fullscreen && !c->isfullscreen) {
@@ -1384,8 +1257,6 @@ void setmfact(const Arg *arg) {
     if (tmpanim)
         animated = 1;
 }
-
-
 
 void setup(void) {
     int i;
@@ -1545,8 +1416,6 @@ void seturgent(Client *c, int urg) {
     XFree(wmh);
 }
 
-
-
 void spawn(const Arg *arg) {
     struct sigaction sa;
     if (arg->v == instantmenucmd)
@@ -1564,56 +1433,6 @@ void spawn(const Arg *arg) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-void uppress(const Arg *arg) {
-    if (!selmon->sel)
-        return;
-    if (selmon->sel == selmon->overlay) {
-        setoverlaymode(0);
-        return;
-    }
-    if (selmon->sel->isfloating) {
-        togglefloating(NULL);
-        return;
-    } else {
-        hide(selmon->sel);
-        return;
-    }
-}
-
-void downpress(const Arg *arg) {
-    if (unhideone())
-        return;
-    if (!selmon->sel)
-        return;
-
-    if (selmon->sel->snapstatus) {
-        resetsnap(selmon->sel);
-        return;
-    }
-
-    if (selmon->sel == selmon->overlay) {
-        setoverlaymode(OverlayBottom);
-        return;
-    }
-    if (!selmon->sel->isfloating) {
-        togglefloating(NULL);
-        return;
-    }
-}
-
-
-
 void setspecialnext(const Arg *arg) { specialnext = arg->ui; }
 
 void togglefakefullscreen(const Arg *arg) {
@@ -1630,11 +1449,6 @@ void togglefakefullscreen(const Arg *arg) {
 
     selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
-
-
-
-
-
 
 void togglebar(const Arg *arg) {
     int tmpnoanim;
@@ -1671,11 +1485,6 @@ void togglebar(const Arg *arg) {
         animated = tmpnoanim;
     }
 }
-
-
-
-
-
 
 // minimize window
 void hidewin(const Arg *arg) {
@@ -1717,7 +1526,6 @@ void unhideall(const Arg *arg) {
     restack(selmon);
 }
 
-
 void unmanage(Client *c, int destroyed) {
     Monitor *m = c->mon;
     XWindowChanges wc;
@@ -1751,9 +1559,6 @@ void unmanage(Client *c, int destroyed) {
     arrange(m);
 }
 
-
-
-
 void updatebars(void) {
     unsigned int w;
     Monitor *m;
@@ -1778,7 +1583,6 @@ void updatebars(void) {
         XSetClassHint(dpy, m->barwin, &ch);
     }
 }
-
 
 void updateclientlist(void) {
     Client *c;
@@ -1956,9 +1760,7 @@ void updatesizehints(Client *c) {
     c->hintsvalid = 1;
 }
 
-
-
-
+// TODO: can this be moved?
 void updatetitle(Client *c) {
     if (!gettextprop(c->win, netatom[NetWMName], c->name, sizeof c->name))
         gettextprop(c->win, XA_WM_NAME, c->name, sizeof c->name);
@@ -1993,29 +1795,6 @@ void updatewmhints(Client *c) {
     }
 }
 
-
-
-
-void upkey(const Arg *arg) {
-    if (!selmon->sel)
-        return;
-
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
-        directionfocus(&((Arg){.ui = 0}));
-        return;
-    }
-
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
-        Client *c;
-        c = selmon->sel;
-        XSetWindowBorder(dpy, c->win,
-                         borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(c, 0);
-        return;
-    }
-    focusstack(arg);
-}
-
 int unhideone() {
     if (selmon->sel && selmon->sel == selmon->overlay)
         return 0;
@@ -2030,51 +1809,6 @@ int unhideone() {
     }
     return 0;
 }
-
-void downkey(const Arg *arg) {
-
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
-        directionfocus(&((Arg){.ui = 2}));
-        return;
-    }
-
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
-        if (!selmon->sel)
-            return;
-        // unmaximize
-        changesnap(selmon->sel, 2);
-        return;
-    }
-    focusstack(arg);
-}
-
-void spacetoggle(const Arg *arg) {
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
-        if (!selmon->sel)
-            return;
-        Client *c;
-        c = selmon->sel;
-
-        if (c->snapstatus) {
-            resetsnap(c);
-        } else {
-            XSetWindowBorder(dpy, selmon->sel->win,
-                             borderscheme[SchemeBorderTileFocus].pixel);
-            savefloating(c);
-            selmon->sel->snapstatus = SnapMaximized;
-            arrange(selmon);
-        }
-    } else {
-        togglefloating(arg);
-    }
-}
-
-
-
-
-
-
-
 
 /* There's no way to check accesses to destroyed windows, thus those cases are
  * ignored (especially on UnmapNotify's). Other types of errors call Xlibs
@@ -2105,7 +1839,6 @@ int xerrorstart(Display *dpy, XErrorEvent *ee) {
     return -1;
 }
 
-
 void zoom(const Arg *arg) {
     Client *c = selmon->sel;
 
@@ -2122,8 +1855,6 @@ void zoom(const Arg *arg) {
     }
     pop(c);
 }
-
-
 
 int main(int argc, char *argv[]) {
     if (argc == 2) {

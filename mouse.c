@@ -296,7 +296,6 @@ int hoverresizemouse(const Arg *arg) {
                     focus(newc);
                 break;
             }
-
         }
     } while (ev.type != ButtonRelease && inborder);
 
@@ -453,7 +452,8 @@ int parse_slop_output(const char *output, int dimensions[4]) {
 int is_valid_window_size(int x, int y, int width, int height, Client *c) {
     return (width > MIN_WINDOW_SIZE && height > MIN_WINDOW_SIZE &&
             x > -SLOP_MARGIN && y > -SLOP_MARGIN &&
-            width < selmon->mw + SLOP_MARGIN && height < selmon->mh + SLOP_MARGIN &&
+            width < selmon->mw + SLOP_MARGIN &&
+            height < selmon->mh + SLOP_MARGIN &&
             (abs(c->w - width) > 20 || abs(c->h - height) > 20 ||
              abs(c->x - x) > 20 || abs(c->y - y) > 20));
 }

@@ -1,10 +1,10 @@
 /* See LICENSE file for copyright and license details. */
 
+#include <X11/Xlib.h>
+#include <X11/Xresource.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <X11/Xlib.h>
-#include <X11/Xresource.h>
 
 #include "instantwm.h"
 #include "xresources.h"
@@ -128,8 +128,9 @@ void load_xresources(void) {
                                               [schemecolortypes[q].type]);
 
                 /* Note: We can't modify windowcolors directly since it's const.
-                   The original code had non-const arrays. This is a design limitation
-                   that means load_xresources needs to stay in instantwm.c for now */
+                   The original code had non-const arrays. This is a design
+                   limitation that means load_xresources needs to stay in
+                   instantwm.c for now */
                 resource_load(db, propname, STRING, tmpstring);
                 /* Would need: windowcolors[...][...][...] = tmpstring; */
             }
