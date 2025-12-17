@@ -8,5 +8,8 @@
 
 void die(const char *fmt, ...);
 void *ecalloc(size_t nmemb, size_t size);
+<<<<<<< HEAD
 int startswith(const char *a, const char *b);
+=======
+>>>>>>> origin/main
 #endif

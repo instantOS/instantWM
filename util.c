@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+<<<<<<< HEAD
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -11,6 +12,10 @@
 #include "util.h"
 #include "instantwm.h"
 #include "globals.h"
+=======
+
+#include "util.h"
+>>>>>>> origin/main
 
 void *ecalloc(size_t nmemb, size_t size) {
     void *p;
@@ -36,6 +41,7 @@ void die(const char *fmt, ...) {
 
     exit(1);
 }
+<<<<<<< HEAD
 
 int startswith(const char *a, const char *b) {
     char *checker = NULL;
@@ -64,3 +70,5 @@ void spawn(const Arg *arg) {
         die("instantwm: execvp '%s' failed:", ((char **)arg->v)[0]);
     }
 }
+=======
+>>>>>>> origin/main
