@@ -46,6 +46,10 @@ void grabkeys(void) {
             return;
 
         for (k = start; k <= (unsigned int)end; k++) {
+            /* Skip invalid keycodes to prevent X11 BadValue errors */
+            if (k > 255)
+                continue;
+
             for (i = 0; i < NUM_KEYS; i++) {
                 if (keys[i].keysym == syms[(k - start) * skip])
                     for (j = 0; j < 4; j++) {

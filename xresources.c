@@ -106,9 +106,14 @@ void load_xresources(void) {
     int i, u, q;
 
     display = XOpenDisplay(NULL);
-    resm = XResourceManagerString(display);
-    if (!resm)
+    if (!display)
         return;
+
+    resm = XResourceManagerString(display);
+    if (!resm) {
+        XCloseDisplay(display);
+        return;
+    }
 
     db = XrmGetStringDatabase(resm);
 
