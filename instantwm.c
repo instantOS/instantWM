@@ -1500,7 +1500,7 @@ void togglebar(const Arg *arg) {
 }
 
 // minimize window
-void hidewin(const Arg *arg) {
+void hide_window(const Arg *arg) {
     if (!selmon->sel)
         return;
     Client *c = selmon->sel;
@@ -1528,7 +1528,7 @@ void redrawwin(const Arg *arg) {
         animated = 1;
 }
 
-void unhideall(const Arg *arg) {
+void unhide_all(const Arg *arg) {
 
     Client *c;
     for (c = selmon->clients; c; c = c->next) {

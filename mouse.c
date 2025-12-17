@@ -474,7 +474,7 @@ static DragResult right_title_motion(XEvent *ev, void *data) {
         }
     } else if (abs(motion->y_root - d->starty) > GESTURE_THRESHOLD) {
         if (motion->y_root > d->starty) {
-            hidewin(NULL);
+            hide_window(NULL);
         } else {
             killclient(NULL);
         }
