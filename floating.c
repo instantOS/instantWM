@@ -435,11 +435,9 @@ void scaleclient(Client *c, int scale) {
     x = c->x - (scale / 2);
     y = c->y - (scale / 2);
 
-    if ((double)c->h / c->w < 0.25 || (double)c->h / c->w < 0.25) {
-        h = c->h + scale;
-        h = c->x - scale / 2;
-        h = c->y - scale / 2;
-    }
+    /* Note: Aspect ratio preservation was previously attempted here but was
+     * broken (assigned position values to height variable). Removed as
+     * non-functional. If aspect-aware scaling is needed, implement properly. */
 
     if (x < selmon->mx)
         x = selmon->mx;

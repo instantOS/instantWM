@@ -285,6 +285,17 @@ struct Pertag {
 };
 typedef struct Pertag Pertag;
 
+/* Pertag helper macros for cleaner code.
+ * Use these instead of verbose pointer chains like:
+ *   m->pertag->ltidxs[m->pertag->current_tag][m->pertag->sellts[m->pertag->current_tag]]
+ */
+#define PERTAG_CURRENT(m)  ((m)->pertag->current_tag)
+#define PERTAG_MFACT(m)    ((m)->pertag->mfacts[PERTAG_CURRENT(m)])
+#define PERTAG_NMASTER(m)  ((m)->pertag->nmasters[PERTAG_CURRENT(m)])
+#define PERTAG_SHOWBAR(m)  ((m)->pertag->showbars[PERTAG_CURRENT(m)])
+#define PERTAG_SELLT(m)    ((m)->pertag->sellts[PERTAG_CURRENT(m)])
+#define PERTAG_LAYOUT(m)   ((m)->pertag->ltidxs[PERTAG_CURRENT(m)][PERTAG_SELLT(m)])
+
 struct Monitor {
     char ltsymbol[16];
     float mfact;

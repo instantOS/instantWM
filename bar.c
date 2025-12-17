@@ -9,39 +9,23 @@
 #include <string.h>
 #include <unistd.h>
 
-/* extern declarations for variables from instantwm.c and config.h */
-extern Display *dpy;
-extern Drw *drw;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Window root;
-extern char stext[1024];
-extern int bh;
-extern int lrpad;
+/* Bar drawing constants */
+#define CORNER_RADIUS_NORMAL   4   /* Normal rounded corners */
+#define CORNER_RADIUS_HOVER    8   /* Hover state rounded corners */
+#define STARTMENU_ICON_SIZE   14   /* Size of the start menu logo icon */
+#define STARTMENU_ICON_INNER   6   /* Inner square of start menu icon */
+#define CLOSE_BUTTON_WIDTH    20   /* Width of close button in title */
+#define CLOSE_BUTTON_HEIGHT   16   /* Height of close button body */
+#define CLOSE_BUTTON_DETAIL    4   /* Height of close button detail bar */
+
+#include "globals.h"
+
+/* Additional extern declarations not in globals.h */
 extern int (*xerrorxlib)(Display *, XErrorEvent *);
 extern int commandoffsets[20];
-extern int bar_dragging;
-extern int showalttag;
-extern int tagprefix;
-extern int altcursor;
-extern int statuswidth; /* from instantwm.c */
 extern int pausedraw;
-
-/* Schemes */
-extern Clr ***tagscheme;
-extern Clr *statusscheme;
-extern Clr ***windowscheme;
-extern Clr ***closebuttonscheme;
-
-/* config.h values */
-extern const int showsystray;
-extern const unsigned int systrayspacing;
-extern const char *tagsalt[];
-extern char tags[][16]; /* MAX_TAGLEN is 16 in config.h */
-extern const unsigned int startmenusize;
 extern const char *statusbarcolors[];
 
-extern int numtags;
 extern int get_blw(Monitor *m);
 
 void clickstatus(const Arg *arg) {
@@ -202,7 +186,7 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
 
 /* Helper: Draw the start menu icon (instantOS logo) */
 static void draw_startmenu_icon(void) {
-    int iconoffset = (bh - 20) / 2;
+    int iconoffset = (bh - CLOSE_BUTTON_WIDTH) / 2;
     int startmenuinvert = (selmon->gesture == GestureStartMenu);
 
     if (tagprefix)
@@ -211,9 +195,9 @@ static void draw_startmenu_icon(void) {
         drw_setscheme(drw, statusscheme);
 
     drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0 : 1);
-    drw_rect(drw, 5, iconoffset, 14, 14, 1, startmenuinvert ? 1 : 0);
-    drw_rect(drw, 9, iconoffset + 4, 6, 6, 1, startmenuinvert ? 0 : 1);
-    drw_rect(drw, 19, iconoffset + 14, 6, 6, 1, startmenuinvert ? 1 : 0);
+    drw_rect(drw, 5, iconoffset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE, 1, startmenuinvert ? 1 : 0);
+    drw_rect(drw, 9, iconoffset + 4, STARTMENU_ICON_INNER, STARTMENU_ICON_INNER, 1, startmenuinvert ? 0 : 1);
+    drw_rect(drw, 19, iconoffset + STARTMENU_ICON_SIZE, STARTMENU_ICON_INNER, STARTMENU_ICON_INNER, 1, startmenuinvert ? 1 : 0);
 }
 
 /* Helper: Get the color scheme for a tag based on its state */
@@ -262,7 +246,7 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
         drw_setscheme(drw, get_tag_scheme(m, i, occ, ishover));
 
         if (i == selmon->gesture - 1) {
-            roundw = 8;
+            roundw = CORNER_RADIUS_HOVER;
             if (bar_dragging) {
                 drw_setscheme(drw, tagscheme[SchemeHover][SchemeTagFilled]);
             }
@@ -270,7 +254,7 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
                      (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, roundw);
         } else {
             drw_text(drw, x, 0, w, bh, lrpad / 2,
-                     (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, 4);
+                     (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, CORNER_RADIUS_NORMAL);
         }
         x += w;
     }
@@ -310,7 +294,7 @@ static Clr *get_window_scheme(Client *c, int ishover) {
 
 /* Helper: Draw the close button for the selected window */
 static void draw_close_button(Client *c, int x) {
-    int ishover = selmon->gesture != 12 ? SchemeNoHover : SchemeHover;
+    int ishover = selmon->gesture != GestureCloseButton ? SchemeNoHover : SchemeHover;
 
     if (c->islocked) {
         drw_setscheme(drw, closebuttonscheme[ishover][SchemeCloseLocked]);
@@ -322,10 +306,10 @@ static void draw_close_button(Client *c, int x) {
 
     XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
     XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6,
-                   (bh - 20) / 2 - !ishover * 4, 20, 16);
+                   (bh - CLOSE_BUTTON_WIDTH) / 2 - !ishover * CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT);
     XSetForeground(drw->dpy, drw->gc, drw->scheme[ColDetail].pixel);
     XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6,
-                   (bh - 20) / 2 + 16 - !ishover * 4, 20, 4 + !ishover * 4);
+                   (bh - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - !ishover * CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_DETAIL + !ishover * CLOSE_BUTTON_DETAIL);
 }
 
 /* Helper: Draw a single window title */
