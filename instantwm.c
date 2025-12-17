@@ -140,31 +140,12 @@ struct NumTags {
 
 void keyrelease(XEvent *e) {}
 
-/* overlayexists() moved to overlay.c */
 
-/* resetsnap() moved to floating.c */
-/* saveallfloating() moved to floating.c */
-/* restoreallfloating() moved to floating.c */
-/* applysnap() moved to floating.c */
-/* checkfloating() moved to floating.c */
-/* visible() moved to floating.c */
-/* changesnap() moved to floating.c */
-/* tempfullscreen() moved to floating.c */
 
 int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
 
-/* directionfocus() moved to focus.c */
 
-/* createoverlay() moved to overlay.c */
-/* resetoverlay() moved to overlay.c */
-/* easeOutCubic() moved to animation.c */
-/* checkanimate() moved to animation.c */
-/* animateclient() moved to animation.c */
-/* showoverlay() moved to overlay.c */
-/* hideoverlay() moved to overlay.c */
-/* setoverlay() moved to overlay.c */
 
-/* focuslastclient() moved to focus.c */
 
 void desktopset() {
     Client *c = selmon->sel;
@@ -371,9 +352,7 @@ void arrangemon(Monitor *m) {
     }
 }
 
-/* attach() moved to client.c */
 
-/* attachstack() moved to client.c */
 
 void resetcursor() {
     if (altcursor == AltCurNone)
@@ -570,13 +549,9 @@ void cleanup(void) {
     XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 }
 
-/* cleanupmon() moved to monitors.c */
 
-/* clientmessage() moved to events.c */
 
-/* configure() moved to client.c */
 
-/* configurenotify() moved to events.c */
 
 void distributeclients(const Arg *arg) {
     Client *c;
@@ -599,7 +574,6 @@ void distributeclients(const Arg *arg) {
     arrange(selmon);
 }
 
-/* configurerequest() moved to events.c */
 
 Monitor *createmon(void) {
     Monitor *m;
@@ -659,25 +633,15 @@ void cyclelayout(const Arg *arg) {
     }
 }
 
-/* destroynotify() moved to events.c */
 
-/* detach() moved to client.c */
 
-/* detachstack() moved to client.c */
 
-/* dirtomon() moved to monitors.c */
 
-/* clickstatus() moved to bar.c */
 
-/* drawstatusbar() moved to bar.c */
 
-/* drawbar() moved to bar.c */
 
-/* drawbars() moved to bar.c */
 
-/* enternotify() moved to events.c */
 
-/* expose() moved to events.c */
 
 void focus(Client *c) {
     resetcursor();
@@ -729,13 +693,9 @@ void focus(Client *c) {
     }
 }
 
-/* focusin() moved to events.c */
 
-/* followmon() moved to monitors.c */
 
-/* focusmon() moved to monitors.c */
 
-/* focusnmon() moved to monitors.c */
 
 void focusstack(const Arg *arg) {
     Client *c = NULL, *i;
@@ -827,7 +787,6 @@ long getstate(Window w) {
     return result;
 }
 
-/* getsystraywidth() moved to systray.c */
 
 int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
     char **list = NULL;
@@ -912,7 +871,6 @@ void grabkeys(void) {
     }
 }
 
-/* hide() moved to client.c */
 
 void incnmaster(const Arg *arg) {
     int ccount;
@@ -940,7 +898,6 @@ static int isuniquegeom(XineramaScreenInfo *unique, size_t n,
 }
 #endif /* XINERAMA */
 
-/* startswith() moved to util.c */
 
 int xcommand() {
     char command[256];
@@ -1188,37 +1145,17 @@ void manage(Window w, XWindowAttributes *wa) {
     }
 }
 
-/* mappingnotify() moved to events.c */
 
-/* maprequest() moved to events.c */
 
-/* motionnotify() and helpers moved to events.c */
 
-/* resetbar() moved to bar.c */
 
-// drag a window around using the mouse
-/* movemouse() moved to mouse.c */
 
-// drag up and down on the desktop to
-// change volume or start onboard by dragging to the right
-/* gesturemouse() moved to mouse.c */
 
-// hover over the border to move/resize a window
-/* hoverresizemouse() moved to mouse.c */
 
-// drag clients around the top bar
-/* dragmouse() moved to mouse.c */
 
-/* resetoverlaysize() moved to overlay.c */
 
-// drag on the top bar with the right mouse
-/* dragrightmouse() moved to mouse.c */
 
-// drag out an area using slop and resize the selected window to it.
-/* drawwindow() moved to mouse.c */
 
-// drag the green tag mark to another tag
-/* dragtag() moved to mouse.c */
 
 void shutkill(const Arg *arg) {
     if (!selmon->clients)
@@ -1227,23 +1164,15 @@ void shutkill(const Arg *arg) {
         killclient(arg);
 }
 
-/* nametag() moved to tags.c */
 
-/* resetnametag() moved to tags.c */
 
-/* nexttiled() moved to client.c */
 
-/* pop() moved to client.c */
 
-/* propertynotify() moved to events.c */
 
 void quit(const Arg *arg) { running = 0; }
 
-/* recttomon() moved to monitors.c */
 
-/* removesystrayicon() moved to systray.c */
 
-/* resize() moved to client.c */
 
 void resizebarwin(Monitor *m) {
     unsigned int w = m->ww;
@@ -1252,15 +1181,10 @@ void resizebarwin(Monitor *m) {
     XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, w, bh);
 }
 
-/* resizeclient() moved to client.c */
 
-/* forceresizemouse() moved to mouse.c */
 
-/* resizemouse() moved to mouse.c */
 
-/* resizeaspectmouse() moved to mouse.c */
 
-/* resizerequest() moved to events.c */
 
 void restack(Monitor *m) {
     if (&overviewlayout == m->lt[m->sellt]->arrange)
@@ -1330,17 +1254,11 @@ void scan(void) {
     }
 }
 
-/* gettagwidth() moved to tags.c */
 
-/* getxtag() moved to tags.c */
 
-/* sendmon() moved to monitors.c */
 
-/* setclientstate() moved to client.c */
 
-/* sendevent() moved to client.c */
 
-/* setfocus() moved to client.c */
 
 void setfullscreen(Client *c, int fullscreen) {
     if (fullscreen && !c->isfullscreen) {
@@ -1728,10 +1646,7 @@ void seturgent(Client *c, int urg) {
     XFree(wmh);
 }
 
-// unminimize window
-/* show() moved to client.c */
 
-/* showhide() moved to client.c */
 
 void spawn(const Arg *arg) {
     struct sigaction sa;
@@ -1750,27 +1665,16 @@ void spawn(const Arg *arg) {
     }
 }
 
-/* computeprefix() moved to tags.c */
 
-/* setclienttagprop() moved to client.c */
 
-/* tag() moved to tags.c */
 
-/* tagall() moved to tags.c */
 
-/* followtag() moved to tags.c */
 
-/* swaptags() moved to tags.c */
 
-/* followview() moved to tags.c */
 
-/* resetsticky() moved to tags.c */
 
-/* tagmon() moved to tags.c */
 
-/* setoverlaymode() moved to overlay.c */
 
-/* tagtoleft() moved to tags.c */
 
 void uppress(const Arg *arg) {
     if (!selmon->sel)
@@ -1809,21 +1713,10 @@ void downpress(const Arg *arg) {
     }
 }
 
-/* tagtoright() moved to tags.c */
 
-/* ctrltoggle() moved to toggles.c */
 
 void setspecialnext(const Arg *arg) { specialnext = arg->ui; }
 
-/* togglealttag() moved to toggles.c */
-/* alttabfree() moved to toggles.c */
-/* togglesticky() moved to toggles.c */
-/* toggleprefix() moved to toggles.c */
-/* toggleanimated() moved to toggles.c */
-/* setborderwidth() moved to toggles.c */
-/* togglefocusfollowsmouse() moved to toggles.c */
-/* togglefocusfollowsfloatmouse() moved to toggles.c */
-/* toggledoubledraw() moved to toggles.c */
 void togglefakefullscreen(const Arg *arg) {
     if (selmon->sel->isfullscreen) {
         if (selmon->sel->isfakefullscreen) {
@@ -1838,20 +1731,11 @@ void togglefakefullscreen(const Arg *arg) {
 
     selmon->sel->isfakefullscreen = !selmon->sel->isfakefullscreen;
 }
-/* togglelocked() moved to toggles.c */
 
-/* warp() moved to focus.c */
-/* forcewarp() moved to focus.c */
-/* warpinto() moved to focus.c */
-/* warpfocus() moved to focus.c */
 
-/* moveresize() moved to floating.c */
 
-/* keyresize() moved to floating.c */
 
-/* centerwindow() moved to floating.c */
 
-/* toggleshowtags() moved to toggles.c */
 
 void togglebar(const Arg *arg) {
     int tmpnoanim;
@@ -1889,28 +1773,10 @@ void togglebar(const Arg *arg) {
     }
 }
 
-/* savefloating() moved to floating.c */
-/* restorefloating() moved to floating.c */
-/* savebw() moved to floating.c */
-/* restorebw() moved to floating.c */
-/* applysize() moved to floating.c */
-/* togglefloating() moved to floating.c */
-/* changefloating() moved to floating.c */
 
-/* toggletag() moved to tags.c */
 
-/* updatescratchvisible() moved to scratchpad.c */
-/* findnamedscratchpad() moved to scratchpad.c */
-/* makescratchpad() moved to scratchpad.c */
-/* togglescratchpad() moved to scratchpad.c */
-/* createscratchpad() moved to scratchpad.c */
-/* showscratchpad() moved to scratchpad.c */
-/* hidescratchpad() moved to scratchpad.c */
-/* scratchpadstatus() moved to scratchpad.c */
 
-/* updatestatus() moved to bar.c */
 
-/* toggleview() moved to tags.c */
 
 // minimize window
 void hidewin(const Arg *arg) {
@@ -1952,7 +1818,6 @@ void unhideall(const Arg *arg) {
     restack(selmon);
 }
 
-/* unfocus() moved to client.c */
 
 void unmanage(Client *c, int destroyed) {
     Monitor *m = c->mon;
@@ -1987,7 +1852,6 @@ void unmanage(Client *c, int destroyed) {
     arrange(m);
 }
 
-/* unmapnotify() moved to events.c */
 
 void verifytagsxres(void) {
     for (int i = 0; i < 9; i++) {
@@ -2023,7 +1887,6 @@ void updatebars(void) {
     }
 }
 
-/* updatebarpos() moved to bar.c */
 
 void updateclientlist(void) {
     Client *c;
@@ -2201,11 +2064,8 @@ void updatesizehints(Client *c) {
     c->hintsvalid = 1;
 }
 
-/* updatesystrayicongeom() moved to systray.c */
 
-/* updatesystrayiconstate() moved to systray.c */
 
-/* updatesystray() moved to systray.c */
 
 void updatetitle(Client *c) {
     if (!gettextprop(c->win, netatom[NetWMName], c->name, sizeof c->name))
@@ -2241,11 +2101,8 @@ void updatewmhints(Client *c) {
     }
 }
 
-/* view() moved to tags.c */
 
-/* moveleft() moved to tags.c */
 
-/* viewtoleft() moved to tags.c */
 
 void upkey(const Arg *arg) {
     if (!selmon->sel)
@@ -2320,30 +2177,18 @@ void spacetoggle(const Arg *arg) {
     }
 }
 
-/* shiftview() moved to tags.c */
 
-/* viewtoright() moved to tags.c */
 
-/* moveright() moved to tags.c */
 
-/* upscaleclient() moved to floating.c */
 
-/* downscaleclient() moved to floating.c */
 
-/* scaleclient() moved to floating.c */
 
 // toggle overview like layout
-/* overtoggle() moved to tags.c */
 
-/* lastview() moved to tags.c */
 
-/* fullovertoggle() moved to tags.c */
 
-/* wintoclient() moved to client.c */
 
-/* wintomon() moved to monitors.c */
 
-/* winview() moved to tags.c */
 
 /* There's no way to check accesses to destroyed windows, thus those cases are
  * ignored (especially on UnmapNotify's). Other types of errors call Xlibs
@@ -2374,7 +2219,6 @@ int xerrorstart(Display *dpy, XErrorEvent *ee) {
     return -1;
 }
 
-/* systraytomon() moved to systray.c */
 
 void zoom(const Arg *arg) {
     Client *c = selmon->sel;
