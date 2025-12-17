@@ -289,23 +289,24 @@ typedef struct Pertag Pertag;
  * Use these instead of verbose pointer chains like:
  *   m->pertag->ltidxs[m->pertag->current_tag][m->pertag->sellts[m->pertag->current_tag]]
  */
-#define PERTAG_CURRENT(m)  ((m)->pertag->current_tag)
-#define PERTAG_MFACT(m)    ((m)->pertag->mfacts[PERTAG_CURRENT(m)])
-#define PERTAG_NMASTER(m)  ((m)->pertag->nmasters[PERTAG_CURRENT(m)])
-#define PERTAG_SHOWBAR(m)  ((m)->pertag->showbars[PERTAG_CURRENT(m)])
-#define PERTAG_SELLT(m)    ((m)->pertag->sellts[PERTAG_CURRENT(m)])
-#define PERTAG_LAYOUT(m)   ((m)->pertag->ltidxs[PERTAG_CURRENT(m)][PERTAG_SELLT(m)])
+#define PERTAG_CURRENT(m) ((m)->pertag->current_tag)
+#define PERTAG_MFACT(m) ((m)->pertag->mfacts[PERTAG_CURRENT(m)])
+#define PERTAG_NMASTER(m) ((m)->pertag->nmasters[PERTAG_CURRENT(m)])
+#define PERTAG_SHOWBAR(m) ((m)->pertag->showbars[PERTAG_CURRENT(m)])
+#define PERTAG_SELLT(m) ((m)->pertag->sellts[PERTAG_CURRENT(m)])
+#define PERTAG_LAYOUT(m)                                                       \
+    ((m)->pertag->ltidxs[PERTAG_CURRENT(m)][PERTAG_SELLT(m)])
 
 struct Monitor {
     char ltsymbol[16];
     float mfact;
     int nmaster;
     int num;
-    int by;             /* bar geometry */
-    int btw;            /* width of tasks portion of bar */
-    int bt;             /* number of tasks */
-    int mx, my, mw, mh; /* screen size */
-    int wx, wy, ww, wh; /* window area  */
+    int by;                /* bar geometry */
+    int bar_clients_width; /* width of clients portion of bar */
+    int bt;                /* number of tasks */
+    int mx, my, mw, mh;    /* screen size */
+    int wx, wy, ww, wh;    /* window area  */
     unsigned int seltags;
     unsigned int sellt;
     unsigned int tagset[2];

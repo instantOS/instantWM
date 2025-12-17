@@ -371,7 +371,7 @@ static void handle_focus_monitor(XButtonPressedEvent *ev) {
 
 static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
                              Arg *arg) {
-    unsigned int i, x, occ = 0;
+    unsigned int i, x, occupied_tags = 0;
     Client *c;
     Monitor *m = selmon; /* Since ev->window == selmon->barwin, m is selmon */
     int blw = get_blw(selmon);
@@ -379,13 +379,13 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
     i = 0;
     x = startmenusize;
     for (c = m->clients; c; c = c->next)
-        occ |= c->tags == 255 ? 0 : c->tags;
+        occupied_tags |= c->tags == 255 ? 0 : c->tags;
     do {
         /* do not reserve space for vacant tags */
         if (i >= 9)
             continue;
         if (selmon->showtags) {
-            if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i))
                 continue;
         }
 
@@ -414,13 +414,14 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
                 if (!ISVISIBLE(c))
                     continue;
                 else
-                    x += (1.0 / (double)m->bt) * m->btw;
+                    x += (1.0 / (double)m->bt) * m->bar_clients_width;
             } while (ev->x > x && (c = c->next));
 
             if (c) {
                 arg->v = c;
                 if (c != selmon->sel ||
-                    ev->x > x - (1.0 / (double)m->bt) * m->btw + 32) {
+                    ev->x >
+                        x - (1.0 / (double)m->bt) * m->bar_clients_width + 32) {
                     *click = ClkWinTitle;
                 } else {
                     *click = ClkCloseButton;

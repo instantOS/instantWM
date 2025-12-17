@@ -75,18 +75,19 @@ void resetnametag(const Arg *arg) {
 }
 
 int gettagwidth() {
-    int x = 0, i = 0, occ = 0;
+    int x = 0, i = 0, occupied_tags = 0;
     Client *c;
 
     for (c = selmon->clients; c; c = c->next)
-        occ |= c->tags == 255 ? 0 : c->tags;
+        occupied_tags |= c->tags == 255 ? 0 : c->tags;
 
     do {
         // do not reserve space for vacant tags
         if (i >= 9)
             continue;
         if (selmon->showtags) {
-            if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
+            if (!(occupied_tags & 1 << i ||
+                  selmon->tagset[selmon->seltags] & 1 << i))
                 continue;
         }
         x += TEXTW(tags[i]);
@@ -96,20 +97,21 @@ int gettagwidth() {
 
 // return tag for indicator of given x coordinate
 int getxtag(int ix) {
-    int x, i, occ;
+    int x, i, occupied_tags;
     Client *c;
     i = 0;
-    occ = 0;
+    occupied_tags = 0;
     x = startmenusize;
     for (c = selmon->clients; c; c = c->next)
-        occ |= c->tags == 255 ? 0 : c->tags;
+        occupied_tags |= c->tags == 255 ? 0 : c->tags;
 
     do {
         // do not reserve space for vacant tags
         if (i >= 9)
             continue;
         if (selmon->showtags) {
-            if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
+            if (!(occupied_tags & 1 << i ||
+                  selmon->tagset[selmon->seltags] & 1 << i))
                 continue;
         }
 

@@ -15,12 +15,12 @@ extern Drw *drw;
 extern Window root;
 
 /* ========== Monitor state ========== */
-extern Monitor *mons;    /* linked list of all monitors */
-extern Monitor *selmon;  /* currently selected monitor */
+extern Monitor *mons;   /* linked list of all monitors */
+extern Monitor *selmon; /* currently selected monitor */
 
 /* ========== Bar dimensions ========== */
-extern int bh;     /* bar height */
-extern int lrpad;  /* left/right padding for text */
+extern int bh;    /* bar height */
+extern int lrpad; /* left/right padding for text */
 
 /* ========== Feature flags ========== */
 extern int animated;               /* animation enabled */
@@ -30,11 +30,11 @@ extern int altcursor;              /* current alternate cursor state */
 extern int doubledraw;             /* high refresh rate mode */
 
 /* ========== Bar state ========== */
-extern int bar_dragging;  /* currently dragging on bar */
-extern int tagwidth;      /* cached tag area width */
-extern int statuswidth;   /* status text width */
-extern int showalttag;    /* show alternate tag icons */
-extern int tagprefix;     /* tag prefix mode active */
+extern int bar_dragging; /* currently dragging on bar */
+extern int tagwidth;     /* cached tag area width */
+extern int statuswidth;  /* status text width */
+extern int showalttag;   /* show alternate tag icons */
+extern int tagprefix;    /* tag prefix mode active */
 extern char stext[1024]; /* status text buffer */
 
 /* ========== Atoms ========== */
@@ -44,7 +44,7 @@ extern Atom xatom[];
 extern Atom motifatom;
 
 /* ========== Cursors ========== */
-extern Cur *cursor[];     /* cursor array indexed by Cur enum */
+extern Cur *cursor[]; /* cursor array indexed by Cur enum */
 
 /* ========== Color schemes ========== */
 extern Clr *borderscheme;

@@ -21,8 +21,8 @@
 
 #include "globals.h"
 
-/* Extern functions are defined in instantwm.h or other headers, 
- * keeping only those that might be missing or specific here if any. 
+/* Extern functions are defined in instantwm.h or other headers,
+ * keeping only those that might be missing or specific here if any.
  * Most function prototypes should be in headers. */
 
 /* extern functions from instantwm.c */
@@ -259,6 +259,7 @@ void destroynotify(XEvent *e) {
     }
 }
 
+// TODO: has multiple responsibilities, refactor
 void enternotify(XEvent *e) {
     Client *c;
     Monitor *m;
@@ -465,7 +466,8 @@ static void handletitlebarhover(XMotionEvent *ev) {
         drawbar(selmon);
     } else {
         /* hover over resize widget on title bar */
-        double titlewidth = (1.0 / (double)selmon->bt) * selmon->btw;
+        double titlewidth =
+            (1.0 / (double)selmon->bt) * selmon->bar_clients_width;
         int resizeStart = selmon->activeoffset + titlewidth - 30;
         int resizeEnd = selmon->activeoffset + titlewidth;
 
@@ -488,7 +490,7 @@ static void handletitlebarhover(XMotionEvent *ev) {
             if (!ISVISIBLE(c))
                 continue;
             else
-                x += (1.0 / (double)selmon->bt) * selmon->btw;
+                x += (1.0 / (double)selmon->bt) * selmon->bar_clients_width;
         } while (ev->x_root > x && (c = c->next));
 
         if (c && c != selmon->hoverclient) {
@@ -539,8 +541,8 @@ void motionnotify(XEvent *e) {
     /* cursor is to the left of window titles (tags area) */
     if (ev->x_root < selmon->mx + tagwidth + 60) {
         handletagbarhover(ev);
-    } else if (selmon->sel &&
-               ev->x_root < selmon->mx + 60 + tagwidth + selmon->btw) {
+    } else if (selmon->sel && ev->x_root < selmon->mx + 60 + tagwidth +
+                                               selmon->bar_clients_width) {
         /* cursor is on window titles */
         handletitlebarhover(ev);
     } else {

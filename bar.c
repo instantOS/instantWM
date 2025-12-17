@@ -10,13 +10,13 @@
 #include <unistd.h>
 
 /* Bar drawing constants */
-#define CORNER_RADIUS_NORMAL   4   /* Normal rounded corners */
-#define CORNER_RADIUS_HOVER    8   /* Hover state rounded corners */
-#define STARTMENU_ICON_SIZE   14   /* Size of the start menu logo icon */
-#define STARTMENU_ICON_INNER   6   /* Inner square of start menu icon */
-#define CLOSE_BUTTON_WIDTH    20   /* Width of close button in title */
-#define CLOSE_BUTTON_HEIGHT   16   /* Height of close button body */
-#define CLOSE_BUTTON_DETAIL    4   /* Height of close button detail bar */
+#define CORNER_RADIUS_NORMAL 4 /* Normal rounded corners */
+#define CORNER_RADIUS_HOVER 8  /* Hover state rounded corners */
+#define STARTMENU_ICON_SIZE 14 /* Size of the start menu logo icon */
+#define STARTMENU_ICON_INNER 6 /* Inner square of start menu icon */
+#define CLOSE_BUTTON_WIDTH 20  /* Width of close button in title */
+#define CLOSE_BUTTON_HEIGHT 16 /* Height of close button body */
+#define CLOSE_BUTTON_DETAIL 4  /* Height of close button detail bar */
 
 #include "globals.h"
 
@@ -195,15 +195,18 @@ static void draw_startmenu_icon(void) {
         drw_setscheme(drw, statusscheme);
 
     drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0 : 1);
-    drw_rect(drw, 5, iconoffset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE, 1, startmenuinvert ? 1 : 0);
-    drw_rect(drw, 9, iconoffset + 4, STARTMENU_ICON_INNER, STARTMENU_ICON_INNER, 1, startmenuinvert ? 0 : 1);
-    drw_rect(drw, 19, iconoffset + STARTMENU_ICON_SIZE, STARTMENU_ICON_INNER, STARTMENU_ICON_INNER, 1, startmenuinvert ? 1 : 0);
+    drw_rect(drw, 5, iconoffset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE, 1,
+             startmenuinvert ? 1 : 0);
+    drw_rect(drw, 9, iconoffset + 4, STARTMENU_ICON_INNER, STARTMENU_ICON_INNER,
+             1, startmenuinvert ? 0 : 1);
+    drw_rect(drw, 19, iconoffset + STARTMENU_ICON_SIZE, STARTMENU_ICON_INNER,
+             STARTMENU_ICON_INNER, 1, startmenuinvert ? 1 : 0);
 }
 
 /* Helper: Get the color scheme for a tag based on its state */
-static Clr *get_tag_scheme(Monitor *m, unsigned int i, unsigned int occ,
-                           int ishover) {
-    if (occ & 1 << i) {
+static Clr *get_tag_scheme(Monitor *m, unsigned int i,
+                           unsigned int occupied_tags, int ishover) {
+    if (occupied_tags & 1 << i) {
         /* Tag has clients */
         if (m == selmon && selmon->sel && selmon->sel->tags & 1 << i) {
             return tagscheme[ishover][SchemeTagFocus];
@@ -225,7 +228,7 @@ static Clr *get_tag_scheme(Monitor *m, unsigned int i, unsigned int occ,
 }
 
 /* Helper: Draw all tag indicators and return the x position after them */
-static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
+static int draw_tag_indicators(Monitor *m, int x, unsigned int occupied_tags,
                                unsigned int urg) {
     int w, roundw, ishover;
 
@@ -238,12 +241,12 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
 
         /* Do not draw vacant tags */
         if (selmon->showtags) {
-            if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i))
                 continue;
         }
 
         w = TEXTW(tags[i]);
-        drw_setscheme(drw, get_tag_scheme(m, i, occ, ishover));
+        drw_setscheme(drw, get_tag_scheme(m, i, occupied_tags, ishover));
 
         if (i == selmon->gesture - 1) {
             roundw = CORNER_RADIUS_HOVER;
@@ -254,7 +257,8 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
                      (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, roundw);
         } else {
             drw_text(drw, x, 0, w, bh, lrpad / 2,
-                     (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, CORNER_RADIUS_NORMAL);
+                     (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i,
+                     CORNER_RADIUS_NORMAL);
         }
         x += w;
     }
@@ -294,7 +298,8 @@ static Clr *get_window_scheme(Client *c, int ishover) {
 
 /* Helper: Draw the close button for the selected window */
 static void draw_close_button(Client *c, int x) {
-    int ishover = selmon->gesture != GestureCloseButton ? SchemeNoHover : SchemeHover;
+    int ishover =
+        selmon->gesture != GestureCloseButton ? SchemeNoHover : SchemeHover;
 
     if (c->islocked) {
         drw_setscheme(drw, closebuttonscheme[ishover][SchemeCloseLocked]);
@@ -306,10 +311,15 @@ static void draw_close_button(Client *c, int x) {
 
     XSetForeground(drw->dpy, drw->gc, drw->scheme[ColBg].pixel);
     XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6,
-                   (bh - CLOSE_BUTTON_WIDTH) / 2 - !ishover * CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT);
+                   (bh - CLOSE_BUTTON_WIDTH) / 2 -
+                       !ishover * CLOSE_BUTTON_DETAIL,
+                   CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT);
     XSetForeground(drw->dpy, drw->gc, drw->scheme[ColDetail].pixel);
     XFillRectangle(drw->dpy, drw->drawable, drw->gc, x + bh / 6,
-                   (bh - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - !ishover * CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_DETAIL + !ishover * CLOSE_BUTTON_DETAIL);
+                   (bh - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT -
+                       !ishover * CLOSE_BUTTON_DETAIL,
+                   CLOSE_BUTTON_WIDTH,
+                   CLOSE_BUTTON_DETAIL + !ishover * CLOSE_BUTTON_DETAIL);
 }
 
 /* Helper: Draw a single window title */
@@ -362,13 +372,15 @@ static void draw_window_titles(Monitor *m, int x, int w, int n) {
 
         /* Display help message if no application is opened */
         if (!selmon->clients) {
-            int titlewidth =
-                TEXTW("Press space to launch an application") < m->btw
-                    ? TEXTW("Press space to launch an application")
-                    : (m->btw - bh);
-            drw_text(drw, x + bh + ((m->btw - bh) - titlewidth + 1) / 2, 0,
-                     titlewidth, bh, 0, "Press space to launch an application",
-                     0, 0);
+            int titlewidth = TEXTW("Press space to launch an application") <
+                                     m->bar_clients_width
+                                 ? TEXTW("Press space to launch an application")
+                                 : (m->bar_clients_width - bh);
+            drw_text(drw,
+                     x + bh +
+                         ((m->bar_clients_width - bh) - titlewidth + 1) / 2,
+                     0, titlewidth, bh, 0,
+                     "Press space to launch an application", 0, 0);
         }
     }
 }
@@ -378,7 +390,7 @@ void drawbar(Monitor *m) {
         return;
 
     int x, w, sw = 0, n = 0, stw = 0;
-    unsigned int occ = 0, urg = 0;
+    unsigned int occupied_tags = 0, urg = 0;
     Client *c;
 
     if (!m->showbar)
@@ -399,13 +411,13 @@ void drawbar(Monitor *m) {
     for (c = m->clients; c; c = c->next) {
         if (ISVISIBLE(c))
             n++;
-        occ |= c->tags == 255 ? 0 : c->tags;
+        occupied_tags |= c->tags == 255 ? 0 : c->tags;
         if (c->isurgent)
             urg |= c->tags;
     }
 
     x = startmenusize;
-    x = draw_tag_indicators(m, x, occ, urg);
+    x = draw_tag_indicators(m, x, occupied_tags, urg);
     x = draw_layout_indicator(m, x);
 
     if ((w = m->ww - sw - x - stw) > bh) {
@@ -414,7 +426,7 @@ void drawbar(Monitor *m) {
 
     drw_setscheme(drw, statusscheme);
     m->bt = n;
-    m->btw = w;
+    m->bar_clients_width = w;
     drw_map(drw, m->barwin, 0, 0, m->ww, bh);
 }
 
