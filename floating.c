@@ -206,37 +206,49 @@ void temp_fullscreen(const Arg *arg) {
         XRaiseWindow(dpy, selmon->fullscreen->win);
 }
 
+static void apply_float_change(Client *c, int floating, int animate, int update_borders) {
+    if (floating) {
+        c->isfloating = 1;
+        if (update_borders) {
+            restore_border_width(c);
+            XSetWindowBorder(dpy, c->win,
+                             borderscheme[SchemeBorderFloatFocus].pixel);
+        }
+        if (animate) {
+            animateclient(c, c->saved_float_x, c->saved_float_y,
+                          c->saved_float_width, c->saved_float_height, 7, 0);
+        } else {
+            resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
+                   c->saved_float_height, False);
+        }
+    } else {
+        c->isfloating = 0;
+        if (update_borders) {
+            selmon->clientcount = clientcount();
+            if (selmon->clientcount <= 1 && !c->snapstatus) {
+                savebw(c);
+                c->border_width = 0;
+            }
+            XSetWindowBorder(dpy, c->win,
+                             borderscheme[SchemeBorderTileFocus].pixel);
+        }
+        /* save last known float dimensions */
+        c->saved_float_x = c->x;
+        c->saved_float_y = c->y;
+        c->saved_float_width = c->w;
+        c->saved_float_height = c->h;
+    }
+}
+
 void toggle_floating(const Arg *arg) {
     if (!selmon->sel || selmon->sel == selmon->overlay)
         return;
     if (selmon->sel->is_fullscreen &&
         !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
         return;
-    selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
-    if (selmon->sel->isfloating) {
-        // make window float
-        restore_border_width(selmon->sel);
-        XSetWindowBorder(dpy, selmon->sel->win,
-                         borderscheme[SchemeBorderFloatFocus].pixel);
-        animateclient(selmon->sel, selmon->sel->saved_float_x,
-                      selmon->sel->saved_float_y,
-                      selmon->sel->saved_float_width,
-                      selmon->sel->saved_float_height, 7, 0);
-    } else {
-        // make window tile
-        selmon->clientcount = clientcount();
-        if (selmon->clientcount <= 1 && !selmon->sel->snapstatus) {
-            savebw(selmon->sel);
-            selmon->sel->border_width = 0;
-        }
-        XSetWindowBorder(dpy, selmon->sel->win,
-                         borderscheme[SchemeBorderTileFocus].pixel);
-        /* save last known float dimensions */
-        selmon->sel->saved_float_x = selmon->sel->x;
-        selmon->sel->saved_float_y = selmon->sel->y;
-        selmon->sel->saved_float_width = selmon->sel->w;
-        selmon->sel->saved_float_height = selmon->sel->h;
-    }
+
+    int new_state = !selmon->sel->isfloating || selmon->sel->isfixed;
+    apply_float_change(selmon->sel, new_state, 1, 1);
     arrange(selmon);
 }
 
@@ -253,18 +265,9 @@ void changefloating(Client *c) {
     if (c->is_fullscreen &&
         !c->isfakefullscreen) /* no support for fullscreen windows */
         return;
-    c->isfloating = !c->isfloating || c->isfixed;
-    if (c->isfloating)
-        /* restore last known float dimensions */
-        resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
-               c->saved_float_height, False);
-    else {
-        /* save last known float dimensions */
-        c->saved_float_x = c->x;
-        c->saved_float_y = c->y;
-        c->saved_float_width = c->w;
-        c->saved_float_height = c->h;
-    }
+
+    int new_state = !c->isfloating || c->isfixed;
+    apply_float_change(c, new_state, 0, 0);
     arrange(selmon);
 }
 
@@ -277,10 +280,7 @@ void setfloating(Client *c, int should_arrange) {
     if (c->isfloating)
         return; /* already floating */
 
-    c->isfloating = 1;
-    /* restore last known float dimensions */
-    resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
-           c->saved_float_height, False);
+    apply_float_change(c, 1, 0, 0);
 
     if (should_arrange)
         arrange(selmon);
@@ -295,12 +295,7 @@ void set_tiled(Client *c, int should_arrange) {
     if (!c->isfloating && !c->isfixed)
         return; /* already tiled */
 
-    c->isfloating = 0;
-    /* save last known float dimensions */
-    c->saved_float_x = c->x;
-    c->saved_float_y = c->y;
-    c->saved_float_width = c->w;
-    c->saved_float_height = c->h;
+    apply_float_change(c, 0, 0, 0);
 
     if (should_arrange)
         arrange(selmon);
