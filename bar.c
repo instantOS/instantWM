@@ -20,7 +20,7 @@ extern int bh;
 extern int lrpad;
 extern int (*xerrorxlib)(Display *, XErrorEvent *);
 extern int commandoffsets[20];
-extern int bardragging;
+extern int bar_dragging;
 extern int showalttag;
 extern int tagprefix;
 extern int altcursor;
@@ -263,7 +263,7 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
 
         if (i == selmon->gesture - 1) {
             roundw = 8;
-            if (bardragging) {
+            if (bar_dragging) {
                 drw_setscheme(drw, tagscheme[SchemeHover][SchemeTagFilled]);
             }
             drw_text(drw, x, 0, w, bh, lrpad / 2,

@@ -74,7 +74,7 @@ int freealttab = 0;
 Client *lastclient;
 
 int tagprefix = 0;
-int bardragging = 0;
+int bar_dragging = 0;
 int altcursor = 0;
 int tagwidth = 0;
 int doubledraw = 0;
@@ -132,7 +132,7 @@ Client *animclient;
 
 int commandoffsets[20];
 
-int forceresize = 0;
+int force_resize = 0;
 Monitor *selmon;
 
 /* Pertag is now defined in instantwm.h */

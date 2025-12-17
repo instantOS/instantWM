@@ -18,6 +18,20 @@
 #define REFRESH_RATE_DRAG 60      /* Refresh rate for drag operations */
 #define KEYCODE_ESCAPE 9          /* X11 keycode for Escape key */
 
+/* Resize direction enum for resize handle positions.
+ * Values arranged as: top row (0-2), right (3), bottom row (4-6), left (7)
+ * This matches the visual position of resize handles around a window. */
+enum {
+    ResizeDirTopLeft = 0,
+    ResizeDirTop = 1,
+    ResizeDirTopRight = 2,
+    ResizeDirRight = 3,
+    ResizeDirBottomRight = 4,
+    ResizeDirBottom = 5,
+    ResizeDirBottomLeft = 6,
+    ResizeDirLeft = 7
+};
+
 void movemouse(const Arg *arg);
 void gesturemouse(const Arg *arg);
 int hoverresizemouse(const Arg *arg);

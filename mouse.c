@@ -24,7 +24,7 @@ extern int animated;
 extern const int showsystray;
 extern const unsigned int systraypinning;
 extern const unsigned int systrayspacing;
-extern int forceresize;
+extern int force_resize;
 extern Cur *cursor[CurLast];
 extern void (*handler[LASTEvent])(XEvent *);
 extern const unsigned int snap;
@@ -33,7 +33,7 @@ extern const char *upvol[];
 extern const char *downvol[];
 extern int tagwidth;
 extern unsigned int tagmask;
-extern int bardragging;
+extern int bar_dragging;
 
 /* function declarations */
 extern void tempfullscreen(const Arg *arg);
@@ -672,6 +672,7 @@ void dragtag(const Arg *arg) {
     }
 
     int x, y, tagx = 0;
+    //TODO: rename to cursor_on_bar (instead of cursor has left bar) and reverse the value
     int leftbar = 0;
     XMotionEvent last_motion = {0};
     XMotionEvent *last_motion_ptr = NULL;
@@ -684,7 +685,7 @@ void dragtag(const Arg *arg) {
         return;
     if (!getrootptr(&x, &y))
         return;
-    bardragging = 1;
+    bar_dragging = 1;
 
     DragtagData data = {
         .leftbar = &leftbar, .tagx = &tagx, .last_motion = NULL};
@@ -718,105 +719,105 @@ void dragtag(const Arg *arg) {
             }
         }
     }
-    bardragging = 0;
+    bar_dragging = 0;
     XUngrabPointer(dpy, CurrentTime);
 }
 
 void forceresizemouse(const Arg *arg) {
-    forceresize = 1;
+    force_resize = 1;
     resizemouse(arg);
-    forceresize = 0;
+    force_resize = 0;
 }
 
 static int get_resize_direction(Client *c, int nx, int ny) {
     if (ny > c->h / 2) {     // bottom
         if (nx < c->w / 3) { // left
             if (ny < 2 * c->h / 3)
-                return 7; // side
+                return ResizeDirLeft;
             else
-                return 6;               // corner
+                return ResizeDirBottomLeft;
         } else if (nx > 2 * c->w / 3) { // right
             if (ny < 2 * c->h / 3)
-                return 3; // side
+                return ResizeDirRight;
             else
-                return 4; // corner
+                return ResizeDirBottomRight;
         } else {
             // middle
-            return 5;
+            return ResizeDirBottom;
         }
     } else {                 // top
         if (nx < c->w / 3) { // left
             if (ny > c->h / 3)
-                return 7; // side
+                return ResizeDirLeft;
             else
-                return 0;               // corner
+                return ResizeDirTopLeft;
         } else if (nx > 2 * c->w / 3) { // right
             if (ny > c->h / 3)
-                return 3; // side
+                return ResizeDirRight;
             else
-                return 2; // corner
+                return ResizeDirTopRight;
         } else {
             // cursor on middle
-            return 1;
+            return ResizeDirTop;
         }
     }
 }
 
-static Cursor get_resize_cursor(int corner) {
-    switch (corner) {
-    case 0:
+static Cursor get_resize_cursor(int direction) {
+    switch (direction) {
+    case ResizeDirTopLeft:
         return cursor[CurTL]->cursor;
-    case 1:
+    case ResizeDirTop:
         return cursor[CurVert]->cursor;
-    case 2:
+    case ResizeDirTopRight:
         return cursor[CurTR]->cursor;
-    case 3:
+    case ResizeDirRight:
         return cursor[CurHor]->cursor;
-    case 4:
+    case ResizeDirBottomRight:
         return cursor[CurBR]->cursor;
-    case 5:
+    case ResizeDirBottom:
         return cursor[CurVert]->cursor;
-    case 6:
+    case ResizeDirBottomLeft:
         return cursor[CurBL]->cursor;
-    case 7:
+    case ResizeDirLeft:
         return cursor[CurHor]->cursor;
     default:
         return cursor[CurMove]->cursor;
     }
 }
 
-static void warp_pointer_resize(Client *c, int corner) {
+static void warp_pointer_resize(Client *c, int direction) {
     int x_off, y_off;
-    switch (corner) {
-    case 0:
+    switch (direction) {
+    case ResizeDirTopLeft:
         x_off = -c->bw;
         y_off = -c->bw;
         break;
-    case 1:
+    case ResizeDirTop:
         x_off = (c->w + c->bw - 1) / 2;
         y_off = -c->bw;
         break;
-    case 2:
+    case ResizeDirTopRight:
         x_off = c->w + c->bw - 1;
         y_off = -c->bw;
         break;
-    case 3:
+    case ResizeDirRight:
         x_off = c->w + c->bw - 1;
         y_off = (c->h + c->bw - 1) / 2;
         break;
-    case 4:
+    case ResizeDirBottomRight:
         x_off = c->w + c->bw - 1;
         y_off = c->h + c->bw - 1;
         break;
-    case 5:
+    case ResizeDirBottom:
         x_off = (c->w + c->bw - 1) / 2;
         y_off = c->h + c->bw - 1;
         break;
-    case 6:
+    case ResizeDirBottomLeft:
         x_off = -c->bw;
         y_off = c->h + c->bw - 1;
         break;
-    case 7:
+    case ResizeDirLeft:
         x_off = -c->bw;
         y_off = (c->h + c->bw - 1) / 2;
         break;
@@ -826,27 +827,30 @@ static void warp_pointer_resize(Client *c, int corner) {
     XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, x_off, y_off);
 }
 
-static void calc_resize_geometry(Client *c, XEvent *ev, int corner, int ocx,
+static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
                                  int ocy, int ocx2, int ocy2, int *nx, int *ny,
                                  int *nw, int *nh) {
-    int horizcorner = (corner == 0 || corner == 6 || corner == 7);
-    int vertcorner = (corner == 0 || corner == 1 || corner == 2);
+    int is_left_side = (direction == ResizeDirTopLeft ||
+                        direction == ResizeDirBottomLeft ||
+                        direction == ResizeDirLeft);
+    int is_top_side = (direction == ResizeDirTopLeft ||
+                       direction == ResizeDirTop ||
+                       direction == ResizeDirTopRight);
 
-    if (corner != 1 && corner != 5) {
-        *nx = horizcorner ? ev->xmotion.x : c->x;
-        *nw = MAX(horizcorner ? (ocx2 - *nx)
-                              : (ev->xmotion.x - ocx - 2 * c->bw + 1),
+    if (direction != ResizeDirTop && direction != ResizeDirBottom) {
+        *nx = is_left_side ? ev->xmotion.x : c->x;
+        *nw = MAX(is_left_side ? (ocx2 - *nx)
+                               : (ev->xmotion.x - ocx - 2 * c->bw + 1),
                   1);
     } else {
         *nx = c->x;
         *nw = c->w;
     }
 
-    //TODO get rid of magic numbers, use existing enum if possible, otherwise create new enum
-    if (corner != 7 && corner != 3) {
-        *ny = vertcorner ? ev->xmotion.y : c->y;
-        *nh = MAX(vertcorner ? (ocy2 - *ny)
-                             : (ev->xmotion.y - ocy - 2 * c->bw + 1),
+    if (direction != ResizeDirLeft && direction != ResizeDirRight) {
+        *ny = is_top_side ? ev->xmotion.y : c->y;
+        *nh = MAX(is_top_side ? (ocy2 - *ny)
+                              : (ev->xmotion.y - ocy - 2 * c->bw + 1),
                   1);
     } else {
         *ny = c->y;
@@ -887,7 +891,7 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
     if (!tiling_layout_func(selmon) || c->isfloating) {
         if (c->bw == 0 && c != selmon->overlay)
             c->bw = c->oldbw;
-        if (!forceresize)
+        if (!force_resize)
             resize(c, nx, ny, nw, nh, 1);
         else
             resizeclient(c, nx, ny, nw, nh);
