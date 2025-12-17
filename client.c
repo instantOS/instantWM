@@ -140,7 +140,7 @@ void configure(Client *c) {
     ce.y = c->y;
     ce.width = c->w;
     ce.height = c->h;
-    ce.border_width = c->border_width;
+    ce.border_width = c->bw;
     ce.above = None;
     ce.override_redirect = False;
     XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *)&ce);
@@ -175,7 +175,7 @@ void showhide(Client *c) {
         /* show clients top down */
         XMoveWindow(dpy, c->win, c->x, c->y);
         if ((!c->mon->lt[c->mon->sellt]->arrange || c->isfloating) &&
-            (!c->is_fullscreen || c->isfakefullscreen))
+            (!c->isfullscreen || c->isfakefullscreen))
             resize(c, c->x, c->y, c->w, c->h, 0);
         showhide(c->snext);
     } else {
@@ -253,7 +253,7 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
     c->w = wc.width = w;
     c->oldh = c->h;
     c->h = wc.height = h;
-    wc.border_width = c->border_width;
+    wc.border_width = c->bw;
 
     XConfigureWindow(dpy, c->win,
                      CWX | CWY | CWWidth | CWHeight | CWBorderWidth, &wc);
@@ -372,18 +372,18 @@ int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact) {
             *x = sw - WIDTH(c);
         if (*y > sh)
             *y = sh - HEIGHT(c);
-        if (*x + *w + 2 * c->border_width < 0)
+        if (*x + *w + 2 * c->bw < 0)
             *x = 0;
-        if (*y + *h + 2 * c->border_width < 0)
+        if (*y + *h + 2 * c->bw < 0)
             *y = 0;
     } else {
         if (*x >= m->wx + m->ww)
             *x = m->wx + m->ww - WIDTH(c);
         if (*y >= m->wy + m->wh)
             *y = m->wy + m->wh - HEIGHT(c);
-        if (*x + *w + 2 * c->border_width <= m->wx)
+        if (*x + *w + 2 * c->bw <= m->wx)
             *x = m->wx;
-        if (*y + *h + 2 * c->border_width <= m->wy)
+        if (*y + *h + 2 * c->bw <= m->wy)
             *y = m->wy;
     }
     if (*h < bh)
@@ -430,7 +430,7 @@ int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact) {
 void killclient(const Arg *arg) {
     if (!selmon->sel || selmon->sel->islocked)
         return;
-    if (animated && selmon->sel != animclient && !selmon->sel->is_fullscreen) {
+    if (animated && selmon->sel != animclient && !selmon->sel->isfullscreen) {
         animclient = selmon->sel;
         animateclient(selmon->sel, selmon->sel->x, selmon->mh - 20, 0, 0, 10,
                       0);
@@ -480,7 +480,7 @@ void manage(Window w, XWindowAttributes *wa) {
     c->y = c->oldy = wa->y;
     c->w = c->oldw = wa->width;
     c->h = c->oldh = wa->height;
-    c->old_border_width = wa->border_width;
+    c->oldbw = wa->border_width;
 
     updatetitle(c);
     if (XGetTransientForHint(dpy, w, &trans) && (t = wintoclient(trans))) {
@@ -498,18 +498,18 @@ void manage(Window w, XWindowAttributes *wa) {
     c->x = MAX(c->x, c->mon->wx);
     /* only fix client y-offset, if the client center might cover the bar */
     c->y = MAX(c->y, c->mon->wy);
-    c->border_width = borderpx;
+    c->bw = borderpx;
 
     if (!c->isfloating && &monocle == c->mon->lt[c->mon->sellt]->arrange &&
         c->w > c->mon->mw - 30 && c->h > (c->mon->mh - 30 - bh)) {
         wc.border_width = 0;
     } else {
-        wc.border_width = c->border_width;
+        wc.border_width = c->bw;
     }
 
     XConfigureWindow(dpy, w, CWBorderWidth, &wc);
     XSetWindowBorder(dpy, w, borderscheme[SchemeBorderNormal].pixel);
-    configure(c); /* propagates border_width, if size doesn't change */
+    configure(c); /* propagates bw, if size doesn't change */
     updatewindowtype(c);
     updatesizehints(c);
     updatewmhints(c);
@@ -538,10 +538,10 @@ void manage(Window w, XWindowAttributes *wa) {
 
     updatemotifhints(c);
 
-    c->saved_float_x = c->x;
-    c->saved_float_y = c->y = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
-    c->saved_float_width = c->w;
-    c->saved_float_height = c->h;
+    c->sfx = c->x;
+    c->sfy = c->y = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
+    c->sfw = c->w;
+    c->sfh = c->h;
     XSelectInput(dpy, w,
                  EnterWindowMask | FocusChangeMask | PropertyChangeMask |
                      StructureNotifyMask);
@@ -566,7 +566,7 @@ void manage(Window w, XWindowAttributes *wa) {
         XMapWindow(dpy, c->win);
     focus(NULL);
 
-    if (animated && !c->is_fullscreen) {
+    if (animated && !c->isfullscreen) {
         resizeclient(c, c->x, c->y - 70, c->w, c->h);
         animateclient(c, c->x, c->y + 70, 0, 0, 7, 0);
         if (NULL == c->mon->lt[selmon->sellt]->arrange) {
@@ -586,16 +586,16 @@ void shutkill(const Arg *arg) {
 }
 
 void setfullscreen(Client *c, int fullscreen) {
-    if (fullscreen && !c->is_fullscreen) {
+    if (fullscreen && !c->isfullscreen) {
         XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
                         PropModeReplace,
                         (unsigned char *)&netatom[NetWMFullscreen], 1);
-        c->is_fullscreen = 1;
+        c->isfullscreen = 1;
 
         c->oldstate = c->isfloating;
         savebw(c);
         if (!c->isfakefullscreen) {
-            c->border_width = 0;
+            c->bw = 0;
             if (!c->isfloating)
                 animateclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh,
                               10, 0);
@@ -604,10 +604,10 @@ void setfullscreen(Client *c, int fullscreen) {
         }
         c->isfloating = 1;
 
-    } else if (!fullscreen && c->is_fullscreen) {
+    } else if (!fullscreen && c->isfullscreen) {
         XChangeProperty(dpy, c->win, netatom[NetWMState], XA_ATOM, 32,
                         PropModeReplace, (unsigned char *)0, 0);
-        c->is_fullscreen = 0;
+        c->isfullscreen = 0;
 
         c->isfloating = c->oldstate;
         restore_border_width(c);
@@ -624,14 +624,14 @@ void setfullscreen(Client *c, int fullscreen) {
 }
 
 void togglefakefullscreen(const Arg *arg) {
-    if (selmon->sel->is_fullscreen) {
+    if (selmon->sel->isfullscreen) {
         if (selmon->sel->isfakefullscreen) {
             resizeclient(selmon->sel, selmon->mx + borderpx,
                          selmon->my + borderpx, selmon->mw - 2 * borderpx,
                          selmon->mh - 2 * borderpx);
             XRaiseWindow(dpy, selmon->sel->win);
         } else {
-            selmon->sel->border_width = selmon->sel->old_border_width;
+            selmon->sel->bw = selmon->sel->oldbw;
         }
     }
 
@@ -694,7 +694,7 @@ void unmanage(Client *c, int destroyed) {
     detach(c);
     detachstack(c);
     if (!destroyed) {
-        wc.border_width = c->old_border_width;
+        wc.border_width = c->oldbw;
         XGrabServer(dpy); /* avoid race conditions */
         XSetErrorHandler(xerrordummy);
         XSelectInput(dpy, c->win, NoEventMask);
@@ -734,12 +734,12 @@ void updatemotifhints(Client *c) {
             if (motif[MWM_HINTS_DECORATIONS_FIELD] & MWM_DECOR_ALL ||
                 motif[MWM_HINTS_DECORATIONS_FIELD] & MWM_DECOR_BORDER ||
                 motif[MWM_HINTS_DECORATIONS_FIELD] & MWM_DECOR_TITLE)
-                c->border_width = c->old_border_width = borderpx;
+                c->bw = c->oldbw = borderpx;
             else
-                c->border_width = c->old_border_width = 0;
+                c->bw = c->oldbw = 0;
 
-            resize(c, c->x, c->y, width - (2 * c->border_width),
-                   height - (2 * c->border_width), 0);
+            resize(c, c->x, c->y, width - (2 * c->bw),
+                   height - (2 * c->bw), 0);
         }
         XFree(p);
     }

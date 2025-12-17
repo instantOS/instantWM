@@ -57,8 +57,8 @@ static void handle_systray_dock_request(XClientMessageEvent *cme) {
     c->x = c->oldx = c->y = c->oldy = 0;
     c->w = c->oldw = wa.width;
     c->h = c->oldh = wa.height;
-    c->old_border_width = wa.border_width;
-    c->border_width = 0;
+    c->oldbw = wa.border_width;
+    c->bw = 0;
     c->isfloating = True;
     /* reuse tags field as mapped status */
     c->tags = 1;
@@ -94,7 +94,7 @@ static void handle_netWMstate(Client *c, XClientMessageEvent *cme) {
         cme->data.l[2] == netatom[NetWMFullscreen])
         setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
                           || (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
-                              (!c->is_fullscreen || c->isfakefullscreen))));
+                              (!c->isfullscreen || c->isfakefullscreen))));
 }
 
 /* Helper: Handle _NET_ACTIVE_WINDOW message for regular windows */
@@ -177,7 +177,7 @@ void configurenotify(XEvent *e) {
                     if (c->isfakefullscreen)
                         XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww,
                                           bh);
-                    else if (c->is_fullscreen)
+                    else if (c->isfullscreen)
                         resizeclient(c, m->mx, m->my, m->mw, m->mh);
                 }
                 resizebarwin(m);
@@ -196,7 +196,7 @@ void configurerequest(XEvent *e) {
 
     if ((c = wintoclient(ev->window))) {
         if (ev->value_mask & CWBorderWidth)
-            c->border_width = ev->border_width;
+            c->bw = ev->border_width;
         else if (c->isfloating || !tiling_layout_func(selmon)) {
             m = c->mon;
             if (ev->value_mask & CWX) {
