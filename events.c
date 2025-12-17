@@ -290,7 +290,7 @@ void enternotify(XEvent *e) {
          selmon->sel->issticky)) {
         resizeexit = resizeborder(NULL);
         if (focusfollowsfloatmouse) {
-            if (!resizeexit)
+            if (resizeexit) // If resize was performed, don't change focus
                 return;
             Client *newc = getcursorclient();
             if (newc && newc != selmon->sel)
