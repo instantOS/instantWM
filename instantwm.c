@@ -107,7 +107,8 @@ void (*handler[LASTEvent])(XEvent *) = {[ButtonPress] = buttonpress,
                                         [MotionNotify] = motionnotify,
                                         [PropertyNotify] = propertynotify,
                                         [ResizeRequest] = resizerequest,
-                                        [UnmapNotify] = unmapnotify};
+                                        [UnmapNotify] = unmapnotify,
+                                        [LeaveNotify] = leavenotify};
 Atom wmatom[WMLast], netatom[NetLast], xatom[XLast], motifatom;
 static int running = 1;
 Cur *cursor[CurLast];
@@ -1566,7 +1567,8 @@ void updatebars(void) {
     Monitor *m;
     XSetWindowAttributes wa = {.override_redirect = True,
                                .background_pixmap = ParentRelative,
-                               .event_mask = ButtonPressMask | ExposureMask};
+                               .event_mask = ButtonPressMask | ExposureMask |
+                                             LeaveWindowMask};
     XClassHint ch = {"dwm", "dwm"};
     for (m = mons; m; m = m->next) {
         if (m->barwin)

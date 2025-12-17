@@ -19,5 +19,6 @@ void motionnotify(XEvent *e);
 void propertynotify(XEvent *e);
 void resizerequest(XEvent *e);
 void unmapnotify(XEvent *e);
+void leavenotify(XEvent *e);
 
 #endif
