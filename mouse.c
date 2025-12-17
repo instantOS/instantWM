@@ -341,9 +341,16 @@ void dragmouse(const Arg *arg) {
             if (abs(x - startx) > DRAG_THRESHOLD ||
                 abs(y - starty) > DRAG_THRESHOLD) {
                 XUngrabPointer(dpy, CurrentTime);
-                if (c)
+                if (c) {
+                    int warp_w = c->w;
+                    int warp_h = c->h;
+                    if (!c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+                        warp_w = c->sfw;
+                        warp_h = c->sfh;
+                    }
                     XWarpPointer(dpy, None, root, 0, 0, 0, 0,
-                                 c->x + c->w / 2, c->y + c->h / 2);
+                                 c->x + warp_w / 2, c->y + warp_h / 2);
+                }
                 movemouse(NULL);
                 return;
             }
