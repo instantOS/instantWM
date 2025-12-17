@@ -631,3 +631,12 @@ void unmapnotify(XEvent *e) {
         updatesystray();
     }
 }
+
+void leavenotify(XEvent *e) {
+    XCrossingEvent *ev = &e->xcrossing;
+    Monitor *m;
+
+    if ((m = wintomon(ev->window)) && ev->window == m->barwin) {
+         resetbar();
+    }
+}
