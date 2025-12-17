@@ -341,6 +341,9 @@ void dragmouse(const Arg *arg) {
             if (abs(x - startx) > DRAG_THRESHOLD ||
                 abs(y - starty) > DRAG_THRESHOLD) {
                 XUngrabPointer(dpy, CurrentTime);
+                if (c)
+                    XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+                                 c->x + c->w / 2, c->y + c->h / 2);
                 movemouse(NULL);
                 return;
             }
