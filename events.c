@@ -27,18 +27,13 @@
 
 /* extern functions from instantwm.c */
 extern void grabkeys(void);
-extern void updatebarpos(Monitor *m);
 extern void updatenumlockmask(void);
 extern void updateclientlist(void);
-extern void manage(Window w, XWindowAttributes *wa);
-extern void unmanage(Client *c, int destroyed);
 extern void updatesizehints(Client *c);
 extern void updatewindowtype(Client *c);
 extern void updatewmhints(Client *c);
 extern void updatemotifhints(Client *c);
-extern void resizebarwin(Monitor *m);
 extern void resetcursor(void);
-extern int get_blw(Monitor *m);
 extern long getstate(Window w);
 extern int getrootptr(int *x, int *y);
 extern Client *getcursorclient(void);
@@ -635,4 +630,133 @@ void leavenotify(XEvent *e) {
     if ((m = wintomon(ev->window)) && ev->window == m->barwin) {
         resetbar();
     }
+}
+
+static void handle_focus_monitor(XButtonPressedEvent *ev) {
+    Monitor *m;
+    if ((m = wintomon(ev->window)) && m != selmon) {
+        /* if focus doesn't follow the mouse, the scroll wheel shouldn't switch
+         * focus */
+        if (focusfollowsmouse || ev->button <= Button3) {
+            unfocus(selmon->sel, 1);
+            selmon = m;
+            focus(NULL);
+        }
+    }
+}
+
+static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
+                             Arg *arg) {
+    unsigned int i, x, occupied_tags = 0;
+    Client *c;
+    Monitor *m = selmon; /* Since ev->window == selmon->barwin, m is selmon */
+    int blw = get_blw(selmon);
+
+    i = 0;
+    x = startmenusize;
+    for (c = m->clients; c; c = c->next)
+        occupied_tags |= c->tags == 255 ? 0 : c->tags;
+    do {
+        /* do not reserve space for vacant tags */
+        if (i >= 9)
+            continue;
+        if (selmon->showtags) {
+            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i))
+                continue;
+        }
+
+        x += TEXTW(tags[i]);
+    } while (ev->x >= x && ++i < numtags);
+    if (ev->x < startmenusize) {
+        *click = ClkStartMenu;
+        selmon->gesture = GestureNone;
+        drawbar(selmon);
+    } else if (i < numtags) {
+        *click = ClkTagBar;
+        arg->ui = 1 << i;
+    } else if (ev->x < x + blw)
+        *click = ClkLtSymbol;
+    else if (!selmon->sel && ev->x > x + blw && ev->x < x + blw + bh)
+        *click = ClkShutDown;
+    /* 2px right padding */
+    else if (ev->x > selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
+        *click = ClkStatusText;
+    else {
+        if (selmon->stack) {
+            x += blw;
+            c = m->clients;
+
+            do {
+                if (!ISVISIBLE(c))
+                    continue;
+                else
+                    x += (1.0 / (double)m->bt) * m->bar_clients_width;
+            } while (ev->x > x && (c = c->next));
+
+            if (c) {
+                arg->v = c;
+                if (c != selmon->sel ||
+                    ev->x >
+                        x - (1.0 / (double)m->bt) * m->bar_clients_width + 32) {
+                    *click = ClkWinTitle;
+                } else {
+                    *click = ClkCloseButton;
+                }
+            }
+        } else {
+            *click = ClkRootWin;
+        }
+    }
+}
+
+static void handle_client_click(XButtonPressedEvent *ev, Client *c,
+                                unsigned int *click) {
+    if (focusfollowsmouse || ev->button <= Button3) {
+        focus(c);
+        restack(selmon);
+    }
+    XAllowEvents(dpy, ReplayPointer, CurrentTime);
+    *click = ClkClientWin;
+}
+
+void buttonpress(XEvent *e) {
+    unsigned int i, click;
+    Arg arg = {0};
+    Client *c;
+    XButtonPressedEvent *ev = &e->xbutton;
+
+    click = ClkRootWin;
+    /* focus monitor if necessary */
+    handle_focus_monitor(ev);
+
+    if (ev->window == selmon->barwin) {
+        handle_bar_click(ev, &click, &arg);
+    } else if ((c = wintoclient(ev->window))) {
+        handle_client_click(ev, c, &click);
+    } else if (ev->x > selmon->mx + selmon->mw - 50) {
+        click = ClkSideBar;
+    }
+    // Handle resize click when cursor is in resize mode near floating window
+    if (click == ClkRootWin && altcursor == AltCurResize &&
+        ev->button == Button1 && selmon->sel &&
+        (selmon->sel->isfloating || !tiling_layout_func(selmon))) {
+        resetcursor();
+        resizemouse(NULL);
+        return;
+    }
+    /* Execute the button action handler that matches the click location,
+     * button, and modifier keys. For special click types (tags, window titles,
+     * buttons), pass the constructed arg with contextual data; otherwise use
+     * button's arg.
+     */
+    for (i = 0; i < buttons_len; i++)
+        if (click == buttons[i].click && buttons[i].func &&
+            buttons[i].button == ev->button &&
+            CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
+            buttons[i].func((click == ClkTagBar || click == ClkWinTitle ||
+                             click == ClkCloseButton || click == ClkShutDown ||
+                             click == ClkSideBar) &&
+                                    buttons[i].arg.i == 0
+                                ? &arg
+                                : &buttons[i].arg);
 }

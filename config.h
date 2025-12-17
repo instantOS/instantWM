@@ -7,7 +7,7 @@
 #include <X11/XF86keysym.h>
 
 /* appearance */
-static const unsigned int borderpx = 3; /* border pixel of windows */
+ const unsigned int borderpx = 3; /* border pixel of windows */
 const unsigned int snap = 32;           /* snap pixel */
 const unsigned int startmenusize = 30;  /* snap pixel */
 const unsigned int systraypinning =
@@ -18,41 +18,41 @@ const int systraypinningfailfirst =
     1; /* 1: if pinning fails, display systray on the first monitor, False:
           display systray on the last monitor*/
 const int showsystray = 1;    /* 0 means no systray */
-static const int showbar = 1; /* 0 means no bar */
-static const int topbar = 1;  /* 0 means bottom bar */
-static const char *fonts[] = {"Inter-Regular:size=12",
+ const int showbar = 1; /* 0 means no bar */
+ const int topbar = 1;  /* 0 means bottom bar */
+ const char *fonts[] = {"Inter-Regular:size=12",
                               "Fira Code Nerd Font:size=12"};
 
-static int barheight;
-static char xresourcesfont[30];
+ int barheight;
+ char xresourcesfont[30];
 
-static char col_bg[] = "#121212";
-static char col_text[] = "#DFDFDF";
-static char col_black[] = "#000000";
+ char col_bg[] = "#121212";
+ char col_text[] = "#DFDFDF";
+ char col_black[] = "#000000";
 
-static char col_bg_accent[] = "#384252";
-static char col_bg_accent_hover[] = "#4C5564";
-static char col_bg_hover[] = "#1C1C1C";
+ char col_bg_accent[] = "#384252";
+ char col_bg_accent_hover[] = "#4C5564";
+ char col_bg_hover[] = "#1C1C1C";
 
-static char col_light_blue[] = "#89B3F7";
-static char col_light_blue_hover[] = "#a1c2f9";
-static char col_blue[] = "#536DFE";
-static char col_blue_hover[] = "#758afe";
+ char col_light_blue[] = "#89B3F7";
+ char col_light_blue_hover[] = "#a1c2f9";
+ char col_blue[] = "#536DFE";
+ char col_blue_hover[] = "#758afe";
 
-static char col_light_green[] = "#81c995";
-static char col_light_green_hover[] = "#99d3aa";
-static char col_green[] = "#1e8e3e";
-static char col_green_hover[] = "#4ba465";
+ char col_light_green[] = "#81c995";
+ char col_light_green_hover[] = "#99d3aa";
+ char col_green[] = "#1e8e3e";
+ char col_green_hover[] = "#4ba465";
 
-static char col_light_yellow[] = "#fdd663";
-static char col_light_yellow_hover[] = "#fddd82";
-static char col_yellow[] = "#f9ab00";
-static char col_yellow_hover[] = "#f9bb33";
+ char col_light_yellow[] = "#fdd663";
+ char col_light_yellow_hover[] = "#fddd82";
+ char col_yellow[] = "#f9ab00";
+ char col_yellow_hover[] = "#f9bb33";
 
-static char col_light_red[] = "#f28b82";
-static char col_light_red_hover[] = "#f4a19a";
-static char col_red[] = "#d93025";
-static char col_red_hover[] = "#e05951";
+ char col_light_red[] = "#f28b82";
+ char col_light_red_hover[] = "#f4a19a";
+ char col_red[] = "#d93025";
+ char col_red_hover[] = "#e05951";
 
 const char *
     tagcolors[2][5][3] = {[SchemeNoHover] = {[SchemeTagInactive] =
@@ -302,19 +302,19 @@ char tags[][MAX_TAGLEN] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
 const char *tagsalt[] = {"", "{}",  "$",   "", "",
                          "", "", "", ""};
 
-static const char scratchpadname[] = "instantscratchpad";
+ const char scratchpadname[] = "instantscratchpad";
 
 const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
 const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-", NULL};
-static const char *mutevol[] = {"/usr/share/instantassist/utils/p.sh", "m",
+ const char *mutevol[] = {"/usr/share/instantassist/utils/p.sh", "m",
                                 NULL};
 
-static const char *upbright[] = {"/usr/share/instantassist/utils/b.sh", "+",
+ const char *upbright[] = {"/usr/share/instantassist/utils/b.sh", "+",
                                  NULL};
-static const char *downbright[] = {"/usr/share/instantassist/utils/b.sh", "-",
+ const char *downbright[] = {"/usr/share/instantassist/utils/b.sh", "-",
                                    NULL};
 
-static const Rule rules[] = {
+ const Rule rules[] = {
     /* xprop(1):
      *	WM_CLASS(STRING) = instance, class
      *	WM_NAME(STRING) = title
@@ -337,10 +337,10 @@ static const Rule rules[] = {
 };
 
 /* layout(s) */
-static const float mfact = 0.55; /* factor of master area size [0.05..0.95] */
-static const int nmaster = 1;    /* number of clients in master area */
+ const float mfact = 0.55; /* factor of master area size [0.05..0.95] */
+ const int nmaster = 1;    /* number of clients in master area */
 const int resizehints = 1; /* 1 means respect size hints in tiled resizals */
-static const int decorhints = 1; /* 1 means respect decoration hints */
+ const int decorhints = 1; /* 1 means respect decoration hints */
 
 const Layout layouts[] = {
     /* symbol     arrange function */
@@ -368,31 +368,31 @@ const Layout layouts[] = {
     }
 
 /* commands */
-static char instantmenumon[2] =
+ char instantmenumon[2] =
     "0"; /* component of instantmenucmd, manipulated in spawn() */
-static const char *instantmenucmd[] = {"instantmenu_run", NULL};
-static const char *clipmenucmd[] = {"instantclipmenu", NULL};
-static const char *smartcmd[] = {"instantmenu_smartrun", NULL};
-static const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
-static const char *termcmd[] = {".config/instantos/default/terminal", NULL};
+ const char *instantmenucmd[] = {"instantmenu_run", NULL};
+ const char *clipmenucmd[] = {"instantclipmenu", NULL};
+ const char *smartcmd[] = {"instantmenu_smartrun", NULL};
+ const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
+ const char *termcmd[] = {".config/instantos/default/terminal", NULL};
 const char *termscratchcmd[] = {".config/instantos/default/terminal", "-c",
                                 scratchpadname, NULL};
-static const char *quickmenucmd[] = {"quickmenu", NULL};
-static const char *instantassistcmd[] = {"instantassist", NULL};
-static const char *instantrepeatcmd[] = {"instantrepeat", NULL};
-static const char *instantpacmancmd[] = {"instantpacman", NULL};
-static const char *instantsharecmd[] = {"instantshare", "snap", NULL};
-static const char *nautiluscmd[] = {".config/instantos/default/filemanager",
+ const char *quickmenucmd[] = {"quickmenu", NULL};
+ const char *instantassistcmd[] = {"instantassist", NULL};
+ const char *instantrepeatcmd[] = {"instantrepeat", NULL};
+ const char *instantpacmancmd[] = {"instantpacman", NULL};
+ const char *instantsharecmd[] = {"instantshare", "snap", NULL};
+ const char *nautiluscmd[] = {".config/instantos/default/filemanager",
                                     NULL};
-static const char *slockcmd[] = {".config/instantos/default/lockscreen", NULL};
-static const char *onekeylock[] = {"ilock", "-o", NULL};
-static const char *langswitchcmd[] = {"ilayout", NULL};
-static const char *oslockcmd[] = {"instantlock", "-o", NULL};
-static const char *helpcmd[] = {"instanthotkeys", "gui", NULL};
-static const char *searchcmd[] = {"instantsearch", NULL};
-static const char *keylayoutswitchcmd[] = {"instantkeyswitch", NULL};
-static const char *iswitchcmd[] = {"iswitch", NULL};
-static const char *instantswitchcmd[] = {"rofi",
+ const char *slockcmd[] = {".config/instantos/default/lockscreen", NULL};
+ const char *onekeylock[] = {"ilock", "-o", NULL};
+ const char *langswitchcmd[] = {"ilayout", NULL};
+ const char *oslockcmd[] = {"instantlock", "-o", NULL};
+ const char *helpcmd[] = {"instanthotkeys", "gui", NULL};
+ const char *searchcmd[] = {"instantsearch", NULL};
+ const char *keylayoutswitchcmd[] = {"instantkeyswitch", NULL};
+ const char *iswitchcmd[] = {"iswitch", NULL};
+ const char *instantswitchcmd[] = {"rofi",
                                          "-show",
                                          "window",
                                          "-kb-row-down",
@@ -406,7 +406,7 @@ static const char *instantswitchcmd[] = {"rofi",
                                          "-me-accept-entry",
                                          "MousePrimary",
                                          NULL};
-static const char *caretinstantswitchcmd[] = {
+ const char *caretinstantswitchcmd[] = {
     "rofi",
     "-show",
     "window",
@@ -423,39 +423,39 @@ static const char *caretinstantswitchcmd[] = {
     "-theme",
     "/usr/share/instantdotfiles/rootconfig/rofi/appmenu.rasi",
     NULL};
-static const char *instantskippycmd[] = {"instantskippy", NULL};
-static const char *onboardcmd[] = {"onboard", NULL};
-static const char *instantshutdowncmd[] = {"instantshutdown", NULL};
-static const char *systemmonitorcmd[] = {
+ const char *instantskippycmd[] = {"instantskippy", NULL};
+ const char *onboardcmd[] = {"onboard", NULL};
+ const char *instantshutdowncmd[] = {"instantshutdown", NULL};
+ const char *systemmonitorcmd[] = {
     ".config/instantos/default/systemmonitor", NULL};
-static const char *notifycmd[] = {"instantnotify", NULL};
-static const char *rangercmd[] = {".config/instantos/default/termfilemanager",
+ const char *notifycmd[] = {"instantnotify", NULL};
+ const char *rangercmd[] = {".config/instantos/default/termfilemanager",
                                   NULL};
-static const char *panther[] = {".config/instantos/default/appmenu", NULL};
-static const char *controlcentercmd[] = {"ins settings --gui", NULL};
-static const char *displaycmd[] = {"instantdisper", NULL};
-static const char *pavucontrol[] = {"pavucontrol", NULL};
-static const char *instantsettings[] = {"ins", "settings", "--gui", NULL};
+ const char *panther[] = {".config/instantos/default/appmenu", NULL};
+ const char *controlcentercmd[] = {"ins settings --gui", NULL};
+ const char *displaycmd[] = {"instantdisper", NULL};
+ const char *pavucontrol[] = {"pavucontrol", NULL};
+ const char *instantsettings[] = {"ins", "settings", "--gui", NULL};
 // static const char  *clickcmd[] = { "autoclicker", NULL };
-static const char *codecmd[] = {"instantutils open graphicaleditor", NULL};
-static const char *startmenucmd[] = {"instantstartmenu", NULL};
+ const char *codecmd[] = {"instantutils open graphicaleditor", NULL};
+ const char *startmenucmd[] = {"instantstartmenu", NULL};
 
-static const char *scrotcmd[] = {"/usr/share/instantassist/assists/s/s.sh",
+ const char *scrotcmd[] = {"/usr/share/instantassist/assists/s/s.sh",
                                  NULL};
-static const char *fscrotcmd[] = {"/usr/share/instantassist/assists/s/m.sh",
+ const char *fscrotcmd[] = {"/usr/share/instantassist/assists/s/m.sh",
                                   NULL};
-static const char *clipscrotcmd[] = {"/usr/share/instantassist/assists/s/c.sh",
+ const char *clipscrotcmd[] = {"/usr/share/instantassist/assists/s/c.sh",
                                      NULL};
-static const char *fclipscrotcmd[] = {"/usr/share/instantassist/assists/s/f.sh",
+ const char *fclipscrotcmd[] = {"/usr/share/instantassist/assists/s/f.sh",
                                       NULL};
 
-static const char *firefoxcmd[] = {".config/instantos/default/browser", NULL};
-static const char *editorcmd[] = {".config/instantos/default/editor", NULL};
+ const char *firefoxcmd[] = {".config/instantos/default/browser", NULL};
+ const char *editorcmd[] = {".config/instantos/default/editor", NULL};
 
-static const char *playernext[] = {"playerctl", "next", NULL};
-static const char *playerprevious[] = {"playerctl", "previous", NULL};
-static const char *playerpause[] = {"playerctl", "play-pause", NULL};
-static const char *spoticli[] = {"spoticli", "m", NULL};
+ const char *playernext[] = {"playerctl", "next", NULL};
+ const char *playerprevious[] = {"playerctl", "previous", NULL};
+ const char *playerpause[] = {"playerctl", "play-pause", NULL};
+ const char *spoticli[] = {"spoticli", "m", NULL};
 
 #include "push.c"
 
@@ -477,7 +477,7 @@ ResourcePref resources[] = {
 };
 
 // instantwmctl commands
-static Xcommand commands[] = {
+ Xcommand commands[] = {
     /* signum       function        default argument  arg handler*/
     // 0 means off, 1 means toggle, 2 means on
     // arg handlers:
@@ -699,7 +699,7 @@ Key keys[] = {
 /* button definitions */
 /* click can be ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
  * ClkClientWin, or ClkRootWin */
-static Button buttons[] = {
+ Button buttons[] = {
     /* click          event mask          button   function argument */
     {ClkLtSymbol, 0, Button1, cyclelayout, {.i = -1}},
     {ClkLtSymbol, 0, Button3, cyclelayout, {.i = +1}},
