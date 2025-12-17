@@ -30,16 +30,10 @@
 #define HIDDEN(C) ((getstate(C->win) == IconicState))
 #define LENGTH(X) (sizeof X / sizeof X[0])
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
-<<<<<<< HEAD
 #define WIDTH(X) ((X)->w + 2 * (X)->border_width)
 #define HEIGHT(X) ((X)->h + 2 * (X)->border_width)
 #define TAGMASK ((1 << LENGTH(tags)) - 1)
 #define MAX_TAGS 21 /* Fixed size for Pertag arrays (20 tags + 1) */
-=======
-#define WIDTH(X) ((X)->w + 2 * (X)->bw)
-#define HEIGHT(X) ((X)->h + 2 * (X)->bw)
-#define TAGMASK ((1 << LENGTH(tags)) - 1)
->>>>>>> origin/main
 #define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
 
 #define MWM_HINTS_FLAGS_FIELD 0
@@ -119,14 +113,11 @@ enum {
     ClkStartMenu,
     ClkLast
 }; /* clicks */
-<<<<<<< HEAD
 enum {
     AltCurNone,   /* 0: normal cursor */
     AltCurResize, /* 1: resize cursor near floating window */
     AltCurSidebar /* 2: vertical cursor for sidebar slider */
 }; /* altcursor states */
-=======
->>>>>>> origin/main
 
 ////// Colorscheme enums //////
 // each element has the possibility of a hover over
@@ -166,7 +157,6 @@ enum {
     SchemeBorderLast
 };
 
-<<<<<<< HEAD
 /* Scratchpad uses tag index 20 (21st tag) */
 #define SCRATCHPAD_TAG 20
 #define SCRATCHPAD_MASK (1 << SCRATCHPAD_TAG)
@@ -225,8 +215,6 @@ enum {
     SpecialFloat /* 1: Force floating */
 };
 
-=======
->>>>>>> origin/main
 typedef union {
     int i;
     unsigned int ui;
@@ -248,7 +236,6 @@ struct Client {
     char name[256];
     float mina, maxa;
     int x, y, w, h;
-<<<<<<< HEAD
     int saved_float_x, saved_float_y, saved_float_width,
         saved_float_height; /* stored float geometry, used on mode revert */
     int oldx, oldy, oldw, oldh;
@@ -256,14 +243,6 @@ struct Client {
     int border_width, old_border_width;
     unsigned int tags;
     int isfixed, isfloating, isurgent, neverfocus, oldstate, is_fullscreen,
-=======
-    int sfx, sfy, sfw, sfh; /* stored float geometry, used on mode revert */
-    int oldx, oldy, oldw, oldh;
-    int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
-    int bw, oldbw;
-    unsigned int tags;
-    int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen,
->>>>>>> origin/main
         isfakefullscreen, islocked, issticky, snapstatus;
     Client *next;
     Client *snext;
@@ -278,15 +257,12 @@ typedef struct {
     const Arg arg;
 } Key;
 
-<<<<<<< HEAD
 extern Key keys[];
 extern size_t keys_len;
 extern Key dkeys[];
 extern size_t dkeys_len;
 extern unsigned int numlockmask;
 
-=======
->>>>>>> origin/main
 typedef struct {
     char *cmd;
     void (*func)(const Arg *);
@@ -299,7 +275,6 @@ typedef struct {
     void (*arrange)(Monitor *);
 } Layout;
 
-<<<<<<< HEAD
 struct Pertag {
     unsigned int current_tag, prevtag; /* current and previous tag */
     int nmasters[MAX_TAGS];            /* number of windows in master area */
@@ -322,27 +297,16 @@ typedef struct Pertag Pertag;
 #define PERTAG_LAYOUT(m)                                                       \
     ((m)->pertag->ltidxs[PERTAG_CURRENT(m)][PERTAG_SELLT(m)])
 
-=======
-typedef struct Pertag Pertag;
->>>>>>> origin/main
 struct Monitor {
     char ltsymbol[16];
     float mfact;
     int nmaster;
     int num;
-<<<<<<< HEAD
     int by;                /* bar geometry */
     int bar_clients_width; /* width of clients portion of bar */
     int bt;                /* number of tasks */
     int mx, my, mw, mh;    /* screen size */
     int wx, wy, ww, wh;    /* window area  */
-=======
-    int by;             /* bar geometry */
-    int btw;            /* width of tasks portion of bar */
-    int bt;             /* number of tasks */
-    int mx, my, mw, mh; /* screen size */
-    int wx, wy, ww, wh; /* window area  */
->>>>>>> origin/main
     unsigned int seltags;
     unsigned int sellt;
     unsigned int tagset[2];
@@ -450,25 +414,11 @@ void manage(Window w, XWindowAttributes *wa);
 void mappingnotify(XEvent *e);
 void maprequest(XEvent *e);
 void motionnotify(XEvent *e);
-<<<<<<< HEAD
 
 void moveresize(const Arg *arg);
 void distributeclients(const Arg *arg);
 void keyresize(const Arg *arg);
 void center_window();
-=======
-void movemouse(const Arg *arg);
-void dragmouse(const Arg *arg);
-void gesturemouse(const Arg *arg);
-int resizeborder(const Arg *arg);
-void dragrightmouse(const Arg *arg);
-void drawwindow(const Arg *arg);
-void dragtag(const Arg *arg);
-void moveresize(const Arg *arg);
-void distributeclients(const Arg *arg);
-void keyresize(const Arg *arg);
-void centerwindow();
->>>>>>> origin/main
 void resetnametag(const Arg *arg);
 void nametag(const Arg *arg);
 Client *nexttiled(Client *c);
@@ -487,13 +437,7 @@ int allclientcount();
 int clientcountmon(Monitor *m);
 void resizebarwin(Monitor *m);
 void resizeclient(Client *c, int x, int y, int w, int h);
-<<<<<<< HEAD
 
-=======
-void resizemouse(const Arg *arg);
-void forceresizemouse(const Arg *arg);
-void resizeaspectmouse(const Arg *arg);
->>>>>>> origin/main
 void resizerequest(XEvent *e);
 void restack(Monitor *m);
 void animateclient(Client *c, int x, int y, int w, int h, int frames,
@@ -545,20 +489,13 @@ void togglefakefullscreen(const Arg *arg);
 void togglelocked(const Arg *arg);
 void toggleshowtags(const Arg *arg);
 void togglebar(const Arg *arg);
-<<<<<<< HEAD
 void toggle_floating(const Arg *arg);
-=======
-void togglefloating(const Arg *arg);
->>>>>>> origin/main
 void togglesticky(const Arg *arg);
 void toggleprefix(const Arg *arg);
 void toggletag(const Arg *arg);
 void togglescratchpad(const Arg *arg);
 void createscratchpad(const Arg *arg);
-<<<<<<< HEAD
 void makescratchpad(const Arg *arg);
-=======
->>>>>>> origin/main
 void showscratchpad(const Arg *arg);
 void hidescratchpad(const Arg *arg);
 void scratchpadstatus(const Arg *arg);
@@ -582,21 +519,13 @@ void updatestatus(void);
 void updatesystray(void);
 void updatesystrayicongeom(Client *i, int w, int h);
 void updatesystrayiconstate(Client *i, XPropertyEvent *ev);
-<<<<<<< HEAD
-=======
-void updatetitle(Client *c);
->>>>>>> origin/main
 void updatewindowtype(Client *c);
 void updatewmhints(Client *c);
 void view(const Arg *arg);
 void warp(const Client *c);
 void forcewarp(const Client *c);
 void warpinto(const Client *c);
-<<<<<<< HEAD
 void warp_to_focus();
-=======
-void warpfocus();
->>>>>>> origin/main
 void viewtoleft(const Arg *arg);
 void animleft(const Arg *arg);
 void animright(const Arg *arg);
@@ -614,11 +543,7 @@ void fullovertoggle(const Arg *arg);
 
 void setspecialnext(const Arg *arg);
 
-<<<<<<< HEAD
 void direction_focus(const Arg *arg);
-=======
-void directionfocus(const Arg *arg);
->>>>>>> origin/main
 
 Client *wintoclient(Window w);
 Monitor *wintomon(Window w);
@@ -636,30 +561,17 @@ void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
 void keyrelease(XEvent *e);
 void setoverlay();
 void desktopset();
-<<<<<<< HEAD
 void createoverlay();
 void temp_fullscreen();
-=======
-void createdesktop();
-void createoverlay();
-void tempfullscreen();
->>>>>>> origin/main
 
 void savefloating(Client *c);
 void restorefloating(Client *c);
 
 void savebw(Client *c);
-<<<<<<< HEAD
 void restore_border_width(Client *c);
 
 void shiftview(const Arg *arg);
 void focus_last_client(const Arg *arg);
-=======
-void restorebw(Client *c);
-
-void shiftview(const Arg *arg);
-void focuslastclient(const Arg *arg);
->>>>>>> origin/main
 
 void resetoverlay();
 void showoverlay();
@@ -672,9 +584,6 @@ extern int bh;
 extern int animated;
 extern Display *dpy;
 
-<<<<<<< HEAD
 #include "mouse.h"
 
-=======
->>>>>>> origin/main
 #endif

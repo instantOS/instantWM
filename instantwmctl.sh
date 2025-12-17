@@ -23,28 +23,16 @@ Commands:
     hidetags 0|1             Hide tags that have no windows on current monitor (0 means hide)
     nametag <name>           change the name/icon of the current tag
     resetnametag             reset all tag names to default
-<<<<<<< HEAD
-    makescratchpad <name>    Make window with class scratchpad_<name> a scratchpad
-    togglescratchpad <name>  Toggle scratchpad with class scratchpad_<name>
-    showscratchpad <name>    Show the scratchpad (optional: specific name)
-    hidescratchpad <name>    Hide the scratchpad (optional: specific name)
-    scratchpadstatus <name> Get scratchpad visibility (read via xprop -root WM_NAME). Optional name to check specific scratchpad"
-=======
     showscratchpad           Show the scratchpad
     hidescratchpad           Hide the scratchpad
     scratchpadstatus         Get scratchpad visibility (read via xprop -root WM_NAME)"
->>>>>>> origin/main
 # See config.def.c and look for "Xcommand commands"
 
 main() {
     case $1 in
         help) usage -h ;;
         layout) layout "$2"; exit ;;
-<<<<<<< HEAD
-        scratchpadstatus) handle_scratchpad_status "$2"; exit ;;
-=======
         scratchpadstatus) handle_scratchpad_status; exit ;;
->>>>>>> origin/main
     esac
     xsetroot -name "c;:;$1;$2"
 }
@@ -66,16 +54,7 @@ layout() {
 }
 
 handle_scratchpad_status() {
-<<<<<<< HEAD
-    local scratchpad_name="$1"
-    if [ -n "$scratchpad_name" ]; then
-        xsetroot -name "c;:;scratchpadstatus;$scratchpad_name"
-    else
-        xsetroot -name "c;:;scratchpadstatus"
-    fi
-=======
     xsetroot -name "c;:;scratchpadstatus"
->>>>>>> origin/main
     for i in {1..20}; do
         if xprop -root -notype WM_NAME | grep -q 'ipc:scratchpad:'; then
             xprop -root -notype WM_NAME | sed -n 's/.*ipc:scratchpad:\([0-9]*\).*/scratchpad:\1/p'

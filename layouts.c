@@ -1,7 +1,6 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "layouts.h"
-<<<<<<< HEAD
 #include "globals.h"
 #include "push.h"
 #include "util.h"
@@ -12,10 +11,6 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-=======
-#include "push.h"
-#include "util.h"
->>>>>>> origin/main
 
 void bstack(Monitor *m) {
     int w, h, mh, mx, tx, ty, tw, framecount;
@@ -44,7 +39,6 @@ void bstack(Monitor *m) {
          c = nexttiled(c->next), i++) {
         if (i < m->nmaster) {
             w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-<<<<<<< HEAD
             animateclient(c, m->wx + mx, m->wy, w - (2 * c->border_width),
                           mh - (2 * c->border_width), framecount, 0);
             mx += WIDTH(c);
@@ -52,15 +46,6 @@ void bstack(Monitor *m) {
             h = m->wh - mh;
             animateclient(c, tx, ty, tw - (2 * c->border_width),
                           h - (2 * c->border_width), framecount, 0);
-=======
-            animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw),
-                          mh - (2 * c->bw), framecount, 0);
-            mx += WIDTH(c);
-        } else {
-            h = m->wh - mh;
-            animateclient(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw),
-                          framecount, 0);
->>>>>>> origin/main
             if (tw != m->ww)
                 tx += WIDTH(c);
         }
@@ -127,21 +112,12 @@ void bstackhoriz(Monitor *m) {
          c = nexttiled(c->next), i++) {
         if (i < m->nmaster) {
             w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-<<<<<<< HEAD
             animateclient(c, m->wx + mx, m->wy, w - (2 * c->border_width),
                           mh - (2 * c->border_width), framecount, 0);
             mx += WIDTH(c);
         } else {
             animateclient(c, tx, ty, m->ww - (2 * c->border_width),
                           th - (2 * c->border_width), framecount, 0);
-=======
-            animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw),
-                          mh - (2 * c->bw), framecount, 0);
-            mx += WIDTH(c);
-        } else {
-            animateclient(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw),
-                          framecount, 0);
->>>>>>> origin/main
             if (th != m->wh)
                 ty += HEIGHT(c);
         }
@@ -169,21 +145,12 @@ void deck(Monitor *m) {
     for (i = my = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
         if (i < m->nmaster) {
             h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-<<<<<<< HEAD
             resize(c, m->wx, m->wy + my, mw - (2 * c->border_width),
                    h - (2 * c->border_width), False);
             my += HEIGHT(c);
         } else
             resize(c, m->wx + mw, m->wy, m->ww - mw - (2 * c->border_width),
                    m->wh - (2 * c->border_width), False);
-=======
-            resize(c, m->wx, m->wy + my, mw - (2 * c->bw), h - (2 * c->bw),
-                   False);
-            my += HEIGHT(c);
-        } else
-            resize(c, m->wx + mw, m->wy, m->ww - mw - (2 * c->bw),
-                   m->wh - (2 * c->bw), False);
->>>>>>> origin/main
 }
 
 void grid(Monitor *m) {
@@ -218,13 +185,8 @@ void grid(Monitor *m) {
         /* adjust height/width of last row/column's windows */
         int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
         unsigned int aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
-<<<<<<< HEAD
         animateclient(c, cx, cy, cw - 2 * c->border_width + aw,
                       ch - 2 * c->border_width + ah, framecount, 0);
-=======
-        animateclient(c, cx, cy, cw - 2 * c->bw + aw, ch - 2 * c->bw + ah,
-                      framecount, 0);
->>>>>>> origin/main
         i++;
     }
 }
@@ -243,12 +205,8 @@ void monocle(Monitor *m) {
     if (n > 0) /* override layout symbol */
         snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%1u]", n);
     for (c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
-<<<<<<< HEAD
         animateclient(c, m->wx, m->wy, m->ww - 2 * c->border_width,
                       m->wh - 2 * c->border_width,
-=======
-        animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw,
->>>>>>> origin/main
                       7 * (animated && c == selmon->sel), 0);
     }
 }
@@ -329,11 +287,7 @@ void tcl(Monitor *m) {
 
     mw = m->mfact * m->ww;
     sw = (m->ww - mw) / 2;
-<<<<<<< HEAD
     bdw = (2 * c->border_width);
-=======
-    bdw = (2 * c->bw);
->>>>>>> origin/main
     resize(c, n < 3 ? m->wx : m->wx + sw, m->wy,
            n == 1 ? m->ww - bdw : mw - bdw, m->wh - bdw, False);
 
@@ -409,7 +363,6 @@ void tile(Monitor *m) {
             h = (m->wh - my) / (MIN(n, m->nmaster) - i);
 
             if (n == 2) {
-<<<<<<< HEAD
                 animateclient(c, m->wx, m->wy + my, mw - (2 * c->border_width),
                               h - (2 * c->border_width), 0, 0);
             } else {
@@ -417,15 +370,6 @@ void tile(Monitor *m) {
                               h - (2 * c->border_width), framecount, 0);
                 if (m->nmaster == 1 && n > 1) {
                     mw = c->w + c->border_width * 2;
-=======
-                animateclient(c, m->wx, m->wy + my, mw - (2 * c->bw),
-                              h - (2 * c->bw), 0, 0);
-            } else {
-                animateclient(c, m->wx, m->wy + my, mw - (2 * c->bw),
-                              h - (2 * c->bw), framecount, 0);
-                if (m->nmaster == 1 && n > 1) {
-                    mw = c->w + c->bw * 2;
->>>>>>> origin/main
                 }
             }
             if (my + HEIGHT(c) < m->wh)
@@ -433,19 +377,13 @@ void tile(Monitor *m) {
         } else {
             // client is in the stack
             h = (m->wh - ty) / (n - i);
-<<<<<<< HEAD
             animateclient(c, m->wx + mw, m->wy + ty,
                           m->ww - mw - (2 * c->border_width),
                           h - (2 * c->border_width), framecount, 0);
-=======
-            animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2 * c->bw),
-                          h - (2 * c->bw), framecount, 0);
->>>>>>> origin/main
             if (ty + HEIGHT(c) < m->wh)
                 ty += HEIGHT(c);
         }
 }
-<<<<<<< HEAD
 
 /* Moved functions */
 
@@ -646,5 +584,3 @@ void setmfact(const Arg *arg) {
     if (tmpanim)
         animated = 1;
 }
-=======
->>>>>>> origin/main
