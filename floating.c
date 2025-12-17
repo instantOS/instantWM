@@ -12,6 +12,7 @@ extern Monitor *mons;
 extern int bh;
 extern int animated;
 extern Clr *borderscheme;
+extern int numtags;
 
 void savefloating(Client *c) {
     c->sfx = c->x;
@@ -61,7 +62,7 @@ int visible(Client *c) {
 void saveallfloating(Monitor *m) {
     int i;
     Client *c;
-    for (i = 1; i < 20; ++i) {
+    for (i = 1; i < numtags && i < MAX_TAGS; ++i) {
         if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL)
             continue;
         for (c = m->clients; c; c = c->next) {
@@ -74,7 +75,7 @@ void saveallfloating(Monitor *m) {
 void restoreallfloating(Monitor *m) {
     int i;
     Client *c;
-    for (i = 1; i < 20; ++i) {
+    for (i = 1; i < numtags && i < MAX_TAGS; ++i) {
         if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL)
             continue;
         for (c = m->clients; c; c = c->next) {
