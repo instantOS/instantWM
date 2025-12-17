@@ -20,8 +20,7 @@ extern void restack(Monitor *m);
 
 void direction_focus(const Arg *arg) {
     Client *c;
-    // TODO: the name sc sucks, come up with something descriptive
-    Client *sc;
+    Client *source;  /* The window we're navigating from */
     Client *out_client = NULL;
     Monitor *m;
     int min_score;
@@ -32,13 +31,13 @@ void direction_focus(const Arg *arg) {
     if (!selmon->sel)
         return;
     m = selmon;
-    sc = selmon->sel;
+    source = selmon->sel;
     min_score = 0;
 
     int cx, cy;
     int sx, sy;
-    sx = sc->x + (sc->w / 2);
-    sy = sc->y + (sc->h / 2);
+    sx = source->x + (source->w / 2);
+    sy = source->y + (source->h / 2);
 
     for (c = m->clients; c; c = c->next) {
         if (!(ISVISIBLE(c)))
@@ -47,11 +46,12 @@ void direction_focus(const Arg *arg) {
         cx = c->x + (c->w / 2);
         cy = c->y + (c->h / 2);
 
-        if (c == sc || (direction == 0 && cy > sy) ||
-            // TODO: get rid of direction magic numbers, use existing enums if
-            // possible
-            (direction == 1 && cx < sx) || (direction == 2 && cy < sy) ||
-            (direction == 3 && cx > sx))
+        /* Skip windows that are in the wrong direction from source */
+        if (c == source ||
+            (direction == FocusDirUp && cy > sy) ||
+            (direction == FocusDirRight && cx < sx) ||
+            (direction == FocusDirDown && cy < sy) ||
+            (direction == FocusDirLeft && cx > sx))
             continue;
 
         if (direction % 2 == 0) {

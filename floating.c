@@ -35,8 +35,8 @@ void savebw(Client *c) {
     c->old_border_width = c->border_width;
 }
 
-// TODO: what does bw mean? More descriptive name
-void restorebw(Client *c) {
+/* Restore the client's saved border width (bw = border_width) */
+void restore_border_width(Client *c) {
     if (!c->old_border_width || c->old_border_width == 0)
         return;
     c->border_width = c->old_border_width;
@@ -92,7 +92,7 @@ void resetsnap(Client *c) {
         return;
     if (c->isfloating || NULL == tiling_layout_func(selmon)) {
         c->snapstatus = 0;
-        restorebw(c);
+        restore_border_width(c);
         restorefloating(c);
         applysize(c);
     }
@@ -101,7 +101,7 @@ void resetsnap(Client *c) {
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
     if (c->snapstatus != SnapMaximized)
-        restorebw(c);
+        restore_border_width(c);
     switch (c->snapstatus) {
     case SnapNone:
         checkanimate(c, c->saved_float_x, c->saved_float_y,
@@ -147,20 +147,27 @@ void applysnap(Client *c, Monitor *m) {
     }
 }
 
+/* Snap navigation matrix: [current_snap][direction] -> new_snap
+ * Columns are directions: [Up, Right, Down, Left]
+ * Rows are current snap positions (indices match Snap enum values):
+ *   0=SnapNone, 1=SnapTop, 2=SnapTopRight, 3=SnapRight,
+ *   4=SnapBottomRight, 5=SnapBottom, 6=SnapBottomLeft,
+ *   7=SnapLeft, 8=SnapTopLeft, 9=SnapMaximized */
+static const int snapmatrix[10][4] = {
+    /* Up                 Right              Down               Left */
+    {SnapMaximized,       SnapRight,         SnapBottom,        SnapLeft},        /* SnapNone */
+    {SnapMaximized,       SnapTopRight,      SnapNone,          SnapTopLeft},     /* SnapTop */
+    {SnapTopRight,        SnapTopRight,      SnapRight,         SnapTop},         /* SnapTopRight */
+    {SnapTopRight,        SnapRight,         SnapBottomRight,   SnapNone},        /* SnapRight */
+    {SnapRight,           SnapBottomRight,   SnapBottomRight,   SnapBottom},      /* SnapBottomRight */
+    {SnapNone,            SnapBottomRight,   SnapBottom,        SnapBottomLeft},  /* SnapBottom */
+    {SnapLeft,            SnapBottom,        SnapBottomLeft,    SnapBottomLeft},  /* SnapBottomLeft */
+    {SnapTopLeft,         SnapNone,          SnapBottomLeft,    SnapLeft},        /* SnapLeft */
+    {SnapTopLeft,         SnapTop,           SnapLeft,          SnapTop},         /* SnapTopLeft */
+    {SnapTop,             SnapRight,         SnapNone,          SnapLeft},        /* SnapMaximized */
+};
+
 void changesnap(Client *c, int snapmode) {
-    // TODO: get rid of magic numbers, use existing enum if possible
-    int snapmatrix[10][4] = {
-        {9, 3, 5, 7}, // normal
-        {9, 2, 0, 8}, // top half
-        {2, 2, 3, 1}, // top right
-        {2, 3, 4, 0}, // right half
-        {3, 4, 4, 5}, // bottom right
-        {0, 4, 5, 6}, // bottom half
-        {7, 5, 6, 6}, // bottom left
-        {8, 0, 6, 7}, // left half
-        {8, 1, 7, 1}, // top left
-        {1, 3, 0, 7}, // maximized
-    };
     int tempsnap;
     if (!c->snapstatus)
         c->snapstatus = 0;
@@ -169,8 +176,6 @@ void changesnap(Client *c, int snapmode) {
     tempsnap = c->snapstatus;
     c->snapstatus = snapmatrix[tempsnap][snapmode];
     applysnap(c, c->mon);
-    // TODO: ISO C99 and later do not support implicit function declarations
-    // (clang -Wimplicit-function-declaration)
     warp_cursor_to_client(c);
     focus(c);
 }
@@ -212,7 +217,7 @@ void toggle_floating(const Arg *arg) {
     selmon->sel->isfloating = !selmon->sel->isfloating || selmon->sel->isfixed;
     if (selmon->sel->isfloating) {
         // make window float
-        restorebw(selmon->sel);
+        restore_border_width(selmon->sel);
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderFloatFocus].pixel);
         animateclient(selmon->sel, selmon->sel->saved_float_x,
@@ -296,7 +301,7 @@ void settiled(Client *c, int should_arrange) {
         arrange(selmon);
 }
 
-void centerwindow(const Arg *arg) {
+void center_window(const Arg *arg) {
     if (!selmon->sel || selmon->sel == selmon->overlay)
         return;
     Client *c;

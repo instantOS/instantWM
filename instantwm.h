@@ -406,7 +406,7 @@ void motionnotify(XEvent *e);
 void moveresize(const Arg *arg);
 void distributeclients(const Arg *arg);
 void keyresize(const Arg *arg);
-void centerwindow();
+void center_window();
 void resetnametag(const Arg *arg);
 void nametag(const Arg *arg);
 Client *nexttiled(Client *c);
@@ -556,7 +556,7 @@ void savefloating(Client *c);
 void restorefloating(Client *c);
 
 void savebw(Client *c);
-void restorebw(Client *c);
+void restore_border_width(Client *c);
 
 void shiftview(const Arg *arg);
 void focus_last_client(const Arg *arg);

@@ -189,7 +189,7 @@ void applyrules(Client *c) {
                 case RuleFloatCenter:
                     selmon->sel = c;
                     c->isfloating = 1;
-                    centerwindow(NULL);
+                    center_window(NULL);
                     break;
                 case RuleFloatFullscreen:
                     /* fullscreen overlay */
@@ -208,7 +208,7 @@ void applyrules(Client *c) {
                     c->issticky = 1;
                     c->isfloating = 1;
                     selmon->activescratchpad = c;
-                    centerwindow(NULL);
+                    center_window(NULL);
                     break;
                 case RuleFloat:
                     c->isfloating = 1;
@@ -329,7 +329,7 @@ void arrangemon(Monitor *m) {
             savebw(c);
             c->border_width = 0;
         } else {
-            restorebw(c);
+            restore_border_width(c);
         }
     }
 
@@ -677,6 +677,7 @@ void focus(Client *c) {
     }
 }
 
+//TODO: document what this does
 void focusstack(const Arg *arg) {
     Client *c = NULL, *i;
 
@@ -1165,7 +1166,7 @@ void setfullscreen(Client *c, int fullscreen) {
         c->is_fullscreen = 0;
 
         c->isfloating = c->oldstate;
-        restorebw(c);
+        restore_border_width(c);
         c->x = c->oldx;
         c->y = c->oldy;
         c->w = c->oldw;

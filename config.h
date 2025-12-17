@@ -611,7 +611,7 @@ Key keys[] = {
     {MODKEY | Mod1Mask, XK_space, spawn, {.v = keylayoutswitchcmd}},
     {MODKEY | ShiftMask | Mod1Mask, XK_d, toggledoubledraw, {0}},
     {MODKEY | ShiftMask, XK_w, warp_to_focus, {0}},
-    {MODKEY | Mod1Mask, XK_w, centerwindow, {0}},
+    {MODKEY | Mod1Mask, XK_w, center_window, {0}},
     {MODKEY | ShiftMask | ControlMask, XK_s, toggleshowtags, {.ui = 2}},
     {MODKEY, XK_i, incnmaster, {.i = +1}},
     {MODKEY, XK_d, incnmaster, {.i = -1}},
