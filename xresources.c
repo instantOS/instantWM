@@ -1,6 +1,192 @@
 /* See LICENSE file for copyright and license details. */
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <X11/Xlib.h>
+#include <X11/Xresource.h>
+
+#include "instantwm.h"
 #include "xresources.h"
 
-/* Stub file - functions are still in instantwm.c */
-/* TODO: Move xresources functions here incrementally */
+/* configuration, allows nested code to access above variables */
+#include "config.h"
+
+void list_xresources() {
+
+    int i, u, q;
+    for (i = 0; i < LENGTH(schemehovertypes); i++) {
+        for (q = 0; q < LENGTH(schemecolortypes); q++) {
+            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
+                         schemehovertypes[i].name, schemewindowtypes[u].name,
+                         schemecolortypes[q].name);
+                printf("instantwm.%s\n", propname);
+            }
+            for (u = 0; u < LENGTH(schemetagtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
+                         schemehovertypes[i].name, schemetagtypes[u].name,
+                         schemecolortypes[q].name);
+                printf("instantwm.%s\n", propname);
+            }
+            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.close.%s",
+                         schemehovertypes[i].name, schemeclosetypes[u].name,
+                         schemecolortypes[q].name);
+                printf("instantwm.%s\n", propname);
+            }
+        }
+    }
+    printf(
+        "normal.border\nfocus.tile.border\nfocus.float.border\nsnap.border\n");
+    printf("status.fg\nstatus.bg\nstatus.detail\n");
+}
+
+void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
+                   void *dst) {
+    char *sdst = NULL;
+    int *idst = NULL;
+    float *fdst = NULL;
+
+    sdst = dst;
+    idst = dst;
+    fdst = dst;
+
+    char fullname[256];
+    char *type;
+    XrmValue ret;
+
+    snprintf(fullname, sizeof(fullname), "%s.%s", "instantwm", name);
+    fullname[sizeof(fullname) - 1] = '\0';
+
+    XrmGetResource(db, fullname, "*", &type, &ret);
+    if (!(ret.addr == NULL || strncmp("String", type, 64))) {
+        switch (rtype) {
+        case STRING:
+            strcpy(sdst, ret.addr);
+            break;
+        case INTEGER:
+            *idst = strtoul(ret.addr, NULL, 10);
+            break;
+        case FLOAT:
+            *fdst = strtof(ret.addr, NULL);
+            break;
+        }
+    }
+}
+
+void load_xresources(void) {
+    Display *display;
+    char *resm;
+    XrmDatabase db;
+    ResourcePref *p;
+
+    int i, u, q;
+
+    display = XOpenDisplay(NULL);
+    resm = XResourceManagerString(display);
+    if (!resm)
+        return;
+
+    db = XrmGetStringDatabase(resm);
+
+    for (i = 0; i < LENGTH(schemehovertypes); i++) {
+        for (q = 0; q < LENGTH(schemecolortypes); q++) {
+            for (u = 0; u < LENGTH(schemewindowtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.win.%s",
+                         schemehovertypes[i].name, schemewindowtypes[u].name,
+                         schemecolortypes[q].name);
+
+                // duplicate default value to avoid reading xresource into
+                // multiple colors
+                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
+                strcpy(tmpstring, windowcolors[schemehovertypes[i].type]
+                                              [schemewindowtypes[u].type]
+                                              [schemecolortypes[q].type]);
+
+                windowcolors[schemehovertypes[i].type]
+                            [schemewindowtypes[u].type]
+                            [schemecolortypes[q].type] = tmpstring;
+
+                resource_load(db, propname, STRING,
+                              (void *)(windowcolors[schemehovertypes[i].type]
+                                                   [schemewindowtypes[u].type]
+                                                   [schemecolortypes[q].type]));
+            }
+
+            for (u = 0; u < LENGTH(schemetagtypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.tag.%s",
+                         schemehovertypes[i].name, schemetagtypes[u].name,
+                         schemecolortypes[q].name);
+
+                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
+
+                strcpy(
+                    tmpstring,
+                    tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
+                             [schemecolortypes[q].type]);
+
+                tagcolors[schemehovertypes[i].type][schemetagtypes[u].type]
+                         [schemecolortypes[q].type] = tmpstring;
+                resource_load(db, propname, STRING,
+                              (void *)(tagcolors[schemehovertypes[i].type]
+                                                [schemetagtypes[u].type]
+                                                [schemecolortypes[q].type]));
+            }
+
+            for (u = 0; u < LENGTH(schemeclosetypes); u++) {
+                char propname[100] = "";
+                snprintf(propname, sizeof(propname), "%s.%s.close.%s",
+                         schemehovertypes[i].name, schemeclosetypes[u].name,
+                         schemecolortypes[q].name);
+
+                char *tmpstring = (char *)malloc((7 + 1) * sizeof(char));
+                strcpy(tmpstring, closebuttoncolors[schemehovertypes[i].type]
+                                                   [schemeclosetypes[u].type]
+                                                   [schemecolortypes[q].type]);
+
+                closebuttoncolors[schemehovertypes[i].type]
+                                 [schemeclosetypes[u].type]
+                                 [schemecolortypes[q].type] = tmpstring;
+                resource_load(
+                    db, propname, STRING,
+                    (void *)(closebuttoncolors[schemehovertypes[i].type]
+                                              [schemeclosetypes[u].type]
+                                              [schemecolortypes[q].type]));
+            }
+        }
+    }
+
+    resource_load(db, "normal.border", STRING,
+                  (void *)bordercolors[SchemeBorderNormal]);
+    resource_load(db, "focus.tile.border", STRING,
+                  (void *)bordercolors[SchemeBorderTileFocus]);
+    resource_load(db, "focus.float.border", STRING,
+                  (void *)bordercolors[SchemeBorderFloatFocus]);
+    resource_load(db, "snap.border", STRING,
+                  (void *)bordercolors[SchemeBorderSnap]);
+
+    resource_load(db, "status.fg", STRING, (void *)statusbarcolors[ColFg]);
+    resource_load(db, "status.bg", STRING, (void *)statusbarcolors[ColBg]);
+    resource_load(db, "status.detail", STRING,
+                  (void *)statusbarcolors[ColDetail]);
+
+    for (p = resources; p < resources + LENGTH(resources); p++)
+        resource_load(db, p->name, p->type, p->dst);
+
+    XCloseDisplay(display);
+}
+
+void verifytagsxres(void) {
+    for (int i = 0; i < 9; i++) {
+        int len = strlen(tags[i]);
+        if (len > MAX_TAGLEN - 1 || len == 0) {
+            strcpy((char *)&tags[i], "Xres err");
+        }
+    }
+}
