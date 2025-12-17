@@ -636,6 +636,6 @@ void leavenotify(XEvent *e) {
     Monitor *m;
 
     if ((m = wintomon(ev->window)) && ev->window == m->barwin) {
-         resetbar();
+        resetbar();
     }
 }

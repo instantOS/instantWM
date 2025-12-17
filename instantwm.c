@@ -467,9 +467,10 @@ void buttonpress(XEvent *e) {
         resizemouse(NULL);
         return;
     }
-    /* Execute the button action handler that matches the click location, button,
-     * and modifier keys. For special click types (tags, window titles, buttons),
-     * pass the constructed arg with contextual data; otherwise use button's arg.
+    /* Execute the button action handler that matches the click location,
+     * button, and modifier keys. For special click types (tags, window titles,
+     * buttons), pass the constructed arg with contextual data; otherwise use
+     * button's arg.
      */
     for (i = 0; i < LENGTH(buttons); i++)
         if (click == buttons[i].click && buttons[i].func &&
