@@ -87,14 +87,10 @@ static void handle_bar_drop(Client *c) {
 }
 
 void movemouse(const Arg *arg) {
-    int x, y, ocx, ocy, nx, ny, ti, tx, occ, colorclient, tagx, notfloating;
+    int x, y, ocx, ocy, nx, ny;
     Client *c;
     XEvent ev;
     Time lasttime = 0;
-    notfloating = 0;
-    occ = 0;
-    tagx = 0;
-    colorclient = 0;
 
     // some windows are immovable
     if (!(c = selmon->sel) || (c->isfullscreen && !c->isfakefullscreen) ||
@@ -836,7 +832,7 @@ void resizemouse(const Arg *arg) {
 
 void resizeaspectmouse(const Arg *arg) {
     int ocx, ocy, nw, nh;
-    int ocx2, ocy2, nx, ny;
+    int nx, ny;
     Client *c;
     XEvent ev;
     int di;
@@ -855,8 +851,6 @@ void resizeaspectmouse(const Arg *arg) {
     restack(selmon);
     ocx = c->x;
     ocy = c->y;
-    ocx2 = c->x + c->w;
-    ocy2 = c->y + c->h;
 
     if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
         return;

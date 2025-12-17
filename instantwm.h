@@ -257,7 +257,9 @@ typedef struct {
 } Key;
 
 extern Key keys[];
+extern size_t keys_len;
 extern Key dkeys[];
+extern size_t dkeys_len;
 extern unsigned int numlockmask;
 
 typedef struct {

@@ -19,10 +19,6 @@ extern int freealttab;
 extern int specialnext;
 extern Clr *borderscheme;
 
-/* Array sizes - must match config.h definitions */
-#define NUM_KEYS 143
-#define NUM_DKEYS 38
-
 #define CLEANMASK(mask)                                                        \
     (mask & ~(numlockmask | LockMask) &                                        \
      (ShiftMask | ControlMask | Mod1Mask | Mod2Mask | Mod3Mask | Mod4Mask |    \
@@ -50,7 +46,7 @@ void grabkeys(void) {
             if (k > 255)
                 continue;
 
-            for (i = 0; i < NUM_KEYS; i++) {
+            for (i = 0; i < keys_len; i++) {
                 if (keys[i].keysym == syms[(k - start) * skip])
                     for (j = 0; j < 4; j++) {
                         if (freealttab && keys[i].mod == Mod1Mask)
@@ -62,7 +58,7 @@ void grabkeys(void) {
 
             /* add keyboard shortcuts without modifiers when tag is empty */
             if (!selmon->sel) {
-                for (i = 0; i < NUM_DKEYS; i++) {
+                for (i = 0; i < dkeys_len; i++) {
                     if (dkeys[i].keysym == syms[(k - start) * skip])
                         for (j = 0; j < 4; j++)
                             XGrabKey(dpy, k, dkeys[i].mod | modifiers[j], root,
@@ -82,7 +78,7 @@ void keypress(XEvent *e) {
 
     ev = &e->xkey;
     keysym = XKeycodeToKeysym(dpy, (KeyCode)ev->keycode, 0);
-    for (i = 0; i < NUM_KEYS; i++) {
+    for (i = 0; i < keys_len; i++) {
         if (keysym == keys[i].keysym &&
             CLEANMASK(keys[i].mod) == CLEANMASK(ev->state) && keys[i].func) {
             keys[i].func(&(keys[i].arg));
@@ -90,7 +86,7 @@ void keypress(XEvent *e) {
     }
 
     if (!selmon->sel) {
-        for (i = 0; i < NUM_DKEYS; i++) {
+        for (i = 0; i < dkeys_len; i++) {
             if (keysym == dkeys[i].keysym &&
                 CLEANMASK(dkeys[i].mod) == CLEANMASK(ev->state) &&
                 dkeys[i].func)

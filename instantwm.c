@@ -61,6 +61,8 @@
 /* variables */
 unsigned int tagmask = TAGMASK;
 int numtags = LENGTH(tags);
+size_t keys_len = LENGTH(keys);
+size_t dkeys_len = LENGTH(dkeys);
 
 Systray *systray = NULL;
 static const char broken[] = "broken";
