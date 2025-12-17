@@ -8,7 +8,6 @@
 
 #include "floating.h"
 #include "instantwm.h"
-#include "layouts.h"
 #include "mouse.h"
 #include "util.h"
 
@@ -300,12 +299,11 @@ int hoverresizemouse(const Arg *arg) {
     return 1;
 }
 
-void dragmouse(const Arg *arg) {
+
+void window_title_mouse_handler(const Arg *arg) {
     int x, y, startx, starty;
     XEvent ev;
 
-    /* Focus the clicked window - use hoverclient since hover detection works
-     * correctly */
     Client *c = (Client *)arg->v;
     if (!c)
         return;
@@ -338,6 +336,7 @@ void dragmouse(const Arg *arg) {
             /* If mouse moved beyond threshold, start moving the window */
             if (abs(x - startx) > DRAG_THRESHOLD ||
                 abs(y - starty) > DRAG_THRESHOLD) {
+                    //TODO: extract into drag_window_title function
                 XUngrabPointer(dpy, CurrentTime);
                 if (was_hidden)
                     show(c);
@@ -361,6 +360,7 @@ void dragmouse(const Arg *arg) {
      */
     XUngrabPointer(dpy, CurrentTime);
 
+    //TODO: extract into click_window_title function
     if (was_hidden) {
         show(c);
         focus(c);
@@ -375,7 +375,7 @@ void dragmouse(const Arg *arg) {
     }
 }
 
-void dragrightmouse(const Arg *arg) {
+void handle_window_title_right_mouse(const Arg *arg) {
     int x, y, starty, startx, dragging, sinit;
     starty = 100;
     sinit = 0;
@@ -407,6 +407,7 @@ void dragrightmouse(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
+            //TODO: extract into right_drag_window_title function
             if ((ev.xmotion.time - lasttime) <= (1000 / REFRESH_RATE_DRAG))
                 continue;
             lasttime = ev.xmotion.time;
