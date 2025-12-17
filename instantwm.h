@@ -30,8 +30,8 @@
 #define HIDDEN(C) ((getstate(C->win) == IconicState))
 #define LENGTH(X) (sizeof X / sizeof X[0])
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
-#define WIDTH(X) ((X)->w + 2 * (X)->border_width)
-#define HEIGHT(X) ((X)->h + 2 * (X)->border_width)
+#define WIDTH(X) ((X)->w + 2 * (X)->bw)
+#define HEIGHT(X) ((X)->h + 2 * (X)->bw)
 #define TAGMASK ((1 << LENGTH(tags)) - 1)
 #define MAX_TAGS 21 /* Fixed size for Pertag arrays (20 tags + 1) */
 #define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
@@ -236,13 +236,13 @@ struct Client {
     char name[256];
     float mina, maxa;
     int x, y, w, h;
-    int saved_float_x, saved_float_y, saved_float_width,
-        saved_float_height; /* stored float geometry, used on mode revert */
+    int sfx, sfy, sfw,
+        sfh; /* stored float geometry, used on mode revert */
     int oldx, oldy, oldw, oldh;
     int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
-    int border_width, old_border_width;
+    int bw, oldbw;
     unsigned int tags;
-    int isfixed, isfloating, isurgent, neverfocus, oldstate, is_fullscreen,
+    int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen,
         isfakefullscreen, islocked, issticky, snapstatus;
     Client *next;
     Client *snext;

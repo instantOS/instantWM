@@ -191,7 +191,7 @@ void movemouse(const Arg *arg) {
     Client *c;
 
     // some windows are immovable
-    if (!(c = selmon->sel) || (c->is_fullscreen && !c->isfakefullscreen) ||
+    if (!(c = selmon->sel) || (c->isfullscreen && !c->isfakefullscreen) ||
         c == selmon->overlay)
         return;
 
@@ -211,8 +211,8 @@ void movemouse(const Arg *arg) {
             c->y >= selmon->my + bh - MAX_UNMAXIMIZE_OFFSET &&
             c->w >= selmon->mw - MAX_UNMAXIMIZE_OFFSET &&
             c->h >= selmon->mh - MAX_UNMAXIMIZE_OFFSET) {
-            resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
-                   c->saved_float_height, 0);
+            resize(c, c->sfx, c->sfy, c->sfw,
+                   c->sfh, 0);
         }
     }
 
@@ -490,7 +490,7 @@ void window_title_mouse_handler_right(const Arg *arg) {
 
     Client *tempc = (Client *)arg->v;
     resetbar();
-    if (tempc->is_fullscreen &&
+    if (tempc->isfullscreen &&
         !tempc->isfakefullscreen) /* no support moving fullscreen windows by
                                      mouse */
         return;
@@ -778,36 +778,36 @@ static void warp_pointer_resize(Client *c, int direction) {
     int x_off, y_off;
     switch (direction) {
     case ResizeDirTopLeft:
-        x_off = -c->border_width;
-        y_off = -c->border_width;
+        x_off = -c->bw;
+        y_off = -c->bw;
         break;
     case ResizeDirTop:
-        x_off = (c->w + c->border_width - 1) / 2;
-        y_off = -c->border_width;
+        x_off = (c->w + c->bw - 1) / 2;
+        y_off = -c->bw;
         break;
     case ResizeDirTopRight:
-        x_off = c->w + c->border_width - 1;
-        y_off = -c->border_width;
+        x_off = c->w + c->bw - 1;
+        y_off = -c->bw;
         break;
     case ResizeDirRight:
-        x_off = c->w + c->border_width - 1;
-        y_off = (c->h + c->border_width - 1) / 2;
+        x_off = c->w + c->bw - 1;
+        y_off = (c->h + c->bw - 1) / 2;
         break;
     case ResizeDirBottomRight:
-        x_off = c->w + c->border_width - 1;
-        y_off = c->h + c->border_width - 1;
+        x_off = c->w + c->bw - 1;
+        y_off = c->h + c->bw - 1;
         break;
     case ResizeDirBottom:
-        x_off = (c->w + c->border_width - 1) / 2;
-        y_off = c->h + c->border_width - 1;
+        x_off = (c->w + c->bw - 1) / 2;
+        y_off = c->h + c->bw - 1;
         break;
     case ResizeDirBottomLeft:
-        x_off = -c->border_width;
-        y_off = c->h + c->border_width - 1;
+        x_off = -c->bw;
+        y_off = c->h + c->bw - 1;
         break;
     case ResizeDirLeft:
-        x_off = -c->border_width;
-        y_off = (c->h + c->border_width - 1) / 2;
+        x_off = -c->bw;
+        y_off = (c->h + c->bw - 1) / 2;
         break;
     default:
         return;
@@ -852,7 +852,7 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
         *nx = is_left_side ? ev->xmotion.x : c->x;
         *nw =
             MAX(is_left_side ? (ocx2 - *nx)
-                             : (ev->xmotion.x - ocx - 2 * c->border_width + 1),
+                             : (ev->xmotion.x - ocx - 2 * c->bw + 1),
                 1);
     } else {
         *nx = c->x;
@@ -862,7 +862,7 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
     if (direction != ResizeDirLeft && direction != ResizeDirRight) {
         *ny = is_top_side ? ev->xmotion.y : c->y;
         *nh = MAX(is_top_side ? (ocy2 - *ny)
-                              : (ev->xmotion.y - ocy - 2 * c->border_width + 1),
+                              : (ev->xmotion.y - ocy - 2 * c->bw + 1),
                   1);
     } else {
         *ny = c->y;
@@ -939,8 +939,8 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
         }
     }
     if (!tiling_layout_func(selmon) || c->isfloating) {
-        if (c->border_width == 0 && c != selmon->overlay)
-            c->border_width = c->old_border_width;
+        if (c->bw == 0 && c != selmon->overlay)
+            c->bw = c->oldbw;
         if (!force_resize)
             resize(c, nx, ny, nw, nh, 1);
         else
@@ -966,7 +966,7 @@ void resizemouse(const Arg *arg) {
         return;
     }
 
-    if (c->is_fullscreen &&
+    if (c->isfullscreen &&
         !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse
                                */
         return;
@@ -1034,8 +1034,8 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
         toggle_floating(NULL);
     if (!tiling_layout_func(selmon) || c->isfloating) {
-        nw = MAX(nx - d->ocx - 2 * c->border_width + 1, 1);
-        nh = MAX(ny - d->ocy - 2 * c->border_width + 1, 1);
+        nw = MAX(nx - d->ocx - 2 * c->bw + 1, 1);
+        nh = MAX(ny - d->ocy - 2 * c->bw + 1, 1);
 
         clamp_size_hints(c, &nw, &nh);
 
@@ -1062,7 +1062,7 @@ void resizeaspectmouse(const Arg *arg) {
     if (!(c = selmon->sel))
         return;
 
-    if (c->is_fullscreen &&
+    if (c->isfullscreen &&
         !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse
                                */
         return;

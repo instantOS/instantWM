@@ -107,9 +107,9 @@ void warp_cursor_to_client(const Client *c) {
     }
 
     if (!getrootptr(&x, &y) ||
-        (x > c->x - c->border_width && y > c->y - c->border_width &&
-         x < c->x + c->w + c->border_width * 2 &&
-         y < c->y + c->h + c->border_width * 2) ||
+        (x > c->x - c->bw && y > c->y - c->bw &&
+         x < c->x + c->w + c->bw * 2 &&
+         y < c->y + c->h + c->bw * 2) ||
         (y > c->mon->by && y < c->mon->by + bh) || (c->mon->topbar && !y))
         return;
 

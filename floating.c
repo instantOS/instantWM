@@ -8,30 +8,30 @@
 #include "push.h"
 
 void savefloating(Client *c) {
-    c->saved_float_x = c->x;
-    c->saved_float_y = c->y;
-    c->saved_float_width = c->w;
-    c->saved_float_height = c->h;
+    c->sfx = c->x;
+    c->sfy = c->y;
+    c->sfw = c->w;
+    c->sfh = c->h;
 }
 
 void restorefloating(Client *c) {
-    c->x = c->saved_float_x;
-    c->y = c->saved_float_y;
-    c->w = c->saved_float_width;
-    c->h = c->saved_float_height;
+    c->x = c->sfx;
+    c->y = c->sfy;
+    c->w = c->sfw;
+    c->h = c->sfh;
 }
 
 void savebw(Client *c) {
-    if (!c->border_width || c->border_width == 0)
+    if (!c->bw || c->bw == 0)
         return;
-    c->old_border_width = c->border_width;
+    c->oldbw = c->bw;
 }
 
-/* Restore the client's saved border width (bw = border_width) */
+/* Restore the client's saved border width (bw = bw) */
 void restore_border_width(Client *c) {
-    if (!c->old_border_width || c->old_border_width == 0)
+    if (!c->oldbw || c->oldbw == 0)
         return;
-    c->border_width = c->old_border_width;
+    c->bw = c->oldbw;
 }
 
 void applysize(Client *c) { resize(c, c->x + 1, c->y, c->w, c->h, 0); }
@@ -96,8 +96,8 @@ void applysnap(Client *c, Monitor *m) {
         restore_border_width(c);
     switch (c->snapstatus) {
     case SnapNone:
-        checkanimate(c, c->saved_float_x, c->saved_float_y,
-                     c->saved_float_width, c->saved_float_height, 7, 0);
+        checkanimate(c, c->sfx, c->sfy,
+                     c->sfw, c->sfh, 7, 0);
         break;
     case SnapTop:
         checkanimate(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
@@ -107,8 +107,8 @@ void applysnap(Client *c, Monitor *m) {
         break;
     case SnapRight:
         checkanimate(c, m->mx + m->mw / 2, mony,
-                     m->mw / 2 - c->border_width * 2,
-                     m->wh - c->border_width * 2, 7, 0);
+                     m->mw / 2 - c->bw * 2,
+                     m->wh - c->bw * 2, 7, 0);
         break;
     case SnapBottomRight:
         checkanimate(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2,
@@ -128,9 +128,9 @@ void applysnap(Client *c, Monitor *m) {
         break;
     case SnapMaximized:
         savebw(c);
-        c->border_width = 0;
-        checkanimate(c, m->mx, mony, m->mw - c->border_width * 2,
-                     m->mh + c->border_width * 2, 7, 0);
+        c->bw = 0;
+        checkanimate(c, m->mx, mony, m->mw - c->bw * 2,
+                     m->mh + c->bw * 2, 7, 0);
         if (c == selmon->sel)
             XRaiseWindow(dpy, c->win);
         break;
@@ -208,11 +208,11 @@ static void apply_float_change(Client *c, int floating, int animate,
                              borderscheme[SchemeBorderFloatFocus].pixel);
         }
         if (animate) {
-            animateclient(c, c->saved_float_x, c->saved_float_y,
-                          c->saved_float_width, c->saved_float_height, 7, 0);
+            animateclient(c, c->sfx, c->sfy,
+                          c->sfw, c->sfh, 7, 0);
         } else {
-            resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
-                   c->saved_float_height, False);
+            resize(c, c->sfx, c->sfy, c->sfw,
+                   c->sfh, False);
         }
     } else {
         c->isfloating = 0;
@@ -220,23 +220,23 @@ static void apply_float_change(Client *c, int floating, int animate,
             selmon->clientcount = clientcount();
             if (selmon->clientcount <= 1 && !c->snapstatus) {
                 savebw(c);
-                c->border_width = 0;
+                c->bw = 0;
             }
             XSetWindowBorder(dpy, c->win,
                              borderscheme[SchemeBorderTileFocus].pixel);
         }
         /* save last known float dimensions */
-        c->saved_float_x = c->x;
-        c->saved_float_y = c->y;
-        c->saved_float_width = c->w;
-        c->saved_float_height = c->h;
+        c->sfx = c->x;
+        c->sfy = c->y;
+        c->sfw = c->w;
+        c->sfh = c->h;
     }
 }
 
 void toggle_floating(const Arg *arg) {
     if (!selmon->sel || selmon->sel == selmon->overlay)
         return;
-    if (selmon->sel->is_fullscreen &&
+    if (selmon->sel->isfullscreen &&
         !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
         return;
 
@@ -255,7 +255,7 @@ void toggle_floating(const Arg *arg) {
 void changefloating(Client *c) {
     if (!c)
         return;
-    if (c->is_fullscreen &&
+    if (c->isfullscreen &&
         !c->isfakefullscreen) /* no support for fullscreen windows */
         return;
 
@@ -268,7 +268,7 @@ void changefloating(Client *c) {
 void setfloating(Client *c, int should_arrange) {
     if (!c)
         return;
-    if (c->is_fullscreen && !c->isfakefullscreen)
+    if (c->isfullscreen && !c->isfakefullscreen)
         return;
     if (c->isfloating)
         return; /* already floating */
@@ -283,7 +283,7 @@ void setfloating(Client *c, int should_arrange) {
 void set_tiled(Client *c, int should_arrange) {
     if (!c)
         return;
-    if (c->is_fullscreen && !c->isfakefullscreen)
+    if (c->isfullscreen && !c->isfakefullscreen)
         return;
     if (!c->isfloating && !c->isfixed)
         return; /* already tiled */
@@ -340,10 +340,10 @@ void moveresize(const Arg *arg) {
         ny = selmon->my;
 
     if ((ny + c->h) > (selmon->my + selmon->mh))
-        ny = ((selmon->mh + selmon->my) - c->h - c->border_width * 2);
+        ny = ((selmon->mh + selmon->my) - c->h - c->bw * 2);
 
     if ((nx + c->w) > (selmon->mx + selmon->mw))
-        nx = ((selmon->mw + selmon->mx) - c->w - c->border_width * 2);
+        nx = ((selmon->mw + selmon->mx) - c->w - c->bw * 2);
 
     animateclient(c, nx, ny, c->w, c->h, 5, 0);
     warp_cursor_to_client(c);

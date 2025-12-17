@@ -60,9 +60,9 @@ void setborderwidth(const Arg *arg) {
     if (!selmon->sel)
         return;
     c = selmon->sel;
-    width = c->border_width;
-    c->border_width = arg->i;
-    d = width - c->border_width;
+    width = c->bw;
+    c->bw = arg->i;
+    d = width - c->bw;
     resize(c, c->x, c->y, c->w + 2 * d, c->h + 2 * d, 0);
 }
 
