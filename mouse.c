@@ -345,6 +345,9 @@ void dragmouse(const Arg *arg) {
                     int warp_w = c->w;
                     int warp_h = c->h;
                     if (!c->isfloating && selmon->lt[selmon->sellt]->arrange) {
+                        /* If the window is tiled, it will snap to its saved floating dimensions
+                         * when dragged. Warp pointer to the center of those future dimensions
+                         * so the cursor stays relative to the window center. */
                         warp_w = c->sfw;
                         warp_h = c->sfh;
                     }
