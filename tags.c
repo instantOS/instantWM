@@ -172,7 +172,8 @@ void swaptags(const Arg *arg) {
     unsigned int newtag = ui & tagmask;
     unsigned int current_tag = selmon->tagset[selmon->seltags];
 
-    if (newtag == current_tag || !current_tag || (current_tag & (current_tag - 1)))
+    if (newtag == current_tag || !current_tag ||
+        (current_tag & (current_tag - 1)))
         return;
 
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
@@ -395,9 +396,11 @@ void toggleview(const Arg *arg) {
         selmon->lt[selmon->sellt] =
             selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag
+                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
 
-        if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar !=
+            selmon->pertag->showbars[selmon->pertag->current_tag])
             togglebar(NULL);
 
         focus(NULL);
@@ -434,9 +437,11 @@ void view(const Arg *arg) {
         selmon->lt[selmon->sellt] =
             selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag
+                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
 
-        if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar !=
+            selmon->pertag->showbars[selmon->pertag->current_tag])
             togglebar(NULL);
 
         focus(NULL);
@@ -470,9 +475,11 @@ void viewtoleft(const Arg *arg) {
         selmon->lt[selmon->sellt] =
             selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag
+                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
 
-        if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar !=
+            selmon->pertag->showbars[selmon->pertag->current_tag])
             togglebar(NULL);
 
         focus(NULL);
@@ -546,9 +553,11 @@ void viewtoright(const Arg *arg) {
         selmon->lt[selmon->sellt] =
             selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag
+                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
 
-        if (selmon->showbar != selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar !=
+            selmon->pertag->showbars[selmon->pertag->current_tag])
             togglebar(NULL);
 
         focus(NULL);

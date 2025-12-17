@@ -240,8 +240,8 @@ void toggle_floating(const Arg *arg) {
     arrange(selmon);
 }
 
-//TODO: what is the different between this and togglefloating?
-// Investigate and potentially rename
+// TODO: what is the different between this and togglefloating?
+//  Investigate and potentially rename
 void changefloating(Client *c) {
     if (!c)
         return;
@@ -364,7 +364,7 @@ void keyresize(const Arg *arg) {
     Client *c;
     c = selmon->sel;
 
-    //TODO: these variable names suck, come up with something better
+    // TODO: these variable names suck, come up with something better
     int mstrength = 40;
     int mpositions[4][2] = {{0, mstrength},
                             {0, (-1) * mstrength},

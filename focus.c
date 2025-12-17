@@ -20,7 +20,7 @@ extern void restack(Monitor *m);
 
 void direction_focus(const Arg *arg) {
     Client *c;
-    Client *source;  /* The window we're navigating from */
+    Client *source; /* The window we're navigating from */
     Client *out_client = NULL;
     Monitor *m;
     int min_score;
@@ -47,8 +47,7 @@ void direction_focus(const Arg *arg) {
         cy = c->y + (c->h / 2);
 
         /* Skip windows that are in the wrong direction from source */
-        if (c == source ||
-            (direction == FocusDirUp && cy > sy) ||
+        if (c == source || (direction == FocusDirUp && cy > sy) ||
             (direction == FocusDirRight && cx < sx) ||
             (direction == FocusDirDown && cy < sy) ||
             (direction == FocusDirLeft && cx > sx))

@@ -1,10 +1,10 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "monitors.h"
+#include "focus.h"
 #include "scratchpad.h"
 #include "tags.h"
 #include "util.h"
-#include "focus.h"
 #include <stdlib.h>
 
 /* extern declarations for variables from instantwm.c */

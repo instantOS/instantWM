@@ -276,7 +276,7 @@ typedef struct {
 } Layout;
 
 struct Pertag {
-    unsigned int current_tag, prevtag;      /* current and previous tag */
+    unsigned int current_tag, prevtag; /* current and previous tag */
     int nmasters[MAX_TAGS];            /* number of windows in master area */
     float mfacts[MAX_TAGS];            /* mfacts per tag */
     unsigned int sellts[MAX_TAGS];     /* selected layouts */

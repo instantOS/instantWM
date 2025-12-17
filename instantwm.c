@@ -677,7 +677,7 @@ void focus(Client *c) {
     }
 }
 
-//TODO: document what this does
+// TODO: document what this does
 void focusstack(const Arg *arg) {
     Client *c = NULL, *i;
 
@@ -1216,10 +1216,12 @@ void setlayout(const Arg *arg) {
         setlayout(arg);
     } else {
         if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-            selmon->sellt = selmon->pertag->sellts[selmon->pertag->current_tag] ^= 1;
+            selmon->sellt =
+                selmon->pertag->sellts[selmon->pertag->current_tag] ^= 1;
         if (arg && arg->v)
             selmon->lt[selmon->sellt] =
-                selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt] =
+                selmon->pertag
+                    ->ltidxs[selmon->pertag->current_tag][selmon->sellt] =
                     (Layout *)arg->v;
     }
     strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol,

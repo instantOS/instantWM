@@ -88,8 +88,8 @@ void showoverlay(const Arg *arg) {
 
     Client *c;
     for (c = selmon->clients; c; c = c->next) {
-        if (c->tags & (1 << (selmon->pertag->current_tag - 1)) && c->is_fullscreen &&
-            !c->isfakefullscreen) {
+        if (c->tags & (1 << (selmon->pertag->current_tag - 1)) &&
+            c->is_fullscreen && !c->isfakefullscreen) {
             yoffset = 0;
             break;
         }
