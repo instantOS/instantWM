@@ -41,6 +41,7 @@ extern char tags[][16]; /* MAX_TAGLEN is 16 in config.h */
 extern const unsigned int startmenusize;
 extern const char *statusbarcolors[];
 
+extern int numtags;
 extern int get_blw(Monitor *m);
 
 void clickstatus(const Arg *arg) {
@@ -244,7 +245,7 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
                                unsigned int urg) {
     int w, roundw, ishover;
 
-    for (unsigned int i = 0; i < 21; i++) { /* LENGTH(tags) is 21 */
+    for (unsigned int i = 0; i < numtags; i++) {
         ishover = i == selmon->gesture - 1 ? SchemeHover : SchemeNoHover;
         if (i >= 9)
             continue;

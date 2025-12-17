@@ -68,7 +68,7 @@ void nametag(const Arg *arg) {
 }
 
 void resetnametag(const Arg *arg) {
-    for (int i = 0; i < 21; i++)
+    for (int i = 0; i < numtags; i++)
         strcpy((char *)&tags[i], tags_default[i]);
     tagwidth = gettagwidth();
     drawbars();
