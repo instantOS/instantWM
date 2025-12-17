@@ -30,3 +30,14 @@ void die(const char *fmt, ...) {
 
     exit(1);
 }
+
+int startswith(const char *a, const char *b) {
+    char *checker = NULL;
+
+    checker = strstr(a, b);
+    if (checker == a) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
