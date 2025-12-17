@@ -38,6 +38,7 @@
 
 #include "animation.h"
 #include "bar.h"
+#include "client.h"
 #include "floating.h"
 #include "focus.h"
 #include "instantwm.h"
@@ -396,15 +397,9 @@ void arrangemon(Monitor *m) {
     }
 }
 
-void attach(Client *c) {
-    c->next = c->mon->clients;
-    c->mon->clients = c;
-}
+/* attach() moved to client.c */
 
-void attachstack(Client *c) {
-    c->snext = c->mon->stack;
-    c->mon->stack = c;
-}
+/* attachstack() moved to client.c */
 
 void resetcursor() {
     if (altcursor == AltCurNone)
@@ -701,22 +696,7 @@ void clientmessage(XEvent *e) {
     }
 }
 
-void configure(Client *c) {
-    XConfigureEvent ce;
-
-    ce.type = ConfigureNotify;
-    ce.display = dpy;
-    ce.event = c->win;
-    ce.window = c->win;
-    ce.x = c->x;
-    ce.y = c->y;
-    ce.width = c->w;
-    ce.height = c->h;
-    ce.border_width = c->bw;
-    ce.above = None;
-    ce.override_redirect = False;
-    XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *)&ce);
-}
+/* configure() moved to client.c */
 
 void configurenotify(XEvent *e) {
     Monitor *m;
@@ -892,27 +872,9 @@ void destroynotify(XEvent *e) {
     }
 }
 
-void detach(Client *c) {
-    Client **tc;
+/* detach() moved to client.c */
 
-    for (tc = &c->mon->clients; *tc && *tc != c; tc = &(*tc)->next)
-        ;
-    *tc = c->next;
-}
-
-void detachstack(Client *c) {
-    Client **tc, *t;
-
-    for (tc = &c->mon->stack; *tc && *tc != c; tc = &(*tc)->snext)
-        ;
-    *tc = c->snext;
-
-    if (c == c->mon->sel) {
-        for (t = c->mon->stack; t && !ISVISIBLE(t); t = t->snext)
-            ;
-        c->mon->sel = t;
-    }
-}
+/* detachstack() moved to client.c */
 
 /* dirtomon() moved to monitors.c */
 
@@ -1223,39 +1185,7 @@ void grabkeys(void) {
     }
 }
 
-void hide(Client *c) {
-    if (!c || HIDDEN(c))
-        return;
-
-    int x, y, wi, h;
-    x = c->x;
-    y = c->y;
-    wi = c->w;
-    h = c->h;
-
-    if (animated)
-        animateclient(c, c->x, bh - c->h + 40, 0, 0, 10, 0);
-
-    Window w = c->win;
-    static XWindowAttributes ra, ca;
-
-    // more or less taken directly from blackbox's hide() function
-    XGrabServer(dpy);
-    XGetWindowAttributes(dpy, root, &ra);
-    XGetWindowAttributes(dpy, w, &ca);
-    // prevent UnmapNotify events
-    XSelectInput(dpy, root, ra.your_event_mask & ~SubstructureNotifyMask);
-    XSelectInput(dpy, w, ca.your_event_mask & ~StructureNotifyMask);
-    XUnmapWindow(dpy, w);
-    setclientstate(c, IconicState);
-    XSelectInput(dpy, root, ra.your_event_mask);
-    XSelectInput(dpy, w, ca.your_event_mask);
-    XUngrabServer(dpy);
-    resize(c, x, y, wi, h, 0);
-
-    focus(c->snext);
-    arrange(c->mon);
-}
+/* hide() moved to client.c */
 
 void incnmaster(const Arg *arg) {
     int ccount;
@@ -1820,18 +1750,9 @@ void shutkill(const Arg *arg) {
 
 /* resetnametag() moved to tags.c */
 
-Client *nexttiled(Client *c) {
-    for (; c && (c->isfloating || !ISVISIBLE(c) || HIDDEN(c)); c = c->next)
-        ;
-    return c;
-}
+/* nexttiled() moved to client.c */
 
-void pop(Client *c) {
-    detach(c);
-    attach(c);
-    focus(c);
-    arrange(c->mon);
-}
+/* pop() moved to client.c */
 
 void propertynotify(XEvent *e) {
     Client *c;
@@ -1887,10 +1808,7 @@ void quit(const Arg *arg) { running = 0; }
 
 /* removesystrayicon() moved to systray.c */
 
-void resize(Client *c, int x, int y, int w, int h, int interact) {
-    if (applysizehints(c, &x, &y, &w, &h, interact) || selmon->clientcount == 1)
-        resizeclient(c, x, y, w, h);
-}
+/* resize() moved to client.c */
 
 void resizebarwin(Monitor *m) {
     unsigned int w = m->ww;
@@ -1899,24 +1817,7 @@ void resizebarwin(Monitor *m) {
     XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, w, bh);
 }
 
-void resizeclient(Client *c, int x, int y, int w, int h) {
-    XWindowChanges wc;
-
-    c->oldx = c->x;
-    c->x = wc.x = x;
-    c->oldy = c->y;
-    c->y = wc.y = y;
-    c->oldw = c->w;
-    c->w = wc.width = w;
-    c->oldh = c->h;
-    c->h = wc.height = h;
-    wc.border_width = c->bw;
-
-    XConfigureWindow(dpy, c->win,
-                     CWX | CWY | CWWidth | CWHeight | CWBorderWidth, &wc);
-    configure(c);
-    XSync(dpy, False);
-}
+/* resizeclient() moved to client.c */
 
 /* forceresizemouse() moved to mouse.c */
 
@@ -2009,55 +1910,11 @@ void scan(void) {
 
 /* sendmon() moved to monitors.c */
 
-void setclientstate(Client *c, long state) {
-    long data[] = {state, None};
+/* setclientstate() moved to client.c */
 
-    XChangeProperty(dpy, c->win, wmatom[WMState], wmatom[WMState], 32,
-                    PropModeReplace, (unsigned char *)data, 2);
-}
+/* sendevent() moved to client.c */
 
-int sendevent(Window w, Atom proto, int mask, long d0, long d1, long d2,
-              long d3, long d4) {
-    int n;
-    Atom *protocols, mt;
-    int exists = 0;
-    XEvent ev;
-
-    if (proto == wmatom[WMTakeFocus] || proto == wmatom[WMDelete]) {
-        mt = wmatom[WMProtocols];
-        if (XGetWMProtocols(dpy, w, &protocols, &n)) {
-            while (!exists && n--)
-                exists = protocols[n] == proto;
-            XFree(protocols);
-        }
-    } else {
-        exists = True;
-        mt = proto;
-    }
-    if (exists) {
-        ev.type = ClientMessage;
-        ev.xclient.window = w;
-        ev.xclient.message_type = mt;
-        ev.xclient.format = 32;
-        ev.xclient.data.l[0] = d0;
-        ev.xclient.data.l[1] = d1;
-        ev.xclient.data.l[2] = d2;
-        ev.xclient.data.l[3] = d3;
-        ev.xclient.data.l[4] = d4;
-        XSendEvent(dpy, w, False, mask, &ev);
-    }
-    return exists;
-}
-
-void setfocus(Client *c) {
-    if (!c->neverfocus) {
-        XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
-        XChangeProperty(dpy, root, netatom[NetActiveWindow], XA_WINDOW, 32,
-                        PropModeReplace, (unsigned char *)&(c->win), 1);
-    }
-    sendevent(c->win, wmatom[WMTakeFocus], NoEventMask, wmatom[WMTakeFocus],
-              CurrentTime, 0, 0, 0);
-}
+/* setfocus() moved to client.c */
 
 void setfullscreen(Client *c, int fullscreen) {
     if (fullscreen && !c->isfullscreen) {
@@ -2446,40 +2303,9 @@ void seturgent(Client *c, int urg) {
 }
 
 // unminimize window
-void show(Client *c) {
-    int x, y, w, h;
-    if (!c || !HIDDEN(c))
-        return;
+/* show() moved to client.c */
 
-    x = c->x;
-    y = c->y;
-    w = c->w;
-    h = c->h;
-
-    XMapWindow(dpy, c->win);
-    setclientstate(c, NormalState);
-    resize(c, x, -50, w, h, 0);
-    XRaiseWindow(dpy, c->win);
-    animateclient(c, x, y, 0, 0, 14, 0);
-    arrange(c->mon);
-}
-
-void showhide(Client *c) {
-    if (!c)
-        return;
-    if (ISVISIBLE(c)) {
-        /* show clients top down */
-        XMoveWindow(dpy, c->win, c->x, c->y);
-        if ((!c->mon->lt[c->mon->sellt]->arrange || c->isfloating) &&
-            (!c->isfullscreen || c->isfakefullscreen))
-            resize(c, c->x, c->y, c->w, c->h, 0);
-        showhide(c->snext);
-    } else {
-        /* hide clients bottom up */
-        showhide(c->snext);
-        XMoveWindow(dpy, c->win, WIDTH(c) * -2, c->y);
-    }
-}
+/* showhide() moved to client.c */
 
 void spawn(const Arg *arg) {
     struct sigaction sa;
@@ -2500,11 +2326,7 @@ void spawn(const Arg *arg) {
 
 /* computeprefix() moved to tags.c */
 
-void setclienttagprop(Client *c) {
-    long data[] = {(long)c->tags, (long)c->mon->num};
-    XChangeProperty(dpy, c->win, netatom[NetClientInfo], XA_CARDINAL, 32,
-                    PropModeReplace, (unsigned char *)data, 2);
-}
+/* setclienttagprop() moved to client.c */
 
 /* tag() moved to tags.c */
 
@@ -2704,17 +2526,7 @@ void unhideall(const Arg *arg) {
     restack(selmon);
 }
 
-void unfocus(Client *c, int setfocus) {
-    if (!c)
-        return;
-    lastclient = c;
-    grabbuttons(c, 0);
-    XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderNormal].pixel);
-    if (setfocus) {
-        XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
-        XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
-    }
-}
+/* unfocus() moved to client.c */
 
 void unmanage(Client *c, int destroyed) {
     Monitor *m = c->mon;
@@ -3116,16 +2928,7 @@ void spacetoggle(const Arg *arg) {
 
 /* fullovertoggle() moved to tags.c */
 
-Client *wintoclient(Window w) {
-    Client *c;
-    Monitor *m;
-
-    for (m = mons; m; m = m->next)
-        for (c = m->clients; c; c = c->next)
-            if (c->win == w)
-                return c;
-    return NULL;
-}
+/* wintoclient() moved to client.c */
 
 /* wintomon() moved to monitors.c */
 
