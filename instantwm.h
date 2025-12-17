@@ -240,7 +240,7 @@ struct Client {
         saved_float_height; /* stored float geometry, used on mode revert */
     int oldx, oldy, oldw, oldh;
     int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
-    int bw, oldbw;
+    int border_width, old_border_width;
     unsigned int tags;
     int isfixed, isfloating, isurgent, neverfocus, oldstate, is_fullscreen,
         isfakefullscreen, islocked, issticky, snapstatus;

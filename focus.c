@@ -20,7 +20,7 @@ extern void restack(Monitor *m);
 
 void direction_focus(const Arg *arg) {
     Client *c;
-    //TODO: the name sc sucks, come up with something descriptive
+    // TODO: the name sc sucks, come up with something descriptive
     Client *sc;
     Client *out_client = NULL;
     Monitor *m;
@@ -48,7 +48,8 @@ void direction_focus(const Arg *arg) {
         cy = c->y + (c->h / 2);
 
         if (c == sc || (direction == 0 && cy > sy) ||
-            //TODO: get rid of direction magic numbers, use existing enums if possible
+            // TODO: get rid of direction magic numbers, use existing enums if
+            // possible
             (direction == 1 && cx < sx) || (direction == 2 && cy < sy) ||
             (direction == 3 && cx > sx))
             continue;
@@ -111,8 +112,9 @@ void warp_cursor_to_client(const Client *c) {
     }
 
     if (!getrootptr(&x, &y) ||
-        (x > c->x - c->bw && y > c->y - c->bw && x < c->x + c->w + c->bw * 2 &&
-         y < c->y + c->h + c->bw * 2) ||
+        (x > c->x - c->border_width && y > c->y - c->border_width &&
+         x < c->x + c->w + c->border_width * 2 &&
+         y < c->y + c->h + c->border_width * 2) ||
         (y > c->mon->by && y < c->mon->by + bh) || (c->mon->topbar && !y))
         return;
 

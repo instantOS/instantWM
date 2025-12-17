@@ -364,8 +364,8 @@ void maprequest(XEvent *e) {
 
 /* Helper: handle hover near floating window for resize cursor */
 static int handlefloatingresizehover(Monitor *m) {
-    if (!(selmon->sel && (selmon->sel->isfloating ||
-                          NULL == tiling_layout_func(selmon))))
+    if (!(selmon->sel &&
+          (selmon->sel->isfloating || NULL == tiling_layout_func(selmon))))
         return 0;
 
     Client *c;

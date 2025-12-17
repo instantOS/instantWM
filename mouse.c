@@ -789,36 +789,36 @@ static void warp_pointer_resize(Client *c, int direction) {
     int x_off, y_off;
     switch (direction) {
     case ResizeDirTopLeft:
-        x_off = -c->bw;
-        y_off = -c->bw;
+        x_off = -c->border_width;
+        y_off = -c->border_width;
         break;
     case ResizeDirTop:
-        x_off = (c->w + c->bw - 1) / 2;
-        y_off = -c->bw;
+        x_off = (c->w + c->border_width - 1) / 2;
+        y_off = -c->border_width;
         break;
     case ResizeDirTopRight:
-        x_off = c->w + c->bw - 1;
-        y_off = -c->bw;
+        x_off = c->w + c->border_width - 1;
+        y_off = -c->border_width;
         break;
     case ResizeDirRight:
-        x_off = c->w + c->bw - 1;
-        y_off = (c->h + c->bw - 1) / 2;
+        x_off = c->w + c->border_width - 1;
+        y_off = (c->h + c->border_width - 1) / 2;
         break;
     case ResizeDirBottomRight:
-        x_off = c->w + c->bw - 1;
-        y_off = c->h + c->bw - 1;
+        x_off = c->w + c->border_width - 1;
+        y_off = c->h + c->border_width - 1;
         break;
     case ResizeDirBottom:
-        x_off = (c->w + c->bw - 1) / 2;
-        y_off = c->h + c->bw - 1;
+        x_off = (c->w + c->border_width - 1) / 2;
+        y_off = c->h + c->border_width - 1;
         break;
     case ResizeDirBottomLeft:
-        x_off = -c->bw;
-        y_off = c->h + c->bw - 1;
+        x_off = -c->border_width;
+        y_off = c->h + c->border_width - 1;
         break;
     case ResizeDirLeft:
-        x_off = -c->bw;
-        y_off = (c->h + c->bw - 1) / 2;
+        x_off = -c->border_width;
+        y_off = (c->h + c->border_width - 1) / 2;
         break;
     default:
         return;
@@ -838,7 +838,8 @@ static void warp_pointer_resize(Client *c, int direction) {
  *
  * @param c         The client being resized
  * @param ev        The motion event containing current mouse position
- * @param direction The resize direction (ResizeDirTopLeft, ResizeDirBottom, etc.)
+ * @param direction The resize direction (ResizeDirTopLeft, ResizeDirBottom,
+ * etc.)
  * @param ocx       Original client x position (left edge)
  * @param ocy       Original client y position (top edge)
  * @param ocx2      Original client right edge (x + width)
@@ -851,18 +852,19 @@ static void warp_pointer_resize(Client *c, int direction) {
 static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
                                  int ocy, int ocx2, int ocy2, int *nx, int *ny,
                                  int *nw, int *nh) {
-    int is_left_side = (direction == ResizeDirTopLeft ||
-                        direction == ResizeDirBottomLeft ||
-                        direction == ResizeDirLeft);
-    int is_top_side = (direction == ResizeDirTopLeft ||
-                       direction == ResizeDirTop ||
-                       direction == ResizeDirTopRight);
+    int is_left_side =
+        (direction == ResizeDirTopLeft || direction == ResizeDirBottomLeft ||
+         direction == ResizeDirLeft);
+    int is_top_side =
+        (direction == ResizeDirTopLeft || direction == ResizeDirTop ||
+         direction == ResizeDirTopRight);
 
     if (direction != ResizeDirTop && direction != ResizeDirBottom) {
         *nx = is_left_side ? ev->xmotion.x : c->x;
-        *nw = MAX(is_left_side ? (ocx2 - *nx)
-                               : (ev->xmotion.x - ocx - 2 * c->bw + 1),
-                  1);
+        *nw =
+            MAX(is_left_side ? (ocx2 - *nx)
+                             : (ev->xmotion.x - ocx - 2 * c->border_width + 1),
+                1);
     } else {
         *nx = c->x;
         *nw = c->w;
@@ -871,7 +873,7 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
     if (direction != ResizeDirLeft && direction != ResizeDirRight) {
         *ny = is_top_side ? ev->xmotion.y : c->y;
         *nh = MAX(is_top_side ? (ocy2 - *ny)
-                              : (ev->xmotion.y - ocy - 2 * c->bw + 1),
+                              : (ev->xmotion.y - ocy - 2 * c->border_width + 1),
                   1);
     } else {
         *ny = c->y;
@@ -948,8 +950,8 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
         }
     }
     if (!tiling_layout_func(selmon) || c->isfloating) {
-        if (c->bw == 0 && c != selmon->overlay)
-            c->bw = c->oldbw;
+        if (c->border_width == 0 && c != selmon->overlay)
+            c->border_width = c->old_border_width;
         if (!force_resize)
             resize(c, nx, ny, nw, nh, 1);
         else
@@ -1043,8 +1045,8 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
         toggle_floating(NULL);
     if (!tiling_layout_func(selmon) || c->isfloating) {
-        nw = MAX(nx - d->ocx - 2 * c->bw + 1, 1);
-        nh = MAX(ny - d->ocy - 2 * c->bw + 1, 1);
+        nw = MAX(nx - d->ocx - 2 * c->border_width + 1, 1);
+        nh = MAX(ny - d->ocy - 2 * c->border_width + 1, 1);
 
         clamp_size_hints(c, &nw, &nh);
 

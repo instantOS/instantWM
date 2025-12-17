@@ -246,18 +246,18 @@ int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact) {
             *x = sw - WIDTH(c);
         if (*y > sh)
             *y = sh - HEIGHT(c);
-        if (*x + *w + 2 * c->bw < 0)
+        if (*x + *w + 2 * c->border_width < 0)
             *x = 0;
-        if (*y + *h + 2 * c->bw < 0)
+        if (*y + *h + 2 * c->border_width < 0)
             *y = 0;
     } else {
         if (*x >= m->wx + m->ww)
             *x = m->wx + m->ww - WIDTH(c);
         if (*y >= m->wy + m->wh)
             *y = m->wy + m->wh - HEIGHT(c);
-        if (*x + *w + 2 * c->bw <= m->wx)
+        if (*x + *w + 2 * c->border_width <= m->wx)
             *x = m->wx;
-        if (*y + *h + 2 * c->bw <= m->wy)
+        if (*y + *h + 2 * c->border_width <= m->wy)
             *y = m->wy;
     }
     if (*h < bh)
@@ -327,7 +327,7 @@ void arrangemon(Monitor *m) {
               NULL != c->mon->lt[c->mon->sellt]->arrange) ||
              &monocle == c->mon->lt[c->mon->sellt]->arrange)) {
             savebw(c);
-            c->bw = 0;
+            c->border_width = 0;
         } else {
             restorebw(c);
         }
@@ -341,7 +341,7 @@ void arrangemon(Monitor *m) {
 
     if (m->fullscreen) {
         int tbw;
-        tbw = selmon->fullscreen->bw;
+        tbw = selmon->fullscreen->border_width;
         if (m->fullscreen->isfloating)
             savefloating(selmon->fullscreen);
         resize(m->fullscreen, m->mx, m->my + (m->showbar * bh),
@@ -958,7 +958,7 @@ void manage(Window w, XWindowAttributes *wa) {
     c->y = c->oldy = wa->y;
     c->w = c->oldw = wa->width;
     c->h = c->oldh = wa->height;
-    c->oldbw = wa->border_width;
+    c->old_border_width = wa->border_width;
 
     updatetitle(c);
     if (XGetTransientForHint(dpy, w, &trans) && (t = wintoclient(trans))) {
@@ -976,13 +976,13 @@ void manage(Window w, XWindowAttributes *wa) {
     c->x = MAX(c->x, c->mon->wx);
     /* only fix client y-offset, if the client center might cover the bar */
     c->y = MAX(c->y, c->mon->wy);
-    c->bw = borderpx;
+    c->border_width = borderpx;
 
     if (!c->isfloating && &monocle == c->mon->lt[c->mon->sellt]->arrange &&
         c->w > c->mon->mw - 30 && c->h > (c->mon->mh - 30 - bh)) {
         wc.border_width = 0;
     } else {
-        wc.border_width = c->bw;
+        wc.border_width = c->border_width;
     }
 
     XConfigureWindow(dpy, w, CWBorderWidth, &wc);
@@ -1150,7 +1150,7 @@ void setfullscreen(Client *c, int fullscreen) {
         c->oldstate = c->isfloating;
         savebw(c);
         if (!c->isfakefullscreen) {
-            c->bw = 0;
+            c->border_width = 0;
             if (!c->isfloating)
                 animateclient(c, c->mon->mx, c->mon->my, c->mon->mw, c->mon->mh,
                               10, 0);
@@ -1449,7 +1449,7 @@ void togglefakefullscreen(const Arg *arg) {
                          selmon->mh - 2 * borderpx);
             XRaiseWindow(dpy, selmon->sel->win);
         } else {
-            selmon->sel->bw = selmon->sel->oldbw;
+            selmon->sel->border_width = selmon->sel->old_border_width;
         }
     }
 
@@ -1548,7 +1548,7 @@ void unmanage(Client *c, int destroyed) {
     detach(c);
     detachstack(c);
     if (!destroyed) {
-        wc.border_width = c->oldbw;
+        wc.border_width = c->old_border_width;
         XGrabServer(dpy); /* avoid race conditions */
         XSetErrorHandler(xerrordummy);
         XSelectInput(dpy, c->win, NoEventMask);
@@ -1700,11 +1700,12 @@ void updatemotifhints(Client *c) {
             if (motif[MWM_HINTS_DECORATIONS_FIELD] & MWM_DECOR_ALL ||
                 motif[MWM_HINTS_DECORATIONS_FIELD] & MWM_DECOR_BORDER ||
                 motif[MWM_HINTS_DECORATIONS_FIELD] & MWM_DECOR_TITLE)
-                c->bw = c->oldbw = borderpx;
+                c->border_width = c->old_border_width = borderpx;
             else
-                c->bw = c->oldbw = 0;
+                c->border_width = c->old_border_width = 0;
 
-            resize(c, c->x, c->y, width - (2 * c->bw), height - (2 * c->bw), 0);
+            resize(c, c->x, c->y, width - (2 * c->border_width),
+                   height - (2 * c->border_width), 0);
         }
         XFree(p);
     }

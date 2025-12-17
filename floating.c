@@ -3,8 +3,8 @@
 #include "floating.h"
 #include "animation.h"
 #include "focus.h"
-#include "push.h"
 #include "layouts.h"
+#include "push.h"
 
 /* External declarations for variables defined in instantwm.c */
 extern Display *dpy;
@@ -30,16 +30,16 @@ void restorefloating(Client *c) {
 }
 
 void savebw(Client *c) {
-    if (!c->bw || c->bw == 0)
+    if (!c->border_width || c->border_width == 0)
         return;
-    c->oldbw = c->bw;
+    c->old_border_width = c->border_width;
 }
 
-//TODO: what does bw mean? More descriptive name
+// TODO: what does bw mean? More descriptive name
 void restorebw(Client *c) {
-    if (!c->oldbw || c->oldbw == 0)
+    if (!c->old_border_width || c->old_border_width == 0)
         return;
-    c->bw = c->oldbw;
+    c->border_width = c->old_border_width;
 }
 
 void applysize(Client *c) { resize(c, c->x + 1, c->y, c->w, c->h, 0); }
@@ -114,8 +114,9 @@ void applysnap(Client *c, Monitor *m) {
         checkanimate(c, m->mx + m->mw / 2, mony, m->mw / 2, m->mh / 2, 7, 0);
         break;
     case SnapRight:
-        checkanimate(c, m->mx + m->mw / 2, mony, m->mw / 2 - c->bw * 2,
-                     m->wh - c->bw * 2, 7, 0);
+        checkanimate(c, m->mx + m->mw / 2, mony,
+                     m->mw / 2 - c->border_width * 2,
+                     m->wh - c->border_width * 2, 7, 0);
         break;
     case SnapBottomRight:
         checkanimate(c, m->mx + m->mw / 2, mony + m->mh / 2, m->mw / 2,
@@ -135,9 +136,9 @@ void applysnap(Client *c, Monitor *m) {
         break;
     case SnapMaximized:
         savebw(c);
-        c->bw = 0;
-        checkanimate(c, m->mx, mony, m->mw - c->bw * 2, m->mh + c->bw * 2, 7,
-                     0);
+        c->border_width = 0;
+        checkanimate(c, m->mx, mony, m->mw - c->border_width * 2,
+                     m->mh + c->border_width * 2, 7, 0);
         if (c == selmon->sel)
             XRaiseWindow(dpy, c->win);
         break;
@@ -147,7 +148,7 @@ void applysnap(Client *c, Monitor *m) {
 }
 
 void changesnap(Client *c, int snapmode) {
-    //TODO: get rid of magic numbers, use existing enum if possible
+    // TODO: get rid of magic numbers, use existing enum if possible
     int snapmatrix[10][4] = {
         {9, 3, 5, 7}, // normal
         {9, 2, 0, 8}, // top half
@@ -168,7 +169,8 @@ void changesnap(Client *c, int snapmode) {
     tempsnap = c->snapstatus;
     c->snapstatus = snapmatrix[tempsnap][snapmode];
     applysnap(c, c->mon);
-    // TODO: ISO C99 and later do not support implicit function declarations (clang -Wimplicit-function-declaration)
+    // TODO: ISO C99 and later do not support implicit function declarations
+    // (clang -Wimplicit-function-declaration)
     warp_cursor_to_client(c);
     focus(c);
 }
@@ -186,8 +188,7 @@ void temp_fullscreen(const Arg *arg) {
         if (!selmon->sel)
             return;
         selmon->fullscreen = selmon->sel;
-        if (selmon->sel->isfloating ||
-            NULL == tiling_layout_func(selmon))
+        if (selmon->sel->isfloating || NULL == tiling_layout_func(selmon))
             savefloating(selmon->fullscreen);
     }
 
@@ -223,7 +224,7 @@ void toggle_floating(const Arg *arg) {
         selmon->clientcount = clientcount();
         if (selmon->clientcount <= 1 && !selmon->sel->snapstatus) {
             savebw(selmon->sel);
-            selmon->sel->bw = 0;
+            selmon->sel->border_width = 0;
         }
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderTileFocus].pixel);
@@ -341,10 +342,10 @@ void moveresize(const Arg *arg) {
         ny = selmon->my;
 
     if ((ny + c->h) > (selmon->my + selmon->mh))
-        ny = ((selmon->mh + selmon->my) - c->h - c->bw * 2);
+        ny = ((selmon->mh + selmon->my) - c->h - c->border_width * 2);
 
     if ((nx + c->w) > (selmon->mx + selmon->mw))
-        nx = ((selmon->mw + selmon->mx) - c->w - c->bw * 2);
+        nx = ((selmon->mw + selmon->mx) - c->w - c->border_width * 2);
 
     animateclient(c, nx, ny, c->w, c->h, 5, 0);
     warp_cursor_to_client(c);
