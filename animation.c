@@ -86,7 +86,7 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
 
 void animleft(const Arg *arg) {
 
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+    if (&overviewlayout == tiling_layout_func(selmon)) {
         directionfocus(&((Arg){.ui = 3}));
         return;
     }
@@ -94,7 +94,7 @@ void animleft(const Arg *arg) {
     Client *tempc;
 
     // windows like behaviour in floating layout
-    if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (selmon->sel && NULL == tiling_layout_func(selmon)) {
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderTileFocus].pixel);
         changesnap(selmon->sel, 3);
@@ -127,13 +127,13 @@ void animright(const Arg *arg) {
     Client *tempc;
     int tmpcounter = 0;
 
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+    if (&overviewlayout == tiling_layout_func(selmon)) {
         directionfocus(&((Arg){.ui = 1}));
         return;
     }
 
     // snap window to the right
-    if (selmon->sel && NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (selmon->sel && NULL == tiling_layout_func(selmon)) {
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderTileFocus].pixel);
         changesnap(selmon->sel, 1);

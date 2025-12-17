@@ -462,7 +462,7 @@ void buttonpress(XEvent *e) {
     // Handle resize click when cursor is in resize mode near floating window
     if (click == ClkRootWin && altcursor == AltCurResize &&
         ev->button == Button1 && selmon->sel &&
-        (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)) {
+        (selmon->sel->isfloating || !tiling_layout_func(selmon))) {
         resetcursor();
         resizemouse(NULL);
         return;
@@ -1247,7 +1247,7 @@ void setlayout(const Arg *arg) {
 void setmfact(const Arg *arg) {
     float f;
     int tmpanim = 0;
-    if (!arg || !selmon->lt[selmon->sellt]->arrange)
+    if (!arg || !tiling_layout_func(selmon))
         return;
     f = arg->f < 1.0 ? arg->f + selmon->mfact : arg->f - 1.0;
     if (f < 0.05 || f > 0.95)
@@ -1846,7 +1846,7 @@ void zoom(const Arg *arg) {
 
     XRaiseWindow(dpy, c->win);
 
-    if ((!selmon->lt[selmon->sellt]->arrange ||
+    if ((!tiling_layout_func(selmon) ||
          (selmon->sel && selmon->sel->isfloating)) ||
         (c == nexttiled(selmon->clients) &&
          (!c || !(c = nexttiled(c->next))))) {

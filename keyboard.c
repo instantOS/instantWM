@@ -138,12 +138,12 @@ void upkey(const Arg *arg) {
     if (!selmon->sel)
         return;
 
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+    if (&overviewlayout == tiling_layout_func(selmon)) {
         directionfocus(&((Arg){.ui = 0}));
         return;
     }
 
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (NULL == tiling_layout_func(selmon)) {
         Client *c;
         c = selmon->sel;
         XSetWindowBorder(dpy, c->win,
@@ -155,12 +155,12 @@ void upkey(const Arg *arg) {
 }
 
 void downkey(const Arg *arg) {
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+    if (&overviewlayout == tiling_layout_func(selmon)) {
         directionfocus(&((Arg){.ui = 2}));
         return;
     }
 
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (NULL == tiling_layout_func(selmon)) {
         if (!selmon->sel)
             return;
         /* unmaximize */
@@ -171,7 +171,7 @@ void downkey(const Arg *arg) {
 }
 
 void spacetoggle(const Arg *arg) {
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (NULL == tiling_layout_func(selmon)) {
         if (!selmon->sel)
             return;
         Client *c;

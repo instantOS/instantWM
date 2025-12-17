@@ -8,6 +8,7 @@
 
 #include "floating.h"
 #include "instantwm.h"
+#include "layouts.h"
 #include "mouse.h"
 #include "util.h"
 
@@ -180,7 +181,7 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         ny = selmon->wy;
     else if (abs((selmon->wy + selmon->wh) - (ny + HEIGHT(c))) < snap)
         ny = selmon->wy + selmon->wh - HEIGHT(c);
-    if (!c->isfloating && selmon->lt[selmon->sellt]->arrange &&
+    if (!c->isfloating && tiling_layout_func(selmon) &&
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap)) {
         if (animated) {
             animated = 0;
@@ -190,7 +191,7 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
             togglefloating(NULL);
         }
     }
-    if (!selmon->lt[selmon->sellt]->arrange || c->isfloating)
+    if (!tiling_layout_func(selmon) || c->isfloating)
         resize(c, nx, ny, c->w, c->h, 1);
 
     return DRAG_CONTINUE;
@@ -215,7 +216,7 @@ void movemouse(const Arg *arg) {
         return;
     }
 
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (NULL == tiling_layout_func(selmon)) {
         // unmaximize in floating layout
         if (c->x >= selmon->mx - MAX_UNMAXIMIZE_OFFSET &&
             c->y >= selmon->my + bh - MAX_UNMAXIMIZE_OFFSET &&
@@ -287,7 +288,7 @@ void gesturemouse(const Arg *arg) {
 // window Returns 1 if in border zone, 0 if not or no valid floating selection
 int isinresizeborder() {
     if (!(selmon->sel &&
-          (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange)))
+          (selmon->sel->isfloating || !tiling_layout_func(selmon))))
         return 0;
     int x, y;
     getrootptr(&x, &y);
@@ -841,6 +842,7 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int corner, int ocx,
         *nw = c->w;
     }
 
+    //TODO get rid of magic numbers, use existing enum if possible, otherwise create new enum
     if (corner != 7 && corner != 3) {
         *ny = vertcorner ? ev->xmotion.y : c->y;
         *nh = MAX(vertcorner ? (ocy2 - *ny)
@@ -871,7 +873,7 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
         c->mon->wx + nw <= selmon->wx + selmon->ww &&
         c->mon->wy + nh >= selmon->wy &&
         c->mon->wy + nh <= selmon->wy + selmon->wh) {
-        if (!c->isfloating && selmon->lt[selmon->sellt]->arrange &&
+        if (!c->isfloating && tiling_layout_func(selmon) &&
             (abs(nw - c->w) > snap || abs(nh - c->h) > snap)) {
             if (animated) {
                 animated = 0;
@@ -882,7 +884,7 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
             }
         }
     }
-    if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
+    if (!tiling_layout_func(selmon) || c->isfloating) {
         if (c->bw == 0 && c != selmon->overlay)
             c->bw = c->oldbw;
         if (!forceresize)
@@ -945,7 +947,7 @@ void resizemouse(const Arg *arg) {
         ;
     handle_client_monitor_switch(c);
 
-    if (NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (NULL == tiling_layout_func(selmon)) {
         savefloating(c);
         c->snapstatus = SnapNone;
     }
@@ -974,10 +976,10 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
     else if (abs((selmon->wy + selmon->wh) - (ny + HEIGHT(c))) < snap)
         ny = selmon->wy + selmon->wh - HEIGHT(c);
 
-    if (!c->isfloating && selmon->lt[selmon->sellt]->arrange &&
+    if (!c->isfloating && tiling_layout_func(selmon) &&
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
         togglefloating(NULL);
-    if (!selmon->lt[selmon->sellt]->arrange || c->isfloating) {
+    if (!tiling_layout_func(selmon) || c->isfloating) {
         nw = MAX(nx - d->ocx - 2 * c->bw + 1, 1);
         nh = MAX(ny - d->ocy - 2 * c->bw + 1, 1);
 

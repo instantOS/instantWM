@@ -4,6 +4,7 @@
 #include "animation.h"
 #include "focus.h"
 #include "push.h"
+#include "layouts.h"
 
 /* External declarations for variables defined in instantwm.c */
 extern Display *dpy;
@@ -43,7 +44,7 @@ void restorebw(Client *c) {
 void applysize(Client *c) { resize(c, c->x + 1, c->y, c->w, c->h, 0); }
 
 int checkfloating(Client *c) {
-    if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange)
+    if (c->isfloating || NULL == tiling_layout_func(selmon))
         return 1;
     return 0;
 }
@@ -88,7 +89,7 @@ void restoreallfloating(Monitor *m) {
 void resetsnap(Client *c) {
     if (!c->snapstatus)
         return;
-    if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange) {
+    if (c->isfloating || NULL == tiling_layout_func(selmon)) {
         c->snapstatus = 0;
         restorebw(c);
         restorefloating(c);
@@ -173,7 +174,7 @@ void tempfullscreen(const Arg *arg) {
     if (selmon->fullscreen) {
         Client *c;
         c = selmon->fullscreen;
-        if (c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange) {
+        if (c->isfloating || NULL == tiling_layout_func(selmon)) {
             restorefloating(c);
             applysize(c);
         }
@@ -183,7 +184,7 @@ void tempfullscreen(const Arg *arg) {
             return;
         selmon->fullscreen = selmon->sel;
         if (selmon->sel->isfloating ||
-            NULL == selmon->lt[selmon->sellt]->arrange)
+            NULL == tiling_layout_func(selmon))
             savefloating(selmon->fullscreen);
     }
 
@@ -296,7 +297,7 @@ void centerwindow(const Arg *arg) {
         return;
     Client *c;
     c = selmon->sel;
-    if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+    if (tiling_layout_func(selmon) && !c->isfloating)
         return;
 
     int w, h, mw, mh;
@@ -320,7 +321,7 @@ void moveresize(const Arg *arg) {
     Client *c;
     c = selmon->sel;
 
-    if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+    if (tiling_layout_func(selmon) && !c->isfloating)
         return;
 
     int mstrength = 40;
@@ -365,7 +366,7 @@ void keyresize(const Arg *arg) {
 
     resetsnap(c);
 
-    if (selmon->lt[selmon->sellt]->arrange && !c->isfloating)
+    if (tiling_layout_func(selmon) && !c->isfloating)
         return;
 
     warp(c);

@@ -89,7 +89,7 @@ void togglescratchpad(const Arg *arg) {
     int handled_action = 0;
     const char *name = arg ? arg->v : NULL;
 
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+    if (&overviewlayout == tiling_layout_func(selmon)) {
         return;
     }
 

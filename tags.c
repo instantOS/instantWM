@@ -628,7 +628,7 @@ void winview(const Arg *arg) {
     Client *c;
     Arg a;
 
-    if (&overviewlayout == selmon->lt[selmon->sellt]->arrange) {
+    if (&overviewlayout == tiling_layout_func(selmon)) {
         for (c = selmon->clients; c; c = c->next) {
             if (c == selmon->overlay)
                 continue;

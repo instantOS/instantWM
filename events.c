@@ -207,7 +207,7 @@ void configurerequest(XEvent *e) {
     if ((c = wintoclient(ev->window))) {
         if (ev->value_mask & CWBorderWidth)
             c->bw = ev->border_width;
-        else if (c->isfloating || !selmon->lt[selmon->sellt]->arrange) {
+        else if (c->isfloating || !tiling_layout_func(selmon)) {
             m = c->mon;
             if (ev->value_mask & CWX) {
                 c->oldx = c->x;
@@ -283,7 +283,7 @@ void enternotify(XEvent *e) {
         return;
     c = wintoclient(ev->window);
     if (c && selmon->sel &&
-        (selmon->sel->isfloating || !selmon->lt[selmon->sellt]->arrange) &&
+        (selmon->sel->isfloating || !tiling_layout_func(selmon)) &&
         c != selmon->sel &&
         (ev->window == root || visible(c) || ISVISIBLE(c) ||
          selmon->sel->issticky)) {
@@ -365,14 +365,14 @@ void maprequest(XEvent *e) {
 /* Helper: handle hover near floating window for resize cursor */
 static int handlefloatingresizehover(Monitor *m) {
     if (!(selmon->sel && (selmon->sel->isfloating ||
-                          NULL == selmon->lt[selmon->sellt]->arrange)))
+                          NULL == tiling_layout_func(selmon))))
         return 0;
 
     Client *c;
     int tilefound = 0;
     for (c = m->clients; c; c = c->next) {
         if (ISVISIBLE(c) &&
-            !(c->isfloating || NULL == selmon->lt[selmon->sellt]->arrange)) {
+            !(c->isfloating || NULL == tiling_layout_func(selmon))) {
             tilefound = 1;
             break;
         }
