@@ -191,7 +191,7 @@ void createscratchpad(const Arg *arg) {
 
     // turn scratchpad back into normal window
     if (c->tags == SCRATCHPAD_MASK) {
-        tag(&((Arg){.ui = 1 << (selmon->pertag->curtag - 1)}));
+        tag(&((Arg){.ui = 1 << (selmon->pertag->current_tag - 1)}));
 
         updatescratchvisible(selmon);
         return;

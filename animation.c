@@ -101,15 +101,15 @@ void animleft(const Arg *arg) {
         return;
     }
 
-    if (selmon->pertag->curtag == 1 || selmon->pertag->curtag == 0)
+    if (selmon->pertag->current_tag == 1 || selmon->pertag->current_tag == 0)
         return;
 
     if (animated) {
         int tmpcounter = 0;
         for (tempc = selmon->clients; tempc; tempc = tempc->next) {
-            if (tempc->tags & 1 << (selmon->pertag->curtag - 2) &&
+            if (tempc->tags & 1 << (selmon->pertag->current_tag - 2) &&
                 !tempc->isfloating && selmon->pertag &&
-                selmon->pertag->ltidxs[selmon->pertag->curtag - 1][0]
+                selmon->pertag->ltidxs[selmon->pertag->current_tag - 1][0]
                         ->arrange != NULL) {
                 if (!tmpcounter) {
                     tmpcounter = 1;
@@ -140,14 +140,14 @@ void animright(const Arg *arg) {
         return;
     }
 
-    if (selmon->pertag->curtag >= 20 || selmon->pertag->curtag == 0)
+    if (selmon->pertag->current_tag >= 20 || selmon->pertag->current_tag == 0)
         return;
 
     if (animated) {
         for (tempc = selmon->clients; tempc; tempc = tempc->next) {
-            if (tempc->tags & 1 << selmon->pertag->curtag &&
+            if (tempc->tags & 1 << selmon->pertag->current_tag &&
                 !tempc->isfloating && selmon->pertag &&
-                selmon->pertag->ltidxs[selmon->pertag->curtag + 1][0]
+                selmon->pertag->ltidxs[selmon->pertag->current_tag + 1][0]
                         ->arrange != NULL) {
                 if (!tmpcounter) {
                     tmpcounter = 1;

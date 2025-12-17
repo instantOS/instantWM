@@ -249,8 +249,8 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occ,
         ishover = i == selmon->gesture - 1 ? SchemeHover : SchemeNoHover;
         if (i >= 9)
             continue;
-        if (i == 8 && selmon->pertag->curtag > 9)
-            i = selmon->pertag->curtag - 1;
+        if (i == 8 && selmon->pertag->current_tag > 9)
+            i = selmon->pertag->current_tag - 1;
 
         /* Do not draw vacant tags */
         if (selmon->showtags) {

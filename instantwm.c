@@ -586,7 +586,7 @@ Monitor *createmon(void) {
     m->lt[1] = &layouts[0];
     strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
     m->pertag = ecalloc(1, sizeof(Pertag));
-    m->pertag->curtag = m->pertag->prevtag = 1;
+    m->pertag->current_tag = m->pertag->prevtag = 1;
 
     for (i = 0; i < MAX_TAGS; i++) {
         m->pertag->nmasters[i] = m->nmaster;
@@ -819,7 +819,7 @@ void incnmaster(const Arg *arg) {
         }
     }
 
-    selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->curtag] =
+    selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag] =
         MAX(selmon->nmaster + arg->i, 0);
     arrange(selmon);
 }
@@ -1215,10 +1215,10 @@ void setlayout(const Arg *arg) {
         setlayout(arg);
     } else {
         if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
-            selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
+            selmon->sellt = selmon->pertag->sellts[selmon->pertag->current_tag] ^= 1;
         if (arg && arg->v)
             selmon->lt[selmon->sellt] =
-                selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] =
+                selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt] =
                     (Layout *)arg->v;
     }
     strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol,
@@ -1252,7 +1252,7 @@ void setmfact(const Arg *arg) {
     f = arg->f < 1.0 ? arg->f + selmon->mfact : arg->f - 1.0;
     if (f < 0.05 || f > 0.95)
         return;
-    selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag] = f;
+    selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag] = f;
 
     if (animated && clientcount() > 2) {
         tmpanim = 1;
@@ -1465,7 +1465,7 @@ void togglebar(const Arg *arg) {
         tmpnoanim = 0;
     }
 
-    selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag] =
+    selmon->showbar = selmon->pertag->showbars[selmon->pertag->current_tag] =
         !selmon->showbar;
     updatebarpos(selmon);
     resizebarwin(selmon);
