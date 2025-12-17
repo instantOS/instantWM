@@ -240,8 +240,13 @@ void toggle_floating(const Arg *arg) {
     arrange(selmon);
 }
 
-// TODO: what is the different between this and togglefloating?
-//  Investigate and potentially rename
+/* Toggle floating state for any client (internal use).
+ * Unlike toggle_floating, this:
+ * - Takes a client parameter instead of using selmon->sel
+ * - Does not animate the transition (uses resize instead of animateclient)
+ * - Does not update border colors
+ * - Does not handle clientcount or border width for single-window layouts
+ * Used primarily for overlay windows where visual effects aren't needed. */
 void changefloating(Client *c) {
     if (!c)
         return;
@@ -324,7 +329,8 @@ void center_window(const Arg *arg) {
                selmon->my + (mh / 2) - (h / 2) - bh, c->w, c->h, True);
 }
 
-// move a client with the mouse and keyboard
+/* Move a floating client using keyboard (direction indexed by arg->i).
+ * Direction indices: 0=Down, 1=Up, 2=Right, 3=Left */
 void moveresize(const Arg *arg) {
     /* only floating windows can be moved */
     Client *c;
@@ -333,13 +339,14 @@ void moveresize(const Arg *arg) {
     if (tiling_layout_func(selmon) && !c->isfloating)
         return;
 
-    int mstrength = 40;
-    int mpositions[4][2] = {{0, mstrength},
-                            {0, (-1) * mstrength},
-                            {mstrength, 0},
-                            {(-1) * mstrength, 0}};
-    int nx = (c->x + mpositions[arg->i][0]);
-    int ny = (c->y + mpositions[arg->i][1]);
+    int move_step = 40;
+    /* Delta offsets for each direction: [direction][x_delta, y_delta] */
+    int move_deltas[4][2] = {{0, move_step},
+                             {0, -move_step},
+                             {move_step, 0},
+                             {-move_step, 0}};
+    int nx = (c->x + move_deltas[arg->i][0]);
+    int ny = (c->y + move_deltas[arg->i][1]);
 
     if (nx < selmon->mx)
         nx = selmon->mx;
@@ -356,23 +363,24 @@ void moveresize(const Arg *arg) {
     warp_cursor_to_client(c);
 }
 
+/* Resize a floating client using keyboard (direction indexed by arg->i).
+ * Direction indices: 0=TallerDown, 1=ShorterUp, 2=WiderRight, 3=NarrowerLeft */
 void keyresize(const Arg *arg) {
-
     if (!selmon->sel)
         return;
 
     Client *c;
     c = selmon->sel;
 
-    // TODO: these variable names suck, come up with something better
-    int mstrength = 40;
-    int mpositions[4][2] = {{0, mstrength},
-                            {0, (-1) * mstrength},
-                            {mstrength, 0},
-                            {(-1) * mstrength, 0}};
+    int resize_step = 40;
+    /* Size deltas for each direction: [direction][width_delta, height_delta] */
+    int resize_deltas[4][2] = {{0, resize_step},
+                               {0, -resize_step},
+                               {resize_step, 0},
+                               {-resize_step, 0}};
 
-    int nw = (c->w + mpositions[arg->i][0]);
-    int nh = (c->h + mpositions[arg->i][1]);
+    int nw = (c->w + resize_deltas[arg->i][0]);
+    int nh = (c->h + resize_deltas[arg->i][1]);
 
     resetsnap(c);
 

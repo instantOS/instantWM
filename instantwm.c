@@ -677,7 +677,10 @@ void focus(Client *c) {
     }
 }
 
-// TODO: document what this does
+/* Cycle focus through visible clients on the current monitor.
+ * arg->i > 0: Focus next visible client (wrap to first if at end)
+ * arg->i <= 0: Focus previous visible client (wrap to last if at start)
+ * Does nothing if no client is selected or if fullscreen (non-fake). */
 void focusstack(const Arg *arg) {
     Client *c = NULL, *i;
 
