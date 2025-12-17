@@ -138,11 +138,11 @@ void tag(const Arg *arg) {
 void tagall(const Arg *arg) {
     Client *c;
     int ui = computeprefix(arg);
-    if (selmon->pertag->current_tag == 0)
+    if (PERTAG_CURRENT(selmon) == 0)
         return;
     if (selmon->sel && ui & tagmask) {
         for (c = selmon->clients; c; c = c->next) {
-            if (!(c->tags & 1 << (selmon->pertag->current_tag - 1)))
+            if (!(c->tags & 1 << (PERTAG_CURRENT(selmon) - 1)))
                 continue;
             if (c->tags == SCRATCHPAD_MASK)
                 c->issticky = 0;
@@ -197,14 +197,13 @@ void swaptags(const Arg *arg) {
     for (i = 0; !(ui & 1 << i); i++)
         ;
 
-    tmpnmaster = selmon->pertag->nmasters[selmon->pertag->current_tag];
-    tmpmfact = selmon->pertag->mfacts[selmon->pertag->current_tag];
-    tmpsellt = selmon->pertag->sellts[selmon->pertag->current_tag];
-    tmplt[selmon->sellt] =
-        selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
+    tmpnmaster = PERTAG_NMASTER(selmon);
+    tmpmfact = PERTAG_MFACT(selmon);
+    tmpsellt = PERTAG_SELLT(selmon);
+    tmplt[selmon->sellt] = PERTAG_LAYOUT(selmon);
     tmplt[selmon->sellt ^ 1] =
-        selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
-    tmpshowbar = selmon->pertag->showbars[selmon->pertag->current_tag];
+        selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
+    tmpshowbar = PERTAG_SHOWBAR(selmon);
 
     selmon->pertag->nmasters[selmon->pertag->current_tag] =
         selmon->pertag->nmasters[i + 1];
@@ -248,7 +247,7 @@ void resetsticky(Client *c) {
     if (!c->issticky)
         return;
     c->issticky = 0;
-    c->tags = 1 << (selmon->pertag->current_tag - 1);
+    c->tags = 1 << (PERTAG_CURRENT(selmon) - 1);
 }
 
 void tagmon(const Arg *arg) {
@@ -285,7 +284,7 @@ void tagtoleft(const Arg *arg) {
         return;
     }
 
-    if (selmon->pertag->current_tag == 1)
+    if (PERTAG_CURRENT(selmon) == 1)
         return;
 
     c = selmon->sel;
@@ -315,7 +314,7 @@ void tagtoright(const Arg *arg) {
     int oldx;
     Client *c;
 
-    if (selmon->pertag->current_tag == 20)
+    if (PERTAG_CURRENT(selmon) == 20)
         return;
 
     if (!selmon->sel)
@@ -390,17 +389,14 @@ void toggleview(const Arg *arg) {
         }
 
         /* apply settings for this view */
-        selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag];
-        selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag];
-        selmon->sellt = selmon->pertag->sellts[selmon->pertag->current_tag];
-        selmon->lt[selmon->sellt] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
+        selmon->nmaster = PERTAG_NMASTER(selmon);
+        selmon->mfact = PERTAG_MFACT(selmon);
+        selmon->sellt = PERTAG_SELLT(selmon);
+        selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag
-                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-        if (selmon->showbar !=
-            selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
             togglebar(NULL);
 
         focus(NULL);
@@ -431,17 +427,14 @@ void view(const Arg *arg) {
         }
 
         /* apply settings for this view */
-        selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag];
-        selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag];
-        selmon->sellt = selmon->pertag->sellts[selmon->pertag->current_tag];
-        selmon->lt[selmon->sellt] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
+        selmon->nmaster = PERTAG_NMASTER(selmon);
+        selmon->mfact = PERTAG_MFACT(selmon);
+        selmon->sellt = PERTAG_SELLT(selmon);
+        selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag
-                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-        if (selmon->showbar !=
-            selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
             togglebar(NULL);
 
         focus(NULL);
@@ -451,7 +444,7 @@ void view(const Arg *arg) {
 
 void viewtoleft(const Arg *arg) {
     int i;
-    if (selmon->pertag->current_tag == 1)
+    if (PERTAG_CURRENT(selmon) == 1)
         return;
     if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1 &&
         selmon->tagset[selmon->seltags] > 1) {
@@ -469,17 +462,14 @@ void viewtoleft(const Arg *arg) {
             selmon->pertag->current_tag = i + 1;
         }
 
-        selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag];
-        selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag];
-        selmon->sellt = selmon->pertag->sellts[selmon->pertag->current_tag];
-        selmon->lt[selmon->sellt] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
+        selmon->nmaster = PERTAG_NMASTER(selmon);
+        selmon->mfact = PERTAG_MFACT(selmon);
+        selmon->sellt = PERTAG_SELLT(selmon);
+        selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag
-                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-        if (selmon->showbar !=
-            selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
             togglebar(NULL);
 
         focus(NULL);
@@ -527,7 +517,7 @@ void shiftview(const Arg *arg) {
 void viewtoright(const Arg *arg) {
     int i;
 
-    if (selmon->pertag->current_tag == 20)
+    if (PERTAG_CURRENT(selmon) == 20)
         return;
 
     if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1 &&
@@ -547,17 +537,14 @@ void viewtoright(const Arg *arg) {
             selmon->pertag->current_tag = i + 1;
         }
 
-        selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag];
-        selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag];
-        selmon->sellt = selmon->pertag->sellts[selmon->pertag->current_tag];
-        selmon->lt[selmon->sellt] =
-            selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt];
+        selmon->nmaster = PERTAG_NMASTER(selmon);
+        selmon->mfact = PERTAG_MFACT(selmon);
+        selmon->sellt = PERTAG_SELLT(selmon);
+        selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
         selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag
-                ->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1];
+            selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-        if (selmon->showbar !=
-            selmon->pertag->showbars[selmon->pertag->current_tag])
+        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
             togglebar(NULL);
 
         focus(NULL);
@@ -578,7 +565,7 @@ void overtoggle(const Arg *arg) {
 
     if (!selmon->clients ||
         (selmon->clients == selmon->overlay && !selmon->overlay->next)) {
-        if (selmon->pertag->current_tag == 0)
+        if (PERTAG_CURRENT(selmon) == 0)
             lastview(NULL);
         return;
     }
@@ -595,12 +582,12 @@ void overtoggle(const Arg *arg) {
     }
     if (selmon->fullscreen)
         temp_fullscreen(NULL);
-    if (selmon->pertag->current_tag == 0) {
+    if (PERTAG_CURRENT(selmon) == 0) {
         tmptag = selmon->pertag->prevtag;
         restoreallfloating(selmon);
         winview(NULL);
     } else {
-        tmptag = selmon->pertag->current_tag;
+        tmptag = PERTAG_CURRENT(selmon);
         saveallfloating(selmon);
         selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] =
             (Layout *)&layouts[6];
@@ -613,7 +600,7 @@ void overtoggle(const Arg *arg) {
 }
 
 void lastview(const Arg *arg) {
-    if (selmon->pertag->current_tag == selmon->pertag->prevtag)
+    if (PERTAG_CURRENT(selmon) == selmon->pertag->prevtag)
         focus_last_client(NULL);
     else
         view(&((Arg){.ui = 1 << (selmon->pertag->prevtag - 1)}));
@@ -621,7 +608,7 @@ void lastview(const Arg *arg) {
 
 // overtoggle but with monocle layout
 void fullovertoggle(const Arg *arg) {
-    if (selmon->pertag->current_tag == 0) {
+    if (PERTAG_CURRENT(selmon) == 0) {
         winview(NULL);
     } else {
         selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] =
@@ -656,7 +643,7 @@ void winview(const Arg *arg) {
 
     a.ui = c->tags;
     if (c->tags == SCRATCHPAD_MASK) {
-        view(&((Arg){.ui = 1 << (selmon->pertag->current_tag - 1)}));
+        view(&((Arg){.ui = 1 << (PERTAG_CURRENT(selmon) - 1)}));
     } else {
         view(&a);
     }

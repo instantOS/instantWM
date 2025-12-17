@@ -19,34 +19,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* extern variables from instantwm.c */
-extern Display *dpy;
-extern Drw *drw;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Window root;
-extern int bh;
-extern int lrpad;
-extern int animated;
-extern int tagwidth;
-extern int altcursor;
-extern int focusfollowsmouse;
-extern int focusfollowsfloatmouse;
-extern Cur *cursor[CurLast];
-extern Clr *borderscheme;
-extern Atom wmatom[];
-extern Atom netatom[];
-extern Atom xatom[];
-extern Atom motifatom;
-extern Systray *systray;
-extern int statuswidth;
+#include "globals.h"
 
-/* config.h values (non-static) */
-extern const int showsystray;
-extern const unsigned int startmenusize;
-extern char tags[][16];
-extern const Layout layouts[];
-extern int numtags;
+/* Extern functions are defined in instantwm.h or other headers, 
+ * keeping only those that might be missing or specific here if any. 
+ * Most function prototypes should be in headers. */
 
 /* extern functions from instantwm.c */
 extern void grabkeys(void);
