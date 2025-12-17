@@ -4,6 +4,13 @@
 #include "globals.h"
 #include "push.h"
 #include "util.h"
+#include "bar.h"
+#include "client.h"
+#include "floating.h"
+#include "monitors.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 void bstack(Monitor *m) {
     int w, h, mh, mx, tx, ty, tw, framecount;
@@ -376,4 +383,204 @@ void tile(Monitor *m) {
             if (ty + HEIGHT(c) < m->wh)
                 ty += HEIGHT(c);
         }
+}
+
+/* Moved functions */
+
+void arrange(Monitor *m) {
+    resetcursor();
+    if (m)
+        showhide(m->stack);
+    else
+        for (m = mons; m; m = m->next)
+            showhide(m->stack);
+    if (m) {
+        arrangemon(m);
+        restack(m);
+    } else
+        for (m = mons; m; m = m->next) {
+            arrangemon(m);
+        }
+}
+
+void arrangemon(Monitor *m) {
+
+    Client *c;
+    m->clientcount = clientcountmon(m);
+
+    for (c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+        if (!c->isfloating && !c->is_fullscreen &&
+            ((c->mon->clientcount == 1 &&
+              NULL != c->mon->lt[c->mon->sellt]->arrange) ||
+             &monocle == c->mon->lt[c->mon->sellt]->arrange)) {
+            savebw(c);
+            c->border_width = 0;
+        } else {
+            restore_border_width(c);
+        }
+    }
+
+    strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
+    if (m->lt[m->sellt]->arrange)
+        m->lt[m->sellt]->arrange(m);
+    else
+        floatl(m);
+
+    if (m->fullscreen) {
+        int tbw;
+        tbw = selmon->fullscreen->border_width;
+        if (m->fullscreen->isfloating)
+            savefloating(selmon->fullscreen);
+        resize(m->fullscreen, m->mx, m->my + (m->showbar * bh),
+               m->mw - (tbw * 2), m->mh - (m->showbar * bh) - (tbw * 2), 0);
+    }
+}
+
+void restack(Monitor *m) {
+    if (&overviewlayout == m->lt[m->sellt]->arrange)
+        return;
+    Client *c;
+    XEvent ev;
+    XWindowChanges wc;
+
+    drawbar(m);
+    if (!m->sel)
+        return;
+    if (m->sel->isfloating || !m->lt[m->sellt]->arrange)
+        XRaiseWindow(dpy, m->sel->win);
+    if (m->lt[m->sellt]->arrange) {
+        wc.stack_mode = Below;
+        wc.sibling = m->barwin;
+        for (c = m->stack; c; c = c->snext)
+            if (!c->isfloating && ISVISIBLE(c)) {
+                XConfigureWindow(dpy, c->win, CWSibling | CWStackMode, &wc);
+                wc.sibling = c->win;
+            }
+    }
+    XSync(dpy, False);
+    while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
+        ;
+}
+
+void commandlayout(const Arg *arg) {
+    int layoutnumber;
+    Arg *larg;
+    if (arg->ui || arg->ui >= layouts_len)
+        layoutnumber = arg->ui;
+    else
+        layoutnumber = 0;
+
+    larg = &((Arg){.v = &layouts[layoutnumber]});
+    setlayout(larg);
+}
+
+void setlayout(const Arg *arg) {
+    int multimon;
+    multimon = 0;
+    if (tagprefix) {
+        int i;
+        Monitor *m;
+        multimon = 1;
+        for (m = mons; m; m = m->next) {
+            for (i = 0; i < 20; ++i) {
+                if (!arg || !arg->v || arg->v != m->lt[m->sellt])
+                    m->pertag->sellts[i] ^= 1;
+                if (arg && arg->v)
+                    m->pertag->ltidxs[i][m->pertag->sellts[i]] =
+                        (Layout *)arg->v;
+            }
+        }
+        tagprefix = 0;
+        setlayout(arg);
+    } else {
+        if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
+            selmon->sellt =
+                selmon->pertag->sellts[selmon->pertag->current_tag] ^= 1;
+        if (arg && arg->v)
+            selmon->lt[selmon->sellt] =
+                selmon->pertag
+                    ->ltidxs[selmon->pertag->current_tag][selmon->sellt] =
+                    (Layout *)arg->v;
+    }
+    strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol,
+            sizeof selmon->ltsymbol);
+    if (selmon->sel)
+        arrange(selmon);
+    else
+        drawbar(selmon);
+    if (multimon) {
+        Monitor *tmpmon;
+        Monitor *m;
+        tmpmon = selmon;
+        multimon = 0;
+        for (m = mons; m; m = m->next) {
+            if (m != selmon) {
+                selmon = m;
+                setlayout(arg);
+            }
+        }
+        selmon = tmpmon;
+        focus(NULL);
+    }
+}
+
+void cyclelayout(const Arg *arg) {
+    Layout *l;
+    for (l = (Layout *)layouts; l != selmon->lt[selmon->sellt]; l++)
+        ;
+    if (arg->i > 0) {
+        if (l->symbol && (l + 1)->symbol) {
+            if ((l + 1)->arrange == &overviewlayout)
+                setlayout(&((Arg){.v = (l + 2)}));
+            else
+                setlayout(&((Arg){.v = (l + 1)}));
+        } else {
+            setlayout(&((Arg){.v = layouts}));
+        }
+    } else {
+        if (l != layouts && (l - 1)->symbol) {
+            if ((l - 1)->arrange == &overviewlayout)
+                setlayout(&((Arg){.v = (l - 2)}));
+            else
+                setlayout(&((Arg){.v = (l - 1)}));
+        } else {
+            setlayout(&((Arg){.v = &layouts[layouts_len - 2]}));
+        }
+    }
+}
+
+void incnmaster(const Arg *arg) {
+    int ccount;
+    ccount = clientcount();
+    if (arg->i > 0) {
+        if (selmon->nmaster >= ccount) {
+            selmon->nmaster = ccount;
+            return;
+        }
+    }
+
+    selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag] =
+        MAX(selmon->nmaster + arg->i, 0);
+    arrange(selmon);
+}
+
+/* arg > 1.0 will set mfact absolutely */
+void setmfact(const Arg *arg) {
+    float f;
+    int tmpanim = 0;
+    if (!arg || !tiling_layout_func(selmon))
+        return;
+    f = arg->f < 1.0 ? arg->f + selmon->mfact : arg->f - 1.0;
+    if (f < 0.05 || f > 0.95)
+        return;
+    selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag] = f;
+
+    if (animated && clientcount() > 2) {
+        tmpanim = 1;
+        animated = 0;
+    }
+
+    arrange(selmon);
+    if (tmpanim)
+        animated = 1;
 }

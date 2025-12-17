@@ -3,8 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 #include "util.h"
+#include "instantwm.h"
+#include "globals.h"
 
 void *ecalloc(size_t nmemb, size_t size) {
     void *p;
@@ -39,5 +45,22 @@ int startswith(const char *a, const char *b) {
         return 1;
     } else {
         return 0;
+    }
+}
+
+void spawn(const Arg *arg) {
+    struct sigaction sa;
+    if (arg->v == instantmenucmd)
+        instantmenumon[0] = '0' + selmon->num;
+    if (fork() == 0) {
+        if (dpy)
+            close(ConnectionNumber(dpy));
+        setsid();
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sa.sa_handler = SIG_DFL;
+        sigaction(SIGCHLD, &sa, NULL);
+        execvp(((char **)arg->v)[0], (char **)arg->v);
+        die("instantwm: execvp '%s' failed:", ((char **)arg->v)[0]);
     }
 }

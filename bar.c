@@ -1,6 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "bar.h"
+#include "push.h"
 #include "systray.h"
 #include "toggles.h"
 #include "util.h"
@@ -26,7 +27,7 @@ extern int commandoffsets[20];
 extern int pausedraw;
 extern const char *statusbarcolors[];
 
-extern int get_blw(Monitor *m);
+int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
 
 void clickstatus(const Arg *arg) {
     int x, y, i;
@@ -470,4 +471,73 @@ void updatebarpos(Monitor *m) {
         m->wy = m->topbar ? m->wy + bh : m->wy;
     } else
         m->by = -bh;
+}
+
+void resizebarwin(Monitor *m) {
+    unsigned int w = m->ww;
+    if (showsystray && m == systraytomon(m))
+        w -= getsystraywidth();
+    XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, w, bh);
+}
+
+void updatebars(void) {
+    unsigned int w;
+    Monitor *m;
+    XSetWindowAttributes wa = {.override_redirect = True,
+                               .background_pixmap = ParentRelative,
+                               .event_mask = ButtonPressMask | ExposureMask |
+                                             LeaveWindowMask};
+    XClassHint ch = {"dwm", "dwm"};
+    for (m = mons; m; m = m->next) {
+        if (m->barwin)
+            continue;
+        w = m->ww;
+        if (showsystray && m == systraytomon(m))
+            w -= getsystraywidth();
+        m->barwin = XCreateWindow(
+            dpy, root, m->wx, m->by, w, bh, 0, DefaultDepth(dpy, screen),
+            CopyFromParent, DefaultVisual(dpy, screen),
+            CWOverrideRedirect | CWBackPixmap | CWEventMask, &wa);
+        // XDefineCursor(dpy, m->barwin, cursor[CurNormal]->cursor);
+        if (showsystray && m == systraytomon(m))
+            XMapRaised(dpy, systray->win);
+        XMapRaised(dpy, m->barwin);
+        XSetClassHint(dpy, m->barwin, &ch);
+    }
+}
+
+void togglebar(const Arg *arg) {
+    int tmpnoanim;
+    if (animated && clientcount() > 6) {
+        animated = 0;
+        tmpnoanim = 1;
+    } else {
+        tmpnoanim = 0;
+    }
+
+    selmon->showbar = selmon->pertag->showbars[selmon->pertag->current_tag] =
+        !selmon->showbar;
+    updatebarpos(selmon);
+    resizebarwin(selmon);
+    if (showsystray) {
+        XWindowChanges wc;
+        if (!selmon->showbar)
+            wc.y = -bh;
+        else {
+            wc.y = 0;
+            if (!selmon->topbar)
+                wc.y = selmon->mh - bh;
+        }
+        XConfigureWindow(dpy, systray->win, CWY, &wc);
+    }
+    arrange(selmon);
+    if (tmpnoanim)
+        animated = 1;
+    if (selmon->overlaystatus) {
+        tmpnoanim = animated;
+        animated = 0;
+        selmon->overlaystatus = 0;
+        showoverlay(NULL);
+        animated = tmpnoanim;
+    }
 }
