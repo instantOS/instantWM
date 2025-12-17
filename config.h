@@ -340,7 +340,6 @@ static const Rule rules[] = {
     {"Panther", NULL, NULL, 0, 3, -1},
     {"org-wellkord-globonote-Main", NULL, NULL, 0, 1, -1},
     {"Peek", NULL, NULL, 0, 1, -1},
-    {"ROX-Filer", NULL, NULL, 0, 0, -1},
 };
 
 /* layout(s) */

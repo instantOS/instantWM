@@ -485,7 +485,6 @@ void resource_load(XrmDatabase db, char *name, enum resource_type rtype,
 void keyrelease(XEvent *e);
 void setoverlay();
 void desktopset();
-void createdesktop();
 void createoverlay();
 void tempfullscreen();
 

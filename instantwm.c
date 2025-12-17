@@ -75,8 +75,7 @@ int bardragging = 0;
 int altcursor = 0;
 int tagwidth = 0;
 int doubledraw = 0;
-static int desktopicons = 0;
-static int newdesktop = 0;
+
 int pausedraw = 0;
 
 int statuswidth = 0;
@@ -143,20 +142,7 @@ void keyrelease(XEvent *e) {}
 
 /* overlayexists() moved to overlay.c */
 
-void createdesktop() {
-    Client *c;
-    Monitor *m;
-    m = selmon;
-    for (c = m->clients; c; c = c->next) {
-        if (strstr(c->name, "ROX-Filer") != NULL) {
-            if (c->w > drw->w - 100) {
-                focus(c);
-                desktopset();
-                break;
-            }
-        }
-    }
-}
+
 
 /* resetsnap() moved to floating.c */
 /* saveallfloating() moved to floating.c */
@@ -219,11 +205,6 @@ void applyrules(Client *c) {
             if ((!r->title || strstr(c->name, r->title)) &&
                 (!r->class || strstr(class, r->class)) &&
                 (!r->instance || strstr(instance, r->instance))) {
-                if (strstr(r->class, "ROX-Filer") != NULL) {
-                    desktopicons = 1;
-                    newdesktop = 1;
-                }
-
                 if (strstr(r->class, "Onboard") != NULL) {
                     c->issticky = 1;
                 }
@@ -1105,21 +1086,6 @@ void closewin(const Arg *arg) {
 }
 
 void manage(Window w, XWindowAttributes *wa) {
-
-    if (desktopicons) {
-        int x, y;
-        Monitor *tempmon;
-        if (getrootptr(&x, &y)) {
-            tempmon = recttomon(x, y, 1, 1);
-            if (selmon != tempmon) {
-                if (selmon->sel)
-                    unfocus(selmon->sel, 1);
-                selmon = tempmon;
-                focus(NULL);
-            }
-        }
-    }
-
     Client *c, *t = NULL;
     Window trans = None;
     XWindowChanges wc;
@@ -1216,10 +1182,6 @@ void manage(Window w, XWindowAttributes *wa) {
     if (!HIDDEN(c))
         XMapWindow(dpy, c->win);
     focus(NULL);
-    if (newdesktop) {
-        newdesktop = 0;
-        createdesktop();
-    }
 
     if (animated && !c->isfullscreen) {
         resizeclient(c, c->x, c->y - 70, c->w, c->h);
