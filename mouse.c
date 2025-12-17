@@ -299,6 +299,33 @@ int hoverresizemouse(const Arg *arg) {
     return 1;
 }
 
+static void drag_window_title(Client *c) {
+    XUngrabPointer(dpy, CurrentTime);
+    show(c);
+    focus(c);
+    restack(selmon);
+    if (selmon->sel) {
+        XWarpPointer(dpy, None, root, 0, 0, 0, 0,
+                     selmon->sel->x + selmon->sel->w / 2,
+                     selmon->sel->y + selmon->sel->h / 2);
+        movemouse(NULL);
+    }
+}
+
+static void click_window_title(Client *c, int was_hidden, int was_focused) {
+    if (was_hidden) {
+        show(c);
+        focus(c);
+        restack(selmon);
+    } else {
+        if (was_focused) {
+            hide(c);
+        } else {
+            focus(c);
+            restack(selmon);
+        }
+    }
+}
 
 void window_title_mouse_handler(const Arg *arg) {
     int x, y, startx, starty;
@@ -336,20 +363,9 @@ void window_title_mouse_handler(const Arg *arg) {
             /* If mouse moved beyond threshold, start moving the window */
             if (abs(x - startx) > DRAG_THRESHOLD ||
                 abs(y - starty) > DRAG_THRESHOLD) {
-                    //TODO: extract into drag_window_title function
-                XUngrabPointer(dpy, CurrentTime);
                 if (was_hidden)
                     show(c);
-                focus(c);
-                restack(selmon);
-                /* Only warp pointer and move if we have a valid selected client
-                 */
-                if (selmon->sel) {
-                    XWarpPointer(dpy, None, root, 0, 0, 0, 0,
-                                 selmon->sel->x + selmon->sel->w / 2,
-                                 selmon->sel->y + selmon->sel->h / 2);
-                    movemouse(NULL);
-                }
+                drag_window_title(c);
                 return;
             }
             break;
@@ -360,17 +376,31 @@ void window_title_mouse_handler(const Arg *arg) {
      */
     XUngrabPointer(dpy, CurrentTime);
 
-    //TODO: extract into click_window_title function
-    if (was_hidden) {
-        show(c);
-        focus(c);
-        restack(selmon);
-    } else {
-        if (was_focused) {
-            hide(c);
+    click_window_title(c, was_hidden, was_focused);
+}
+
+static void right_drag_window_title(XMotionEvent *motion, int *startx, int *starty, 
+                                    int *sinit, int *dragging, Time *lasttime) {
+    if ((motion->time - *lasttime) <= (1000 / REFRESH_RATE_DRAG))
+        return;
+    *lasttime = motion->time;
+    if (!*sinit) {
+        *startx = motion->x_root;
+        *starty = motion->y_root;
+        *sinit = 1;
+    }
+
+    if (abs(motion->x_root - *startx) > selmon->mw / 20) {
+        if (!*dragging) {
+            Arg a = {.i = (motion->x_root < *startx) ? -1 : 1};
+            tagtoleft(&a);
+            *dragging = 1;
+        }
+    } else if (abs(motion->y_root - *starty) > GESTURE_THRESHOLD) {
+        if (motion->y_root > *starty) {
+            hidewin(NULL);
         } else {
-            focus(c);
-            restack(selmon);
+            killclient(NULL);
         }
     }
 }
@@ -407,32 +437,11 @@ void handle_window_title_right_mouse(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            //TODO: extract into right_drag_window_title function
-            if ((ev.xmotion.time - lasttime) <= (1000 / REFRESH_RATE_DRAG))
-                continue;
-            lasttime = ev.xmotion.time;
-            if (!sinit) {
-                startx = ev.xmotion.x_root;
-                starty = ev.xmotion.y_root;
-                sinit = 1;
-            }
-
-            if (abs(ev.xmotion.x_root - startx) > selmon->mw / 20) {
-                if (!dragging) {
-                    Arg a = {.i = (ev.xmotion.x_root < startx) ? -1 : 1};
-                    tagtoleft(&a);
-                    dragging = 1;
-                }
-            } else if (abs(ev.xmotion.y_root - starty) > GESTURE_THRESHOLD) {
-                // down
-                if (ev.xmotion.y_root > starty) {
-                    hidewin(NULL);
-                } else {
-                    killclient(NULL);
-                }
+            right_drag_window_title(&ev.xmotion, &startx, &starty, &sinit, 
+                                   &dragging, &lasttime);
+            if (ev.xmotion.y_root != starty && 
+                abs(ev.xmotion.y_root - starty) > GESTURE_THRESHOLD)
                 return;
-            }
-
             break;
         }
     } while (ev.type != ButtonRelease);

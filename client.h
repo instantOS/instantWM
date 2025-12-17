@@ -24,5 +24,6 @@ void show(Client *c);
 void hide(Client *c);
 void resize(Client *c, int x, int y, int w, int h, int interact);
 void resizeclient(Client *c, int x, int y, int w, int h);
+void updatetitle(Client *c);
 
 #endif

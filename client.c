@@ -14,6 +14,7 @@ extern Clr *borderscheme;
 extern Atom wmatom[];
 extern Atom netatom[];
 extern Client *lastclient;
+extern const char broken[];
 
 /* External functions from instantwm.c */
 extern void grabbuttons(Client *c, int focused);
@@ -21,6 +22,7 @@ extern void focus(Client *c);
 extern void arrange(Monitor *m);
 extern int applysizehints(Client *c, int *x, int *y, int *w, int *h,
                           int interact);
+extern int gettextprop(Window w, Atom atom, char *text, unsigned int size);
 
 void attach(Client *c) {
     c->next = c->mon->clients;
@@ -254,4 +256,11 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
                      CWX | CWY | CWWidth | CWHeight | CWBorderWidth, &wc);
     configure(c);
     XSync(dpy, False);
+}
+
+void updatetitle(Client *c) {
+    if (!gettextprop(c->win, netatom[NetWMName], c->name, sizeof c->name))
+        gettextprop(c->win, XA_WM_NAME, c->name, sizeof c->name);
+    if (c->name[0] == '\0')
+        strcpy(c->name, broken);
 }

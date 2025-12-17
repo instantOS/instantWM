@@ -65,7 +65,7 @@ size_t keys_len = LENGTH(keys);
 size_t dkeys_len = LENGTH(dkeys);
 
 Systray *systray = NULL;
-static const char broken[] = "broken";
+const char broken[] = "broken";
 char stext[1024];
 
 int showalttag = 0;
@@ -467,7 +467,10 @@ void buttonpress(XEvent *e) {
         resizemouse(NULL);
         return;
     }
-    // TODO: document what this does and why it does it
+    /* Execute the button action handler that matches the click location, button,
+     * and modifier keys. For special click types (tags, window titles, buttons),
+     * pass the constructed arg with contextual data; otherwise use button's arg.
+     */
     for (i = 0; i < LENGTH(buttons); i++)
         if (click == buttons[i].click && buttons[i].func &&
             buttons[i].button == ev->button &&
@@ -533,11 +536,10 @@ void cleanup(void) {
     free(statusscheme);
     free(borderscheme);
 
-    // TODO figure out how to do this with the custom theming code (this only
-    // frees dwm schemes)
-    /* for (i = 0; i < LENGTH(colors) + 1; i++) */
-    /*     free(scheme[i]); */
-    // free(scheme)
+    /* Legacy dwm color scheme cleanup is disabled because instantWM uses custom
+     * theming (windowscheme, closebuttonscheme) which are already freed above.
+     * Re-enabling this would cause double-free errors.
+     */
     XDestroyWindow(dpy, wmcheckwin);
     drw_free(drw);
     XSync(dpy, False);
@@ -1762,14 +1764,6 @@ void updatesizehints(Client *c) {
     c->isfixed =
         (c->maxw && c->maxh && c->maxw == c->minw && c->maxh == c->minh);
     c->hintsvalid = 1;
-}
-
-// TODO: can this be moved?
-void updatetitle(Client *c) {
-    if (!gettextprop(c->win, netatom[NetWMName], c->name, sizeof c->name))
-        gettextprop(c->win, XA_WM_NAME, c->name, sizeof c->name);
-    if (c->name[0] == '\0') /* hack to mark broken clients */
-        strcpy(c->name, broken);
 }
 
 void updatewindowtype(Client *c) {

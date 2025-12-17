@@ -507,7 +507,6 @@ void updatestatus(void);
 void updatesystray(void);
 void updatesystrayicongeom(Client *i, int w, int h);
 void updatesystrayiconstate(Client *i, XPropertyEvent *ev);
-void updatetitle(Client *c);
 void updatewindowtype(Client *c);
 void updatewmhints(Client *c);
 void view(const Arg *arg);

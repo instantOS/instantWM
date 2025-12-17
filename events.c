@@ -56,7 +56,6 @@ extern void updateclientlist(void);
 extern void manage(Window w, XWindowAttributes *wa);
 extern void unmanage(Client *c, int destroyed);
 extern void updatesizehints(Client *c);
-extern void updatetitle(Client *c);
 extern void updatewindowtype(Client *c);
 extern void updatewmhints(Client *c);
 extern void updatemotifhints(Client *c);
