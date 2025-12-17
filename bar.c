@@ -46,14 +46,15 @@ void clickstatus(const Arg *arg) {
 int drawstatusbar(Monitor *m, int bh, char *stext) {
     int ret, i, w, x, len, cmdcounter;
     short isCode = 0;
-    char *text;
-    char *p;
+    char buf[1024];
+    char *text = buf;
+    char *p = buf;
 
     len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len)))
-        die("malloc");
-    p = text;
-    memcpy(text, stext, len);
+    if (len > sizeof(buf))
+        len = sizeof(buf);
+    memcpy(buf, stext, len);
+    buf[len - 1] = '\0';
 
     /* compute width of the status text */
     w = 0;
@@ -179,7 +180,6 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     }
 
     drw_setscheme(drw, statusscheme);
-    free(p);
 
     return ret;
 }
