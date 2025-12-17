@@ -702,6 +702,7 @@ Button buttons[] = {
     {ClkWinTitle, 0, Button2, closewin, {0}},
     {ClkCloseButton, 0, Button1, killclient, {0}},
     {ClkCloseButton, 0, Button3, togglelocked, {0}},
+    {ClkResizeWidget, 0, Button1, drawwindow, {0}},
     {ClkWinTitle, 0, Button3, window_title_mouse_handler_right, {0}},
     {ClkWinTitle, 0, Button5, focusstack, {.i = +1}},
     {ClkWinTitle, 0, Button4, focusstack, {.i = -1}},

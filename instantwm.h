@@ -111,6 +111,7 @@ enum {
     ClkShutDown,
     ClkSideBar,
     ClkStartMenu,
+    ClkResizeWidget,
     ClkLast
 }; /* clicks */
 enum {

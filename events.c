@@ -695,12 +695,17 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
 
             if (c) {
                 arg->v = c;
-                if (c != selmon->sel ||
-                    ev->x >
-                        x - (1.0 / (double)m->bt) * m->bar_clients_width + 32) {
-                    *click = ClkWinTitle;
-                } else {
+                double titlewidth =
+                    (1.0 / (double)m->bt) * m->bar_clients_width;
+                int title_start = x - titlewidth;
+                int resize_start = title_start + titlewidth - 30;
+
+                if (c != selmon->sel || ev->x < title_start + 32) {
                     *click = ClkCloseButton;
+                } else if (ev->x > resize_start) {
+                    *click = ClkResizeWidget;
+                } else {
+                    *click = ClkWinTitle;
                 }
             }
         } else {
@@ -755,7 +760,7 @@ void buttonpress(XEvent *e) {
             CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
             buttons[i].func((click == ClkTagBar || click == ClkWinTitle ||
                              click == ClkCloseButton || click == ClkShutDown ||
-                             click == ClkSideBar) &&
+                             click == ClkSideBar || click == ClkResizeWidget) &&
                                     buttons[i].arg.i == 0
                                 ? &arg
                                 : &buttons[i].arg);

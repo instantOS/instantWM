@@ -11,6 +11,7 @@
 #include "instantwm.h"
 #include "layouts.h"
 #include "mouse.h"
+#include "tags.h"
 #include "util.h"
 extern const unsigned int systrayspacing;
 extern int force_resize;
@@ -144,8 +145,9 @@ static void handle_bar_drop(Client *c) {
 /* Data structure for movemouse motion handler */
 typedef struct {
     Client *c;
-    int ocx, ocy;       /* Original client position */
-    int startx, starty; /* Initial pointer position */
+    int ocx, ocy;            /* Original client position */
+    int startx, starty;      /* Initial pointer position */
+    int edge_snap_indicator; /* 0=none, 1=left, 2=right, 3=top */
 } MovemouseData;
 
 static DragResult movemouse_motion(XEvent *ev, void *data) {
@@ -156,10 +158,62 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
     nx = d->ocx + (ev->xmotion.x - d->startx);
     ny = d->ocy + (ev->xmotion.y - d->starty);
 
-    /* If cursor is on the bar, offset window below the bar */
+    /* Check if cursor is at edge for snapping indicator */
+    int at_edge = 0;
+    if (ev->xmotion.x_root < selmon->mx + 50 &&
+        ev->xmotion.x_root > selmon->mx - 1) {
+        at_edge = 1; /* Left edge */
+    } else if (ev->xmotion.x_root > selmon->mx + selmon->mw - 50 &&
+               ev->xmotion.x_root < selmon->mx + selmon->mw + 1) {
+        at_edge = 2; /* Right edge */
+    } else if (ev->xmotion.y_root <= selmon->my + (selmon->showbar ? bh : 5)) {
+        at_edge = 3; /* Top edge/bar */
+    }
+
+    /* Update border color to indicate snap */
+    if (at_edge && !d->edge_snap_indicator) {
+        XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderSnap].pixel);
+        d->edge_snap_indicator = at_edge;
+    } else if (!at_edge && d->edge_snap_indicator) {
+        XSetWindowBorder(dpy, c->win,
+                         borderscheme[SchemeBorderFloatFocus].pixel);
+        d->edge_snap_indicator = 0;
+    }
+
+    /* If cursor is on the bar, offset window below the bar and update bar hover
+     */
     if (ev->xmotion.y_root >= selmon->my &&
         ev->xmotion.y_root < selmon->my + bh) {
         ny = selmon->my + bh;
+        if (!d->edge_snap_indicator) {
+            XSetWindowBorder(dpy, c->win, borderscheme[SchemeBorderSnap].pixel);
+            d->edge_snap_indicator = 3;
+        }
+        /* Update bar hover state while dragging */
+        bar_dragging = 1;
+        if (!tagwidth)
+            tagwidth = gettagwidth();
+        if (ev->xmotion.x_root < selmon->mx + tagwidth + 60) {
+            /* Over tags area - could update tag hover */
+            int tag = getxtag(ev->xmotion.x_root);
+            if (tag >= 0 && tag < 9) {
+                if (selmon->gesture != tag) {
+                    selmon->gesture = tag;
+                    drawbar(selmon);
+                }
+            }
+        } else if (ev->xmotion.x_root <
+                   selmon->mx + 60 + tagwidth + selmon->bar_clients_width) {
+            /* Over window titles area */
+            resetbar();
+        }
+    } else if (d->edge_snap_indicator == 3 &&
+               ev->xmotion.y_root >= selmon->my + bh) {
+        /* Left top bar area */
+        XSetWindowBorder(dpy, c->win,
+                         borderscheme[SchemeBorderFloatFocus].pixel);
+        d->edge_snap_indicator = 0;
+        bar_dragging = 0;
     }
 
     if (abs(selmon->wx - nx) < snap)
@@ -224,12 +278,88 @@ void movemouse(const Arg *arg) {
     if (!getrootptr(&x, &y))
         return;
 
-    MovemouseData data = {
-        .c = c, .ocx = c->x, .ocy = c->y, .startx = x, .starty = y};
+    MovemouseData data = {.c = c,
+                          .ocx = c->x,
+                          .ocy = c->y,
+                          .startx = x,
+                          .starty = y,
+                          .edge_snap_indicator = 0};
     DragContext ctx = {.data = &data};
 
     drag_loop(&ctx, movemouse_motion, NULL);
     XUngrabPointer(dpy, CurrentTime);
+    bar_dragging = 0;
+
+    /* Handle edge snapping on release */
+    if (data.edge_snap_indicator) {
+        int rootx, rooty;
+        getrootptr(&rootx, &rooty);
+
+        /* Query current button state to check for Shift */
+        Window dummy_win;
+        int dummy_int;
+        unsigned int button_state;
+        XQueryPointer(dpy, root, &dummy_win, &dummy_win, &dummy_int, &dummy_int,
+                      &dummy_int, &dummy_int, &button_state);
+
+        int at_left_edge = (rootx < selmon->mx + 50 && rootx > selmon->mx - 1);
+        int at_right_edge = (rootx > selmon->mx + selmon->mw - 50 &&
+                             rootx < selmon->mx + selmon->mw + 1);
+        int at_top_edge = (rooty <= selmon->my + (selmon->showbar ? bh : 5));
+
+        if (at_left_edge || at_right_edge) {
+            if (button_state & ShiftMask ||
+                NULL == tiling_layout_func(selmon)) {
+                /* Shift held or floating layout: snap to half/quarter screen */
+                XSetWindowBorder(dpy, c->win,
+                                 borderscheme[SchemeBorderTileFocus].pixel);
+                savefloating(c);
+
+                if (at_right_edge) {
+                    if (rooty < selmon->my + selmon->mh / 7)
+                        c->snapstatus = SnapTopRight;
+                    else if (rooty > selmon->my + 6 * (selmon->mh / 7))
+                        c->snapstatus = SnapBottomRight;
+                    else
+                        c->snapstatus = SnapRight;
+                } else {
+                    if (rooty < selmon->my + selmon->mh / 7)
+                        c->snapstatus = SnapTopLeft;
+                    else if (rooty > selmon->my + 6 * (selmon->mh / 7))
+                        c->snapstatus = SnapBottomLeft;
+                    else
+                        c->snapstatus = SnapLeft;
+                }
+                applysnap(c, c->mon);
+            } else {
+                /* No shift: move to adjacent tag */
+                if (rooty < selmon->my + (2 * selmon->mh) / 3) {
+                    if (at_left_edge)
+                        moveleft(NULL);
+                    else
+                        moveright(NULL);
+                } else {
+                    if (at_left_edge)
+                        tagtoleft(NULL);
+                    else
+                        tagtoright(NULL);
+                }
+                c->isfloating = 0;
+                arrange(selmon);
+            }
+            return;
+        } else if (at_top_edge) {
+            /* Reset border and continue to normal bar drop handling */
+            XSetWindowBorder(dpy, c->win,
+                             borderscheme[SchemeBorderFloatFocus].pixel);
+        }
+    }
+
+    /* Reset border if needed */
+    if (c->isfloating) {
+        XSetWindowBorder(dpy, c->win,
+                         borderscheme[SchemeBorderFloatFocus].pixel);
+    }
 
     /* Handle drop on bar (tag move, re-tile) */
     handle_bar_drop(c);
