@@ -30,4 +30,10 @@ void forceresizemouse(const Arg *arg);
 void resizemouse(const Arg *arg);
 void resizeaspectmouse(const Arg *arg);
 
+/* Helper functions for drawwindow */
+int parse_slop_output(const char *output, int dimensions[4]);
+int is_valid_window_size(int x, int y, int width, int height, Client *c);
+void handle_monitor_switch(Client *c, int x, int y, int width, int height);
+void apply_window_resize(Client *c, int x, int y, int width, int height);
+
 #endif

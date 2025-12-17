@@ -423,37 +423,18 @@ void dragrightmouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
 }
 
-//TODO: this has too many responsibilities, refactor
-//For instance the slop parsing could be a general function
-void drawwindow(const Arg *arg) {
-
-    char str[100];
-    int i;
+/* Helper functions for drawwindow */
+int parse_slop_output(const char *output, int dimensions[4]) {
     char strout[100] = {0};
-    int dimensions[4];
-    int width, height, x, y;
     char tmpstring[30] = {0};
     int firstchar = 0;
     int counter = 0;
-    Monitor *m;
-    Client *c;
+    int i;
 
-    if (!selmon->sel)
-        return;
-    FILE *fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
+    if (!output || strlen(output) < 6)
+        return 0;
 
-    if (!fp)
-        return;
-
-    while (fgets(str, 100, fp) != NULL) {
-        strcat(strout, str);
-    }
-
-    pclose(fp);
-
-    if (strlen(strout) < 6) {
-        return;
-    }
+    strcpy(strout, output);
 
     for (i = 0; i < strlen(strout); i++) {
         if (!firstchar) {
@@ -472,6 +453,60 @@ void drawwindow(const Arg *arg) {
         }
     }
 
+    return counter == 4;
+}
+
+int is_valid_window_size(int x, int y, int width, int height, Client *c) {
+    return (width > MIN_WINDOW_SIZE && height > MIN_WINDOW_SIZE &&
+            x > -SLOP_MARGIN && y > -SLOP_MARGIN &&
+            width < selmon->mw + SLOP_MARGIN && height < selmon->mh + SLOP_MARGIN &&
+            (abs(c->w - width) > 20 || abs(c->h - height) > 20 ||
+             abs(c->x - x) > 20 || abs(c->y - y) > 20));
+}
+
+void handle_monitor_switch(Client *c, int x, int y, int width, int height) {
+    Monitor *m;
+
+    if ((m = recttomon(x, y, width, height)) != selmon) {
+        sendmon(c, m);
+        unfocus(selmon->sel, 0);
+        selmon = m;
+        focus(NULL);
+    }
+}
+
+void apply_window_resize(Client *c, int x, int y, int width, int height) {
+    if (c->isfloating) {
+        resize(c, x, y, width, height, 1);
+    } else {
+        togglefloating(NULL);
+        resize(c, x, y, width, height, 1);
+    }
+}
+
+void drawwindow(const Arg *arg) {
+    char str[100];
+    char strout[100] = {0};
+    int dimensions[4];
+    int width, height, x, y;
+    Client *c;
+    FILE *fp;
+
+    if (!selmon->sel)
+        return;
+
+    fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
+    if (!fp)
+        return;
+
+    while (fgets(str, 100, fp) != NULL) {
+        strcat(strout, str);
+    }
+    pclose(fp);
+
+    if (!parse_slop_output(strout, dimensions))
+        return;
+
     x = dimensions[0];
     y = dimensions[1];
     width = dimensions[2];
@@ -482,24 +517,9 @@ void drawwindow(const Arg *arg) {
 
     c = selmon->sel;
 
-    if (width > MIN_WINDOW_SIZE && height > MIN_WINDOW_SIZE &&
-        x > -SLOP_MARGIN && y > -SLOP_MARGIN &&
-        width < selmon->mw + SLOP_MARGIN && height < selmon->mh + SLOP_MARGIN &&
-        (abs(c->w - width) > 20 || abs(c->h - height) > 20 ||
-         abs(c->x - x) > 20 || abs(c->y - y) > 20)) {
-        if ((m = recttomon(x, y, width, height)) != selmon) {
-            sendmon(c, m);
-            unfocus(selmon->sel, 0);
-            selmon = m;
-            focus(NULL);
-        }
-
-        if (c->isfloating) {
-            resize(c, x, y, width, height, 1);
-        } else {
-            togglefloating(NULL);
-            resize(c, x, y, width, height, 1);
-        }
+    if (is_valid_window_size(x, y, width, height, c)) {
+        handle_monitor_switch(c, x, y, width, height);
+        apply_window_resize(c, x, y, width, height);
     }
 }
 

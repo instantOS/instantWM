@@ -472,6 +472,7 @@ void buttonpress(XEvent *e) {
         resizemouse(NULL);
         return;
     }
+    //TODO: document what this does and why it does it
     for (i = 0; i < LENGTH(buttons); i++)
         if (click == buttons[i].click && buttons[i].func &&
             buttons[i].button == ev->button &&
