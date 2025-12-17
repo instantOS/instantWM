@@ -1012,10 +1012,10 @@ void manage(Window w, XWindowAttributes *wa) {
 
     updatemotifhints(c);
 
-    c->sfx = c->x;
-    c->sfy = c->y = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
-    c->sfw = c->w;
-    c->sfh = c->h;
+    c->saved_float_x = c->x;
+    c->saved_float_y = c->y = c->y >= c->mon->my ? c->y : c->y + c->mon->my;
+    c->saved_float_width = c->w;
+    c->saved_float_height = c->h;
     XSelectInput(dpy, w,
                  EnterWindowMask | FocusChangeMask | PropertyChangeMask |
                      StructureNotifyMask);

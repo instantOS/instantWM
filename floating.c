@@ -15,17 +15,17 @@ extern Clr *borderscheme;
 extern int numtags;
 
 void savefloating(Client *c) {
-    c->sfx = c->x;
-    c->sfy = c->y;
-    c->sfw = c->w;
-    c->sfh = c->h;
+    c->saved_float_x = c->x;
+    c->saved_float_y = c->y;
+    c->saved_float_width = c->w;
+    c->saved_float_height = c->h;
 }
 
 void restorefloating(Client *c) {
-    c->x = c->sfx;
-    c->y = c->sfy;
-    c->w = c->sfw;
-    c->h = c->sfh;
+    c->x = c->saved_float_x;
+    c->y = c->saved_float_y;
+    c->w = c->saved_float_width;
+    c->h = c->saved_float_height;
 }
 
 void savebw(Client *c) {
@@ -102,7 +102,8 @@ void applysnap(Client *c, Monitor *m) {
         restorebw(c);
     switch (c->snapstatus) {
     case SnapNone:
-        checkanimate(c, c->sfx, c->sfy, c->sfw, c->sfh, 7, 0);
+        checkanimate(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
+                     c->saved_float_height, 7, 0);
         break;
     case SnapTop:
         checkanimate(c, m->mx, mony, m->mw, m->mh / 2, 7, 0);
@@ -209,8 +210,9 @@ void togglefloating(const Arg *arg) {
         restorebw(selmon->sel);
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderFloatFocus].pixel);
-        animateclient(selmon->sel, selmon->sel->sfx, selmon->sel->sfy,
-                      selmon->sel->sfw, selmon->sel->sfh, 7, 0);
+        animateclient(selmon->sel, selmon->sel->saved_float_x, selmon->sel->saved_float_y,
+                      selmon->sel->saved_float_width,
+                      selmon->sel->saved_float_height, 7, 0);
     } else {
         // make window tile
         selmon->clientcount = clientcount();
@@ -221,10 +223,10 @@ void togglefloating(const Arg *arg) {
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderTileFocus].pixel);
         /* save last known float dimensions */
-        selmon->sel->sfx = selmon->sel->x;
-        selmon->sel->sfy = selmon->sel->y;
-        selmon->sel->sfw = selmon->sel->w;
-        selmon->sel->sfh = selmon->sel->h;
+        selmon->sel->saved_float_x = selmon->sel->x;
+        selmon->sel->saved_float_y = selmon->sel->y;
+        selmon->sel->saved_float_width = selmon->sel->w;
+        selmon->sel->saved_float_height = selmon->sel->h;
     }
     arrange(selmon);
 }
@@ -238,13 +240,14 @@ void changefloating(Client *c) {
     c->isfloating = !c->isfloating || c->isfixed;
     if (c->isfloating)
         /* restore last known float dimensions */
-        resize(c, c->sfx, c->sfy, c->sfw, c->sfh, False);
+        resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width, c->saved_float_height,
+               False);
     else {
         /* save last known float dimensions */
-        c->sfx = c->x;
-        c->sfy = c->y;
-        c->sfw = c->w;
-        c->sfh = c->h;
+        c->saved_float_x = c->x;
+        c->saved_float_y = c->y;
+        c->saved_float_width = c->w;
+        c->saved_float_height = c->h;
     }
     arrange(selmon);
 }
@@ -260,7 +263,8 @@ void setfloating(Client *c, int should_arrange) {
 
     c->isfloating = 1;
     /* restore last known float dimensions */
-    resize(c, c->sfx, c->sfy, c->sfw, c->sfh, False);
+    resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width, c->saved_float_height,
+           False);
 
     if (should_arrange)
         arrange(selmon);
@@ -277,10 +281,10 @@ void settiled(Client *c, int should_arrange) {
 
     c->isfloating = 0;
     /* save last known float dimensions */
-    c->sfx = c->x;
-    c->sfy = c->y;
-    c->sfw = c->w;
-    c->sfh = c->h;
+    c->saved_float_x = c->x;
+    c->saved_float_y = c->y;
+    c->saved_float_width = c->w;
+    c->saved_float_height = c->h;
 
     if (should_arrange)
         arrange(selmon);

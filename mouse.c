@@ -113,7 +113,8 @@ void movemouse(const Arg *arg) {
             c->y >= selmon->my + bh - MAX_UNMAXIMIZE_OFFSET &&
             c->w >= selmon->mw - MAX_UNMAXIMIZE_OFFSET &&
             c->h >= selmon->mh - MAX_UNMAXIMIZE_OFFSET) {
-            resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
+            resize(c, c->saved_float_x, c->saved_float_y, c->saved_float_width,
+                   c->saved_float_height, 0);
         }
     }
 

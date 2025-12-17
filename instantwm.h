@@ -236,7 +236,8 @@ struct Client {
     char name[256];
     float mina, maxa;
     int x, y, w, h;
-    int sfx, sfy, sfw, sfh; /* stored float geometry, used on mode revert */
+    int saved_float_x, saved_float_y, saved_float_width,
+        saved_float_height; /* stored float geometry, used on mode revert */
     int oldx, oldy, oldw, oldh;
     int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
     int bw, oldbw;
