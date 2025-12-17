@@ -3,7 +3,7 @@
 
 include config.mk
 
-OBJ = drw.o instantwm.o layouts.o util.o overlay.o animation.o floating.o mouse.o scratchpad.o bar.o systray.o tags.o xresources.o toggles.o focus.o
+OBJ = drw.o instantwm.o layouts.o util.o overlay.o animation.o floating.o mouse.o scratchpad.o bar.o systray.o tags.o xresources.o toggles.o focus.o monitors.o
 
 .PHONY: all
 all: instantwm

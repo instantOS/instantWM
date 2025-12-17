@@ -142,7 +142,8 @@ void movemouse(const Arg *arg) {
             ny = ocy + (ev.xmotion.y - y);
 
             /* If cursor is on the bar, offset window below the bar */
-            if (ev.xmotion.y_root >= selmon->my && ev.xmotion.y_root < selmon->my + bh) {
+            if (ev.xmotion.y_root >= selmon->my &&
+                ev.xmotion.y_root < selmon->my + bh) {
                 ny = selmon->my + bh;
             }
 
@@ -321,7 +322,8 @@ void dragmouse(const Arg *arg) {
     int x, y, startx, starty;
     XEvent ev;
 
-    /* Focus the clicked window - use hoverclient since hover detection works correctly */
+    /* Focus the clicked window - use hoverclient since hover detection works
+     * correctly */
     Client *c = selmon->hoverclient;
     if (c) {
         focus(c);
@@ -330,7 +332,8 @@ void dragmouse(const Arg *arg) {
 
     /* Grab pointer to detect if user drags or just clicks */
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cursor[CurNormal]->cursor, CurrentTime) != GrabSuccess)
+                     None, cursor[CurNormal]->cursor,
+                     CurrentTime) != GrabSuccess)
         return;
     if (!getrootptr(&startx, &starty)) {
         XUngrabPointer(dpy, CurrentTime);
@@ -339,7 +342,8 @@ void dragmouse(const Arg *arg) {
 
     /* Wait for mouse movement or button release */
     do {
-        XMaskEvent(dpy, MOUSEMASK | ExposureMask | SubstructureRedirectMask, &ev);
+        XMaskEvent(dpy, MOUSEMASK | ExposureMask | SubstructureRedirectMask,
+                   &ev);
         switch (ev.type) {
         case ConfigureRequest:
         case Expose:
@@ -358,7 +362,8 @@ void dragmouse(const Arg *arg) {
         }
     } while (ev.type != ButtonRelease);
 
-    /* Button released without significant movement - just focus (already done) */
+    /* Button released without significant movement - just focus (already done)
+     */
     XUngrabPointer(dpy, CurrentTime);
 }
 
@@ -583,7 +588,7 @@ static int get_resize_direction(Client *c, int nx, int ny) {
             if (ny < 2 * c->h / 3)
                 return 7; // side
             else
-                return 6; // corner
+                return 6;               // corner
         } else if (nx > 2 * c->w / 3) { // right
             if (ny < 2 * c->h / 3)
                 return 3; // side
@@ -598,7 +603,7 @@ static int get_resize_direction(Client *c, int nx, int ny) {
             if (ny > c->h / 3)
                 return 7; // side
             else
-                return 0; // corner
+                return 0;               // corner
         } else if (nx > 2 * c->w / 3) { // right
             if (ny > c->h / 3)
                 return 3; // side
