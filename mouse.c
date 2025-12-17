@@ -89,7 +89,6 @@ static void handle_bar_drop(Client *c) {
 void movemouse(const Arg *arg) {
     int x, y, ocx, ocy, nx, ny, ti, tx, occ, colorclient, tagx, notfloating;
     Client *c;
-    Monitor *m;
     XEvent ev;
     Time lasttime = 0;
     notfloating = 0;
@@ -183,12 +182,7 @@ void movemouse(const Arg *arg) {
     /* Handle drop on bar (tag move, re-tile) */
     handle_bar_drop(c);
 
-    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-        sendmon(c, m);
-        unfocus(selmon->sel, 0);
-        selmon = m;
-        focus(NULL);
-    }
+    handle_client_monitor_switch(c);
 }
 
 void gesturemouse(const Arg *arg) {
@@ -475,6 +469,17 @@ void handle_monitor_switch(Client *c, int x, int y, int width, int height) {
     }
 }
 
+void handle_client_monitor_switch(Client *c) {
+    Monitor *m;
+
+    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
+        sendmon(c, m);
+        unfocus(selmon->sel, 0);
+        selmon = m;
+        focus(NULL);
+    }
+}
+
 void apply_window_resize(Client *c, int x, int y, int width, int height) {
     if (c->isfloating) {
         resize(c, x, y, width, height, 1);
@@ -728,7 +733,6 @@ void resizemouse(const Arg *arg) {
     int ocx, ocy, nw, nh;
     int ocx2, ocy2, nx, ny;
     Client *c;
-    Monitor *m;
     XEvent ev;
     int corner;
     int di;
@@ -815,12 +819,7 @@ void resizemouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
     while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
         ;
-    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-        sendmon(c, m);
-        unfocus(selmon->sel, 0);
-        selmon = m;
-        focus(NULL);
-    }
+    handle_client_monitor_switch(c);
 
     if (NULL == selmon->lt[selmon->sellt]->arrange) {
         savefloating(c);
@@ -832,7 +831,6 @@ void resizeaspectmouse(const Arg *arg) {
     int ocx, ocy, nw, nh;
     int ocx2, ocy2, nx, ny;
     Client *c;
-    Monitor *m;
     XEvent ev;
     int di;
     unsigned int dui;
@@ -924,10 +922,5 @@ void resizeaspectmouse(const Arg *arg) {
     XUngrabPointer(dpy, CurrentTime);
     while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
         ;
-    if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
-        sendmon(c, m);
-        unfocus(selmon->sel, 0);
-        selmon = m;
-        focus(NULL);
-    }
+    handle_client_monitor_switch(c);
 }

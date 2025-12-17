@@ -34,6 +34,7 @@ void resizeaspectmouse(const Arg *arg);
 int parse_slop_output(const char *output, int dimensions[4]);
 int is_valid_window_size(int x, int y, int width, int height, Client *c);
 void handle_monitor_switch(Client *c, int x, int y, int width, int height);
+void handle_client_monitor_switch(Client *c);
 void apply_window_resize(Client *c, int x, int y, int width, int height);
 
 #endif
