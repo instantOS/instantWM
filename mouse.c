@@ -114,8 +114,10 @@ void movemouse(const Arg *arg) {
 
     if (NULL == selmon->lt[selmon->sellt]->arrange) {
         // unmaximize in floating layout
-        if (c->x >= selmon->mx - 100 && c->y >= selmon->my + bh - 100 &&
-            c->w >= selmon->mw - 100 && c->h >= selmon->mh - 100) {
+        if (c->x >= selmon->mx - MAX_UNMAXIMIZE_OFFSET &&
+            c->y >= selmon->my + bh - MAX_UNMAXIMIZE_OFFSET &&
+            c->w >= selmon->mw - MAX_UNMAXIMIZE_OFFSET &&
+            c->h >= selmon->mh - MAX_UNMAXIMIZE_OFFSET) {
             resize(c, c->sfx, c->sfy, c->sfw, c->sfh, 0);
         }
     }
@@ -251,6 +253,7 @@ int isinresizeborder() {
 
 /* Perform edge-based resize of floating window from border zone
  * Returns 1 if resize was started (and completed), 0 otherwise */
+//TODO: does this actually return anything? Should it return anything?
 static void apply_border_resize(Client *c, int x, int y, int *nx, int *ny,
                                 int *nw, int *nh) {
     *nx = c->x;
@@ -307,10 +310,12 @@ int resizeborder(const Arg *arg) {
             break;
         case KeyPress:
             handler[ev.type](&ev);
+            //TODO: are these in the wrong order?
             if (ev.xkey.keycode == KEYCODE_ESCAPE) // Escape key
                 inborder = 0;
             break;
         case ButtonPress:
+            //TODO: get rid of magic number with enum
             if (ev.xbutton.button == 1) {
                 XUngrabPointer(dpy, CurrentTime);
                 resizemouse(NULL);
@@ -323,6 +328,9 @@ int resizeborder(const Arg *arg) {
                 continue;
             lasttime = ev.xmotion.time;
 
+            // TODO: what is happening here? Shouldn't it just check if we are
+            // too far away from the window and break the loop to switch to the
+            // underlying window?
             getrootptr(&x, &y);
             apply_border_resize(c, x, y, &nx, &ny, &nw, &nh);
             resize(c, nx, ny, nw, nh, 1);
@@ -369,7 +377,8 @@ void dragmouse(const Arg *arg) {
         case MotionNotify:
             getrootptr(&x, &y);
             /* If mouse moved beyond threshold, start moving the window */
-            if (abs(x - startx) > 5 || abs(y - starty) > 5) {
+            if (abs(x - startx) > DRAG_THRESHOLD ||
+                abs(y - starty) > DRAG_THRESHOLD) {
                 XUngrabPointer(dpy, CurrentTime);
                 movemouse(NULL);
                 return;
@@ -415,7 +424,7 @@ void dragrightmouse(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+            if ((ev.xmotion.time - lasttime) <= (1000 / REFRESH_RATE_DRAG))
                 continue;
             lasttime = ev.xmotion.time;
             if (!sinit) {
@@ -430,7 +439,7 @@ void dragrightmouse(const Arg *arg) {
                     tagtoleft(&a);
                     dragging = 1;
                 }
-            } else if (abs(ev.xmotion.y_root - starty) > 200) {
+            } else if (abs(ev.xmotion.y_root - starty) > GESTURE_THRESHOLD) {
                 // down
                 if (ev.xmotion.y_root > starty) {
                     hidewin(NULL);
@@ -503,8 +512,9 @@ void drawwindow(const Arg *arg) {
 
     c = selmon->sel;
 
-    if (width > 50 && height > 50 && x > -40 && y > -40 &&
-        width < selmon->mw + 40 && height < selmon->mh + 40 &&
+    if (width > MIN_WINDOW_SIZE && height > MIN_WINDOW_SIZE &&
+        x > -SLOP_MARGIN && y > -SLOP_MARGIN &&
+        width < selmon->mw + SLOP_MARGIN && height < selmon->mh + SLOP_MARGIN &&
         (abs(c->w - width) > 20 || abs(c->h - height) > 20 ||
          abs(c->x - x) > 20 || abs(c->y - y) > 20)) {
         if ((m = recttomon(x, y, width, height)) != selmon) {
@@ -555,7 +565,7 @@ void dragtag(const Arg *arg) {
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            if ((ev.xmotion.time - lasttime) <= (1000 / 60))
+            if ((ev.xmotion.time - lasttime) <= (1000 / REFRESH_RATE_DRAG))
                 continue;
             lasttime = ev.xmotion.time;
             if (ev.xmotion.y_root > selmon->my + bh + 1)
@@ -579,7 +589,8 @@ void dragtag(const Arg *arg) {
             } else {
                 tag(&((Arg){.ui = 1 << getxtag(ev.xmotion.x_root)}));
             }
-        } else if (ev.xmotion.x_root > selmon->mx + selmon->mw - 50) {
+        } else if (ev.xmotion.x_root >
+                   selmon->mx + selmon->mw - OVERLAY_ZONE_WIDTH) {
             if (selmon->sel == selmon->overlay) {
                 setoverlay(NULL);
             } else {
