@@ -78,13 +78,7 @@ void makescratchpad(const Arg *arg) {
     c->issticky = 0;
 
     // Make it float if not already
-    if (!c->isfloating) {
-        c->isfloating = 1;
-        c->sfx = c->x;
-        c->sfy = c->y;
-        c->sfw = c->w;
-        c->sfh = c->h;
-    }
+    setfloating(c, 0);
 
     focus(NULL);
     arrange(c->mon);
@@ -112,8 +106,7 @@ void togglescratchpad(const Arg *arg) {
             } else {
                 // Show the named scratchpad
                 named->issticky = 1;
-                if (!named->isfloating)
-                    named->isfloating = 1;
+                setfloating(named, 0);
                 // Move to current monitor if on different monitor
                 if (named->mon != selmon) {
                     detach(named);
@@ -170,8 +163,7 @@ void togglescratchpad(const Arg *arg) {
 
             if (found) {
                 found->issticky = 1;
-                if (!found->isfloating)
-                    found->isfloating = 1;
+                setfloating(found, 0);
                 focus(found);
                 arrange(selmon);
                 restack(selmon);
@@ -221,8 +213,7 @@ void showscratchpad(const Arg *arg) {
         Client *named = findnamedscratchpad(name);
         if (named) {
             named->issticky = 1;
-            if (!named->isfloating)
-                named->isfloating = 1;
+            setfloating(named, 0);
             // Move to current monitor if on different monitor
             if (named->mon != selmon) {
                 detach(named);
