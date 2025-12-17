@@ -4,6 +4,7 @@
 #include "animation.h"
 #include "bar.h"
 #include "floating.h"
+#include "globals.h"
 #include "instantwm.h"
 #include "layouts.h"
 #include "overlay.h"
@@ -19,23 +20,8 @@
 #define MAX_TAGLEN 16
 
 /* variables from instantwm.c and config.h */
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Display *dpy;
-extern int bh;
-extern int lrpad;
-extern int animated;
-extern Drw *drw;
-extern int tagwidth;
-extern int tagprefix;
-extern const unsigned int startmenusize;
-extern char tags[][MAX_TAGLEN];
 extern const char *tags_default[];
-extern const Layout layouts[];
-extern const char *tagsalt[];
-
 extern unsigned int tagmask;
-extern int numtags;
 
 /* functions */
 int computeprefix(const Arg *arg) {

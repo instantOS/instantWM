@@ -1,15 +1,11 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "focus.h"
+#include "globals.h"
 #include "scratchpad.h"
 #include "tags.h"
 
 /* External declarations for variables defined in instantwm.c */
-extern Display *dpy;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Window root;
-extern int bh;
 extern Client *lastclient;
 
 /* External function declarations */

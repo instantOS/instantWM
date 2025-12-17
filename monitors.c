@@ -1,17 +1,12 @@
 /* See LICENSE file for copyright and license details. */
 
+#include "globals.h"
 #include "monitors.h"
 #include "focus.h"
 #include "scratchpad.h"
 #include "tags.h"
 #include "util.h"
 #include <stdlib.h>
-
-/* extern declarations for variables from instantwm.c */
-extern Display *dpy;
-extern Monitor *mons;
-extern Monitor *selmon;
-extern Window root;
 
 void cleanupmon(Monitor *mon) {
     Monitor *m;

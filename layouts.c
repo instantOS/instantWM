@@ -1,5 +1,6 @@
 /* See LICENSE file for copyright and license details. */
 
+#include "globals.h"
 #include "layouts.h"
 #include "push.h"
 #include "util.h"

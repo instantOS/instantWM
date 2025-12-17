@@ -7,22 +7,11 @@
 #include <string.h>
 
 #include "floating.h"
+#include "globals.h"
 #include "instantwm.h"
 #include "layouts.h"
 #include "mouse.h"
 #include "util.h"
-
-/* extern variables */
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Display *dpy;
-extern Window root;
-extern int bh;
-extern int lrpad;
-extern int doubledraw;
-extern int animated;
-extern const int showsystray;
-extern const unsigned int systraypinning;
 extern const unsigned int systrayspacing;
 extern int force_resize;
 extern Cur *cursor[CurLast];
