@@ -457,6 +457,11 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
             resizemouse(NULL);
             d->resize_started = 1;
             return DRAG_BREAK;
+        } else if (ev->xbutton.button == Button3) {
+            XUngrabPointer(dpy, CurrentTime);
+            movemouse(NULL);
+            d->resize_started = 1;
+            return DRAG_BREAK;
         }
         break;
     }
