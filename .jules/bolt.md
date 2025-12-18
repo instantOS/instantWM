@@ -1,0 +1,3 @@
+## 2025-05-24 - XSync Bottleneck in Animation Loop
+**Learning:** `XSync(dpy, False)` is a blocking call that flushes the output buffer and waits for the X server to process requests. Using it inside a high-frequency animation loop (like `resizeclient` called by `animateclient`) severely limits performance by forcing a round-trip to the X server for every frame.
+**Action:** Replace `XSync` with `XFlush` (or rely on implicit flushing) in performance-critical paths like animations and bar drawing, and only use `XSync` when strict synchronization is required (e.g., error handling or specific race conditions).
