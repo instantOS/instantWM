@@ -519,6 +519,8 @@ typedef struct {
     int drag_started;
 } WindowTitleData;
 
+static void warp_pointer_resize(Client *c, int direction);
+
 static DragResult window_title_motion(XEvent *ev, void *data) {
     WindowTitleData *d = (WindowTitleData *)data;
     int x, y;
@@ -577,10 +579,10 @@ void window_title_mouse_handler(const Arg *arg) {
 
 /* Data structure for window_title_mouse_handler_right motion handler */
 typedef struct {
+    Client *c;
     int startx, starty;
     int start_initialized;
     int dragging;
-    int gesture_triggered;
 } RightTitleData;
 
 static DragResult right_title_motion(XEvent *ev, void *data) {
@@ -593,21 +595,19 @@ static DragResult right_title_motion(XEvent *ev, void *data) {
         d->start_initialized = 1;
     }
 
-    if (abs(motion->x_root - d->startx) > selmon->mw / 20) {
-        if (!d->dragging) {
-            if (motion->x_root < d->startx)
-                tagtoleft(NULL);
-            else
-                tagtoright(NULL);
-            d->dragging = 1;
+    if (abs(motion->x_root - d->startx) > DRAG_THRESHOLD ||
+        abs(motion->y_root - d->starty) > DRAG_THRESHOLD) {
+        d->dragging = 1;
+        XUngrabPointer(dpy, CurrentTime);
+
+        if (HIDDEN(d->c)) {
+            show(d->c);
+            focus(d->c);
+            restack(selmon);
         }
-    } else if (abs(motion->y_root - d->starty) > GESTURE_THRESHOLD) {
-        if (motion->y_root > d->starty) {
-            hide_window(NULL);
-        } else {
-            killclient(NULL);
-        }
-        d->gesture_triggered = 1;
+
+        warp_pointer_resize(d->c, ResizeDirBottomRight);
+        resizemouse(NULL);
         return DRAG_BREAK;
     }
 
@@ -616,31 +616,44 @@ static DragResult right_title_motion(XEvent *ev, void *data) {
 
 void window_title_mouse_handler_right(const Arg *arg) {
     int x, y;
+    Client *c = (Client *)arg->v;
+    if (!c)
+        return;
 
-    Client *tempc = (Client *)arg->v;
     resetbar();
-    if (tempc->is_fullscreen &&
-        !tempc->isfakefullscreen) /* no support moving fullscreen windows by
+    if (c->is_fullscreen &&
+        !c->isfakefullscreen) /* no support moving fullscreen windows by
                                      mouse */
         return;
 
-    focus(tempc);
+    focus(c);
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
         return;
-    if (!getrootptr(&x, &y))
+    if (!getrootptr(&x, &y)) {
+        XUngrabPointer(dpy, CurrentTime);
         return;
+    }
 
-    RightTitleData data = {.startx = 0,
-                           .starty = 0,
-                           .start_initialized = 0,
-                           .dragging = 0,
-                           .gesture_triggered = 0};
+    RightTitleData data = {.c = c,
+                           .startx = x,
+                           .starty = y,
+                           .start_initialized = 1,
+                           .dragging = 0};
     DragContext ctx = {.data = &data};
 
     drag_loop(&ctx, right_title_motion, NULL);
-    XUngrabPointer(dpy, CurrentTime);
+
+    if (!data.dragging) {
+        XUngrabPointer(dpy, CurrentTime);
+        if (HIDDEN(c)) {
+            show(c);
+            focus(c);
+            restack(selmon);
+        }
+        zoom(NULL);
+    }
 }
 
 /* Helper functions for drawwindow */
