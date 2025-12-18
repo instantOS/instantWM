@@ -325,7 +325,7 @@ void tagmon(const Arg *arg) {
  * @param direction: negative for left, positive for right
  * @param offset: number of tags to shift (default 1)
  */
-static void shift_tag(int direction, int offset) {
+static void shift_tag(int dir, int offset) {
     int oldx;
     Client *c;
 
@@ -334,14 +334,14 @@ static void shift_tag(int direction, int offset) {
 
     /* Handle overlay special case */
     if (selmon->sel == selmon->overlay) {
-        setoverlaymode(direction < 0 ? 3 : OverlayRight);
+        setoverlaymode(dir == DirLeft ? 3 : OverlayRight);
         return;
     }
 
     /* Boundary checks */
-    if (direction < 0 && PERTAG_CURRENT(selmon) == 1)
+    if (dir == DirLeft && PERTAG_CURRENT(selmon) == 1)
         return;
-    if (direction > 0 && PERTAG_CURRENT(selmon) == 20)
+    if (dir == DirRight && PERTAG_CURRENT(selmon) == 20)
         return;
 
     c = selmon->sel;
@@ -351,7 +351,7 @@ static void shift_tag(int direction, int offset) {
     /* Animate the window sliding in the direction of movement */
     if (!c->isfloating && animated) {
         XRaiseWindow(dpy, c->win);
-        int anim_offset = (selmon->mw / 10) * (direction < 0 ? -1 : 1);
+        int anim_offset = (selmon->mw / 10) * (dir == DirLeft ? -1 : 1);
         animateclient(c, c->x + anim_offset, c->y, 0, 0, 7, 0);
     }
 
@@ -360,11 +360,11 @@ static void shift_tag(int direction, int offset) {
         __builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1;
 
     if (selmon->sel != NULL && is_single_tag) {
-        if (direction < 0 && selmon->tagset[selmon->seltags] > 1) {
+        if (dir == DirLeft && selmon->tagset[selmon->seltags] > 1) {
             selmon->sel->tags >>= offset;
             focus(NULL);
             arrange(selmon);
-        } else if (direction > 0 &&
+        } else if (dir == DirRight &&
                    (selmon->tagset[selmon->seltags] & (tagmask >> 1))) {
             selmon->sel->tags <<= offset;
             focus(NULL);
@@ -377,13 +377,13 @@ static void shift_tag(int direction, int offset) {
 /** Move the selected client to the previous (left) tag. */
 void tagtoleft(const Arg *arg) {
     int offset = (arg && arg->i) ? arg->i : 1;
-    shift_tag(-1, offset);
+    shift_tag(DirLeft, offset);
 }
 
 /** Move the selected client to the next (right) tag. */
 void tagtoright(const Arg *arg) {
     int offset = (arg && arg->i) ? arg->i : 1;
-    shift_tag(1, offset);
+    shift_tag(DirRight, offset);
 }
 
 void toggletag(const Arg *arg) {
@@ -482,40 +482,62 @@ void view(const Arg *arg) {
     }
 }
 
-void viewtoleft(const Arg *arg) {
+static void viewscroll(const Arg *arg, int dir) {
     int i;
-    if (PERTAG_CURRENT(selmon) == 1)
-        return;
-    if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1 &&
-        selmon->tagset[selmon->seltags] > 1) {
-        selmon->seltags ^= 1; /* toggle sel tagset */
-        selmon->tagset[selmon->seltags] =
-            selmon->tagset[selmon->seltags ^ 1] >> 1;
-        selmon->pertag->prevtag = selmon->pertag->current_tag;
+    unsigned int tagmask_val = tagmask;
 
-        if (selmon->tagset[selmon->seltags ^ 1] >> 1 == ~0)
-            selmon->pertag->current_tag = 0;
-        else {
-            for (i = 0; !(selmon->tagset[selmon->seltags ^ 1] >> 1 & 1 << i);
-                 i++)
-                ;
-            selmon->pertag->current_tag = i + 1;
+    if (dir == DirLeft) {
+        if (PERTAG_CURRENT(selmon) == 1)
+            return;
+        if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask_val) ==
+                1 &&
+            selmon->tagset[selmon->seltags] > 1) {
+            selmon->seltags ^= 1; /* toggle sel tagset */
+            selmon->tagset[selmon->seltags] =
+                selmon->tagset[selmon->seltags ^ 1] >> 1;
+        } else {
+            return;
         }
-
-        selmon->nmaster = PERTAG_NMASTER(selmon);
-        selmon->mfact = PERTAG_MFACT(selmon);
-        selmon->sellt = PERTAG_SELLT(selmon);
-        selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
-        selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
-
-        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
-            togglebar(NULL);
-
-        focus(NULL);
-        arrange(selmon);
+    } else { // DirRight
+        if (PERTAG_CURRENT(selmon) == 20)
+            return;
+        if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask_val) ==
+                1 &&
+            selmon->tagset[selmon->seltags] & (tagmask_val >> 1)) {
+            selmon->seltags ^= 1; /* toggle sel tagset */
+            selmon->tagset[selmon->seltags] =
+                selmon->tagset[selmon->seltags ^ 1] << 1;
+        } else {
+            return;
+        }
     }
+
+    selmon->pertag->prevtag = selmon->pertag->current_tag;
+    unsigned int new_tagset = selmon->tagset[selmon->seltags];
+
+    if (new_tagset == ~0)
+        selmon->pertag->current_tag = 0;
+    else {
+        for (i = 0; !(new_tagset & 1 << i); i++)
+            ;
+        selmon->pertag->current_tag = i + 1;
+    }
+
+    selmon->nmaster = PERTAG_NMASTER(selmon);
+    selmon->mfact = PERTAG_MFACT(selmon);
+    selmon->sellt = PERTAG_SELLT(selmon);
+    selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
+    selmon->lt[selmon->sellt ^ 1] =
+        selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
+
+    if (selmon->showbar != PERTAG_SHOWBAR(selmon))
+        togglebar(NULL);
+
+    focus(NULL);
+    arrange(selmon);
 }
+
+void viewtoleft(const Arg *arg) { viewscroll(arg, DirLeft); }
 
 void moveleft(const Arg *arg) {
     tagtoleft(arg);
@@ -554,43 +576,7 @@ void shiftview(const Arg *arg) {
     }
 }
 
-void viewtoright(const Arg *arg) {
-    int i;
-
-    if (PERTAG_CURRENT(selmon) == 20)
-        return;
-
-    if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1 &&
-        selmon->tagset[selmon->seltags] & (tagmask >> 1)) {
-        selmon->seltags ^= 1; /* toggle sel tagset */
-        selmon->tagset[selmon->seltags] = selmon->tagset[selmon->seltags ^ 1]
-                                          << 1;
-
-        selmon->pertag->prevtag = selmon->pertag->current_tag;
-
-        if (selmon->tagset[selmon->seltags ^ 1] << 1 == ~0)
-            selmon->pertag->current_tag = 0;
-        else {
-            for (i = 0; !(selmon->tagset[selmon->seltags ^ 1] << 1 & 1 << i);
-                 i++)
-                ;
-            selmon->pertag->current_tag = i + 1;
-        }
-
-        selmon->nmaster = PERTAG_NMASTER(selmon);
-        selmon->mfact = PERTAG_MFACT(selmon);
-        selmon->sellt = PERTAG_SELLT(selmon);
-        selmon->lt[selmon->sellt] = PERTAG_LAYOUT(selmon);
-        selmon->lt[selmon->sellt ^ 1] =
-            selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
-
-        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
-            togglebar(NULL);
-
-        focus(NULL);
-        arrange(selmon);
-    }
-}
+void viewtoright(const Arg *arg) { viewscroll(arg, DirRight); }
 
 void moveright(const Arg *arg) {
     tagtoright(arg);

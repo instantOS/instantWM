@@ -286,6 +286,9 @@ struct Pertag {
 };
 typedef struct Pertag Pertag;
 
+/* Direction for movement commands */
+enum { DirUp, DirDown, DirLeft, DirRight };
+
 /* Pertag helper macros for cleaner code.
  * Use these instead of verbose pointer chains like:
  *   m->pertag->ltidxs[m->pertag->current_tag][m->pertag->sellts[m->pertag->current_tag]]

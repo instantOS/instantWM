@@ -595,8 +595,10 @@ static DragResult right_title_motion(XEvent *ev, void *data) {
 
     if (abs(motion->x_root - d->startx) > selmon->mw / 20) {
         if (!d->dragging) {
-            Arg a = {.i = (motion->x_root < d->startx) ? -1 : 1};
-            tagtoleft(&a);
+            if (motion->x_root < d->startx)
+                tagtoleft(NULL);
+            else
+                tagtoright(NULL);
             d->dragging = 1;
         }
     } else if (abs(motion->y_root - d->starty) > GESTURE_THRESHOLD) {

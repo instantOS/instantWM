@@ -81,50 +81,51 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
 
 static void animscroll(const Arg *arg, int dir) {
     if (&overviewlayout == tiling_layout_func(selmon)) {
-        direction_focus(&((Arg){.ui = dir == 1 ? 1 : 3}));
+        direction_focus(&((Arg){.ui = dir == DirRight ? 1 : 3}));
         return;
     }
 
     Client *tempc;
+    int modifier = (dir == DirRight) ? 1 : -1;
 
     // windows like behaviour in floating layout
     if (selmon->sel && NULL == tiling_layout_func(selmon)) {
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(selmon->sel, dir == 1 ? 1 : 3);
+        changesnap(selmon->sel, dir == DirRight ? 1 : 3);
         return;
     }
 
     if (selmon->pertag->current_tag == 0)
         return;
 
-    if (dir == -1 && selmon->pertag->current_tag == 1)
+    if (dir == DirLeft && selmon->pertag->current_tag == 1)
         return;
 
-    if (dir == 1 && selmon->pertag->current_tag >= 20)
+    if (dir == DirRight && selmon->pertag->current_tag >= 20)
         return;
 
     if (animated) {
         int tmpcounter = 0;
-        int target = selmon->pertag->current_tag + dir;
+        int target = selmon->pertag->current_tag + modifier;
         for (tempc = selmon->clients; tempc; tempc = tempc->next) {
             if (tempc->tags & 1 << (target - 1) && !tempc->isfloating &&
                 selmon->pertag &&
                 selmon->pertag->ltidxs[target][0]->arrange != NULL) {
                 if (!tmpcounter) {
                     tmpcounter = 1;
-                    tempc->x = tempc->x + (dir * 200);
+                    tempc->x = tempc->x + (modifier * 200);
                 }
             }
         }
     }
 
-    if (dir == 1)
+    if (dir == DirRight)
         viewtoright(arg);
     else
         viewtoleft(arg);
 }
 
-void animleft(const Arg *arg) { animscroll(arg, -1); }
+void animleft(const Arg *arg) { animscroll(arg, DirLeft); }
 
-void animright(const Arg *arg) { animscroll(arg, 1); }
+void animright(const Arg *arg) { animscroll(arg, DirRight); }
