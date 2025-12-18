@@ -254,56 +254,103 @@ void destroynotify(XEvent *e) {
     }
 }
 
-// TODO: has multiple responsibilities, refactor
-void enternotify(XEvent *e) {
-    Client *c;
-    Monitor *m;
-    XCrossingEvent *ev = &e->xcrossing;
-    int resizeexit = 0;
-    static int barleavestatus = 0;
-
-    /* deactivate area at the top to prevent overlay gesture from glitching out
-     */
-    if (barleavestatus && ev->y_root >= selmon->my + 5) {
+/** Reset bar state when mouse moves away from top area. */
+static void handle_bar_leave_reset(XCrossingEvent *ev, int *barleavestatus) {
+    if (*barleavestatus && ev->y_root >= selmon->my + 5) {
         resetbar();
-        barleavestatus = 0;
+        *barleavestatus = 0;
     }
-    /* Only care about mouse motion if the focus follows the mouse */
-    if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) &&
-        ev->window != root)
-        return;
-    c = wintoclient(ev->window);
-    if (c && selmon->sel &&
-        (selmon->sel->isfloating || !tiling_layout_func(selmon)) &&
-        c != selmon->sel &&
-        (ev->window == root || visible(c) || ISVISIBLE(c) ||
-         selmon->sel->issticky)) {
-        resizeexit = hoverresizemouse(NULL);
-        if (focusfollowsfloatmouse) {
-            if (resizeexit) // If resize was performed, don't change focus
-                return;
-            Client *newc = getcursorclient();
-            if (newc && newc != selmon->sel)
-                c = newc;
-        } else {
-            return;
-        }
+}
+
+/** Handle focus-follows-mouse for floating windows.
+ *  Returns the client to focus, or NULL if focus should not change. */
+static Client *handle_floating_focus(XCrossingEvent *ev, Client *c) {
+    int resizeexit;
+
+    if (!(c && selmon->sel &&
+          (selmon->sel->isfloating || !tiling_layout_func(selmon)) &&
+          c != selmon->sel &&
+          (ev->window == root || visible(c) || ISVISIBLE(c) ||
+           selmon->sel->issticky)))
+        return c;
+
+    resizeexit = hoverresizemouse(NULL);
+    if (focusfollowsfloatmouse) {
+        if (resizeexit)
+            return NULL; /* Resize was performed, don't change focus */
+        Client *newc = getcursorclient();
+        if (newc && newc != selmon->sel)
+            return newc;
+    } else {
+        return NULL; /* Don't change focus for floating windows */
     }
-    if (!focusfollowsmouse)
-        return;
-    m = c ? c->mon : wintomon(ev->window);
+    return c;
+}
+
+/** Handle switching focus between monitors. Returns 1 if monitor changed. */
+static int enternotify_monitor_switch(XCrossingEvent *ev, Client *c) {
+    Monitor *m = c ? c->mon : wintomon(ev->window);
     if (m != selmon) {
         unfocus(selmon->sel, 1);
         selmon = m;
-    } else {
-        if (!focusfollowsfloatmouse) {
-            if (ev->window != root && selmon->sel && c && c->isfloating &&
-                selmon->lt[selmon->sellt] != (Layout *)&layouts[6])
-                return;
-        }
-        if (!c || c == selmon->sel)
-            return;
+        return 1;
     }
+    return 0;
+}
+
+/** Check if focus change should be skipped for floating windows.
+ *  Returns 1 if focus should be skipped. */
+static int should_skip_floating_focus(XCrossingEvent *ev, Client *c) {
+    if (!focusfollowsfloatmouse) {
+        if (ev->window != root && selmon->sel && c && c->isfloating &&
+            selmon->lt[selmon->sellt] != (Layout *)&layouts[6])
+            return 1;
+    }
+    return 0;
+}
+
+/**
+ * Handle mouse enter events for focus-follows-mouse behavior.
+ * This is triggered when the mouse cursor enters a window.
+ */
+void enternotify(XEvent *e) {
+    Client *c;
+    XCrossingEvent *ev = &e->xcrossing;
+    static int barleavestatus = 0;
+
+    /* Reset bar state when mouse leaves top area */
+    handle_bar_leave_reset(ev, &barleavestatus);
+
+    /* Filter invalid crossing events */
+    if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) &&
+        ev->window != root)
+        return;
+
+    c = wintoclient(ev->window);
+
+    /* Handle floating window resize hover and focus */
+    c = handle_floating_focus(ev, c);
+    if (c == NULL)
+        return;
+
+    /* Focus follows mouse must be enabled */
+    if (!focusfollowsmouse)
+        return;
+
+    /* Handle monitor switching */
+    if (enternotify_monitor_switch(ev, c)) {
+        focus(NULL);
+        return;
+    }
+
+    /* Skip focus change for floating windows if configured */
+    if (should_skip_floating_focus(ev, c))
+        return;
+
+    /* Skip if no client or same client */
+    if (!c || c == selmon->sel)
+        return;
+
     focus(c);
 }
 
