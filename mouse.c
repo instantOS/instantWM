@@ -151,6 +151,28 @@ typedef struct {
 } MovemouseData;
 
 /**
+ * Snap coordinates to monitor work area edges if within snap threshold.
+ *
+ * Adjusts nx and ny to align with the monitor's work area boundaries
+ * (selmon->wx, wy, ww, wh) if they are within the global snap threshold.
+ * This provides consistent edge-snapping behavior during window move/resize.
+ *
+ * @param c   The client being moved/resized (used for WIDTH/HEIGHT macros)
+ * @param nx  Pointer to x coordinate (modified in place)
+ * @param ny  Pointer to y coordinate (modified in place)
+ */
+static void snap_to_monitor_edges(Client *c, int *nx, int *ny) {
+    if (abs(selmon->wx - *nx) < snap)
+        *nx = selmon->wx;
+    else if (abs((selmon->wx + selmon->ww) - (*nx + WIDTH(c))) < snap)
+        *nx = selmon->wx + selmon->ww - WIDTH(c);
+    if (abs(selmon->wy - *ny) < snap)
+        *ny = selmon->wy;
+    else if (abs((selmon->wy + selmon->wh) - (*ny + HEIGHT(c))) < snap)
+        *ny = selmon->wy + selmon->wh - HEIGHT(c);
+}
+
+/**
  * Check if cursor is at edge for snapping.
  * Returns: SnapNone, SnapLeft, SnapRight, or SnapTop
  */
@@ -224,14 +246,7 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         bar_dragging = 0;
     }
 
-    if (abs(selmon->wx - nx) < snap)
-        nx = selmon->wx;
-    else if (abs((selmon->wx + selmon->ww) - (nx + WIDTH(c))) < snap)
-        nx = selmon->wx + selmon->ww - WIDTH(c);
-    if (abs(selmon->wy - ny) < snap)
-        ny = selmon->wy;
-    else if (abs((selmon->wy + selmon->wh) - (ny + HEIGHT(c))) < snap)
-        ny = selmon->wy + selmon->wh - HEIGHT(c);
+    snap_to_monitor_edges(c, &nx, &ny);
     if (!c->isfloating && tiling_layout_func(selmon) &&
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap)) {
         if (animated) {
@@ -1159,14 +1174,7 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
     nx = ev->xmotion.x;
     ny = ev->xmotion.y;
 
-    if (abs(selmon->wx - nx) < snap)
-        nx = selmon->wx;
-    else if (abs((selmon->wx + selmon->ww) - (nx + WIDTH(c))) < snap)
-        nx = selmon->wx + selmon->ww - WIDTH(c);
-    if (abs(selmon->wy - ny) < snap)
-        ny = selmon->wy;
-    else if (abs((selmon->wy + selmon->wh) - (ny + HEIGHT(c))) < snap)
-        ny = selmon->wy + selmon->wh - HEIGHT(c);
+    snap_to_monitor_edges(c, &nx, &ny);
 
     if (!c->isfloating && tiling_layout_func(selmon) &&
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
