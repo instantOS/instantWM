@@ -719,8 +719,7 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
             do {
                 if (!ISVISIBLE(c))
                     continue;
-                else
-                    x += (1.0 / (double)m->bt) * m->bar_clients_width;
+                x += (1.0 / (double)m->bt) * m->bar_clients_width;
             } while (ev->x > x && (c = c->next));
 
             if (c) {
@@ -730,9 +729,9 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
                 int title_start = x - titlewidth;
                 int resize_start = title_start + titlewidth - 30;
 
-                if (c != selmon->sel || ev->x < title_start + 32) {
+                if (c == selmon->sel && ev->x < title_start + 32) {
                     *click = ClkCloseButton;
-                } else if (ev->x > resize_start) {
+                } else if (c == selmon->sel && ev->x > resize_start) {
                     *click = ClkResizeWidget;
                 } else {
                     *click = ClkWinTitle;
