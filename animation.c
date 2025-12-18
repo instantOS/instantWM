@@ -79,10 +79,9 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
         resize(c, x, y, width, height, 1);
 }
 
-void animleft(const Arg *arg) {
-
+static void animscroll(const Arg *arg, int dir) {
     if (&overviewlayout == tiling_layout_func(selmon)) {
-        direction_focus(&((Arg){.ui = 3}));
+        direction_focus(&((Arg){.ui = dir == 1 ? 1 : 3}));
         return;
     }
 
@@ -92,65 +91,40 @@ void animleft(const Arg *arg) {
     if (selmon->sel && NULL == tiling_layout_func(selmon)) {
         XSetWindowBorder(dpy, selmon->sel->win,
                          borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(selmon->sel, 3);
+        changesnap(selmon->sel, dir == 1 ? 1 : 3);
         return;
     }
 
-    if (selmon->pertag->current_tag == 1 || selmon->pertag->current_tag == 0)
+    if (selmon->pertag->current_tag == 0)
+        return;
+
+    if (dir == -1 && selmon->pertag->current_tag == 1)
+        return;
+
+    if (dir == 1 && selmon->pertag->current_tag >= 20)
         return;
 
     if (animated) {
         int tmpcounter = 0;
+        int target = selmon->pertag->current_tag + dir;
         for (tempc = selmon->clients; tempc; tempc = tempc->next) {
-            if (tempc->tags & 1 << (selmon->pertag->current_tag - 2) &&
-                !tempc->isfloating && selmon->pertag &&
-                selmon->pertag->ltidxs[selmon->pertag->current_tag - 1][0]
-                        ->arrange != NULL) {
+            if (tempc->tags & 1 << (target - 1) && !tempc->isfloating &&
+                selmon->pertag &&
+                selmon->pertag->ltidxs[target][0]->arrange != NULL) {
                 if (!tmpcounter) {
                     tmpcounter = 1;
-                    tempc->x = tempc->x - 200;
+                    tempc->x = tempc->x + (dir * 200);
                 }
             }
         }
     }
 
-    viewtoleft(arg);
+    if (dir == 1)
+        viewtoright(arg);
+    else
+        viewtoleft(arg);
 }
 
-void animright(const Arg *arg) {
+void animleft(const Arg *arg) { animscroll(arg, -1); }
 
-    Client *tempc;
-    int tmpcounter = 0;
-
-    if (&overviewlayout == tiling_layout_func(selmon)) {
-        direction_focus(&((Arg){.ui = 1}));
-        return;
-    }
-
-    // snap window to the right
-    if (selmon->sel && NULL == tiling_layout_func(selmon)) {
-        XSetWindowBorder(dpy, selmon->sel->win,
-                         borderscheme[SchemeBorderTileFocus].pixel);
-        changesnap(selmon->sel, 1);
-        return;
-    }
-
-    if (selmon->pertag->current_tag >= 20 || selmon->pertag->current_tag == 0)
-        return;
-
-    if (animated) {
-        for (tempc = selmon->clients; tempc; tempc = tempc->next) {
-            if (tempc->tags & 1 << selmon->pertag->current_tag &&
-                !tempc->isfloating && selmon->pertag &&
-                selmon->pertag->ltidxs[selmon->pertag->current_tag + 1][0]
-                        ->arrange != NULL) {
-                if (!tmpcounter) {
-                    tmpcounter = 1;
-                    tempc->x = tempc->x + 200;
-                }
-            }
-        }
-    }
-
-    viewtoright(arg);
-}
+void animright(const Arg *arg) { animscroll(arg, 1); }
