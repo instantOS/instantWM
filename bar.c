@@ -1,6 +1,8 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "bar.h"
+#include "globals.h"
+#include "instantwm.h"
 #include "push.h"
 #include "systray.h"
 #include "toggles.h"
@@ -19,13 +21,10 @@
 #define CLOSE_BUTTON_HEIGHT 16 /* Height of close button body */
 #define CLOSE_BUTTON_DETAIL 4  /* Height of close button detail bar */
 
-#include "globals.h"
-
-/* Additional extern declarations not in globals.h */
+/* External declarations not covered by headers */
 extern int (*xerrorxlib)(Display *, XErrorEvent *);
 extern int commandoffsets[20];
 extern int pausedraw;
-extern const char *statusbarcolors[];
 
 int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
 

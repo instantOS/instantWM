@@ -1,25 +1,10 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "systray.h"
+#include "globals.h"
 #include "util.h"
 
-/* extern declarations for variables from instantwm.c and config.h */
-extern Display *dpy;
-extern Drw *drw;
-extern Monitor *selmon;
-extern Monitor *mons;
-extern Window root;
-extern Systray *systray;
-extern Atom xatom[];
-extern Atom netatom[];
-extern Clr ***tagscheme;
-extern Clr *statusscheme;
-extern int bh;
-
-/* config.h values */
-extern const int showsystray;
-extern const unsigned int systrayspacing;
-extern const unsigned int systraypinning;
+/* External declarations not covered by headers */
 extern const int systraypinningfailfirst;
 
 unsigned int getsystraywidth() {

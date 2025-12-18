@@ -10,19 +10,12 @@
 #include "instantwm.h"
 #include "xresources.h"
 
-/* Extern declarations for arrays from config.h - defined in instantwm.c */
+/* External declarations not covered by headers */
 extern SchemePref schemehovertypes[];
 extern SchemePref schemecolortypes[];
 extern SchemePref schemewindowtypes[];
 extern SchemePref schemetagtypes[];
 extern SchemePref schemeclosetypes[];
-extern const char *tagcolors[2][5][3];
-extern const char *windowcolors[2][7][3];
-extern const char *closebuttoncolors[2][3][3];
-extern const char *bordercolors[];
-extern const char *statusbarcolors[];
-extern char tags[][16];
-extern ResourcePref resources[];
 
 /* Array sizes - need to be external or as macros/constants */
 #define NUM_SCHEMEHOVERTYPES 2

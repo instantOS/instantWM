@@ -19,9 +19,8 @@
 
 #define MAX_TAGLEN 16
 
-/* variables from instantwm.c and config.h */
+/* External declarations not covered by headers */
 extern const char *tags_default[];
-extern unsigned int tagmask;
 
 /* functions */
 

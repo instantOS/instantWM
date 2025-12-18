@@ -5,6 +5,7 @@
 #include "client.h"
 #include "focus.h"
 #include "globals.h"
+#include "instantwm.h"
 #include "layouts.h"
 #include "monitors.h"
 #include "scratchpad.h"
@@ -14,13 +15,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* extern variables from instantwm.c */
-extern int gettextprop(Window w, Atom atom, char *text, unsigned int size);
-extern Xcommand commands[];
-
-/* Extern for specialnext which might be in instantwm.c or globals */
-extern int specialnext;
 
 /* Implementation of xcommand */
 int xcommand() {

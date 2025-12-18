@@ -6,6 +6,8 @@
 #include "client.h"
 #include "floating.h"
 #include "focus.h"
+#include "globals.h"
+#include "instantwm.h"
 #include "layouts.h"
 #include "monitors.h"
 #include "mouse.h"
@@ -18,25 +20,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "globals.h"
-
-/* Extern functions are defined in instantwm.h or other headers,
- * keeping only those that might be missing or specific here if any.
- * Most function prototypes should be in headers. */
-
-/* extern functions from instantwm.c */
-extern void grabkeys(void);
-extern void updatenumlockmask(void);
-extern void updateclientlist(void);
-extern void updatesizehints(Client *c);
-extern void updatewindowtype(Client *c);
-extern void updatewmhints(Client *c);
-extern void updatemotifhints(Client *c);
-extern void resetcursor(void);
-extern long getstate(Window w);
-extern int getrootptr(int *x, int *y);
-extern Client *getcursorclient(void);
 
 /* Helper: Handle systray dock request message */
 static void handle_systray_dock_request(XClientMessageEvent *cme) {

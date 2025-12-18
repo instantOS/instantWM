@@ -12,9 +12,8 @@
 #include "layouts.h"
 #include "overlay.h"
 
-/* Extern declarations for variables from instantwm.c */
+/* External declarations not covered by headers */
 extern int freealttab;
-extern int specialnext;
 
 #define CLEANMASK(mask)                                                        \
     (mask & ~(numlockmask | LockMask) &                                        \

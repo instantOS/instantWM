@@ -4,6 +4,7 @@
 #include "animation.h"
 #include "bar.h"
 #include "globals.h"
+#include "instantwm.h"
 #include "layouts.h"
 #include "monitors.h"
 #include "mouse.h"
@@ -15,14 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* External declarations not covered by headers */
 extern Client *lastclient;
 extern const char broken[];
-
-/* External functions from instantwm.c (some might be moved here now) */
-extern void grabbuttons(Client *c, int focused);
-extern void focus(Client *c);
-extern void arrange(Monitor *m);
-extern int gettextprop(Window w, Atom atom, char *text, unsigned int size);
 
 /* Globals moved to client.c */
 Client *animclient;

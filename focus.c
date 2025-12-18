@@ -1,18 +1,14 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "focus.h"
+#include "client.h"
 #include "globals.h"
+#include "instantwm.h"
 #include "scratchpad.h"
 #include "tags.h"
 
-/* External declarations for variables defined in instantwm.c */
+/* External declarations not covered by headers */
 extern Client *lastclient;
-
-/* External function declarations */
-extern int getrootptr(int *x, int *y);
-extern void focus(Client *c);
-extern void unfocus(Client *c, int setfocus);
-extern void restack(Monitor *m);
 
 void direction_focus(const Arg *arg) {
     Client *c;
