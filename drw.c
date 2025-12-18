@@ -234,7 +234,8 @@ void drw_circ(Drw *drw, int x, int y, unsigned int w, unsigned int h,
 }
 
 int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h,
-             unsigned int lpad, const char *text, int invert, int rounded) {
+             unsigned int lpad, const char *text, int invert,
+             int detail_height) {
 
     int i, ty, ellipsis_x = 0;
     unsigned int tmpw, ew, ellipsis_w = 0, ellipsis_len;
@@ -266,12 +267,12 @@ int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h,
         XSetForeground(drw->dpy, drw->gc,
                        drw->scheme[invert ? ColFg : ColBg].pixel);
 
-        if (rounded) {
+        if (detail_height) {
             XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w,
-                           h - rounded);
+                           h - detail_height);
             XSetForeground(drw->dpy, drw->gc, drw->scheme[ColDetail].pixel);
-            XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y + h - rounded,
-                           w, rounded);
+            XFillRectangle(drw->dpy, drw->drawable, drw->gc, x,
+                           y + h - detail_height, w, detail_height);
 
         } else {
             XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h);
@@ -353,7 +354,7 @@ int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h,
         }
         if (render && overflow)
             drw_text(drw, ellipsis_x, y, ellipsis_w, h, 0, "...", invert,
-                     rounded);
+                     detail_height);
 
         if (!*text || overflow) {
             break;

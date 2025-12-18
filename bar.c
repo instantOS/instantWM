@@ -13,13 +13,13 @@
 #include <unistd.h>
 
 /* Bar drawing constants */
-#define CORNER_RADIUS_NORMAL 4 /* Normal rounded corners */
-#define CORNER_RADIUS_HOVER 8  /* Hover state rounded corners */
-#define STARTMENU_ICON_SIZE 14 /* Size of the start menu logo icon */
-#define STARTMENU_ICON_INNER 6 /* Inner square of start menu icon */
-#define CLOSE_BUTTON_WIDTH 20  /* Width of close button in title */
-#define CLOSE_BUTTON_HEIGHT 16 /* Height of close button body */
-#define CLOSE_BUTTON_DETAIL 4  /* Height of close button detail bar */
+#define DETAIL_BAR_HEIGHT_NORMAL 4 /* Normal detail bar height */
+#define DETAIL_BAR_HEIGHT_HOVER 8  /* Hover state detail bar height */
+#define STARTMENU_ICON_SIZE 14     /* Size of the start menu logo icon */
+#define STARTMENU_ICON_INNER 6     /* Inner square of start menu icon */
+#define CLOSE_BUTTON_WIDTH 20      /* Width of close button in title */
+#define CLOSE_BUTTON_HEIGHT 16     /* Height of close button body */
+#define CLOSE_BUTTON_DETAIL 4      /* Height of close button detail bar */
 
 /* External declarations not covered by headers */
 extern int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -230,7 +230,7 @@ static Clr *get_tag_scheme(Monitor *m, unsigned int i,
 /* Helper: Draw all tag indicators and return the x position after them */
 static int draw_tag_indicators(Monitor *m, int x, unsigned int occupied_tags,
                                unsigned int urg) {
-    int w, roundw, ishover;
+    int w, detail_height, ishover;
 
     for (unsigned int i = 0; i < numtags; i++) {
         ishover = i == selmon->gesture - 1 ? SchemeHover : SchemeNoHover;
@@ -249,16 +249,17 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occupied_tags,
         drw_setscheme(drw, get_tag_scheme(m, i, occupied_tags, ishover));
 
         if (i == selmon->gesture - 1) {
-            roundw = CORNER_RADIUS_HOVER;
+            detail_height = DETAIL_BAR_HEIGHT_HOVER;
             if (bar_dragging) {
                 drw_setscheme(drw, tagscheme[SchemeHover][SchemeTagFilled]);
             }
             drw_text(drw, x, 0, w, bh, lrpad / 2,
-                     (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i, roundw);
+                     (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i,
+                     detail_height);
         } else {
             drw_text(drw, x, 0, w, bh, lrpad / 2,
                      (showalttag ? tagsalt[i] : tags[i]), urg & 1 << i,
-                     CORNER_RADIUS_NORMAL);
+                     DETAIL_BAR_HEIGHT_NORMAL);
         }
         x += w;
     }
