@@ -24,6 +24,19 @@ extern const char *tags_default[];
 extern unsigned int tagmask;
 
 /* functions */
+
+/**
+ * Compute effective tag value with optional prefix modifier.
+ *
+ * The tag prefix feature allows accessing tags beyond the first 10 by
+ * pressing a prefix key first. When tagprefix is set, the tag value
+ * is shifted left by 10 bits (e.g., tag 1 becomes tag 11).
+ *
+ * @param arg: argument containing the base tag value in arg->ui
+ * @return: the effective tag value (shifted if prefix is active)
+ *
+ * Side effect: clears tagprefix after use if it was set.
+ */
 int computeprefix(const Arg *arg) {
     if (tagprefix && arg->ui) {
         tagprefix = 0;
@@ -109,19 +122,28 @@ int getxtag(int ix) {
     return -1;
 }
 
-// TODO: come up with better name
-void tag(const Arg *arg) {
-    int ui = computeprefix(arg);
+/**
+ * Move the selected client to the specified tag(s).
+ *
+ * @param tagmask_bits: bitmask of target tag(s)
+ */
+static void setclienttag_impl(unsigned int tagmask_bits) {
     Client *c;
-    if (selmon->sel && ui & tagmask) {
+    if (selmon->sel && tagmask_bits & tagmask) {
         if (selmon->sel->tags == SCRATCHPAD_MASK)
             selmon->sel->issticky = 0;
         c = selmon->sel;
-        selmon->sel->tags = ui & tagmask;
+        selmon->sel->tags = tagmask_bits & tagmask;
         setclienttagprop(c);
         focus(NULL);
         arrange(selmon);
     }
+}
+
+/** Move the selected client to the tag specified by arg->ui. */
+void tag(const Arg *arg) {
+    int ui = computeprefix(arg);
+    setclienttag_impl(ui);
 }
 
 void tagall(const Arg *arg) {
@@ -142,32 +164,33 @@ void tagall(const Arg *arg) {
     }
 }
 
-// TODO: functions with *arg arguments should be thin wrappers around functions
-//  with actual readable types
-void followtag(const Arg *arg) {
+/**
+ * Move the selected client to a tag and switch view to that tag.
+ *
+ * @param tagmask_bits: bitmask of target tag
+ * @param preserve_prefix: if true, maintain tagprefix state after tag()
+ */
+static void followtag_impl(unsigned int tagmask_bits, int preserve_prefix) {
     if (!selmon->sel)
         return;
-    if (tagprefix) {
-        tag(arg);
+    Arg a = {.ui = tagmask_bits};
+    tag(&a);
+    if (preserve_prefix)
         tagprefix = 1;
-        view(arg);
-
-    } else {
-        tag(arg);
-        view(arg);
-    }
+    view(&a);
 }
 
-// TODO: this has too many responsibilities, refactor
-void swaptags(const Arg *arg) {
+/**
+ * Move the selected client to a tag and follow it there.
+ * Wrapper around followtag_impl for keybinding compatibility.
+ */
+void followtag(const Arg *arg) {
     int ui = computeprefix(arg);
-    unsigned int newtag = ui & tagmask;
-    unsigned int current_tag = selmon->tagset[selmon->seltags];
+    followtag_impl(ui, tagprefix != 0);
+}
 
-    if (newtag == current_tag || !current_tag ||
-        (current_tag & (current_tag - 1)))
-        return;
-
+/** Swap client tags between current tag and target tag. */
+static void swap_client_tags(unsigned int current_tag, unsigned int newtag) {
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
         if (selmon->overlay == c) {
             if (ISVISIBLE(c))
@@ -180,46 +203,80 @@ void swaptags(const Arg *arg) {
         if (!c->tags)
             c->tags = newtag;
     }
+}
 
-    selmon->tagset[selmon->seltags] = newtag;
+/** Swap per-tag settings (layout, mfact, nmaster, etc.) between two tags. */
+static void swap_pertag_settings(int target_tag_idx) {
+    int current_idx = selmon->pertag->current_tag;
 
-    int i, tmpnmaster, tmpsellt, tmpshowbar;
-    float tmpmfact;
+    /* Save current tag settings to temp variables */
+    int tmpnmaster = PERTAG_NMASTER(selmon);
+    float tmpmfact = PERTAG_MFACT(selmon);
+    int tmpsellt = PERTAG_SELLT(selmon);
     const Layout *tmplt[2];
-    for (i = 0; !(ui & 1 << i); i++)
-        ;
-
-    tmpnmaster = PERTAG_NMASTER(selmon);
-    tmpmfact = PERTAG_MFACT(selmon);
-    tmpsellt = PERTAG_SELLT(selmon);
     tmplt[selmon->sellt] = PERTAG_LAYOUT(selmon);
     tmplt[selmon->sellt ^ 1] =
         selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
-    tmpshowbar = PERTAG_SHOWBAR(selmon);
+    int tmpshowbar = PERTAG_SHOWBAR(selmon);
 
-    selmon->pertag->nmasters[selmon->pertag->current_tag] =
-        selmon->pertag->nmasters[i + 1];
-    selmon->pertag->mfacts[selmon->pertag->current_tag] =
-        selmon->pertag->mfacts[i + 1];
-    selmon->pertag->sellts[selmon->pertag->current_tag] =
-        selmon->pertag->sellts[i + 1];
-    selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt] =
-        selmon->pertag->ltidxs[i + 1][selmon->sellt];
-    selmon->pertag->ltidxs[selmon->pertag->current_tag][selmon->sellt ^ 1] =
-        selmon->pertag->ltidxs[i + 1][selmon->sellt ^ 1];
-    selmon->pertag->showbars[selmon->pertag->current_tag] =
-        selmon->pertag->showbars[i + 1];
+    /* Copy target tag settings to current tag */
+    selmon->pertag->nmasters[current_idx] =
+        selmon->pertag->nmasters[target_tag_idx];
+    selmon->pertag->mfacts[current_idx] =
+        selmon->pertag->mfacts[target_tag_idx];
+    selmon->pertag->sellts[current_idx] =
+        selmon->pertag->sellts[target_tag_idx];
+    selmon->pertag->ltidxs[current_idx][selmon->sellt] =
+        selmon->pertag->ltidxs[target_tag_idx][selmon->sellt];
+    selmon->pertag->ltidxs[current_idx][selmon->sellt ^ 1] =
+        selmon->pertag->ltidxs[target_tag_idx][selmon->sellt ^ 1];
+    selmon->pertag->showbars[current_idx] =
+        selmon->pertag->showbars[target_tag_idx];
 
-    selmon->pertag->nmasters[i + 1] = tmpnmaster;
-    selmon->pertag->mfacts[i + 1] = tmpmfact;
-    selmon->pertag->sellts[i + 1] = tmpsellt;
-    selmon->pertag->ltidxs[i + 1][selmon->sellt] = tmplt[selmon->sellt];
-    selmon->pertag->ltidxs[i + 1][selmon->sellt ^ 1] = tmplt[selmon->sellt ^ 1];
-    selmon->pertag->showbars[i + 1] = tmpshowbar;
+    /* Copy saved settings to target tag */
+    selmon->pertag->nmasters[target_tag_idx] = tmpnmaster;
+    selmon->pertag->mfacts[target_tag_idx] = tmpmfact;
+    selmon->pertag->sellts[target_tag_idx] = tmpsellt;
+    selmon->pertag->ltidxs[target_tag_idx][selmon->sellt] =
+        tmplt[selmon->sellt];
+    selmon->pertag->ltidxs[target_tag_idx][selmon->sellt ^ 1] =
+        tmplt[selmon->sellt ^ 1];
+    selmon->pertag->showbars[target_tag_idx] = tmpshowbar;
+}
 
-    if (selmon->pertag->prevtag == i + 1)
+/**
+ * Swap all clients and settings between the current tag and a target tag.
+ * This exchanges both the window assignments and per-tag settings.
+ */
+void swaptags(const Arg *arg) {
+    int ui = computeprefix(arg);
+    unsigned int newtag = ui & tagmask;
+    unsigned int current_tag = selmon->tagset[selmon->seltags];
+
+    /* Validate: must be different tags, current must exist, must be single tag
+     */
+    if (newtag == current_tag || !current_tag ||
+        (current_tag & (current_tag - 1)))
+        return;
+
+    /* Find target tag index */
+    int target_idx;
+    for (target_idx = 0; !(ui & 1 << target_idx); target_idx++)
+        ;
+
+    /* Swap clients between tags */
+    swap_client_tags(current_tag, newtag);
+
+    /* Update current tagset to target */
+    selmon->tagset[selmon->seltags] = newtag;
+
+    /* Swap per-tag settings */
+    swap_pertag_settings(target_idx + 1);
+
+    /* Update tag tracking */
+    if (selmon->pertag->prevtag == target_idx + 1)
         selmon->pertag->prevtag = selmon->pertag->current_tag;
-    selmon->pertag->current_tag = i + 1;
+    selmon->pertag->current_tag = target_idx + 1;
 
     focus(NULL);
     arrange(selmon);
@@ -263,82 +320,71 @@ void tagmon(const Arg *arg) {
     }
 }
 
-// TODO: what does this do?
-// come up with better name and maybe comment
-void tagtoleft(const Arg *arg) {
-
+/**
+ * Shift the selected client to an adjacent tag.
+ *
+ * @param direction: negative for left, positive for right
+ * @param offset: number of tags to shift (default 1)
+ */
+static void shift_tag(int direction, int offset) {
     int oldx;
     Client *c;
 
     if (!selmon->sel)
         return;
 
+    /* Handle overlay special case */
     if (selmon->sel == selmon->overlay) {
-        setoverlaymode(3);
+        setoverlaymode(direction < 0 ? 3 : OverlayRight);
         return;
     }
 
-    if (PERTAG_CURRENT(selmon) == 1)
+    /* Boundary checks */
+    if (direction < 0 && PERTAG_CURRENT(selmon) == 1)
+        return;
+    if (direction > 0 && PERTAG_CURRENT(selmon) == 20)
         return;
 
     c = selmon->sel;
     resetsticky(c);
     oldx = c->x;
+
+    /* Animate the window sliding in the direction of movement */
     if (!c->isfloating && animated) {
         XRaiseWindow(dpy, c->win);
-        animateclient(c, c->x - (selmon->mw / 10), c->y, 0, 0, 7, 0);
+        int anim_offset = (selmon->mw / 10) * (direction < 0 ? -1 : 1);
+        animateclient(c, c->x + anim_offset, c->y, 0, 0, 7, 0);
     }
 
-    int offset = 1;
-    if (arg && arg->i)
-        offset = arg->i;
+    /* Shift the client's tag */
+    int is_single_tag =
+        __builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1;
 
-    if (selmon->sel != NULL &&
-        __builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1 &&
-        selmon->tagset[selmon->seltags] > 1) {
-        selmon->sel->tags >>= offset;
-        focus(NULL);
-        arrange(selmon);
+    if (selmon->sel != NULL && is_single_tag) {
+        if (direction < 0 && selmon->tagset[selmon->seltags] > 1) {
+            selmon->sel->tags >>= offset;
+            focus(NULL);
+            arrange(selmon);
+        } else if (direction > 0 &&
+                   (selmon->tagset[selmon->seltags] & (tagmask >> 1))) {
+            selmon->sel->tags <<= offset;
+            focus(NULL);
+            arrange(selmon);
+        }
     }
     c->x = oldx;
 }
 
-// TODO: could this be merged with the left version and a parameter
+/** Move the selected client to the previous (left) tag. */
+void tagtoleft(const Arg *arg) {
+    int offset = (arg && arg->i) ? arg->i : 1;
+    shift_tag(-1, offset);
+}
+
+/** Move the selected client to the next (right) tag. */
 void tagtoright(const Arg *arg) {
-
-    int oldx;
-    Client *c;
-
-    if (PERTAG_CURRENT(selmon) == 20)
-        return;
-
-    if (!selmon->sel)
-        return;
-
-    if (selmon->sel == selmon->overlay) {
-        setoverlaymode(OverlayRight);
-        return;
-    }
-    c = selmon->sel;
-    resetsticky(c);
-    oldx = c->x;
-    if (!c->isfloating && animated) {
-        XRaiseWindow(dpy, c->win);
-        animateclient(c, c->x + (selmon->mw / 10), c->y, 0, 0, 7, 0);
-    }
-
-    int offset = 1;
-    if (arg && arg->i)
-        offset = arg->i;
-
-    if (selmon->sel != NULL &&
-        __builtin_popcount(selmon->tagset[selmon->seltags] & tagmask) == 1 &&
-        selmon->tagset[selmon->seltags] & (tagmask >> 1)) {
-        selmon->sel->tags <<= offset;
-        focus(NULL);
-        arrange(selmon);
-    }
-    c->x = oldx;
+    int offset = (arg && arg->i) ? arg->i : 1;
+    shift_tag(1, offset);
 }
 
 void toggletag(const Arg *arg) {
