@@ -6,50 +6,24 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bar.h"
+#include "client.h"
 #include "floating.h"
+#include "focus.h"
 #include "globals.h"
 #include "instantwm.h"
 #include "layouts.h"
+#include "monitors.h"
 #include "mouse.h"
+#include "overlay.h"
 #include "tags.h"
 #include "util.h"
-extern const unsigned int systrayspacing;
+
+/* External declarations not covered by headers */
 extern int force_resize;
-extern Cur *cursor[CurLast];
 extern void (*handler[LASTEvent])(XEvent *);
-extern const unsigned int snap;
-extern const int resizehints;
 extern const char *upvol[];
 extern const char *downvol[];
-extern int tagwidth;
-extern unsigned int tagmask;
-extern int bar_dragging;
-
-/* function declarations */
-extern void temp_fullscreen(const Arg *arg);
-extern void resetsnap(Client *c);
-extern void resize(Client *c, int x, int y, int w, int h, int interact);
-extern void restack(Monitor *m);
-extern int getrootptr(int *x, int *y);
-extern void spawn(const Arg *arg);
-extern void drawbar(Monitor *m);
-extern void updatebarpos(Monitor *m);
-extern void tag(const Arg *arg);
-extern void view(const Arg *arg);
-extern void tagall(const Arg *arg);
-extern void followtag(const Arg *arg);
-extern int getxtag(int ix);
-extern int gettagwidth();
-extern void createoverlay();
-extern void setoverlay(Client *c);
-extern Monitor *recttomon(int x, int y, int w, int h);
-extern void sendmon(Client *c, Monitor *m);
-extern void resizeclient(Client *c, int x, int y, int w, int h);
-extern void savefloating(Client *c);
-extern void toggle_floating(const Arg *arg);
-extern void unfocus(Client *c, int setfocus);
-extern void focus(Client *c);
-extern void resetbar();
 
 /* Drag loop types and generic implementation */
 typedef struct {
@@ -975,25 +949,26 @@ static void warp_pointer_resize(Client *c, int direction) {
  * computes the new x, y, width, and height for the window. For edge-only
  * directions (Top, Bottom, Left, Right), only the relevant dimension changes.
  * For corner directions (TopLeft, TopRight, BottomLeft, BottomRight), both
- * dimensions change. The original corner positions (ocx, ocy, ocx2, ocy2) are
- * used to calculate the new size relative to the fixed corner.
+ * dimensions change. The original edge positions are used to calculate
+ * the new size relative to the fixed corner.
  *
- * @param c         The client being resized
- * @param ev        The motion event containing current mouse position
- * @param direction The resize direction (ResizeDirTopLeft, ResizeDirBottom,
+ * @param c           The client being resized
+ * @param ev          The motion event containing current mouse position
+ * @param direction   The resize direction (ResizeDirTopLeft, ResizeDirBottom,
  * etc.)
- * @param ocx       Original client x position (left edge)
- * @param ocy       Original client y position (top edge)
- * @param ocx2      Original client right edge (x + width)
- * @param ocy2      Original client bottom edge (y + height)
- * @param nx        Output: new x position
- * @param ny        Output: new y position
- * @param nw        Output: new width
- * @param nh        Output: new height
+ * @param orig_left   Original client x position (left edge)
+ * @param orig_top    Original client y position (top edge)
+ * @param orig_right  Original client right edge (x + width)
+ * @param orig_bottom Original client bottom edge (y + height)
+ * @param nx          Output: new x position
+ * @param ny          Output: new y position
+ * @param nw          Output: new width
+ * @param nh          Output: new height
  */
-static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
-                                 int ocy, int ocx2, int ocy2, int *nx, int *ny,
-                                 int *nw, int *nh) {
+static void calc_resize_geometry(Client *c, XEvent *ev, int direction,
+                                 int orig_left, int orig_top, int orig_right,
+                                 int orig_bottom, int *nx, int *ny, int *nw,
+                                 int *nh) {
     int is_left_side =
         (direction == ResizeDirTopLeft || direction == ResizeDirBottomLeft ||
          direction == ResizeDirLeft);
@@ -1003,10 +978,10 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
 
     if (direction != ResizeDirTop && direction != ResizeDirBottom) {
         *nx = is_left_side ? ev->xmotion.x : c->x;
-        *nw =
-            MAX(is_left_side ? (ocx2 - *nx)
-                             : (ev->xmotion.x - ocx - 2 * c->border_width + 1),
-                1);
+        *nw = MAX(is_left_side
+                      ? (orig_right - *nx)
+                      : (ev->xmotion.x - orig_left - 2 * c->border_width + 1),
+                  1);
     } else {
         *nx = c->x;
         *nw = c->w;
@@ -1014,8 +989,9 @@ static void calc_resize_geometry(Client *c, XEvent *ev, int direction, int ocx,
 
     if (direction != ResizeDirLeft && direction != ResizeDirRight) {
         *ny = is_top_side ? ev->xmotion.y : c->y;
-        *nh = MAX(is_top_side ? (ocy2 - *ny)
-                              : (ev->xmotion.y - ocy - 2 * c->border_width + 1),
+        *nh = MAX(is_top_side
+                      ? (orig_bottom - *ny)
+                      : (ev->xmotion.y - orig_top - 2 * c->border_width + 1),
                   1);
     } else {
         *ny = c->y;
@@ -1067,7 +1043,10 @@ static void clamp_size_hints(Client *c, int *nw, int *nh) {
 /* Data structure for resizemouse motion handler */
 typedef struct {
     Client *c;
-    int ocx, ocy, ocx2, ocy2;
+    int orig_left;   /* Original client x position (left edge) */
+    int orig_top;    /* Original client y position (top edge) */
+    int orig_right;  /* Original client right edge (x + width) */
+    int orig_bottom; /* Original client bottom edge (y + height) */
     int corner;
 } ResizemouseData;
 
@@ -1076,8 +1055,8 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
     Client *c = d->c;
     int nx, ny, nw, nh;
 
-    calc_resize_geometry(c, ev, d->corner, d->ocx, d->ocy, d->ocx2, d->ocy2,
-                         &nx, &ny, &nw, &nh);
+    calc_resize_geometry(c, ev, d->corner, d->orig_left, d->orig_top,
+                         d->orig_right, d->orig_bottom, &nx, &ny, &nw, &nh);
 
     if (is_within_monitor_bounds(c, nw, nh)) {
         if (!c->isfloating && tiling_layout_func(selmon) &&
@@ -1139,10 +1118,10 @@ void resizemouse(const Arg *arg) {
     warp_pointer_resize(c, corner);
 
     ResizemouseData data = {.c = c,
-                            .ocx = c->x,
-                            .ocy = c->y,
-                            .ocx2 = c->x + c->w,
-                            .ocy2 = c->y + c->h,
+                            .orig_left = c->x,
+                            .orig_top = c->y,
+                            .orig_right = c->x + c->w,
+                            .orig_bottom = c->y + c->h,
                             .corner = corner};
     DragContext ctx = {.data = &data};
 
@@ -1163,7 +1142,8 @@ void resizemouse(const Arg *arg) {
 /* Data structure for resizeaspectmouse motion handler */
 typedef struct {
     Client *c;
-    int ocx, ocy;
+    int orig_left; /* Original client x position (left edge) */
+    int orig_top;  /* Original client y position (top edge) */
 } ResizeaspectData;
 
 static DragResult resizeaspect_motion(XEvent *ev, void *data) {
@@ -1180,8 +1160,8 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
         (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
         toggle_floating(NULL);
     if (!tiling_layout_func(selmon) || c->isfloating) {
-        nw = MAX(nx - d->ocx - 2 * c->border_width + 1, 1);
-        nh = MAX(ny - d->ocy - 2 * c->border_width + 1, 1);
+        nw = MAX(nx - d->orig_left - 2 * c->border_width + 1, 1);
+        nh = MAX(ny - d->orig_top - 2 * c->border_width + 1, 1);
 
         clamp_size_hints(c, &nw, &nh);
 
@@ -1223,7 +1203,7 @@ void resizeaspectmouse(const Arg *arg) {
                      CurrentTime) != GrabSuccess)
         return;
 
-    ResizeaspectData data = {.c = c, .ocx = c->x, .ocy = c->y};
+    ResizeaspectData data = {.c = c, .orig_left = c->x, .orig_top = c->y};
     DragContext ctx = {.data = &data};
 
     drag_loop(&ctx, resizeaspect_motion, NULL);
