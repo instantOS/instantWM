@@ -116,6 +116,14 @@ void force_warp(const Client *c) {
     XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, 10);
 }
 
+/**
+ * Warps the cursor into the client window if it is currently outside.
+ *
+ * Ensures the cursor is at least 10 pixels inside the window boundaries.
+ * If the cursor is already inside, it remains untouched.
+ *
+ * @param c The client window to warp into.
+ */
 void warp_into(const Client *c) {
     int x, y;
     getrootptr(&x, &y);

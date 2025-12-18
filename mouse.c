@@ -476,7 +476,7 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
                          * from a predictable point, consistent with
                          * Super+RightClick move behavior.
                          */
-                        warp_pointer_resize(c, direction);
+                        warp_into(c);
                         movemouse(NULL);
                         d->resize_started = 1;
                         return DRAG_BREAK;
@@ -492,7 +492,10 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
              * This provides an alternative way to move windows without grabbing
              * the title bar.
              */
+            Client *c = selmon->sel;
             XUngrabPointer(dpy, CurrentTime);
+            if (c)
+                warp_into(c);
             movemouse(NULL);
             d->resize_started = 1;
             return DRAG_BREAK;
@@ -528,9 +531,7 @@ static void drag_window_title(Client *c) {
     focus(c);
     restack(selmon);
     if (selmon->sel) {
-        XWarpPointer(dpy, None, root, 0, 0, 0, 0,
-                     selmon->sel->x + selmon->sel->w / 2,
-                     selmon->sel->y + selmon->sel->h / 2);
+        warp_into(selmon->sel);
         movemouse(NULL);
     }
 }
