@@ -254,7 +254,9 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
     XConfigureWindow(dpy, c->win,
                      CWX | CWY | CWWidth | CWHeight | CWBorderWidth, &wc);
     configure(c);
-    XSync(dpy, False);
+    /* ⚡ Bolt: Removed XSync to improve performance.
+       Requests are buffered and flushed by the event loop or explicit XFlush. */
+    // XSync(dpy, False);
 }
 
 void updatetitle(Client *c) {
