@@ -215,8 +215,8 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
             /* Over tags area - could update tag hover */
             int tag = getxtag(ev->xmotion.x_root);
             if (tag >= 0 && tag < 9) {
-                if (selmon->gesture != tag) {
-                    selmon->gesture = tag;
+                if (selmon->gesture != tag + 1) {
+                    selmon->gesture = tag + 1;
                     drawbar(selmon);
                 }
             }

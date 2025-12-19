@@ -467,16 +467,19 @@ static int handlesidebarhover(XMotionEvent *ev) {
 static int handleoverlaygesture(XMotionEvent *ev) {
     if (ev->y_root == selmon->my &&
         ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
-        if (selmon->gesture != 11) {
-            selmon->gesture = 11;
+        if (selmon->gesture != GestureOverlay) {
+            selmon->gesture = GestureOverlay;
             setoverlay(NULL);
         }
         return 1;
     }
-    if (selmon->gesture == 11 &&
-        ev->x_root >= selmon->mx + selmon->ww - 24 - getsystraywidth()) {
+    if (selmon->gesture == GestureOverlay) {
+        if (ev->y_root <= selmon->my + 30 &&
+            ev->x_root >= selmon->mx + selmon->ww - 40 - getsystraywidth()) {
+            return 1;
+        }
         selmon->gesture = GestureNone;
-        return 1;
+        return 0;
     }
     return 0;
 }
