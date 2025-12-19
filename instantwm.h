@@ -190,13 +190,18 @@ enum {
     OverlayLeft    /* 3: Slide from left */
 };
 
-/* Bar gesture states */
+/* Bar gesture states - Start after MAX_TAGS (21) to avoid conflict */
 enum {
     GestureNone = 0,         /* No gesture active */
-    GestureOverlay = 11,     /* Overlay corner hover */
-    GestureCloseButton = 12, /* Close button hover */
-    GestureStartMenu = 13    /* Start menu hover */
+    GestureOverlay = 30,     /* Overlay corner hover */
+    GestureCloseButton = 31, /* Close button hover */
+    GestureStartMenu = 32    /* Start menu hover */
 };
+
+#define SIDEBAR_WIDTH 50
+#define OVERLAY_ACTIVATION_ZONE 20
+#define OVERLAY_KEEP_ZONE_X 40
+#define OVERLAY_KEEP_ZONE_Y 30
 
 /* Rule floating modes (for config.h rules) */
 enum {

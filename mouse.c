@@ -211,17 +211,18 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         if (!tagwidth) {
             tagwidth = gettagwidth();
         }
-        if (ev->xmotion.x_root < selmon->mx + tagwidth + 60) {
+        if (ev->xmotion.x_root < selmon->mx + tagwidth + get_blw(selmon)) {
             /* Over tags area - could update tag hover */
             int tag = getxtag(ev->xmotion.x_root);
-            if (tag >= 0 && tag < 9) {
+            if (tag >= 0 && tag < numtags) {
                 if (selmon->gesture != tag + 1) {
                     selmon->gesture = tag + 1;
                     drawbar(selmon);
                 }
             }
-        } else if (ev->xmotion.x_root <
-                   selmon->mx + 60 + tagwidth + selmon->bar_clients_width) {
+        } else if (ev->xmotion.x_root < selmon->mx + get_blw(selmon) +
+                                            tagwidth +
+                                            selmon->bar_clients_width) {
             /* Over window titles area */
             resetbar();
         }

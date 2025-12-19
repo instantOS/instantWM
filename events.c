@@ -447,7 +447,7 @@ static int handlefloatingresizehover(Monitor *m) {
 
 /* Helper: handle sidebar slider cursor */
 static int handlesidebarhover(XMotionEvent *ev) {
-    if (ev->x_root > selmon->mx + selmon->mw - 50) {
+    if (ev->x_root > selmon->mx + selmon->mw - SIDEBAR_WIDTH) {
         if (altcursor == AltCurNone && ev->y_root > bh + 60) {
             altcursor = AltCurSidebar;
             XDefineCursor(dpy, root, cursor[CurVert]->cursor);
@@ -465,8 +465,9 @@ static int handlesidebarhover(XMotionEvent *ev) {
 
 /* Helper: handle overlay corner gesture */
 static int handleoverlaygesture(XMotionEvent *ev) {
-    if (ev->y_root == selmon->my &&
-        ev->x_root >= selmon->mx + selmon->ww - 20 - getsystraywidth()) {
+    if (ev->y_root == selmon->my && ev->x_root >= selmon->mx + selmon->ww -
+                                                      OVERLAY_ACTIVATION_ZONE -
+                                                      getsystraywidth()) {
         if (selmon->gesture != GestureOverlay) {
             selmon->gesture = GestureOverlay;
             setoverlay(NULL);
@@ -474,8 +475,9 @@ static int handleoverlaygesture(XMotionEvent *ev) {
         return 1;
     }
     if (selmon->gesture == GestureOverlay) {
-        if (ev->y_root <= selmon->my + 30 &&
-            ev->x_root >= selmon->mx + selmon->ww - 40 - getsystraywidth()) {
+        if (ev->y_root <= selmon->my + OVERLAY_KEEP_ZONE_Y &&
+            ev->x_root >= selmon->mx + selmon->ww - OVERLAY_KEEP_ZONE_X -
+                              getsystraywidth()) {
             return 1;
         }
         selmon->gesture = GestureNone;
@@ -545,7 +547,7 @@ static void handletitlebarhover(XMotionEvent *ev) {
 
     /* indicator when hovering over clients */
     if (selmon->stack) {
-        int x = selmon->mx + tagwidth + 60;
+        int x = selmon->mx + tagwidth + get_blw(selmon);
         Client *c = selmon->clients;
         do {
             if (!ISVISIBLE(c)) {
@@ -604,9 +606,10 @@ void motionnotify(XEvent *e) {
     }
 
     /* cursor is to the left of window titles (tags area) */
-    if (ev->x_root < selmon->mx + tagwidth + 60) {
+    if (ev->x_root < selmon->mx + tagwidth + get_blw(selmon)) {
         handletagbarhover(ev);
-    } else if (selmon->sel && ev->x_root < selmon->mx + 60 + tagwidth +
+    } else if (selmon->sel && ev->x_root < selmon->mx + get_blw(selmon) +
+                                               tagwidth +
                                                selmon->bar_clients_width) {
         /* cursor is on window titles */
         handletitlebarhover(ev);
