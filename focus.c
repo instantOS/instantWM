@@ -20,20 +20,24 @@ void direction_focus(const Arg *arg) {
     int found_one = 0;
     int direction = arg->ui;
 
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     m = selmon;
     source = selmon->sel;
     min_score = 0;
 
-    int cx, cy;
-    int sx, sy;
+    int cx;
+    int cy;
+    int sx;
+    int sy;
     sx = source->x + (source->w / 2);
     sy = source->y + (source->h / 2);
 
     for (c = m->clients; c; c = c->next) {
-        if (!(ISVISIBLE(c)))
+        if (!(ISVISIBLE(c))) {
             continue;
+        }
 
         cx = c->x + (c->w / 2);
         cy = c->y + (c->h / 2);
@@ -42,17 +46,20 @@ void direction_focus(const Arg *arg) {
         if (c == source || (direction == FocusDirUp && cy > sy) ||
             (direction == FocusDirRight && cx < sx) ||
             (direction == FocusDirDown && cy < sy) ||
-            (direction == FocusDirLeft && cx > sx))
+            (direction == FocusDirLeft && cx > sx)) {
             continue;
+        }
 
         if (direction % 2 == 0) {
             score = abs(sx - cx) + abs(sy - cy) / 4;
-            if (abs(sx - cx) > abs(sy - cy))
+            if (abs(sx - cx) > abs(sy - cy)) {
                 continue;
+            }
         } else {
             score = abs(sy - cy) + abs(sx - cx) / 4;
-            if (abs(sy - cy) > abs(sx - cx))
+            if (abs(sy - cy) > abs(sx - cx)) {
                 continue;
+            }
         }
 
         if (score < min_score || min_score == 0) {
@@ -69,8 +76,9 @@ void direction_focus(const Arg *arg) {
 void focus_last_client(const Arg *arg) {
     Client *c;
 
-    if (!lastclient)
+    if (!lastclient) {
         return;
+    }
 
     c = lastclient;
 
@@ -85,8 +93,9 @@ void focus_last_client(const Arg *arg) {
         selmon = c->mon;
     }
 
-    if (selmon->sel)
+    if (selmon->sel) {
         lastclient = selmon->sel;
+    }
 
     view(&a);
     focus(c);
@@ -94,7 +103,8 @@ void focus_last_client(const Arg *arg) {
 }
 
 void warp_cursor_to_client(const Client *c) {
-    int x, y;
+    int x;
+    int y;
 
     if (!c) {
         XWarpPointer(dpy, None, root, 0, 0, 0, 0, selmon->wx + selmon->ww / 2,
@@ -106,8 +116,9 @@ void warp_cursor_to_client(const Client *c) {
         (x > c->x - c->border_width && y > c->y - c->border_width &&
          x < c->x + c->w + c->border_width * 2 &&
          y < c->y + c->h + c->border_width * 2) ||
-        (y > c->mon->by && y < c->mon->by + bh) || (c->mon->topbar && !y))
+        (y > c->mon->by && y < c->mon->by + bh) || (c->mon->topbar && !y)) {
         return;
+    }
 
     XWarpPointer(dpy, None, c->win, 0, 0, 0, 0, c->w / 2, c->h / 2);
 }
@@ -125,17 +136,20 @@ void force_warp(const Client *c) {
  * @param c The client window to warp into.
  */
 void warp_into(const Client *c) {
-    int x, y;
+    int x;
+    int y;
     getrootptr(&x, &y);
-    if (x < c->x)
+    if (x < c->x) {
         x = c->x + 10;
-    else if (x > c->x + c->w)
+    } else if (x > c->x + c->w) {
         x = c->x + c->w - 10;
+    }
 
-    if (y < c->y)
+    if (y < c->y) {
         y = c->y + 10;
-    else if (y > c->y + c->h)
+    } else if (y > c->y + c->h) {
         y = c->y + c->h - 10;
+    }
     XWarpPointer(dpy, None, root, 0, 0, 0, 0, x, y);
 }
 

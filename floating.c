@@ -22,33 +22,38 @@ void restorefloating(Client *c) {
 }
 
 void savebw(Client *c) {
-    if (!c->border_width || c->border_width == 0)
+    if (!c->border_width || c->border_width == 0) {
         return;
+    }
     c->old_border_width = c->border_width;
 }
 
 /* Restore the client's saved border width (bw = border_width) */
 void restore_border_width(Client *c) {
-    if (!c->old_border_width || c->old_border_width == 0)
+    if (!c->old_border_width || c->old_border_width == 0) {
         return;
+    }
     c->border_width = c->old_border_width;
 }
 
 void applysize(Client *c) { resize(c, c->x + 1, c->y, c->w, c->h, 0); }
 
 int checkfloating(Client *c) {
-    if (c->isfloating || NULL == tiling_layout_func(selmon))
+    if (c->isfloating || NULL == tiling_layout_func(selmon)) {
         return 1;
+    }
     return 0;
 }
 
 int visible(Client *c) {
     Monitor *m;
-    if (!c)
+    if (!c) {
         return 0;
+    }
     for (m = mons; m; m = m->next) {
-        if (c->tags & m->seltags && c->mon == m)
+        if (c->tags & m->seltags && c->mon == m) {
             return 1;
+        }
     }
     return 0;
 }
@@ -57,11 +62,13 @@ void saveallfloating(Monitor *m) {
     int i;
     Client *c;
     for (i = 1; i < numtags && i < MAX_TAGS; ++i) {
-        if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL)
+        if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL) {
             continue;
+        }
         for (c = m->clients; c; c = c->next) {
-            if (c->tags & (1 << (i - 1)) && c->snapstatus == 0)
+            if (c->tags & (1 << (i - 1)) && c->snapstatus == 0) {
                 savefloating(c);
+            }
         }
     }
 }
@@ -70,18 +77,21 @@ void restoreallfloating(Monitor *m) {
     int i;
     Client *c;
     for (i = 1; i < numtags && i < MAX_TAGS; ++i) {
-        if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL)
+        if (m->pertag->ltidxs[i][m->pertag->sellts[i]]->arrange != NULL) {
             continue;
+        }
         for (c = m->clients; c; c = c->next) {
-            if (c->tags & (1 << (i - 1)) && c->snapstatus == 0)
+            if (c->tags & (1 << (i - 1)) && c->snapstatus == 0) {
                 restorefloating(c);
+            }
         }
     }
 }
 
 void resetsnap(Client *c) {
-    if (!c->snapstatus)
+    if (!c->snapstatus) {
         return;
+    }
     if (c->isfloating || NULL == tiling_layout_func(selmon)) {
         c->snapstatus = 0;
         restore_border_width(c);
@@ -92,8 +102,9 @@ void resetsnap(Client *c) {
 
 void applysnap(Client *c, Monitor *m) {
     int mony = m->my + (bh * m->showbar);
-    if (c->snapstatus != SnapMaximized)
+    if (c->snapstatus != SnapMaximized) {
         restore_border_width(c);
+    }
     switch (c->snapstatus) {
     case SnapNone:
         checkanimate(c, c->saved_float_x, c->saved_float_y,
@@ -131,8 +142,9 @@ void applysnap(Client *c, Monitor *m) {
         c->border_width = 0;
         checkanimate(c, m->mx, mony, m->mw - c->border_width * 2,
                      m->mh + c->border_width * 2, 7, 0);
-        if (c == selmon->sel)
+        if (c == selmon->sel) {
             XRaiseWindow(dpy, c->win);
+        }
         break;
     default:
         break;
@@ -159,10 +171,12 @@ static const int snapmatrix[10][4] = {
 
 void changesnap(Client *c, int snapmode) {
     int tempsnap;
-    if (!c->snapstatus)
+    if (!c->snapstatus) {
         c->snapstatus = 0;
-    if (c->snapstatus == 0 && checkfloating(c))
+    }
+    if (c->snapstatus == 0 && checkfloating(c)) {
         savefloating(c);
+    }
     tempsnap = c->snapstatus;
     c->snapstatus = snapmatrix[tempsnap][snapmode];
     applysnap(c, c->mon);
@@ -180,11 +194,13 @@ void temp_fullscreen(const Arg *arg) {
         }
         selmon->fullscreen = NULL;
     } else {
-        if (!selmon->sel)
+        if (!selmon->sel) {
             return;
+        }
         selmon->fullscreen = selmon->sel;
-        if (selmon->sel->isfloating || NULL == tiling_layout_func(selmon))
+        if (selmon->sel->isfloating || NULL == tiling_layout_func(selmon)) {
             savefloating(selmon->fullscreen);
+        }
     }
 
     if (animated) {
@@ -194,8 +210,9 @@ void temp_fullscreen(const Arg *arg) {
     } else {
         arrange(selmon);
     }
-    if (selmon->fullscreen)
+    if (selmon->fullscreen) {
         XRaiseWindow(dpy, selmon->fullscreen->win);
+    }
 }
 
 static void apply_float_change(Client *c, int floating, int animate,
@@ -234,11 +251,14 @@ static void apply_float_change(Client *c, int floating, int animate,
 }
 
 void toggle_floating(const Arg *arg) {
-    if (!selmon->sel || selmon->sel == selmon->overlay)
+    if (!selmon->sel || selmon->sel == selmon->overlay) {
         return;
+    }
     if (selmon->sel->is_fullscreen &&
-        !selmon->sel->isfakefullscreen) /* no support for fullscreen windows */
+        !selmon->sel
+             ->isfakefullscreen) { /* no support for fullscreen windows */
         return;
+    }
 
     int new_state = !selmon->sel->isfloating || selmon->sel->isfixed;
     apply_float_change(selmon->sel, new_state, 1, 1);
@@ -253,11 +273,13 @@ void toggle_floating(const Arg *arg) {
  * - Does not handle clientcount or border width for single-window layouts
  * Used primarily for overlay windows where visual effects aren't needed. */
 void changefloating(Client *c) {
-    if (!c)
+    if (!c) {
         return;
+    }
     if (c->is_fullscreen &&
-        !c->isfakefullscreen) /* no support for fullscreen windows */
+        !c->isfakefullscreen) { /* no support for fullscreen windows */
         return;
+    }
 
     int new_state = !c->isfloating || c->isfixed;
     apply_float_change(c, new_state, 0, 0);
@@ -266,55 +288,70 @@ void changefloating(Client *c) {
 
 /* Set a client to floating state (does nothing if already floating) */
 void setfloating(Client *c, int should_arrange) {
-    if (!c)
+    if (!c) {
         return;
-    if (c->is_fullscreen && !c->isfakefullscreen)
+    }
+    if (c->is_fullscreen && !c->isfakefullscreen) {
         return;
-    if (c->isfloating)
+    }
+    if (c->isfloating) {
         return; /* already floating */
+    }
 
     apply_float_change(c, 1, 0, 0);
 
-    if (should_arrange)
+    if (should_arrange) {
         arrange(selmon);
+    }
 }
 
 /* Set a client to tiled state (does nothing if already tiled) */
 void set_tiled(Client *c, int should_arrange) {
-    if (!c)
+    if (!c) {
         return;
-    if (c->is_fullscreen && !c->isfakefullscreen)
+    }
+    if (c->is_fullscreen && !c->isfakefullscreen) {
         return;
-    if (!c->isfloating && !c->isfixed)
+    }
+    if (!c->isfloating && !c->isfixed) {
         return; /* already tiled */
+    }
 
     apply_float_change(c, 0, 0, 0);
 
-    if (should_arrange)
+    if (should_arrange) {
         arrange(selmon);
+    }
 }
 
 void center_window(const Arg *arg) {
-    if (!selmon->sel || selmon->sel == selmon->overlay)
+    if (!selmon->sel || selmon->sel == selmon->overlay) {
         return;
+    }
     Client *c;
     c = selmon->sel;
-    if (tiling_layout_func(selmon) && !c->isfloating)
+    if (tiling_layout_func(selmon) && !c->isfloating) {
         return;
+    }
 
-    int w, h, mw, mh;
+    int w;
+    int h;
+    int mw;
+    int mh;
     w = c->w;
     h = c->h;
     mw = selmon->ww;
     mh = selmon->wh;
-    if (w > mw || h > mh)
+    if (w > mw || h > mh) {
         return;
-    if (selmon->showbar)
+    }
+    if (selmon->showbar) {
         resize(c, selmon->mx + (mw / 2) - (w / 2),
                selmon->my + (mh / 2) - (h / 2) + bh, c->w, c->h, True);
-    else
+    } else {
         resize(c, selmon->mx + (mw / 2) - (w / 2),
                selmon->my + (mh / 2) - (h / 2) - bh, c->w, c->h, True);
+    }
 }
 
 /* Move a floating client using keyboard (direction indexed by arg->i).
@@ -324,8 +361,9 @@ void moveresize(const Arg *arg) {
     Client *c;
     c = selmon->sel;
 
-    if (tiling_layout_func(selmon) && !c->isfloating)
+    if (tiling_layout_func(selmon) && !c->isfloating) {
         return;
+    }
 
     int move_step = 40;
     /* Delta offsets for each direction: [direction][x_delta, y_delta] */
@@ -334,16 +372,20 @@ void moveresize(const Arg *arg) {
     int nx = (c->x + move_deltas[arg->i][0]);
     int ny = (c->y + move_deltas[arg->i][1]);
 
-    if (nx < selmon->mx)
+    if (nx < selmon->mx) {
         nx = selmon->mx;
-    if (ny < selmon->my)
+    }
+    if (ny < selmon->my) {
         ny = selmon->my;
+    }
 
-    if ((ny + c->h) > (selmon->my + selmon->mh))
+    if ((ny + c->h) > (selmon->my + selmon->mh)) {
         ny = ((selmon->mh + selmon->my) - c->h - c->border_width * 2);
+    }
 
-    if ((nx + c->w) > (selmon->mx + selmon->mw))
+    if ((nx + c->w) > (selmon->mx + selmon->mw)) {
         nx = ((selmon->mw + selmon->mx) - c->w - c->border_width * 2);
+    }
 
     animateclient(c, nx, ny, c->w, c->h, 5, 0);
     warp_cursor_to_client(c);
@@ -352,8 +394,9 @@ void moveresize(const Arg *arg) {
 /* Resize a floating client using keyboard (direction indexed by arg->i).
  * Direction indices: 0=TallerDown, 1=ShorterUp, 2=WiderRight, 3=NarrowerLeft */
 void keyresize(const Arg *arg) {
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
 
     Client *c;
     c = selmon->sel;
@@ -370,8 +413,9 @@ void keyresize(const Arg *arg) {
 
     resetsnap(c);
 
-    if (tiling_layout_func(selmon) && !c->isfloating)
+    if (tiling_layout_func(selmon) && !c->isfloating) {
         return;
+    }
 
     warp_cursor_to_client(c);
 
@@ -382,10 +426,11 @@ void upscaleclient(const Arg *arg) {
     Client *c;
 
     if (!arg->v) {
-        if (selmon->sel)
+        if (selmon->sel) {
             c = selmon->sel;
-        else
+        } else {
             return;
+        }
     } else {
         c = (Client *)arg->v;
     }
@@ -397,10 +442,11 @@ void downscaleclient(const Arg *arg) {
     Client *c;
 
     if (!arg->v) {
-        if (selmon->sel)
+        if (selmon->sel) {
             c = selmon->sel;
-        else
+        } else {
             return;
+        }
     } else {
         c = (Client *)arg->v;
     }
@@ -414,27 +460,36 @@ void downscaleclient(const Arg *arg) {
 }
 
 void scaleclient(Client *c, int scale) {
-    int x, y, w, h;
-    if (!c->isfloating)
+    int x;
+    int y;
+    int w;
+    int h;
+    if (!c->isfloating) {
         return;
+    }
 
     w = c->w + scale;
     h = c->h + scale;
     x = c->x - (scale / 2);
     y = c->y - (scale / 2);
 
-    if (x < selmon->mx)
+    if (x < selmon->mx) {
         x = selmon->mx;
+    }
 
-    if (w > selmon->mw)
+    if (w > selmon->mw) {
         w = selmon->mw;
+    }
 
-    if (h > selmon->mh)
+    if (h > selmon->mh) {
         h = selmon->mh;
-    if ((h + y) > selmon->my + selmon->mh)
+    }
+    if ((h + y) > selmon->my + selmon->mh) {
         y = selmon->mh - h;
+    }
 
-    if (y < bh)
+    if (y < bh) {
         y = bh;
+    }
     animateclient(c, x, y, w, h, 3, 0);
 }

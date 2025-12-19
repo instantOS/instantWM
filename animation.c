@@ -17,15 +17,15 @@ void checkanimate(Client *c, int x, int y, int w, int h, int frames,
                   int resetpos) {
     if (c->x == x && c->y == y && c->w == w && c->h == h) {
         return;
-    } else {
-        animateclient(c, x, y, w, h, frames, resetpos);
     }
+    animateclient(c, x, y, w, h, frames, resetpos);
 }
 
 // move client to position within a set amount of frames
 void animateclient(Client *c, int x, int y, int w, int h, int frames,
                    int resetpos) {
-    int width, height;
+    int width;
+    int height;
     width = w ? w : c->w;
     height = h ? h : c->h;
 
@@ -34,22 +34,26 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
 
     // No animation if even more events are queried
     if (!frames || XEventsQueued(dpy, QueuedAlready) > 100) {
-        if (resetpos)
+        if (resetpos) {
             resize(c, c->x, c->y, width, height, 0);
-        else
+        } else {
             resize(c, x, y, width, height, 1);
+        }
         return;
     }
 
     int time;
-    int oldx, oldy;
+    int oldx;
+    int oldy;
 
     // prevent oversizing when minimizing/unminimizing
-    if (width > c->mon->mw - (2 * c->border_width))
+    if (width > c->mon->mw - (2 * c->border_width)) {
         width = c->mon->ww - (2 * c->border_width);
+    }
 
-    if (height > c->mon->wh - (2 * c->border_width))
+    if (height > c->mon->wh - (2 * c->border_width)) {
         height = c->mon->wh - (2 * c->border_width);
+    }
 
     time = 1;
     oldx = c->x;
@@ -73,10 +77,11 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
         }
     }
 
-    if (resetpos)
+    if (resetpos) {
         resize(c, oldx, oldy, width, height, 0);
-    else
+    } else {
         resize(c, x, y, width, height, 1);
+    }
 }
 
 static void animscroll(const Arg *arg, int dir) {
@@ -96,14 +101,17 @@ static void animscroll(const Arg *arg, int dir) {
         return;
     }
 
-    if (selmon->pertag->current_tag == 0)
+    if (selmon->pertag->current_tag == 0) {
         return;
+    }
 
-    if (dir == DirLeft && selmon->pertag->current_tag == 1)
+    if (dir == DirLeft && selmon->pertag->current_tag == 1) {
         return;
+    }
 
-    if (dir == DirRight && selmon->pertag->current_tag >= 20)
+    if (dir == DirRight && selmon->pertag->current_tag >= 20) {
         return;
+    }
 
     if (animated) {
         int tmpcounter = 0;
@@ -120,10 +128,11 @@ static void animscroll(const Arg *arg, int dir) {
         }
     }
 
-    if (dir == DirRight)
+    if (dir == DirRight) {
         viewtoright(arg);
-    else
+    } else {
         viewtoleft(arg);
+    }
 }
 
 void animleft(const Arg *arg) { animscroll(arg, DirLeft); }

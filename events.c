@@ -27,8 +27,9 @@ static void handle_systray_dock_request(XClientMessageEvent *cme) {
     XSetWindowAttributes swa;
     Client *c;
 
-    if (!(c = (Client *)calloc(1, sizeof(Client))))
+    if (!(c = (Client *)calloc(1, sizeof(Client)))) {
         die("fatal: could not malloc() %u bytes\n", sizeof(Client));
+    }
     if (!(c->win = cme->data.l[2])) {
         free(c);
         return;
@@ -74,20 +75,23 @@ static void handle_systray_dock_request(XClientMessageEvent *cme) {
 static void handle_netWMstate(Client *c, XClientMessageEvent *cme) {
     extern void setfullscreen(Client * c, int fullscreen);
     if (cme->data.l[1] == netatom[NetWMFullscreen] ||
-        cme->data.l[2] == netatom[NetWMFullscreen])
+        cme->data.l[2] == netatom[NetWMFullscreen]) {
         setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
                           || (cme->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
                               (!c->is_fullscreen || c->isfakefullscreen))));
+    }
 }
 
 /* Helper: Handle _NET_ACTIVE_WINDOW message for regular windows */
 static void handle_active_window_regular(Client *c) {
     unsigned int i;
 
-    if (HIDDEN(c))
+    if (HIDDEN(c)) {
         show(c);
-    for (i = 0; i < numtags && !((1 << i) & c->tags); i++)
+    }
+    for (i = 0; i < numtags && !((1 << i) & c->tags); i++) {
         ;
+    }
     if (i < numtags) {
         const Arg a = {.ui = 1 << i};
         if (selmon != c->mon) {
@@ -125,25 +129,29 @@ void clientmessage(XEvent *e) {
     /* Handle systray dock request */
     if (showsystray && cme->window == systray->win &&
         cme->message_type == netatom[NetSystemTrayOP]) {
-        if (cme->data.l[1] == SYSTEM_TRAY_REQUEST_DOCK)
+        if (cme->data.l[1] == SYSTEM_TRAY_REQUEST_DOCK) {
             handle_systray_dock_request(cme);
+        }
         return;
     }
 
-    if (!c)
+    if (!c) {
         return;
+    }
 
-    if (cme->message_type == netatom[NetWMState])
+    if (cme->message_type == netatom[NetWMState]) {
         handle_netWMstate(c, cme);
-    else if (cme->message_type == netatom[NetActiveWindow])
+    } else if (cme->message_type == netatom[NetActiveWindow]) {
         handle_active_window(c);
+    }
 }
 
 void configurenotify(XEvent *e) {
     Monitor *m;
     Client *c;
     XConfigureEvent *ev = &e->xconfigure;
-    extern int sw, sh;
+    extern int sw;
+    extern int sh;
 
     /* TODO: updategeom handling sucks, needs to be simplified */
     if (ev->window == root) {
@@ -157,11 +165,12 @@ void configurenotify(XEvent *e) {
             updatebars();
             for (m = mons; m; m = m->next) {
                 for (c = m->clients; c; c = c->next) {
-                    if (c->isfakefullscreen)
+                    if (c->isfakefullscreen) {
                         XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, m->ww,
                                           bh);
-                    else if (c->is_fullscreen)
+                    } else if (c->is_fullscreen) {
                         resizeclient(c, m->mx, m->my, m->mw, m->mh);
+                    }
                 }
                 resizebarwin(m);
             }
@@ -178,9 +187,9 @@ void configurerequest(XEvent *e) {
     XWindowChanges wc;
 
     if ((c = wintoclient(ev->window))) {
-        if (ev->value_mask & CWBorderWidth)
+        if (ev->value_mask & CWBorderWidth) {
             c->border_width = ev->border_width;
-        else if (c->isfloating || !tiling_layout_func(selmon)) {
+        } else if (c->isfloating || !tiling_layout_func(selmon)) {
             m = c->mon;
             if (ev->value_mask & CWX) {
                 c->oldx = c->x;
@@ -198,19 +207,24 @@ void configurerequest(XEvent *e) {
                 c->oldh = c->h;
                 c->h = ev->height;
             }
-            if ((c->x + c->w) > m->mx + m->mw && c->isfloating)
+            if ((c->x + c->w) > m->mx + m->mw && c->isfloating) {
                 c->x = m->mx +
                        (m->mw / 2 - WIDTH(c) / 2); /* center in x direction */
-            if ((c->y + c->h) > m->my + m->mh && c->isfloating)
+            }
+            if ((c->y + c->h) > m->my + m->mh && c->isfloating) {
                 c->y = m->my +
                        (m->mh / 2 - HEIGHT(c) / 2); /* center in y direction */
+            }
             if ((ev->value_mask & (CWX | CWY)) &&
-                !(ev->value_mask & (CWWidth | CWHeight)))
+                !(ev->value_mask & (CWWidth | CWHeight))) {
                 configure(c);
-            if (ISVISIBLE(c))
+            }
+            if (ISVISIBLE(c)) {
                 XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
-        } else
+            }
+        } else {
             configure(c);
+        }
     } else {
         wc.x = ev->x;
         wc.y = ev->y;
@@ -228,9 +242,9 @@ void destroynotify(XEvent *e) {
     Client *c;
     XDestroyWindowEvent *ev = &e->xdestroywindow;
 
-    if ((c = wintoclient(ev->window)))
+    if ((c = wintoclient(ev->window))) {
         unmanage(c, 1);
-    else if ((c = wintosystrayicon(ev->window))) {
+    } else if ((c = wintosystrayicon(ev->window))) {
         removesystrayicon(c);
         resizebarwin(selmon);
         updatesystray();
@@ -254,16 +268,19 @@ static Client *handle_floating_focus(XCrossingEvent *ev, Client *c) {
           (selmon->sel->isfloating || !tiling_layout_func(selmon)) &&
           c != selmon->sel &&
           (ev->window == root || visible(c) || ISVISIBLE(c) ||
-           selmon->sel->issticky)))
+           selmon->sel->issticky))) {
         return c;
+    }
 
     resizeexit = hoverresizemouse(NULL);
     if (focusfollowsfloatmouse) {
-        if (resizeexit)
+        if (resizeexit) {
             return NULL; /* Resize was performed, don't change focus */
+        }
         Client *newc = getcursorclient();
-        if (newc && newc != selmon->sel)
+        if (newc && newc != selmon->sel) {
             return newc;
+        }
     } else {
         return NULL; /* Don't change focus for floating windows */
     }
@@ -286,8 +303,9 @@ static int enternotify_monitor_switch(XCrossingEvent *ev, Client *c) {
 static int should_skip_floating_focus(XCrossingEvent *ev, Client *c) {
     if (!focusfollowsfloatmouse) {
         if (ev->window != root && selmon->sel && c && c->isfloating &&
-            selmon->lt[selmon->sellt] != (Layout *)&layouts[6])
+            selmon->lt[selmon->sellt] != (Layout *)&layouts[6]) {
             return 1;
+        }
     }
     return 0;
 }
@@ -306,19 +324,22 @@ void enternotify(XEvent *e) {
 
     /* Filter invalid crossing events */
     if ((ev->mode != NotifyNormal || ev->detail == NotifyInferior) &&
-        ev->window != root)
+        ev->window != root) {
         return;
+    }
 
     c = wintoclient(ev->window);
 
     /* Handle floating window resize hover and focus */
     c = handle_floating_focus(ev, c);
-    if (c == NULL)
+    if (c == NULL) {
         return;
+    }
 
     /* Focus follows mouse must be enabled */
-    if (!focusfollowsmouse)
+    if (!focusfollowsmouse) {
         return;
+    }
 
     /* Handle monitor switching */
     if (enternotify_monitor_switch(ev, c)) {
@@ -327,12 +348,14 @@ void enternotify(XEvent *e) {
     }
 
     /* Skip focus change for floating windows if configured */
-    if (should_skip_floating_focus(ev, c))
+    if (should_skip_floating_focus(ev, c)) {
         return;
+    }
 
     /* Skip if no client or same client */
-    if (!c || c == selmon->sel)
+    if (!c || c == selmon->sel) {
         return;
+    }
 
     focus(c);
 }
@@ -343,8 +366,9 @@ void expose(XEvent *e) {
 
     if (ev->count == 0 && (m = wintomon(ev->window))) {
         drawbar(m);
-        if (m == selmon)
+        if (m == selmon) {
             updatesystray();
+        }
     }
 }
 
@@ -352,16 +376,18 @@ void expose(XEvent *e) {
 void focusin(XEvent *e) {
     XFocusChangeEvent *ev = &e->xfocus;
 
-    if (selmon->sel && ev->window != selmon->sel->win)
+    if (selmon->sel && ev->window != selmon->sel->win) {
         setfocus(selmon->sel);
+    }
 }
 
 void mappingnotify(XEvent *e) {
     XMappingEvent *ev = &e->xmapping;
 
     XRefreshKeyboardMapping(ev);
-    if (ev->request == MappingKeyboard)
+    if (ev->request == MappingKeyboard) {
         grabkeys();
+    }
 }
 
 void maprequest(XEvent *e) {
@@ -376,18 +402,21 @@ void maprequest(XEvent *e) {
         updatesystray();
     }
 
-    if (!XGetWindowAttributes(dpy, ev->window, &wa) || wa.override_redirect)
+    if (!XGetWindowAttributes(dpy, ev->window, &wa) || wa.override_redirect) {
         return;
+    }
 
-    if (!wintoclient(ev->window))
+    if (!wintoclient(ev->window)) {
         manage(ev->window, &wa);
+    }
 }
 
 /* Helper: handle hover near floating window for resize cursor */
 static int handlefloatingresizehover(Monitor *m) {
     if (!(selmon->sel &&
-          (selmon->sel->isfloating || NULL == tiling_layout_func(selmon))))
+          (selmon->sel->isfloating || NULL == tiling_layout_func(selmon)))) {
         return 0;
+    }
 
     Client *c;
     int tilefound = 0;
@@ -398,8 +427,9 @@ static int handlefloatingresizehover(Monitor *m) {
             break;
         }
     }
-    if (tilefound)
+    if (tilefound) {
         return 0;
+    }
 
     if (isinresizeborder()) {
         if (altcursor != AltCurResize) {
@@ -407,10 +437,12 @@ static int handlefloatingresizehover(Monitor *m) {
             altcursor = AltCurResize;
         }
         Client *newc = getcursorclient();
-        if (newc && newc != selmon->sel)
+        if (newc && newc != selmon->sel) {
             focus(newc);
+        }
         return 1;
-    } else if (altcursor == AltCurResize) {
+    }
+    if (altcursor == AltCurResize) {
         resetcursor();
     }
     return 0;
@@ -424,7 +456,8 @@ static int handlesidebarhover(XMotionEvent *ev) {
             XDefineCursor(dpy, root, cursor[CurVert]->cursor);
         }
         return 1;
-    } else if (altcursor == AltCurSidebar) {
+    }
+    if (altcursor == AltCurSidebar) {
         altcursor = AltCurNone;
         XUndefineCursor(dpy, root);
         XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
@@ -442,8 +475,9 @@ static int handleoverlaygesture(XMotionEvent *ev) {
             setoverlay(NULL);
         }
         return 1;
-    } else if (selmon->gesture == 11 &&
-               ev->x_root >= selmon->mx + selmon->ww - 24 - getsystraywidth()) {
+    }
+    if (selmon->gesture == 11 &&
+        ev->x_root >= selmon->mx + selmon->ww - 24 - getsystraywidth()) {
         selmon->gesture = GestureNone;
         return 1;
     }
@@ -453,8 +487,9 @@ static int handleoverlaygesture(XMotionEvent *ev) {
 /* Helper: handle tag bar hover */
 static void handletagbarhover(XMotionEvent *ev) {
     extern int lrpad;
-    if (selmon->hoverclient)
+    if (selmon->hoverclient) {
         selmon->hoverclient = NULL;
+    }
 
     if (ev->x_root < selmon->mx + tagwidth && !selmon->showtags) {
         if (ev->x_root < selmon->mx + startmenusize) {
@@ -512,10 +547,10 @@ static void handletitlebarhover(XMotionEvent *ev) {
         int x = selmon->mx + tagwidth + 60;
         Client *c = selmon->clients;
         do {
-            if (!ISVISIBLE(c))
+            if (!ISVISIBLE(c)) {
                 continue;
-            else
-                x += (1.0 / (double)selmon->bt) * selmon->bar_clients_width;
+            }
+            x += (1.0 / (double)selmon->bt) * selmon->bar_clients_width;
         } while (ev->x_root > x && (c = c->next));
 
         if (c && c != selmon->hoverclient) {
@@ -530,11 +565,13 @@ void motionnotify(XEvent *e) {
     Monitor *m;
     XMotionEvent *ev = &e->xmotion;
 
-    if (ev->window != root)
+    if (ev->window != root) {
         return;
+    }
 
-    if (!tagwidth)
+    if (!tagwidth) {
         tagwidth = gettagwidth();
+    }
 
     /* detect mouse hovering over other monitor */
     m = recttomon(ev->x_root, ev->y_root, 1, 1);
@@ -547,21 +584,23 @@ void motionnotify(XEvent *e) {
 
     /* hover below bar (in desktop area) */
     if (ev->y_root >= selmon->my + bh - 3) {
-        if (handlefloatingresizehover(m))
+        if (handlefloatingresizehover(m)) {
             return;
-        if (handlesidebarhover(ev))
+        }
+        if (handlesidebarhover(ev)) {
             return;
+        }
         resetbar();
-        if (altcursor == AltCurSidebar)
+        if (altcursor == AltCurSidebar) {
             resetcursor();
+        }
         return;
-    } else {
-        /* barleavestatus handled in enternotify */
-    }
+    } /* barleavestatus handled in enternotify */
 
     /* hover in bar area */
-    if (handleoverlaygesture(ev))
+    if (handleoverlaygesture(ev)) {
         return;
+    }
 
     /* cursor is to the left of window titles (tags area) */
     if (ev->x_root < selmon->mx + tagwidth + 60) {
@@ -584,26 +623,29 @@ void propertynotify(XEvent *e) {
         if (ev->atom == XA_WM_NORMAL_HINTS) {
             updatesizehints(c);
             updatesystrayicongeom(c, c->w, c->h);
-        } else
+        } else {
             updatesystrayiconstate(c, ev);
+        }
         resizebarwin(selmon);
         updatesystray();
     }
     extern int xcommand(void);
     extern void updatestatus(void);
     if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
-        if (!xcommand())
+        if (!xcommand()) {
             updatestatus();
-    } else if (ev->state == PropertyDelete)
+        }
+    } else if (ev->state == PropertyDelete) {
         return; /* ignore */
-    else if ((c = wintoclient(ev->window))) {
+    } else if ((c = wintoclient(ev->window))) {
         switch (ev->atom) {
         default:
             break;
         case XA_WM_TRANSIENT_FOR:
             if (!c->isfloating && (XGetTransientForHint(dpy, c->win, &trans)) &&
-                (c->isfloating = (wintoclient(trans)) != NULL))
+                (c->isfloating = (wintoclient(trans)) != NULL)) {
                 arrange(c->mon);
+            }
             break;
         case XA_WM_NORMAL_HINTS:
             c->hintsvalid = 0;
@@ -615,13 +657,16 @@ void propertynotify(XEvent *e) {
         }
         if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
             updatetitle(c);
-            if (c == c->mon->sel)
+            if (c == c->mon->sel) {
                 drawbar(c->mon);
+            }
         }
-        if (ev->atom == netatom[NetWMWindowType])
+        if (ev->atom == netatom[NetWMWindowType]) {
             updatewindowtype(c);
-        if (ev->atom == motifatom)
+        }
+        if (ev->atom == motifatom) {
             updatemotifhints(c);
+        }
     }
 }
 
@@ -641,10 +686,11 @@ void unmapnotify(XEvent *e) {
     XUnmapEvent *ev = &e->xunmap;
 
     if ((c = wintoclient(ev->window))) {
-        if (ev->send_event)
+        if (ev->send_event) {
             setclientstate(c, WithdrawnState);
-        else
+        } else {
             unmanage(c, 0);
+        }
     } else if ((c = wintosystrayicon(ev->window))) {
         /* KLUDGE! sometimes icons occasionally unmap their windows, but do
          * _not_ destroy them. We map those windows back */
@@ -677,22 +723,27 @@ static void handle_focus_monitor(XButtonPressedEvent *ev) {
 
 static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
                              Arg *arg) {
-    unsigned int i, x, occupied_tags = 0;
+    unsigned int i;
+    unsigned int x;
+    unsigned int occupied_tags = 0;
     Client *c;
     Monitor *m = selmon; /* Since ev->window == selmon->barwin, m is selmon */
     int blw = get_blw(selmon);
 
     i = 0;
     x = startmenusize;
-    for (c = m->clients; c; c = c->next)
+    for (c = m->clients; c; c = c->next) {
         occupied_tags |= c->tags == 255 ? 0 : c->tags;
+    }
     do {
         /* do not reserve space for vacant tags */
-        if (i >= 9)
+        if (i >= 9) {
             continue;
+        }
         if (selmon->showtags) {
-            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i))
+            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i)) {
                 continue;
+            }
         }
 
         x += TEXTW(tags[i]);
@@ -704,21 +755,23 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
     } else if (i < numtags) {
         *click = ClkTagBar;
         arg->ui = 1 << i;
-    } else if (ev->x < x + blw)
+    } else if (ev->x < x + blw) {
         *click = ClkLtSymbol;
-    else if (!selmon->sel && ev->x > x + blw && ev->x < x + blw + bh)
+    } else if (!selmon->sel && ev->x > x + blw && ev->x < x + blw + bh) {
         *click = ClkShutDown;
-    /* 2px right padding */
-    else if (ev->x > selmon->ww - getsystraywidth() - statuswidth + lrpad - 2)
+        /* 2px right padding */
+    } else if (ev->x >
+               selmon->ww - getsystraywidth() - statuswidth + lrpad - 2) {
         *click = ClkStatusText;
-    else {
+    } else {
         if (selmon->stack) {
             x += blw;
             c = m->clients;
 
             do {
-                if (!ISVISIBLE(c))
+                if (!ISVISIBLE(c)) {
                     continue;
+                }
                 x += (1.0 / (double)m->bt) * m->bar_clients_width;
             } while (ev->x > x && (c = c->next));
 
@@ -754,7 +807,8 @@ static void handle_client_click(XButtonPressedEvent *ev, Client *c,
 }
 
 void buttonpress(XEvent *e) {
-    unsigned int i, click;
+    unsigned int i;
+    unsigned int click;
     Arg arg = {0};
     Client *c;
     XButtonPressedEvent *ev = &e->xbutton;
@@ -783,14 +837,16 @@ void buttonpress(XEvent *e) {
      * buttons), pass the constructed arg with contextual data; otherwise use
      * button's arg.
      */
-    for (i = 0; i < buttons_len; i++)
+    for (i = 0; i < buttons_len; i++) {
         if (click == buttons[i].click && buttons[i].func &&
             buttons[i].button == ev->button &&
-            CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state))
+            CLEANMASK(buttons[i].mask) == CLEANMASK(ev->state)) {
             buttons[i].func((click == ClkTagBar || click == ClkWinTitle ||
                              click == ClkCloseButton || click == ClkShutDown ||
                              click == ClkSideBar || click == ClkResizeWidget) &&
                                     buttons[i].arg.i == 0
                                 ? &arg
                                 : &buttons[i].arg);
+        }
+    }
 }

@@ -25,8 +25,9 @@ void updatescratchvisible(Monitor *m) {
 
 // Find a client with class scratchpad_<name>
 Client *findnamedscratchpad(const char *name) {
-    if (!name || strlen(name) == 0)
+    if (!name || strlen(name) == 0) {
         return NULL;
+    }
 
     char fullclass[256];
     snprintf(fullclass, sizeof(fullclass), "scratchpad_%s", name);
@@ -39,23 +40,29 @@ Client *findnamedscratchpad(const char *name) {
         for (c = m->clients; c; c = c->next) {
             XGetClassHint(dpy, c->win, &ch);
             if (ch.res_class && strcmp(ch.res_class, fullclass) == 0) {
-                if (ch.res_class)
+                if (ch.res_class) {
                     XFree(ch.res_class);
-                if (ch.res_name)
+                }
+                if (ch.res_name) {
                     XFree(ch.res_name);
+                }
                 return c;
             }
             if (ch.res_name && strcmp(ch.res_name, fullclass) == 0) {
-                if (ch.res_class)
+                if (ch.res_class) {
                     XFree(ch.res_class);
-                if (ch.res_name)
+                }
+                if (ch.res_name) {
                     XFree(ch.res_name);
+                }
                 return c;
             }
-            if (ch.res_class)
+            if (ch.res_class) {
                 XFree(ch.res_class);
-            if (ch.res_name)
+            }
+            if (ch.res_name) {
                 XFree(ch.res_name);
+            }
         }
     }
     return NULL;
@@ -63,12 +70,14 @@ Client *findnamedscratchpad(const char *name) {
 
 void makescratchpad(const Arg *arg) {
     const char *name = arg ? arg->v : NULL;
-    if (!name || strlen(name) == 0)
+    if (!name || strlen(name) == 0) {
         return;
+    }
 
     Client *c = findnamedscratchpad(name);
-    if (!c)
+    if (!c) {
         return;
+    }
 
     // Move to scratchpad tag (tag 21)
     c->tags = SCRATCHPAD_MASK;
@@ -82,7 +91,8 @@ void makescratchpad(const Arg *arg) {
 }
 
 void togglescratchpad(const Arg *arg) {
-    Client *c, *found = NULL;
+    Client *c;
+    Client *found = NULL;
     int handled_action = 0;
     const char *name = arg ? arg->v : NULL;
 
@@ -115,8 +125,9 @@ void togglescratchpad(const Arg *arg) {
                 focus(named);
                 arrange(selmon);
                 restack(selmon);
-                if (focusfollowsmouse)
+                if (focusfollowsmouse) {
                     warp_cursor_to_client(named);
+                }
             }
 
             updatescratchvisible(named->mon);
@@ -164,8 +175,9 @@ void togglescratchpad(const Arg *arg) {
                 focus(found);
                 arrange(selmon);
                 restack(selmon);
-                if (focusfollowsmouse)
+                if (focusfollowsmouse) {
                     warp_cursor_to_client(found);
+                }
                 selmon->activescratchpad = found;
                 handled_action = 1;
             } else {
@@ -175,14 +187,16 @@ void togglescratchpad(const Arg *arg) {
         }
     }
 
-    if (handled_action)
+    if (handled_action) {
         updatescratchvisible(selmon);
+    }
 }
 
 void createscratchpad(const Arg *arg) {
     Client *c;
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     c = selmon->sel;
 
     // turn scratchpad back into normal window
@@ -195,8 +209,9 @@ void createscratchpad(const Arg *arg) {
 
     c->tags = SCRATCHPAD_MASK;
     c->issticky = 0;
-    if (!c->isfloating)
+    if (!c->isfloating) {
         toggle_floating(NULL);
+    }
 
     focus(NULL);
     arrange(selmon);
@@ -222,8 +237,9 @@ void showscratchpad(const Arg *arg) {
             focus(named);
             arrange(selmon);
             restack(selmon);
-            if (focusfollowsmouse)
+            if (focusfollowsmouse) {
                 warp_cursor_to_client(named);
+            }
 
             updatescratchvisible(named->mon);
         }
@@ -237,8 +253,9 @@ void showscratchpad(const Arg *arg) {
             if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
                 focus(c);
                 restack(selmon);
-                if (focusfollowsmouse)
+                if (focusfollowsmouse) {
                     warp_cursor_to_client(c);
+                }
                 return;
             }
         }

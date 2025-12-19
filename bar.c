@@ -29,14 +29,18 @@ extern int pausedraw;
 int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
 
 void clickstatus(const Arg *arg) {
-    int x, y, i;
+    int x;
+    int y;
+    int i;
     getrootptr(&x, &y);
     i = 0;
     while (1) {
-        if (i > 19 || (commandoffsets[i] == -1) || (commandoffsets[i] == 0))
+        if (i > 19 || (commandoffsets[i] == -1) || (commandoffsets[i] == 0)) {
             break;
-        if (x - selmon->mx < commandoffsets[i])
+        }
+        if (x - selmon->mx < commandoffsets[i]) {
             break;
+        }
         i++;
     }
     fprintf(stderr, "\ncounter: %d, x: %d, offset: %d", i, x - selmon->mx,
@@ -44,14 +48,20 @@ void clickstatus(const Arg *arg) {
 }
 
 int drawstatusbar(Monitor *m, int bh, char *stext) {
-    int ret, i, w, x, len, cmdcounter;
+    int ret;
+    int i;
+    int w;
+    int x;
+    int len;
+    int cmdcounter;
     short isCode = 0;
     char *text;
     char *p;
 
     len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len)))
+    if (!(text = (char *)malloc(sizeof(char) * len))) {
         die("malloc");
+    }
     p = text;
     memcpy(text, stext, len);
 
@@ -65,8 +75,9 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
                 text[i] = '\0';
                 w += TEXTW(text) - lrpad;
                 text[i] = '^';
-                if (text[++i] == 'f')
+                if (text[++i] == 'f') {
                     w += atoi(text + ++i);
+                }
             } else {
                 isCode = 0;
                 text = text + i + 1;
@@ -74,10 +85,11 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
             }
         }
     }
-    if (!isCode)
+    if (!isCode) {
         w += TEXTW(text) - lrpad;
-    else
+    } else {
         isCode = 0;
+    }
     text = p;
     statuswidth = w;
     w += 2; /* 1px padding on both sides */
@@ -126,14 +138,17 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
                                    statusbarcolors[ColFg]);
                 } else if (text[i] == 'r') {
                     int rx = atoi(text + ++i);
-                    while (text[++i] != ',')
+                    while (text[++i] != ',') {
                         ;
+                    }
                     int ry = atoi(text + ++i);
-                    while (text[++i] != ',')
+                    while (text[++i] != ',') {
                         ;
+                    }
                     int rw = atoi(text + ++i);
-                    while (text[++i] != ',')
+                    while (text[++i] != ',') {
                         ;
+                    }
                     int rh = atoi(text + ++i);
 
                     drw_rect(drw, rx + x, ry, rw, rh, 1, 0);
@@ -159,17 +174,19 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     }
 
     if (cmdcounter < 20) {
-        if (cmdcounter == 0)
+        if (cmdcounter == 0) {
             commandoffsets[0] = -1;
-        else
+        } else {
             commandoffsets[cmdcounter + 1] = -1;
+        }
     }
 
     cmdcounter = 0;
     while (1) {
         if (cmdcounter > 19 || (commandoffsets[cmdcounter] == -1) ||
-            (commandoffsets[cmdcounter] == 0))
+            (commandoffsets[cmdcounter] == 0)) {
             break;
+        }
         cmdcounter++;
     }
 
@@ -189,10 +206,11 @@ static void draw_startmenu_icon(void) {
     int iconoffset = (bh - CLOSE_BUTTON_WIDTH) / 2;
     int startmenuinvert = (selmon->gesture == GestureStartMenu);
 
-    if (tagprefix)
+    if (tagprefix) {
         drw_setscheme(drw, tagscheme[SchemeNoHover][SchemeTagFocus]);
-    else
+    } else {
         drw_setscheme(drw, statusscheme);
+    }
 
     drw_rect(drw, 0, 0, startmenusize, bh, 1, startmenuinvert ? 0 : 1);
     drw_rect(drw, 5, iconoffset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE, 1,
@@ -210,39 +228,43 @@ static Clr *get_tag_scheme(Monitor *m, unsigned int i,
         /* Tag has clients */
         if (m == selmon && selmon->sel && selmon->sel->tags & 1 << i) {
             return tagscheme[ishover][SchemeTagFocus];
-        } else if (m->tagset[m->seltags] & 1 << i) {
-            return tagscheme[ishover][SchemeTagNoFocus];
-        } else if (!selmon->showtags) {
-            return tagscheme[ishover][SchemeTagFilled];
-        } else {
-            return tagscheme[ishover][SchemeTagInactive];
         }
-    } else {
-        /* Tag is empty */
         if (m->tagset[m->seltags] & 1 << i) {
-            return tagscheme[ishover][SchemeTagEmpty];
-        } else {
-            return tagscheme[ishover][SchemeTagInactive];
+            return tagscheme[ishover][SchemeTagNoFocus];
         }
+        if (!selmon->showtags) {
+            return tagscheme[ishover][SchemeTagFilled];
+        }
+        return tagscheme[ishover][SchemeTagInactive];
     }
+    /* Tag is empty */
+    if (m->tagset[m->seltags] & 1 << i) {
+        return tagscheme[ishover][SchemeTagEmpty];
+    }
+    return tagscheme[ishover][SchemeTagInactive];
 }
 
 /* Helper: Draw all tag indicators and return the x position after them */
 static int draw_tag_indicators(Monitor *m, int x, unsigned int occupied_tags,
                                unsigned int urg) {
-    int w, detail_height, ishover;
+    int w;
+    int detail_height;
+    int ishover;
 
     for (unsigned int i = 0; i < numtags; i++) {
         ishover = i == selmon->gesture - 1 ? SchemeHover : SchemeNoHover;
-        if (i >= 9)
+        if (i >= 9) {
             continue;
-        if (i == 8 && selmon->pertag->current_tag > 9)
+        }
+        if (i == 8 && selmon->pertag->current_tag > 9) {
             i = selmon->pertag->current_tag - 1;
+        }
 
         /* Do not draw vacant tags */
         if (selmon->showtags) {
-            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i))
+            if (!(occupied_tags & 1 << i || m->tagset[m->seltags] & 1 << i)) {
                 continue;
+            }
         }
 
         w = TEXTW(tags[i]);
@@ -279,22 +301,22 @@ static Clr *get_window_scheme(Client *c, int ishover) {
     if (c->mon->sel == c) {
         if (c == selmon->overlay) {
             return windowscheme[ishover][SchemeWinOverlayFocus];
-        } else if (c->issticky) {
+        }
+        if (c->issticky) {
             return windowscheme[ishover][SchemeWinStickyFocus];
-        } else {
-            return windowscheme[ishover][SchemeWinFocus];
         }
-    } else {
-        if (c == selmon->overlay) {
-            return windowscheme[ishover][SchemeWinOverlay];
-        } else if (c->issticky) {
-            return windowscheme[ishover][SchemeWinSticky];
-        } else if (HIDDEN(c)) {
-            return windowscheme[ishover][SchemeWinMinimized];
-        } else {
-            return windowscheme[ishover][SchemeWinNormal];
-        }
+        return windowscheme[ishover][SchemeWinFocus];
     }
+    if (c == selmon->overlay) {
+        return windowscheme[ishover][SchemeWinOverlay];
+    }
+    if (c->issticky) {
+        return windowscheme[ishover][SchemeWinSticky];
+    }
+    if (HIDDEN(c)) {
+        return windowscheme[ishover][SchemeWinMinimized];
+    }
+    return windowscheme[ishover][SchemeWinNormal];
 }
 
 /* Helper: Draw the close button for the selected window */
@@ -354,8 +376,9 @@ static void draw_window_titles(Monitor *m, int x, int w, int n) {
         int remainder = total_width % n;
 
         for (Client *c = m->clients; c; c = c->next) {
-            if (!ISVISIBLE(c))
+            if (!ISVISIBLE(c)) {
                 continue;
+            }
 
             int this_width = each_width;
             if (remainder > 0) {
@@ -387,18 +410,26 @@ static void draw_window_titles(Monitor *m, int x, int w, int n) {
 }
 
 void drawbar(Monitor *m) {
-    if (pausedraw)
+    if (pausedraw) {
         return;
+    }
 
-    int x, w, sw = 0, n = 0, stw = 0;
-    unsigned int occupied_tags = 0, urg = 0;
+    int x;
+    int w;
+    int sw = 0;
+    int n = 0;
+    int stw = 0;
+    unsigned int occupied_tags = 0;
+    unsigned int urg = 0;
     Client *c;
 
-    if (!m->showbar)
+    if (!m->showbar) {
         return;
+    }
 
-    if (showsystray && m == systraytomon(m))
+    if (showsystray && m == systraytomon(m)) {
         stw = getsystraywidth();
+    }
 
     /* Draw status first so it can be overdrawn by tags later */
     if (m == selmon) {
@@ -410,11 +441,13 @@ void drawbar(Monitor *m) {
 
     /* Collect client info for tags */
     for (c = m->clients; c; c = c->next) {
-        if (ISVISIBLE(c))
+        if (ISVISIBLE(c)) {
             n++;
+        }
         occupied_tags |= c->tags == 255 ? 0 : c->tags;
-        if (c->isurgent)
+        if (c->isurgent) {
             urg |= c->tags;
+        }
     }
 
     x = startmenusize;
@@ -434,17 +467,20 @@ void drawbar(Monitor *m) {
 void drawbars(void) {
     Monitor *m;
 
-    for (m = mons; m; m = m->next)
+    for (m = mons; m; m = m->next) {
         drawbar(m);
+    }
 }
 
 void resetbar() {
-    if (!selmon->hoverclient && !selmon->gesture)
+    if (!selmon->hoverclient && !selmon->gesture) {
         return;
+    }
     selmon->hoverclient = NULL;
     selmon->gesture = GestureNone;
-    if (altcursor)
+    if (altcursor) {
         resetcursor();
+    }
     drawbar(selmon);
 }
 
@@ -453,8 +489,9 @@ void updatestatus(void) {
     if (!gettextprop(root, XA_WM_NAME, text, sizeof(text))) {
         strcpy(stext, "instantwm-" VERSION);
     } else {
-        if (strncmp(text, "ipc:", 4) == 0)
+        if (strncmp(text, "ipc:", 4) == 0) {
             return;
+        }
         strncpy(stext, text, sizeof(stext) - 1);
         stext[sizeof(stext) - 1] = '\0';
     }
@@ -469,14 +506,16 @@ void updatebarpos(Monitor *m) {
         m->wh -= bh;
         m->by = m->topbar ? m->wy : m->wy + m->wh;
         m->wy = m->topbar ? m->wy + bh : m->wy;
-    } else
+    } else {
         m->by = -bh;
+    }
 }
 
 void resizebarwin(Monitor *m) {
     unsigned int w = m->ww;
-    if (showsystray && m == systraytomon(m))
+    if (showsystray && m == systraytomon(m)) {
         w -= getsystraywidth();
+    }
     XMoveResizeWindow(dpy, m->barwin, m->wx, m->by, w, bh);
 }
 
@@ -489,18 +528,21 @@ void updatebars(void) {
                                              LeaveWindowMask};
     XClassHint ch = {"dwm", "dwm"};
     for (m = mons; m; m = m->next) {
-        if (m->barwin)
+        if (m->barwin) {
             continue;
+        }
         w = m->ww;
-        if (showsystray && m == systraytomon(m))
+        if (showsystray && m == systraytomon(m)) {
             w -= getsystraywidth();
+        }
         m->barwin = XCreateWindow(
             dpy, root, m->wx, m->by, w, bh, 0, DefaultDepth(dpy, screen),
             CopyFromParent, DefaultVisual(dpy, screen),
             CWOverrideRedirect | CWBackPixmap | CWEventMask, &wa);
         // XDefineCursor(dpy, m->barwin, cursor[CurNormal]->cursor);
-        if (showsystray && m == systraytomon(m))
+        if (showsystray && m == systraytomon(m)) {
             XMapRaised(dpy, systray->win);
+        }
         XMapRaised(dpy, m->barwin);
         XSetClassHint(dpy, m->barwin, &ch);
     }
@@ -521,18 +563,20 @@ void togglebar(const Arg *arg) {
     resizebarwin(selmon);
     if (showsystray) {
         XWindowChanges wc;
-        if (!selmon->showbar)
+        if (!selmon->showbar) {
             wc.y = -bh;
-        else {
+        } else {
             wc.y = 0;
-            if (!selmon->topbar)
+            if (!selmon->topbar) {
                 wc.y = selmon->mh - bh;
+            }
         }
         XConfigureWindow(dpy, systray->win, CWY, &wc);
     }
     arrange(selmon);
-    if (tmpnoanim)
+    if (tmpnoanim) {
         animated = 1;
+    }
     if (selmon->overlaystatus) {
         tmpnoanim = animated;
         animated = 0;

@@ -15,8 +15,9 @@
 void *ecalloc(size_t nmemb, size_t size) {
     void *p;
 
-    if (!(p = calloc(nmemb, size)))
+    if (!(p = calloc(nmemb, size))) {
         die("calloc:");
+    }
     return p;
 }
 
@@ -43,18 +44,19 @@ int startswith(const char *a, const char *b) {
     checker = strstr(a, b);
     if (checker == a) {
         return 1;
-    } else {
-        return 0;
     }
+    return 0;
 }
 
 void spawn(const Arg *arg) {
     struct sigaction sa;
-    if (arg->v == instantmenucmd)
+    if (arg->v == instantmenucmd) {
         instantmenumon[0] = '0' + selmon->num;
+    }
     if (fork() == 0) {
-        if (dpy)
+        if (dpy) {
             close(ConnectionNumber(dpy));
+        }
         setsid();
         sigemptyset(&sa.sa_mask);
         sa.sa_flags = 0;

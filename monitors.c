@@ -19,11 +19,12 @@
 void cleanupmon(Monitor *mon) {
     Monitor *m;
 
-    if (mon == mons)
+    if (mon == mons) {
         mons = mons->next;
-    else {
-        for (m = mons; m && m->next != mon; m = m->next)
+    } else {
+        for (m = mons; m && m->next != mon; m = m->next) {
             ;
+        }
         m->next = mon->next;
     }
     XUnmapWindow(dpy, mon->barwin);
@@ -35,21 +36,26 @@ Monitor *dirtomon(int dir) {
     Monitor *m = NULL;
 
     if (dir > 0) {
-        if (!(m = selmon->next))
+        if (!(m = selmon->next)) {
             m = mons;
-    } else if (selmon == mons)
-        for (m = mons; m->next; m = m->next)
+        }
+    } else if (selmon == mons) {
+        for (m = mons; m->next; m = m->next) {
             ;
-    else
-        for (m = mons; m->next != selmon; m = m->next)
+        }
+    } else {
+        for (m = mons; m->next != selmon; m = m->next) {
             ;
+        }
+    }
     return m;
 }
 
 void followmon(const Arg *arg) {
     Client *c;
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     c = selmon->sel;
     tagmon(arg);
     selmon = c->mon;
@@ -62,10 +68,12 @@ void followmon(const Arg *arg) {
 void focusmon(const Arg *arg) {
     Monitor *m;
 
-    if (!mons->next)
+    if (!mons->next) {
         return;
-    if ((m = dirtomon(arg->i)) == selmon)
+    }
+    if ((m = dirtomon(arg->i)) == selmon) {
         return;
+    }
     unfocus(selmon->sel, 0);
     selmon = m;
     focus(NULL);
@@ -75,8 +83,9 @@ void focusnmon(const Arg *arg) {
     Monitor *m;
     int i;
 
-    if (!mons->next)
+    if (!mons->next) {
         return;
+    }
 
     m = mons;
 
@@ -94,21 +103,25 @@ void focusnmon(const Arg *arg) {
 }
 
 Monitor *recttomon(int x, int y, int w, int h) {
-    Monitor *m, *r = selmon;
-    int a, area = 0;
-    for (m = mons; m; m = m->next)
+    Monitor *m;
+    Monitor *r = selmon;
+    int a;
+    int area = 0;
+    for (m = mons; m; m = m->next) {
         if ((a = INTERSECT(x, y, w, h, m)) > area) {
             area = a;
             r = m;
         }
+    }
     return r;
 }
 
 void sendmon(Client *c, Monitor *m) {
     int isscratchpad = 0;
     Monitor *prevmon = selmon;
-    if (c->mon == m)
+    if (c->mon == m) {
         return;
+    }
 
     prevmon = selmon;
 
@@ -127,8 +140,9 @@ void sendmon(Client *c, Monitor *m) {
     attachstack(c);
     setclienttagprop(c);
     focus(NULL);
-    if (!c->isfloating)
+    if (!c->isfloating) {
         arrange(NULL);
+    }
     if (isscratchpad && !c->mon->scratchvisible) {
         unfocus(selmon->sel, 0);
         selmon = m;
@@ -141,17 +155,22 @@ void sendmon(Client *c, Monitor *m) {
 }
 
 Monitor *wintomon(Window w) {
-    int x, y;
+    int x;
+    int y;
     Client *c;
     Monitor *m;
 
-    if (w == root && getrootptr(&x, &y))
+    if (w == root && getrootptr(&x, &y)) {
         return recttomon(x, y, 1, 1);
-    for (m = mons; m; m = m->next)
-        if (w == m->barwin)
+    }
+    for (m = mons; m; m = m->next) {
+        if (w == m->barwin) {
             return m;
-    if ((c = wintoclient(w)))
+        }
+    }
+    if ((c = wintoclient(w))) {
         return c->mon;
+    }
     return selmon;
 }
 
@@ -258,8 +277,9 @@ int updategeom(void) {
     } else
 #endif /* XINERAMA */
     {  /* default monitor setup */
-        if (!mons)
+        if (!mons) {
             mons = createmon();
+        }
         if (mons->mw != sw || mons->mh != sh) {
             dirty = 1;
             mons->mw = mons->ww = sw;

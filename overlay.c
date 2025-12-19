@@ -8,8 +8,9 @@
 int overlayexists() {
     Client *c;
     Monitor *m;
-    if (!selmon->overlay)
+    if (!selmon->overlay) {
         return 0;
+    }
 
     for (m = mons; m; m = m->next) {
         for (c = m->clients; c; c = c->next) {
@@ -25,10 +26,12 @@ int overlayexists() {
 void createoverlay(const Arg *arg) {
     Monitor *m;
     Monitor *tm;
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
-    if (selmon->sel == selmon->fullscreen)
+    }
+    if (selmon->sel == selmon->fullscreen) {
         temp_fullscreen(NULL);
+    }
     if (selmon->sel == selmon->overlay) {
         resetoverlay();
         for (tm = mons; tm; tm = tm->next) {
@@ -53,18 +56,20 @@ void createoverlay(const Arg *arg) {
         changefloating(selmon->overlay);
     }
 
-    if (selmon->overlaymode == 0 || selmon->overlaymode == 2)
+    if (selmon->overlaymode == 0 || selmon->overlaymode == 2) {
         selmon->overlay->h = ((selmon->wh) / 3);
-    else
+    } else {
         selmon->overlay->w = ((selmon->ww) / 3);
+    }
 
     XRaiseWindow(dpy, tempclient->win);
     showoverlay(NULL);
 }
 
 void resetoverlay() {
-    if (!overlayexists())
+    if (!overlayexists()) {
         return;
+    }
     selmon->overlay->tags = selmon->tagset[selmon->seltags];
     selmon->overlay->border_width = selmon->overlay->old_border_width;
     selmon->overlay->issticky = 0;
@@ -76,8 +81,9 @@ void resetoverlay() {
 
 void showoverlay(const Arg *arg) {
     Monitor *m;
-    if (!overlayexists() || selmon->overlaystatus)
+    if (!overlayexists() || selmon->overlaystatus) {
         return;
+    }
 
     int yoffset = selmon->showbar ? bh : 0;
 
@@ -164,15 +170,17 @@ void showoverlay(const Arg *arg) {
 }
 
 void hideoverlay(const Arg *arg) {
-    if (!overlayexists() || !selmon->overlaystatus)
+    if (!overlayexists() || !selmon->overlaystatus) {
         return;
+    }
 
     Client *c;
     Monitor *m;
     c = selmon->overlay;
     c->issticky = 0;
-    if (c == selmon->fullscreen)
+    if (c == selmon->fullscreen) {
         temp_fullscreen(NULL);
+    }
     if (c->islocked) {
         switch (selmon->overlaymode) {
         case OverlayTop:
@@ -226,13 +234,15 @@ void setoverlaymode(int mode) {
         m->overlaymode = mode;
     }
 
-    if (!selmon->overlay)
+    if (!selmon->overlay) {
         return;
+    }
 
-    if (mode == OverlayTop || mode == OverlayBottom)
+    if (mode == OverlayTop || mode == OverlayBottom) {
         selmon->overlay->h = selmon->wh / 3;
-    else
+    } else {
         selmon->overlay->w = selmon->ww / 3;
+    }
 
     if (selmon->overlaystatus) {
         hideoverlay(NULL);
@@ -241,8 +251,9 @@ void setoverlaymode(int mode) {
 }
 
 void resetoverlaysize() {
-    if (!selmon->overlay)
+    if (!selmon->overlay) {
         return;
+    }
     Client *c;
     c = selmon->overlay;
     selmon->overlay->isfloating = 1;

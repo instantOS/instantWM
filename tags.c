@@ -40,9 +40,8 @@ int computeprefix(const Arg *arg) {
     if (tagprefix && arg->ui) {
         tagprefix = 0;
         return arg->ui << 10;
-    } else {
-        return arg->ui;
     }
+    return arg->ui;
 }
 
 void nametag(const Arg *arg) {
@@ -50,15 +49,17 @@ void nametag(const Arg *arg) {
 
     char *name = (char *)arg->v;
 
-    if (strlen(name) >= MAX_TAGLEN)
+    if (strlen(name) >= MAX_TAGLEN) {
         return;
+    }
 
     for (i = 0; i < numtags; i++) {
         if (selmon->tagset[selmon->seltags] & (1 << i)) {
-            if (strlen(name) > 0)
+            if (strlen(name) > 0) {
                 strcpy(tags[i], name);
-            else
+            } else {
                 strcpy(tags[i], tags_default[i]);
+            }
         }
     }
     tagwidth = gettagwidth();
@@ -66,27 +67,33 @@ void nametag(const Arg *arg) {
 }
 
 void resetnametag(const Arg *arg) {
-    for (int i = 0; i < numtags; i++)
+    for (int i = 0; i < numtags; i++) {
         strcpy((char *)&tags[i], tags_default[i]);
+    }
     tagwidth = gettagwidth();
     drawbars();
 }
 
 int gettagwidth() {
-    int x = 0, i = 0, occupied_tags = 0;
+    int x = 0;
+    int i = 0;
+    int occupied_tags = 0;
     Client *c;
 
-    for (c = selmon->clients; c; c = c->next)
+    for (c = selmon->clients; c; c = c->next) {
         occupied_tags |= c->tags == 255 ? 0 : c->tags;
+    }
 
     do {
         // do not reserve space for vacant tags
-        if (i >= 9)
+        if (i >= 9) {
             continue;
+        }
         if (selmon->showtags) {
             if (!(occupied_tags & 1 << i ||
-                  selmon->tagset[selmon->seltags] & 1 << i))
+                  selmon->tagset[selmon->seltags] & 1 << i)) {
                 continue;
+            }
         }
         x += TEXTW(tags[i]);
     } while (++i < numtags);
@@ -95,22 +102,27 @@ int gettagwidth() {
 
 // return tag for indicator of given x coordinate
 int getxtag(int ix) {
-    int x, i, occupied_tags;
+    int x;
+    int i;
+    int occupied_tags;
     Client *c;
     i = 0;
     occupied_tags = 0;
     x = startmenusize;
-    for (c = selmon->clients; c; c = c->next)
+    for (c = selmon->clients; c; c = c->next) {
         occupied_tags |= c->tags == 255 ? 0 : c->tags;
+    }
 
     do {
         // do not reserve space for vacant tags
-        if (i >= 9)
+        if (i >= 9) {
             continue;
+        }
         if (selmon->showtags) {
             if (!(occupied_tags & 1 << i ||
-                  selmon->tagset[selmon->seltags] & 1 << i))
+                  selmon->tagset[selmon->seltags] & 1 << i)) {
                 continue;
+            }
         }
 
         x += TEXTW(tags[i]);
@@ -129,8 +141,9 @@ int getxtag(int ix) {
 static void setclienttag_impl(unsigned int tagmask_bits) {
     Client *c;
     if (selmon->sel && tagmask_bits & tagmask) {
-        if (selmon->sel->tags == SCRATCHPAD_MASK)
+        if (selmon->sel->tags == SCRATCHPAD_MASK) {
             selmon->sel->issticky = 0;
+        }
         c = selmon->sel;
         selmon->sel->tags = tagmask_bits & tagmask;
         setclienttagprop(c);
@@ -148,14 +161,17 @@ void tag(const Arg *arg) {
 void tagall(const Arg *arg) {
     Client *c;
     int ui = computeprefix(arg);
-    if (PERTAG_CURRENT(selmon) == 0)
+    if (PERTAG_CURRENT(selmon) == 0) {
         return;
+    }
     if (selmon->sel && ui & tagmask) {
         for (c = selmon->clients; c; c = c->next) {
-            if (!(c->tags & 1 << (PERTAG_CURRENT(selmon) - 1)))
+            if (!(c->tags & 1 << (PERTAG_CURRENT(selmon) - 1))) {
                 continue;
-            if (c->tags == SCRATCHPAD_MASK)
+            }
+            if (c->tags == SCRATCHPAD_MASK) {
                 c->issticky = 0;
+            }
             c->tags = ui & tagmask;
         }
         focus(NULL);
@@ -170,12 +186,14 @@ void tagall(const Arg *arg) {
  * @param preserve_prefix: if true, maintain tagprefix state after tag()
  */
 static void followtag_impl(unsigned int tagmask_bits, int preserve_prefix) {
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     Arg a = {.ui = tagmask_bits};
     tag(&a);
-    if (preserve_prefix)
+    if (preserve_prefix) {
         tagprefix = 1;
+    }
     view(&a);
 }
 
@@ -192,15 +210,18 @@ void followtag(const Arg *arg) {
 static void swap_client_tags(unsigned int current_tag, unsigned int newtag) {
     for (Client *c = selmon->clients; c != NULL; c = c->next) {
         if (selmon->overlay == c) {
-            if (ISVISIBLE(c))
+            if (ISVISIBLE(c)) {
                 hideoverlay(NULL);
+            }
             continue;
         }
-        if ((c->tags & newtag) || (c->tags & current_tag))
+        if ((c->tags & newtag) || (c->tags & current_tag)) {
             c->tags ^= current_tag ^ newtag;
+        }
 
-        if (!c->tags)
+        if (!c->tags) {
             c->tags = newtag;
+        }
     }
 }
 
@@ -255,13 +276,15 @@ void swaptags(const Arg *arg) {
     /* Validate: must be different tags, current must exist, must be single tag
      */
     if (newtag == current_tag || !current_tag ||
-        (current_tag & (current_tag - 1)))
+        (current_tag & (current_tag - 1))) {
         return;
+    }
 
     /* Find target tag index */
     int target_idx;
-    for (target_idx = 0; !(ui & 1 << target_idx); target_idx++)
+    for (target_idx = 0; !(ui & 1 << target_idx); target_idx++) {
         ;
+    }
 
     /* Swap clients between tags */
     swap_client_tags(current_tag, newtag);
@@ -273,8 +296,9 @@ void swaptags(const Arg *arg) {
     swap_pertag_settings(target_idx + 1);
 
     /* Update tag tracking */
-    if (selmon->pertag->prevtag == target_idx + 1)
+    if (selmon->pertag->prevtag == target_idx + 1) {
         selmon->pertag->prevtag = selmon->pertag->current_tag;
+    }
     selmon->pertag->current_tag = target_idx + 1;
 
     focus(NULL);
@@ -282,8 +306,9 @@ void swaptags(const Arg *arg) {
 }
 
 void followview(const Arg *arg) {
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     Client *c = selmon->sel;
     c->tags = 1 << (selmon->pertag->prevtag - 1);
     view(&((Arg){.ui = 1 << (selmon->pertag->prevtag - 1)}));
@@ -292,19 +317,22 @@ void followview(const Arg *arg) {
 }
 
 void resetsticky(Client *c) {
-    if (!c->issticky)
+    if (!c->issticky) {
         return;
+    }
     c->issticky = 0;
     c->tags = 1 << (PERTAG_CURRENT(selmon) - 1);
 }
 
 void tagmon(const Arg *arg) {
-    if (!selmon->sel || !mons->next)
+    if (!selmon->sel || !mons->next) {
         return;
+    }
 
     if (selmon->sel->isfloating) {
         Client *c;
-        float xfact, yfact;
+        float xfact;
+        float yfact;
         c = selmon->sel;
         xfact = (float)(c->x - selmon->mx) / selmon->ww;
         yfact = (float)(c->y - selmon->my) / selmon->wh;
@@ -329,8 +357,9 @@ static void shift_tag(int dir, int offset) {
     int oldx;
     Client *c;
 
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
 
     /* Handle overlay special case */
     if (selmon->sel == selmon->overlay) {
@@ -339,10 +368,12 @@ static void shift_tag(int dir, int offset) {
     }
 
     /* Boundary checks */
-    if (dir == DirLeft && PERTAG_CURRENT(selmon) == 1)
+    if (dir == DirLeft && PERTAG_CURRENT(selmon) == 1) {
         return;
-    if (dir == DirRight && PERTAG_CURRENT(selmon) == 20)
+    }
+    if (dir == DirRight && PERTAG_CURRENT(selmon) == 20) {
         return;
+    }
 
     c = selmon->sel;
     resetsticky(c);
@@ -390,8 +421,9 @@ void toggletag(const Arg *arg) {
     int ui = computeprefix(arg);
     unsigned int newtags;
 
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
 
     if (selmon->sel->tags == SCRATCHPAD_MASK) {
         tag(arg);
@@ -423,8 +455,9 @@ void toggleview(const Arg *arg) {
         /* test if the user did not select the same tag */
         if (!(newtagset & 1 << (selmon->pertag->current_tag - 1))) {
             selmon->pertag->prevtag = selmon->pertag->current_tag;
-            for (i = 0; !(newtagset & 1 << i); i++)
+            for (i = 0; !(newtagset & 1 << i); i++) {
                 ;
+            }
             selmon->pertag->current_tag = i + 1;
         }
 
@@ -436,8 +469,9 @@ void toggleview(const Arg *arg) {
         selmon->lt[selmon->sellt ^ 1] =
             selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
+        if (selmon->showbar != PERTAG_SHOWBAR(selmon)) {
             togglebar(NULL);
+        }
 
         focus(NULL);
         arrange(selmon);
@@ -458,10 +492,12 @@ void view(const Arg *arg) {
             selmon->pertag->prevtag = selmon->pertag->current_tag;
             selmon->pertag->current_tag = 0;
         } else {
-            for (i = 0; !(ui & 1 << i); i++)
+            for (i = 0; !(ui & 1 << i); i++) {
                 ;
-            if ((i + 1) == selmon->pertag->current_tag)
+            }
+            if ((i + 1) == selmon->pertag->current_tag) {
                 return;
+            }
             selmon->pertag->prevtag = selmon->pertag->current_tag;
             selmon->pertag->current_tag = i + 1;
         }
@@ -474,8 +510,9 @@ void view(const Arg *arg) {
         selmon->lt[selmon->sellt ^ 1] =
             selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-        if (selmon->showbar != PERTAG_SHOWBAR(selmon))
+        if (selmon->showbar != PERTAG_SHOWBAR(selmon)) {
             togglebar(NULL);
+        }
 
         focus(NULL);
         arrange(selmon);
@@ -487,8 +524,9 @@ static void viewscroll(const Arg *arg, int dir) {
     unsigned int tagmask_val = tagmask;
 
     if (dir == DirLeft) {
-        if (PERTAG_CURRENT(selmon) == 1)
+        if (PERTAG_CURRENT(selmon) == 1) {
             return;
+        }
         if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask_val) ==
                 1 &&
             selmon->tagset[selmon->seltags] > 1) {
@@ -499,8 +537,9 @@ static void viewscroll(const Arg *arg, int dir) {
             return;
         }
     } else { // DirRight
-        if (PERTAG_CURRENT(selmon) == 20)
+        if (PERTAG_CURRENT(selmon) == 20) {
             return;
+        }
         if (__builtin_popcount(selmon->tagset[selmon->seltags] & tagmask_val) ==
                 1 &&
             selmon->tagset[selmon->seltags] & (tagmask_val >> 1)) {
@@ -515,11 +554,12 @@ static void viewscroll(const Arg *arg, int dir) {
     selmon->pertag->prevtag = selmon->pertag->current_tag;
     unsigned int new_tagset = selmon->tagset[selmon->seltags];
 
-    if (new_tagset == ~0)
+    if (new_tagset == ~0) {
         selmon->pertag->current_tag = 0;
-    else {
-        for (i = 0; !(new_tagset & 1 << i); i++)
+    } else {
+        for (i = 0; !(new_tagset & 1 << i); i++) {
             ;
+        }
         selmon->pertag->current_tag = i + 1;
     }
 
@@ -530,8 +570,9 @@ static void viewscroll(const Arg *arg, int dir) {
     selmon->lt[selmon->sellt ^ 1] =
         selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
 
-    if (selmon->showbar != PERTAG_SHOWBAR(selmon))
+    if (selmon->showbar != PERTAG_SHOWBAR(selmon)) {
         togglebar(NULL);
+    }
 
     focus(NULL);
     arrange(selmon);
@@ -550,27 +591,31 @@ void shiftview(const Arg *arg) {
     unsigned visible = 0;
     int i = arg->i;
     int count = 0;
-    int nextseltags, curseltags = selmon->tagset[selmon->seltags];
+    int nextseltags;
+    int curseltags = selmon->tagset[selmon->seltags];
 
     do {
-        if (i > 0) // left circular shift
+        if (i > 0) { // left circular shift
             nextseltags = (curseltags << i) | (curseltags >> (numtags - 1 - i));
-        else // right circular shift
+        } else { // right circular shift
             nextseltags =
                 curseltags >> (-i) | (curseltags << (numtags - 1 + i));
+        }
 
         // Check if tag is visible
-        for (c = selmon->clients; c && !visible; c = c->next)
+        for (c = selmon->clients; c && !visible; c = c->next) {
             if (nextseltags & c->tags) {
                 visible = 1;
                 break;
             }
+        }
         i += arg->i;
     } while (!visible && ++count < 10);
 
     if (count < 10) {
-        if (nextseltags & (SCRATCHPAD_MASK))
+        if (nextseltags & (SCRATCHPAD_MASK)) {
             nextseltags = nextseltags ^ (SCRATCHPAD_MASK);
+        }
         a.i = nextseltags;
         view(&a);
     }
@@ -591,8 +636,9 @@ void overtoggle(const Arg *arg) {
 
     if (!selmon->clients ||
         (selmon->clients == selmon->overlay && !selmon->overlay->next)) {
-        if (PERTAG_CURRENT(selmon) == 0)
+        if (PERTAG_CURRENT(selmon) == 0) {
             lastview(NULL);
+        }
         return;
     }
 
@@ -603,11 +649,13 @@ void overtoggle(const Arg *arg) {
                 break;
             }
         }
-        if (showscratch)
+        if (showscratch) {
             togglescratchpad(NULL);
+        }
     }
-    if (selmon->fullscreen)
+    if (selmon->fullscreen) {
         temp_fullscreen(NULL);
+    }
     if (PERTAG_CURRENT(selmon) == 0) {
         tmptag = selmon->pertag->prevtag;
         restoreallfloating(selmon);
@@ -618,18 +666,20 @@ void overtoggle(const Arg *arg) {
         selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[0][selmon->sellt] =
             (Layout *)&layouts[6];
         view(arg);
-        if (selmon->lt[selmon->sellt] != (Layout *)&layouts[6])
+        if (selmon->lt[selmon->sellt] != (Layout *)&layouts[6]) {
             setlayout(&((Arg){.v = &layouts[6]}));
+        }
         focus(c);
     }
     selmon->pertag->prevtag = tmptag;
 }
 
 void lastview(const Arg *arg) {
-    if (PERTAG_CURRENT(selmon) == selmon->pertag->prevtag)
+    if (PERTAG_CURRENT(selmon) == selmon->pertag->prevtag) {
         focus_last_client(NULL);
-    else
+    } else {
         view(&((Arg){.ui = 1 << (selmon->pertag->prevtag - 1)}));
+    }
 }
 
 // overtoggle but with monocle layout
@@ -644,7 +694,10 @@ void fullovertoggle(const Arg *arg) {
 }
 
 void winview(const Arg *arg) {
-    Window win, win_r, win_p, *win_c;
+    Window win;
+    Window win_r;
+    Window win_p;
+    Window *win_c;
     unsigned nc;
     int unused;
     Client *c;
@@ -652,20 +705,26 @@ void winview(const Arg *arg) {
 
     if (&overviewlayout == tiling_layout_func(selmon)) {
         for (c = selmon->clients; c; c = c->next) {
-            if (c == selmon->overlay)
+            if (c == selmon->overlay) {
                 continue;
-            if (c->isfloating)
+            }
+            if (c->isfloating) {
                 restorefloating(c);
+            }
         }
     }
 
-    if (!XGetInputFocus(dpy, &win, &unused))
+    if (!XGetInputFocus(dpy, &win, &unused)) {
         return;
-    while (XQueryTree(dpy, win, &win_r, &win_p, &win_c, &nc) && win_p != win_r)
+    }
+    while (XQueryTree(dpy, win, &win_r, &win_p, &win_c, &nc) &&
+           win_p != win_r) {
         win = win_p;
+    }
 
-    if (!(c = wintoclient(win)))
+    if (!(c = wintoclient(win))) {
         return;
+    }
 
     a.ui = c->tags;
     if (c->tags == SCRATCHPAD_MASK) {

@@ -130,8 +130,9 @@ int force_resize = 0;
 Monitor *selmon;
 
 void resetcursor() {
-    if (altcursor == AltCurNone)
+    if (altcursor == AltCurNone) {
         return;
+    }
     XDefineCursor(dpy, root, cursor[CurNormal]->cursor);
     altcursor = AltCurNone;
 }
@@ -154,19 +155,23 @@ void cleanup(void) {
 
     view(&a);
     selmon->lt[selmon->sellt] = &foo;
-    for (m = mons; m; m = m->next)
-        while (m->stack)
+    for (m = mons; m; m = m->next) {
+        while (m->stack) {
             unmanage(m->stack, 0);
+        }
+    }
     XUngrabKey(dpy, AnyKey, AnyModifier, root);
-    while (mons)
+    while (mons) {
         cleanupmon(mons);
+    }
     if (showsystray) {
         XUnmapWindow(dpy, systray->win);
         XDestroyWindow(dpy, systray->win);
         free(systray);
     }
-    for (i = 0; i < CurLast; i++)
+    for (i = 0; i < CurLast; i++) {
         drw_cur_free(drw, cursor[i]);
+    }
 
     /* tagcolors size is fixed 2x5x3 */
     for (i = 0; i < 2; i++) {
@@ -210,8 +215,9 @@ void distributeclients(const Arg *arg) {
 
     for (c = selmon->clients; c; c = c->next) {
         // overlays or scratchpads aren't on regular tags anyway
-        if (c == selmon->overlay || c->tags & SCRATCHPAD_MASK)
+        if (c == selmon->overlay || c->tags & SCRATCHPAD_MASK) {
             continue;
+        }
         if (tagcounter > 8) {
             tagcounter = 0;
         }
@@ -226,25 +232,32 @@ void distributeclients(const Arg *arg) {
 
 void focus(Client *c) {
     resetcursor();
-    if (!c || !ISVISIBLE(c) || HIDDEN(c))
-        for (c = selmon->stack; c && (!ISVISIBLE(c) || HIDDEN(c)); c = c->snext)
+    if (!c || !ISVISIBLE(c) || HIDDEN(c)) {
+        for (c = selmon->stack; c && (!ISVISIBLE(c) || HIDDEN(c));
+             c = c->snext) {
             ;
-    if (selmon->sel && selmon->sel != c)
+        }
+    }
+    if (selmon->sel && selmon->sel != c) {
         unfocus(selmon->sel, 0);
+    }
     if (c) {
-        if (c->mon != selmon)
+        if (c->mon != selmon) {
             selmon = c->mon;
-        if (c->isurgent)
+        }
+        if (c->isurgent) {
             seturgent(c, 0);
+        }
         detachstack(c);
         attachstack(c);
         grabbuttons(c, 1);
-        if (!c->isfloating)
+        if (!c->isfloating) {
             XSetWindowBorder(dpy, c->win,
                              borderscheme[SchemeBorderTileFocus].pixel);
-        else
+        } else {
             XSetWindowBorder(dpy, c->win,
                              borderscheme[SchemeBorderFloatFocus].pixel);
+        }
 
         setfocus(c);
         if (c->tags & SCRATCHPAD_MASK) {
@@ -255,11 +268,13 @@ void focus(Client *c) {
         XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
     }
     selmon->sel = c;
-    if (selmon->gesture != GestureOverlay && selmon->gesture)
+    if (selmon->gesture != GestureOverlay && selmon->gesture) {
         selmon->gesture = GestureNone;
+    }
 
-    if (selmon->gesture < GestureOverlay)
+    if (selmon->gesture < GestureOverlay) {
         selmon->gesture = GestureNone;
+    }
     selmon->hoverclient = NULL;
 
     drawbars();
@@ -279,27 +294,37 @@ void focus(Client *c) {
  * arg->i <= 0: Focus previous visible client (wrap to last if at start)
  * Does nothing if no client is selected or if fullscreen (non-fake). */
 void focusstack(const Arg *arg) {
-    Client *c = NULL, *i;
+    Client *c = NULL;
+    Client *i;
 
     if (!selmon->sel ||
-        (selmon->sel->is_fullscreen && !selmon->sel->isfakefullscreen))
+        (selmon->sel->is_fullscreen && !selmon->sel->isfakefullscreen)) {
         return;
+    }
     if (arg->i > 0) {
         for (c = selmon->sel->next; c && (!ISVISIBLE(c) || HIDDEN(c));
-             c = c->next)
+             c = c->next) {
             ;
-        if (!c)
+        }
+        if (!c) {
             for (c = selmon->clients; c && (!ISVISIBLE(c) || HIDDEN(c));
-                 c = c->next)
+                 c = c->next) {
                 ;
+            }
+        }
     } else {
-        for (i = selmon->clients; i != selmon->sel; i = i->next)
-            if (ISVISIBLE(i) && !HIDDEN(i))
+        for (i = selmon->clients; i != selmon->sel; i = i->next) {
+            if (ISVISIBLE(i) && !HIDDEN(i)) {
                 c = i;
-        if (!c)
-            for (; i; i = i->next)
-                if (ISVISIBLE(i) && !HIDDEN(i))
+            }
+        }
+        if (!c) {
+            for (; i; i = i->next) {
+                if (ISVISIBLE(i) && !HIDDEN(i)) {
                     c = i;
+                }
+            }
+        }
     }
     if (c) {
         focus(c);
@@ -311,19 +336,22 @@ Atom getatomprop(Client *c, Atom prop) {
     int di;
     unsigned long dl;
     unsigned char *p = NULL;
-    Atom da, atom = None;
+    Atom da;
+    Atom atom = None;
     /* FIXME getatomprop should return the number of items and a pointer to
      * the stored data instead of this workaround */
     Atom req = XA_ATOM;
-    if (prop == xatom[XembedInfo])
+    if (prop == xatom[XembedInfo]) {
         req = xatom[XembedInfo];
+    }
 
     if (XGetWindowProperty(dpy, c->win, prop, 0L, sizeof atom, False, req, &da,
                            &di, &dl, &dl, &p) == Success &&
         p) {
         atom = *(Atom *)p;
-        if (da == xatom[XembedInfo] && dl == 2)
+        if (da == xatom[XembedInfo] && dl == 2) {
             atom = ((Atom *)p)[1];
+        }
         XFree(p);
     }
     return atom;
@@ -345,25 +373,28 @@ Client *getcursorclient() {
     Window returnwin;
 
     XQueryPointer(dpy, root, &dummy, &returnwin, &dum, &dum, &di, &di, &dui);
-    if (returnwin == root)
+    if (returnwin == root) {
         return NULL;
-    else
-        return wintoclient(returnwin);
+    }
+    return wintoclient(returnwin);
 }
 
 long getstate(Window w) {
     int format;
     long result = -1;
     unsigned char *p = NULL;
-    unsigned long n, extra;
+    unsigned long n;
+    unsigned long extra;
     Atom real;
 
     if (XGetWindowProperty(dpy, w, wmatom[WMState], 0L, 2L, False,
                            wmatom[WMState], &real, &format, &n, &extra,
-                           (unsigned char **)&p) != Success)
+                           (unsigned char **)&p) != Success) {
         return -1;
-    if (n != 0)
+    }
+    if (n != 0) {
         result = *p;
+    }
     XFree(p);
     return result;
 }
@@ -373,11 +404,13 @@ int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
     int n;
     XTextProperty name;
 
-    if (!text || size == 0)
+    if (!text || size == 0) {
         return 0;
+    }
     text[0] = '\0';
-    if (!XGetTextProperty(dpy, w, &name, atom) || !name.nitems)
+    if (!XGetTextProperty(dpy, w, &name, atom) || !name.nitems) {
         return 0;
+    }
     if (name.encoding == XA_STRING) {
         strncpy(text, (char *)name.value, size - 1);
     } else if (XmbTextPropertyToTextList(dpy, &name, &list, &n) >= Success &&
@@ -393,20 +426,25 @@ int gettextprop(Window w, Atom atom, char *text, unsigned int size) {
 void grabbuttons(Client *c, int focused) {
     updatenumlockmask();
     {
-        unsigned int i, j;
+        unsigned int i;
+        unsigned int j;
         unsigned int modifiers[] = {0, LockMask, numlockmask,
                                     numlockmask | LockMask};
         XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
-        if (!focused)
+        if (!focused) {
             XGrabButton(dpy, AnyButton, AnyModifier, c->win, False, BUTTONMASK,
                         GrabModeSync, GrabModeSync, None, None);
-        for (i = 0; i < buttons_len; i++)
-            if (buttons[i].click == ClkClientWin)
-                for (j = 0; j < LENGTH(modifiers); j++)
+        }
+        for (i = 0; i < buttons_len; i++) {
+            if (buttons[i].click == ClkClientWin) {
+                for (j = 0; j < LENGTH(modifiers); j++) {
                     XGrabButton(dpy, buttons[i].button,
                                 buttons[i].mask | modifiers[j], c->win, False,
                                 BUTTONMASK, GrabModeAsync, GrabModeSync, None,
                                 None);
+                }
+            }
+        }
     }
 }
 
@@ -416,9 +454,11 @@ void run(void) {
     XEvent ev;
     /* main event loop */
     XSync(dpy, False);
-    while (running && !XNextEvent(dpy, &ev))
-        if (handler[ev.type])
+    while (running && !XNextEvent(dpy, &ev)) {
+        if (handler[ev.type]) {
             handler[ev.type](&ev); /* call handler */
+        }
+    }
 }
 
 void runAutostart(void) {
@@ -429,28 +469,37 @@ void runAutostart(void) {
 
 void scan(void) {
     unsigned int num;
-    Window d1, d2, *wins = NULL;
+    Window d1;
+    Window d2;
+    Window *wins = NULL;
     XWindowAttributes wa;
 
     if (XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
         unsigned int i;
         for (i = 0; i < num; i++) {
             if (!XGetWindowAttributes(dpy, wins[i], &wa) ||
-                wa.override_redirect || XGetTransientForHint(dpy, wins[i], &d1))
+                wa.override_redirect ||
+                XGetTransientForHint(dpy, wins[i], &d1)) {
                 continue;
-            if (wa.map_state == IsViewable || getstate(wins[i]) == IconicState)
+            }
+            if (wa.map_state == IsViewable ||
+                getstate(wins[i]) == IconicState) {
                 manage(wins[i], &wa);
+            }
         }
         for (i = 0; i < num; i++) { /* now the transients */
-            if (!XGetWindowAttributes(dpy, wins[i], &wa))
+            if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
                 continue;
+            }
             if (XGetTransientForHint(dpy, wins[i], &d1) &&
                 (wa.map_state == IsViewable ||
-                 getstate(wins[i]) == IconicState))
+                 getstate(wins[i]) == IconicState)) {
                 manage(wins[i], &wa);
+            }
         }
-        if (wins)
+        if (wins) {
             XFree(wins);
+        }
     }
 }
 
@@ -470,8 +519,9 @@ void setup(void) {
     sigaction(SIGCHLD, &sa, NULL);
 
     /* clean up any zombies (inherited from .xinitrc etc) immediately */
-    while (waitpid(-1, NULL, WNOHANG) > 0)
+    while (waitpid(-1, NULL, WNOHANG) > 0) {
         ;
+    }
 
     /* init screen */
     screen = DefaultScreen(dpy);
@@ -485,13 +535,15 @@ void setup(void) {
     }
 
     drw = drw_create(dpy, screen, root, sw, sh);
-    if (!drw_fontset_create(drw, fonts, fonts_len))
+    if (!drw_fontset_create(drw, fonts, fonts_len)) {
         die("no fonts could be loaded.");
+    }
     lrpad = drw->fonts->h;
-    if (barheight)
+    if (barheight) {
         bh = drw->fonts->h + barheight;
-    else
+    } else {
         bh = drw->fonts->h + 12;
+    }
     updategeom();
     /* init atoms */
     utf8string = XInternAtom(dpy, "UTF8_STRING", False);
@@ -601,16 +653,20 @@ void setup(void) {
 }
 
 void updatenumlockmask(void) {
-    unsigned int i, j;
+    unsigned int i;
+    unsigned int j;
     XModifierKeymap *modmap;
 
     numlockmask = 0;
     modmap = XGetModifierMapping(dpy);
-    for (i = 0; i < 8; i++)
-        for (j = 0; j < modmap->max_keypermod; j++)
+    for (i = 0; i < 8; i++) {
+        for (j = 0; j < modmap->max_keypermod; j++) {
             if (modmap->modifiermap[i * modmap->max_keypermod + j] ==
-                XKeysymToKeycode(dpy, XK_Num_Lock))
+                XKeysymToKeycode(dpy, XK_Num_Lock)) {
                 numlockmask = (1 << i);
+            }
+        }
+    }
     XFreeModifiermap(modmap);
 }
 
@@ -627,8 +683,9 @@ int xerror(Display *dpy, XErrorEvent *ee) {
         (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch) ||
         (ee->request_code == X_GrabButton && ee->error_code == BadAccess) ||
         (ee->request_code == X_GrabKey && ee->error_code == BadAccess) ||
-        (ee->request_code == X_CopyArea && ee->error_code == BadDrawable))
+        (ee->request_code == X_CopyArea && ee->error_code == BadDrawable)) {
         return 0;
+    }
     fprintf(stderr, "instantwm: fatal error: request code=%d, error code=%d\n",
             ee->request_code, ee->error_code);
     return xerrorxlib(dpy, ee); /* may call exit */
@@ -648,18 +705,21 @@ int main(int argc, char *argv[]) {
         if (!strcmp("-V", argv[1]) || !strcmp("--version", argv[1])) {
             puts("instantwm-" VERSION "\n");
             return EXIT_SUCCESS;
-        } else if (!strcmp("-X", argv[1]) || !strcmp("--xresources", argv[1])) {
+        }
+        if (!strcmp("-X", argv[1]) || !strcmp("--xresources", argv[1])) {
             list_xresources();
             return EXIT_SUCCESS;
-        } else {
-            die("usage: instantwm [-VX]");
         }
-    } else if (argc != 1)
         die("usage: instantwm [-VX]");
-    if (!setlocale(LC_CTYPE, "") || !XSupportsLocale())
+    } else if (argc != 1) {
+        die("usage: instantwm [-VX]");
+    }
+    if (!setlocale(LC_CTYPE, "") || !XSupportsLocale()) {
         fputs("warning: no locale support\n", stderr);
-    if (!(dpy = XOpenDisplay(NULL)))
+    }
+    if (!(dpy = XOpenDisplay(NULL))) {
         die("instantwm: cannot open display");
+    }
     checkotherwm();
     XrmInitialize();
     load_xresources();

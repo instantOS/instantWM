@@ -14,10 +14,11 @@ void ctrltoggle(int *value, int arg) {
     if (arg == 0 || arg == 2) {
         *value = !*value;
     } else {
-        if (arg == 1)
+        if (arg == 1) {
             *value = 0;
-        else
+        } else {
             *value = 1;
+        }
     }
 }
 
@@ -26,8 +27,9 @@ void togglealttag(const Arg *arg) {
     ctrltoggle(&showalttag, arg->ui);
 
     Monitor *m;
-    for (m = mons; m; m = m->next)
+    for (m = mons; m; m = m->next) {
         drawbar(m);
+    }
 
     tagwidth = gettagwidth();
 }
@@ -39,8 +41,9 @@ void alttabfree(const Arg *arg) {
 
 // make client show on all tags
 void togglesticky(const Arg *arg) {
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     selmon->sel->issticky = !selmon->sel->issticky;
     arrange(selmon);
 }
@@ -57,8 +60,9 @@ void setborderwidth(const Arg *arg) {
     Client *c;
     int width;
     int d;
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     c = selmon->sel;
     width = c->border_width;
     c->border_width = arg->i;
@@ -83,8 +87,9 @@ void toggledoubledraw(const Arg *arg) { doubledraw = !doubledraw; }
 
 // lock prevents windows from getting closed until unlocked
 void togglelocked(const Arg *arg) {
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
     selmon->sel->islocked = !selmon->sel->islocked;
     drawbar(selmon);
 }

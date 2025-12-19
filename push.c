@@ -2,11 +2,13 @@
 #include <math.h>
 
 Client *nextc(Client *c, float f) {
-    if (!f)
+    if (!f) {
         return nexttiled(c);
+    }
 
-    for (; c && !ISVISIBLE(c); c = c->next)
+    for (; c && !ISVISIBLE(c); c = c->next) {
         ;
+    }
     return c;
 }
 
@@ -43,7 +45,9 @@ int allclientcount() {
 }
 
 int clientdistance(Client *c, Client *c2) {
-    int x, y, distance;
+    int x;
+    int y;
+    int distance;
     x = abs(((c->x + c->w) / 2) - ((c2->x + c->w) / 2));
     y = abs(((c->y + c->h) / 2) - ((c2->y + c->h) / 2));
 
@@ -58,15 +62,16 @@ static void pushup(const Arg *arg) {
         return;
     }
 
-    if (!sel || (sel->isfloating && !arg->f))
+    if (!sel || (sel->isfloating && !arg->f)) {
         return;
+    }
     if ((c = prevc(sel, arg->f))) {
         /* attach before c */
         detach(sel);
         sel->next = c;
-        if (selmon->clients == c)
+        if (selmon->clients == c) {
             selmon->clients = sel;
-        else {
+        } else {
             for (c = selmon->clients; c->next != sel->next; c = c->next)
                 ;
             c->next = sel;
@@ -91,8 +96,9 @@ static void pushdown(const Arg *arg) {
         return;
     }
 
-    if (!sel || (sel->isfloating && !arg->f))
+    if (!sel || (sel->isfloating && !arg->f)) {
         return;
+    }
     if ((c = nextc(sel->next, arg->f))) {
         /* attach after c */
         detach(sel);

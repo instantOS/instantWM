@@ -10,40 +10,47 @@ extern const int systraypinningfailfirst;
 unsigned int getsystraywidth() {
     unsigned int w = 0;
     Client *i;
-    if (showsystray)
-        for (i = systray->icons; i; w += i->w + systrayspacing, i = i->next)
+    if (showsystray) {
+        for (i = systray->icons; i; w += i->w + systrayspacing, i = i->next) {
             ;
+        }
+    }
     return w ? w + systrayspacing : 1;
 }
 
 void removesystrayicon(Client *i) {
     Client **ii;
 
-    if (!showsystray || !i)
+    if (!showsystray || !i) {
         return;
-    for (ii = &systray->icons; *ii && *ii != i; ii = &(*ii)->next)
+    }
+    for (ii = &systray->icons; *ii && *ii != i; ii = &(*ii)->next) {
         ;
-    if (ii)
+    }
+    if (ii) {
         *ii = i->next;
+    }
     free(i);
 }
 
 void updatesystrayicongeom(Client *i, int w, int h) {
     if (i) {
         i->h = bh;
-        if (w == h)
+        if (w == h) {
             i->w = bh;
-        else if (h == bh)
+        } else if (h == bh) {
             i->w = w;
-        else
+        } else {
             i->w = (int)((float)bh * ((float)w / (float)h));
+        }
         applysizehints(i, &(i->x), &(i->y), &(i->w), &(i->h), False);
         /* force icons into the systray dimenons if they don't want to */
         if (i->h > bh) {
-            if (i->w == i->h)
+            if (i->w == i->h) {
                 i->w = bh;
-            else
+            } else {
                 i->w = (int)((float)bh * ((float)i->w / (float)i->h));
+            }
             i->h = bh;
         }
     }
@@ -54,8 +61,9 @@ void updatesystrayiconstate(Client *i, XPropertyEvent *ev) {
     int code = 0;
 
     if (!showsystray || !i || ev->atom != xatom[XembedInfo] ||
-        !(flags = getatomprop(i, xatom[XembedInfo])))
+        !(flags = getatomprop(i, xatom[XembedInfo]))) {
         return;
+    }
 
     if (flags & XEMBED_MAPPED && !i->tags) {
         i->tags = 1;
@@ -67,8 +75,9 @@ void updatesystrayiconstate(Client *i, XPropertyEvent *ev) {
         code = XEMBED_WINDOW_DEACTIVATE;
         XUnmapWindow(dpy, i->win);
         setclientstate(i, WithdrawnState);
-    } else
+    } else {
         return;
+    }
     sendevent(i->win, xatom[Xembed], StructureNotifyMask, CurrentTime, code, 0,
               systray->win, XEMBED_EMBEDDED_VERSION);
 }
@@ -81,12 +90,14 @@ void updatesystray(void) {
     unsigned int x = m->mx + m->mw;
     unsigned int w = 1;
 
-    if (!showsystray)
+    if (!showsystray) {
         return;
+    }
     if (!systray) {
         /* init systray */
-        if (!(systray = (Systray *)calloc(1, sizeof(Systray))))
+        if (!(systray = (Systray *)calloc(1, sizeof(Systray)))) {
             die("fatal: could not malloc() %u bytes\n", sizeof(Systray));
+        }
         systray->win = XCreateSimpleWindow(
             dpy, root, x, m->by, w, bh, 0, 0,
             tagscheme[SchemeNoHover][SchemeTagFilled][ColBg].pixel);
@@ -124,8 +135,9 @@ void updatesystray(void) {
         i->x = w;
         XMoveResizeWindow(dpy, i->win, i->x, 0, i->w, i->h);
         w += i->w;
-        if (i->mon != m)
+        if (i->mon != m) {
             i->mon = m;
+        }
     }
     w = w ? w + systrayspacing : 1;
     x -= w;
@@ -150,26 +162,34 @@ void updatesystray(void) {
 Client *wintosystrayicon(Window w) {
     Client *i = NULL;
 
-    if (!showsystray || !w)
+    if (!showsystray || !w) {
         return i;
-    for (i = systray->icons; i && i->win != w; i = i->next)
+    }
+    for (i = systray->icons; i && i->win != w; i = i->next) {
         ;
+    }
     return i;
 }
 
 Monitor *systraytomon(Monitor *m) {
     Monitor *t;
-    int i, n;
+    int i;
+    int n;
     if (!systraypinning) {
-        if (!m)
+        if (!m) {
             return selmon;
+        }
         return m == selmon ? m : NULL;
     }
-    for (n = 1, t = mons; t && t->next; n++, t = t->next)
+    for (n = 1, t = mons; t && t->next; n++, t = t->next) {
         ;
-    for (i = 1, t = mons; t && t->next && i < systraypinning; i++, t = t->next)
+    }
+    for (i = 1, t = mons; t && t->next && i < systraypinning;
+         i++, t = t->next) {
         ;
-    if (systraypinningfailfirst && n < systraypinning)
+    }
+    if (systraypinningfailfirst && n < systraypinning) {
         return mons;
+    }
     return t;
 }

@@ -27,7 +27,9 @@ extern SchemePref schemeclosetypes[];
 #define MAX_TAGLEN 16
 
 void list_xresources() {
-    int i, u, q;
+    int i;
+    int u;
+    int q;
     for (i = 0; i < NUM_SCHEMEHOVERTYPES; i++) {
         for (q = 0; q < NUM_SCHEMECOLORTYPES; q++) {
             for (u = 0; u < NUM_SCHEMEWINDOWTYPES; u++) {
@@ -97,11 +99,14 @@ void load_xresources(void) {
     XrmDatabase db;
     ResourcePref *p;
 
-    int i, u, q;
+    int i;
+    int u;
+    int q;
 
     display = XOpenDisplay(NULL);
-    if (!display)
+    if (!display) {
         return;
+    }
 
     resm = XResourceManagerString(display);
     if (!resm) {
@@ -180,8 +185,9 @@ void load_xresources(void) {
     resource_load(db, "status.detail", STRING,
                   (void *)statusbarcolors[ColDetail]);
 
-    for (p = resources; p < resources + NUM_RESOURCES; p++)
+    for (p = resources; p < resources + NUM_RESOURCES; p++) {
         resource_load(db, p->name, p->type, p->dst);
+    }
 
     XCloseDisplay(display);
 }

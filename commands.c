@@ -21,7 +21,8 @@ int xcommand() {
     char command[256];
     char *fcursor; // walks through the command string as we go
     char *indicator = "c;:;";
-    int i, argnum;
+    int i;
+    int argnum;
     Arg arg;
 
     // Get root name property
@@ -34,8 +35,9 @@ int xcommand() {
 
     // Check if a command was found, and if so handle it
     for (i = 0; i < commands_len; i++) {
-        if (!startswith(fcursor, commands[i].cmd))
+        if (!startswith(fcursor, commands[i].cmd)) {
             continue;
+        }
 
         fcursor += strlen(commands[i].cmd);
         // no args

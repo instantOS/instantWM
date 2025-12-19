@@ -60,8 +60,9 @@ static int drag_loop(DragContext *ctx, DragMotionHandler motion_handler,
     Time lasttime = 0;
     int mask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
 
-    if (ctx && ctx->extra_mask)
+    if (ctx && ctx->extra_mask) {
         mask |= ctx->extra_mask;
+    }
 
     int rate = doubledraw ? REFRESH_RATE_HI : REFRESH_RATE_LO;
 
@@ -74,18 +75,21 @@ static int drag_loop(DragContext *ctx, DragMotionHandler motion_handler,
             handler[ev.type](&ev);
             break;
         case MotionNotify:
-            if ((ev.xmotion.time - lasttime) <= (1000 / rate))
+            if ((ev.xmotion.time - lasttime) <= (1000 / rate)) {
                 continue;
+            }
             lasttime = ev.xmotion.time;
             if (motion_handler) {
-                if (motion_handler(&ev, ctx ? ctx->data : NULL) == DRAG_BREAK)
+                if (motion_handler(&ev, ctx ? ctx->data : NULL) == DRAG_BREAK) {
                     return 0;
+                }
             }
             break;
         default:
             if (extra_handler) {
-                if (extra_handler(&ev, ctx ? ctx->data : NULL) == DRAG_BREAK)
+                if (extra_handler(&ev, ctx ? ctx->data : NULL) == DRAG_BREAK) {
                     return 0;
+                }
             }
             break;
         }
@@ -96,11 +100,13 @@ static int drag_loop(DragContext *ctx, DragMotionHandler motion_handler,
 
 /* Handle window drop on bar: move to tag or re-tile */
 static void handle_bar_drop(Client *c) {
-    int x, y;
+    int x;
+    int y;
     getrootptr(&x, &y);
 
-    if (y < selmon->my || y >= selmon->my + bh)
+    if (y < selmon->my || y >= selmon->my + bh) {
         return;
+    }
 
     /* Check if dropped on a tag indicator */
     int droptag = getxtag(x);
@@ -139,14 +145,16 @@ typedef struct {
  * @param ny  Pointer to y coordinate (modified in place)
  */
 static void snap_to_monitor_edges(Client *c, int *nx, int *ny) {
-    if (abs(selmon->wx - *nx) < snap)
+    if (abs(selmon->wx - *nx) < snap) {
         *nx = selmon->wx;
-    else if (abs((selmon->wx + selmon->ww) - (*nx + WIDTH(c))) < snap)
+    } else if (abs((selmon->wx + selmon->ww) - (*nx + WIDTH(c))) < snap) {
         *nx = selmon->wx + selmon->ww - WIDTH(c);
-    if (abs(selmon->wy - *ny) < snap)
+    }
+    if (abs(selmon->wy - *ny) < snap) {
         *ny = selmon->wy;
-    else if (abs((selmon->wy + selmon->wh) - (*ny + HEIGHT(c))) < snap)
+    } else if (abs((selmon->wy + selmon->wh) - (*ny + HEIGHT(c))) < snap) {
         *ny = selmon->wy + selmon->wh - HEIGHT(c);
+    }
 }
 
 /**
@@ -156,10 +164,11 @@ static void snap_to_monitor_edges(Client *c, int *nx, int *ny) {
 static int check_edge_snap(int x, int y, Monitor *m) {
     if (x < m->mx + OVERLAY_ZONE_WIDTH && x > m->mx - 1) {
         return SnapLeft;
-    } else if (x > m->mx + m->mw - OVERLAY_ZONE_WIDTH &&
-               x < m->mx + m->mw + 1) {
+    }
+    if (x > m->mx + m->mw - OVERLAY_ZONE_WIDTH && x < m->mx + m->mw + 1) {
         return SnapRight;
-    } else if (y <= m->my + (m->showbar ? bh : 5)) {
+    }
+    if (y <= m->my + (m->showbar ? bh : 5)) {
         return SnapTop;
     }
     return SnapNone;
@@ -168,7 +177,8 @@ static int check_edge_snap(int x, int y, Monitor *m) {
 static DragResult movemouse_motion(XEvent *ev, void *data) {
     MovemouseData *d = (MovemouseData *)data;
     Client *c = d->c;
-    int nx, ny;
+    int nx;
+    int ny;
 
     nx = d->ocx + (ev->xmotion.x - d->startx);
     ny = d->ocy + (ev->xmotion.y - d->starty);
@@ -198,8 +208,9 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         }
         /* Update bar hover state while dragging */
         bar_dragging = 1;
-        if (!tagwidth)
+        if (!tagwidth) {
             tagwidth = gettagwidth();
+        }
         if (ev->xmotion.x_root < selmon->mx + tagwidth + 60) {
             /* Over tags area - could update tag hover */
             int tag = getxtag(ev->xmotion.x_root);
@@ -234,20 +245,23 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
             toggle_floating(NULL);
         }
     }
-    if (!tiling_layout_func(selmon) || c->isfloating)
+    if (!tiling_layout_func(selmon) || c->isfloating) {
         resize(c, nx, ny, c->w, c->h, 1);
+    }
 
     return DRAG_CONTINUE;
 }
 
 void movemouse(const Arg *arg) {
-    int x, y;
+    int x;
+    int y;
     Client *c;
 
     // some windows are immovable
     if (!(c = selmon->sel) || (c->is_fullscreen && !c->isfakefullscreen) ||
-        c == selmon->overlay)
+        c == selmon->overlay) {
         return;
+    }
 
     if (c == selmon->fullscreen) {
         temp_fullscreen(NULL);
@@ -273,10 +287,13 @@ void movemouse(const Arg *arg) {
     restack(selmon);
     // make pointer grabby shape
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+                     None, cursor[CurMove]->cursor,
+                     CurrentTime) != GrabSuccess) {
         return;
-    if (!getrootptr(&x, &y))
+    }
+    if (!getrootptr(&x, &y)) {
         return;
+    }
 
     MovemouseData data = {.c = c,
                           .ocx = c->x,
@@ -292,7 +309,8 @@ void movemouse(const Arg *arg) {
 
     /* Handle edge snapping on release */
     if (data.edge_snap_indicator) {
-        int rootx, rooty;
+        int rootx;
+        int rooty;
         getrootptr(&rootx, &rooty);
 
         /* Query current button state to check for Shift */
@@ -316,39 +334,44 @@ void movemouse(const Arg *arg) {
                 savefloating(c);
 
                 if (at_right_edge) {
-                    if (rooty < selmon->my + selmon->mh / 7)
+                    if (rooty < selmon->my + selmon->mh / 7) {
                         c->snapstatus = SnapTopRight;
-                    else if (rooty > selmon->my + 6 * (selmon->mh / 7))
+                    } else if (rooty > selmon->my + 6 * (selmon->mh / 7)) {
                         c->snapstatus = SnapBottomRight;
-                    else
+                    } else {
                         c->snapstatus = SnapRight;
+                    }
                 } else {
-                    if (rooty < selmon->my + selmon->mh / 7)
+                    if (rooty < selmon->my + selmon->mh / 7) {
                         c->snapstatus = SnapTopLeft;
-                    else if (rooty > selmon->my + 6 * (selmon->mh / 7))
+                    } else if (rooty > selmon->my + 6 * (selmon->mh / 7)) {
                         c->snapstatus = SnapBottomLeft;
-                    else
+                    } else {
                         c->snapstatus = SnapLeft;
+                    }
                 }
                 applysnap(c, c->mon);
             } else {
                 /* No shift: move to adjacent tag */
                 if (rooty < selmon->my + (2 * selmon->mh) / 3) {
-                    if (at_left_edge)
+                    if (at_left_edge) {
                         moveleft(NULL);
-                    else
+                    } else {
                         moveright(NULL);
+                    }
                 } else {
-                    if (at_left_edge)
+                    if (at_left_edge) {
                         tagtoleft(NULL);
-                    else
+                    } else {
                         tagtoright(NULL);
+                    }
                 }
                 c->isfloating = 0;
                 arrange(selmon);
             }
             return;
-        } else if (at_top_edge) {
+        }
+        if (at_top_edge) {
             /* Reset border and continue to normal bar drop handling */
             XSetWindowBorder(dpy, c->win,
                              borderscheme[SchemeBorderFloatFocus].pixel);
@@ -376,10 +399,11 @@ static DragResult gesturemouse_motion(XEvent *ev, void *data) {
     GesturemouseData *d = (GesturemouseData *)data;
 
     if (abs(*d->lasty - ev->xmotion.y_root) > selmon->mh / 30) {
-        if (ev->xmotion.y_root < *d->lasty)
+        if (ev->xmotion.y_root < *d->lasty) {
             spawn(&((Arg){.v = upvol}));
-        else
+        } else {
             spawn(&((Arg){.v = downvol}));
+        }
         *d->lasty = ev->xmotion.y_root;
     }
 
@@ -387,13 +411,18 @@ static DragResult gesturemouse_motion(XEvent *ev, void *data) {
 }
 
 void gesturemouse(const Arg *arg) {
-    int x, y, lasty;
+    int x;
+    int y;
+    int lasty;
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+                     None, cursor[CurMove]->cursor,
+                     CurrentTime) != GrabSuccess) {
         return;
-    if (!getrootptr(&x, &y))
+    }
+    if (!getrootptr(&x, &y)) {
         return;
+    }
     lasty = y;
 
     GesturemouseData data = {.lasty = &lasty};
@@ -407,9 +436,11 @@ void gesturemouse(const Arg *arg) {
 // window Returns 1 if in border zone, 0 if not or no valid floating selection
 int isinresizeborder() {
     if (!(selmon->sel &&
-          (selmon->sel->isfloating || !tiling_layout_func(selmon))))
+          (selmon->sel->isfloating || !tiling_layout_func(selmon)))) {
         return 0;
-    int x, y;
+    }
+    int x;
+    int y;
     getrootptr(&x, &y);
     Client *c = selmon->sel;
     // Not in border if: on bar, inside window, or too far from window
@@ -435,8 +466,9 @@ static DragResult hoverresize_motion(XEvent *ev, void *data) {
     if (!isinresizeborder()) {
         d->inborder = 0;
         Client *newc = getcursorclient();
-        if (newc && newc != selmon->sel)
+        if (newc && newc != selmon->sel) {
             focus(newc);
+        }
         return DRAG_BREAK;
     }
 
@@ -458,7 +490,9 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
         if (ev->xbutton.button == Button1) {
             Client *c = selmon->sel;
             if (c) {
-                int nx, ny, di;
+                int nx;
+                int ny;
+                int di;
                 unsigned int dui;
                 Window dummy;
                 /* Check if the click is on the top edge of the window.
@@ -494,8 +528,9 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
              */
             Client *c = selmon->sel;
             XUngrabPointer(dpy, CurrentTime);
-            if (c)
+            if (c) {
                 warp_into(c);
+            }
             movemouse(NULL);
             d->resize_started = 1;
             return DRAG_BREAK;
@@ -507,21 +542,24 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
 }
 
 int hoverresizemouse(const Arg *arg) {
-    if (!isinresizeborder())
+    if (!isinresizeborder()) {
         return 0;
+    }
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurResize]->cursor,
-                     CurrentTime) != GrabSuccess)
+                     CurrentTime) != GrabSuccess) {
         return 0;
+    }
 
     HoverResizeData data = {.inborder = 1, .resize_started = 0};
     DragContext ctx = {.extra_mask = KeyPressMask, .data = &data};
 
     drag_loop(&ctx, hoverresize_motion, hoverresize_extra);
 
-    if (!data.resize_started)
+    if (!data.resize_started) {
         XUngrabPointer(dpy, CurrentTime);
+    }
     return 1;
 }
 
@@ -561,14 +599,16 @@ typedef struct {
 
 static DragResult window_title_motion(XEvent *ev, void *data) {
     WindowTitleData *d = (WindowTitleData *)data;
-    int x, y;
+    int x;
+    int y;
 
     getrootptr(&x, &y);
     /* If mouse moved beyond threshold, start moving the window */
     if (abs(x - d->startx) > DRAG_THRESHOLD ||
         abs(y - d->starty) > DRAG_THRESHOLD) {
-        if (d->was_hidden)
+        if (d->was_hidden) {
             show(d->c);
+        }
         drag_window_title(d->c);
         d->drag_started = 1;
         return DRAG_BREAK;
@@ -578,11 +618,13 @@ static DragResult window_title_motion(XEvent *ev, void *data) {
 }
 
 void window_title_mouse_handler(const Arg *arg) {
-    int startx, starty;
+    int startx;
+    int starty;
 
     Client *c = (Client *)arg->v;
-    if (!c)
+    if (!c) {
         return;
+    }
 
     int was_focused = (selmon->sel == c);
     int was_hidden = HIDDEN(c);
@@ -590,8 +632,9 @@ void window_title_mouse_handler(const Arg *arg) {
     /* Grab pointer to detect if user drags or just clicks */
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurNormal]->cursor,
-                     CurrentTime) != GrabSuccess)
+                     CurrentTime) != GrabSuccess) {
         return;
+    }
     if (!getrootptr(&startx, &starty)) {
         XUngrabPointer(dpy, CurrentTime);
         return;
@@ -607,8 +650,9 @@ void window_title_mouse_handler(const Arg *arg) {
     drag_loop(&ctx, window_title_motion, NULL);
 
     /* If drag was started, drag_window_title already handled everything */
-    if (data.drag_started)
+    if (data.drag_started) {
         return;
+    }
 
     /* Button released without significant movement - just focus */
     XUngrabPointer(dpy, CurrentTime);
@@ -653,22 +697,27 @@ static DragResult right_title_motion(XEvent *ev, void *data) {
 }
 
 void window_title_mouse_handler_right(const Arg *arg) {
-    int x, y;
+    int x;
+    int y;
     Client *c = (Client *)arg->v;
-    if (!c)
+    if (!c) {
         return;
+    }
 
     resetbar();
     if (c->is_fullscreen &&
-        !c->isfakefullscreen) /* no support moving fullscreen windows by
+        !c->isfakefullscreen) { /* no support moving fullscreen windows by
                                      mouse */
         return;
+    }
 
     focus(c);
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+                     None, cursor[CurMove]->cursor,
+                     CurrentTime) != GrabSuccess) {
         return;
+    }
     if (!getrootptr(&x, &y)) {
         XUngrabPointer(dpy, CurrentTime);
         return;
@@ -702,8 +751,9 @@ int parse_slop_output(const char *output, int dimensions[4]) {
     int counter = 0;
     int i;
 
-    if (!output || strlen(output) < 6)
+    if (!output || strlen(output) < 6) {
         return 0;
+    }
 
     strcpy(strout, output);
 
@@ -771,32 +821,39 @@ void drawwindow(const Arg *arg) {
     char str[100];
     char strout[100] = {0};
     int dimensions[4];
-    int width, height, x, y;
+    int width;
+    int height;
+    int x;
+    int y;
     Client *c;
     FILE *fp;
 
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
 
     fp = popen("instantslop -f x%xx%yx%wx%hx", "r");
-    if (!fp)
+    if (!fp) {
         return;
+    }
 
     while (fgets(str, 100, fp) != NULL) {
         strcat(strout, str);
     }
     pclose(fp);
 
-    if (!parse_slop_output(strout, dimensions))
+    if (!parse_slop_output(strout, dimensions)) {
         return;
+    }
 
     x = dimensions[0];
     y = dimensions[1];
     width = dimensions[2];
     height = dimensions[3];
 
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
 
     c = selmon->sel;
 
@@ -819,8 +876,9 @@ static DragResult dragtag_motion(XEvent *ev, void *data) {
     /* Store the motion event for post-loop use */
     d->last_motion = &ev->xmotion;
 
-    if (ev->xmotion.y_root > selmon->my + bh + 1)
+    if (ev->xmotion.y_root > selmon->my + bh + 1) {
         *d->cursor_on_bar = 0;
+    }
 
     int newtag = getxtag(ev->xmotion.x_root);
     if (*d->tagx != newtag) {
@@ -833,26 +891,33 @@ static DragResult dragtag_motion(XEvent *ev, void *data) {
 }
 
 void dragtag(const Arg *arg) {
-    if (!tagwidth)
+    if (!tagwidth) {
         tagwidth = gettagwidth();
+    }
     if ((arg->ui & tagmask) != selmon->tagset[selmon->seltags]) {
         view(arg);
         return;
     }
 
-    int x, y, tagx = 0;
+    int x;
+    int y;
+    int tagx = 0;
     int cursor_on_bar = 1;
     XMotionEvent last_motion = {0};
     XMotionEvent *last_motion_ptr = NULL;
 
-    if (!selmon->sel)
+    if (!selmon->sel) {
         return;
+    }
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-                     None, cursor[CurMove]->cursor, CurrentTime) != GrabSuccess)
+                     None, cursor[CurMove]->cursor,
+                     CurrentTime) != GrabSuccess) {
         return;
-    if (!getrootptr(&x, &y))
+    }
+    if (!getrootptr(&x, &y)) {
         return;
+    }
     bar_dragging = 1;
 
     DragtagData data = {
@@ -900,35 +965,35 @@ void forceresizemouse(const Arg *arg) {
 static int get_resize_direction(Client *c, int nx, int ny) {
     if (ny > c->h / 2) {     // bottom
         if (nx < c->w / 3) { // left
-            if (ny < 2 * c->h / 3)
+            if (ny < 2 * c->h / 3) {
                 return ResizeDirLeft;
-            else
-                return ResizeDirBottomLeft;
-        } else if (nx > 2 * c->w / 3) { // right
-            if (ny < 2 * c->h / 3)
-                return ResizeDirRight;
-            else
-                return ResizeDirBottomRight;
-        } else {
-            // middle
-            return ResizeDirBottom;
+            }
+            return ResizeDirBottomLeft;
         }
-    } else {                 // top
-        if (nx < c->w / 3) { // left
-            if (ny > c->h / 3)
-                return ResizeDirLeft;
-            else
-                return ResizeDirTopLeft;
-        } else if (nx > 2 * c->w / 3) { // right
-            if (ny > c->h / 3)
+        if (nx > 2 * c->w / 3) { // right
+            if (ny < 2 * c->h / 3) {
                 return ResizeDirRight;
-            else
-                return ResizeDirTopRight;
-        } else {
-            // cursor on middle
-            return ResizeDirTop;
+            }
+            return ResizeDirBottomRight;
         }
+        // middle
+        return ResizeDirBottom;
     }
+    // top
+    if (nx < c->w / 3) { // left
+        if (ny > c->h / 3) {
+            return ResizeDirLeft;
+        }
+        return ResizeDirTopLeft;
+    }
+    if (nx > 2 * c->w / 3) { // right
+        if (ny > c->h / 3) {
+            return ResizeDirRight;
+        }
+        return ResizeDirTopRight;
+    }
+    // cursor on middle
+    return ResizeDirTop;
 }
 
 static Cursor get_resize_cursor(int direction) {
@@ -955,7 +1020,8 @@ static Cursor get_resize_cursor(int direction) {
 }
 
 static void warp_pointer_resize(Client *c, int direction) {
-    int x_off, y_off;
+    int x_off;
+    int y_off;
     switch (direction) {
     case ResizeDirTopLeft:
         x_off = -c->border_width;
@@ -1083,14 +1149,18 @@ static int is_within_monitor_bounds(Client *c, int nw, int nh) {
  * @param nh  Pointer to height value (modified in place)
  */
 static void clamp_size_hints(Client *c, int *nw, int *nh) {
-    if (c->minw && *nw < c->minw)
+    if (c->minw && *nw < c->minw) {
         *nw = c->minw;
-    if (c->minh && *nh < c->minh)
+    }
+    if (c->minh && *nh < c->minh) {
         *nh = c->minh;
-    if (c->maxw && *nw > c->maxw)
+    }
+    if (c->maxw && *nw > c->maxw) {
         *nw = c->maxw;
-    if (c->maxh && *nh > c->maxh)
+    }
+    if (c->maxh && *nh > c->maxh) {
         *nh = c->maxh;
+    }
 }
 
 /* Data structure for resizemouse motion handler */
@@ -1106,7 +1176,10 @@ typedef struct {
 static DragResult resizemouse_motion(XEvent *ev, void *data) {
     ResizemouseData *d = (ResizemouseData *)data;
     Client *c = d->c;
-    int nx, ny, nw, nh;
+    int nx;
+    int ny;
+    int nw;
+    int nh;
 
     calc_resize_geometry(c, ev, d->corner, d->orig_left, d->orig_top,
                          d->orig_right, d->orig_bottom, &nx, &ny, &nw, &nh);
@@ -1124,27 +1197,31 @@ static DragResult resizemouse_motion(XEvent *ev, void *data) {
         }
     }
     if (!tiling_layout_func(selmon) || c->isfloating) {
-        if (c->border_width == 0 && c != selmon->overlay)
+        if (c->border_width == 0 && c != selmon->overlay) {
             c->border_width = c->old_border_width;
-        if (!force_resize)
+        }
+        if (!force_resize) {
             resize(c, nx, ny, nw, nh, 1);
-        else
+        } else {
             resizeclient(c, nx, ny, nw, nh);
+        }
     }
 
     return DRAG_CONTINUE;
 }
 
 void resizemouse(const Arg *arg) {
-    int nx, ny;
+    int nx;
+    int ny;
     Client *c;
     int corner;
     int di;
     unsigned int dui;
     Window dummy;
 
-    if (!(c = selmon->sel))
+    if (!(c = selmon->sel)) {
         return;
+    }
 
     if (c == selmon->fullscreen) {
         temp_fullscreen(NULL);
@@ -1152,21 +1229,25 @@ void resizemouse(const Arg *arg) {
     }
 
     if (c->is_fullscreen &&
-        !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse
-                               */
+        !c->isfakefullscreen) { /* no support resizing fullscreen windows by
+                                 * mouse
+                                 */
         return;
+    }
 
     restack(selmon);
 
-    if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
+    if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui)) {
         return;
+    }
 
     corner = get_resize_direction(c, nx, ny);
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, get_resize_cursor(corner),
-                     CurrentTime) != GrabSuccess)
+                     CurrentTime) != GrabSuccess) {
         return;
+    }
 
     warp_pointer_resize(c, corner);
 
@@ -1182,8 +1263,9 @@ void resizemouse(const Arg *arg) {
 
     XUngrabPointer(dpy, CurrentTime);
     XEvent ev;
-    while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
+    while (XCheckMaskEvent(dpy, EnterWindowMask, &ev)) {
         ;
+    }
     handle_client_monitor_switch(c);
 
     if (NULL == tiling_layout_func(selmon)) {
@@ -1202,7 +1284,10 @@ typedef struct {
 static DragResult resizeaspect_motion(XEvent *ev, void *data) {
     ResizeaspectData *d = (ResizeaspectData *)data;
     Client *c = d->c;
-    int nx, ny, nw, nh;
+    int nx;
+    int ny;
+    int nw;
+    int nh;
 
     nx = ev->xmotion.x;
     ny = ev->xmotion.y;
@@ -1210,8 +1295,9 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
     snap_to_monitor_edges(c, &nx, &ny);
 
     if (!c->isfloating && tiling_layout_func(selmon) &&
-        (abs(nx - c->x) > snap || abs(ny - c->y) > snap))
+        (abs(nx - c->x) > snap || abs(ny - c->y) > snap)) {
         toggle_floating(NULL);
+    }
     if (!tiling_layout_func(selmon) || c->isfloating) {
         nw = MAX(nx - d->orig_left - 2 * c->border_width + 1, 1);
         nh = MAX(ny - d->orig_top - 2 * c->border_width + 1, 1);
@@ -1219,10 +1305,11 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
         clamp_size_hints(c, &nw, &nh);
 
         if (c->mina != 0.0 && c->maxa != 0.0) {
-            if (c->maxa < (float)nw / nh)
+            if (c->maxa < (float)nw / nh) {
                 nw = nh * c->maxa;
-            else if (c->mina < (float)nh / nw)
+            } else if (c->mina < (float)nh / nw) {
                 nh = nw * c->mina;
+            }
         }
 
         resize(c, c->x, c->y, nw, nh, 1);
@@ -1232,29 +1319,35 @@ static DragResult resizeaspect_motion(XEvent *ev, void *data) {
 }
 
 void resizeaspectmouse(const Arg *arg) {
-    int nx, ny;
+    int nx;
+    int ny;
     Client *c;
     int di;
     unsigned int dui;
     Window dummy;
 
-    if (!(c = selmon->sel))
+    if (!(c = selmon->sel)) {
         return;
+    }
 
     if (c->is_fullscreen &&
-        !c->isfakefullscreen) /* no support resizing fullscreen windows by mouse
-                               */
+        !c->isfakefullscreen) { /* no support resizing fullscreen windows by
+                                 * mouse
+                                 */
         return;
+    }
 
     restack(selmon);
 
-    if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
+    if (!XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx, &ny, &dui)) {
         return;
+    }
 
     if (XGrabPointer(dpy, root, False, MOUSEMASK, GrabModeAsync, GrabModeAsync,
                      None, cursor[CurResize]->cursor,
-                     CurrentTime) != GrabSuccess)
+                     CurrentTime) != GrabSuccess) {
         return;
+    }
 
     ResizeaspectData data = {.c = c, .orig_left = c->x, .orig_top = c->y};
     DragContext ctx = {.data = &data};
@@ -1263,7 +1356,8 @@ void resizeaspectmouse(const Arg *arg) {
 
     XUngrabPointer(dpy, CurrentTime);
     XEvent ev;
-    while (XCheckMaskEvent(dpy, EnterWindowMask, &ev))
+    while (XCheckMaskEvent(dpy, EnterWindowMask, &ev)) {
         ;
+    }
     handle_client_monitor_switch(c);
 }
