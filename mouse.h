@@ -34,8 +34,8 @@ enum {
 
 void movemouse(const Arg *arg);
 void gesturemouse(const Arg *arg);
-int hoverresizemouse(const Arg *arg);
-int isinresizeborder(void);
+int hover_resize_mouse(const Arg *arg);
+int is_in_resize_border(void);
 void window_title_mouse_handler(const Arg *arg);
 void window_title_mouse_handler_right(const Arg *arg);
 void drawwindow(const Arg *arg);

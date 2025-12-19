@@ -269,7 +269,7 @@ static Client *handle_floating_focus(XCrossingEvent *ev, Client *c) {
         return c;
     }
 
-    resizeexit = hoverresizemouse(NULL);
+    resizeexit = hover_resize_mouse(NULL);
     if (focusfollowsfloatmouse) {
         if (resizeexit) {
             return NULL; /* Resize was performed, don't change focus */
@@ -409,7 +409,7 @@ void maprequest(XEvent *e) {
 }
 
 /* Helper: handle hover near floating window for resize cursor */
-static int handlefloatingresizehover(Monitor *m) {
+static int handle_floating_resize_hover(Monitor *m) {
     if (!(selmon->sel &&
           (selmon->sel->isfloating || NULL == tiling_layout_func(selmon)))) {
         return 0;
@@ -428,7 +428,7 @@ static int handlefloatingresizehover(Monitor *m) {
         return 0;
     }
 
-    if (isinresizeborder()) {
+    if (is_in_resize_border()) {
         if (altcursor != AltCurResize) {
             XDefineCursor(dpy, root, cursor[CurResize]->cursor);
             altcursor = AltCurResize;
@@ -446,7 +446,7 @@ static int handlefloatingresizehover(Monitor *m) {
 }
 
 /* Helper: handle sidebar slider cursor */
-static int handlesidebarhover(XMotionEvent *ev) {
+static int handle_sidebar_hover(XMotionEvent *ev) {
     if (ev->x_root > selmon->mx + selmon->mw - SIDEBAR_WIDTH) {
         if (altcursor == AltCurNone && ev->y_root > bh + 60) {
             altcursor = AltCurSidebar;
@@ -464,7 +464,7 @@ static int handlesidebarhover(XMotionEvent *ev) {
 }
 
 /* Helper: handle overlay corner gesture */
-static int handleoverlaygesture(XMotionEvent *ev) {
+static int handle_overlay_gesture(XMotionEvent *ev) {
     if (ev->y_root == selmon->my && ev->x_root >= selmon->mx + selmon->ww -
                                                       OVERLAY_ACTIVATION_ZONE -
                                                       getsystraywidth()) {
@@ -487,7 +487,7 @@ static int handleoverlaygesture(XMotionEvent *ev) {
 }
 
 /* Helper: handle tag bar hover */
-static void handletagbarhover(XMotionEvent *ev) {
+static void handle_tagbar_hover(XMotionEvent *ev) {
 
     if (selmon->hoverclient) {
         selmon->hoverclient = NULL;
@@ -515,7 +515,7 @@ static void handletagbarhover(XMotionEvent *ev) {
 }
 
 /* Helper: handle title bar hover */
-static void handletitlebarhover(XMotionEvent *ev) {
+static void handle_titlebar_hover(XMotionEvent *ev) {
     /* hover over close button */
     if (ev->x_root > selmon->activeoffset &&
         ev->x_root < (selmon->activeoffset + CLOSE_BUTTON_HIT_WIDTH)) {
@@ -587,10 +587,10 @@ void motionnotify(XEvent *e) {
 
     /* hover below bar (in desktop area) */
     if (ev->y_root >= selmon->my + bh - 3) {
-        if (handlefloatingresizehover(m)) {
+        if (handle_floating_resize_hover(m)) {
             return;
         }
-        if (handlesidebarhover(ev)) {
+        if (handle_sidebar_hover(ev)) {
             return;
         }
         resetbar();
@@ -601,18 +601,18 @@ void motionnotify(XEvent *e) {
     } /* barleavestatus handled in enternotify */
 
     /* hover in bar area */
-    if (handleoverlaygesture(ev)) {
+    if (handle_overlay_gesture(ev)) {
         return;
     }
 
     /* cursor is to the left of window titles (tags area) */
     if (ev->x_root < selmon->mx + tagwidth + get_layout_symbol_width(selmon)) {
-        handletagbarhover(ev);
+        handle_tagbar_hover(ev);
     } else if (selmon->sel &&
                ev->x_root < selmon->mx + get_layout_symbol_width(selmon) +
                                 tagwidth + selmon->bar_clients_width) {
         /* cursor is on window titles */
-        handletitlebarhover(ev);
+        handle_titlebar_hover(ev);
     } else {
         resetbar();
     }

@@ -436,7 +436,7 @@ void gesturemouse(const Arg *arg) {
 
 // Check if cursor is in the resize border zone around the selected floating
 // window Returns 1 if in border zone, 0 if not or no valid floating selection
-int isinresizeborder() {
+int is_in_resize_border() {
     if (!(selmon->sel &&
           (selmon->sel->isfloating || !tiling_layout_func(selmon)))) {
         return 0;
@@ -456,7 +456,7 @@ int isinresizeborder() {
     return 1;
 }
 
-/* Data structure for hoverresizemouse handlers */
+/* Data structure for hover_resize_mouse handlers */
 typedef struct {
     int inborder;
     int resize_started;
@@ -465,7 +465,7 @@ typedef struct {
 static DragResult hoverresize_motion(XEvent *ev, void *data) {
     HoverResizeData *d = (HoverResizeData *)data;
 
-    if (!isinresizeborder()) {
+    if (!is_in_resize_border()) {
         d->inborder = 0;
         Client *newc = getcursorclient();
         if (newc && newc != selmon->sel) {
@@ -543,8 +543,8 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
     return DRAG_CONTINUE;
 }
 
-int hoverresizemouse(const Arg *arg) {
-    if (!isinresizeborder()) {
+int hover_resize_mouse(const Arg *arg) {
+    if (!is_in_resize_border()) {
         return 0;
     }
 

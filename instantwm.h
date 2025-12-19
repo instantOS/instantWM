@@ -599,6 +599,4 @@ extern int bh;
 extern int animated;
 extern Display *dpy;
 
-#include "mouse.h"
-
 #endif

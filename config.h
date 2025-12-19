@@ -4,6 +4,7 @@
 
 #include "instantwm.h"
 #include "layouts.h"
+#include "mouse.h"
 #include <X11/XF86keysym.h>
 
 /* appearance */
