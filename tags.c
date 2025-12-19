@@ -101,7 +101,7 @@ int gettagwidth() {
 }
 
 // return tag for indicator of given x coordinate
-int getxtag(int ix) {
+int get_tag_at_x(int ix) {
     int x;
     int i;
     int occupied_tags;
@@ -628,7 +628,7 @@ void moveright(const Arg *arg) {
     viewtoright(arg);
 }
 
-void overtoggle(const Arg *arg) {
+void toggle_overview(const Arg *arg) {
     Client *c;
     c = selmon->sel;
     unsigned int tmptag;
@@ -682,8 +682,8 @@ void lastview(const Arg *arg) {
     }
 }
 
-// overtoggle but with monocle layout
-void fullovertoggle(const Arg *arg) {
+// toggle_overview but with monocle layout (fullscreen)
+void toggle_fullscreen_overview(const Arg *arg) {
     if (PERTAG_CURRENT(selmon) == 0) {
         winview(NULL);
     } else {

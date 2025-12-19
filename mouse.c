@@ -109,7 +109,7 @@ static void handle_bar_drop(Client *c) {
     }
 
     /* Check if dropped on a tag indicator */
-    int droptag = getxtag(x);
+    int droptag = get_tag_at_x(x);
     if (droptag >= 0 && x < selmon->mx + gettagwidth()) {
         /* Move window to that tag */
         tag(&((Arg){.ui = 1 << droptag}));
@@ -214,7 +214,7 @@ static DragResult movemouse_motion(XEvent *ev, void *data) {
         if (ev->xmotion.x_root <
             selmon->mx + tagwidth + get_layout_symbol_width(selmon)) {
             /* Over tags area - could update tag hover */
-            int tag = getxtag(ev->xmotion.x_root);
+            int tag = get_tag_at_x(ev->xmotion.x_root);
             if (tag >= 0 && tag < numtags) {
                 if (selmon->gesture != tag + 1) {
                     selmon->gesture = tag + 1;
@@ -882,7 +882,7 @@ static DragResult dragtag_motion(XEvent *ev, void *data) {
         *d->cursor_on_bar = 0;
     }
 
-    int newtag = getxtag(ev->xmotion.x_root);
+    int newtag = get_tag_at_x(ev->xmotion.x_root);
     if (*d->tagx != newtag) {
         *d->tagx = newtag;
         selmon->gesture = newtag + 1;
@@ -938,11 +938,12 @@ void dragtag(const Arg *arg) {
         if (last_motion_ptr->x_root < selmon->mx + tagwidth) {
             if (last_motion_ptr->state & ShiftMask) {
                 followtag(
-                    &((Arg){.ui = 1 << getxtag(last_motion_ptr->x_root)}));
+                    &((Arg){.ui = 1 << get_tag_at_x(last_motion_ptr->x_root)}));
             } else if (last_motion_ptr->state & ControlMask) {
-                tagall(&((Arg){.ui = 1 << getxtag(last_motion_ptr->x_root)}));
+                tagall(
+                    &((Arg){.ui = 1 << get_tag_at_x(last_motion_ptr->x_root)}));
             } else {
-                tag(&((Arg){.ui = 1 << getxtag(last_motion_ptr->x_root)}));
+                tag(&((Arg){.ui = 1 << get_tag_at_x(last_motion_ptr->x_root)}));
             }
         } else if (last_motion_ptr->x_root >
                    selmon->mx + selmon->mw - OVERLAY_ZONE_WIDTH) {

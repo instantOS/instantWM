@@ -148,7 +148,7 @@ extern int bh;  // bar height
 - `toggleview()` - Toggle tag visibility
 - `tag()` - Move window to tag
 - `swaptags()` - Swap two tags' contents
-- `overtoggle()` - Overview mode toggle
+- `toggle_overview()` - Overview mode toggle
 
 ### floating.c (Floating Windows)
 - `changesnap()` - Snap window to screen edges/corners

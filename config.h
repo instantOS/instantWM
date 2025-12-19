@@ -626,8 +626,8 @@ Key keys[] = {
     {MODKEY, XK_Left, animleft, {0}},
     {MODKEY, XK_Right, animright, {0}},
 
-    {MODKEY, XK_e, overtoggle, {.ui = ~0}},
-    {MODKEY | ShiftMask, XK_e, fullovertoggle, {.ui = ~0}},
+    {MODKEY, XK_e, toggle_overview, {.ui = ~0}},
+    {MODKEY | ShiftMask, XK_e, toggle_fullscreen_overview, {.ui = ~0}},
     {MODKEY | ControlMask, XK_e, spawn, {.v = instantskippycmd}},
 
     {MODKEY | ControlMask, XK_Left, direction_focus, {.ui = 3}},

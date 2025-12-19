@@ -466,7 +466,7 @@ int sendevent(Window w, Atom proto, int m, long d0, long d1, long d2, long d3,
               long d4);
 void sendmon(Client *c, Monitor *m);
 int gettagwidth();
-int getxtag(int ix);
+int get_tag_at_x(int ix);
 void setclientstate(Client *c, long state);
 void setclienttagprop(Client *c);
 void setfocus(Client *c);
@@ -552,9 +552,9 @@ void scaleclient(Client *c, int scale);
 void upscaleclient(const Arg *arg);
 void downscaleclient(const Arg *arg);
 
-void overtoggle(const Arg *arg);
+void toggle_overview(const Arg *arg);
 void lastview(const Arg *arg);
-void fullovertoggle(const Arg *arg);
+void toggle_fullscreen_overview(const Arg *arg);
 
 void setspecialnext(const Arg *arg);
 

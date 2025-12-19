@@ -25,9 +25,9 @@ void nametag(const Arg *arg);
 void resetnametag(const Arg *arg);
 void winview(const Arg *arg);
 int gettagwidth(void);
-int getxtag(int ix);
-void overtoggle(const Arg *arg);
-void fullovertoggle(const Arg *arg);
+int get_tag_at_x(int ix);
+void toggle_overview(const Arg *arg);
+void toggle_fullscreen_overview(const Arg *arg);
 void lastview(const Arg *arg);
 void resetsticky(Client *c);
 
