@@ -230,14 +230,14 @@ static void swap_pertag_settings(int target_tag_idx) {
     int current_idx = selmon->pertag->current_tag;
 
     /* Save current tag settings to temp variables */
-    int tmpnmaster = PERTAG_NMASTER(selmon);
-    float tmpmfact = PERTAG_MFACT(selmon);
-    int tmpsellt = PERTAG_SELLT(selmon);
-    const Layout *tmplt[2];
-    tmplt[selmon->sellt] = PERTAG_LAYOUT(selmon);
-    tmplt[selmon->sellt ^ 1] =
+    int saved_nmaster = PERTAG_NMASTER(selmon);
+    float saved_mfact = PERTAG_MFACT(selmon);
+    int saved_sellt = PERTAG_SELLT(selmon);
+    const Layout *saved_layout[2];
+    saved_layout[selmon->sellt] = PERTAG_LAYOUT(selmon);
+    saved_layout[selmon->sellt ^ 1] =
         selmon->pertag->ltidxs[PERTAG_CURRENT(selmon)][selmon->sellt ^ 1];
-    int tmpshowbar = PERTAG_SHOWBAR(selmon);
+    int saved_showbar = PERTAG_SHOWBAR(selmon);
 
     /* Copy target tag settings to current tag */
     selmon->pertag->nmasters[current_idx] =
@@ -254,14 +254,14 @@ static void swap_pertag_settings(int target_tag_idx) {
         selmon->pertag->showbars[target_tag_idx];
 
     /* Copy saved settings to target tag */
-    selmon->pertag->nmasters[target_tag_idx] = tmpnmaster;
-    selmon->pertag->mfacts[target_tag_idx] = tmpmfact;
-    selmon->pertag->sellts[target_tag_idx] = tmpsellt;
+    selmon->pertag->nmasters[target_tag_idx] = saved_nmaster;
+    selmon->pertag->mfacts[target_tag_idx] = saved_mfact;
+    selmon->pertag->sellts[target_tag_idx] = saved_sellt;
     selmon->pertag->ltidxs[target_tag_idx][selmon->sellt] =
-        tmplt[selmon->sellt];
+        saved_layout[selmon->sellt];
     selmon->pertag->ltidxs[target_tag_idx][selmon->sellt ^ 1] =
-        tmplt[selmon->sellt ^ 1];
-    selmon->pertag->showbars[target_tag_idx] = tmpshowbar;
+        saved_layout[selmon->sellt ^ 1];
+    selmon->pertag->showbars[target_tag_idx] = saved_showbar;
 }
 
 /**

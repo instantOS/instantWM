@@ -148,13 +148,13 @@ void checkotherwm(void) {
 
 void cleanup(void) {
     Arg a = {.ui = ~0};
-    Layout foo = {"", NULL};
+    Layout empty_layout = {"", NULL};
     Monitor *m;
     size_t i;
     size_t u;
 
     view(&a);
-    selmon->lt[selmon->sellt] = &foo;
+    selmon->lt[selmon->sellt] = &empty_layout;
     for (m = mons; m; m = m->next) {
         while (m->stack) {
             unmanage(m->stack, 0);
@@ -333,10 +333,10 @@ void focusstack(const Arg *arg) {
 }
 
 Atom getatomprop(Client *c, Atom prop) {
-    int di;
-    unsigned long dl;
+    int dummy_int;
+    unsigned long dummy_long;
     unsigned char *p = NULL;
-    Atom da;
+    Atom dummy_atom;
     Atom atom = None;
     /* FIXME getatomprop should return the number of items and a pointer to
      * the stored data instead of this workaround */
@@ -345,11 +345,12 @@ Atom getatomprop(Client *c, Atom prop) {
         req = xatom[XembedInfo];
     }
 
-    if (XGetWindowProperty(dpy, c->win, prop, 0L, sizeof atom, False, req, &da,
-                           &di, &dl, &dl, &p) == Success &&
+    if (XGetWindowProperty(dpy, c->win, prop, 0L, sizeof atom, False, req,
+                           &dummy_atom, &dummy_int, &dummy_long, &dummy_long,
+                           &p) == Success &&
         p) {
         atom = *(Atom *)p;
-        if (da == xatom[XembedInfo] && dl == 2) {
+        if (dummy_atom == xatom[XembedInfo] && dummy_long == 2) {
             atom = ((Atom *)p)[1];
         }
         XFree(p);
@@ -469,17 +470,17 @@ void runAutostart(void) {
 
 void scan(void) {
     unsigned int num;
-    Window d1;
-    Window d2;
+    Window dummy_root;
+    Window dummy_parent;
     Window *wins = NULL;
     XWindowAttributes wa;
 
-    if (XQueryTree(dpy, root, &d1, &d2, &wins, &num)) {
+    if (XQueryTree(dpy, root, &dummy_root, &dummy_parent, &wins, &num)) {
         unsigned int i;
         for (i = 0; i < num; i++) {
             if (!XGetWindowAttributes(dpy, wins[i], &wa) ||
                 wa.override_redirect ||
-                XGetTransientForHint(dpy, wins[i], &d1)) {
+                XGetTransientForHint(dpy, wins[i], &dummy_root)) {
                 continue;
             }
             if (wa.map_state == IsViewable ||
@@ -491,7 +492,7 @@ void scan(void) {
             if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
                 continue;
             }
-            if (XGetTransientForHint(dpy, wins[i], &d1) &&
+            if (XGetTransientForHint(dpy, wins[i], &dummy_root) &&
                 (wa.map_state == IsViewable ||
                  getstate(wins[i]) == IconicState)) {
                 manage(wins[i], &wa);
