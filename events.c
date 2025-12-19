@@ -516,19 +516,20 @@ static void handletagbarhover(XMotionEvent *ev) {
 static void handletitlebarhover(XMotionEvent *ev) {
     /* hover over close button */
     if (ev->x_root > selmon->activeoffset &&
-        ev->x_root < (selmon->activeoffset + 32)) {
-        if (selmon->gesture != 12) {
-            selmon->gesture = 12;
+        ev->x_root < (selmon->activeoffset + CLOSE_BUTTON_HIT_WIDTH)) {
+        if (selmon->gesture != GestureCloseButton) {
+            selmon->gesture = GestureCloseButton;
             drawbar(selmon);
         }
-    } else if (selmon->gesture == 12) {
+    } else if (selmon->gesture == GestureCloseButton) {
         selmon->gesture = GestureNone;
         drawbar(selmon);
     } else {
         /* hover over resize widget on title bar */
         double titlewidth =
             (1.0 / (double)selmon->bt) * selmon->bar_clients_width;
-        int resizeStart = selmon->activeoffset + titlewidth - 30;
+        int resizeStart =
+            selmon->activeoffset + titlewidth - RESIZE_WIDGET_WIDTH;
         int resizeEnd = selmon->activeoffset + titlewidth;
 
         if (altcursor == AltCurNone) {

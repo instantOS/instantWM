@@ -36,6 +36,12 @@
 #define MAX_TAGS 21 /* Fixed size for Pertag arrays (20 tags + 1) */
 #define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
 
+#define CLOSE_BUTTON_WIDTH 20     /* Width of close button in title */
+#define CLOSE_BUTTON_HEIGHT 16    /* Height of close button body */
+#define CLOSE_BUTTON_DETAIL 4     /* Height of close button detail bar */
+#define CLOSE_BUTTON_HIT_WIDTH 32 /* Width of close button detection area */
+#define RESIZE_WIDGET_WIDTH 30    /* Width of resize widget on title bar */
+
 #define MWM_HINTS_FLAGS_FIELD 0
 #define MWM_HINTS_DECORATIONS_FIELD 2
 #define MWM_HINTS_DECORATIONS (1 << 1)

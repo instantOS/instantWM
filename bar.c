@@ -17,9 +17,6 @@
 #define DETAIL_BAR_HEIGHT_HOVER 8  /* Hover state detail bar height */
 #define STARTMENU_ICON_SIZE 14     /* Size of the start menu logo icon */
 #define STARTMENU_ICON_INNER 6     /* Inner square of start menu icon */
-#define CLOSE_BUTTON_WIDTH 20      /* Width of close button in title */
-#define CLOSE_BUTTON_HEIGHT 16     /* Height of close button body */
-#define CLOSE_BUTTON_DETAIL 4      /* Height of close button detail bar */
 
 /* External declarations not covered by headers */
 extern int (*xerrorxlib)(Display *, XErrorEvent *);
