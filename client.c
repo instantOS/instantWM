@@ -300,7 +300,6 @@ void desktopset() {
     resize(c, 0, bh, drw->w, drw->h - bh, 0);
     unmanage(c, 0);
     restack(selmon);
-    return;
 }
 
 void applyrules(Client *c) {
@@ -331,7 +330,7 @@ void applyrules(Client *c) {
             if ((!r->title || strstr(c->name, r->title)) &&
                 (!r->class || strstr(class, r->class)) &&
                 (!r->instance || strstr(instance, r->instance))) {
-                if (strstr(r->class, "Onboard") != NULL) {
+                if (r->class && strstr(r->class, "Onboard") != NULL) {
                     c->issticky = 1;
                 }
 

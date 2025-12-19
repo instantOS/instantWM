@@ -116,7 +116,6 @@ void uppress(const Arg *arg) {
         return;
     }
     hide(selmon->sel);
-    return;
 }
 
 void downpress(const Arg *arg) {

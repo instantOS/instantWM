@@ -261,8 +261,10 @@ void monocle(Monitor *m) {
 }
 
 void focusstack2(const Arg *arg) {
-    Client *nextVisibleClient = findVisibleClient(selmon->sel->next)
-                                    ?: findVisibleClient(selmon->clients);
+    Client *nextVisibleClient = findVisibleClient(selmon->sel->next);
+    if (!nextVisibleClient) {
+        nextVisibleClient = findVisibleClient(selmon->clients);
+    }
 
     if (nextVisibleClient) {
         if (nextVisibleClient->mon != selmon) {

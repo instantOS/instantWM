@@ -53,7 +53,7 @@ static void handle_systray_dock_request(XClientMessageEvent *cme) {
                  StructureNotifyMask | PropertyChangeMask | ResizeRedirectMask);
     XReparentWindow(dpy, c->win, systray->win, 0, 0);
     /* use parents background color */
-    extern Clr *statusscheme;
+
     swa.background_pixel = statusscheme[ColBg].pixel;
     XChangeWindowAttributes(dpy, c->win, CWBackPixel, &swa);
     sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
@@ -73,7 +73,7 @@ static void handle_systray_dock_request(XClientMessageEvent *cme) {
 
 /* Helper: Handle _NET_WM_STATE message (fullscreen toggle) */
 static void handle_netWMstate(Client *c, XClientMessageEvent *cme) {
-    extern void setfullscreen(Client * c, int fullscreen);
+
     if (cme->data.l[1] == netatom[NetWMFullscreen] ||
         cme->data.l[2] == netatom[NetWMFullscreen]) {
         setfullscreen(c, (cme->data.l[0] == 1 /* _NET_WM_STATE_ADD    */
@@ -150,16 +150,13 @@ void configurenotify(XEvent *e) {
     Monitor *m;
     Client *c;
     XConfigureEvent *ev = &e->xconfigure;
-    extern int sw;
-    extern int sh;
 
     /* TODO: updategeom handling sucks, needs to be simplified */
     if (ev->window == root) {
         int dirty = (sw != ev->width || sh != ev->height);
         sw = ev->width;
         sh = ev->height;
-        extern int updategeom(void);
-        extern void updatebars(void);
+
         if (updategeom() || dirty) {
             drw_resize(drw, sw, bh);
             updatebars();
@@ -486,7 +483,7 @@ static int handleoverlaygesture(XMotionEvent *ev) {
 
 /* Helper: handle tag bar hover */
 static void handletagbarhover(XMotionEvent *ev) {
-    extern int lrpad;
+
     if (selmon->hoverclient) {
         selmon->hoverclient = NULL;
     }
@@ -629,8 +626,7 @@ void propertynotify(XEvent *e) {
         resizebarwin(selmon);
         updatesystray();
     }
-    extern int xcommand(void);
-    extern void updatestatus(void);
+
     if ((ev->window == root) && (ev->atom == XA_WM_NAME)) {
         if (!xcommand()) {
             updatestatus();
