@@ -547,7 +547,7 @@ static void handletitlebarhover(XMotionEvent *ev) {
 
     /* indicator when hovering over clients */
     if (selmon->stack) {
-        int x = selmon->mx + tagwidth + get_blw(selmon);
+        int x = selmon->mx + tagwidth + get_layout_symbol_width(selmon);
         Client *c = selmon->clients;
         do {
             if (!ISVISIBLE(c)) {
@@ -606,11 +606,11 @@ void motionnotify(XEvent *e) {
     }
 
     /* cursor is to the left of window titles (tags area) */
-    if (ev->x_root < selmon->mx + tagwidth + get_blw(selmon)) {
+    if (ev->x_root < selmon->mx + tagwidth + get_layout_symbol_width(selmon)) {
         handletagbarhover(ev);
-    } else if (selmon->sel && ev->x_root < selmon->mx + get_blw(selmon) +
-                                               tagwidth +
-                                               selmon->bar_clients_width) {
+    } else if (selmon->sel &&
+               ev->x_root < selmon->mx + get_layout_symbol_width(selmon) +
+                                tagwidth + selmon->bar_clients_width) {
         /* cursor is on window titles */
         handletitlebarhover(ev);
     } else {
@@ -731,7 +731,7 @@ static void handle_bar_click(XButtonPressedEvent *ev, unsigned int *click,
     unsigned int occupied_tags = 0;
     Client *c;
     Monitor *m = selmon; /* Since ev->window == selmon->barwin, m is selmon */
-    int blw = get_blw(selmon);
+    int blw = get_layout_symbol_width(selmon);
 
     i = 0;
     x = startmenusize;

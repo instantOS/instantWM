@@ -12,7 +12,7 @@ void resetbar(void);
 void updatestatus(void);
 void clickstatus(const Arg *arg);
 void updatebarpos(Monitor *m);
-int get_blw(Monitor *m);
+int get_layout_symbol_width(Monitor *m);
 void resizebarwin(Monitor *m);
 void togglebar(const Arg *arg);
 void updatebars(void);

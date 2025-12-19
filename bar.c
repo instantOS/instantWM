@@ -23,7 +23,8 @@ extern int (*xerrorxlib)(Display *, XErrorEvent *);
 extern int commandoffsets[20];
 extern int pausedraw;
 
-int get_blw(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
+/* Helper: Get the width of the layout symbol area */
+int get_layout_symbol_width(Monitor *m) { return TEXTW(m->ltsymbol) * 1.5; }
 
 void clickstatus(const Arg *arg) {
     int x;
@@ -287,7 +288,7 @@ static int draw_tag_indicators(Monitor *m, int x, unsigned int occupied_tags,
 
 /* Helper: Draw layout indicator and return the x position after it */
 static int draw_layout_indicator(Monitor *m, int x) {
-    int w = get_blw(m);
+    int w = get_layout_symbol_width(m);
     drw_setscheme(drw, statusscheme);
     return drw_text(drw, x, 0, w, bh, (w - TEXTW(m->ltsymbol)) * 0.5 + 10,
                     m->ltsymbol, 0, 0);
