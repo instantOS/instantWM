@@ -10,5 +10,5 @@ fi
 make clean &>/dev/null
 
 if [ -z "$2" ]; then
-    $SUPERTOOL make install
+    $SUPERTOOL make -j$(nproc) install
 fi

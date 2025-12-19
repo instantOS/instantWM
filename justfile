@@ -6,7 +6,7 @@ fmt:
 
 # Build the project
 build:
-    make
+    make -j$(nproc)
 
 # Clean build artifacts
 clean:
