@@ -494,7 +494,8 @@ void drw_map(Drw *drw, Window win, int x, int y, unsigned int w,
     }
 
     XCopyArea(drw->dpy, drw->drawable, win, drw->gc, x, y, w, h, x, y);
-    XSync(drw->dpy, False);
+    /* Optimization: Use XFlush instead of XSync to avoid blocking round-trip latency. */
+    XFlush(drw->dpy);
 }
 
 unsigned int drw_fontset_getwidth(Drw *drw, const char *text) {
