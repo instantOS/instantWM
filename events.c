@@ -65,7 +65,8 @@ static void handle_systray_dock_request(XClientMessageEvent *cme) {
               XEMBED_WINDOW_ACTIVATE, 0, systray->win, XEMBED_EMBEDDED_VERSION);
     sendevent(c->win, netatom[Xembed], StructureNotifyMask, CurrentTime,
               XEMBED_MODALITY_ON, 0, systray->win, XEMBED_EMBEDDED_VERSION);
-    XSync(dpy, False);
+    /* Replacing blocking XSync with XFlush for performance */
+    XFlush(dpy);
     resizebarwin(selmon);
     updatesystray();
     setclientstate(c, NormalState);
@@ -232,7 +233,8 @@ void configurerequest(XEvent *e) {
         wc.stack_mode = ev->detail;
         XConfigureWindow(dpy, ev->window, ev->value_mask, &wc);
     }
-    XSync(dpy, False);
+    /* Replacing blocking XSync with XFlush to avoid stalling the event loop */
+    XFlush(dpy);
 }
 
 void destroynotify(XEvent *e) {
