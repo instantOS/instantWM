@@ -425,7 +425,7 @@ const char *instantshutdowncmd[] = {"instantshutdown", NULL};
 const char *systemmonitorcmd[] = {".config/instantos/default/systemmonitor",
                                   NULL};
 const char *notifycmd[] = {"instantnotify", NULL};
-const char *rangercmd[] = {".config/instantos/default/termfilemanager", NULL};
+const char *yazicmd[] = {".config/instantos/default/termfilemanager", NULL};
 const char *panther[] = {".config/instantos/default/appmenu", NULL};
 const char *controlcentercmd[] = {"ins settings --gui", NULL};
 const char *displaycmd[] = {"instantdisper", NULL};
@@ -505,7 +505,7 @@ Xcommand commands[] = {
 
 Key dkeys[] = {
     /* modifier  key        function     argument */
-    {0, XK_r, spawn, {.v = rangercmd}},
+    {0, XK_r, spawn, {.v = yazicmd}},
     {0, XK_e, spawn, {.v = editorcmd}},
     {0, XK_n, spawn, {.v = nautiluscmd}},
     {0, XK_space, spawn, {.v = panther}},
@@ -555,7 +555,7 @@ Key keys[] = {
     {MODKEY | ShiftMask, XK_d, drawwindow, {0}},
     {MODKEY | ShiftMask, XK_Escape, spawn, {.v = systemmonitorcmd}},
 
-    {MODKEY, XK_r, spawn, {.v = rangercmd}},
+    {MODKEY, XK_r, spawn, {.v = yazicmd}},
     {MODKEY | ControlMask | Mod1Mask, XK_r, redrawwin, {0}},
     {MODKEY, XK_n, spawn, {.v = nautiluscmd}},
     {MODKEY | ControlMask, XK_q, spawn, {.v = instantshutdowncmd}},
