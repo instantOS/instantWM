@@ -325,7 +325,7 @@ void overviewlayout(Monitor *m) {
             tmpy += lineheight;
         }
     }
-    XSync(dpy, False);
+    XFlush(dpy);
 }
 
 void tcl(Monitor *m) {
