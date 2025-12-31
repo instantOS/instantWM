@@ -81,6 +81,9 @@ Drw *drw_create(Display *dpy, int screen, Window root, unsigned int w,
     drw->gc = XCreateGC(dpy, root, 0, NULL);
     XSetLineAttributes(dpy, drw->gc, 1, LineSolid, CapButt, JoinMiter);
 
+    drw->xftdraw = XftDrawCreate(dpy, drw->drawable, DefaultVisual(dpy, screen),
+                                 DefaultColormap(dpy, screen));
+
     return drw;
 }
 
@@ -96,11 +99,20 @@ void drw_resize(Drw *drw, unsigned int w, unsigned int h) {
     }
     drw->drawable = XCreatePixmap(drw->dpy, drw->root, w, h,
                                   DefaultDepth(drw->dpy, drw->screen));
+    if (drw->xftdraw) {
+        XftDrawDestroy(drw->xftdraw);
+    }
+    drw->xftdraw = XftDrawCreate(drw->dpy, drw->drawable,
+                                 DefaultVisual(drw->dpy, drw->screen),
+                                 DefaultColormap(drw->dpy, drw->screen));
 }
 
 void drw_free(Drw *drw) {
     XFreePixmap(drw->dpy, drw->drawable);
     XFreeGC(drw->dpy, drw->gc);
+    if (drw->xftdraw) {
+        XftDrawDestroy(drw->xftdraw);
+    }
     drw_fontset_free(drw->fonts);
     free(drw);
 }
@@ -316,9 +328,7 @@ int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h,
             XFillRectangle(drw->dpy, drw->drawable, drw->gc, x, y, w, h);
         }
 
-        d = XftDrawCreate(drw->dpy, drw->drawable,
-                          DefaultVisual(drw->dpy, drw->screen),
-                          DefaultColormap(drw->dpy, drw->screen));
+        d = drw->xftdraw;
         x += lpad;
         w -= lpad;
     }
@@ -456,9 +466,6 @@ int drw_text(Drw *drw, int x, int y, unsigned int w, unsigned int h,
                 }
             }
         }
-    }
-    if (d) {
-        XftDrawDestroy(d);
     }
 
     return x + (render ? w : 0);
