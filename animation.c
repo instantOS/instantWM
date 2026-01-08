@@ -71,6 +71,8 @@ void animateclient(Client *c, int x, int y, int w, int h, int frames,
                     oldx + easeOutCubic(((double)time / frames)) * (x - oldx),
                     oldy + easeOutCubic(((double)time / frames)) * (y - oldy),
                     width, height, 1);
+                /* ⚡ Bolt: Flush requests to ensure smooth animation without blocking */
+                XFlush(dpy);
                 time++;
                 usleep(15000);
             }
