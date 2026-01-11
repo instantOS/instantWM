@@ -35,6 +35,7 @@ typedef struct {
     GC gc;
     Clr *scheme;
     Fnt *fonts;
+    XftDraw *xftdraw;
 } Drw;
 
 /* Drawable abstraction */
