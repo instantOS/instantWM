@@ -1,0 +1,3 @@
+## 2026-01-13 - XSync vs XFlush in Window Managers
+**Learning:** In X11 window managers, `XSync(dpy, False)` is a blocking call that waits for the X server to process all requests. This is often necessary for error handling or strict synchronization but is a major performance bottleneck for frequent operations like drawing or resizing.
+**Action:** Use `XFlush(dpy)` instead of `XSync` where strict synchronization is not required (e.g., drawing `drw_map` or window configuration `resizeclient`). `XFlush` sends the requests to the server without waiting for a reply, significantly reducing latency and improving animation smoothness.
