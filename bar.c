@@ -56,9 +56,19 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     char *text;
     char *p;
 
+    /* Optimization: Use stack allocation for common status text lengths (<1024)
+       to avoid malloc overhead in hot path. Fallback to malloc for larger strings. */
+    char buf[1024];
+    int use_malloc = 0;
+
     len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len))) {
-        die("malloc");
+    if (len > sizeof(buf)) {
+        if (!(text = (char *)malloc(sizeof(char) * len))) {
+            die("malloc");
+        }
+        use_malloc = 1;
+    } else {
+        text = buf;
     }
     p = text;
     memcpy(text, stext, len);
@@ -194,7 +204,9 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     }
 
     drw_setscheme(drw, statusscheme);
-    free(p);
+    if (use_malloc) {
+        free(p);
+    }
 
     return ret;
 }
