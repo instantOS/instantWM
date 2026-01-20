@@ -279,7 +279,7 @@ void resizeclient(Client *c, int x, int y, int w, int h) {
     XConfigureWindow(dpy, c->win,
                      CWX | CWY | CWWidth | CWHeight | CWBorderWidth, &wc);
     configure(c);
-    XSync(dpy, False);
+    XFlush(dpy);
 }
 
 void updatetitle(Client *c) {
