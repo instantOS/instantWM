@@ -53,42 +53,43 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     int len;
     int cmdcounter;
     short isCode = 0;
-    char *text;
+    char text[1024];
     char *p;
 
     len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len))) {
-        die("malloc");
+    if (len > sizeof(text)) {
+        len = sizeof(text);
     }
-    p = text;
     memcpy(text, stext, len);
+    text[len - 1] = '\0';
+    p = text;
 
     /* compute width of the status text */
     w = 0;
     i = -1;
-    while (text[++i]) {
-        if (text[i] == '^') {
+    while (p[++i]) {
+        if (p[i] == '^') {
             if (!isCode) {
                 isCode = 1;
-                text[i] = '\0';
-                w += TEXTW(text) - lrpad;
-                text[i] = '^';
-                if (text[++i] == 'f') {
-                    w += atoi(text + ++i);
+                p[i] = '\0';
+                w += TEXTW(p) - lrpad;
+                p[i] = '^';
+                if (p[++i] == 'f') {
+                    w += atoi(p + ++i);
                 }
             } else {
                 isCode = 0;
-                text = text + i + 1;
+                p = p + i + 1;
                 i = -1;
             }
         }
     }
     if (!isCode) {
-        w += TEXTW(text) - lrpad;
+        w += TEXTW(p) - lrpad;
     } else {
         isCode = 0;
     }
-    text = p;
+    p = text;
     statuswidth = w;
     w += 2; /* 1px padding on both sides */
     ret = x = m->ww - w - getsystraywidth();
@@ -103,56 +104,56 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
 
     int customcolor = 0;
 
-    while (text[++i]) {
-        if (text[i] == '^' && !isCode) {
+    while (p[++i]) {
+        if (p[i] == '^' && !isCode) {
             isCode = 1;
 
-            text[i] = '\0';
-            w = TEXTW(text) - lrpad;
-            drw_text(drw, x, 0, w, bh, 0, text, 0, 0);
+            p[i] = '\0';
+            w = TEXTW(p) - lrpad;
+            drw_text(drw, x, 0, w, bh, 0, p, 0, 0);
 
             x += w;
 
             /* process code */
-            while (text[++i] != '^') {
-                if (text[i] == 'c') {
+            while (p[++i] != '^') {
+                if (p[i] == 'c') {
                     char buf[8];
-                    memcpy(buf, text + i + 1, 7);
+                    memcpy(buf, p + i + 1, 7);
                     buf[7] = '\0';
                     customcolor = 1;
                     drw_clr_create(drw, &drw->scheme[ColBg], buf);
                     i += 7;
-                } else if (text[i] == 't') {
+                } else if (p[i] == 't') {
                     char buf[8];
-                    memcpy(buf, text + i + 1, 7);
+                    memcpy(buf, p + i + 1, 7);
                     buf[7] = '\0';
                     customcolor = 1;
                     drw_clr_create(drw, &drw->scheme[ColFg], buf);
                     i += 7;
-                } else if (text[i] == 'd') {
+                } else if (p[i] == 'd') {
                     drw_clr_create(drw, &drw->scheme[ColBg],
                                    statusbarcolors[ColBg]);
                     drw_clr_create(drw, &drw->scheme[ColFg],
                                    statusbarcolors[ColFg]);
-                } else if (text[i] == 'r') {
-                    int rx = atoi(text + ++i);
-                    while (text[++i] != ',') {
+                } else if (p[i] == 'r') {
+                    int rx = atoi(p + ++i);
+                    while (p[++i] != ',') {
                         ;
                     }
-                    int ry = atoi(text + ++i);
-                    while (text[++i] != ',') {
+                    int ry = atoi(p + ++i);
+                    while (p[++i] != ',') {
                         ;
                     }
-                    int rw = atoi(text + ++i);
-                    while (text[++i] != ',') {
+                    int rw = atoi(p + ++i);
+                    while (p[++i] != ',') {
                         ;
                     }
-                    int rh = atoi(text + ++i);
+                    int rh = atoi(p + ++i);
 
                     drw_rect(drw, rx + x, ry, rw, rh, 1, 0);
-                } else if (text[i] == 'f') {
-                    x += atoi(text + ++i);
-                } else if (text[i] == 'o') {
+                } else if (p[i] == 'f') {
+                    x += atoi(p + ++i);
+                } else if (p[i] == 'o') {
                     if (cmdcounter <= 20) {
                         commandoffsets[cmdcounter] = x;
                         cmdcounter++;
@@ -160,7 +161,7 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
                 }
             }
 
-            text = text + i + 1;
+            p = p + i + 1;
             i = -1;
             isCode = 0;
         }
@@ -189,12 +190,11 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     }
 
     if (!isCode) {
-        w = TEXTW(text) - lrpad;
-        drw_text(drw, x, 0, w, bh, 0, text, 0, 0);
+        w = TEXTW(p) - lrpad;
+        drw_text(drw, x, 0, w, bh, 0, p, 0, 0);
     }
 
     drw_setscheme(drw, statusscheme);
-    free(p);
 
     return ret;
 }
