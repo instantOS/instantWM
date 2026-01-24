@@ -1,0 +1,3 @@
+## 2026-01-24 - Blocking XSync in Layouts
+**Learning:** `instantwm` (and other X11 WMs) can suffer from significant latency during layout operations (like tag switching or resizing multiple windows) if `XSync` is used in the `resizeclient` hot path. `XSync` forces a round-trip to the X server for *every* window resized, which scales linearly with the number of windows (O(N)).
+**Action:** Replace `XSync` with `XFlush` in `resizeclient` (and similar hot paths like `drw_map` if safe). `XFlush` pushes the requests to the server without waiting for a reply, which is sufficient for simple geometry updates where the client doesn't need immediate feedback. This eliminates N round-trips, making layout changes effectively instantaneous from the client's perspective.
