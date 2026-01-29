@@ -55,10 +55,18 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     short isCode = 0;
     char *text;
     char *p;
+    /* Optimization: Use stack buffer for status text to avoid malloc overhead */
+    char buf[1024];
+    int use_malloc = 0;
 
     len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len))) {
-        die("malloc");
+    if (len > sizeof(buf)) {
+        if (!(text = (char *)malloc(sizeof(char) * len))) {
+            die("malloc");
+        }
+        use_malloc = 1;
+    } else {
+        text = buf;
     }
     p = text;
     memcpy(text, stext, len);
@@ -194,7 +202,9 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     }
 
     drw_setscheme(drw, statusscheme);
-    free(p);
+    if (use_malloc) {
+        free(p);
+    }
 
     return ret;
 }
