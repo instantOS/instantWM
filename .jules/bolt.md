@@ -1,0 +1,3 @@
+## 2026-01-31 - XSync vs XFlush in X11 Animations
+**Learning:** `XSync(dpy, False)` is a blocking round-trip to the X server, while `XFlush(dpy)` sends requests asynchronously. In tight loops like animations (`animateclient` in `animation.c`) or interactive resizing (`resizeclient` in `client.c`), `XSync` can significantly degrade frame rates by forcing the client to wait for the server on every frame.
+**Action:** Replace `XSync` with `XFlush` in performance-critical rendering/update paths where strict synchronization is not required for correctness. Ensure to verify that side effects (like event generation) are not implicitly relied upon by subsequent synchronous checks.
