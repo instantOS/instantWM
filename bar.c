@@ -56,8 +56,12 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     char *text;
     char *p;
 
+    char buf[1024];
+
     len = strlen(stext) + 1;
-    if (!(text = (char *)malloc(sizeof(char) * len))) {
+    if (len < sizeof(buf)) {
+        text = buf;
+    } else if (!(text = (char *)malloc(sizeof(char) * len))) {
         die("malloc");
     }
     p = text;
@@ -194,7 +198,9 @@ int drawstatusbar(Monitor *m, int bh, char *stext) {
     }
 
     drw_setscheme(drw, statusscheme);
-    free(p);
+    if (p != buf) {
+        free(p);
+    }
 
     return ret;
 }
