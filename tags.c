@@ -9,11 +9,8 @@
 #include "layouts.h"
 #include "overlay.h"
 #include "scratchpad.h"
-#include "systray.h"
 #include "toggles.h"
-#include "util.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 

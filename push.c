@@ -13,7 +13,7 @@ Client *nextc(Client *c, float f) {
     return c;
 }
 
-static Client *prevc(Client *c, float f) {
+Client *prevc(Client *c, float f) {
     Client *p, *r;
 
     for (p = selmon->clients, r = NULL; c && p && p != c; p = p->next)
@@ -56,9 +56,10 @@ int clientdistance(Client *c, Client *c2) {
     return distance;
 }
 
-static void pushup(const Arg *arg) {
+void pushup(const Arg *arg) {
     Client *sel = selmon->sel;
     Client *c;
+
     if (clientcount() < 2) {
         return;
     }
@@ -66,10 +67,12 @@ static void pushup(const Arg *arg) {
     if (!sel || (sel->isfloating && !arg->f)) {
         return;
     }
+
     if ((c = prevc(sel, arg->f))) {
         /* attach before c */
         detach(sel);
         sel->next = c;
+
         if (selmon->clients == c) {
             selmon->clients = sel;
         } else {
@@ -85,11 +88,12 @@ static void pushup(const Arg *arg) {
         sel->next = NULL;
         c->next = sel;
     }
+
     focus(sel);
     arrange(selmon);
 }
 
-static void pushdown(const Arg *arg) {
+void pushdown(const Arg *arg) {
     Client *sel = selmon->sel;
     Client *c;
 
@@ -100,6 +104,7 @@ static void pushdown(const Arg *arg) {
     if (!sel || (sel->isfloating && !arg->f)) {
         return;
     }
+
     if ((c = nextc(sel->next, arg->f))) {
         /* attach after c */
         detach(sel);
@@ -110,6 +115,7 @@ static void pushdown(const Arg *arg) {
         detach(sel);
         attach(sel);
     }
+
     focus(sel);
     arrange(selmon);
 }

@@ -2,18 +2,10 @@
 
 #include "client.h"
 #include "animation.h"
-#include "bar.h"
 #include "globals.h"
 #include "instantwm.h"
 #include "layouts.h"
-#include "monitors.h"
-#include "mouse.h"
-#include "push.h"
-#include "scratchpad.h"
 #include "util.h"
-#include "xresources.h"
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 /* External declarations not covered by headers */

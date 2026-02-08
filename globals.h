@@ -57,7 +57,7 @@ extern Clr ***windowscheme;
 extern Clr ***closebuttonscheme;
 
 /* ========== Systray (from config.h) ========== */
-extern const int showsystray;
+extern int showsystray;
 extern const unsigned int systraypinning;
 extern const unsigned int systrayspacing;
 extern Systray *systray;

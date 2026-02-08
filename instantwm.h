@@ -34,6 +34,8 @@
 #define HEIGHT(X) ((X)->h + 2 * (X)->border_width)
 #define TAGMASK ((1 << LENGTH(tags)) - 1)
 #define MAX_TAGS 21 /* Fixed size for Pertag arrays (20 tags + 1) */
+
+/* This macro intentionally touches the drw API (see drw.h) */
 #define TEXTW(X) (drw_fontset_getwidth(drw, (X)) + lrpad)
 
 #define CLOSE_BUTTON_WIDTH 20     /* Width of close button in title */

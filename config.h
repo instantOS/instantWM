@@ -5,10 +5,12 @@
 #include "instantwm.h"
 #include "layouts.h"
 #include "mouse.h"
+#include "push.h"
 #include <X11/XF86keysym.h>
 
 /* appearance */
-const unsigned int borderpx = 3;       /* border pixel of windows */
+#define BORDERPX 3                     /* border pixel of windows */
+unsigned int borderpx = BORDERPX;      /* border pixel of windows */
 const unsigned int snap = 32;          /* snap pixel */
 const unsigned int startmenusize = 30; /* snap pixel */
 const unsigned int systraypinning =
@@ -18,9 +20,9 @@ const unsigned int systrayspacing = 0; /* systray spacing */
 const int systraypinningfailfirst =
     1; /* 1: if pinning fails, display systray on the first monitor, False:
           display systray on the last monitor*/
-const int showsystray = 1; /* 0 means no systray */
-const int showbar = 1;     /* 0 means no bar */
-const int topbar = 1;      /* 0 means bottom bar */
+int showsystray = 1; /* 0 means no systray */
+int showbar = 1;     /* 0 means no bar */
+int topbar = 1;      /* 0 means bottom bar */
 const char *fonts[] = {"Inter-Regular:size=12", "Fira Code Nerd Font:size=12"};
 
 int barheight;
@@ -319,22 +321,12 @@ const char *downbright[] = {"/usr/share/instantassist/utils/b.sh", "-", NULL};
  * declarations across the project, and can conflict with `extern` declarations.
  */
 extern const Rule rules[];
-    {"Pamac-installer", NULL, NULL, 0, 1, -1},
-    {"xpad", NULL, NULL, 0, 1, -1},
-    {"Guake", NULL, NULL, 0, 1, -1},
-    {"instantfloat", NULL, NULL, 0, 2, -1},
-    {scratchpadname, NULL, NULL, 0, 4, -1},
-    {"kdeconnect.daemon", NULL, NULL, 0, 3, -1},
-    {"Panther", NULL, NULL, 0, 3, -1},
-    {"org-wellkord-globonote-Main", NULL, NULL, 0, 1, -1},
-    {"Peek", NULL, NULL, 0, 1, -1},
-};
 
 /* layout(s) */
-const float mfact = 0.55;  /* factor of master area size [0.05..0.95] */
-const int nmaster = 1;     /* number of clients in master area */
+float mfact = 0.55;        /* factor of master area size [0.05..0.95] */
+int nmaster = 1;           /* number of clients in master area */
 const int resizehints = 1; /* 1 means respect size hints in tiled resizals */
-const int decorhints = 1;  /* 1 means respect decoration hints */
+int decorhints = 1;        /* 1 means respect decoration hints */
 
 const Layout layouts[] = {
     /* symbol     arrange function */
@@ -478,7 +470,7 @@ Xcommand commands[] = {
     {"warpfocus", warp_to_focus, {0}, 0},
     {"tag", view, {.ui = 2}, 3},
     {"animated", toggleanimated, {.ui = 2}, 1},
-    {"border", setborderwidth, {.i = borderpx}, 5},
+    {"border", setborderwidth, {.i = BORDERPX}, 5},
     {"focusfollowsmouse", togglefocusfollowsmouse, {.ui = 2}, 1},
     {"focusfollowsfloatmouse", togglefocusfollowsfloatmouse, {.ui = 2}, 1},
     {"alttab", alttabfree, {.ui = 2}, 1},
