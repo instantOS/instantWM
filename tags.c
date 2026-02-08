@@ -74,7 +74,7 @@ void resetnametag(const Arg *arg) {
     drawbars();
 }
 
-int gettagwidth() {
+int gettagwidth(void) {
     int x = 0;
     int i = 0;
     int occupied_tags = 0;

@@ -436,7 +436,7 @@ void gesturemouse(const Arg *arg) {
 
 // Check if cursor is in the resize border zone around the selected floating
 // window Returns 1 if in border zone, 0 if not or no valid floating selection
-int is_in_resize_border() {
+int is_in_resize_border(void) {
     if (!(selmon->sel &&
           (selmon->sel->isfloating || !tiling_layout_func(selmon)))) {
         return 0;

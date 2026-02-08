@@ -129,7 +129,7 @@ int commandoffsets[20];
 int force_resize = 0;
 Monitor *selmon;
 
-void resetcursor() {
+void resetcursor(void) {
     if (altcursor == AltCurNone) {
         return;
     }
@@ -366,7 +366,7 @@ int getrootptr(int *x, int *y) {
     return XQueryPointer(dpy, root, &dummy, &dummy, x, y, &di, &di, &dui);
 }
 
-Client *getcursorclient() {
+Client *getcursorclient(void) {
     int di;
     int dum;
     unsigned int dui;

@@ -5,7 +5,7 @@
 #include "floating.h"
 #include "globals.h"
 
-int overlayexists() {
+int overlayexists(void) {
     Client *c;
     Monitor *m;
     if (!selmon->overlay) {
@@ -66,7 +66,7 @@ void createoverlay(const Arg *arg) {
     showoverlay(NULL);
 }
 
-void resetoverlay() {
+void resetoverlay(void) {
     if (!overlayexists()) {
         return;
     }
@@ -250,7 +250,7 @@ void setoverlaymode(int mode) {
     }
 }
 
-void resetoverlaysize() {
+void resetoverlaysize(void) {
     if (!selmon->overlay) {
         return;
     }

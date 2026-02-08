@@ -1,4 +1,5 @@
 /* See LICENSE file for copyright and license details. */
+#include "globals.h"
 #include <math.h>
 
 Client *nextc(Client *c, float f) {
@@ -30,9 +31,9 @@ int clientcountmon(Monitor *m) {
 }
 
 // get amount of tiled clients
-int clientcount() { return clientcountmon(selmon); }
+int clientcount(void) { return clientcountmon(selmon); }
 
-int allclientcount() {
+int allclientcount(void) {
     int n;
     Client *c;
     n = 0;

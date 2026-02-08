@@ -17,7 +17,7 @@
 #include <string.h>
 
 /* Implementation of xcommand */
-int xcommand() {
+int xcommand(void) {
     char command[256];
     char *fcursor; // walks through the command string as we go
     char *indicator = "c;:;";

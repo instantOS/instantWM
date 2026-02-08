@@ -311,17 +311,14 @@ const char *mutevol[] = {"/usr/share/instantassist/utils/p.sh", "m", NULL};
 const char *upbright[] = {"/usr/share/instantassist/utils/b.sh", "+", NULL};
 const char *downbright[] = {"/usr/share/instantassist/utils/b.sh", "-", NULL};
 
-const Rule rules[] = {
-    /* xprop(1):
-     *	WM_CLASS(STRING) = instance, class
-     *	WM_NAME(STRING) = title
-     */
-    /* class                        instance  title  tags mask  isfloating
-       monitor */
-    {"Pavucontrol", NULL, NULL, 0, 1, -1},
-    {"Onboard", NULL, NULL, 0, 1, -1},
-    {"floatmenu", NULL, NULL, 0, 1, -1},
-    {"Welcome.py", NULL, NULL, 0, 1, -1},
+/* NOTE:
+ * `rules` must be defined in exactly one .c translation unit (see `config.c`)
+ * and only declared as `extern` in headers (see `globals.h`).
+ *
+ * Keeping a non-static definition in this header causes multiple/duplicate
+ * declarations across the project, and can conflict with `extern` declarations.
+ */
+extern const Rule rules[];
     {"Pamac-installer", NULL, NULL, 0, 1, -1},
     {"xpad", NULL, NULL, 0, 1, -1},
     {"Guake", NULL, NULL, 0, 1, -1},

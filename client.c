@@ -175,6 +175,8 @@ void unfocus(Client *c, int setfocus) {
     }
 }
 
+// TODO: document what this does
+// Should it have a better name?
 void showhide(Client *c) {
     if (!c) {
         return;
@@ -291,9 +293,8 @@ void updatetitle(Client *c) {
     }
 }
 
-/* Moved functions */
-
-void desktopset() {
+void desktopset(const Arg *arg) {
+    (void)arg;
     Client *c = selmon->sel;
     c->isfloating = 0;
     arrange(c->mon);
@@ -896,7 +897,7 @@ void updatewmhints(Client *c) {
     }
 }
 
-int unhideone() {
+int unhideone(void) {
     if (selmon->sel && selmon->sel == selmon->overlay) {
         return 0;
     }

@@ -470,7 +470,7 @@ void drawbars(void) {
     }
 }
 
-void resetbar() {
+void resetbar(void) {
     if (!selmon->hoverclient && !selmon->gesture) {
         return;
     }

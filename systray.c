@@ -7,7 +7,7 @@
 /* External declarations not covered by headers */
 extern const int systraypinningfailfirst;
 
-unsigned int getsystraywidth() {
+unsigned int getsystraywidth(void) {
     unsigned int w = 0;
     Client *i;
     if (showsystray) {

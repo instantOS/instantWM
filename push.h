@@ -1,6 +1,6 @@
 #ifndef PUSH_H
 #define PUSH_H
 
-int clientcount();
+int clientcount(void);
 
 #endif

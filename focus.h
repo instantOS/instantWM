@@ -19,6 +19,6 @@ void warp(const Client *c);
 void forcewarp(const Client *c);
 void warp_into(const Client *c);
 void warp_cursor_to_client(const Client *c);
-void warp_to_focus();
+void warp_to_focus(const Arg *arg);
 
 #endif

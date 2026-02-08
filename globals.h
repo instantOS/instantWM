@@ -89,7 +89,7 @@ extern const char *bordercolors[];
 extern const char *statusbarcolors[];
 extern Key keys[];
 extern Key dkeys[];
-extern Rule rules[];
+extern const Rule rules[];
 extern ResourcePref resources[];
 
 /* Config variables needed in other files */

@@ -26,7 +26,7 @@ extern SchemePref schemeclosetypes[];
 #define NUM_RESOURCES 11
 #define MAX_TAGLEN 16
 
-void list_xresources() {
+void list_xresources(void) {
     int i;
     int u;
     int q;
