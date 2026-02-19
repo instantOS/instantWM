@@ -261,6 +261,18 @@ static void handle_bar_leave_reset(XCrossingEvent *ev, int *barleavestatus) {
 static Client *handle_floating_focus(XCrossingEvent *ev, Client *c) {
     int resizeexit;
 
+    int entering_root = (ev->window == root);
+    int have_floating_sel = (selmon->sel && (selmon->sel->isfloating ||
+                                             !tiling_layout_func(selmon)));
+
+    if (entering_root && have_floating_sel) {
+        resizeexit = hover_resize_mouse(NULL);
+        if (resizeexit) {
+            return NULL;
+        }
+        return c;
+    }
+
     if (!(c && selmon->sel &&
           (selmon->sel->isfloating || !tiling_layout_func(selmon)) &&
           c != selmon->sel &&
@@ -272,14 +284,14 @@ static Client *handle_floating_focus(XCrossingEvent *ev, Client *c) {
     resizeexit = hover_resize_mouse(NULL);
     if (focusfollowsfloatmouse) {
         if (resizeexit) {
-            return NULL; /* Resize was performed, don't change focus */
+            return NULL;
         }
         Client *newc = getcursorclient();
         if (newc && newc != selmon->sel) {
             return newc;
         }
     } else {
-        return NULL; /* Don't change focus for floating windows */
+        return NULL;
     }
     return c;
 }

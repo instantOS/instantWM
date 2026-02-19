@@ -477,6 +477,29 @@ static DragResult hoverresize_motion(XEvent *ev, void *data) {
     return DRAG_CONTINUE;
 }
 
+static int is_at_top_middle_edge(Client *c, int root_x, int root_y) {
+    int at_top_edge = (root_y >= c->y - RESIZE_BORDER_ZONE &&
+                       root_y < c->y + RESIZE_BORDER_ZONE);
+    int in_middle_third =
+        (root_x >= c->x + c->w / 3 && root_x <= c->x + 2 * c->w / 3);
+    return at_top_edge && in_middle_third;
+}
+
+static void start_move_operation(Client *c) {
+    XUngrabPointer(dpy, CurrentTime);
+    if (c) {
+        warp_into(c);
+    }
+    movemouse(NULL);
+}
+
+static void start_resize_operation(Client *c, int win_x, int win_y) {
+    XUngrabPointer(dpy, CurrentTime);
+    int direction = get_resize_direction(c, win_x, win_y);
+    warp_pointer_resize(c, direction);
+    resizemouse(NULL);
+}
+
 static DragResult hoverresize_extra(XEvent *ev, void *data) {
     HoverResizeData *d = (HoverResizeData *)data;
 
@@ -489,52 +512,30 @@ static DragResult hoverresize_extra(XEvent *ev, void *data) {
         handler[ev->type](ev);
         break;
     case ButtonPress:
-        if (ev->xbutton.button == Button1) {
-            Client *c = selmon->sel;
-            if (c) {
-                int nx;
-                int ny;
-                int di;
-                unsigned int dui;
-                Window dummy;
-                /* Check if the click is on the top edge of the window.
-                 * If so, we treat it as a move operation instead of a resize.
-                 * This emulates grabbing a window title bar for windows that do
-                 * not have one (e.g. terminals, or when decorations are
-                 * disabled), using the hover behavior to detect the "border".
-                 */
-                if (XQueryPointer(dpy, c->win, &dummy, &dummy, &di, &di, &nx,
-                                  &ny, &dui)) {
-                    int direction = get_resize_direction(c, nx, ny);
-                    if (direction == ResizeDirTop) {
-                        XUngrabPointer(dpy, CurrentTime);
-                        /* Warp pointer to the top edge to initiate the move
-                         * from a predictable point, consistent with
-                         * Super+RightClick move behavior.
-                         */
-                        warp_into(c);
-                        movemouse(NULL);
-                        d->resize_started = 1;
-                        return DRAG_BREAK;
-                    }
-                }
-            }
+        d->resize_started = 1;
+        Client *c = selmon->sel;
+        if (!c) {
             XUngrabPointer(dpy, CurrentTime);
-            resizemouse(NULL);
-            d->resize_started = 1;
             return DRAG_BREAK;
-        } else if (ev->xbutton.button == Button3) {
-            /* Right click in the resize border triggers a move operation.
-             * This provides an alternative way to move windows without grabbing
-             * the title bar.
-             */
-            Client *c = selmon->sel;
-            XUngrabPointer(dpy, CurrentTime);
-            if (c) {
-                warp_into(c);
+        }
+
+        int win_x, win_y, root_x, root_y;
+        unsigned int mask;
+        Window dummy;
+        XQueryPointer(dpy, c->win, &dummy, &dummy, &root_x, &root_y, &win_x,
+                      &win_y, &mask);
+
+        if (ev->xbutton.button == Button3) {
+            start_move_operation(c);
+            return DRAG_BREAK;
+        }
+
+        if (ev->xbutton.button == Button1) {
+            if (is_at_top_middle_edge(c, root_x, root_y)) {
+                start_move_operation(c);
+            } else {
+                start_resize_operation(c, win_x, win_y);
             }
-            movemouse(NULL);
-            d->resize_started = 1;
             return DRAG_BREAK;
         }
         break;
