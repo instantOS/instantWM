@@ -219,8 +219,8 @@ void scratchpad_status(const Arg *arg) {
             if (!ISSCRATCHPAD(c))
                 continue;
             int n = snprintf(status + offset, sizeof(status) - offset,
-                             "%s%s=%d", first ? "" : ",",
-                             c->scratchpad_name, c->issticky ? 1 : 0);
+                             "%s%s=%d", first ? "" : ",", c->scratchpad_name,
+                             c->issticky ? 1 : 0);
             if (n > 0)
                 offset += n;
             first = 0;
