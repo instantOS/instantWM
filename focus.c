@@ -82,8 +82,8 @@ void focus_last_client(const Arg *arg) {
 
     c = lastclient;
 
-    if (c->tags & SCRATCHPAD_MASK) {
-        togglescratchpad(NULL);
+    if (ISSCRATCHPAD(c)) {
+        scratchpad_show(&(Arg){.v = c->scratchpad_name});
         return;
     }
 

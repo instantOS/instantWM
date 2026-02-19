@@ -302,7 +302,7 @@ char tags[][MAX_TAGLEN] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
 const char *tagsalt[] = {"", "{}",  "$",   "", "",
                          "", "", "", ""};
 
-const char scratchpadname[] = "instantscratchpad";
+const char scratchpadclass[] = "scratchpad_default";
 
 const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
 const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-", NULL};
@@ -326,7 +326,7 @@ const Rule rules[] = {
     {"xpad", NULL, NULL, 0, 1, -1},
     {"Guake", NULL, NULL, 0, 1, -1},
     {"instantfloat", NULL, NULL, 0, 2, -1},
-    {scratchpadname, NULL, NULL, 0, 4, -1},
+    {scratchpadclass, NULL, NULL, 0, 4, -1},
     {"kdeconnect.daemon", NULL, NULL, 0, 3, -1},
     {"Panther", NULL, NULL, 0, 3, -1},
     {"org-wellkord-globonote-Main", NULL, NULL, 0, 1, -1},
@@ -373,7 +373,7 @@ const char *smartcmd[] = {"instantmenu_smartrun", NULL};
 const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 const char *termcmd[] = {".config/instantos/default/terminal", NULL};
 const char *termscratchcmd[] = {".config/instantos/default/terminal", "-c",
-                                scratchpadname, NULL};
+                                scratchpadclass, NULL};
 const char *quickmenucmd[] = {"quickmenu", NULL};
 const char *instantassistcmd[] = {"instantassist", NULL};
 const char *instantrepeatcmd[] = {"instantrepeat", NULL};

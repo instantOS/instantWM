@@ -143,11 +143,10 @@ void sendmon(Client *c, Monitor *m) {
     if (!c->isfloating) {
         arrange(NULL);
     }
-    if (isscratchpad && !c->mon->scratchvisible) {
+    if (isscratchpad && ISSCRATCHPAD(c) && !c->issticky) {
         unfocus(selmon->sel, 0);
         selmon = m;
-        togglescratchpad(NULL);
-        focus(NULL);
+        scratchpad_show(&(Arg){.v = c->scratchpad_name});
         unfocus(selmon->sel, 0);
         selmon = prevmon;
         focus(NULL);
@@ -186,7 +185,6 @@ Monitor *createmon(void) {
     m->topbar = topbar;
     m->clientcount = 0;
     m->overlaymode = 0;
-    m->scratchvisible = 0;
     m->lt[0] = &layouts[3];
     m->lt[1] = (Layout *)&layouts[0];
     strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);

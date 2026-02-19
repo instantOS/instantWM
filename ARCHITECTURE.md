@@ -156,10 +156,14 @@ extern int bh;  // bar height
 - `resetsnap()` - Restore original floating position
 - `savefloating()`/`restorefloating()` - Save/restore float geometry
 
-### scratchpad.c (Dropdown Terminal)
-- `togglescratchpad()` - Show/hide scratchpad
-- `makescratchpad()` - Convert window to scratchpad
-- `removescratchpad()` - Remove scratchpad status
+### scratchpad.c (Named Scratchpads)
+- `scratchpad_toggle()` - Toggle named scratchpad visibility
+- `scratchpad_make()` - Turn focused window into named scratchpad
+- `scratchpad_unmake()` - Remove scratchpad status from focused window
+- `scratchpad_show()` / `scratchpad_hide()` - Show/hide by name
+- `scratchpad_status()` - IPC: report visibility of one or all scratchpads
+- `scratchpad_identify_client()` - Auto-detect scratchpads by WM_CLASS
+- `scratchpad_find()` - Find scratchpad client by name
 
 ### layouts.c (Tiling)
 - `tile()` - Master/stack layout
