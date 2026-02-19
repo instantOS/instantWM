@@ -1,23 +1,42 @@
 /* See LICENSE file for copyright and license details. */
 
 #include "layouts.h"
+#include "bar.h"
+#include "client.h"
+#include "floating.h"
+#include "globals.h"
+#include "monitors.h"
 #include "push.h"
 #include "util.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void bstack(Monitor *m) {
-    int w, h, mh, mx, tx, ty, tw, framecount;
-    unsigned int i, n;
+    int w;
+    int h;
+    int mh;
+    int mx;
+    int tx;
+    int ty;
+    int tw;
+    int framecount;
+    unsigned int i;
+    unsigned int n;
     Client *c;
 
-    if (animated && clientcount() > 4)
+    if (animated && clientcount() > 4) {
         framecount = 4;
-    else
+    } else {
         framecount = 7;
+    }
 
-    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++)
+    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
         ;
-    if (n == 0)
+    }
+    if (n == 0) {
         return;
+    }
     if (n > m->nmaster) {
         mh = m->nmaster ? m->mfact * m->wh : 0;
         tw = m->ww / (n - m->nmaster);
@@ -31,15 +50,16 @@ void bstack(Monitor *m) {
          c = nexttiled(c->next), i++) {
         if (i < m->nmaster) {
             w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-            animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw),
-                          mh - (2 * c->bw), framecount, 0);
+            animateclient(c, m->wx + mx, m->wy, w - (2 * c->border_width),
+                          mh - (2 * c->border_width), framecount, 0);
             mx += WIDTH(c);
         } else {
             h = m->wh - mh;
-            animateclient(c, tx, ty, tw - (2 * c->bw), h - (2 * c->bw),
-                          framecount, 0);
-            if (tw != m->ww)
+            animateclient(c, tx, ty, tw - (2 * c->border_width),
+                          h - (2 * c->border_width), framecount, 0);
+            if (tw != m->ww) {
                 tx += WIDTH(c);
+            }
         }
     }
 }
@@ -66,32 +86,46 @@ void floatl(Monitor *m) {
     animatestore = animated;
     animated = 0;
     for (c = m->clients; c; c = c->next) {
-        if (!(ISVISIBLE(c)))
+        if (!(ISVISIBLE(c))) {
             continue;
-        if (c->snapstatus)
+        }
+        if (c->snapstatus) {
             applysnap(c, m);
+        }
     }
     restack(selmon);
-    if (selmon->sel)
+    if (selmon->sel) {
         XRaiseWindow(dpy, selmon->sel->win);
-    if (animatestore)
+    }
+    if (animatestore) {
         animated = 1;
+    }
 }
 
 void bstackhoriz(Monitor *m) {
-    int w, mh, mx, tx, ty, th, framecount;
-    unsigned int i, n;
+    int w;
+    int mh;
+    int mx;
+    int tx;
+    int ty;
+    int th;
+    int framecount;
+    unsigned int i;
+    unsigned int n;
     Client *c;
 
-    if (animated && clientcount() > 4)
+    if (animated && clientcount() > 4) {
         framecount = 4;
-    else
+    } else {
         framecount = 7;
+    }
 
-    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++)
+    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
         ;
-    if (n == 0)
+    }
+    if (n == 0) {
         return;
+    }
     if (n > m->nmaster) {
         mh = m->nmaster ? m->mfact * m->wh : 0;
         th = (m->wh - mh) / (n - m->nmaster);
@@ -104,49 +138,64 @@ void bstackhoriz(Monitor *m) {
          c = nexttiled(c->next), i++) {
         if (i < m->nmaster) {
             w = (m->ww - mx) / (MIN(n, m->nmaster) - i);
-            animateclient(c, m->wx + mx, m->wy, w - (2 * c->bw),
-                          mh - (2 * c->bw), framecount, 0);
+            animateclient(c, m->wx + mx, m->wy, w - (2 * c->border_width),
+                          mh - (2 * c->border_width), framecount, 0);
             mx += WIDTH(c);
         } else {
-            animateclient(c, tx, ty, m->ww - (2 * c->bw), th - (2 * c->bw),
-                          framecount, 0);
-            if (th != m->wh)
+            animateclient(c, tx, ty, m->ww - (2 * c->border_width),
+                          th - (2 * c->border_width), framecount, 0);
+            if (th != m->wh) {
                 ty += HEIGHT(c);
+            }
         }
     }
 }
 
 void deck(Monitor *m) {
     int dn;
-    unsigned int i, n, h, mw, my;
+    unsigned int i;
+    unsigned int n;
+    unsigned int h;
+    unsigned int mw;
+    unsigned int my;
     Client *c;
 
-    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++)
+    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
         ;
-    if (n == 0)
+    }
+    if (n == 0) {
         return;
+    }
 
     dn = n - m->nmaster;
-    if (dn > 0) /* override layout symbol */
+    if (dn > 0) { /* override layout symbol */
         snprintf(m->ltsymbol, sizeof m->ltsymbol, "D %d", dn);
+    }
 
-    if (n > m->nmaster)
+    if (n > m->nmaster) {
         mw = m->nmaster ? m->ww * m->mfact : 0;
-    else
+    } else {
         mw = m->ww;
-    for (i = my = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+    }
+    for (i = my = 0, c = nexttiled(m->clients); c;
+         c = nexttiled(c->next), i++) {
         if (i < m->nmaster) {
             h = (m->wh - my) / (MIN(n, m->nmaster) - i);
-            resize(c, m->wx, m->wy + my, mw - (2 * c->bw), h - (2 * c->bw),
-                   False);
+            resize(c, m->wx, m->wy + my, mw - (2 * c->border_width),
+                   h - (2 * c->border_width), False);
             my += HEIGHT(c);
-        } else
-            resize(c, m->wx + mw, m->wy, m->ww - mw - (2 * c->bw),
-                   m->wh - (2 * c->bw), False);
+        } else {
+            resize(c, m->wx + mw, m->wy, m->ww - mw - (2 * c->border_width),
+                   m->wh - (2 * c->border_width), False);
+        }
+    }
 }
 
 void grid(Monitor *m) {
-    int i, n, rows, framecount;
+    int i;
+    int n;
+    int rows;
+    int framecount;
     unsigned int cols;
     Client *c;
 
@@ -155,17 +204,21 @@ void grid(Monitor *m) {
         return;
     }
 
-    if (animated && clientcount() > 5)
+    if (animated && clientcount() > 5) {
         framecount = 3;
-    else
+    } else {
         framecount = 6;
-    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
+    }
+    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
         n++;
+    }
 
     /* grid dimensions */
-    for (rows = 0; rows <= n / 2; rows++)
-        if (rows * rows >= n)
+    for (rows = 0; rows <= n / 2; rows++) {
+        if (rows * rows >= n) {
             break;
+        }
+    }
     cols = (rows && (rows - 1) * rows >= n) ? rows - 1 : rows;
 
     /* window geoms (cell height/width) */
@@ -177,8 +230,8 @@ void grid(Monitor *m) {
         /* adjust height/width of last row/column's windows */
         int ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
         unsigned int aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
-        animateclient(c, cx, cy, cw - 2 * c->bw + aw, ch - 2 * c->bw + ah,
-                      framecount, 0);
+        animateclient(c, cx, cy, cw - 2 * c->border_width + aw,
+                      ch - 2 * c->border_width + ah, framecount, 0);
         i++;
     }
 }
@@ -188,27 +241,35 @@ void monocle(Monitor *m) {
     unsigned int n = 0;
     Client *c;
 
-    if (animated && selmon->sel)
+    if (animated && selmon->sel) {
         XRaiseWindow(dpy, selmon->sel->win);
+    }
 
-    for (c = m->clients; c; c = c->next)
-        if (ISVISIBLE(c))
+    for (c = m->clients; c; c = c->next) {
+        if (ISVISIBLE(c)) {
             n++;
-    if (n > 0) /* override layout symbol */
+        }
+    }
+    if (n > 0) { /* override layout symbol */
         snprintf(m->ltsymbol, sizeof m->ltsymbol, "[%1u]", n);
+    }
     for (c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
-        animateclient(c, m->wx, m->wy, m->ww - 2 * c->bw, m->wh - 2 * c->bw,
+        animateclient(c, m->wx, m->wy, m->ww - 2 * c->border_width,
+                      m->wh - 2 * c->border_width,
                       7 * (animated && c == selmon->sel), 0);
     }
 }
 
 void focusstack2(const Arg *arg) {
-    Client *nextVisibleClient = findVisibleClient(selmon->sel->next)
-                                    ?: findVisibleClient(selmon->clients);
+    Client *nextVisibleClient = findVisibleClient(selmon->sel->next);
+    if (!nextVisibleClient) {
+        nextVisibleClient = findVisibleClient(selmon->clients);
+    }
 
     if (nextVisibleClient) {
-        if (nextVisibleClient->mon != selmon)
+        if (nextVisibleClient->mon != selmon) {
             selmon = nextVisibleClient->mon;
+        }
         detachstack(nextVisibleClient);
         attachstack(nextVisibleClient);
         selmon->sel = nextVisibleClient;
@@ -226,8 +287,9 @@ void overviewlayout(Monitor *m) {
     XWindowChanges wc;
     n = allclientcount();
 
-    if (n == 0)
+    if (n == 0) {
         return;
+    }
 
     gridwidth = 1;
 
@@ -243,12 +305,15 @@ void overviewlayout(Monitor *m) {
     wc.sibling = m->barwin;
 
     for (c = m->clients; c; c = c->next) {
-        if (HIDDEN(c))
+        if (HIDDEN(c)) {
             continue;
-        if (c == selmon->overlay)
+        }
+        if (c == selmon->overlay) {
             continue;
-        if (c->isfloating)
+        }
+        if (c->isfloating) {
             savefloating(c);
+        }
         resize(c, tmpx, tmpy, c->w, c->h, 0);
 
         XConfigureWindow(dpy, c->win, CWSibling | CWStackMode, &wc);
@@ -264,26 +329,36 @@ void overviewlayout(Monitor *m) {
 }
 
 void tcl(Monitor *m) {
-    int x, y, h, w, mw, sw, bdw;
-    unsigned int i, n;
+    int x;
+    int y;
+    int h;
+    int w;
+    int mw;
+    int sw;
+    int bdw;
+    unsigned int i;
+    unsigned int n;
     Client *c;
 
-    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++)
+    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
         ;
+    }
 
-    if (n == 0)
+    if (n == 0) {
         return;
+    }
 
     c = nexttiled(m->clients);
 
     mw = m->mfact * m->ww;
     sw = (m->ww - mw) / 2;
-    bdw = (2 * c->bw);
+    bdw = (2 * c->border_width);
     resize(c, n < 3 ? m->wx : m->wx + sw, m->wy,
            n == 1 ? m->ww - bdw : mw - bdw, m->wh - bdw, False);
 
-    if (--n == 0)
+    if (--n == 0) {
         return;
+    }
 
     w = (m->ww - mw) / ((n > 1) + 1);
     c = nexttiled(c->next);
@@ -293,15 +368,17 @@ void tcl(Monitor *m) {
         y = m->wy;
         h = m->wh / (n / 2);
 
-        if (h < bh)
+        if (h < bh) {
             h = m->wh;
+        }
 
         for (i = 0; c && i < n / 2; c = nexttiled(c->next), i++) {
             resize(c, x, y, w - bdw,
                    (i + 1 == n / 2) ? m->wy + m->wh - y - bdw : h - bdw, False);
 
-            if (h != m->wh)
+            if (h != m->wh) {
                 y = c->y + HEIGHT(c);
+            }
         }
     }
 
@@ -309,8 +386,9 @@ void tcl(Monitor *m) {
     y = m->wy;
     h = m->wh / ((n + 1) / 2);
 
-    if (h < bh)
+    if (h < bh) {
         h = m->wh;
+    }
 
     int rw = w - bdw;
 
@@ -318,28 +396,38 @@ void tcl(Monitor *m) {
         int rh = (i + 1 == (n + 1) / 2) ? m->wy + m->wh - y - bdw : h - bdw;
         resize(c, x, y, rw, rh, 0);
 
-        if (h != m->wh)
+        if (h != m->wh) {
             y = c->y + HEIGHT(c);
+        }
     }
 }
 
 void tile(Monitor *m) {
-    unsigned int i, n, h, mw, my, ty, framecount;
+    unsigned int i;
+    unsigned int n;
+    unsigned int h;
+    unsigned int mw;
+    unsigned int my;
+    unsigned int ty;
+    unsigned int framecount;
     Client *c;
 
-    if (animated && clientcount() > 5)
+    if (animated && clientcount() > 5) {
         framecount = 4;
-    else
+    } else {
         framecount = 7;
+    }
 
-    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++)
+    for (n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++) {
         ;
-    if (n == 0)
+    }
+    if (n == 0) {
         return;
+    }
 
-    if (n > m->nmaster)
+    if (n > m->nmaster) {
         mw = m->nmaster ? m->ww * m->mfact : 0;
-    else {
+    } else {
         mw = m->ww;
         if (n > 1 && n < m->nmaster) {
             m->nmaster = n;
@@ -348,29 +436,255 @@ void tile(Monitor *m) {
         }
     }
     for (i = my = ty = 0, c = nexttiled(m->clients); c;
-         c = nexttiled(c->next), i++)
+         c = nexttiled(c->next), i++) {
         if (i < m->nmaster) {
             // client is in the master
             h = (m->wh - my) / (MIN(n, m->nmaster) - i);
 
             if (n == 2) {
-                animateclient(c, m->wx, m->wy + my, mw - (2 * c->bw),
-                              h - (2 * c->bw), 0, 0);
+                animateclient(c, m->wx, m->wy + my, mw - (2 * c->border_width),
+                              h - (2 * c->border_width), 0, 0);
             } else {
-                animateclient(c, m->wx, m->wy + my, mw - (2 * c->bw),
-                              h - (2 * c->bw), framecount, 0);
+                animateclient(c, m->wx, m->wy + my, mw - (2 * c->border_width),
+                              h - (2 * c->border_width), framecount, 0);
                 if (m->nmaster == 1 && n > 1) {
-                    mw = c->w + c->bw * 2;
+                    mw = c->w + c->border_width * 2;
                 }
             }
-            if (my + HEIGHT(c) < m->wh)
+            if (my + HEIGHT(c) < m->wh) {
                 my += HEIGHT(c);
+            }
         } else {
             // client is in the stack
             h = (m->wh - ty) / (n - i);
-            animateclient(c, m->wx + mw, m->wy + ty, m->ww - mw - (2 * c->bw),
-                          h - (2 * c->bw), framecount, 0);
-            if (ty + HEIGHT(c) < m->wh)
+            animateclient(c, m->wx + mw, m->wy + ty,
+                          m->ww - mw - (2 * c->border_width),
+                          h - (2 * c->border_width), framecount, 0);
+            if (ty + HEIGHT(c) < m->wh) {
                 ty += HEIGHT(c);
+            }
         }
+    }
+}
+
+/* Moved functions */
+
+void arrange(Monitor *m) {
+    resetcursor();
+    if (m) {
+        showhide(m->stack);
+    } else {
+        for (m = mons; m; m = m->next) {
+            showhide(m->stack);
+        }
+    }
+    if (m) {
+        arrangemon(m);
+        restack(m);
+    } else {
+        for (m = mons; m; m = m->next) {
+            arrangemon(m);
+        }
+    }
+}
+
+void arrangemon(Monitor *m) {
+
+    Client *c;
+    m->clientcount = clientcountmon(m);
+
+    for (c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+        if (!c->isfloating && !c->is_fullscreen &&
+            ((c->mon->clientcount == 1 &&
+              NULL != c->mon->lt[c->mon->sellt]->arrange) ||
+             &monocle == c->mon->lt[c->mon->sellt]->arrange)) {
+            savebw(c);
+            c->border_width = 0;
+        } else {
+            restore_border_width(c);
+        }
+    }
+
+    strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, sizeof m->ltsymbol);
+    if (m->lt[m->sellt]->arrange) {
+        m->lt[m->sellt]->arrange(m);
+    } else {
+        floatl(m);
+    }
+
+    if (m->fullscreen) {
+        int tbw;
+        tbw = selmon->fullscreen->border_width;
+        if (m->fullscreen->isfloating) {
+            savefloating(selmon->fullscreen);
+        }
+        resize(m->fullscreen, m->mx, m->my + (m->showbar * bh),
+               m->mw - (tbw * 2), m->mh - (m->showbar * bh) - (tbw * 2), 0);
+    }
+}
+
+void restack(Monitor *m) {
+    if (&overviewlayout == m->lt[m->sellt]->arrange) {
+        return;
+    }
+    Client *c;
+    XEvent ev;
+    XWindowChanges wc;
+
+    drawbar(m);
+    if (!m->sel) {
+        return;
+    }
+    if (m->sel->isfloating || !m->lt[m->sellt]->arrange) {
+        XRaiseWindow(dpy, m->sel->win);
+    }
+    if (m->lt[m->sellt]->arrange) {
+        wc.stack_mode = Below;
+        wc.sibling = m->barwin;
+        for (c = m->stack; c; c = c->snext) {
+            if (!c->isfloating && ISVISIBLE(c)) {
+                XConfigureWindow(dpy, c->win, CWSibling | CWStackMode, &wc);
+                wc.sibling = c->win;
+            }
+        }
+    }
+    XSync(dpy, False);
+    while (XCheckMaskEvent(dpy, EnterWindowMask, &ev)) {
+        ;
+    }
+}
+
+void commandlayout(const Arg *arg) {
+    int layoutnumber;
+    Arg *larg;
+    if (arg->ui || arg->ui >= layouts_len) {
+        layoutnumber = arg->ui;
+    } else {
+        layoutnumber = 0;
+    }
+
+    larg = &((Arg){.v = &layouts[layoutnumber]});
+    setlayout(larg);
+}
+
+void setlayout(const Arg *arg) {
+    int multimon;
+    multimon = 0;
+    if (tagprefix) {
+        int i;
+        Monitor *m;
+        multimon = 1;
+        for (m = mons; m; m = m->next) {
+            for (i = 0; i < 20; ++i) {
+                if (!arg || !arg->v || arg->v != m->lt[m->sellt]) {
+                    m->pertag->sellts[i] ^= 1;
+                }
+                if (arg && arg->v) {
+                    m->pertag->ltidxs[i][m->pertag->sellts[i]] =
+                        (Layout *)arg->v;
+                }
+            }
+        }
+        tagprefix = 0;
+        setlayout(arg);
+    } else {
+        if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt]) {
+            selmon->sellt =
+                selmon->pertag->sellts[selmon->pertag->current_tag] ^= 1;
+        }
+        if (arg && arg->v) {
+            selmon->lt[selmon->sellt] =
+                selmon->pertag
+                    ->ltidxs[selmon->pertag->current_tag][selmon->sellt] =
+                    (Layout *)arg->v;
+        }
+    }
+    strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol,
+            sizeof selmon->ltsymbol);
+    if (selmon->sel) {
+        arrange(selmon);
+    } else {
+        drawbar(selmon);
+    }
+    if (multimon) {
+        Monitor *tmpmon;
+        Monitor *m;
+        tmpmon = selmon;
+        multimon = 0;
+        for (m = mons; m; m = m->next) {
+            if (m != selmon) {
+                selmon = m;
+                setlayout(arg);
+            }
+        }
+        selmon = tmpmon;
+        focus(NULL);
+    }
+}
+
+void cyclelayout(const Arg *arg) {
+    Layout *l;
+    for (l = (Layout *)layouts; l != selmon->lt[selmon->sellt]; l++) {
+        ;
+    }
+    if (arg->i > 0) {
+        if (l->symbol && (l + 1)->symbol) {
+            if ((l + 1)->arrange == &overviewlayout) {
+                setlayout(&((Arg){.v = (l + 2)}));
+            } else {
+                setlayout(&((Arg){.v = (l + 1)}));
+            }
+        } else {
+            setlayout(&((Arg){.v = layouts}));
+        }
+    } else {
+        if (l != layouts && (l - 1)->symbol) {
+            if ((l - 1)->arrange == &overviewlayout) {
+                setlayout(&((Arg){.v = (l - 2)}));
+            } else {
+                setlayout(&((Arg){.v = (l - 1)}));
+            }
+        } else {
+            setlayout(&((Arg){.v = &layouts[layouts_len - 2]}));
+        }
+    }
+}
+
+void incnmaster(const Arg *arg) {
+    int ccount;
+    ccount = clientcount();
+    if (arg->i > 0) {
+        if (selmon->nmaster >= ccount) {
+            selmon->nmaster = ccount;
+            return;
+        }
+    }
+
+    selmon->nmaster = selmon->pertag->nmasters[selmon->pertag->current_tag] =
+        MAX(selmon->nmaster + arg->i, 0);
+    arrange(selmon);
+}
+
+/* arg > 1.0 will set mfact absolutely */
+void setmfact(const Arg *arg) {
+    float f;
+    int tmpanim = 0;
+    if (!arg || !tiling_layout_func(selmon)) {
+        return;
+    }
+    f = arg->f < 1.0 ? arg->f + selmon->mfact : arg->f - 1.0;
+    if (f < 0.05 || f > 0.95) {
+        return;
+    }
+    selmon->mfact = selmon->pertag->mfacts[selmon->pertag->current_tag] = f;
+
+    if (animated && clientcount() > 2) {
+        tmpanim = 1;
+        animated = 0;
+    }
+
+    arrange(selmon);
+    if (tmpanim) {
+        animated = 1;
+    }
 }
