@@ -113,9 +113,9 @@ static void handle_active_window(Client *c) {
             focus(NULL);
         }
         showoverlay(NULL);
-    } else if (c->tags == SCRATCHPAD_MASK) {
+    } else if (ISSCRATCHPAD(c)) {
         selmon = c->mon;
-        togglescratchpad(NULL);
+        scratchpad_show(&(Arg){.v = c->scratchpad_name});
     } else {
         handle_active_window_regular(c);
     }

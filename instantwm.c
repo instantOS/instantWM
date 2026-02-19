@@ -260,9 +260,6 @@ void focus(Client *c) {
         }
 
         setfocus(c);
-        if (c->tags & SCRATCHPAD_MASK) {
-            selmon->activescratchpad = c;
-        }
     } else {
         XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
         XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
