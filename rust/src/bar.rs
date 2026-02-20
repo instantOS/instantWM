@@ -700,6 +700,7 @@ pub fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
             crate::drw::XSetForeground(drw.display(), drw.gc(), get_scheme_pixel(&drw, COL_DETAIL));
             crate::drw::XFillRectangle(
                 drw.display(),
+                drw.drawable(),
                 drw.gc(),
                 button_x,
                 (bh - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT

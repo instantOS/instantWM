@@ -8,9 +8,7 @@ use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::keyboard::grab_keys;
 use crate::monitor::{arrange, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
-use crate::systray::{
-    remove_systray_icon, update_systray, update_systray_icon_geom, win_to_systray_icon,
-};
+use crate::systray::{update_systray, win_to_systray_icon};
 use crate::types::*;
 use crate::util::clean_mask;
 use x11rb::connection::Connection;
@@ -128,8 +126,8 @@ pub fn configure_request(e: &ConfigureRequestEvent) {
             let _ = conn.configure_window(
                 e.window,
                 &ConfigureWindowAux::new()
-                    .x(e.x)
-                    .y(e.y)
+                    .x(e.x as i32)
+                    .y(e.y as i32)
                     .width(e.width as u32)
                     .height(e.height as u32)
                     .border_width(e.border_width as u32),
@@ -142,8 +140,7 @@ pub fn configure_request(e: &ConfigureRequestEvent) {
 pub fn destroy_notify(e: &DestroyNotifyEvent) {
     if let Some(win) = win_to_client(e.window) {
         unmanage(win, true);
-    } else if let Some(icon) = win_to_systray_icon(e.window) {
-        remove_systray_icon(&icon);
+    } else if let Some(_icon) = win_to_systray_icon(e.window) {
         update_systray();
     }
 }
@@ -253,8 +250,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
 }
 
 pub fn property_notify(e: &PropertyNotifyEvent) {
-    if let Some(icon) = win_to_systray_icon(e.window) {
-        update_systray_icon_geom(&icon, 24, 24);
+    if let Some(_icon) = win_to_systray_icon(e.window) {
         update_systray();
         return;
     }
@@ -289,8 +285,7 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
 }
 
 pub fn resize_request(e: &ResizeRequestEvent) {
-    if let Some(icon) = win_to_systray_icon(e.window) {
-        update_systray_icon_geom(&icon, e.width as i32, e.height as i32);
+    if let Some(_icon) = win_to_systray_icon(e.window) {
         update_systray();
     }
 }
@@ -356,101 +351,32 @@ pub fn run() {
     loop {
         match conn.wait_for_event() {
             Ok(event) => {
-                let event_type = event.response_type() & 0x7f;
-                handle_event(event_type, &event);
+                dispatch_event(event);
             }
             Err(_) => break,
         }
     }
 }
 
-fn handle_event(event_type: u8, event: &x11rb::protocol::Event) {
-    match event_type {
-        4 => {
-            if let Some(e) = event.as_button_press() {
-                button_press(e);
-            }
-        }
-        33 => {
-            if let Some(e) = event.as_client_message() {
-                client_message(e);
-            }
-        }
-        22 => {
-            if let Some(e) = event.as_configure_notify() {
-                configure_notify(e);
-            }
-        }
-        23 => {
-            if let Some(e) = event.as_configure_request() {
-                configure_request(e);
-            }
-        }
-        17 => {
-            if let Some(e) = event.as_destroy_notify() {
-                destroy_notify(e);
-            }
-        }
-        7 => {
-            if let Some(e) = event.as_enter_notify() {
-                enter_notify(e);
-            }
-        }
-        12 => {
-            if let Some(e) = event.as_expose() {
-                expose(e);
-            }
-        }
-        9 => {
-            if let Some(e) = event.as_focus_in() {
-                focus_in(e);
-            }
-        }
-        2 => {
-            if let Some(e) = event.as_key_press() {
-                key_press(e);
-            }
-        }
-        3 => {
-            if let Some(e) = event.as_key_release() {
-                key_release(e);
-            }
-        }
-        34 => {
-            if let Some(e) = event.as_mapping_notify() {
-                mapping_notify(e);
-            }
-        }
-        20 => {
-            if let Some(e) = event.as_map_request() {
-                map_request(e);
-            }
-        }
-        6 => {
-            if let Some(e) = event.as_motion_notify() {
-                motion_notify(e);
-            }
-        }
-        28 => {
-            if let Some(e) = event.as_property_notify() {
-                property_notify(e);
-            }
-        }
-        25 => {
-            if let Some(e) = event.as_resize_request() {
-                resize_request(e);
-            }
-        }
-        18 => {
-            if let Some(e) = event.as_unmap_notify() {
-                unmap_notify(e);
-            }
-        }
-        8 => {
-            if let Some(e) = event.as_leave_notify() {
-                leave_notify(e);
-            }
-        }
+fn dispatch_event(event: x11rb::protocol::Event) {
+    match event {
+        x11rb::protocol::Event::ButtonPress(e) => button_press(&e),
+        x11rb::protocol::Event::ClientMessage(e) => client_message(&e),
+        x11rb::protocol::Event::ConfigureNotify(e) => configure_notify(&e),
+        x11rb::protocol::Event::ConfigureRequest(e) => configure_request(&e),
+        x11rb::protocol::Event::DestroyNotify(e) => destroy_notify(&e),
+        x11rb::protocol::Event::EnterNotify(e) => enter_notify(&e),
+        x11rb::protocol::Event::Expose(e) => expose(&e),
+        x11rb::protocol::Event::FocusIn(e) => focus_in(&e),
+        x11rb::protocol::Event::KeyPress(e) => key_press(&e),
+        x11rb::protocol::Event::KeyRelease(e) => key_release(&e),
+        x11rb::protocol::Event::MappingNotify(e) => mapping_notify(&e),
+        x11rb::protocol::Event::MapRequest(e) => map_request(&e),
+        x11rb::protocol::Event::MotionNotify(e) => motion_notify(&e),
+        x11rb::protocol::Event::PropertyNotify(e) => property_notify(&e),
+        x11rb::protocol::Event::ResizeRequest(e) => resize_request(&e),
+        x11rb::protocol::Event::UnmapNotify(e) => unmap_notify(&e),
+        x11rb::protocol::Event::LeaveNotify(e) => leave_notify(&e),
         _ => {}
     }
 }
