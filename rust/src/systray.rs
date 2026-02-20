@@ -52,14 +52,15 @@ pub fn remove_systray_icon(icon_win: Window) {
 
 pub fn update_systray_icon_geom(icon_win: Window, w: i32, h: i32) {
     let mut globals = get_globals_mut();
+    let bh = globals.bh;
     if let Some(client) = globals.clients.get_mut(&icon_win) {
-        client.h = globals.bh;
+        client.h = bh;
         if w == h {
-            client.w = globals.bh;
-        } else if h == globals.bh {
+            client.w = bh;
+        } else if h == bh {
             client.w = w;
         } else {
-            client.w = (globals.bh as f32 * (w as f32 / h as f32)) as i32;
+            client.w = (bh as f32 * (w as f32 / h as f32)) as i32;
         }
 
         let mut x = client.x;
@@ -68,13 +69,13 @@ pub fn update_systray_icon_geom(icon_win: Window, w: i32, h: i32) {
         let mut ch = client.h;
         let _ = apply_size_hints(client, &mut x, &mut y, &mut cw, &mut ch, false);
 
-        if client.h > globals.bh {
+        if client.h > bh {
             if client.w == client.h {
-                client.w = globals.bh;
+                client.w = bh;
             } else {
-                client.w = (globals.bh as f32 * (client.w as f32 / client.h as f32)) as i32;
+                client.w = (bh as f32 * (client.w as f32 / client.h as f32)) as i32;
             }
-            client.h = globals.bh;
+            client.h = bh;
         }
     }
 }

@@ -26,10 +26,13 @@ pub const MWM_DECOR_TITLE: u32 = 1 << 3;
 
 pub fn attach(win: Window) {
     let mut globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        if let Some(mon_id) = client.mon_id {
-            let mon = &mut globals.monitors[mon_id];
-            client.next = mon.clients;
+    let mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
+    if let Some(mon_id) = mon_id {
+        let old_head = globals.monitors.get(mon_id).and_then(|m| m.clients);
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.next = old_head;
+        }
+        if let Some(mon) = globals.monitors.get_mut(mon_id) {
             mon.clients = Some(win);
         }
     }
@@ -37,10 +40,13 @@ pub fn attach(win: Window) {
 
 pub fn attach_stack(win: Window) {
     let mut globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        if let Some(mon_id) = client.mon_id {
-            let mon = &mut globals.monitors[mon_id];
-            client.snext = mon.stack;
+    let mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
+    if let Some(mon_id) = mon_id {
+        let old_stack = globals.monitors.get(mon_id).and_then(|m| m.stack);
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.snext = old_stack;
+        }
+        if let Some(mon) = globals.monitors.get_mut(mon_id) {
             mon.stack = Some(win);
         }
     }
@@ -812,20 +818,27 @@ pub fn apply_rules(win: Window) {
         (g.specialnext, g.rules.clone(), g.tagmask, g.bh)
     };
 
-    let client = match globals.clients.get_mut(&win) {
-        Some(c) => c,
-        None => return,
+    if !globals.clients.contains_key(&win) {
+        return;
+    }
+
+    // Read client info we need for matching
+    let (client_name_copy, client_mon_id) = {
+        let c = globals.clients.get(&win).unwrap();
+        (c.name, c.mon_id)
     };
 
-    client.isfloating = false;
-    client.tags = 0;
+    // Initialize client fields
+    if let Some(c) = globals.clients.get_mut(&win) {
+        c.isfloating = false;
+        c.tags = 0;
+    }
 
     if special_next != SpecialNext::None {
-        match special_next {
-            SpecialNext::Float => {
-                client.isfloating = true;
+        if let SpecialNext::Float = special_next {
+            if let Some(c) = globals.clients.get_mut(&win) {
+                c.isfloating = true;
             }
-            _ => {}
         }
         globals.specialnext = SpecialNext::None;
     } else {
@@ -833,9 +846,8 @@ pub fn apply_rules(win: Window) {
             let title_match = rule
                 .title
                 .map(|t| {
-                    let client_name = &client.name;
                     let title_bytes = t.as_bytes();
-                    let name_bytes: Vec<u8> = client_name
+                    let name_bytes: Vec<u8> = client_name_copy
                         .iter()
                         .take_while(|&&b| b != 0)
                         .copied()
@@ -863,13 +875,16 @@ pub fn apply_rules(win: Window) {
             if title_match && class_match && instance_match {
                 if let Some(class_str) = rule.class {
                     if class_str == "Onboard" {
-                        client.issticky = true;
+                        if let Some(c) = globals.clients.get_mut(&win) {
+                            c.issticky = true;
+                        }
                     }
                 }
 
+                let cur_mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
                 let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) =
-                    if let Some(mon_id) = client.mon_id {
-                        get_globals()
+                    if let Some(mon_id) = cur_mon_id {
+                        globals
                             .monitors
                             .get(mon_id)
                             .map(|m| (m.mw, m.wh, m.showbar, m.my, m.mx))
@@ -878,58 +893,64 @@ pub fn apply_rules(win: Window) {
                         (0, 0, false, 0, 0)
                     };
 
-                match rule.isfloating {
-                    RuleFloat::FloatCenter => {
-                        client.isfloating = true;
-                    }
-                    RuleFloat::FloatFullscreen => {
-                        client.isfloating = true;
-                        client.w = mon_mw;
-                        client.h = mon_wh;
-                        if mon_showbar {
-                            client.y = mon_my + bh;
+                if let Some(c) = globals.clients.get_mut(&win) {
+                    match rule.isfloating {
+                        RuleFloat::FloatCenter => {
+                            c.isfloating = true;
                         }
-                        client.x = mon_mx;
-                    }
-                    RuleFloat::Scratchpad => {
-                        client.isfloating = true;
-                    }
-                    RuleFloat::Float => {
-                        client.isfloating = true;
-                        if mon_showbar {
-                            client.y = mon_my + bh;
+                        RuleFloat::FloatFullscreen => {
+                            c.isfloating = true;
+                            c.w = mon_mw;
+                            c.h = mon_wh;
+                            if mon_showbar {
+                                c.y = mon_my + bh;
+                            }
+                            c.x = mon_mx;
+                        }
+                        RuleFloat::Scratchpad => {
+                            c.isfloating = true;
+                        }
+                        RuleFloat::Float => {
+                            c.isfloating = true;
+                            if mon_showbar {
+                                c.y = mon_my + bh;
+                            }
+                        }
+                        RuleFloat::Tiled => {
+                            c.isfloating = false;
                         }
                     }
-                    RuleFloat::Tiled => {
-                        client.isfloating = false;
-                    }
+
+                    c.tags |= rule.tags;
                 }
 
-                client.tags |= rule.tags;
-
-                let target_mon = get_globals()
+                let target_mon = globals
                     .monitors
                     .iter()
                     .position(|m| m.num == rule.monitor);
                 if let Some(mid) = target_mon {
-                    client.mon_id = Some(mid);
+                    if let Some(c) = globals.clients.get_mut(&win) {
+                        c.mon_id = Some(mid);
+                    }
                 }
             }
         }
     }
 
-    let mon_id = client.mon_id;
-    if let Some(mid) = mon_id {
-        let mon_tags = get_globals()
+    let (client_mon_id, client_tags) = globals.clients.get(&win).map(|c| (c.mon_id, c.tags)).unwrap_or((None, 0));
+    if let Some(mid) = client_mon_id {
+        let mon_tags = globals
             .monitors
             .get(mid)
             .map(|m| m.tagset[m.seltags as usize]);
         if let Some(mt) = mon_tags {
-            client.tags = if client.tags & tagmask != 0 {
-                client.tags & tagmask
-            } else {
-                mt
-            };
+            if let Some(c) = globals.clients.get_mut(&win) {
+                c.tags = if client_tags & tagmask != 0 {
+                    client_tags & tagmask
+                } else {
+                    mt
+                };
+            }
         }
     }
 }
