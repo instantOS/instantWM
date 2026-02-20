@@ -168,13 +168,15 @@ pub fn update_systray() {
         return;
     }
 
-    let m = systray_to_mon(None);
-    let mon = match globals.monitors.get(m) {
-        Some(mon) => mon,
-        None => return,
+    let (x, by, showbar) = {
+        let m = systray_to_mon(None);
+        let mon = match globals.monitors.get(m) {
+            Some(mon) => mon,
+            None => return,
+        };
+        (mon.mx + mon.mw, mon.by, mon.showbar)
     };
 
-    let x = mon.mx + mon.mw;
     let mut w: u32 = 1;
 
     drop(globals);
@@ -191,7 +193,6 @@ pub fn update_systray() {
         let globals = get_globals();
         let root = globals.root;
         let bh = globals.bh;
-        let by = mon.by;
 
         let net_system_tray = globals.netatom[NetAtom::SystemTray as usize];
         let net_system_tray_horz = globals.netatom[NetAtom::SystemTrayOrientationHorz as usize];
