@@ -45,6 +45,10 @@ pub fn win_to_client(_w: u32) -> Option<ClientInner> {
     None
 }
 
+pub fn win_to_client_ref(_w: u32) -> Option<&'static ClientInner> {
+    None
+}
+
 pub fn hide(_c: &mut ClientInner) {}
 
 pub fn show(_c: &mut ClientInner) {}

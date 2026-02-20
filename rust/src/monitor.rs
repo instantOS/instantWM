@@ -3,9 +3,7 @@ use crate::client::{unfocus, win_to_client};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::scratchpad::scratchpad_show;
-use crate::tags::tagmon;
 use crate::types::*;
-use crate::util::ecalloc;
 use x11rb::protocol::xproto::Window;
 
 #[cfg(feature = "xinerama")]
@@ -29,24 +27,17 @@ pub fn create_monitor() -> MonitorInner {
     let default_symbol = b"[]=";
     m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
 
-    m.pertag = Some(Box::new(Pertag {
+    let mut pertag = Box::new(Pertag {
         current_tag: 1,
         prevtag: 1,
-        nmasters: ecalloc(MAX_TAGS),
-        mfacts: ecalloc(MAX_TAGS),
-        sellts: ecalloc(MAX_TAGS),
-        showbars: ecalloc(MAX_TAGS),
+        nmasters: [m.nmaster; MAX_TAGS],
+        mfacts: [m.mfact; MAX_TAGS],
+        sellts: [m.sellt; MAX_TAGS],
+        showbars: [m.showbar; MAX_TAGS],
         ltidxs: [[None; 2]; MAX_TAGS],
-    }));
+    });
 
-    if let Some(ref mut pertag) = m.pertag {
-        for i in 0..MAX_TAGS {
-            pertag.nmasters[i] = m.nmaster;
-            pertag.mfacts[i] = m.mfact;
-            pertag.sellts[i] = m.sellt;
-            pertag.showbars[i] = m.showbar;
-        }
-    }
+    m.pertag = Some(pertag);
 
     m
 }
@@ -381,120 +372,124 @@ pub fn update_geom() -> bool {
     {
         let x11 = get_x11();
         if let Some(ref conn) = x11.conn {
-            if let Ok(is_active) = xinerama::is_active(conn) {
-                if is_active {
-                    if let Ok(screens) = xinerama::query_screens(conn) {
-                        let screen_info: Vec<(i32, i32, i32, i32)> = screens
-                            .screen_info
-                            .iter()
-                            .map(|s| {
-                                (
-                                    s.x_org as i32,
-                                    s.y_org as i32,
-                                    s.width as i32,
-                                    s.height as i32,
-                                )
-                            })
-                            .collect();
+            if let Ok(is_active_cookie) = xinerama::is_active(conn) {
+                if let Ok(is_active) = is_active_cookie.reply() {
+                    if is_active.state {
+                        if let Ok(screens_cookie) = xinerama::query_screens(conn) {
+                            if let Ok(screens) = screens_cookie.reply() {
+                                let screen_info: Vec<(i32, i32, i32, i32)> = screens
+                                    .screen_info
+                                    .iter()
+                                    .map(|s| {
+                                        (
+                                            s.x_org as i32,
+                                            s.y_org as i32,
+                                            s.width as i32,
+                                            s.height as i32,
+                                        )
+                                    })
+                                    .collect();
 
-                        let mut unique: Vec<(i32, i32, i32, i32)> = Vec::new();
-                        for info in &screen_info {
-                            if is_unique_geom(&unique, *info) {
-                                unique.push(*info);
-                            }
-                        }
-
-                        let nn = unique.len();
-                        let n = {
-                            let g = get_globals();
-                            g.monitors.len()
-                        };
-
-                        {
-                            let mut g = get_globals_mut();
-                            while g.monitors.len() < nn {
-                                g.monitors.push(create_monitor());
-                            }
-                        }
-
-                        for (i, info) in unique.iter().enumerate() {
-                            let mut g = get_globals_mut();
-                            if i >= n {
-                                dirty = true;
-                            }
-
-                            if let Some(ref mut m) = g.monitors.get_mut(i) {
-                                if i >= n
-                                    || m.mx != info.0
-                                    || m.my != info.1
-                                    || m.mw != info.2
-                                    || m.mh != info.3
-                                {
-                                    dirty = true;
-                                    m.num = i as i32;
-                                    m.mx = info.0;
-                                    m.my = info.1;
-                                    m.mw = info.2;
-                                    m.mh = info.3;
-                                    m.wx = info.0;
-                                    m.wy = info.1;
-                                    m.ww = info.2;
-                                    m.wh = info.3;
-                                    drop(g);
-                                    let mut g = get_globals_mut();
-                                    if let Some(ref mut m) = g.monitors.get_mut(i) {
-                                        update_bar_pos(m);
+                                let mut unique: Vec<(i32, i32, i32, i32)> = Vec::new();
+                                for info in &screen_info {
+                                    if is_unique_geom(&unique, *info) {
+                                        unique.push(*info);
                                     }
                                 }
-                            }
-                        }
 
-                        for i in nn..n {
-                            let clients_to_move: Vec<Window> = {
-                                let g = get_globals();
-                                g.clients
-                                    .values()
-                                    .filter(|c| c.mon_id == Some(i))
-                                    .map(|c| c.win)
-                                    .collect()
-                            };
+                                let nn = unique.len();
+                                let n = {
+                                    let g = get_globals();
+                                    g.monitors.len()
+                                };
 
-                            for win in clients_to_move {
-                                dirty = true;
-                                detach(win);
-                                detach_stack(win);
-
-                                let mut g = get_globals_mut();
-                                if let Some(ref mut c) = g.clients.get_mut(&win) {
-                                    c.mon_id = Some(0);
+                                {
+                                    let mut g = get_globals_mut();
+                                    while g.monitors.len() < nn {
+                                        g.monitors.push(create_monitor());
+                                    }
                                 }
-                                drop(g);
 
-                                attach(win);
-                                attach_stack(win);
+                                for (i, info) in unique.iter().enumerate() {
+                                    let mut g = get_globals_mut();
+                                    if i >= n {
+                                        dirty = true;
+                                    }
+
+                                    if let Some(ref mut m) = g.monitors.get_mut(i) {
+                                        if i >= n
+                                            || m.mx != info.0
+                                            || m.my != info.1
+                                            || m.mw != info.2
+                                            || m.mh != info.3
+                                        {
+                                            dirty = true;
+                                            m.num = i as i32;
+                                            m.mx = info.0;
+                                            m.my = info.1;
+                                            m.mw = info.2;
+                                            m.mh = info.3;
+                                            m.wx = info.0;
+                                            m.wy = info.1;
+                                            m.ww = info.2;
+                                            m.wh = info.3;
+                                            drop(g);
+                                            let mut g = get_globals_mut();
+                                            if let Some(ref mut m) = g.monitors.get_mut(i) {
+                                                update_bar_pos(m);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                for i in nn..n {
+                                    let clients_to_move: Vec<Window> = {
+                                        let g = get_globals();
+                                        g.clients
+                                            .values()
+                                            .filter(|c| c.mon_id == Some(i))
+                                            .map(|c| c.win)
+                                            .collect()
+                                    };
+
+                                    for win in clients_to_move {
+                                        dirty = true;
+                                        detach(win);
+                                        detach_stack(win);
+
+                                        let mut g = get_globals_mut();
+                                        if let Some(ref mut c) = g.clients.get_mut(&win) {
+                                            c.mon_id = Some(0);
+                                        }
+                                        drop(g);
+
+                                        attach(win);
+                                        attach_stack(win);
+                                    }
+
+                                    let mut g = get_globals_mut();
+                                    if g.selmon == Some(i) {
+                                        g.selmon = Some(0);
+                                    }
+                                    drop(g);
+
+                                    cleanup_monitor(i);
+                                }
+
+                                if dirty {
+                                    let mut g = get_globals_mut();
+                                    g.selmon = Some(0);
+                                    drop(g);
+
+                                    if let Some(m) = win_to_mon(x11.screen_num as u32) {
+                                        let mut g = get_globals_mut();
+                                        g.selmon = Some(m);
+                                    }
+                                }
+
+                                return dirty;
                             }
-
-                            let mut g = get_globals_mut();
-                            if g.selmon == Some(i) {
-                                g.selmon = Some(0);
-                            }
-                            drop(g);
-
-                            cleanup_monitor(i);
                         }
-
-                        if dirty {
-                            let mut g = get_globals_mut();
-                            g.selmon = Some(0);
-                            drop(g);
-
-                            if let Some(m) = win_to_mon(x11.screen_num as u32) {
-                                let mut g = get_globals_mut();
-                                g.selmon = Some(m);
-                            }
-                        }
-
-                        return dirty;
                     }
                 }
             }
@@ -539,8 +534,10 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let g = get_globals();
-        if let Ok(reply) = x11rb::protocol::xproto::query_pointer(conn, g.root) {
-            return Some((reply.root_x as i32, reply.root_y as i32));
+        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, g.root) {
+            if let Ok(reply) = cookie.reply() {
+                return Some((reply.root_x as i32, reply.root_y as i32));
+            }
         }
     }
     None
