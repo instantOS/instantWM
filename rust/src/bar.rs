@@ -23,3 +23,13 @@ pub fn get_tag_at_x(_x: i32) -> i32 {
 pub fn toggle_bar(_arg: &Arg) {}
 
 pub fn reset_bar() {}
+
+pub fn window_title_mouse_handler(_arg: &Arg) {}
+
+pub fn window_title_mouse_handler_right(_arg: &Arg) {}
+
+pub fn close_win(_arg: &Arg) {}
+
+pub fn down_scale_client(_arg: &Arg) {}
+
+pub fn up_scale_client(_arg: &Arg) {}

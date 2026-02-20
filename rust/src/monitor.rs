@@ -186,8 +186,8 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
     drop(g);
 
-    if let Some(ref mut c) = crate::client::win_to_client(c_win) {
-        unfocus(&mut c.clone(), true);
+    if let Some(_win) = get_win_to_client(c_win) {
+        unfocus_win(c_win, true);
     }
 
     detach(c_win);
@@ -284,8 +284,8 @@ pub fn focus_mon(arg: &Arg) {
     drop(g);
 
     if let Some(old_id) = old_sel {
-        if let Some(ref mut c) = get_selected_client_mut(old_id) {
-            unfocus(c, false);
+        if let Some(win) = get_selected_client_win(old_id) {
+            unfocus_win(win, false);
         }
     }
 
@@ -316,8 +316,8 @@ pub fn focus_n_mon(arg: &Arg) {
     drop(g);
 
     if let Some(old_id) = old_sel {
-        if let Some(ref mut c) = get_selected_client_mut(old_id) {
-            unfocus(c, false);
+        if let Some(win) = get_selected_client_win(old_id) {
+            unfocus_win(win, false);
         }
     }
 
@@ -574,48 +574,18 @@ fn get_root_ptr() -> Option<(i32, i32)> {
 
 fn get_selected_client(mon_id: MonitorId) -> Option<ClientInner> {
     let g = get_globals();
-    g.clients
-        .values()
-        .find(|c| c.mon_id == Some(mon_id))
-        .cloned()
-}
-
-fn get_selected_client_mut(mon_id: MonitorId) -> Option<&'static mut ClientInner> {
-    let g = get_globals();
-    let win = g
-        .clients
-        .values()
-        .find(|c| c.mon_id == Some(mon_id))
-        .map(|c| c.win);
-    drop(g);
-
-    if let Some(w) = win {
-        let mut g = get_globals_mut();
-        g.clients.get_mut(&w)?;
-        unsafe {
-            let ptr = g.clients.get_mut(&w).unwrap() as *mut ClientInner;
-            Some(&mut *ptr)
+    if let Some(mon) = g.monitors.get(mon_id) {
+        if let Some(win) = mon.sel {
+            return g.clients.get(&win).cloned();
         }
-    } else {
-        None
     }
+    None
 }
 
-fn unfocus_mon(mon_id: MonitorId, set_focus: bool) {
-    if let Some(ref mut c) = get_selected_client_mut(mon_id) {
-        unfocus(c, set_focus);
-    }
+fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
+    let g = get_globals();
+    g.monitors.get(mon_id).and_then(|m| m.sel)
 }
-
-fn detach(_win: Window) {}
-
-fn detach_stack(_win: Window) {}
-
-fn attach(_win: Window) {}
-
-fn attach_stack(_win: Window) {}
-
-fn set_client_tag_prop(_win: Window) {}
 
 fn reset_sticky(_c: &mut ClientInner) {}
 
