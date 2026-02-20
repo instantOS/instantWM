@@ -61,10 +61,68 @@ pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
 }
 
 pub fn spawn(arg: &Arg) {
-    if let Some(v) = arg.v {
-        let cmd_ptr = v as *const &str;
-        let cmd = unsafe { &*cmd_ptr };
-        spawn_with_args(&[*cmd], None);
+    let id = match arg.v {
+        Some(v) => v,
+        None => return,
+    };
+
+    if let Some(cmd) = get_command_by_id(id) {
+        spawn_with_args(cmd, None);
+    }
+}
+
+pub fn get_command_by_id(id: usize) -> Option<&'static [&'static str]> {
+    match id {
+        crate::config::CMD_TERM => Some(crate::config::commands::TERM_CMD),
+        crate::config::CMD_INSTANTMENU => Some(crate::config::commands::INSTANTMENU_CMD),
+        crate::config::CMD_CLIPMENU => Some(crate::config::commands::CLIPMENU_CMD),
+        crate::config::CMD_SMART => Some(crate::config::commands::SMART_CMD),
+        crate::config::CMD_INSTANTMENU_ST => Some(crate::config::commands::INSTANTMENU_ST_CMD),
+        crate::config::CMD_QUICKMENU => Some(crate::config::commands::QUICKMENU_CMD),
+        crate::config::CMD_INSTANTASSIST => Some(crate::config::commands::INSTANTASSIST_CMD),
+        crate::config::CMD_INSTANTREPEAT => Some(crate::config::commands::INSTANTREPEAT_CMD),
+        crate::config::CMD_INSTANTPACMAN => Some(crate::config::commands::INSTANTPACMAN_CMD),
+        crate::config::CMD_INSTANTSHARE => Some(crate::config::commands::INSTANTSHARE_CMD),
+        crate::config::CMD_NAUTILUS => Some(crate::config::commands::NAUTILUS_CMD),
+        crate::config::CMD_SLOCK => Some(crate::config::commands::SLOCK_CMD),
+        crate::config::CMD_ONEKEYLOCK => Some(crate::config::commands::ONEKEYLOCK_CMD),
+        crate::config::CMD_LANGSWITCH => Some(crate::config::commands::LANGSWITCH_CMD),
+        crate::config::CMD_OSLOCK => Some(crate::config::commands::OSLOCK_CMD),
+        crate::config::CMD_HELP => Some(crate::config::commands::HELP_CMD),
+        crate::config::CMD_SEARCH => Some(crate::config::commands::SEARCH_CMD),
+        crate::config::CMD_KEYLAYOUTSWITCH => Some(crate::config::commands::KEYLAYOUTSWITCH_CMD),
+        crate::config::CMD_ISWITCH => Some(crate::config::commands::ISWITCH_CMD),
+        crate::config::CMD_INSTANTSWITCH => Some(crate::config::commands::INSTANTSWITCH_CMD),
+        crate::config::CMD_CARETINSTANTSWITCH => Some(crate::config::commands::CARETINSTANTSWITCH_CMD),
+        crate::config::CMD_INSTANTSKIPPY => Some(crate::config::commands::INSTANTSKIPPY_CMD),
+        crate::config::CMD_INSTANTSHUTDOWN => Some(crate::config::commands::INSTANTSHUTDOWN_CMD),
+        crate::config::CMD_SYSTEMMONITOR => Some(crate::config::commands::SYSTEMMONITOR_CMD),
+        crate::config::CMD_NOTIFY => Some(crate::config::commands::NOTIFY_CMD),
+        crate::config::CMD_YAZI => Some(crate::config::commands::YAZI_CMD),
+        crate::config::CMD_PANTHER => Some(crate::config::commands::PANTHER_CMD),
+        crate::config::CMD_CONTROLCENTER => Some(crate::config::commands::CONTROLCENTER_CMD),
+        crate::config::CMD_DISPLAY => Some(crate::config::commands::DISPLAY_CMD),
+        crate::config::CMD_PAVUCONTROL => Some(crate::config::commands::PAVUCONTROL_CMD),
+        crate::config::CMD_INSTANTSETTINGS => Some(crate::config::commands::INSTANTSETTINGS_CMD),
+        crate::config::CMD_CODE => Some(crate::config::commands::CODE_CMD),
+        crate::config::CMD_STARTMENU => Some(crate::config::commands::STARTMENU_CMD),
+        crate::config::CMD_SCROT => Some(crate::config::commands::SCROT_CMD),
+        crate::config::CMD_FSCROT => Some(crate::config::commands::FSCROT_CMD),
+        crate::config::CMD_CLIPSCROT => Some(crate::config::commands::CLIPSCROT_CMD),
+        crate::config::CMD_FCLIPSCROT => Some(crate::config::commands::FCLIPSCROT_CMD),
+        crate::config::CMD_FIREFOX => Some(crate::config::commands::FIREFOX_CMD),
+        crate::config::CMD_EDITOR => Some(crate::config::commands::EDITOR_CMD),
+        crate::config::CMD_PLAYERNEXT => Some(crate::config::commands::PLAYER_NEXT_CMD),
+        crate::config::CMD_PLAYERPREVIOUS => Some(crate::config::commands::PLAYER_PREVIOUS_CMD),
+        crate::config::CMD_PLAYERPAUSE => Some(crate::config::commands::PLAYER_PAUSE_CMD),
+        crate::config::CMD_SPOTICLI => Some(crate::config::commands::SPOTICLI_CMD),
+        crate::config::CMD_UPVOL => Some(crate::config::commands::UPVOL_CMD),
+        crate::config::CMD_DOWNVOL => Some(crate::config::commands::DOWNVOL_CMD),
+        crate::config::CMD_MUTEVOL => Some(crate::config::commands::MUTEVOL_CMD),
+        crate::config::CMD_UPBRIGHT => Some(crate::config::commands::UPBRIGHT_CMD),
+        crate::config::CMD_DOWNBRIGHT => Some(crate::config::commands::DOWNBRIGHT_CMD),
+        crate::config::CMD_TAG => Some(crate::config::commands::TAG_CMD),
+        _ => None,
     }
 }
 
