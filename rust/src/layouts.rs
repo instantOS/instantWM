@@ -5,6 +5,7 @@ use crate::floating::restore_border_width_win;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use crate::util::{max, min};
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 pub fn tile(m: &mut MonitorInner) {
@@ -523,23 +524,18 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
         return;
     }
 
-    let mh: i32;
-    let th: i32;
-    let ty: i32;
-
-    if n > m.nmaster as u32 {
-        mh = if m.nmaster > 0 {
+    let (mh, th, mut ty) = if n > m.nmaster as u32 {
+        let mh = if m.nmaster > 0 {
             (m.mfact * m.wh as f32) as i32
         } else {
             0
         };
-        th = (m.wh - mh) / (n - m.nmaster as u32) as i32;
-        ty = m.wy + mh;
+        let th = (m.wh - mh) / (n - m.nmaster as u32) as i32;
+        let ty = m.wy + mh;
+        (mh, th, ty)
     } else {
-        th = m.wh;
-        mh = m.wh;
-        ty = m.wy;
-    }
+        (m.wh, m.wh, m.wy)
+    };
 
     let mut mx: i32 = 0;
     let tx: i32 = m.wx;
@@ -775,9 +771,6 @@ pub fn overviewlayout(m: &mut MonitorInner) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let mut wc = ConfigureWindowAux::new();
-        wc = wc.stack_mode(StackMode::ABOVE).sibling(selmon_barwin);
-
         let mut c_win = m.clients;
         while let Some(win) = c_win {
             let g = get_globals();
@@ -1016,7 +1009,6 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
                 let mon_id = c.mon_id;
                 let is_floating = c.isfloating;
                 let is_fullscreen = c.is_fullscreen;
-                let border_width = c.border_width;
 
                 if let Some(mid) = mon_id {
                     if let Some(mon) = g.monitors.get(mid) {
@@ -1046,7 +1038,7 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
 
         {
             let mut g = get_globals_mut();
-            if let Some(c) = g.clients.get_mut(&win) {
+            if let Some(_c) = g.clients.get_mut(&win) {
                 if !is_floating
                     && !is_fullscreen
                     && ((mon_clientcount == 1 && has_arrange) || is_monocle)
