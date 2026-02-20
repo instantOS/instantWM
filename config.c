@@ -22,7 +22,7 @@ const Rule rules[] = {
     {"xpad", NULL, NULL, 0, 1, -1},
     {"Guake", NULL, NULL, 0, 1, -1},
     {"instantfloat", NULL, NULL, 0, 2, -1},
-    {scratchpadname, NULL, NULL, 0, 4, -1},
+    {scratchpadclass, NULL, NULL, 0, 4, -1},
     {"kdeconnect.daemon", NULL, NULL, 0, 3, -1},
     {"Panther", NULL, NULL, 0, 3, -1},
     {"org-wellkord-globonote-Main", NULL, NULL, 0, 1, -1},

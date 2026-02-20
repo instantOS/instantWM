@@ -304,7 +304,7 @@ char tags[][MAX_TAGLEN] = {"1",  "2",  "3",  "4",  "5",  "6",  "7",
 const char *tagsalt[] = {"", "{}",  "$",   "", "",
                          "", "", "", ""};
 
-const char scratchpadname[] = "instantscratchpad";
+const char scratchpadclass[] = "scratchpad_default";
 
 const char *upvol[] = {"/usr/share/instantassist/utils/p.sh", "+", NULL};
 const char *downvol[] = {"/usr/share/instantassist/utils/p.sh", "-", NULL};
@@ -362,7 +362,7 @@ const char *smartcmd[] = {"instantmenu_smartrun", NULL};
 const char *instantmenustcmd[] = {"instantmenu_run_st", NULL};
 const char *termcmd[] = {".config/instantos/default/terminal", NULL};
 const char *termscratchcmd[] = {".config/instantos/default/terminal", "-c",
-                                scratchpadname, NULL};
+                                scratchpadclass, NULL};
 const char *quickmenucmd[] = {"quickmenu", NULL};
 const char *instantassistcmd[] = {"instantassist", NULL};
 const char *instantrepeatcmd[] = {"instantrepeat", NULL};
@@ -485,11 +485,12 @@ Xcommand commands[] = {
     {"focusnmon", focusnmon, {.i = 0}, 5},
     {"nametag", nametag, {.v = "tag"}, 4},
     {"resetnametag", resetnametag, {0}, 0},
-    {"makescratchpad", makescratchpad, {0}, 4},
-    {"togglescratchpad", togglescratchpad, {0}, 4},
-    {"showscratchpad", showscratchpad, {0}, 4},
-    {"hidescratchpad", hidescratchpad, {0}, 4},
-    {"scratchpadstatus", scratchpadstatus, {0}, 4},
+    {"scratchpad-make", scratchpad_make, {0}, 4},
+    {"scratchpad-unmake", scratchpad_unmake, {0}, 0},
+    {"scratchpad-toggle", scratchpad_toggle, {0}, 4},
+    {"scratchpad-show", scratchpad_show, {0}, 4},
+    {"scratchpad-hide", scratchpad_hide, {0}, 4},
+    {"scratchpad-status", scratchpad_status, {0}, 4},
 };
 
 Key dkeys[] = {
@@ -583,8 +584,8 @@ Key keys[] = {
     {MODKEY | Mod1Mask, XK_s, togglealttag, {.ui = 2}},
     {MODKEY | ShiftMask | Mod1Mask, XK_s, toggleanimated, {.ui = 2}},
     {MODKEY | ControlMask, XK_s, togglesticky, {0}},
-    {MODKEY | ShiftMask, XK_s, createscratchpad, {0}},
-    {MODKEY, XK_s, togglescratchpad, {0}},
+    {MODKEY | ShiftMask, XK_s, scratchpad_make, {.v = "default"}},
+    {MODKEY, XK_s, scratchpad_toggle, {.v = "default"}},
     {MODKEY | ShiftMask, XK_f, togglefakefullscreen, {0}},
     {MODKEY | ControlMask, XK_f, temp_fullscreen, {0}},
     {MODKEY | Mod1Mask, XK_f, spawn, {.v = searchcmd}},

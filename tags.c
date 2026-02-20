@@ -639,16 +639,17 @@ void toggle_overview(const Arg *arg) {
         return;
     }
 
-    if (selmon->scratchvisible) {
-        for (c = selmon->clients; c; c = c->next) {
-            if (c->tags & SCRATCHPAD_MASK) {
-                showscratch = 1;
-                break;
-            }
+    /* Hide all visible scratchpads before entering overview */
+    for (c = selmon->clients; c; c = c->next) {
+        if (ISSCRATCHPAD(c) && c->issticky) {
+            c->issticky = 0;
+            c->tags = SCRATCHPAD_MASK;
+            showscratch = 1;
         }
-        if (showscratch) {
-            togglescratchpad(NULL);
-        }
+    }
+    if (showscratch) {
+        focus(NULL);
+        arrange(selmon);
     }
     if (selmon->fullscreen) {
         temp_fullscreen(NULL);

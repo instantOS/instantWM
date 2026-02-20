@@ -169,6 +169,8 @@ enum {
 /* Scratchpad uses tag index 20 (21st tag) */
 #define SCRATCHPAD_TAG 20
 #define SCRATCHPAD_MASK (1 << SCRATCHPAD_TAG)
+#define SCRATCHPAD_NAME_LEN 64
+#define ISSCRATCHPAD(c) ((c)->scratchpad_name[0] != '\0')
 
 /* Window snap positions for floating windows */
 enum {
@@ -258,6 +260,8 @@ struct Client {
     unsigned int tags;
     int isfixed, isfloating, isurgent, neverfocus, oldstate, is_fullscreen,
         isfakefullscreen, islocked, issticky, snapstatus;
+    char scratchpad_name[SCRATCHPAD_NAME_LEN];
+    unsigned int scratchpad_restore_tags;
     Client *next;
     Client *snext;
     Monitor *mon;
@@ -335,11 +339,9 @@ struct Monitor {
     Client *clients;
     Client *sel;
     Client *overlay;
-    Client *activescratchpad;
     Client *fullscreen;
     int overlaystatus;
     int overlaymode;
-    int scratchvisible;
     int gesture;
     Client *stack;
     Client *hoverclient;
@@ -510,12 +512,13 @@ void toggle_floating(const Arg *arg);
 void togglesticky(const Arg *arg);
 void toggleprefix(const Arg *arg);
 void toggletag(const Arg *arg);
-void togglescratchpad(const Arg *arg);
-void createscratchpad(const Arg *arg);
-void makescratchpad(const Arg *arg);
-void showscratchpad(const Arg *arg);
-void hidescratchpad(const Arg *arg);
-void scratchpadstatus(const Arg *arg);
+void scratchpad_toggle(const Arg *arg);
+void scratchpad_make(const Arg *arg);
+void scratchpad_unmake(const Arg *arg);
+void scratchpad_show(const Arg *arg);
+void scratchpad_hide(const Arg *arg);
+void scratchpad_status(const Arg *arg);
+void scratchpad_identify_client(Client *c);
 void toggleview(const Arg *arg);
 void hide_window(const Arg *arg);
 void redrawwin(const Arg *arg);

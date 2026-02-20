@@ -346,11 +346,7 @@ void applyrules(Client *c) {
                     break;
                 case RuleScratchpad:
                     selmon->sel = c;
-                    c->tags = SCRATCHPAD_MASK;
-                    selmon->scratchvisible = 1;
-                    c->issticky = 1;
-                    c->isfloating = 1;
-                    selmon->activescratchpad = c;
+                    scratchpad_identify_client(c);
                     center_window(NULL);
                     break;
                 case RuleFloat:
@@ -745,10 +741,6 @@ void unmanage(Client *c, int destroyed) {
         for (tm = mons; tm; tm = tm->next) {
             tm->overlay = NULL;
         }
-    }
-
-    if (c == m->activescratchpad) {
-        m->activescratchpad = NULL;
     }
 
     detach(c);

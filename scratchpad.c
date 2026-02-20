@@ -8,311 +8,230 @@
 #include "layouts.h"
 #include "scratchpad.h"
 
-/* External declarations for variables defined in instantwm.c */
-extern const char *termscratchcmd[];
+#define SCRATCHPAD_CLASS_PREFIX "scratchpad_"
+#define SCRATCHPAD_CLASS_PREFIX_LEN 11
 
-// Update scratchvisible flag for a monitor
-void updatescratchvisible(Monitor *m) {
-    Client *c;
-    m->scratchvisible = 0;
-    for (c = m->clients; c; c = c->next) {
-        if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
-            m->scratchvisible = 1;
-            break;
-        }
-    }
-}
-
-// Find a client with class scratchpad_<name>
-Client *findnamedscratchpad(const char *name) {
-    if (!name || strlen(name) == 0) {
+/* Find a scratchpad client by name (scans all monitors). */
+Client *scratchpad_find(const char *name) {
+    if (!name || name[0] == '\0')
         return NULL;
-    }
-
-    char fullclass[256];
-    snprintf(fullclass, sizeof(fullclass), "scratchpad_%s", name);
 
     Client *c;
     Monitor *m;
-    XClassHint ch = {NULL, NULL};
-
-    for (m = mons; m; m = m->next) {
-        for (c = m->clients; c; c = c->next) {
-            XGetClassHint(dpy, c->win, &ch);
-            if (ch.res_class && strcmp(ch.res_class, fullclass) == 0) {
-                if (ch.res_class) {
-                    XFree(ch.res_class);
-                }
-                if (ch.res_name) {
-                    XFree(ch.res_name);
-                }
+    for (m = mons; m; m = m->next)
+        for (c = m->clients; c; c = c->next)
+            if (ISSCRATCHPAD(c) && strcmp(c->scratchpad_name, name) == 0)
                 return c;
-            }
-            if (ch.res_name && strcmp(ch.res_name, fullclass) == 0) {
-                if (ch.res_class) {
-                    XFree(ch.res_class);
-                }
-                if (ch.res_name) {
-                    XFree(ch.res_name);
-                }
-                return c;
-            }
-            if (ch.res_class) {
-                XFree(ch.res_class);
-            }
-            if (ch.res_name) {
-                XFree(ch.res_name);
-            }
-        }
-    }
     return NULL;
 }
 
-void makescratchpad(const Arg *arg) {
-    const char *name = arg ? arg->v : NULL;
-    if (!name || strlen(name) == 0) {
-        return;
-    }
-
-    Client *c = findnamedscratchpad(name);
-    if (!c) {
-        return;
-    }
-
-    // Move to scratchpad tag (tag 21)
-    c->tags = SCRATCHPAD_MASK;
-    c->issticky = 0;
-
-    // Make it float if not already
-    setfloating(c, 0);
-
-    focus(NULL);
-    arrange(c->mon);
+/* Check if any scratchpad is visible (sticky) on this monitor. */
+int scratchpad_any_visible(Monitor *m) {
+    Client *c;
+    for (c = m->clients; c; c = c->next)
+        if (ISSCRATCHPAD(c) && c->issticky)
+            return 1;
+    return 0;
 }
 
-void togglescratchpad(const Arg *arg) {
-    Client *c;
-    Client *found = NULL;
-    int handled_action = 0;
-    const char *name = arg ? arg->v : NULL;
+/* Called during manage() to detect scratchpad windows by WM_CLASS.
+ * If WM_CLASS matches "scratchpad_<name>", populate c->scratchpad_name
+ * and apply scratchpad invariants. */
+void scratchpad_identify_client(Client *c) {
+    XClassHint ch = {NULL, NULL};
+    const char *match = NULL;
 
-    if (&overviewlayout == tiling_layout_func(selmon)) {
+    if (!XGetClassHint(dpy, c->win, &ch))
         return;
+
+    if (ch.res_class &&
+        strncmp(ch.res_class, SCRATCHPAD_CLASS_PREFIX,
+                SCRATCHPAD_CLASS_PREFIX_LEN) == 0 &&
+        ch.res_class[SCRATCHPAD_CLASS_PREFIX_LEN] != '\0') {
+        match = ch.res_class + SCRATCHPAD_CLASS_PREFIX_LEN;
+    } else if (ch.res_name &&
+               strncmp(ch.res_name, SCRATCHPAD_CLASS_PREFIX,
+                       SCRATCHPAD_CLASS_PREFIX_LEN) == 0 &&
+               ch.res_name[SCRATCHPAD_CLASS_PREFIX_LEN] != '\0') {
+        match = ch.res_name + SCRATCHPAD_CLASS_PREFIX_LEN;
     }
 
-    // Handle named scratchpad
-    if (name && strlen(name) > 0) {
-        Client *named = findnamedscratchpad(name);
-        if (named) {
-            if (named->issticky) {
-                // Hide the named scratchpad
-                named->issticky = 0;
-                named->tags = SCRATCHPAD_MASK;
-                focus(NULL);
-                arrange(named->mon);
-            } else {
-                // Show the named scratchpad
-                named->issticky = 1;
-                setfloating(named, 0);
-                // Move to current monitor if on different monitor
-                if (named->mon != selmon) {
-                    detach(named);
-                    detachstack(named);
-                    named->mon = selmon;
-                    attach(named);
-                    attachstack(named);
-                }
-                focus(named);
-                arrange(selmon);
-                restack(selmon);
-                if (focusfollowsmouse) {
-                    warp_cursor_to_client(named);
-                }
-            }
-
-            updatescratchvisible(named->mon);
-        }
-        return;
-    }
-
-    // Default behavior for generic scratchpad
-    if (selmon->sel && (selmon->sel->tags & (1 << 20))) {
-        c = selmon->sel;
-        c->issticky = 0;
+    if (match) {
+        snprintf(c->scratchpad_name, SCRATCHPAD_NAME_LEN, "%s", match);
+        c->scratchpad_restore_tags = 0;
         c->tags = SCRATCHPAD_MASK;
-        selmon->activescratchpad = c;
-        focus(NULL);
-        arrange(selmon);
-        handled_action = 1;
-    } else {
-        for (c = selmon->clients; c; c = c->next) {
-            if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
-                focus(c);
-                restack(selmon);
-                handled_action = 1;
-                break;
-            }
-        }
-
-        if (!handled_action) {
-            if (selmon->activescratchpad &&
-                (selmon->activescratchpad->tags & (1 << 20))) {
-                found = selmon->activescratchpad;
-            }
-
-            if (!found) {
-                for (c = selmon->clients; c; c = c->next) {
-                    if ((c->tags & SCRATCHPAD_MASK) && !c->issticky) {
-                        found = c;
-                        break;
-                    }
-                }
-            }
-
-            if (found) {
-                found->issticky = 1;
-                setfloating(found, 0);
-                focus(found);
-                arrange(selmon);
-                restack(selmon);
-                if (focusfollowsmouse) {
-                    warp_cursor_to_client(found);
-                }
-                selmon->activescratchpad = found;
-                handled_action = 1;
-            } else {
-                spawn(&((Arg){.v = termscratchcmd}));
-                handled_action = 1;
-            }
-        }
+        c->issticky = 1;
+        c->isfloating = 1;
     }
 
-    if (handled_action) {
-        updatescratchvisible(selmon);
-    }
+    if (ch.res_class)
+        XFree(ch.res_class);
+    if (ch.res_name)
+        XFree(ch.res_name);
 }
 
-void createscratchpad(const Arg *arg) {
-    Client *c;
-    if (!selmon->sel) {
+/* Turn the currently focused window into a named scratchpad.
+ * arg->v = "name". If name is empty, does nothing.
+ * If a scratchpad with that name already exists, does nothing. */
+void scratchpad_make(const Arg *arg) {
+    const char *name = arg ? arg->v : NULL;
+    if (!name || name[0] == '\0')
         return;
-    }
-    c = selmon->sel;
-
-    // turn scratchpad back into normal window
-    if (c->tags == SCRATCHPAD_MASK) {
-        tag(&((Arg){.ui = 1 << (selmon->pertag->current_tag - 1)}));
-
-        updatescratchvisible(selmon);
+    if (!selmon->sel)
         return;
-    }
 
+    /* Don't allow duplicate names */
+    if (scratchpad_find(name))
+        return;
+
+    Client *c = selmon->sel;
+
+    /* If it's already a scratchpad, just rename it */
+    if (!ISSCRATCHPAD(c))
+        c->scratchpad_restore_tags = c->tags;
+
+    snprintf(c->scratchpad_name, SCRATCHPAD_NAME_LEN, "%s", name);
     c->tags = SCRATCHPAD_MASK;
     c->issticky = 0;
-    if (!c->isfloating) {
-        toggle_floating(NULL);
-    }
+
+    if (!c->isfloating)
+        setfloating(c, 0);
 
     focus(NULL);
     arrange(selmon);
 }
 
-void showscratchpad(const Arg *arg) {
-    const char *name = arg ? arg->v : NULL;
-
-    // Handle named scratchpad
-    if (name && strlen(name) > 0) {
-        Client *named = findnamedscratchpad(name);
-        if (named) {
-            named->issticky = 1;
-            setfloating(named, 0);
-            // Move to current monitor if on different monitor
-            if (named->mon != selmon) {
-                detach(named);
-                detachstack(named);
-                named->mon = selmon;
-                attach(named);
-                attachstack(named);
-            }
-            focus(named);
-            arrange(selmon);
-            restack(selmon);
-            if (focusfollowsmouse) {
-                warp_cursor_to_client(named);
-            }
-
-            updatescratchvisible(named->mon);
-        }
+/* Remove scratchpad status from the currently focused window,
+ * restoring it to its previous tag. */
+void scratchpad_unmake(const Arg *arg) {
+    if (!selmon->sel)
         return;
-    }
 
-    // Default behavior
-    if (selmon->scratchvisible) {
-        Client *c;
-        for (c = selmon->clients; c; c = c->next) {
-            if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
-                focus(c);
-                restack(selmon);
-                if (focusfollowsmouse) {
-                    warp_cursor_to_client(c);
-                }
-                return;
-            }
-        }
-    } else {
-        togglescratchpad(NULL);
-    }
+    Client *c = selmon->sel;
+    if (!ISSCRATCHPAD(c))
+        return;
+
+    c->scratchpad_name[0] = '\0';
+    c->issticky = 0;
+
+    if (c->scratchpad_restore_tags)
+        c->tags = c->scratchpad_restore_tags;
+    else
+        c->tags = selmon->tagset[selmon->seltags];
+
+    c->scratchpad_restore_tags = 0;
+    arrange(selmon);
 }
 
-void hidescratchpad(const Arg *arg) {
+/* Show a named scratchpad on the current monitor.
+ * arg->v = "name". */
+void scratchpad_show(const Arg *arg) {
+    const char *name = arg ? arg->v : NULL;
+    if (!name || name[0] == '\0')
+        return;
+
+    Client *found = scratchpad_find(name);
+    if (!found)
+        return;
+
+    found->issticky = 1;
+    setfloating(found, 0);
+
+    /* Move to current monitor if on a different one */
+    if (found->mon != selmon) {
+        detach(found);
+        detachstack(found);
+        found->mon = selmon;
+        attach(found);
+        attachstack(found);
+    }
+
+    focus(found);
+    arrange(selmon);
+    restack(selmon);
+    if (focusfollowsmouse)
+        warp_cursor_to_client(found);
+}
+
+/* Hide a named scratchpad.
+ * arg->v = "name". */
+void scratchpad_hide(const Arg *arg) {
+    const char *name = arg ? arg->v : NULL;
+    if (!name || name[0] == '\0')
+        return;
+
+    Client *found = scratchpad_find(name);
+    if (!found || !found->issticky)
+        return;
+
+    found->issticky = 0;
+    found->tags = SCRATCHPAD_MASK;
+    focus(NULL);
+    arrange(found->mon);
+}
+
+/* Toggle a named scratchpad: show if hidden, hide if visible.
+ * arg->v = "name".
+ * In overview layout, does nothing. */
+void scratchpad_toggle(const Arg *arg) {
+    const char *name = arg ? arg->v : NULL;
+    if (!name || name[0] == '\0')
+        return;
+
+    if (&overviewlayout == tiling_layout_func(selmon))
+        return;
+
+    Client *found = scratchpad_find(name);
+    if (!found)
+        return;
+
+    if (found->issticky)
+        scratchpad_hide(arg);
+    else
+        scratchpad_show(arg);
+}
+
+/* Report scratchpad status via root window name.
+ * arg->v = "name" → "ipc:scratchpad:<name>:<0|1>"
+ * arg->v = "all"  → "ipc:scratchpads:<name1>=<0|1>,<name2>=<0|1>,..." */
+void scratchpad_status(const Arg *arg) {
     const char *name = arg ? arg->v : NULL;
 
-    // Handle named scratchpad
-    if (name && strlen(name) > 0) {
-        Client *named = findnamedscratchpad(name);
-        if (named && named->issticky) {
-            named->issticky = 0;
-            named->tags = SCRATCHPAD_MASK;
-            focus(NULL);
-            arrange(named->mon);
-
-            updatescratchvisible(named->mon);
-        }
+    if (name && name[0] != '\0' && strcmp(name, "all") != 0) {
+        Client *found = scratchpad_find(name);
+        int visible = found && found->issticky;
+        char status[256];
+        snprintf(status, sizeof(status), "ipc:scratchpad:%s:%d", name, visible);
+        XStoreName(dpy, root, status);
+        XFlush(dpy);
         return;
     }
 
-    // Default behavior: hide all visible scratchpads
+    /* "all" or no name: list all known scratchpads */
+    char status[1024];
+    int offset = snprintf(status, sizeof(status), "ipc:scratchpads:");
+    int first = 1;
+
     Client *c;
-    int changed = 0;
-    for (c = selmon->clients; c; c = c->next) {
-        if ((c->tags & SCRATCHPAD_MASK) && c->issticky) {
-            c->issticky = 0;
-            c->tags = SCRATCHPAD_MASK;
-            changed = 1;
+    Monitor *m;
+    for (m = mons; m; m = m->next) {
+        for (c = m->clients; c; c = c->next) {
+            if (!ISSCRATCHPAD(c))
+                continue;
+            int n = snprintf(status + offset, sizeof(status) - offset,
+                             "%s%s=%d", first ? "" : ",", c->scratchpad_name,
+                             c->issticky ? 1 : 0);
+            if (n > 0)
+                offset += n;
+            first = 0;
         }
     }
-    if (changed) {
-        selmon->scratchvisible = 0;
-        focus(NULL);
-        arrange(selmon);
-    }
-}
 
-void scratchpadstatus(const Arg *arg) {
-    char status[32];
-    const char *name = arg ? arg->v : NULL;
-
-    // If named scratchpad requested, check its specific visibility
-    if (name && strlen(name) > 0) {
-        Client *named = findnamedscratchpad(name);
-        int visible = named && named->issticky;
-        snprintf(status, sizeof(status), "ipc:scratchpad:%d", visible);
-    } else {
-        // Default behavior: check if any scratchpad is visible on current
-        // monitor
-        snprintf(status, sizeof(status), "ipc:scratchpad:%d",
-                 selmon->scratchvisible);
+    if (first) {
+        /* No scratchpads found at all */
+        snprintf(status + offset, sizeof(status) - offset, "none");
     }
+
     XStoreName(dpy, root, status);
     XFlush(dpy);
 }

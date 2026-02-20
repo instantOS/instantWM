@@ -3,6 +3,7 @@
 # Format all C source and header files
 fmt:
     find . -name "*.c" -o -name "*.h" | xargs clang-format -i
+    shfmt -w instantwmctl.sh
 
 # Build the project
 build:

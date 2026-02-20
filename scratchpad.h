@@ -5,13 +5,21 @@
 
 #include "instantwm.h"
 
-void updatescratchvisible(Monitor *m);
-Client *findnamedscratchpad(const char *name);
-void makescratchpad(const Arg *arg);
-void togglescratchpad(const Arg *arg);
-void createscratchpad(const Arg *arg);
-void showscratchpad(const Arg *arg);
-void hidescratchpad(const Arg *arg);
-void scratchpadstatus(const Arg *arg);
+/* Find a scratchpad client by name (scans all monitors) */
+Client *scratchpad_find(const char *name);
+
+/* Check if any scratchpad is visible on this monitor */
+int scratchpad_any_visible(Monitor *m);
+
+/* Identify a newly managed client as a scratchpad (by WM_CLASS) */
+void scratchpad_identify_client(Client *c);
+
+/* IPC / keybind actions (all take arg->v = "name") */
+void scratchpad_make(const Arg *arg);
+void scratchpad_unmake(const Arg *arg);
+void scratchpad_toggle(const Arg *arg);
+void scratchpad_show(const Arg *arg);
+void scratchpad_hide(const Arg *arg);
+void scratchpad_status(const Arg *arg);
 
 #endif
