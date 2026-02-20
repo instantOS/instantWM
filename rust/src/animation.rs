@@ -95,7 +95,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             || (w - start_w).abs() > 10
             || (h - start_h).abs() > 10;
 
-        if globals.animated && dist_moved {
+        if dist_moved {
             if x == start_x && y == start_y && start_w < mon_mw - 50 {
                 let delta_w = actual_w - start_w;
                 let delta_h = actual_h - start_h;

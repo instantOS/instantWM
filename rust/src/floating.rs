@@ -637,12 +637,12 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
             resize(win, saved_x, saved_y, saved_w, saved_h, false);
         }
     } else {
+        let client_count = get_globals().clients.len();
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.isfloating = false;
 
             if update_borders {
-                let client_count = globals.clients.len();
                 if client_count <= 1 && client.snapstatus == SnapPosition::None {
                     client.old_border_width = client.border_width;
                     client.border_width = 0;

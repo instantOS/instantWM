@@ -273,13 +273,10 @@ pub fn push_down(arg: &Arg) {
     if let Some(next_win) = next {
         detach(win);
 
+        let next_c_next = get_globals().clients.get(&next_win).and_then(|c| c.next);
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
-            if let Some(next_c) = globals.clients.get(&next_win) {
-                client.next = next_c.next;
-            } else {
-                client.next = None;
-            }
+            client.next = next_c_next;
         }
 
         if let Some(next_c) = globals.clients.get_mut(&next_win) {
@@ -295,64 +292,48 @@ pub fn push_down(arg: &Arg) {
 }
 
 fn attach(win: Window) {
-    let mut globals = get_globals_mut();
-    if let Some(client) = globals.clients.get(&win) {
-        let mon_id = match client.mon_id {
-            Some(id) => id,
-            None => return,
-        };
+    let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
+    let Some(mon_id) = mon_id else { return };
 
-        if let Some(mon) = globals.monitors.get_mut(mon_id) {
-            if let Some(client) = globals.clients.get_mut(&win) {
-                client.next = mon.clients;
-            }
-            mon.clients = Some(win);
-        }
+    let mon_clients = get_globals().monitors.get(mon_id).and_then(|m| m.clients);
+
+    let mut globals = get_globals_mut();
+    if let Some(client) = globals.clients.get_mut(&win) {
+        client.next = mon_clients;
+    }
+    if let Some(mon) = globals.monitors.get_mut(mon_id) {
+        mon.clients = Some(win);
     }
 }
 
 fn detach(win: Window) {
+    let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
+    let Some(mid) = mon_id else { return };
+
+    let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+    let mut current = get_globals().monitors.get(mid).and_then(|m| m.clients);
+    let mut prev: Option<Window> = None;
+
+    while let Some(cur_win) = current {
+        let next = get_globals().clients.get(&cur_win).and_then(|c| c.next);
+        traversal.push((cur_win, prev, next));
+        prev = Some(cur_win);
+        current = next;
+    }
+
+    let client_next = get_globals().clients.get(&win).and_then(|c| c.next);
+
     let mut globals = get_globals_mut();
-
-    let mon_id = {
-        if let Some(client) = globals.clients.get(&win) {
-            client.mon_id
-        } else {
-            return;
-        }
-    };
-
-    if let Some(mid) = mon_id {
-        if let Some(mon) = globals.monitors.get_mut(mid) {
-            let mut current = mon.clients;
-            let mut prev: Option<Window> = None;
-
-            while let Some(cur_win) = current {
-                if cur_win == win {
-                    if let Some(prev_win) = prev {
-                        if let Some(prev_client) = globals.clients.get_mut(&prev_win) {
-                            prev_client.next = if let Some(c) = globals.clients.get(&win) {
-                                c.next
-                            } else {
-                                None
-                            };
-                        }
-                    } else {
-                        mon.clients = if let Some(c) = globals.clients.get(&win) {
-                            c.next
-                        } else {
-                            None
-                        };
-                    }
-                    return;
+    for (cur_win, prev_win, _next) in traversal {
+        if cur_win == win {
+            if let Some(prev_win) = prev_win {
+                if let Some(prev_client) = globals.clients.get_mut(&prev_win) {
+                    prev_client.next = client_next;
                 }
-                prev = Some(cur_win);
-                current = if let Some(c) = globals.clients.get(&cur_win) {
-                    c.next
-                } else {
-                    None
-                };
+            } else if let Some(mon) = globals.monitors.get_mut(mid) {
+                mon.clients = client_next;
             }
+            return;
         }
     }
 }

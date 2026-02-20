@@ -1880,13 +1880,16 @@ pub fn update_window_type(win: Window) {
         let state = get_atom_prop(conn, win, globals.netatom[NetAtom::WMState as usize]);
         let wtype = get_atom_prop(conn, win, globals.netatom[NetAtom::WMWindowType as usize]);
 
+        let atom_fullscreen = globals.netatom[NetAtom::WMFullscreen as usize];
+        let atom_dialog = globals.netatom[NetAtom::WMWindowTypeDialog as usize];
+
         drop(globals);
 
-        if state == Some(globals.netatom[NetAtom::WMFullscreen as usize]) {
+        if state == Some(atom_fullscreen) {
             set_fullscreen(win, true);
         }
 
-        if wtype == Some(globals.netatom[NetAtom::WMWindowTypeDialog as usize]) {
+        if wtype == Some(atom_dialog) {
             let mut globals = get_globals_mut();
             if let Some(client) = globals.clients.get_mut(&win) {
                 client.isfloating = true;

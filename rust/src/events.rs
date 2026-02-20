@@ -382,23 +382,34 @@ fn dispatch_event(event: x11rb::protocol::Event) {
 }
 
 pub fn scan() {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-
     let root = get_globals().root;
 
-    if let Ok(cookie) = conn.query_tree(root) {
-        if let Ok(reply) = cookie.reply() {
-            drop(x11);
-            for win in reply.children {
-                let x11 = get_x11();
-                if let Some(ref conn) = x11.conn {
-                    if let Ok(wa_cookie) = conn.get_window_attributes(win) {
-                        if let Ok(wa) = wa_cookie.reply() {
-                            if !wa.override_redirect {
-                                if win_to_client(win).is_none() {
-                                    crate::client::manage(win, 0, 0, 800, 600, 1);
-                                }
+    let children = {
+        let x11 = get_x11();
+        if let Some(ref conn) = x11.conn {
+            if let Ok(cookie) = conn.query_tree(root) {
+                if let Ok(reply) = cookie.reply() {
+                    Some(reply.children)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some(children) = children {
+        for win in children {
+            let x11 = get_x11();
+            if let Some(ref conn) = x11.conn {
+                if let Ok(wa_cookie) = conn.get_window_attributes(win) {
+                    if let Ok(wa) = wa_cookie.reply() {
+                        if !wa.override_redirect {
+                            if win_to_client(win).is_none() {
+                                crate::client::manage(win, 0, 0, 800, 600, 1);
                             }
                         }
                     }
