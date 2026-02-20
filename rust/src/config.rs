@@ -1,4 +1,11 @@
+use crate::bar::{
+    close_win, down_scale_client, up_scale_client, window_title_mouse_handler,
+    window_title_mouse_handler_right,
+};
 use crate::layouts::*;
+use crate::mouse::{
+    force_resize_mouse, gesture_mouse, move_mouse, resize_aspect_mouse, resize_mouse,
+};
 use crate::toggles::{hide_window, unhide_all};
 use crate::types::*;
 

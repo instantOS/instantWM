@@ -332,10 +332,7 @@ pub fn follow_mon(arg: &Arg) {
     let c_win = {
         let g = get_globals();
         match g.selmon {
-            Some(mon_id) => g
-                .monitors
-                .get(mon_id)
-                .and_then(|_m| get_selected_client(mon_id).map(|c| c.win)),
+            Some(mon_id) => g.monitors.get(mon_id).and_then(|m| m.sel),
             None => None,
         }
     };
@@ -355,28 +352,20 @@ pub fn follow_mon(arg: &Arg) {
         drop(g);
     }
 
-    focus(None);
+    focus(Some(c_win));
 
     {
-        let g = get_globals();
-        if let Some(ref c) = g.clients.get(&c_win) {
-            let win = c.win;
-            drop(g);
-
-            focus(win_to_client(win).as_mut());
-
-            let x11 = get_x11();
-            if let Some(ref conn) = x11.conn {
-                let _ = x11rb::protocol::xproto::configure_window(
-                    conn,
-                    win,
-                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                        .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
-                );
-            }
-
-            warp_cursor_to_client(win);
+        let x11 = get_x11();
+        if let Some(ref conn) = x11.conn {
+            let _ = x11rb::protocol::xproto::configure_window(
+                conn,
+                c_win,
+                &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                    .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
+            );
         }
+
+        warp_cursor_to_client(c_win);
     }
 }
 
