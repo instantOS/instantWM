@@ -28,6 +28,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
 use x11rb::rust_connection::RustConnection;
 
 use crate::bar::{update_bars, update_status};
@@ -434,7 +436,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
     }
 
     let _ = conn.create_window(
-        x11rb::COPY_FROM_PARENT.into(),
+        0u8, // depth: COPY_FROM_PARENT as u8 is 0
         wmcheckwin,
         root,
         0,
@@ -464,7 +466,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         PropMode::REPLACE,
         wmcheckwin,
         net_wm_check,
-        AtomEnum::WINDOW.into(),
+        u32::from(AtomEnum::WINDOW),
         &[wmcheckwin],
     );
 
@@ -482,7 +484,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         PropMode::REPLACE,
         root,
         net_wm_check,
-        AtomEnum::WINDOW.into(),
+        u32::from(AtomEnum::WINDOW),
         &[wmcheckwin],
     );
 
@@ -494,7 +496,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         PropMode::REPLACE,
         root,
         net_supported,
-        AtomEnum::ATOM.into(),
+        u32::from(AtomEnum::ATOM),
         &net_atoms,
     );
 

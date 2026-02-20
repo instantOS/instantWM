@@ -370,7 +370,7 @@ pub struct Drw {
     drawable: Drawable,
     gc: Gcontext,
     scheme: Option<Vec<Clr>>,
-    fonts: Option<Box<Fnt>>,
+    pub fonts: Option<Box<Fnt>>,
     depth: u8,
     visual: *mut libc::c_void,
     colormap: c_ulong,
