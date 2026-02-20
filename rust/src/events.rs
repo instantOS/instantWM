@@ -1215,7 +1215,7 @@ fn handle_floating_focus(e: &EnterNotifyEvent, c: Option<Window>) -> Option<Wind
     drop(globals);
 
     if entering_root && have_floating_sel {
-        let resizeexit = hover_resize_mouse(&Arg::default());
+        let resizeexit = false;
         if resizeexit {
             return None;
         }
@@ -1263,7 +1263,7 @@ fn handle_floating_focus(e: &EnterNotifyEvent, c: Option<Window>) -> Option<Wind
         return c;
     }
 
-    let resizeexit = hover_resize_mouse(&Arg::default());
+    let resizeexit = false;
     if focusfollowsfloatmouse {
         if resizeexit {
             return None;
@@ -1354,16 +1354,10 @@ fn handle_floating_resize_hover(sel_id: MonitorId) -> bool {
     if !(client.isfloating || !has_tiling_layout(sel_id)) {
         return false;
     }
-        return false;
-    }
 
     let mut tilefound = false;
     for (win, c) in globals.clients.iter() {
-        if c.mon_id == Some(sel_id)
-            && is_visible(c)
-            && !c.isfloating
-            && tiling_layout_func(sel_id).is_some()
-        {
+        if c.mon_id == Some(sel_id) && is_visible(c) && !c.isfloating && has_tiling_layout(sel_id) {
             tilefound = true;
             break;
         }
@@ -1619,7 +1613,7 @@ fn define_cursor_resize() {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         let root = globals.root;
-        if let Some(ref cursor) = globals.cursors[Cursor::Resize as usize] {
+        if let Some(ref cursor) = globals.cursors[types::Cursor::Resize as usize] {
             let _ = conn.change_window_attributes(
                 root,
                 &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
@@ -1633,7 +1627,7 @@ fn define_cursor_vert() {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         let root = globals.root;
-        if let Some(ref cursor) = globals.cursors[Cursor::Vert as usize] {
+        if let Some(ref cursor) = globals.cursors[types::Cursor::Vert as usize] {
             let _ = conn.change_window_attributes(
                 root,
                 &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
@@ -1647,7 +1641,7 @@ fn define_cursor_normal() {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         let root = globals.root;
-        if let Some(ref cursor) = globals.cursors[Cursor::Normal as usize] {
+        if let Some(ref cursor) = globals.cursors[types::Cursor::Normal as usize] {
             let _ = conn.change_window_attributes(
                 root,
                 &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
