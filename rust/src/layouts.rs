@@ -1,11 +1,8 @@
 use crate::animation::animate_client;
 use crate::bar::draw_bar;
-use crate::client::{
-    client_height, client_width, is_visible, next_tiled, resize, resize_client, save_bw,
-};
-use crate::floating::{apply_snap_mut, restore_border_width_win};
+use crate::client::{client_height, client_width, is_visible, next_tiled, resize, save_bw};
+use crate::floating::restore_border_width_win;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange as arrange_mon;
 use crate::types::*;
 use crate::util::{max, min};
 use x11rb::protocol::xproto::*;
@@ -660,7 +657,7 @@ pub fn tcl(m: &mut MonitorInner) {
     if n > 1 {
         let x = m.wx + mw + sw;
         let mut y = m.wy;
-        let h = m.wh / (n / 2);
+        let h = m.wh / (n / 2) as i32;
 
         let bh = {
             let g = get_globals();
@@ -702,7 +699,7 @@ pub fn tcl(m: &mut MonitorInner) {
 
     let x = if (n + 1) / 2 == 1 { mw + m.wx } else { m.wx };
     let mut y = m.wy;
-    let h = m.wh / ((n + 1) / 2);
+    let h = m.wh / ((n + 1) / 2) as i32;
 
     let bh = {
         let g = get_globals();
@@ -1177,13 +1174,7 @@ pub fn restack(m: &mut MonitorInner) {
 
         let _ = conn.flush();
 
-        let mut ev: Option<GenericEvent> = None;
-        while let Ok(event) = conn.poll_for_event() {
-            ev = event;
-            if ev.is_none() {
-                break;
-            }
-        }
+        while let Ok(Some(_)) = conn.poll_for_event() {}
     }
 }
 
