@@ -28,7 +28,31 @@ pub struct XftColor {
     pub color: XRenderColor,
 }
 
+impl Clone for XftColor {
+    fn clone(&self) -> Self {
+        Self {
+            pixel: self.pixel,
+            color: XRenderColor {
+                red: self.color.red,
+                green: self.color.green,
+                blue: self.color.blue,
+                alpha: self.color.alpha,
+            },
+        }
+    }
+}
+
+impl std::fmt::Debug for XftColor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("XftColor")
+            .field("pixel", &self.pixel)
+            .field("color", &self.color)
+            .finish()
+    }
+}
+
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct XRenderColor {
     pub red: u16,
     pub green: u16,
@@ -301,6 +325,20 @@ pub struct Fnt {
 }
 
 unsafe impl Send for Fnt {}
+unsafe impl Sync for Fnt {}
+
+impl Clone for Fnt {
+    fn clone(&self) -> Self {
+        Self {
+            display: self.display,
+            h: self.h,
+            xfont: self.xfont,
+            pattern: self.pattern,
+            next: self.next.clone(),
+            ascent: self.ascent,
+        }
+    }
+}
 
 impl Fnt {
     pub fn height(&self) -> u32 {
@@ -335,7 +373,7 @@ pub struct Drw {
     fonts: Option<Box<Fnt>>,
     depth: u8,
     visual: *mut libc::c_void,
-    colormap: u32,
+    colormap: c_ulong,
     nomatches: [u32; NOMATCHES_LEN],
     ellipsis_width: u32,
 }
@@ -424,14 +462,14 @@ impl Drw {
         let mut ret: Option<Box<Fnt>> = None;
 
         for fontname in fonts.iter().rev() {
-            if let Some(font) = self.xfont_create(Some(fontname), None)? {
+            if let Some(mut font) = self.xfont_create(Some(fontname), None)? {
                 font.next = ret;
                 ret = Some(font);
             }
         }
 
-        self.fonts = ret.clone();
-        Ok(ret)
+        self.fonts = ret;
+        Ok(self.fonts.clone())
     }
 
     fn xfont_create(
@@ -655,24 +693,30 @@ impl Drw {
         let mut ellipsis_len: usize = 0;
 
         let mut d: *mut XftDraw = ptr::null_mut();
-        let mut usedfont: *mut Fnt;
-        let mut curfont: *mut Fnt;
-        let mut nextfont: *mut Fnt;
+        let mut usedfont_idx: usize = 0;
+        let mut nextfont_idx: Option<usize> = None;
         let mut utf8strlen: usize;
-        let mut utf8charlen: usize;
         let render = x != 0 || y != 0 || w != 0 || h != 0;
         let mut utf8codepoint: u32 = 0;
         let mut utf8str: &[u8];
         let mut charexists = false;
         let mut overflow = false;
 
-        let fonts = match &self.fonts {
-            Some(f) => f,
+        if self.fonts.is_none() {
+            return 0;
+        }
+
+        let (fg_pixel, bg_pixel, detail_pixel) = match &self.scheme {
+            Some(s) => (s[COL_FG].pixel(), s[COL_BG].pixel(), s[COL_DETAIL].pixel()),
             None => return 0,
         };
 
-        let scheme = match &self.scheme {
-            Some(s) => s,
+        let fg_color = match &self.scheme {
+            Some(s) => s[COL_FG].color.clone(),
+            None => return 0,
+        };
+        let bg_color = match &self.scheme {
+            Some(s) => s[COL_BG].color.clone(),
             None => return 0,
         };
 
@@ -681,16 +725,14 @@ impl Drw {
         }
 
         if !render {
-            w = if invert { invert as u32 } else { !0 };
+            w = u32::MAX;
         } else {
-            let fg_pixel = if invert {
-                scheme[COL_FG].pixel()
-            } else {
-                scheme[COL_BG].pixel()
-            };
-
             unsafe {
-                XSetForeground(self.display, self.gc, fg_pixel as c_ulong);
+                XSetForeground(
+                    self.display,
+                    self.gc,
+                    if invert { fg_pixel } else { bg_pixel } as c_ulong,
+                );
 
                 if detail_height > 0 {
                     XFillRectangle(
@@ -703,7 +745,6 @@ impl Drw {
                         h.saturating_sub(detail_height as u32),
                     );
 
-                    let detail_pixel = scheme[COL_DETAIL].pixel();
                     XSetForeground(self.display, self.gc, detail_pixel as c_ulong);
                     XFillRectangle(
                         self.display,
@@ -725,8 +766,6 @@ impl Drw {
             w = w.saturating_sub(lpad);
         }
 
-        usedfont = fonts as *const Fnt as *mut Fnt;
-
         if self.ellipsis_width == 0 && render {
             self.ellipsis_width = self.fontset_getwidth("...");
         }
@@ -734,34 +773,54 @@ impl Drw {
         let text_bytes = text.as_bytes();
         let mut text_pos: usize = 0;
 
+        fn get_font_at(mut font: &Fnt, idx: usize) -> Option<&Fnt> {
+            for _ in 0..idx {
+                match &font.next {
+                    Some(next) => font = next,
+                    None => return None,
+                }
+            }
+            Some(font)
+        }
+
+        fn count_fonts(font: &Fnt) -> usize {
+            let mut count = 1;
+            let mut current = font;
+            while let Some(next) = &current.next {
+                count += 1;
+                current = next;
+            }
+            count
+        }
+
         loop {
             ew = 0;
             ellipsis_len = 0;
             utf8strlen = 0;
             utf8str = &text_bytes[text_pos..];
-            nextfont = ptr::null_mut();
+            nextfont_idx = None;
 
             while text_pos < text_bytes.len() {
                 let (charlen, codepoint) = utf8decode(&text_bytes[text_pos..]);
-                utf8charlen = charlen;
                 utf8codepoint = codepoint;
 
                 while !charexists {
-                    let mut cur_font = fonts as *const Fnt as *mut Fnt;
-                    while !cur_font.is_null() {
+                    let font_count = count_fonts(self.fonts.as_ref().unwrap());
+                    for cur_idx in 0..font_count {
+                        let cur_font = get_font_at(self.fonts.as_ref().unwrap(), cur_idx).unwrap();
+
                         unsafe {
                             charexists =
-                                XftCharExists(self.display, (*cur_font).xfont, utf8codepoint) != 0;
+                                XftCharExists(self.display, cur_font.xfont, utf8codepoint) != 0;
                         }
 
                         if charexists {
-                            let f = unsafe { &*cur_font };
                             let text_slice = if text_pos + charlen <= text_bytes.len() {
                                 &text_bytes[text_pos..text_pos + charlen]
                             } else {
                                 &text_bytes[text_pos..]
                             };
-                            tmpw = self.font_getexts(f, text_slice);
+                            tmpw = self.font_getexts(cur_font, text_slice);
 
                             if ew + self.ellipsis_width <= w {
                                 ellipsis_x = x + ew as i32;
@@ -776,32 +835,23 @@ impl Drw {
                                 } else {
                                     utf8strlen = ellipsis_len;
                                 }
-                            } else if cur_font == usedfont {
+                            } else if cur_idx == usedfont_idx {
                                 utf8strlen += charlen;
                                 text_pos += charlen;
                                 ew += tmpw;
                             } else {
-                                nextfont = cur_font;
+                                nextfont_idx = Some(cur_idx);
                             }
                             break;
-                        }
-
-                        unsafe {
-                            cur_font = if !(*cur_font).next.is_null() {
-                                (*cur_font).next.as_ref().unwrap() as *const Fnt as *mut Fnt
-                            } else {
-                                ptr::null_mut()
-                            };
                         }
                     }
 
                     if !charexists {
-                        let (charlen2, _) = utf8decode(b"a");
-                        utf8charlen = charlen2;
+                        break;
                     }
                 }
 
-                if overflow || !charexists || !nextfont.is_null() {
+                if overflow || !charexists || nextfont_idx.is_some() {
                     break;
                 }
 
@@ -810,17 +860,13 @@ impl Drw {
 
             if utf8strlen > 0 {
                 if render {
-                    let f = unsafe { &*usedfont };
+                    let f = get_font_at(self.fonts.as_ref().unwrap(), usedfont_idx).unwrap();
                     let ty = y + ((h - f.h) / 2) as i32 + f.ascent;
 
                     unsafe {
                         XftDrawStringUtf8(
                             d,
-                            if invert {
-                                &scheme[COL_BG].color
-                            } else {
-                                &scheme[COL_FG].color
-                            } as *const XftColor,
+                            if invert { &bg_color } else { &fg_color } as *const XftColor,
                             f.xfont,
                             x as c_int,
                             ty as c_int,
@@ -850,9 +896,9 @@ impl Drw {
                 break;
             }
 
-            if !nextfont.is_null() {
+            if let Some(next_idx) = nextfont_idx {
                 charexists = false;
-                usedfont = nextfont;
+                usedfont_idx = next_idx;
             } else {
                 charexists = true;
 
@@ -889,28 +935,26 @@ impl Drw {
                         FcPatternDestroy(fcpattern);
 
                         if !match_pattern.is_null() {
-                            if let Ok(Some(mut new_font)) =
-                                self.xfont_create(None, Some(match_pattern))
+                            if let Ok(Some(new_font)) = self.xfont_create(None, Some(match_pattern))
                             {
-                                let f = new_font.as_ref();
+                                let f = &new_font;
                                 if XftCharExists(self.display, f.xfont, utf8codepoint) != 0 {
+                                    usedfont_idx = count_fonts(self.fonts.as_ref().unwrap());
                                     let mut last = self.fonts.as_mut().unwrap();
                                     while last.next.is_some() {
                                         last = last.next.as_mut().unwrap();
                                     }
-                                    usedfont = new_font.as_ref() as *const Fnt as *mut Fnt;
                                     last.next = Some(new_font);
                                 } else {
                                     let idx = NOMATCHES_IDX.fetch_add(1, Ordering::SeqCst);
                                     self.nomatches[idx as usize % NOMATCHES_LEN] = utf8codepoint;
-                                    usedfont =
-                                        self.fonts.as_ref().unwrap() as *const Fnt as *mut Fnt;
+                                    usedfont_idx = 0;
                                 }
                             }
                         }
                     }
                 } else {
-                    usedfont = self.fonts.as_ref().unwrap() as *const Fnt as *mut Fnt;
+                    usedfont_idx = 0;
                 }
             }
         }
@@ -1002,14 +1046,14 @@ impl Drw {
         if self.fonts.is_none() || text.is_empty() {
             return 0;
         }
-        self.text(0, 0, 0, 0, 0, text, 0, 0) as u32
+        self.text(0, 0, 0, 0, 0, text, false, 0) as u32
     }
 
     pub fn fontset_getwidth_clamp(&mut self, text: &str, n: u32) -> u32 {
         if self.fonts.is_none() || text.is_empty() || n == 0 {
             return 0;
         }
-        let tmp = self.text(0, 0, 0, 0, 0, text, n as i32, 0) as u32;
+        let tmp = self.text(0, 0, 0, 0, 0, text, false, 0) as u32;
         min(n, tmp)
     }
 
@@ -1133,10 +1177,11 @@ fn utf8validate(u: u32, i: usize) -> u32 {
     u
 }
 
-pub fn drw_fontset_free(mut font: Option<Box<Fnt>>) {
-    if let Some(f) = font.take() {
-        drw_fontset_free(f.next);
+pub fn drw_fontset_free(font: Option<Box<Fnt>>) {
+    if let Some(mut f) = font {
+        let next = f.next.take();
         drop(f);
+        drw_fontset_free(next);
     }
 }
 
