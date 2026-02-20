@@ -1,25 +1,271 @@
+use crate::bar::{draw_bar, get_tag_width};
+use crate::client::resize;
+use crate::globals::{get_globals, get_globals_mut};
+use crate::keyboard::grab_keys;
 use crate::types::*;
 
-pub fn toggle_bar(_arg: &Arg) {}
+pub fn ctrl_toggle(value: &mut bool, arg: u32) {
+    if arg == 0 || arg == 2 {
+        *value = !*value;
+    } else if arg == 1 {
+        *value = false;
+    } else {
+        *value = true;
+    }
+}
 
-pub fn toggle_animated(_arg: &Arg) {}
+pub fn toggle_alt_tag(arg: &Arg) {
+    let new_value = {
+        let globals = get_globals();
+        let mut showalttag = globals.showalttag;
+        ctrl_toggle(&mut showalttag, arg.ui);
+        showalttag
+    };
 
-pub fn toggle_focus_follows_mouse(_arg: &Arg) {}
+    {
+        let mut globals = get_globals_mut();
+        globals.showalttag = new_value;
+    }
 
-pub fn toggle_focus_follows_float_mouse(_arg: &Arg) {}
+    let monitors: Vec<usize> = {
+        let globals = get_globals();
+        globals
+            .monitors
+            .iter()
+            .enumerate()
+            .map(|(i, _)| i)
+            .collect()
+    };
 
-pub fn toggle_double_draw(_arg: &Arg) {}
+    for i in monitors {
+        let mut globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(i) {
+            draw_bar(mon);
+        }
+    }
 
-pub fn toggle_fake_fullscreen(_arg: &Arg) {}
+    let tagwidth = get_tag_width();
+    let mut globals = get_globals_mut();
+    globals.tagwidth = tagwidth;
+}
 
-pub fn toggle_locked(_arg: &Arg) {}
+pub fn alt_tab_free(arg: &Arg) {
+    ctrl_toggle(&mut get_globals_mut().tagprefix, arg.ui);
+    grab_keys();
+}
 
-pub fn toggle_sticky(_arg: &Arg) {}
+pub fn toggle_sticky(_arg: &Arg) {
+    let sel_win = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+    };
 
-pub fn hide_window(_arg: &Arg) {}
+    let Some(win) = sel_win else { return };
 
-pub fn redraw_win(_arg: &Arg) {}
+    let mon_id = {
+        let mut globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.issticky = !client.issticky;
+            client.mon_id
+        } else {
+            return;
+        }
+    };
 
-pub fn unhide_all(_arg: &Arg) {}
+    if let Some(mid) = mon_id {
+        crate::monitor::arrange(Some(mid));
+    }
+}
 
-pub fn close_win(_arg: &Arg) {}
+pub fn toggle_prefix(arg: &Arg) {
+    let mut globals = get_globals_mut();
+    globals.tagprefix = !globals.tagprefix;
+
+    if let Some(selmon_id) = globals.selmon {
+        let selmon_id = selmon_id;
+        drop(globals);
+        let mut globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+            draw_bar(mon);
+        }
+    }
+}
+
+pub fn toggle_animated(arg: &Arg) {
+    let mut globals = get_globals_mut();
+    ctrl_toggle(&mut globals.animated, arg.ui);
+}
+
+pub fn set_border_width(arg: &Arg) {
+    let sel_win = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+    };
+
+    let Some(win) = sel_win else { return };
+
+    let (old_bw, mon_id) = {
+        let globals = get_globals();
+        if let Some(c) = globals.clients.get(&win) {
+            (c.border_width, c.mon_id)
+        } else {
+            return;
+        }
+    };
+
+    let new_bw = arg.i;
+    let d = old_bw - new_bw;
+
+    {
+        let mut globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.border_width = new_bw;
+        }
+    }
+
+    let (x, y, w, h) = {
+        let globals = get_globals();
+        if let Some(c) = globals.clients.get(&win) {
+            (c.x, c.y, c.w + 2 * d, c.h + 2 * d)
+        } else {
+            return;
+        }
+    };
+
+    resize(win, x, y, w, h, false);
+}
+
+pub fn toggle_focus_follows_mouse(arg: &Arg) {
+    ctrl_toggle(&mut get_globals_mut().focusfollowsmouse, arg.ui);
+}
+
+pub fn toggle_focus_follows_float_mouse(arg: &Arg) {
+    ctrl_toggle(&mut get_globals_mut().focusfollowsfloatmouse, arg.ui);
+}
+
+pub fn toggle_double_draw(_arg: &Arg) {
+    let mut globals = get_globals_mut();
+    globals.doubledraw = !globals.doubledraw;
+}
+
+pub fn toggle_locked(_arg: &Arg) {
+    let sel_win = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+    };
+
+    let Some(win) = sel_win else { return };
+
+    let mon_id = {
+        let mut globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.islocked = !client.islocked;
+            client.mon_id
+        } else {
+            return;
+        }
+    };
+
+    {
+        let globals = get_globals();
+        if let Some(selmon_id) = globals.selmon {
+            drop(globals);
+            let mut globals = get_globals_mut();
+            if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+                draw_bar(mon);
+            }
+        }
+    }
+}
+
+pub fn toggle_show_tags(arg: &Arg) {
+    let (selmon_id, new_showtags) = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+
+        let mut showtags = if let Some(mon) = globals.monitors.get(selmon_id) {
+            mon.showtags
+        } else {
+            0
+        };
+
+        ctrl_toggle(&mut showtags as &mut u32 as *mut u32 as *mut bool, arg.ui);
+
+        (selmon_id, showtags)
+    };
+
+    {
+        let mut globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+            mon.showtags = new_showtags;
+        }
+    }
+
+    let tagwidth = get_tag_width();
+    let mut globals = get_globals_mut();
+    globals.tagwidth = tagwidth;
+
+    if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+        draw_bar(mon);
+    }
+}
+
+pub fn hide_window(_arg: &Arg) {
+    let sel_win = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+    };
+
+    let Some(win) = sel_win else { return };
+
+    crate::client::hide(win);
+}
+
+pub fn unhide_all(_arg: &Arg) {
+    let clients: Vec<x11rb::protocol::xproto::Window> = {
+        let globals = get_globals();
+        globals.clients.keys().copied().collect()
+    };
+
+    for win in clients {
+        crate::client::show(win);
+    }
+}
+
+pub fn redraw_win(_arg: &Arg) {
+    let monitors: Vec<usize> = {
+        let globals = get_globals();
+        globals
+            .monitors
+            .iter()
+            .enumerate()
+            .map(|(i, _)| i)
+            .collect()
+    };
+
+    for i in monitors {
+        let mut globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(i) {
+            draw_bar(mon);
+        }
+    }
+}
