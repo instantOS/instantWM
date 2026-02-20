@@ -411,16 +411,11 @@ pub fn hide_overlay(_arg: &Arg) {
         None => return,
     };
 
-    let (is_locked, overlay_mode, mon_mx, mon_my, mon_mw, mon_mh, client_x, client_h, client_w) = {
+    let (is_locked, overlay_mode, mon_mx, mon_my, mon_mw, mon_mh, client_x, client_h, client_w, is_fullscreen) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&overlay_win) {
             let is_fullscreen = Some(overlay_win) == mon.fullscreen;
             let is_locked = c.islocked;
-
-            if is_fullscreen {
-                drop(globals);
-                crate::floating::temp_fullscreen(&Arg::default());
-            }
 
             let mon = globals.monitors.get(selmon_id).unwrap();
             (
@@ -433,11 +428,16 @@ pub fn hide_overlay(_arg: &Arg) {
                 c.x,
                 c.h,
                 c.w,
+                is_fullscreen,
             )
         } else {
             return;
         }
     };
+
+    if is_fullscreen {
+        crate::floating::temp_fullscreen(&Arg::default());
+    }
 
     {
         let mut globals = get_globals_mut();

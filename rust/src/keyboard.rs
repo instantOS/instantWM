@@ -18,11 +18,9 @@ fn keycode_to_keysym(keycode: u8, _index: i32) -> u32 {
 pub const OVERLAY_BOTTOM: i32 = 2;
 pub const OVERLAY_RIGHT: i32 = 1;
 
-fn clean_mask(mask: u16) -> u16 {
-    let globals = get_globals();
-    let numlockmask = globals.numlockmask as u16;
+fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
     let lock_mask = ModMask::LOCK.bits();
-    mask & !(numlockmask | lock_mask)
+    mask & !(numlockmask as u16 | lock_mask)
         & (ModMask::SHIFT.bits()
             | ModMask::CONTROL.bits()
             | ModMask::M1.bits()
@@ -40,39 +38,41 @@ pub fn key_press(e: &KeyPressEvent) {
     if let Some(ref conn) = x11.conn {
         let keysym = keycode_to_keysym(keycode, 0);
 
-        let globals = get_globals();
-
-        for key in &globals.keys {
-            if keysym == key.keysym as u32
-                && clean_mask(key.mod_mask as u16) == clean_mask(state.bits() as u16)
-            {
-                if let Some(func) = key.func {
-                    drop(globals);
-                    func(&key.arg);
-                    return;
+        let matching_key = {
+            let globals = get_globals();
+            let numlockmask = globals.numlockmask;
+            let mut result = None;
+            for key in &globals.keys {
+                if keysym == key.keysym as u32
+                    && clean_mask(key.mod_mask as u16, numlockmask) == clean_mask(state.bits() as u16, numlockmask)
+                {
+                    result = Some((key.func, key.arg.clone()));
+                    break;
                 }
             }
-        }
-
-        let has_sel = globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id))
-            .and_then(|m| m.sel)
-            .is_some();
-        drop(globals);
-
-        if !has_sel {
-            let globals = get_globals();
-            for key in &globals.dkeys {
-                if keysym == key.keysym as u32
-                    && clean_mask(key.mod_mask as u16) == clean_mask(state.bits() as u16)
-                {
-                    if let Some(func) = key.func {
-                        drop(globals);
-                        func(&key.arg);
-                        return;
+            if result.is_none() {
+                let has_sel = globals
+                    .selmon
+                    .and_then(|id| globals.monitors.get(id))
+                    .and_then(|m| m.sel)
+                    .is_some();
+                if !has_sel {
+                    for key in &globals.dkeys {
+                        if keysym == key.keysym as u32
+                            && clean_mask(key.mod_mask as u16, numlockmask) == clean_mask(state.bits() as u16, numlockmask)
+                        {
+                            result = Some((key.func, key.arg.clone()));
+                            break;
+                        }
                     }
                 }
+            }
+            result
+        };
+
+        if let Some((func, arg)) = matching_key {
+            if let Some(f) = func {
+                f(&arg);
             }
         }
     }
