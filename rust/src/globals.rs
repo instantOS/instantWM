@@ -1,7 +1,8 @@
+use crate::drw::{Clr, Cur, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use x11rb::protocol::xproto::Window;
 
 pub struct Globals {
@@ -33,6 +34,55 @@ pub struct Globals {
     pub motifatom: u32,
     pub numlockmask: u32,
     pub showsystray: bool,
+    pub systraypinning: u32,
+    pub systrayspacing: u32,
+    pub systray: Option<Systray>,
+    pub drw: Option<Drw>,
+    pub cursors: [Option<Cur>; 10],
+    pub borderscheme: Option<Clr>,
+    pub statusscheme: Option<Clr>,
+    pub tagschemes: Vec<Vec<Vec<Clr>>>,
+    pub windowschemes: Vec<Vec<Vec<Clr>>>,
+    pub closebuttonschemes: Vec<Vec<Vec<Clr>>>,
+    pub startmenusize: u32,
+    pub snap: u32,
+    pub resizehints: i32,
+    pub tags: [[u8; 16]; MAX_TAGS],
+    pub tagsalt: Vec<&'static str>,
+    pub layouts: Vec<Layout>,
+    pub numtags: i32,
+    pub keys_len: usize,
+    pub dkeys_len: usize,
+    pub commands_len: usize,
+    pub buttons_len: usize,
+    pub layouts_len: usize,
+    pub rules_len: usize,
+    pub fonts_len: usize,
+    pub commands: Vec<XCommand>,
+    pub buttons: Vec<Button>,
+    pub fonts: Vec<&'static str>,
+    pub tagcolors: Vec<Vec<Vec<&'static str>>>,
+    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
+    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
+    pub bordercolors: Vec<&'static str>,
+    pub statusbarcolors: Vec<&'static str>,
+    pub keys: Vec<Key>,
+    pub dkeys: Vec<Key>,
+    pub rules: Vec<Rule>,
+    pub resources: Vec<ResourcePref>,
+    pub tagmask: u32,
+    pub borderpx: u32,
+    pub decorhints: i32,
+    pub mfact: f32,
+    pub nmaster: i32,
+    pub showbar: bool,
+    pub topbar: bool,
+    pub barheight: i32,
+    pub xresourcesfont: [u8; 30],
+    pub instantmenumon: [u8; 2],
+    pub instantmenucmd: Vec<&'static str>,
+    pub instantshutdowncmd: Vec<&'static str>,
+    pub startmenucmd: Vec<&'static str>,
 }
 
 impl Default for Globals {
@@ -66,12 +116,85 @@ impl Default for Globals {
             motifatom: 0,
             numlockmask: 0,
             showsystray: true,
+            systraypinning: 0,
+            systrayspacing: 2,
+            systray: None,
+            drw: None,
+            cursors: Default::default(),
+            borderscheme: None,
+            statusscheme: None,
+            tagschemes: Vec::new(),
+            windowschemes: Vec::new(),
+            closebuttonschemes: Vec::new(),
+            startmenusize: 0,
+            snap: 32,
+            resizehints: 1,
+            tags: [[0; 16]; MAX_TAGS],
+            tagsalt: Vec::new(),
+            layouts: Vec::new(),
+            numtags: 0,
+            keys_len: 0,
+            dkeys_len: 0,
+            commands_len: 0,
+            buttons_len: 0,
+            layouts_len: 0,
+            rules_len: 0,
+            fonts_len: 0,
+            commands: Vec::new(),
+            buttons: Vec::new(),
+            fonts: Vec::new(),
+            tagcolors: Vec::new(),
+            windowcolors: Vec::new(),
+            closebuttoncolors: Vec::new(),
+            bordercolors: Vec::new(),
+            statusbarcolors: Vec::new(),
+            keys: Vec::new(),
+            dkeys: Vec::new(),
+            rules: Vec::new(),
+            resources: Vec::new(),
+            tagmask: 0,
+            borderpx: 1,
+            decorhints: 0,
+            mfact: 0.55,
+            nmaster: 1,
+            showbar: true,
+            topbar: true,
+            barheight: 0,
+            xresourcesfont: [0; 30],
+            instantmenumon: [0; 2],
+            instantmenucmd: Vec::new(),
+            instantshutdowncmd: Vec::new(),
+            startmenucmd: Vec::new(),
         }
     }
 }
 
-pub static GLOBALS: Lazy<Mutex<Globals>> = Lazy::new(|| Mutex::new(Globals::default()));
+pub static GLOBALS: Lazy<RwLock<Globals>> = Lazy::new(|| RwLock::new(Globals::default()));
 
-pub fn get_globals() -> std::sync::MutexGuard<'static, Globals> {
-    GLOBALS.lock().unwrap()
+pub fn get_globals() -> std::sync::RwLockReadGuard<'static, Globals> {
+    GLOBALS.read().unwrap()
+}
+
+pub fn get_globals_mut() -> std::sync::RwLockWriteGuard<'static, Globals> {
+    GLOBALS.write().unwrap()
+}
+
+pub struct X11Connection {
+    pub conn: Option<x11rb::rust_connection::RustConnection>,
+    pub screen_num: usize,
+}
+
+impl Default for X11Connection {
+    fn default() -> Self {
+        Self {
+            conn: None,
+            screen_num: 0,
+        }
+    }
+}
+
+pub static X11: Lazy<Mutex<X11Connection>> = Lazy::new(|| Mutex::new(X11Connection::default()));
+
+pub fn get_x11() -> std::sync::MutexGuard<'static, X11Connection> {
+    X11.lock().unwrap()
 }
