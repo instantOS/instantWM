@@ -165,27 +165,34 @@ pub fn push_up(arg: &Arg) {
         detach(win);
 
         {
-            let mut globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(selmon_id) {
-                if let Some(client) = globals.clients.get_mut(&win) {
-                    client.next = Some(prev);
-                }
+            let mut globals_guard = get_globals_mut();
+            let globals = &mut *globals_guard;
+            let clients = &mut globals.clients;
+            let monitors = &mut globals.monitors;
+            if let Some(client) = clients.get_mut(&win) {
+                client.next = Some(prev);
+            }
 
+            if let Some(mon) = monitors.get_mut(selmon_id) {
                 if mon.clients == Some(prev) {
                     mon.clients = Some(win);
                 } else {
                     let mut current = mon.clients;
+                    let mut target_c_win = None;
                     while let Some(c_win) = current {
-                        if let Some(c) = globals.clients.get(&c_win) {
+                        if let Some(c) = clients.get(&c_win) {
                             if c.next == Some(prev) {
-                                if let Some(c) = globals.clients.get_mut(&c_win) {
-                                    c.next = Some(win);
-                                }
+                                target_c_win = Some(c_win);
                                 break;
                             }
                             current = c.next;
                         } else {
                             break;
+                        }
+                    }
+                    if let Some(t_win) = target_c_win {
+                        if let Some(c) = clients.get_mut(&t_win) {
+                            c.next = Some(win);
                         }
                     }
                 }
@@ -297,11 +304,14 @@ fn attach(win: Window) {
 
     let mon_clients = get_globals().monitors.get(mon_id).and_then(|m| m.clients);
 
-    let mut globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+    let mut globals_guard = get_globals_mut();
+    let globals = &mut *globals_guard;
+    let clients = &mut globals.clients;
+    let monitors = &mut globals.monitors;
+    if let Some(client) = clients.get_mut(&win) {
         client.next = mon_clients;
     }
-    if let Some(mon) = globals.monitors.get_mut(mon_id) {
+    if let Some(mon) = monitors.get_mut(mon_id) {
         mon.clients = Some(win);
     }
 }
@@ -310,7 +320,7 @@ fn detach(win: Window) {
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     let Some(mid) = mon_id else { return };
 
-    let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+    let mut traversal = Vec::new();
     let mut current = get_globals().monitors.get(mid).and_then(|m| m.clients);
     let mut prev: Option<Window> = None;
 
@@ -323,14 +333,17 @@ fn detach(win: Window) {
 
     let client_next = get_globals().clients.get(&win).and_then(|c| c.next);
 
-    let mut globals = get_globals_mut();
+    let mut globals_guard = get_globals_mut();
+    let globals = &mut *globals_guard;
+    let clients = &mut globals.clients;
+    let monitors = &mut globals.monitors;
     for (cur_win, prev_win, _next) in traversal {
         if cur_win == win {
             if let Some(prev_win) = prev_win {
-                if let Some(prev_client) = globals.clients.get_mut(&prev_win) {
+                if let Some(prev_client) = clients.get_mut(&prev_win) {
                     prev_client.next = client_next;
                 }
-            } else if let Some(mon) = globals.monitors.get_mut(mid) {
+            } else if let Some(mon) = monitors.get_mut(mid) {
                 mon.clients = client_next;
             }
             return;

@@ -125,106 +125,101 @@ pub fn visible_client(win: Window) -> bool {
 }
 
 pub fn save_all_floating(mon_id: Option<usize>) {
-    let globals = get_globals();
-    let numtags = globals.numtags;
-    let tagmask = globals.tagmask;
+    let (numtags, tagmask) = {
+        let globals = get_globals();
+        (globals.numtags, globals.tagmask)
+    };
 
     if let Some(mid) = mon_id {
-        if let Some(mon) = globals.monitors.get(mid) {
-            for i in 1..numtags as usize {
-                if i >= MAX_TAGS {
-                    break;
-                }
-                let has_arrange = if let Some(ref pertag) = mon.pertag {
-                    if pertag.sellts[i] < 2 {
-                        if let Some(_layout_idx) = pertag.ltidxs[i][pertag.sellts[i] as usize] {
-                            true
+        let mut to_save = Vec::new();
+        {
+            let globals = get_globals();
+            if let Some(mon) = globals.monitors.get(mid) {
+                for i in 1..numtags as usize {
+                    if i >= MAX_TAGS {
+                        break;
+                    }
+                    let has_arrange = if let Some(ref pertag) = mon.pertag {
+                        if pertag.sellts[i] < 2 {
+                            pertag.ltidxs[i][pertag.sellts[i] as usize].is_some()
                         } else {
                             false
                         }
                     } else {
                         false
+                    };
+
+                    if has_arrange {
+                        continue;
                     }
-                } else {
-                    false
-                };
 
-                if has_arrange {
-                    continue;
-                }
-
-                let mut current = mon.clients;
-                while let Some(c_win) = current {
-                    if let Some(c) = globals.clients.get(&c_win) {
-                        if (c.tags & (1 << (i - 1))) != 0 && c.snapstatus == SnapPosition::None {
-                            drop(globals);
-                            save_floating_win(c_win);
-                            let globals = get_globals();
-                            current = if let Some(c) = globals.clients.get(&c_win) {
-                                c.next
-                            } else {
-                                None
-                            };
-                        } else {
+                    let mut current = mon.clients;
+                    while let Some(c_win) = current {
+                        if let Some(c) = globals.clients.get(&c_win) {
+                            if (c.tags & (1 << (i - 1))) != 0 && c.snapstatus == SnapPosition::None
+                            {
+                                to_save.push(c_win);
+                            }
                             current = c.next;
+                        } else {
+                            break;
                         }
-                    } else {
-                        break;
                     }
                 }
             }
+        }
+        for win in to_save {
+            save_floating_win(win);
         }
     }
 }
 
 pub fn restore_all_floating(mon_id: Option<usize>) {
-    let globals = get_globals();
-    let numtags = globals.numtags;
+    let numtags = {
+        let globals = get_globals();
+        globals.numtags
+    };
 
     if let Some(mid) = mon_id {
-        if let Some(mon) = globals.monitors.get(mid) {
-            for i in 1..numtags as usize {
-                if i >= MAX_TAGS {
-                    break;
-                }
-                let has_arrange = if let Some(ref pertag) = mon.pertag {
-                    if pertag.sellts[i] < 2 {
-                        if let Some(_layout_idx) = pertag.ltidxs[i][pertag.sellts[i] as usize] {
-                            true
+        let mut to_restore = Vec::new();
+        {
+            let globals = get_globals();
+            if let Some(mon) = globals.monitors.get(mid) {
+                for i in 1..numtags as usize {
+                    if i >= MAX_TAGS {
+                        break;
+                    }
+                    let has_arrange = if let Some(ref pertag) = mon.pertag {
+                        if pertag.sellts[i] < 2 {
+                            pertag.ltidxs[i][pertag.sellts[i] as usize].is_some()
                         } else {
                             false
                         }
                     } else {
                         false
+                    };
+
+                    if has_arrange {
+                        continue;
                     }
-                } else {
-                    false
-                };
 
-                if has_arrange {
-                    continue;
-                }
-
-                let mut current = mon.clients;
-                while let Some(c_win) = current {
-                    if let Some(c) = globals.clients.get(&c_win) {
-                        if (c.tags & (1 << (i - 1))) != 0 && c.snapstatus == SnapPosition::None {
-                            drop(globals);
-                            restore_floating_win(c_win);
-                            let globals = get_globals();
-                            current = if let Some(c) = globals.clients.get(&c_win) {
-                                c.next
-                            } else {
-                                None
-                            };
-                        } else {
+                    let mut current = mon.clients;
+                    while let Some(c_win) = current {
+                        if let Some(c) = globals.clients.get(&c_win) {
+                            if (c.tags & (1 << (i - 1))) != 0 && c.snapstatus == SnapPosition::None
+                            {
+                                to_restore.push(c_win);
+                            }
                             current = c.next;
+                        } else {
+                            break;
                         }
-                    } else {
-                        break;
                     }
                 }
             }
+        }
+        for win in to_restore {
+            restore_floating_win(win);
         }
     }
 }
@@ -282,100 +277,103 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
     };
 
     if let Some(mid) = mon_id {
-        let globals = get_globals();
-        if let Some(m) = globals.monitors.get(mid) {
-            let mony = m.my + if m.showbar { globals.bh } else { 0 };
+        let (m_mx, m_my, m_mw, m_mh, m_wh, mony) = {
+            let globals = get_globals();
+            if let Some(m) = globals.monitors.get(mid) {
+                let mony = m.my + if m.showbar { globals.bh } else { 0 };
+                (m.mx, m.my, m.mw, m.mh, m.wh, mony)
+            } else {
+                return;
+            }
+        };
 
-            if snapstatus != SnapPosition::Maximized {
+        if snapstatus != SnapPosition::Maximized {
+            restore_border_width_win(win);
+        }
+
+        match snapstatus {
+            SnapPosition::None => {
+                check_animate(win, saved_x, saved_y, saved_w, saved_h, 7, 0);
+            }
+            SnapPosition::Top => {
+                check_animate(win, m_mx, mony, m_mw, m_mh / 2, 7, 0);
+            }
+            SnapPosition::TopRight => {
+                check_animate(win, m_mx + m_mw / 2, mony, m_mw / 2, m_mh / 2, 7, 0);
+            }
+            SnapPosition::Right => {
+                check_animate(
+                    win,
+                    m_mx + m_mw / 2,
+                    mony,
+                    m_mw / 2 - border_width * 2,
+                    m_wh - border_width * 2,
+                    7,
+                    0,
+                );
+            }
+            SnapPosition::BottomRight => {
+                check_animate(
+                    win,
+                    m_mx + m_mw / 2,
+                    mony + m_mh / 2,
+                    m_mw / 2,
+                    m_wh / 2,
+                    7,
+                    0,
+                );
+            }
+            SnapPosition::Bottom => {
+                check_animate(win, m_mx, mony + m_mh / 2, m_mw, m_mh / 2, 7, 0);
+            }
+            SnapPosition::BottomLeft => {
+                check_animate(win, m_mx, mony + m_mh / 2, m_mw / 2, m_wh / 2, 7, 0);
+            }
+            SnapPosition::Left => {
+                check_animate(win, m_mx, mony, m_mw / 2, m_wh, 7, 0);
+            }
+            SnapPosition::TopLeft => {
+                check_animate(win, m_mx, mony, m_mw / 2, m_mh / 2, 7, 0);
+            }
+            SnapPosition::Maximized => {
+                save_bw_win(win);
+                let mut globals = get_globals_mut();
+                if let Some(client) = globals.clients.get_mut(&win) {
+                    client.border_width = 0;
+                }
                 drop(globals);
-                restore_border_width_win(win);
-            }
+                check_animate(
+                    win,
+                    m_mx,
+                    mony,
+                    m_mw - border_width * 2,
+                    m_mh + border_width * 2,
+                    7,
+                    0,
+                );
 
-            match snapstatus {
-                SnapPosition::None => {
-                    check_animate(win, saved_x, saved_y, saved_w, saved_h, 7, 0);
-                }
-                SnapPosition::Top => {
-                    check_animate(win, m.mx, mony, m.mw, m.mh / 2, 7, 0);
-                }
-                SnapPosition::TopRight => {
-                    check_animate(win, m.mx + m.mw / 2, mony, m.mw / 2, m.mh / 2, 7, 0);
-                }
-                SnapPosition::Right => {
-                    check_animate(
-                        win,
-                        m.mx + m.mw / 2,
-                        mony,
-                        m.mw / 2 - border_width * 2,
-                        m.wh - border_width * 2,
-                        7,
-                        0,
-                    );
-                }
-                SnapPosition::BottomRight => {
-                    check_animate(
-                        win,
-                        m.mx + m.mw / 2,
-                        mony + m.mh / 2,
-                        m.mw / 2,
-                        m.wh / 2,
-                        7,
-                        0,
-                    );
-                }
-                SnapPosition::Bottom => {
-                    check_animate(win, m.mx, mony + m.mh / 2, m.mw, m.mh / 2, 7, 0);
-                }
-                SnapPosition::BottomLeft => {
-                    check_animate(win, m.mx, mony + m.mh / 2, m.mw / 2, m.wh / 2, 7, 0);
-                }
-                SnapPosition::Left => {
-                    check_animate(win, m.mx, mony, m.mw / 2, m.wh, 7, 0);
-                }
-                SnapPosition::TopLeft => {
-                    check_animate(win, m.mx, mony, m.mw / 2, m.mh / 2, 7, 0);
-                }
-                SnapPosition::Maximized => {
-                    drop(globals);
-                    save_bw_win(win);
-                    let mut globals = get_globals_mut();
-                    if let Some(client) = globals.clients.get_mut(&win) {
-                        client.border_width = 0;
+                let is_sel = {
+                    let globals = get_globals();
+                    if let Some(sel_mon_id) = globals.selmon {
+                        globals.monitors.get(sel_mon_id).and_then(|mon| mon.sel) == Some(win)
+                    } else {
+                        false
                     }
-                    drop(globals);
-                    check_animate(
-                        win,
-                        m.mx,
-                        mony,
-                        m.mw - border_width * 2,
-                        m.mh + border_width * 2,
-                        7,
-                        0,
-                    );
+                };
 
-                    let is_sel = {
-                        let globals = get_globals();
-                        if let Some(sel_mon_id) = globals.selmon {
-                            globals.monitors.get(sel_mon_id).and_then(|mon| mon.sel) == Some(win)
-                        } else {
-                            false
-                        }
-                    };
-
-                    if is_sel {
-                        let x11 = get_x11();
-                        if let Some(ref conn) = x11.conn {
-                            let _ = configure_window(
-                                conn,
-                                win,
-                                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                            );
-                            let _ = conn.flush();
-                        }
+                if is_sel {
+                    let x11 = get_x11();
+                    if let Some(ref conn) = x11.conn {
+                        let _ = configure_window(
+                            conn,
+                            win,
+                            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                        );
+                        let _ = conn.flush();
                     }
                 }
-                _ => {}
             }
+            _ => {}
         }
     }
 }
