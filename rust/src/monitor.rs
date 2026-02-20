@@ -229,7 +229,9 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
                 let mut g = get_globals_mut();
                 if let Some(ref mut sel) = g.selmon {
-                    unfocus_mon(*sel, false);
+                    if let Some(win) = get_selected_client_win(*sel) {
+                        unfocus_win(win, false);
+                    }
                 }
                 g.selmon = Some(target_mon_id);
                 drop(g);
@@ -253,7 +255,9 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
                 let mut g = get_globals_mut();
                 if let Some(ref mut sel) = g.selmon {
-                    unfocus_mon(*sel, false);
+                    if let Some(win) = get_selected_client_win(*sel) {
+                        unfocus_win(win, false);
+                    }
                 }
                 g.selmon = Some(current_mon_id);
                 drop(g);

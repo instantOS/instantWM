@@ -2,6 +2,7 @@ use crate::bar::draw_bar;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::protocol::xproto::AtomEnum;
+use x11rb::protocol::xproto::ConnectionExt;
 
 pub const CMD_ARG_NONE: u32 = 0;
 pub const CMD_ARG_TOGGLE: u32 = 1;
@@ -18,11 +19,11 @@ pub fn x_command() -> i32 {
     let globals = get_globals();
     let root = globals.root;
 
-    let Ok(cookie) = conn.get_property(
+    let Ok(cookie) = conn.get_property::<u32, u8>(
         false,
         root,
         AtomEnum::WM_NAME.into(),
-        AtomEnum::UTF8_STRING.into(),
+        AtomEnum::STRING.into(),
         0,
         256,
     ) else {
@@ -33,7 +34,7 @@ pub fn x_command() -> i32 {
         return 0;
     };
 
-    let command_bytes = reply.value();
+    let command_bytes: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
     if command_bytes.len() < COMMAND_INDICATOR.len() {
         return 0;
     }

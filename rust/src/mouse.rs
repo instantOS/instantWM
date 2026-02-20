@@ -18,6 +18,7 @@ use crate::util::spawn;
 use std::ffi::CStr;
 use std::io::Read;
 use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
@@ -269,7 +270,7 @@ pub fn reset_cursor() {
 pub fn grab_buttons(c_win: Window, focused: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = ungrab_button(conn, 0, 0, c_win);
+        let _ = conn.ungrab_button(0u8.into(), c_win, ModMask::from(0u16));
 
         if !focused {
             let globals = get_globals();
@@ -283,29 +284,27 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
             ];
 
             for &modifiers in &modifiers {
-                let _ = grab_button(
-                    conn,
+                let _ = conn.grab_button(
                     false,
                     c_win,
-                    EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits(),
+                    EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                     GrabMode::SYNC,
                     GrabMode::SYNC,
                     0,
                     0,
-                    1,
-                    modifiers,
+                    1u8.into(),
+                    ModMask::from(modifiers),
                 );
-                let _ = grab_button(
-                    conn,
+                let _ = conn.grab_button(
                     false,
                     c_win,
-                    EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits(),
+                    EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                     GrabMode::SYNC,
                     GrabMode::SYNC,
                     0,
                     0,
-                    3,
-                    modifiers,
+                    3u8.into(),
+                    ModMask::from(modifiers),
                 );
             }
         }
@@ -400,20 +399,18 @@ pub fn move_mouse(_arg: &Arg) {
         let root = globals.root;
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                0,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -441,7 +438,7 @@ pub fn move_mouse(_arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
+            if let Ok(e) = event {
                 match e.response_type() {
                     BUTTON_RELEASE_EVENT => break,
                     MOTION_NOTIFY_EVENT => {
@@ -988,7 +985,7 @@ pub fn hover_resize_mouse(_arg: &Arg) -> i32 {
                     KEY_PRESS_EVENT => {
                         let key = KeyPressEvent::try_from(e);
                         if let Ok(k) = key {
-                            if k.keycode == KEYCODE_ESCAPE {
+                            if k.detail == KEYCODE_ESCAPE {
                                 break;
                             }
                         }

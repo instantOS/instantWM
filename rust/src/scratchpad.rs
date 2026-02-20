@@ -6,6 +6,7 @@ use crate::monitor::restack;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use x11rb::wrapper::ConnectionExt;
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
@@ -83,7 +84,7 @@ pub fn scratchpad_identify_client(c: &mut ClientInner) {
     let Ok(cookie) = class_hint else { return };
     let Ok(reply) = cookie.reply() else { return };
 
-    let data = reply.value();
+    let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
     let parts: Vec<&[u8]> = data.split(|&b| b == 0).filter(|s| !s.is_empty()).collect();
 
     let match_name: Option<&[u8]> = parts.iter().find_map(|part| {

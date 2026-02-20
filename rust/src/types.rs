@@ -258,7 +258,7 @@ impl ClientInner {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Pertag {
     pub current_tag: u32,
     pub prevtag: u32,
@@ -283,7 +283,7 @@ impl Default for Pertag {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
     pub ltsymbol: [u8; 16],
     pub mfact: f32,

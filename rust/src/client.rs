@@ -57,35 +57,30 @@ pub fn detach(win: Window) {
     };
 
     if let Some(mid) = mon_id {
-        let mon = &mut globals.monitors[mid];
-        let mut current = mon.clients;
+        let client_next = globals.clients.get(&win).and_then(|c| c.next);
+
+        let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+        let mut current = globals.monitors[mid].clients;
         let mut prev: Option<Window> = None;
 
         while let Some(cur_win) = current {
+            let next = globals.clients.get(&cur_win).and_then(|c| c.next);
+            traversal.push((cur_win, prev, next));
+            prev = Some(cur_win);
+            current = next;
+        }
+
+        for (cur_win, prev_win, _next) in traversal {
             if cur_win == win {
-                if let Some(prev_win) = prev {
+                if let Some(prev_win) = prev_win {
                     if let Some(prev_client) = globals.clients.get_mut(&prev_win) {
-                        prev_client.next = if let Some(c) = globals.clients.get(&win) {
-                            c.next
-                        } else {
-                            None
-                        };
+                        prev_client.next = client_next;
                     }
                 } else {
-                    mon.clients = if let Some(c) = globals.clients.get(&win) {
-                        c.next
-                    } else {
-                        None
-                    };
+                    globals.monitors[mid].clients = client_next;
                 }
                 return;
             }
-            prev = Some(cur_win);
-            current = if let Some(c) = globals.clients.get(&cur_win) {
-                c.next
-            } else {
-                None
-            };
         }
     }
 }
@@ -101,51 +96,49 @@ pub fn detach_stack(win: Window) {
     };
 
     if let Some(mid) = mon_id {
-        let mon = &mut globals.monitors[mid];
-        let mut current = mon.stack;
+        let client_snext = globals.clients.get(&win).and_then(|c| c.snext);
+
+        let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+        let mut current = globals.monitors[mid].stack;
         let mut prev: Option<Window> = None;
 
         while let Some(cur_win) = current {
+            let snext = globals.clients.get(&cur_win).and_then(|c| c.snext);
+            traversal.push((cur_win, prev, snext));
+            prev = Some(cur_win);
+            current = snext;
+        }
+
+        for (cur_win, prev_win, _snext) in traversal {
             if cur_win == win {
-                if let Some(prev_win) = prev {
+                if let Some(prev_win) = prev_win {
                     if let Some(prev_client) = globals.clients.get_mut(&prev_win) {
-                        prev_client.snext = if let Some(c) = globals.clients.get(&win) {
-                            c.snext
-                        } else {
-                            None
-                        };
+                        prev_client.snext = client_snext;
                     }
                 } else {
-                    mon.stack = if let Some(c) = globals.clients.get(&win) {
-                        c.snext
-                    } else {
-                        None
-                    };
+                    globals.monitors[mid].stack = client_snext;
                 }
 
-                if mon.sel == Some(win) {
-                    let mut t = mon.stack;
+                if globals.monitors[mid].sel == Some(win) {
+                    let mut t = globals.monitors[mid].stack;
                     while let Some(t_win) = t {
-                        if let Some(tc) = globals.clients.get(&t_win) {
-                            if is_visible(tc) && !is_hidden(t_win) {
-                                mon.sel = Some(t_win);
-                                return;
-                            }
-                            t = tc.snext;
-                        } else {
-                            break;
+                        let t_snext = globals.clients.get(&t_win).and_then(|tc| tc.snext);
+                        let is_vis = globals
+                            .clients
+                            .get(&t_win)
+                            .map(|tc| is_visible(tc))
+                            .unwrap_or(false);
+                        let is_hid = is_hidden(t_win);
+                        if is_vis && !is_hid {
+                            globals.monitors[mid].sel = Some(t_win);
+                            return;
                         }
+                        t = t_snext;
                     }
-                    mon.sel = None;
+                    globals.monitors[mid].sel = None;
                 }
                 return;
             }
-            prev = Some(cur_win);
-            current = if let Some(c) = globals.clients.get(&cur_win) {
-                c.snext
-            } else {
-                None
-            };
         }
     }
 }
@@ -1558,7 +1551,7 @@ pub fn unmanage(win: Window, destroyed: bool) {
             );
             let _ =
                 conn.configure_window(win, &ConfigureWindowAux::new().border_width(old_bw as u32));
-            let _ = conn.ungrab_button(0u8.into(), ModMask::from_bits_truncate(0), win);
+            let _ = ungrab_button(conn, ButtonIndex::from(0u8), win, ModMask::from(0u16));
 
             set_client_state(win, WM_STATE_WITHDRAWN);
 
@@ -1736,8 +1729,8 @@ pub fn update_size_hints(c: &mut ClientInner) {
         ) {
             if let Ok(reply) = cookie.reply() {
                 let data = reply
-                    .value32()
-                    .map(|v| v.collect::<Vec<u32>>())
+                    .value8()
+                    .map(|v| v.collect::<Vec<u8>>())
                     .unwrap_or_default();
 
                 let flags = if data.len() >= 4 {
@@ -1869,8 +1862,8 @@ pub fn update_wm_hints(win: Window) {
         {
             if let Ok(reply) = cookie.reply() {
                 let data = reply
-                    .value32()
-                    .map(|v| v.collect::<Vec<u32>>())
+                    .value8()
+                    .map(|v| v.collect::<Vec<u8>>())
                     .unwrap_or_default();
 
                 let flags = if data.len() >= 4 {
@@ -1951,8 +1944,8 @@ pub fn update_motif_hints(win: Window) {
         if let Ok(cookie) = conn.get_property(false, win, motif_atom, motif_atom, 0, 5) {
             if let Ok(reply) = cookie.reply() {
                 let data = reply
-                    .value32()
-                    .map(|v| v.collect::<Vec<u32>>())
+                    .value8()
+                    .map(|v| v.collect::<Vec<u8>>())
                     .unwrap_or_default();
                 if data.len() >= 20 {
                     let motif: Vec<u32> = data
@@ -2006,7 +1999,7 @@ pub fn is_hidden(win: Window) -> bool {
 fn grab_buttons(win: Window, focused: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = conn.ungrab_button(0u8.into(), ModMask::from(0u16), win);
+        let _ = ungrab_button(conn, ButtonIndex::from(0u8), win, ModMask::from(0u16));
 
         if !focused {
             let globals = get_globals();
@@ -2026,7 +2019,7 @@ fn grab_buttons(win: Window, focused: bool) {
                     0,
                     0,
                     1u8.into(),
-                    modifiers.into(),
+                    ModMask::from(modifiers as u16),
                 );
                 let _ = conn.grab_button(
                     false,
@@ -2037,7 +2030,7 @@ fn grab_buttons(win: Window, focused: bool) {
                     0,
                     0,
                     3u8.into(),
-                    modifiers.into(),
+                    ModMask::from(modifiers as u16),
                 );
             }
         }
@@ -2145,7 +2138,7 @@ pub fn zoom(_arg: &Arg) {
         }
     };
 
-    if win == first_tiled {
+    if first_tiled.map_or(false, |t| win == t) {
         let globals = get_globals();
         let next = if let Some(f) = first_tiled {
             if let Some(c) = globals.clients.get(&f) {
@@ -2177,8 +2170,8 @@ pub fn set_urgent(win: Window, urg: bool) {
         {
             if let Ok(reply) = cookie.reply() {
                 let data = reply
-                    .value32()
-                    .map(|v| v.collect::<Vec<u32>>())
+                    .value8()
+                    .map(|v| v.collect::<Vec<u8>>())
                     .unwrap_or_default();
                 let flags = if data.len() >= 4 {
                     u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
