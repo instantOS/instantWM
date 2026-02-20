@@ -3,6 +3,7 @@ use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use std::thread;
 use std::time::Duration;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::Window;
 
 const DIR_LEFT: i32 = 0;

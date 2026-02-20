@@ -3,7 +3,9 @@ use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::*;
 use crate::util::{max, min};
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use x11rb::wrapper::ConnectionExt;
 use x11rb::CURRENT_TIME;
 
 pub static mut ANIM_CLIENT: Option<Window> = None;
@@ -175,7 +177,7 @@ pub fn get_state(win: Window) -> i32 {
         ) {
             if let Ok(reply) = cookie.reply() {
                 if let Some(mut data) = reply.value32() {
-                    return data.next().unwrap_or(WM_STATE_NORMAL) as i32;
+                    return data.next().unwrap_or(WM_STATE_NORMAL as u32) as i32;
                 }
             }
         }
@@ -221,7 +223,7 @@ pub fn pop(win: Window) {
         }
     };
     if let Some(mid) = mon_id {
-        arrange(mid);
+        arrange(Some(mid));
     }
 }
 
@@ -295,10 +297,12 @@ pub fn send_event(
             let mut exists = false;
             if let Ok(cookie) = get_wm_protocols(conn, win) {
                 if let Ok(reply) = cookie.reply() {
-                    for &p in reply.atoms() {
-                        if p == proto {
-                            exists = true;
-                            break;
+                    if let Some(atoms) = reply.value32() {
+                        for p in atoms {
+                            if p == proto {
+                                exists = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -357,8 +361,8 @@ pub fn configure(win: Window) {
                 event: win,
                 window: win,
                 above_sibling: 0,
-                x: c.x,
-                y: c.y,
+                x: c.x as i16,
+                y: c.y as i16,
                 width: c.w as u16,
                 height: c.h as u16,
                 border_width: c.border_width as u16,
@@ -413,10 +417,12 @@ pub fn unfocus_win(win: Window, set_focus: bool) {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         if let Some(ref scheme) = globals.borderscheme {
-            let _ = conn.change_window_attributes(
-                win,
-                &ChangeWindowAttributesAux::new().border_pixel(scheme.pixel),
-            );
+            if let Some(clr) = scheme.first() {
+                let _ = conn.change_window_attributes(
+                    win,
+                    &ChangeWindowAttributesAux::new().border_pixel(clr.pixel()),
+                );
+            }
         }
         if set_focus {
             let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, globals.root, CURRENT_TIME);
@@ -558,7 +564,7 @@ pub fn show(win: Window) {
         }
     };
     if let Some(mid) = mon_id {
-        arrange(mid);
+        arrange(Some(mid));
     }
 }
 
@@ -598,8 +604,12 @@ pub fn hide(win: Window) {
 
         if let (Ok(root_cookie), Ok(win_cookie)) = (root_attrs, win_attrs) {
             if let (Ok(root_ra), Ok(win_ca)) = (root_cookie.reply(), win_cookie.reply()) {
-                let root_mask = root_ra.your_event_mask & !EventMask::SUBSTRUCTURE_NOTIFY;
-                let win_mask = win_ca.your_event_mask & !EventMask::STRUCTURE_NOTIFY;
+                let root_mask = EventMask::from(
+                    root_ra.your_event_mask.bits() & !EventMask::SUBSTRUCTURE_NOTIFY.bits(),
+                );
+                let win_mask = EventMask::from(
+                    win_ca.your_event_mask.bits() & !EventMask::STRUCTURE_NOTIFY.bits(),
+                );
 
                 let _ = conn.change_window_attributes(
                     globals.root,
@@ -651,7 +661,7 @@ pub fn hide(win: Window) {
     crate::focus::focus(snext);
 
     if let Some(mid) = mon_id {
-        arrange(mid);
+        arrange(Some(mid));
     }
 }
 
@@ -1557,7 +1567,7 @@ pub fn unmanage(win: Window, destroyed: bool) {
     update_client_list();
 
     if let Some(mid) = mon_id {
-        arrange(mid);
+        arrange(Some(mid));
     }
 }
 
