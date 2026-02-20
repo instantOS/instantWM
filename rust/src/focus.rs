@@ -358,3 +358,66 @@ fn get_root_ptr() -> Option<(i32, i32)> {
 }
 
 fn view(_arg: &Arg) {}
+
+pub fn focus_stack(arg: &Arg) {
+    let direction = arg.i;
+
+    let sel_win = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+
+        let mon = match globals.monitors.get(selmon_id) {
+            Some(m) => m,
+            None => return,
+        };
+
+        mon.sel
+    };
+
+    let selmon_id = {
+        let globals = get_globals();
+        globals.selmon.unwrap_or(0)
+    };
+
+    let mut stack: Vec<Window> = Vec::new();
+    {
+        let globals = get_globals();
+        if let Some(mon) = globals.monitors.get(selmon_id) {
+            let mut current = mon.stack;
+            while let Some(c_win) = current {
+                if let Some(c) = globals.clients.get(&c_win) {
+                    if is_visible(c) {
+                        stack.push(c_win);
+                    }
+                    current = c.snext;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    if stack.is_empty() {
+        return;
+    }
+
+    let current_idx = match sel_win {
+        Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
+        None => 0,
+    };
+
+    let next_idx = if direction > 0 {
+        (current_idx + 1) % stack.len()
+    } else {
+        if current_idx == 0 {
+            stack.len() - 1
+        } else {
+            current_idx - 1
+        }
+    };
+
+    focus(Some(stack[next_idx]));
+}

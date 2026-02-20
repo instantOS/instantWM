@@ -570,3 +570,108 @@ pub fn is_overlay_window(win: Window) -> bool {
     }
     false
 }
+
+pub fn set_overlay_mode_cmd(arg: &Arg) {
+    set_overlay_mode(arg.i);
+}
+
+pub fn reset_overlay_size() {
+    let (
+        has_overlay,
+        overlay_mode,
+        mon_mx,
+        mon_my,
+        mon_mw,
+        mon_mh,
+        mon_ww,
+        mon_wh,
+        mon_showbar,
+        bh,
+    ) = {
+        let globals = get_globals();
+        let selmon_id = globals.selmon.unwrap_or(0);
+        if let Some(mon) = globals.monitors.get(selmon_id) {
+            let overlay_win = mon.overlay;
+            (
+                overlay_win.is_some(),
+                mon.overlaymode,
+                mon.mx,
+                mon.my,
+                mon.mw,
+                mon.mh,
+                mon.ww,
+                mon.wh,
+                mon.showbar,
+                globals.bh,
+            )
+        } else {
+            return;
+        }
+    };
+
+    if !has_overlay {
+        return;
+    }
+
+    let overlay_win = {
+        let globals = get_globals();
+        let selmon_id = globals.selmon.unwrap_or(0);
+        globals.monitors.get(selmon_id).and_then(|m| m.overlay)
+    };
+
+    let Some(win) = overlay_win else { return };
+
+    {
+        let mut globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.isfloating = true;
+        }
+    }
+
+    let yoffset = if mon_showbar { bh } else { 0 };
+
+    match overlay_mode {
+        OVERLAY_TOP => {
+            resize(
+                win,
+                mon_mx + 20,
+                mon_my + yoffset,
+                mon_ww - 40,
+                mon_wh / 3,
+                true,
+            );
+        }
+        OVERLAY_RIGHT => {
+            let client_w = {
+                let globals = get_globals();
+                globals.clients.get(&win).map(|c| c.w).unwrap_or(mon_mw / 3)
+            };
+            resize(
+                win,
+                mon_mx + mon_mw - client_w,
+                mon_my + 40,
+                mon_mw / 3,
+                mon_mh - 80,
+                true,
+            );
+        }
+        OVERLAY_BOTTOM => {
+            let client_h = {
+                let globals = get_globals();
+                globals.clients.get(&win).map(|c| c.h).unwrap_or(mon_wh / 3)
+            };
+            resize(
+                win,
+                mon_mx + 20,
+                mon_my + mon_mh - client_h,
+                mon_ww - 40,
+                mon_wh / 3,
+                true,
+            );
+        }
+        OVERLAY_LEFT => {
+            resize(win, mon_mx, mon_my + 40, mon_mw / 3, mon_mh - 80, true);
+        }
+        _ => {}
+    }
+}
