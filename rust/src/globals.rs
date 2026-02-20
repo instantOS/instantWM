@@ -1,18 +1,18 @@
 use crate::types::*;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use x11rb::protocol::xproto::Window;
 
-// TODO: Port global state from globals.h and instantwm.c
-
 pub struct Globals {
-    pub dpy: Option<x11rb::rust_connection::RustConnection>,
     pub screen: i32,
     pub root: Window,
     pub sw: i32,
     pub sh: i32,
-    pub mons: Option<Box<Monitor>>,
-    pub selmon: Option<*mut Monitor>,
+    pub monitors: Vec<MonitorInner>,
+    pub selmon: Option<MonitorId>,
+    pub clients: HashMap<Window, ClientInner>,
+    pub client_list: Vec<ClientId>,
     pub bh: i32,
     pub lrpad: i32,
     pub animated: bool,
@@ -38,13 +38,14 @@ pub struct Globals {
 impl Default for Globals {
     fn default() -> Self {
         Self {
-            dpy: None,
             screen: 0,
             root: 0,
             sw: 0,
             sh: 0,
-            mons: None,
+            monitors: Vec::new(),
             selmon: None,
+            clients: HashMap::new(),
+            client_list: Vec::new(),
             bh: 0,
             lrpad: 0,
             animated: true,

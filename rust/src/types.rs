@@ -5,9 +5,8 @@ pub const SCRATCHPAD_TAG: usize = 20;
 pub const SCRATCHPAD_MASK: u32 = 1 << SCRATCHPAD_TAG;
 pub const SCRATCHPAD_NAME_LEN: usize = 64;
 
-pub const BUTTONMASK: u32 = x11rb::protocol::xproto::EventMask::BUTTON_PRESS.bits()
-    | x11rb::protocol::xproto::EventMask::BUTTON_RELEASE.bits();
-pub const MOUSEMASK: u32 = BUTTONMASK | x11rb::protocol::xproto::EventMask::POINTER_MOTION.bits();
+pub const BUTTONMASK: u32 = 1 << 2 | 1 << 3;
+pub const MOUSEMASK: u32 = BUTTONMASK | 1 << 6;
 
 pub const CLOSE_BUTTON_WIDTH: i32 = 20;
 pub const CLOSE_BUTTON_HEIGHT: i32 = 16;
@@ -75,15 +74,17 @@ pub enum Click {
     ResizeWidget,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AltCursor {
+    #[default]
     None,
     Resize,
     Sidebar,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SnapPosition {
+    #[default]
     None,
     Top,
     TopRight,
@@ -104,8 +105,9 @@ pub enum OverlayDirection {
     Left,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Gesture {
+    #[default]
     None = 0,
     Overlay = 30,
     CloseButton = 31,
@@ -121,8 +123,9 @@ pub enum RuleFloat {
     Scratchpad,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SpecialNext {
+    #[default]
     None,
     Float,
 }
@@ -152,7 +155,7 @@ pub struct Layout {
 pub type ClientId = usize;
 pub type MonitorId = usize;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ClientInner {
     pub name: [u8; 256],
     pub mina: f32,
@@ -197,6 +200,54 @@ pub struct ClientInner {
     pub win: Window,
 }
 
+impl Default for ClientInner {
+    fn default() -> Self {
+        Self {
+            name: [0; 256],
+            mina: 0.0,
+            maxa: 0.0,
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            saved_float_x: 0,
+            saved_float_y: 0,
+            saved_float_width: 0,
+            saved_float_height: 0,
+            oldx: 0,
+            oldy: 0,
+            oldw: 0,
+            oldh: 0,
+            basew: 0,
+            baseh: 0,
+            incw: 0,
+            inch: 0,
+            maxw: 0,
+            maxh: 0,
+            minw: 0,
+            minh: 0,
+            hintsvalid: 0,
+            border_width: 0,
+            old_border_width: 0,
+            tags: 0,
+            isfixed: false,
+            isfloating: false,
+            isurgent: false,
+            neverfocus: false,
+            oldstate: 0,
+            is_fullscreen: false,
+            isfakefullscreen: false,
+            islocked: false,
+            issticky: false,
+            snapstatus: SnapPosition::default(),
+            scratchpad_name: [0; SCRATCHPAD_NAME_LEN],
+            scratchpad_restore_tags: 0,
+            mon_id: None,
+            win: 0,
+        }
+    }
+}
+
 impl ClientInner {
     pub fn is_scratchpad(&self) -> bool {
         self.scratchpad_name[0] != 0
@@ -226,7 +277,7 @@ impl Default for Pertag {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MonitorInner {
     pub ltsymbol: [u8; 16],
     pub mfact: f32,
@@ -256,6 +307,41 @@ pub struct MonitorInner {
     pub gesture: Gesture,
     pub barwin: Window,
     pub showtags: u32,
+}
+
+impl Default for MonitorInner {
+    fn default() -> Self {
+        Self {
+            ltsymbol: [0; 16],
+            mfact: 0.55,
+            nmaster: 1,
+            num: 0,
+            by: 0,
+            bar_clients_width: 0,
+            bt: 0,
+            mx: 0,
+            my: 0,
+            mw: 0,
+            mh: 0,
+            wx: 0,
+            wy: 0,
+            ww: 0,
+            wh: 0,
+            seltags: 0,
+            sellt: 0,
+            tagset: [0; 2],
+            activeoffset: 0,
+            titleoffset: 0,
+            clientcount: 0,
+            showbar: true,
+            topbar: true,
+            overlaystatus: 0,
+            overlaymode: 0,
+            gesture: Gesture::default(),
+            barwin: 0,
+            showtags: 0,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -320,7 +406,7 @@ pub fn intersect(x: i32, y: i32, w: i32, h: i32, m: &MonitorInner) -> i32 {
     (x2 - x1).max(0) * (y2 - y1).max(0)
 }
 
-pub fn is_visible(tags: u32, mon_tags: u32, seltags: u32, issticky: bool) -> bool {
+pub fn is_visible(tags: u32, mon_tags: u32, _seltags: u32, issticky: bool) -> bool {
     (tags & mon_tags) != 0 || issticky
 }
 
