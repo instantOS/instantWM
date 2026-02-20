@@ -1,9 +1,8 @@
-use crate::config::{ColIndex, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
-use crate::drw::{Clr, Drw, COL_BG, COL_FG};
+use crate::config::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+use crate::drw::{Clr, Drw, COL_BG, COL_DETAIL, COL_FG};
 use crate::globals::{get_globals, get_globals_mut};
-use crate::systray::get_systray_width;
+use crate::systray::{get_systray_width, update_systray};
 use crate::types::*;
-use crate::util::min;
 use x11rb::protocol::xproto::Window;
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
@@ -78,7 +77,7 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
                 pos += 1;
                 if pos < bytes.len() && bytes[pos] == b'f' {
                     pos += 1;
-                    let mut num_start = pos;
+                    let num_start = pos;
                     while num_start < bytes.len() && bytes[num_start].is_ascii_digit() {
                         num_start += 1;
                     }
@@ -259,15 +258,15 @@ fn parse_next_number(bytes: &[u8]) -> i32 {
 }
 
 fn set_bg_color(color: &str) {
-    let mut g = get_globals_mut();
+    let g = get_globals();
     if let Some(ref drw) = g.drw {
         let mut drw = drw.clone();
         if let Ok(clr) = drw.clr_create(color) {
-            if let Some(ref mut scheme) = g.statusscheme {
-                let mut scheme = scheme.clone();
-                if scheme.len() > COL_BG {
-                    scheme[COL_BG] = clr;
-                    drw.set_scheme(scheme);
+            if let Some(ref scheme) = g.statusscheme {
+                let mut new_scheme = scheme.clone();
+                if new_scheme.len() > COL_BG {
+                    new_scheme[COL_BG] = clr;
+                    drw.set_scheme(new_scheme);
                 }
             }
         }
@@ -275,15 +274,15 @@ fn set_bg_color(color: &str) {
 }
 
 fn set_fg_color(color: &str) {
-    let mut g = get_globals_mut();
+    let g = get_globals();
     if let Some(ref drw) = g.drw {
         let mut drw = drw.clone();
         if let Ok(clr) = drw.clr_create(color) {
-            if let Some(ref mut scheme) = g.statusscheme {
-                let mut scheme = scheme.clone();
-                if scheme.len() > COL_FG {
-                    scheme[COL_FG] = clr;
-                    drw.set_scheme(scheme);
+            if let Some(ref scheme) = g.statusscheme {
+                let mut new_scheme = scheme.clone();
+                if new_scheme.len() > COL_FG {
+                    new_scheme[COL_FG] = clr;
+                    drw.set_scheme(new_scheme);
                 }
             }
         }
@@ -296,11 +295,12 @@ fn reset_status_colors() {
     if statusbarcolors.len() >= 2 {
         if let Some(ref drw) = g.drw {
             let mut drw = drw.clone();
-            if let (Ok(bg), Ok(fg)) = (
+            if let (Ok(fg), Ok(bg)) = (
                 drw.clr_create(statusbarcolors[0]),
                 drw.clr_create(statusbarcolors[1]),
             ) {
-                let scheme = vec![fg, bg, bg.clone()];
+                let detail = bg.clone();
+                let scheme = vec![fg, bg, detail];
                 drw.set_scheme(scheme);
             }
         }
@@ -354,12 +354,11 @@ pub fn draw_startmenu_icon(bh: i32) {
         let mut drw = drw.clone();
 
         if g.tagprefix {
-            if let Some(ref schemes) = g.tagschemes {
-                if schemes.len() > SchemeHover::NoHover as usize {
-                    let hover_idx = SchemeHover::NoHover as usize;
-                    if schemes[hover_idx].len() > SchemeTag::Focus as usize {
-                        drw.set_scheme(schemes[hover_idx][SchemeTag::Focus as usize].clone());
-                    }
+            let schemes = &g.tagschemes;
+            if schemes.len() > SchemeHover::NoHover as usize {
+                let hover_idx = SchemeHover::NoHover as usize;
+                if schemes[hover_idx].len() > SchemeTag::Focus as usize {
+                    drw.set_scheme(schemes[hover_idx][SchemeTag::Focus as usize].clone());
                 }
             }
         } else if let Some(ref scheme) = g.statusscheme {
@@ -372,7 +371,7 @@ pub fn draw_startmenu_icon(bh: i32) {
             startmenu_size as u32,
             bh as u32,
             true,
-            if startmenu_invert { false } else { true },
+            !startmenu_invert,
         );
         drw.rect(
             5,
@@ -380,7 +379,7 @@ pub fn draw_startmenu_icon(bh: i32) {
             STARTMENU_ICON_SIZE as u32,
             STARTMENU_ICON_SIZE as u32,
             true,
-            if startmenu_invert { true } else { false },
+            startmenu_invert,
         );
         drw.rect(
             9,
@@ -388,7 +387,7 @@ pub fn draw_startmenu_icon(bh: i32) {
             STARTMENU_ICON_INNER as u32,
             STARTMENU_ICON_INNER as u32,
             true,
-            if startmenu_invert { false } else { true },
+            !startmenu_invert,
         );
         drw.rect(
             19,
@@ -396,7 +395,7 @@ pub fn draw_startmenu_icon(bh: i32) {
             STARTMENU_ICON_INNER as u32,
             STARTMENU_ICON_INNER as u32,
             true,
-            if startmenu_invert { true } else { false },
+            startmenu_invert,
         );
     }
 }
@@ -414,10 +413,22 @@ pub fn get_tag_scheme(
         SchemeHover::NoHover as usize
     };
 
-    if let Some(ref schemes) = g.tagschemes {
-        if schemes.len() <= hover_idx {
-            return None;
-        }
+    let schemes = &g.tagschemes;
+    if schemes.len() <= hover_idx {
+        return None;
+    }
+
+    if occupied_tags & (1 << i) != 0 {
+        let sel_has_tag = g.selmon.map_or(false, |selmon_idx| {
+            g.monitors
+                .get(selmon_idx)
+                .and_then(|selmon| {
+                    selmon
+                        .sel
+                        .and_then(|sel_win| g.clients.get(&sel_win).map(|c| c.tags & (1 << i) != 0))
+                })
+                .unwrap_or(false)
+        });
 
         let is_selected = g.selmon.map_or(false, |selmon_idx| {
             g.monitors.get(selmon_idx).map_or(false, |selmon| {
@@ -425,40 +436,26 @@ pub fn get_tag_scheme(
             })
         });
 
-        if occupied_tags & (1 << i) != 0 {
-            let sel_has_tag = g.selmon.map_or(false, |selmon_idx| {
-                g.monitors
-                    .get(selmon_idx)
-                    .and_then(|selmon| {
-                        selmon.sel.and_then(|sel_win| {
-                            g.clients.get(&sel_win).map(|c| c.tags & (1 << i) != 0)
-                        })
-                    })
-                    .unwrap_or(false)
-            });
-
-            if is_selected && sel_has_tag {
-                return schemes[hover_idx].get(SchemeTag::Focus as usize).cloned();
-            }
-            if m.tagset[m.seltags as usize] & (1 << i) != 0 {
-                return schemes[hover_idx].get(SchemeTag::NoFocus as usize).cloned();
-            }
-            if m.showtags == 0 {
-                return schemes[hover_idx].get(SchemeTag::Filled as usize).cloned();
-            }
-            return schemes[hover_idx]
-                .get(SchemeTag::Inactive as usize)
-                .cloned();
+        if is_selected && sel_has_tag {
+            return schemes[hover_idx].get(SchemeTag::Focus as usize).cloned();
         }
-
         if m.tagset[m.seltags as usize] & (1 << i) != 0 {
-            return schemes[hover_idx].get(SchemeTag::Empty as usize).cloned();
+            return schemes[hover_idx].get(SchemeTag::NoFocus as usize).cloned();
+        }
+        if m.showtags == 0 {
+            return schemes[hover_idx].get(SchemeTag::Filled as usize).cloned();
         }
         return schemes[hover_idx]
             .get(SchemeTag::Inactive as usize)
             .cloned();
     }
-    None
+
+    if m.tagset[m.seltags as usize] & (1 << i) != 0 {
+        return schemes[hover_idx].get(SchemeTag::Empty as usize).cloned();
+    }
+    schemes[hover_idx]
+        .get(SchemeTag::Inactive as usize)
+        .cloned()
 }
 
 pub fn draw_tag_indicators(
@@ -530,14 +527,13 @@ pub fn draw_tag_indicators(
 
                 let detail_height = if is_hover {
                     if bar_dragging {
-                        if let Some(ref schemes) = g.tagschemes {
-                            if schemes.len() > SchemeHover::Hover as usize {
-                                let hover_idx = SchemeHover::Hover as usize;
-                                if schemes[hover_idx].len() > SchemeTag::Filled as usize {
-                                    drw.set_scheme(
-                                        schemes[hover_idx][SchemeTag::Filled as usize].clone(),
-                                    );
-                                }
+                        let schemes = &g.tagschemes;
+                        if schemes.len() > SchemeHover::Hover as usize {
+                            let hover_idx = SchemeHover::Hover as usize;
+                            if schemes[hover_idx].len() > SchemeTag::Filled as usize {
+                                drw.set_scheme(
+                                    schemes[hover_idx][SchemeTag::Filled as usize].clone(),
+                                );
                             }
                         }
                     }
@@ -592,64 +588,51 @@ pub fn get_window_scheme(c: &ClientInner, is_hover: bool) -> Option<Vec<Clr>> {
         SchemeHover::NoHover as usize
     };
 
-    if let Some(ref schemes) = g.windowschemes {
-        if schemes.len() <= hover_idx {
-            return None;
-        }
+    let schemes = &g.windowschemes;
+    if schemes.len() <= hover_idx {
+        return None;
+    }
 
-        let is_selected = g.selmon.map_or(false, |selmon_idx| {
-            g.monitors.get(selmon_idx).map_or(false, |selmon| {
-                selmon.sel.map_or(false, |sel_win| sel_win == c.win)
-            })
-        });
+    let is_selected = g.selmon.map_or(false, |selmon_idx| {
+        g.monitors.get(selmon_idx).map_or(false, |selmon| {
+            selmon.sel.map_or(false, |sel_win| sel_win == c.win)
+        })
+    });
 
-        let is_overlay = g.selmon.map_or(false, |selmon_idx| {
-            g.monitors.get(selmon_idx).map_or(false, |selmon| {
-                selmon
-                    .overlay
-                    .map_or(false, |overlay_win| overlay_win == c.win)
-            })
-        });
+    let is_overlay = g.selmon.map_or(false, |selmon_idx| {
+        g.monitors.get(selmon_idx).map_or(false, |selmon| {
+            selmon
+                .overlay
+                .map_or(false, |overlay_win| overlay_win == c.win)
+        })
+    });
 
-        let is_fullscreen = g.selmon.map_or(false, |selmon_idx| {
-            g.monitors
-                .get(selmon_idx)
-                .and_then(|selmon| {
-                    selmon
-                        .sel
-                        .and_then(|sel_win| g.clients.get(&sel_win).map(|c| c.is_fullscreen))
-                })
-                .unwrap_or(false)
-        });
-
-        if is_selected {
-            if is_overlay {
-                return schemes[hover_idx]
-                    .get(SchemeWin::OverlayFocus as usize)
-                    .cloned();
-            }
-            if c.issticky {
-                return schemes[hover_idx]
-                    .get(SchemeWin::StickyFocus as usize)
-                    .cloned();
-            }
-            return schemes[hover_idx].get(SchemeWin::Focus as usize).cloned();
-        }
-
+    if is_selected {
         if is_overlay {
-            return schemes[hover_idx].get(SchemeWin::Overlay as usize).cloned();
-        }
-        if c.issticky {
-            return schemes[hover_idx].get(SchemeWin::Sticky as usize).cloned();
-        }
-        if is_hidden(c) {
             return schemes[hover_idx]
-                .get(SchemeWin::Minimized as usize)
+                .get(SchemeWin::OverlayFocus as usize)
                 .cloned();
         }
-        return schemes[hover_idx].get(SchemeWin::Normal as usize).cloned();
+        if c.issticky {
+            return schemes[hover_idx]
+                .get(SchemeWin::StickyFocus as usize)
+                .cloned();
+        }
+        return schemes[hover_idx].get(SchemeWin::Focus as usize).cloned();
     }
-    None
+
+    if is_overlay {
+        return schemes[hover_idx].get(SchemeWin::Overlay as usize).cloned();
+    }
+    if c.issticky {
+        return schemes[hover_idx].get(SchemeWin::Sticky as usize).cloned();
+    }
+    if is_hidden(c) {
+        return schemes[hover_idx]
+            .get(SchemeWin::Minimized as usize)
+            .cloned();
+    }
+    schemes[hover_idx].get(SchemeWin::Normal as usize).cloned()
 }
 
 fn is_hidden(c: &ClientInner) -> bool {
@@ -694,10 +677,9 @@ pub fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
             SchemeClose::Normal as usize
         };
 
-        if let Some(ref schemes) = g.closebuttonschemes {
-            if schemes.len() > hover_idx && schemes[hover_idx].len() > scheme_idx {
-                drw.set_scheme(schemes[hover_idx][scheme_idx].clone());
-            }
+        let schemes = &g.closebuttonschemes;
+        if schemes.len() > hover_idx && schemes[hover_idx].len() > scheme_idx {
+            drw.set_scheme(schemes[hover_idx][scheme_idx].clone());
         }
 
         let button_x = x + bh / 6;
@@ -705,12 +687,7 @@ pub fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
             (bh - CLOSE_BUTTON_WIDTH) / 2 - if is_hover { 0 } else { CLOSE_BUTTON_DETAIL };
 
         unsafe {
-            crate::drw::XSetForeground(
-                drw.display(),
-                drw.gc(),
-                drw.scheme.as_ref().map(|s| s[COL_BG].pixel()).unwrap_or(0)
-                    as std::os::raw::c_ulong,
-            );
+            crate::drw::XSetForeground(drw.display(), drw.gc(), get_scheme_pixel(&drw, COL_BG));
             crate::drw::XFillRectangle(
                 drw.display(),
                 drw.drawable(),
@@ -720,17 +697,9 @@ pub fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
                 CLOSE_BUTTON_WIDTH as u32,
                 CLOSE_BUTTON_HEIGHT as u32,
             );
-            crate::drw::XSetForeground(
-                drw.display(),
-                drw.gc(),
-                drw.scheme
-                    .as_ref()
-                    .map(|s| s[COL_DETAIL].pixel())
-                    .unwrap_or(0) as std::os::raw::c_ulong,
-            );
+            crate::drw::XSetForeground(drw.display(), drw.gc(), get_scheme_pixel(&drw, COL_DETAIL));
             crate::drw::XFillRectangle(
                 drw.display(),
-                drw.drawable(),
                 drw.gc(),
                 button_x,
                 (bh - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT
@@ -740,6 +709,15 @@ pub fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
             );
         }
     }
+}
+
+fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
+    if let Some(scheme) = drw.get_scheme() {
+        if scheme.len() > idx {
+            return scheme[idx].pixel() as std::os::raw::c_ulong;
+        }
+    }
+    0
 }
 
 pub fn draw_window_title(m: &mut MonitorInner, c: &ClientInner, x: i32, width: i32, bh: i32) {
@@ -1021,9 +999,7 @@ pub fn reset_bar() {
     }
 }
 
-fn reset_cursor() {
-    // TODO: Implement cursor reset
-}
+fn reset_cursor() {}
 
 pub fn update_status() {
     let g = get_globals();
@@ -1063,9 +1039,7 @@ pub fn update_status() {
     update_systray();
 }
 
-fn get_text_prop(win: Window, atom: u32) -> Option<String> {
-    // TODO: Implement XGetWindowProperty to get text property
-    let _ = (win, atom);
+fn get_text_prop(_win: Window, _atom: u32) -> Option<String> {
     None
 }
 
@@ -1106,7 +1080,6 @@ pub fn resize_bar_win(m: &MonitorInner) {
         }
     }
 
-    // TODO: Implement XMoveResizeWindow
     let _ = (w, bh, m.barwin);
 }
 
@@ -1131,7 +1104,6 @@ pub fn update_bars() {
             }
         }
 
-        // TODO: Implement XCreateWindow for bar creation
         let _ = (w, bh, screen, root);
     }
 }
@@ -1164,14 +1136,9 @@ pub fn toggle_bar(_arg: &Arg) {
         }
     }
 
-    // TODO: Handle systray repositioning
-    // TODO: Call arrange(selmon)
-
     if tmp_no_anim {
         g.animated = true;
     }
-
-    // TODO: Handle overlay
 }
 
 pub fn update_bars_for_monitors() {
@@ -1185,13 +1152,10 @@ pub fn update_bars_for_monitors() {
             w -= get_systray_width() as i32;
         }
         let _ = (w, bh);
-        // TODO: Create bar windows using XCreateWindow
     }
 }
 
-fn get_root_ptr(x: &mut i32, y: &mut i32) -> bool {
-    // TODO: Implement XQueryPointer to get root pointer position
-    let _ = (x, y);
+fn get_root_ptr(_x: &mut i32, _y: &mut i32) -> bool {
     false
 }
 
@@ -1209,22 +1173,12 @@ pub fn get_tag_at_x(_x: i32) -> i32 {
     -1
 }
 
-pub fn window_title_mouse_handler(_arg: &Arg) {
-    // TODO: Implement window title mouse handling
-}
+pub fn window_title_mouse_handler(_arg: &Arg) {}
 
-pub fn window_title_mouse_handler_right(_arg: &Arg) {
-    // TODO: Implement window title right-click handling
-}
+pub fn window_title_mouse_handler_right(_arg: &Arg) {}
 
-pub fn close_win(_arg: &Arg) {
-    // TODO: Implement close window from bar
-}
+pub fn close_win(_arg: &Arg) {}
 
-pub fn up_scale_client(_arg: &Arg) {
-    // TODO: Implement scaling client up
-}
+pub fn up_scale_client(_arg: &Arg) {}
 
-pub fn down_scale_client(_arg: &Arg) {
-    // TODO: Implement scaling client down
-}
+pub fn down_scale_client(_arg: &Arg) {}

@@ -454,6 +454,10 @@ impl Drw {
         self.scheme = Some(scheme);
     }
 
+    pub fn get_scheme(&self) -> Option<&Vec<Clr>> {
+        self.scheme.as_ref()
+    }
+
     pub fn set_fontset(&mut self, font: Option<Box<Fnt>>) {
         self.fonts = font;
     }
