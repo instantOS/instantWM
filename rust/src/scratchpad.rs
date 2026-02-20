@@ -9,6 +9,25 @@ use x11rb::protocol::xproto::*;
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
 
+pub fn hide_window(win: Window) {
+    crate::client::hide(win);
+}
+
+pub fn unhide_one() -> bool {
+    let clients: Vec<Window> = {
+        let globals = get_globals();
+        globals.clients.keys().copied().collect()
+    };
+
+    for win in clients {
+        if crate::client::is_hidden(win) {
+            crate::client::show(win);
+            return true;
+        }
+    }
+    false
+}
+
 pub fn scratchpad_find(name: &[u8]) -> Option<Window> {
     if name.is_empty() || name[0] == 0 {
         return None;

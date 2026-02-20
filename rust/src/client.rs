@@ -161,8 +161,26 @@ pub fn is_visible(c: &ClientInner) -> bool {
     false
 }
 
-pub fn is_hidden(win: Window) -> bool {
-    get_state(win) == WM_STATE_ICONIC
+pub fn get_state(win: Window) -> i32 {
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let globals = get_globals();
+        if let Ok(cookie) = conn.get_property(
+            false,
+            win,
+            globals.wmatom[WmAtom::State as usize],
+            globals.wmatom[WmAtom::State as usize],
+            0,
+            2,
+        ) {
+            if let Ok(reply) = cookie.reply() {
+                if let Some(mut data) = reply.value32() {
+                    return data.next().unwrap_or(WM_STATE_NORMAL) as i32;
+                }
+            }
+        }
+    }
+    WM_STATE_NORMAL
 }
 
 pub fn client_width(c: &ClientInner) -> i32 {
@@ -1954,26 +1972,8 @@ pub fn update_motif_hints(win: Window) {
     }
 }
 
-fn get_state(win: Window) -> i32 {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        if let Ok(cookie) = conn.get_property(
-            false,
-            win,
-            globals.wmatom[WmAtom::State as usize],
-            globals.wmatom[WmAtom::State as usize],
-            0,
-            2,
-        ) {
-            if let Ok(reply) = cookie.reply() {
-                if let Some(mut data) = reply.value32() {
-                    return data.next().unwrap_or(WM_STATE_WITHDRAWN as u32) as i32;
-                }
-            }
-        }
-    }
-    WM_STATE_WITHDRAWN
+pub fn is_hidden(win: Window) -> bool {
+    get_state(win) == WM_STATE_ICONIC
 }
 
 fn grab_buttons(win: Window, focused: bool) {

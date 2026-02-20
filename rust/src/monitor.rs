@@ -542,11 +542,15 @@ pub fn update_geom() -> bool {
     dirty
 }
 
-pub fn arrange(_m: Option<&mut MonitorInner>) {}
+pub fn arrange(_m: Option<MonitorId>) {}
 
 pub fn arrange_mon(_m: &mut MonitorInner) {}
 
 pub fn restack(_m: &mut MonitorInner) {}
+
+pub fn tag_mon(arg: &Arg) {
+    crate::tags::tag_mon(arg);
+}
 
 fn get_root_ptr() -> Option<(i32, i32)> {
     let x11 = get_x11();

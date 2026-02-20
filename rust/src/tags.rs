@@ -1,10 +1,8 @@
-use crate::client::{is_visible, set_client_tag_prop, unfocus_win};
+use crate::client::{set_client_tag_prop, unfocus_win};
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::{arrange, dir_to_mon, send_mon};
-use crate::scratchpad::ISSCRATCHPAD;
-use crate::toggles::toggle_bar;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
 
@@ -1255,3 +1253,59 @@ pub fn toggle_show_tags(_arg: &Arg) {}
 pub fn toggle_alt_tag(_arg: &Arg) {}
 
 pub fn alt_tab_free(_arg: &Arg) {}
+
+pub fn zoom(_arg: &Arg) {
+    let sel_win = {
+        let globals = get_globals();
+        let selmon_id = match globals.selmon {
+            Some(id) => id,
+            None => return,
+        };
+        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+    };
+
+    let Some(win) = sel_win else { return };
+
+    crate::client::pop(win);
+}
+
+pub fn quit(_arg: &Arg) {
+    std::process::exit(0);
+}
+
+pub fn spawn(arg: &Arg) {
+    if let Some(ptr) = arg.v {
+        let cmd = unsafe {
+            let ptr = ptr as *const u8;
+            let len = (0..1024).find(|&i| *ptr.add(i) == 0).unwrap_or(1024);
+            let slice = std::slice::from_raw_parts(ptr, len);
+            String::from_utf8_lossy(slice).to_string()
+        };
+
+        let parts: Vec<&str> = cmd.split_whitespace().collect();
+        if parts.is_empty() {
+            return;
+        }
+
+        let program = parts[0];
+        let args: Vec<&str> = parts[1..].to_vec();
+
+        let _ = std::process::Command::new(program).args(&args).spawn();
+    }
+}
+
+pub fn command_tag(arg: &Arg) {
+    tag(arg);
+}
+
+pub fn command_view(arg: &Arg) {
+    view(arg);
+}
+
+pub fn command_toggle_view(arg: &Arg) {
+    toggle_view(arg);
+}
+
+pub fn command_toggle_tag(arg: &Arg) {
+    toggle_tag(arg);
+}
