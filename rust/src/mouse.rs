@@ -168,8 +168,8 @@ pub fn force_warp(c: &ClientInner) {
     }
 }
 
-pub fn warp_cursor_to_client(c: &ClientInner) {
-    warp_cursor_to_client(c.win);
+pub fn warp_cursor_to_client_win(c: &ClientInner) {
+    warp_cursor_to_client_impl(c.win);
 }
 
 pub fn warp_to_focus(_arg: &Arg) {
@@ -183,7 +183,7 @@ pub fn warp_to_focus(_arg: &Arg) {
     };
 
     if let Some(win) = sel_win {
-        warp_cursor_to_client(win);
+        warp_cursor_to_client_impl(win);
     }
 }
 
@@ -313,22 +313,21 @@ pub fn move_mouse(_arg: &Arg) {
     }
 
     if !has_tiling {
-        let (c_x, c_y, c_w, c_h, mon_mw, mon_mh, mon_mx, mon_my) = {
+        let (c_x, c_y, c_w, c_h, mon_mw, mon_mh, mon_mx, mon_my, bh) = {
             let globals = get_globals();
             let c = globals.clients.get(&win).unwrap();
-            if c.x
-                >= globals.monitors.get(globals.selmon.unwrap()).unwrap().mx - MAX_UNMAXIMIZE_OFFSET
-                && c.y
-                    >= globals.monitors.get(globals.selmon.unwrap()).unwrap().my + globals.bh
-                        - MAX_UNMAXIMIZE_OFFSET
-                && c.w >= mon_mw - MAX_UNMAXIMIZE_OFFSET
-                && c.h >= mon_mh - MAX_UNMAXIMIZE_OFFSET
+            let mon = globals.monitors.get(globals.selmon.unwrap()).unwrap();
+            let bh = globals.bh;
+            if c.x >= mon.mx - MAX_UNMAXIMIZE_OFFSET
+                && c.y >= mon.my + bh - MAX_UNMAXIMIZE_OFFSET
+                && c.w >= mon.mw - MAX_UNMAXIMIZE_OFFSET
+                && c.h >= mon.mh - MAX_UNMAXIMIZE_OFFSET
             {
                 resize(win, saved_x, saved_y, saved_w, saved_h, false);
             }
-            let mon = globals.monitors.get(globals.selmon.unwrap()).unwrap();
-            (c.x, c.y, c.w, c.h, mon.mw, mon.mh, mon.mx, mon.my)
+            (c.x, c.y, c.w, c.h, mon.mw, mon.mh, mon.mx, mon.my, bh)
         };
+        let _ = (c_x, c_y, c_w, c_h, mon_mw, mon_mh, mon_mx, mon_my, bh);
     }
 
     let x11 = get_x11();

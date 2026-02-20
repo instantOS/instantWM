@@ -4,6 +4,8 @@ use std::os::fd::AsRawFd;
 use std::process::exit;
 use std::ptr;
 
+use crate::types::*;
+
 pub fn die(fmt: &str) -> ! {
     let _ = io::stderr().write_all(fmt.as_bytes());
     let _ = io::stderr().write_all(b"\n");
@@ -58,8 +60,12 @@ pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
     a.starts_with(b)
 }
 
-pub fn spawn(cmd: &[&str]) {
-    spawn_with_args(cmd, None);
+pub fn spawn(arg: &Arg) {
+    if let Some(v) = arg.v {
+        let cmd_ptr = v as *const &str;
+        let cmd = unsafe { &*cmd_ptr };
+        spawn_with_args(&[*cmd], None);
+    }
 }
 
 pub fn spawn_with_args(cmd: &[&str], _extra_env: Option<&[(&str, &str)]>) {
