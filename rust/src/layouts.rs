@@ -24,6 +24,12 @@ pub fn gaplessgrid(_m: &mut MonitorInner) {}
 
 pub fn bstack(_m: &mut MonitorInner) {}
 
+pub fn tcl(_m: &mut MonitorInner) {}
+
+pub fn overviewlayout(_m: &mut MonitorInner) {}
+
+pub fn bstackhoriz(_m: &mut MonitorInner) {}
+
 pub fn set_layout(_arg: &Arg) {}
 
 pub fn cycle_layout(_arg: &Arg) {}

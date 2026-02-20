@@ -1,5 +1,8 @@
 use crate::bar::update_bar_pos;
-use crate::client::{unfocus, win_to_client};
+use crate::client::{
+    attach, attach_stack, detach, detach_stack, is_visible, set_client_tag_prop, unfocus_win,
+    win_to_client as get_win_to_client,
+};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::scratchpad::scratchpad_show;
@@ -144,8 +147,9 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
         }
     }
 
-    if let Some(client) = win_to_client(w) {
-        return client.mon_id;
+    if let Some(win) = get_win_to_client(w) {
+        let g = get_globals();
+        return g.clients.get(&win).and_then(|c| c.mon_id);
     }
 
     g.selmon
