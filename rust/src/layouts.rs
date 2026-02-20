@@ -1,7 +1,9 @@
 use crate::animation::animate_client;
 use crate::bar::draw_bar;
-use crate::client::{client_height, client_width, is_visible, next_tiled, resize, resize_client};
-use crate::floating::{apply_snap, restore_border_width, save_bw};
+use crate::client::{
+    client_height, client_width, is_visible, next_tiled, resize, resize_client, save_bw,
+};
+use crate::floating::{apply_snap_mut, restore_border_width_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange as arrange_mon;
 use crate::types::*;
@@ -1052,10 +1054,13 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
                     && !is_fullscreen
                     && ((mon_clientcount == 1 && has_arrange) || is_monocle)
                 {
-                    save_bw(c);
-                    c.border_width = 0;
+                    save_bw(win);
+                    let mut g = get_globals_mut();
+                    if let Some(c) = g.clients.get_mut(&win) {
+                        c.border_width = 0;
+                    }
                 } else {
-                    restore_border_width(c);
+                    restore_border_width_win(win);
                 }
             }
         }
