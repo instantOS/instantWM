@@ -802,6 +802,12 @@ pub fn apply_rules(win: Window) {
     };
 
     let mut globals = get_globals_mut();
+
+    let (special_next, rules, tagmask, bh) = {
+        let g = get_globals();
+        (g.specialnext, g.rules.clone(), g.tagmask, g.bh)
+    };
+
     let client = match globals.clients.get_mut(&win) {
         Some(c) => c,
         None => return,
@@ -809,11 +815,6 @@ pub fn apply_rules(win: Window) {
 
     client.isfloating = false;
     client.tags = 0;
-
-    let special_next = globals.specialnext;
-    let rules = globals.rules.clone();
-    let tagmask = globals.tagmask;
-    let bh = globals.bh;
 
     if special_next != SpecialNext::None {
         match special_next {
@@ -862,15 +863,16 @@ pub fn apply_rules(win: Window) {
                     }
                 }
 
-                let (mon_mw, mon_wh, mon_showbar, mon_my) = if let Some(mon_id) = client.mon_id {
-                    if let Some(mon) = globals.monitors.get(mon_id) {
-                        (mon.mw, mon.wh, mon.showbar, mon.my)
+                let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) =
+                    if let Some(mon_id) = client.mon_id {
+                        get_globals()
+                            .monitors
+                            .get(mon_id)
+                            .map(|m| (m.mw, m.wh, m.showbar, m.my, m.mx))
+                            .unwrap_or((0, 0, false, 0, 0))
                     } else {
-                        (0, 0, false, 0)
-                    }
-                } else {
-                    (0, 0, false, 0)
-                };
+                        (0, 0, false, 0, 0)
+                    };
 
                 match rule.isfloating {
                     RuleFloat::FloatCenter => {
@@ -883,17 +885,7 @@ pub fn apply_rules(win: Window) {
                         if mon_showbar {
                             client.y = mon_my + bh;
                         }
-                        client.x = {
-                            if let Some(mon_id) = client.mon_id {
-                                if let Some(mon) = globals.monitors.get(mon_id) {
-                                    mon.mx
-                                } else {
-                                    client.x
-                                }
-                            } else {
-                                client.x
-                            }
-                        };
+                        client.x = mon_mx;
                     }
                     RuleFloat::Scratchpad => {
                         client.isfloating = true;
@@ -911,7 +903,10 @@ pub fn apply_rules(win: Window) {
 
                 client.tags |= rule.tags;
 
-                let target_mon = globals.monitors.iter().position(|m| m.num == rule.monitor);
+                let target_mon = get_globals()
+                    .monitors
+                    .iter()
+                    .position(|m| m.num == rule.monitor);
                 if let Some(mid) = target_mon {
                     client.mon_id = Some(mid);
                 }
@@ -921,12 +916,15 @@ pub fn apply_rules(win: Window) {
 
     let mon_id = client.mon_id;
     if let Some(mid) = mon_id {
-        if let Some(mon) = globals.monitors.get(mid) {
-            let mon_tags = mon.tagset[mon.seltags as usize];
+        let mon_tags = get_globals()
+            .monitors
+            .get(mid)
+            .map(|m| m.tagset[m.seltags as usize]);
+        if let Some(mt) = mon_tags {
             client.tags = if client.tags & tagmask != 0 {
                 client.tags & tagmask
             } else {
-                mon_tags
+                mt
             };
         }
     }
