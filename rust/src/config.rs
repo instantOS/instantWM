@@ -13,7 +13,7 @@ use crate::types::*;
 pub const BORDERPX: u32 = 3;
 pub const MAX_TAGLEN: usize = 16;
 
-pub const MODKEY: u32 = x11rb::protocol::xproto::ModMask::M4.into();
+pub const MODKEY: u32 = 1 << 6; // Mod4Mask (Super/Windows key)
 
 pub const TAGMASK: u32 = (1 << MAX_TAGS) - 1;
 
@@ -679,9 +679,9 @@ pub mod xk {
     pub const XF86XK_AudioPrev: u32 = 0x1008FF16;
 }
 
-const CONTROL: u32 = x11rb::protocol::xproto::ModMask::CONTROL.into();
-const SHIFT: u32 = x11rb::protocol::xproto::ModMask::SHIFT.into();
-const MOD1: u32 = x11rb::protocol::xproto::ModMask::M1.into();
+const CONTROL: u32 = 1 << 2;
+const SHIFT: u32 = 1 << 0;
+const MOD1: u32 = 1 << 3;
 
 fn tagkeys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     [
