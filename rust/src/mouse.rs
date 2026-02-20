@@ -17,6 +17,7 @@ use crate::types::*;
 use crate::util::spawn;
 use std::ffi::CStr;
 use std::io::Read;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
@@ -163,7 +164,7 @@ pub fn warp(c: &ClientInner) {
 pub fn force_warp(c: &ClientInner) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, 10);
+        let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, (c.w / 2) as i16, 10 as i16);
         let _ = conn.flush();
     }
 }
@@ -185,8 +186,8 @@ fn warp_cursor_to_client_impl(win: Window) {
                         0,
                         0,
                         0,
-                        mon.wx + mon.ww / 2,
-                        mon.wy + mon.wh / 2,
+                        (mon.wx + mon.ww / 2) as i16,
+                        (mon.wy + mon.wh / 2) as i16,
                     );
                     let _ = conn.flush();
                 }
@@ -215,7 +216,16 @@ fn warp_cursor_to_client_impl(win: Window) {
                     return;
                 }
 
-                let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, c.h / 2);
+                let _ = conn.warp_pointer(
+                    CURRENT_TIME,
+                    c.win,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (c.w / 2) as i16,
+                    (c.h / 2) as i16,
+                );
                 let _ = conn.flush();
             }
         }

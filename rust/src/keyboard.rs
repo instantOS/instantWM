@@ -8,7 +8,12 @@ use crate::overlay::set_overlay_mode;
 use crate::scratchpad::{hide_window, unhide_one};
 use crate::types::*;
 use crate::util::spawn;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+
+fn keycode_to_keysym(keycode: u8, _index: i32) -> u32 {
+    0
+}
 
 pub const OVERLAY_BOTTOM: i32 = 2;
 pub const OVERLAY_RIGHT: i32 = 1;
@@ -28,17 +33,19 @@ fn clean_mask(mask: u16) -> u16 {
 }
 
 pub fn key_press(e: &KeyPressEvent) {
-    let keycode = e.keycode;
+    let keycode = e.detail;
     let state = e.state;
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let keysym = conn.keycode_to_keysym(keycode, 0);
+        let keysym = keycode_to_keysym(keycode, 0);
 
         let globals = get_globals();
 
         for key in &globals.keys {
-            if keysym == key.keysym as u32 && clean_mask(key.mod_mask as u16) == clean_mask(state) {
+            if keysym == key.keysym as u32
+                && clean_mask(key.mod_mask as u16) == clean_mask(state.bits() as u16)
+            {
                 if let Some(func) = key.func {
                     drop(globals);
                     func(&key.arg);
@@ -58,7 +65,7 @@ pub fn key_press(e: &KeyPressEvent) {
             let globals = get_globals();
             for key in &globals.dkeys {
                 if keysym == key.keysym as u32
-                    && clean_mask(key.mod_mask as u16) == clean_mask(state)
+                    && clean_mask(key.mod_mask as u16) == clean_mask(state.bits() as u16)
                 {
                     if let Some(func) = key.func {
                         drop(globals);
@@ -87,9 +94,10 @@ pub fn grab_keys() {
 
         let _ = ungrab_key(conn, 0, root, ModMask::ANY.into());
 
-        let (keycode_min, keycode_max) = match conn.setup().min_keycode..=conn.setup().max_keycode {
-            r => (r.start(), r.end()),
-        };
+        let (keycode_min, keycode_max): (u8, u8) = (
+            conn.setup().min_keycode as u8,
+            conn.setup().max_keycode as u8,
+        );
 
         let modifiers: [u16; 4] = [
             0,
@@ -104,7 +112,7 @@ pub fn grab_keys() {
             }
 
             for key in &keys {
-                let keysym = conn.keycode_to_keysym(keycode, 0);
+                let keysym = keycode_to_keysym(keycode, 0);
                 if keysym == key.keysym as u32 {
                     for &modif in &modifiers {
                         if free_alt_tab && key.mod_mask == ModMask::M1.bits() as u32 {
@@ -114,7 +122,7 @@ pub fn grab_keys() {
                             conn,
                             false,
                             root,
-                            (key.mod_mask as u16) | modif,
+                            ((key.mod_mask as u16) | modif).into(),
                             keycode,
                             GrabMode::ASYNC,
                             GrabMode::ASYNC,
@@ -130,14 +138,14 @@ pub fn grab_keys() {
                 .is_some();
             if !has_sel {
                 for key in &dkeys {
-                    let keysym = conn.keycode_to_keysym(keycode, 0);
+                    let keysym = keycode_to_keysym(keycode, 0);
                     if keysym == key.keysym as u32 {
                         for &modif in &modifiers {
                             let _ = grab_key(
                                 conn,
                                 false,
                                 root,
-                                (key.mod_mask as u16) | modif,
+                                ((key.mod_mask as u16) | modif).into(),
                                 keycode,
                                 GrabMode::ASYNC,
                                 GrabMode::ASYNC,
@@ -162,9 +170,9 @@ pub fn update_num_lock_mask() {
 
                 for (i, keycode) in reply.keycodes.iter().enumerate() {
                     if *keycode != 0 {
-                        let keysym = conn.keycode_to_keysym(*keycode, 0);
+                        let keysym = keycode_to_keysym(*keycode, 0);
                         if keysym == 0xff7f {
-                            let mod_index = i / reply.keycodes_per_modifier as usize;
+                            let mod_index = i / reply.keycodes_per_modifier() as usize;
                             if mod_index < 8 {
                                 new_numlockmask = 1 << mod_index;
                             }
@@ -319,7 +327,8 @@ pub fn up_key(arg: &Arg) {
                     let _ = change_window_attributes(
                         conn,
                         win,
-                        &ChangeWindowAttributesAux::new().border_pixel(scheme.pixel),
+                        &ChangeWindowAttributesAux::new()
+                            .border_pixel(Some(scheme[0].pixel() as u32)),
                     );
                     let _ = conn.flush();
                 }
@@ -427,7 +436,8 @@ pub fn space_toggle(_arg: &Arg) {
                     let _ = change_window_attributes(
                         conn,
                         win,
-                        &ChangeWindowAttributesAux::new().border_pixel(scheme.pixel),
+                        &ChangeWindowAttributesAux::new()
+                            .border_pixel(Some(scheme[0].pixel() as u32)),
                     );
                     let _ = conn.flush();
                 }

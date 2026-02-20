@@ -1,6 +1,7 @@
 use crate::client::{apply_size_hints, set_client_state, win_to_client};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 

@@ -4,6 +4,7 @@ use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::*;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 pub const SNAP_NONE: i32 = 0;
@@ -606,7 +607,7 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
                     let _ = change_window_attributes(
                         conn,
                         win,
-                        &ChangeWindowAttributesAux::new().border_pixel(scheme.pixel),
+                        &ChangeWindowAttributesAux::new().border_pixel(Some(scheme.pixel as u32)),
                     );
                     let _ = conn.flush();
                 }

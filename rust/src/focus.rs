@@ -1,6 +1,7 @@
 use crate::client::{is_visible, set_focus, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
@@ -220,7 +221,7 @@ pub fn focus_last_client(_arg: &Arg) {
         globals.selmon
     };
     if let Some(mid) = mon_id {
-        crate::monitor::arrange(mid);
+        crate::monitor::arrange(Some(mid));
     }
 }
 
@@ -230,7 +231,16 @@ pub fn warp(c_win: Window) {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&c_win) {
             if let Some(_cursor_x) = get_root_ptr() {
-                let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, c.h / 2);
+                let _ = conn.warp_pointer(
+                    CURRENT_TIME,
+                    c.win,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (c.w / 2) as i16,
+                    (c.h / 2) as i16,
+                );
                 let _ = conn.flush();
             }
         }
@@ -242,7 +252,7 @@ pub fn force_warp(c_win: Window) {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&c_win) {
-            let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, 10);
+            let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, (c.w / 2) as i16, 10 as i16);
             let _ = conn.flush();
         }
     }
@@ -265,8 +275,8 @@ pub fn warp_cursor_to_client(c_win: Window) {
                         0,
                         0,
                         0,
-                        mon.wx + mon.ww / 2,
-                        mon.wy + mon.wh / 2,
+                        (mon.wx + mon.ww / 2) as i16,
+                        (mon.wy + mon.wh / 2) as i16,
                     );
                     let _ = conn.flush();
                 }
@@ -295,7 +305,16 @@ pub fn warp_cursor_to_client(c_win: Window) {
                     return;
                 }
 
-                let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, c.h / 2);
+                let _ = conn.warp_pointer(
+                    CURRENT_TIME,
+                    c.win,
+                    0,
+                    0,
+                    0,
+                    0,
+                    (c.w / 2) as i16,
+                    (c.h / 2) as i16,
+                );
                 let _ = conn.flush();
             }
         }
@@ -322,7 +341,7 @@ pub fn warp_into(c_win: Window) {
                     y = c.y + c.h - 10;
                 }
 
-                let _ = conn.warp_pointer(CURRENT_TIME, root, 0, 0, 0, 0, x, y);
+                let _ = conn.warp_pointer(CURRENT_TIME, root, 0, 0, 0, 0, x as i16, y as i16);
                 let _ = conn.flush();
             }
         }

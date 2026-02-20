@@ -6,6 +6,7 @@ use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
 use crate::monitor::restack;
 use crate::types::*;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 

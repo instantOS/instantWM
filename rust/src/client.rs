@@ -4,8 +4,9 @@ use crate::monitor::arrange;
 use crate::types::*;
 use crate::util::{max, min};
 use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
-use x11rb::wrapper::ConnectionExt;
+use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
 pub static mut ANIM_CLIENT: Option<Window> = None;
@@ -268,7 +269,7 @@ pub fn set_client_tag_prop(win: Window) {
                 PropMode::REPLACE,
                 win,
                 globals.netatom[NetAtom::ClientInfo as usize],
-                AtomEnum::CARDINAL.into(),
+                AtomEnum::CARDINAL,
                 &data,
             );
             let _ = conn.flush();
@@ -723,12 +724,15 @@ pub fn update_title(win: Window) {
             false,
             win,
             globals.netatom[NetAtom::WMName as usize],
-            AtomEnum::UTF8_STRING,
+            AtomEnum::STRING,
             0,
             256,
         ) {
             if let Ok(reply) = cookie.reply() {
-                let bytes = reply.value();
+                let bytes: Vec<u8> = match reply.value8() {
+                    Some(iter) => iter.collect(),
+                    None => Vec::new(),
+                };
                 let mut name = [0u8; 256];
                 let len = bytes.len().min(255);
                 name[..len].copy_from_slice(&bytes[..len]);
@@ -760,7 +764,7 @@ pub fn apply_rules(win: Window) {
 
         if let Ok(cookie) = hint {
             if let Ok(reply) = cookie.reply() {
-                let data = reply.value();
+                let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
                 let mut parts: Vec<&[u8]> =
                     data.split(|&b| b == 0).filter(|s| !s.is_empty()).collect();
                 let class = parts
@@ -833,10 +837,12 @@ pub fn apply_rules(win: Window) {
                 .map(|t| {
                     let client_name = &client.name;
                     let title_bytes = t.as_bytes();
-                    client_name
+                    let name_bytes: Vec<u8> = client_name
                         .iter()
                         .take_while(|&&b| b != 0)
-                        .collect::<Vec<_>>()
+                        .copied()
+                        .collect();
+                    name_bytes
                         .windows(title_bytes.len())
                         .any(|w| w == title_bytes)
                 })
@@ -1294,10 +1300,12 @@ pub fn manage(
         );
 
         if let Some(ref scheme) = globals.borderscheme {
-            let _ = conn.change_window_attributes(
-                w,
-                &ChangeWindowAttributesAux::new().border_pixel(scheme.pixel),
-            );
+            if let Some(clr) = scheme.first() {
+                let _ = conn.change_window_attributes(
+                    w,
+                    &ChangeWindowAttributesAux::new().border_pixel(Some(clr.color.pixel as u32)),
+                );
+            }
         }
         let _ = conn.flush();
     }
@@ -1418,7 +1426,7 @@ pub fn manage(
     drop(globals);
 
     if let Some(mon_id) = c.mon_id {
-        arrange(mon_id);
+        arrange(Some(mon_id));
     }
 
     if !is_hidden(w) {
@@ -1453,7 +1461,7 @@ pub fn manage(
             }
         } else if c.w > mon_mw - 30 || c.h > mon_mh - 30 {
             if let Some(mon_id) = c.mon_id {
-                arrange(mon_id);
+                arrange(Some(mon_id));
             }
         }
     }
@@ -1550,7 +1558,7 @@ pub fn unmanage(win: Window, destroyed: bool) {
             );
             let _ =
                 conn.configure_window(win, &ConfigureWindowAux::new().border_width(old_bw as u32));
-            let _ = conn.ungrab_button(0, 0, win);
+            let _ = conn.ungrab_button(0u8.into(), ModMask::from_bits_truncate(0), win);
 
             set_client_state(win, WM_STATE_WITHDRAWN);
 
@@ -1655,7 +1663,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                     drop(globals);
                     resize_client(win, old_x, old_y, old_w, old_h);
                     if let Some(mid) = mon_id {
-                        arrange(mid);
+                        arrange(Some(mid));
                     }
                 }
             }
@@ -1727,7 +1735,10 @@ pub fn update_size_hints(c: &mut ClientInner) {
             24,
         ) {
             if let Ok(reply) = cookie.reply() {
-                let data = reply.data.as_slice();
+                let data = reply
+                    .value32()
+                    .map(|v| v.collect::<Vec<u32>>())
+                    .unwrap_or_default();
 
                 let flags = if data.len() >= 4 {
                     u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
@@ -1857,7 +1868,10 @@ pub fn update_wm_hints(win: Window) {
             conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
         {
             if let Ok(reply) = cookie.reply() {
-                let data = reply.data.as_slice();
+                let data = reply
+                    .value32()
+                    .map(|v| v.collect::<Vec<u32>>())
+                    .unwrap_or_default();
 
                 let flags = if data.len() >= 4 {
                     u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
@@ -1936,7 +1950,10 @@ pub fn update_motif_hints(win: Window) {
     if let Some(ref conn) = x11.conn {
         if let Ok(cookie) = conn.get_property(false, win, motif_atom, motif_atom, 0, 5) {
             if let Ok(reply) = cookie.reply() {
-                let data = reply.data.as_slice();
+                let data = reply
+                    .value32()
+                    .map(|v| v.collect::<Vec<u32>>())
+                    .unwrap_or_default();
                 if data.len() >= 20 {
                     let motif: Vec<u32> = data
                         .chunks_exact(4)
@@ -1989,7 +2006,7 @@ pub fn is_hidden(win: Window) -> bool {
 fn grab_buttons(win: Window, focused: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = conn.ungrab_button(0, 0, win);
+        let _ = conn.ungrab_button(0u8.into(), ModMask::from(0u16), win);
 
         if !focused {
             let globals = get_globals();
@@ -2003,24 +2020,24 @@ fn grab_buttons(win: Window, focused: bool) {
                 let _ = conn.grab_button(
                     false,
                     win,
-                    button_mask,
+                    button_mask.into(),
                     GrabMode::SYNC,
                     GrabMode::SYNC,
                     0,
                     0,
-                    1,
-                    modifiers,
+                    1u8.into(),
+                    modifiers.into(),
                 );
                 let _ = conn.grab_button(
                     false,
                     win,
-                    button_mask,
+                    button_mask.into(),
                     GrabMode::SYNC,
                     GrabMode::SYNC,
                     0,
                     0,
-                    3,
-                    modifiers,
+                    3u8.into(),
+                    modifiers.into(),
                 );
             }
         }
@@ -2159,7 +2176,10 @@ pub fn set_urgent(win: Window, urg: bool) {
             conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
         {
             if let Ok(reply) = cookie.reply() {
-                let data = reply.data.as_slice();
+                let data = reply
+                    .value32()
+                    .map(|v| v.collect::<Vec<u32>>())
+                    .unwrap_or_default();
                 let flags = if data.len() >= 4 {
                     u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
                 } else {
