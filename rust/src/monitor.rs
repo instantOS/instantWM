@@ -9,6 +9,23 @@ use x11rb::protocol::xproto::Window;
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
+fn tagmon(arg: &Arg) {
+    if let Some(target) = dir_to_mon(arg.i) {
+        let g = get_globals();
+        if let Some(mon_id) = g.selmon {
+            if let Some(client) = g.monitors.get(mon_id).and_then(|_m| {
+                g.clients
+                    .values()
+                    .find(|c| c.mon_id == Some(mon_id))
+                    .map(|c| c.win)
+            }) {
+                drop(g);
+                send_mon(client, target);
+            }
+        }
+    }
+}
+
 pub fn create_monitor() -> MonitorInner {
     let g = get_globals();
 
@@ -146,13 +163,22 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         return;
     }
 
-    let client = match g.clients.get_mut(&c_win) {
-        Some(c) => c,
-        None => return,
+    let (is_scratchpad, target_tags) = {
+        let client = match g.clients.get(&c_win) {
+            Some(c) => c,
+            None => return,
+        };
+        let is_sp = client.tags == SCRATCHPAD_MASK;
+        let tags = if !is_sp {
+            g.monitors
+                .get(target_mon_id)
+                .map(|m| m.tagset[m.seltags as usize])
+                .unwrap_or(1)
+        } else {
+            0
+        };
+        (is_sp, tags)
     };
-
-    let is_scratchpad = client.tags == SCRATCHPAD_MASK;
-    let old_mon_id = client.mon_id;
 
     drop(g);
 
@@ -169,11 +195,6 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
             client.mon_id = Some(target_mon_id);
 
             if !is_scratchpad {
-                let target_tags = if let Some(ref m) = g.monitors.get(target_mon_id) {
-                    m.tagset[m.seltags as usize]
-                } else {
-                    1
-                };
                 client.tags = target_tags;
                 reset_sticky(&mut client.clone());
             }
@@ -374,7 +395,7 @@ pub fn update_geom() -> bool {
         if let Some(ref conn) = x11.conn {
             if let Ok(is_active_cookie) = xinerama::is_active(conn) {
                 if let Ok(is_active) = is_active_cookie.reply() {
-                    if is_active.state {
+                    if is_active.state != 0 {
                         if let Ok(screens_cookie) = xinerama::query_screens(conn) {
                             if let Ok(screens) = screens_cookie.reply() {
                                 let screen_info: Vec<(i32, i32, i32, i32)> = screens
