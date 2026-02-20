@@ -1,26 +1,20 @@
 use crate::bar::{draw_bar, get_tag_width, reset_bar};
 use crate::client::{
-    client_height, client_width, configure, is_hidden, is_visible, resize_client, set_client_state,
-    set_fullscreen, unmanage, update_motif_hints, update_size_hints, update_title,
-    update_window_type, update_wm_hints, win_to_client, WM_STATE_NORMAL, WM_STATE_WITHDRAWN,
+    configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
+    update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
 };
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::keyboard::grab_keys;
-use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
-use crate::mouse::{get_cursor_client, reset_cursor, resize_mouse};
-use crate::overlay::show_overlay;
-use crate::scratchpad::scratchpad_show;
+use crate::monitor::{arrange, restack, update_geom, win_to_mon};
+use crate::mouse::{reset_cursor, resize_mouse};
 use crate::systray::{
-    get_systray_width, remove_systray_icon, update_systray, update_systray_icon_geom,
-    update_systray_icon_state, win_to_systray_icon,
+    remove_systray_icon, update_systray, update_systray_icon_geom, win_to_systray_icon,
 };
-use crate::tags::view;
-use crate::types::{self as types, *};
+use crate::types::*;
 use crate::util::clean_mask;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-use x11rb::CURRENT_TIME;
 
 pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
 
