@@ -4,6 +4,7 @@ use crate::monitor::arrange;
 use crate::types::*;
 use crate::util::{max, min};
 use x11rb::protocol::xproto::*;
+use x11rb::CURRENT_TIME;
 
 pub static mut ANIM_CLIENT: Option<Window> = None;
 pub static mut LAST_CLIENT: Option<Window> = None;

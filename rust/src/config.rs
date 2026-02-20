@@ -2972,11 +2972,6 @@ pub fn alt_tab_free(_arg: &Arg) {}
 pub fn last_view(_arg: &Arg) {}
 pub fn focus_last_client(_arg: &Arg) {}
 pub fn follow_view(_arg: &Arg) {}
-pub fn move_mouse(_arg: &Arg) {}
-pub fn resize_mouse(_arg: &Arg) {}
-pub fn force_resize_mouse(_arg: &Arg) {}
-pub fn resize_aspect_mouse(_arg: &Arg) {}
-pub fn gesture_mouse(_arg: &Arg) {}
 pub fn anim_left(_arg: &Arg) {}
 pub fn anim_right(_arg: &Arg) {}
 pub fn toggle_overview(_arg: &Arg) {}
@@ -2996,10 +2991,7 @@ pub fn desktop_set(_arg: &Arg) {}
 pub fn win_view(_arg: &Arg) {}
 pub fn view_to_left(_arg: &Arg) {}
 pub fn view_to_right(_arg: &Arg) {}
-pub fn close_win(_arg: &Arg) {}
 pub fn toggle_locked(_arg: &Arg) {}
-pub fn down_scale_client(_arg: &Arg) {}
-pub fn up_scale_client(_arg: &Arg) {}
 pub fn show_overlay(_arg: &Arg) {}
 pub fn hide_overlay(_arg: &Arg) {}
 pub fn toggle_floating(_arg: &Arg) {}

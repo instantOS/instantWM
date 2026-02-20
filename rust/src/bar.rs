@@ -30,6 +30,12 @@ pub fn window_title_mouse_handler_right(_arg: &Arg) {}
 
 pub fn close_win(_arg: &Arg) {}
 
+pub fn up_scale_client(_arg: &Arg) {}
+
+pub fn down_scale_client(_arg: &Arg) {}
+
+pub fn close_win(_arg: &Arg) {}
+
 pub fn down_scale_client(_arg: &Arg) {}
 
 pub fn up_scale_client(_arg: &Arg) {}

@@ -1,6 +1,7 @@
-use crate::globals::{get_globals, get_x11};
+use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
+use x11rb::protocol::xproto::*;
 use x11rb::protocol::xproto::*;
 
 pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, reset_pos: i32) {
