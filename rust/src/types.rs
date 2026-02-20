@@ -140,11 +140,20 @@ pub struct Arg {
     pub i: i32,
     pub ui: u32,
     pub f: f32,
-    pub v: Option<*const std::ffi::c_void>,
+    pub v: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Client {
+#[derive(Debug, Clone, Copy)]
+pub struct Layout {
+    pub symbol: &'static str,
+    pub arrange: fn(&mut MonitorInner),
+}
+
+pub type ClientId = usize;
+pub type MonitorId = usize;
+
+#[derive(Debug, Clone, Default)]
+pub struct ClientInner {
     pub name: [u8; 256],
     pub mina: f32,
     pub maxa: f32,
@@ -184,72 +193,14 @@ pub struct Client {
     pub snapstatus: SnapPosition,
     pub scratchpad_name: [u8; SCRATCHPAD_NAME_LEN],
     pub scratchpad_restore_tags: u32,
-    pub next: Option<Box<Client>>,
-    pub snext: Option<Box<Client>>,
-    pub mon: Option<*mut Monitor>,
+    pub mon_id: Option<MonitorId>,
     pub win: Window,
 }
 
-impl Default for Client {
-    fn default() -> Self {
-        Self {
-            name: [0; 256],
-            mina: 0.0,
-            maxa: 0.0,
-            x: 0,
-            y: 0,
-            w: 0,
-            h: 0,
-            saved_float_x: 0,
-            saved_float_y: 0,
-            saved_float_width: 0,
-            saved_float_height: 0,
-            oldx: 0,
-            oldy: 0,
-            oldw: 0,
-            oldh: 0,
-            basew: 0,
-            baseh: 0,
-            incw: 0,
-            inch: 0,
-            maxw: 0,
-            maxh: 0,
-            minw: 0,
-            minh: 0,
-            hintsvalid: 0,
-            border_width: 0,
-            old_border_width: 0,
-            tags: 0,
-            isfixed: false,
-            isfloating: false,
-            isurgent: false,
-            neverfocus: false,
-            oldstate: 0,
-            is_fullscreen: false,
-            isfakefullscreen: false,
-            islocked: false,
-            issticky: false,
-            snapstatus: SnapPosition::None,
-            scratchpad_name: [0; SCRATCHPAD_NAME_LEN],
-            scratchpad_restore_tags: 0,
-            next: None,
-            snext: None,
-            mon: None,
-            win: 0,
-        }
-    }
-}
-
-impl Client {
+impl ClientInner {
     pub fn is_scratchpad(&self) -> bool {
         self.scratchpad_name[0] != 0
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Layout {
-    pub symbol: &'static str,
-    pub arrange: Option<fn(&mut Monitor)>,
 }
 
 #[derive(Debug, Clone)]
@@ -275,8 +226,8 @@ impl Default for Pertag {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Monitor {
+#[derive(Debug, Clone, Default)]
+pub struct MonitorInner {
     pub ltsymbol: [u8; 16],
     pub mfact: f32,
     pub nmaster: i32,
@@ -300,64 +251,11 @@ pub struct Monitor {
     pub clientcount: u32,
     pub showbar: bool,
     pub topbar: bool,
-    pub clients: Option<Box<Client>>,
-    pub sel: Option<*mut Client>,
-    pub overlay: Option<*mut Client>,
-    pub fullscreen: Option<*mut Client>,
     pub overlaystatus: i32,
     pub overlaymode: i32,
     pub gesture: Gesture,
-    pub stack: Option<Box<Client>>,
-    pub hoverclient: Option<*mut Client>,
-    pub next: Option<Box<Monitor>>,
     pub barwin: Window,
-    pub lt: [Option<Layout>; 2],
     pub showtags: u32,
-    pub pertag: Option<Box<Pertag>>,
-}
-
-impl Default for Monitor {
-    fn default() -> Self {
-        Self {
-            ltsymbol: [0; 16],
-            mfact: 0.55,
-            nmaster: 1,
-            num: 0,
-            by: 0,
-            bar_clients_width: 0,
-            bt: 0,
-            mx: 0,
-            my: 0,
-            mw: 0,
-            mh: 0,
-            wx: 0,
-            wy: 0,
-            ww: 0,
-            wh: 0,
-            seltags: 0,
-            sellt: 0,
-            tagset: [0; 2],
-            activeoffset: 0,
-            titleoffset: 0,
-            clientcount: 0,
-            showbar: true,
-            topbar: true,
-            clients: None,
-            sel: None,
-            overlay: None,
-            fullscreen: None,
-            overlaystatus: 0,
-            overlaymode: 0,
-            gesture: Gesture::None,
-            stack: None,
-            hoverclient: None,
-            next: None,
-            barwin: 0,
-            lt: [None, None],
-            showtags: 0,
-            pertag: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -381,13 +279,12 @@ pub enum ResourceType {
 pub struct ResourcePref {
     pub name: &'static str,
     pub rtype: ResourceType,
-    pub dst: *mut std::ffi::c_void,
 }
 
 #[derive(Debug, Clone)]
 pub struct Systray {
     pub win: Window,
-    pub icons: Option<Box<Client>>,
+    pub icons: Vec<ClientId>,
 }
 
 #[derive(Debug, Clone)]
@@ -415,7 +312,7 @@ pub struct XCommand {
     pub cmd_type: u32,
 }
 
-pub fn intersect(x: i32, y: i32, w: i32, h: i32, m: &Monitor) -> i32 {
+pub fn intersect(x: i32, y: i32, w: i32, h: i32, m: &MonitorInner) -> i32 {
     let x1 = x.max(m.wx);
     let y1 = y.max(m.wy);
     let x2 = (x + w).min(m.wx + m.ww);
@@ -423,14 +320,14 @@ pub fn intersect(x: i32, y: i32, w: i32, h: i32, m: &Monitor) -> i32 {
     (x2 - x1).max(0) * (y2 - y1).max(0)
 }
 
-pub fn is_visible(c: &Client, mon: &Monitor) -> bool {
-    (c.tags & mon.tagset[mon.seltags as usize]) != 0 || c.issticky
+pub fn is_visible(tags: u32, mon_tags: u32, seltags: u32, issticky: bool) -> bool {
+    (tags & mon_tags) != 0 || issticky
 }
 
-pub fn width(c: &Client) -> i32 {
-    c.w + 2 * c.border_width
+pub fn width(w: i32, border_width: i32) -> i32 {
+    w + 2 * border_width
 }
 
-pub fn height(c: &Client) -> i32 {
-    c.h + 2 * c.border_width
+pub fn height(h: i32, border_width: i32) -> i32 {
+    h + 2 * border_width
 }
