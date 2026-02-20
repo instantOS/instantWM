@@ -44,7 +44,7 @@ pub fn create_monitor() -> MonitorInner {
     let default_symbol = b"[]=";
     m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
 
-    let mut pertag = Box::new(Pertag {
+    let pertag = Box::new(Pertag {
         current_tag: 1,
         prevtag: 1,
         nmasters: [m.nmaster; MAX_TAGS],
@@ -523,20 +523,24 @@ pub fn update_geom() -> bool {
         let mut g = get_globals_mut();
         g.monitors.push(create_monitor());
         dirty = true;
-    }
-    drop(g);
+    } else {
+        let sw = g.sw;
+        let sh = g.sh;
+        let needs_update = g
+            .monitors
+            .first()
+            .map(|m| m.mw != sw || m.mh != sh)
+            .unwrap_or(false);
+        drop(g);
 
-    let g = get_globals();
-    if let Some(ref m) = g.monitors.first() {
-        if m.mw != g.sw || m.mh != g.sh {
+        if needs_update {
             dirty = true;
-            drop(g);
             let mut g = get_globals_mut();
             if let Some(ref mut m) = g.monitors.first_mut() {
-                m.mw = g.sw;
-                m.mh = g.sh;
-                m.ww = g.sw;
-                m.wh = g.sh;
+                m.mw = sw;
+                m.mh = sh;
+                m.ww = sw;
+                m.wh = sh;
                 update_bar_pos(m);
             }
         }

@@ -198,6 +198,8 @@ pub struct ClientInner {
     pub scratchpad_restore_tags: u32,
     pub mon_id: Option<MonitorId>,
     pub win: Window,
+    pub next: Option<Window>,
+    pub snext: Option<Window>,
 }
 
 impl Default for ClientInner {
