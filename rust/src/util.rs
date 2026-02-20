@@ -24,15 +24,15 @@ pub fn clamp<T: Ord>(val: T, min_val: T, max_val: T) -> T {
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
-    let lock_mask: u32 = x11rb::protocol::xproto::ModMask::LOCK.bits();
+    let lock_mask: u32 = x11rb::protocol::xproto::ModMask::LOCK.bits() as u32;
     mask & !(numlockmask | lock_mask)
-        & (x11rb::protocol::xproto::ModMask::SHIFT.bits()
-            | x11rb::protocol::xproto::ModMask::CONTROL.bits()
-            | x11rb::protocol::xproto::ModMask::M1.bits()
-            | x11rb::protocol::xproto::ModMask::M2.bits()
-            | x11rb::protocol::xproto::ModMask::M3.bits()
-            | x11rb::protocol::xproto::ModMask::M4.bits()
-            | x11rb::protocol::xproto::ModMask::M5.bits())
+        & (x11rb::protocol::xproto::ModMask::SHIFT.bits() as u32
+            | x11rb::protocol::xproto::ModMask::CONTROL.bits() as u32
+            | x11rb::protocol::xproto::ModMask::M1.bits() as u32
+            | x11rb::protocol::xproto::ModMask::M2.bits() as u32
+            | x11rb::protocol::xproto::ModMask::M3.bits() as u32
+            | x11rb::protocol::xproto::ModMask::M4.bits() as u32
+            | x11rb::protocol::xproto::ModMask::M5.bits() as u32)
 }
 
 pub fn length<T>(slice: &[T]) -> usize {

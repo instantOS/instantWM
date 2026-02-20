@@ -1,9 +1,7 @@
 use crate::types::*;
 
-// TODO: Port animation system from animation.c
-
 pub fn animate_client(
-    _c: &mut Client,
+    _c: &mut ClientInner,
     _x: i32,
     _y: i32,
     _w: i32,
@@ -11,11 +9,10 @@ pub fn animate_client(
     _frames: i32,
     _reset_pos: i32,
 ) {
-    // TODO: Animate client to new position
 }
 
 pub fn check_animate(
-    _c: &mut Client,
+    _c: &mut ClientInner,
     _x: i32,
     _y: i32,
     _w: i32,
@@ -23,17 +20,10 @@ pub fn check_animate(
     _frames: i32,
     _reset_pos: i32,
 ) {
-    // TODO: Check and animate client
 }
 
-pub fn toggle_animated(_arg: &Arg) {
-    // TODO: Toggle animations
-}
+pub fn toggle_animated(_arg: &Arg) {}
 
-pub fn up_scale_client(_arg: &Arg) {
-    // TODO: Scale client up
-}
+pub fn up_scale_client(_arg: &Arg) {}
 
-pub fn down_scale_client(_arg: &Arg) {
-    // TODO: Scale client down
-}
+pub fn down_scale_client(_arg: &Arg) {}

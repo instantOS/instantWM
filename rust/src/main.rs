@@ -1,5 +1,3 @@
-use instantwm::types::*;
-
 fn main() {
     println!("instantWM - Rust port");
 
