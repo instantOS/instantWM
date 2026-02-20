@@ -196,7 +196,7 @@ pub fn update_systray() {
         let net_system_tray_horz = globals.netatom[NetAtom::SystemTrayOrientationHorz as usize];
 
         let bg_pixel = if let Some(ref scheme) = globals.statusscheme {
-            scheme[1].pixel
+            scheme[1].color.pixel as u32
         } else {
             0
         };
@@ -204,19 +204,21 @@ pub fn update_systray() {
         drop(globals);
 
         let systray_win = conn.generate_id().ok();
-        let Ok(systray_win) = systray_win else { return };
+        let Some(systray_win) = systray_win else {
+            return;
+        };
 
         let result = conn.create_window(
-            x11rb::COPY_FROM_PARENT.into(),
+            x11rb::COPY_FROM_PARENT as u8,
             systray_win,
             root,
-            x,
-            by,
+            x as i16,
+            by as i16,
             w as u16,
             bh as u16,
             0,
             WindowClass::INPUT_OUTPUT,
-            x11rb::COPY_FROM_PARENT.into(),
+            x11rb::COPY_FROM_PARENT as u32,
             &CreateWindowAux::new()
                 .event_mask(EventMask::BUTTON_PRESS | EventMask::EXPOSURE)
                 .override_redirect(1)
@@ -231,12 +233,14 @@ pub fn update_systray() {
             PropMode::REPLACE,
             systray_win,
             net_system_tray,
-            AtomEnum::CARDINAL.into(),
+            AtomEnum::CARDINAL,
             &[net_system_tray_horz],
         );
 
-        conn.select_input(systray_win, EventMask::SUBSTRUCTURE_NOTIFY)
-            .ok();
+        let _ = conn.change_window_attributes(
+            systray_win,
+            &ChangeWindowAttributesAux::new().event_mask(EventMask::SUBSTRUCTURE_NOTIFY),
+        );
 
         let _ = conn.map_window(systray_win);
         let _ = conn.change_window_attributes(
@@ -281,7 +285,7 @@ pub fn update_systray() {
     let bg_pixel = globals
         .statusscheme
         .as_ref()
-        .map(|s| s[1].pixel)
+        .map(|s| s[1].color.pixel as u32)
         .unwrap_or(0);
 
     w = 0;

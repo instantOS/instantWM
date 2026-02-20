@@ -6,7 +6,7 @@ use crate::monitor::restack;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-use x11rb::wrapper::ConnectionExt;
+
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;

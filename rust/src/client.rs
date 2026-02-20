@@ -59,7 +59,7 @@ pub fn detach(win: Window) {
     if let Some(mid) = mon_id {
         let client_next = globals.clients.get(&win).and_then(|c| c.next);
 
-        let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+        let mut traversal: Vec<(Window, Option<Window>, Option<Window>)> = Vec::new();
         let mut current = globals.monitors[mid].clients;
         let mut prev: Option<Window> = None;
 
@@ -98,7 +98,7 @@ pub fn detach_stack(win: Window) {
     if let Some(mid) = mon_id {
         let client_snext = globals.clients.get(&win).and_then(|c| c.snext);
 
-        let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+        let mut traversal: Vec<(Window, Option<Window>, Option<Window>)> = Vec::new();
         let mut current = globals.monitors[mid].stack;
         let mut prev: Option<Window> = None;
 
@@ -2014,8 +2014,8 @@ fn grab_buttons(win: Window, focused: bool) {
                     button_mask.into(),
                     GrabMode::SYNC,
                     GrabMode::SYNC,
-                    0,
-                    0,
+                    0u32,
+                    0u32,
                     1u8.into(),
                     ModMask::from(modifiers as u16),
                 );
@@ -2025,8 +2025,8 @@ fn grab_buttons(win: Window, focused: bool) {
                     button_mask.into(),
                     GrabMode::SYNC,
                     GrabMode::SYNC,
-                    0,
-                    0,
+                    0u32,
+                    0u32,
                     3u8.into(),
                     ModMask::from(modifiers as u16),
                 );

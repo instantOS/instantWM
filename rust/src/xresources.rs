@@ -4,6 +4,7 @@ use crate::config::{
 };
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
+use x11rb::protocol::xproto::ConnectionExt;
 
 const NUM_SCHEMEHOVERTYPES: usize = 2;
 const NUM_SCHEMECOLORTYPES: usize = 3;

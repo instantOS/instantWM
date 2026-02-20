@@ -290,8 +290,8 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
                     EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                     GrabMode::SYNC,
                     GrabMode::SYNC,
-                    0,
-                    0,
+                    0u32,
+                    0u32,
                     1u8.into(),
                     ModMask::from(modifiers),
                 );
@@ -301,8 +301,8 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
                     EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                     GrabMode::SYNC,
                     GrabMode::SYNC,
-                    0,
-                    0,
+                    0u32,
+                    0u32,
                     3u8.into(),
                     ModMask::from(modifiers),
                 );
@@ -406,7 +406,7 @@ pub fn move_mouse(_arg: &Arg) {
                 EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
                 GrabMode::ASYNC,
                 GrabMode::ASYNC,
-                0,
+                x11rb::NONE,
                 cursor,
                 CURRENT_TIME,
             )
@@ -439,10 +439,10 @@ pub fn move_mouse(_arg: &Arg) {
         loop {
             let event = conn.wait_for_event();
             if let Ok(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(motion) => {
+                        let motion = Ok(motion);
                         if let Ok(m) = motion {
                             if m.time - last_time <= 1000 / rate {
                                 continue;
@@ -577,12 +577,10 @@ pub fn resize_mouse(_arg: &Arg) {
             conn,
             false,
             root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -610,11 +608,11 @@ pub fn resize_mouse(_arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(motion) => {
+                        let motion = Ok(motion);
                         if let Ok(m) = motion {
                             if m.time - last_time <= 1000 / rate {
                                 continue;
@@ -705,12 +703,10 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
             conn,
             false,
             root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -737,11 +733,11 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(motion) => {
+                        let motion = Ok(motion);
                         if let Ok(m) = motion {
                             if m.time - last_time <= 1000 / rate {
                                 continue;
@@ -811,12 +807,10 @@ pub fn gesture_mouse(_arg: &Arg) {
             conn,
             false,
             root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -833,12 +827,12 @@ pub fn gesture_mouse(_arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
-                        if let Ok(m) = motion {
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        let m = m;
+                        {
                             if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                                 continue;
                             }
@@ -955,13 +949,13 @@ pub fn hover_resize_mouse(_arg: &Arg) -> i32 {
             conn,
             false,
             globals.root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits()
-                | EventMask::KEY_PRESS.bits(),
+            EventMask::BUTTON_PRESS
+                | EventMask::BUTTON_RELEASE
+                | EventMask::POINTER_MOTION
+                | EventMask::KEY_PRESS,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -974,23 +968,21 @@ pub fn hover_resize_mouse(_arg: &Arg) -> i32 {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(_) => {
                         if !is_in_resize_border() {
                             break;
                         }
                     }
-                    KEY_PRESS_EVENT => {
-                        let key = KeyPressEvent::try_from(e);
-                        if let Ok(k) = key {
-                            if k.detail == KEYCODE_ESCAPE {
-                                break;
-                            }
+                    x11rb::protocol::Event::KeyPress(k) => {
+                        let k = k;
+                        if k.detail == KEYCODE_ESCAPE {
+                            break;
                         }
                     }
-                    BUTTON_PRESS_EVENT => {
+                    x11rb::protocol::Event::ButtonPress(_) => {
                         resize_started = true;
                         let _ = ungrab_pointer(conn, CURRENT_TIME);
                         resize_mouse(&Arg::default());
@@ -1033,12 +1025,10 @@ pub fn window_title_mouse_handler(arg: &Arg) {
             conn,
             false,
             globals.root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -1056,12 +1046,12 @@ pub fn window_title_mouse_handler(arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
-                        if let Ok(m) = motion {
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        let m = m;
+                        {
                             if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                                 continue;
                             }
@@ -1130,12 +1120,10 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
             conn,
             false,
             globals.root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -1153,12 +1141,12 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
-                        if let Ok(m) = motion {
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        let m = m;
+                        {
                             if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                                 continue;
                             }
@@ -1387,12 +1375,10 @@ pub fn drag_tag(arg: &Arg) {
             conn,
             false,
             globals.root,
-            EventMask::BUTTON_PRESS.bits()
-                | EventMask::BUTTON_RELEASE.bits()
-                | EventMask::POINTER_MOTION.bits(),
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
-            0,
+            0u32,
             cursor,
             CURRENT_TIME,
         )
@@ -1408,12 +1394,12 @@ pub fn drag_tag(arg: &Arg) {
 
         loop {
             let event = conn.wait_for_event();
-            if let Some(e) = event {
-                match e.response_type() {
-                    BUTTON_RELEASE_EVENT => break,
-                    MOTION_NOTIFY_EVENT => {
-                        let motion = MotionNotifyEvent::try_from(e);
-                        if let Ok(m) = motion {
+            if let Ok(e) = event {
+                match &e {
+                    x11rb::protocol::Event::ButtonRelease(_) => break,
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        let m = m;
+                        {
                             if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                                 continue;
                             }
