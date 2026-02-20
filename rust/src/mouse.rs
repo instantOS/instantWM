@@ -165,7 +165,16 @@ pub fn warp(c: &ClientInner) {
 pub fn force_warp(c: &ClientInner) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, (c.w / 2) as i16, 10 as i16);
+        let _ = conn.warp_pointer(
+            x11rb::NONE,
+            c.win,
+            0i16,
+            0i16,
+            0u16,
+            0u16,
+            (c.w / 2) as i16,
+            10i16,
+        );
         let _ = conn.flush();
     }
 }
@@ -290,8 +299,8 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
                     EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                     GrabMode::SYNC,
                     GrabMode::SYNC,
-                    0u32,
-                    0u32,
+                    x11rb::NONE,
+                    x11rb::NONE,
                     1u8.into(),
                     ModMask::from(modifiers),
                 );
@@ -301,8 +310,8 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
                     EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                     GrabMode::SYNC,
                     GrabMode::SYNC,
-                    0u32,
-                    0u32,
+                    x11rb::NONE,
+                    x11rb::NONE,
                     3u8.into(),
                     ModMask::from(modifiers),
                 );
@@ -441,70 +450,66 @@ pub fn move_mouse(_arg: &Arg) {
             if let Ok(e) = event {
                 match &e {
                     x11rb::protocol::Event::ButtonRelease(_) => break,
-                    x11rb::protocol::Event::MotionNotify(motion) => {
-                        let motion = Ok(motion);
-                        if let Ok(m) = motion {
-                            if m.time - last_time <= 1000 / rate {
-                                continue;
-                            }
-                            last_time = m.time;
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        if m.time - last_time <= 1000 / rate {
+                            continue;
+                        }
+                        last_time = m.time;
 
-                            let nx = ocx + (m.event_x as i32 - start_x);
-                            let ny = ocy + (m.event_y as i32 - start_y);
+                        let nx = ocx + (m.event_x as i32 - start_x);
+                        let ny = ocy + (m.event_y as i32 - start_y);
 
-                            let at_edge = check_edge_snap(m.event_x as i32, m.event_y as i32);
+                        let at_edge = check_edge_snap(m.event_x as i32, m.event_y as i32);
 
-                            if at_edge != 0 && edge_snap_indicator == 0 {
-                                edge_snap_indicator = at_edge;
-                            } else if at_edge == 0 && edge_snap_indicator != 0 {
-                                edge_snap_indicator = 0;
-                            }
+                        if at_edge != 0 && edge_snap_indicator == 0 {
+                            edge_snap_indicator = at_edge;
+                        } else if at_edge == 0 && edge_snap_indicator != 0 {
+                            edge_snap_indicator = 0;
+                        }
 
-                            let globals = get_globals();
-                            let snap = globals.snap as i32;
-                            let c = globals.clients.get(&win);
-                            if let Some(client) = c {
-                                let width = client.w + 2 * client.border_width;
-                                let height = client.h + 2 * client.border_width;
+                        let globals = get_globals();
+                        let snap = globals.snap as i32;
+                        let c = globals.clients.get(&win);
+                        if let Some(client) = c {
+                            let width = client.w + 2 * client.border_width;
+                            let height = client.h + 2 * client.border_width;
 
-                                let mut adj_nx = nx;
-                                let mut adj_ny = ny;
+                            let mut adj_nx = nx;
+                            let mut adj_ny = ny;
 
-                                if let Some(sel_mon_id) = globals.selmon {
-                                    if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                                        if (mon.wx - nx).abs() < snap {
-                                            adj_nx = mon.wx;
-                                        } else if (mon.wx + mon.ww - (nx + width)).abs() < snap {
-                                            adj_nx = mon.wx + mon.ww - width;
-                                        }
-                                        if (mon.wy - ny).abs() < snap {
-                                            adj_ny = mon.wy;
-                                        } else if (mon.wy + mon.wh - (ny + height)).abs() < snap {
-                                            adj_ny = mon.wy + mon.wh - height;
-                                        }
+                            if let Some(sel_mon_id) = globals.selmon {
+                                if let Some(mon) = globals.monitors.get(sel_mon_id) {
+                                    if (mon.wx - nx).abs() < snap {
+                                        adj_nx = mon.wx;
+                                    } else if (mon.wx + mon.ww - (nx + width)).abs() < snap {
+                                        adj_nx = mon.wx + mon.ww - width;
+                                    }
+                                    if (mon.wy - ny).abs() < snap {
+                                        adj_ny = mon.wy;
+                                    } else if (mon.wy + mon.wh - (ny + height)).abs() < snap {
+                                        adj_ny = mon.wy + mon.wh - height;
                                     }
                                 }
+                            }
 
-                                let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-                                    globals
-                                        .monitors
-                                        .get(sel_mon_id)
-                                        .map(|m| m.sellt == 0)
-                                        .unwrap_or(true)
-                                } else {
-                                    true
-                                };
+                            let has_tiling = if let Some(sel_mon_id) = globals.selmon {
+                                globals
+                                    .monitors
+                                    .get(sel_mon_id)
+                                    .map(|m| m.sellt == 0)
+                                    .unwrap_or(true)
+                            } else {
+                                true
+                            };
 
-                                if !client.isfloating
-                                    && has_tiling
-                                    && ((nx - client.x).abs() > snap
-                                        || (ny - client.y).abs() > snap)
-                                {
-                                    drop(globals);
-                                    toggle_floating(&Arg::default());
-                                } else if !has_tiling || client.isfloating {
-                                    resize(win, adj_nx, adj_ny, client.w, client.h, true);
-                                }
+                            if !client.isfloating
+                                && has_tiling
+                                && ((nx - client.x).abs() > snap || (ny - client.y).abs() > snap)
+                            {
+                                drop(globals);
+                                toggle_floating(&Arg::default());
+                            } else if !has_tiling || client.isfloating {
+                                resize(win, adj_nx, adj_ny, client.w, client.h, true);
                             }
                         }
                     }
@@ -573,18 +578,18 @@ pub fn resize_mouse(_arg: &Arg) {
         let root = globals.root;
         let cursor = globals.cursors[1].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -611,40 +616,36 @@ pub fn resize_mouse(_arg: &Arg) {
             if let Ok(e) = event {
                 match &e {
                     x11rb::protocol::Event::ButtonRelease(_) => break,
-                    x11rb::protocol::Event::MotionNotify(motion) => {
-                        let motion = Ok(motion);
-                        if let Ok(m) = motion {
-                            if m.time - last_time <= 1000 / rate {
-                                continue;
-                            }
-                            last_time = m.time;
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        if m.time - last_time <= 1000 / rate {
+                            continue;
+                        }
+                        last_time = m.time;
 
-                            let nw = (m.event_x as i32 - orig_left + 1).max(1);
-                            let nh = (m.event_y as i32 - orig_top + 1).max(1);
+                        let nw = (m.event_x as i32 - orig_left + 1).max(1);
+                        let nh = (m.event_y as i32 - orig_top + 1).max(1);
 
-                            let globals = get_globals();
-                            let snap = globals.snap as i32;
-                            if let Some(client) = globals.clients.get(&win) {
-                                let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-                                    globals
-                                        .monitors
-                                        .get(sel_mon_id)
-                                        .map(|m| m.sellt == 0)
-                                        .unwrap_or(true)
-                                } else {
-                                    true
-                                };
+                        let globals = get_globals();
+                        let snap = globals.snap as i32;
+                        if let Some(client) = globals.clients.get(&win) {
+                            let has_tiling = if let Some(sel_mon_id) = globals.selmon {
+                                globals
+                                    .monitors
+                                    .get(sel_mon_id)
+                                    .map(|m| m.sellt == 0)
+                                    .unwrap_or(true)
+                            } else {
+                                true
+                            };
 
-                                if !client.isfloating
-                                    && has_tiling
-                                    && ((nw - client.w).abs() > snap
-                                        || (nh - client.h).abs() > snap)
-                                {
-                                    drop(globals);
-                                    toggle_floating(&Arg::default());
-                                } else if !has_tiling || client.isfloating {
-                                    resize(win, client.x, client.y, nw, nh, true);
-                                }
+                            if !client.isfloating
+                                && has_tiling
+                                && ((nw - client.w).abs() > snap || (nh - client.h).abs() > snap)
+                            {
+                                drop(globals);
+                                toggle_floating(&Arg::default());
+                            } else if !has_tiling || client.isfloating {
+                                resize(win, client.x, client.y, nw, nh, true);
                             }
                         }
                     }
@@ -699,18 +700,18 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
         let root = globals.root;
         let cursor = globals.cursors[1].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -736,52 +737,49 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
             if let Ok(e) = event {
                 match &e {
                     x11rb::protocol::Event::ButtonRelease(_) => break,
-                    x11rb::protocol::Event::MotionNotify(motion) => {
-                        let motion = Ok(motion);
-                        if let Ok(m) = motion {
-                            if m.time - last_time <= 1000 / rate {
-                                continue;
+                    x11rb::protocol::Event::MotionNotify(m) => {
+                        if m.time - last_time <= 1000 / rate {
+                            continue;
+                        }
+                        last_time = m.time;
+
+                        let mut nw = (m.event_x as i32 - orig_left + 1).max(1);
+                        let mut nh = (m.event_y as i32 - orig_top + 1).max(1);
+
+                        let globals = get_globals();
+                        if let Some(client) = globals.clients.get(&win) {
+                            let (minw, minh, maxw, maxh, mina, maxa) = (
+                                client.minw,
+                                client.minh,
+                                client.maxw,
+                                client.maxh,
+                                client.mina,
+                                client.maxa,
+                            );
+                            let border_width = client.border_width;
+
+                            if minw > 0 && nw < minw {
+                                nw = minw;
                             }
-                            last_time = m.time;
-
-                            let mut nw = (m.event_x as i32 - orig_left + 1).max(1);
-                            let mut nh = (m.event_y as i32 - orig_top + 1).max(1);
-
-                            let globals = get_globals();
-                            if let Some(client) = globals.clients.get(&win) {
-                                let (minw, minh, maxw, maxh, mina, maxa) = (
-                                    client.minw,
-                                    client.minh,
-                                    client.maxw,
-                                    client.maxh,
-                                    client.mina,
-                                    client.maxa,
-                                );
-                                let border_width = client.border_width;
-
-                                if minw > 0 && nw < minw {
-                                    nw = minw;
-                                }
-                                if minh > 0 && nh < minh {
-                                    nh = minh;
-                                }
-                                if maxw > 0 && nw > maxw {
-                                    nw = maxw;
-                                }
-                                if maxh > 0 && nh > maxh {
-                                    nh = maxh;
-                                }
-
-                                if mina > 0.0 && maxa > 0.0 {
-                                    if maxa < nw as f32 / nh as f32 {
-                                        nw = (nh as f32 * maxa) as i32;
-                                    } else if mina < nh as f32 / nw as f32 {
-                                        nh = (nw as f32 * mina) as i32;
-                                    }
-                                }
-
-                                resize(win, client.x, client.y, nw, nh, true);
+                            if minh > 0 && nh < minh {
+                                nh = minh;
                             }
+                            if maxw > 0 && nw > maxw {
+                                nw = maxw;
+                            }
+                            if maxh > 0 && nh > maxh {
+                                nh = maxh;
+                            }
+
+                            if mina > 0.0 && maxa > 0.0 {
+                                if maxa < nw as f32 / nh as f32 {
+                                    nw = (nh as f32 * maxa) as i32;
+                                } else if mina < nh as f32 / nw as f32 {
+                                    nh = (nw as f32 * mina) as i32;
+                                }
+                            }
+
+                            resize(win, client.x, client.y, nw, nh, true);
                         }
                     }
                     _ => {}
@@ -803,18 +801,18 @@ pub fn gesture_mouse(_arg: &Arg) {
         let root = globals.root;
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -945,21 +943,21 @@ pub fn hover_resize_mouse(_arg: &Arg) -> i32 {
         let globals = get_globals();
         let cursor = globals.cursors[1].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            globals.root,
-            EventMask::BUTTON_PRESS
-                | EventMask::BUTTON_RELEASE
-                | EventMask::POINTER_MOTION
-                | EventMask::KEY_PRESS,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                globals.root,
+                EventMask::BUTTON_PRESS
+                    | EventMask::BUTTON_RELEASE
+                    | EventMask::POINTER_MOTION
+                    | EventMask::KEY_PRESS,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return 0;
         }
@@ -1021,18 +1019,18 @@ pub fn window_title_mouse_handler(arg: &Arg) {
         let globals = get_globals();
         let cursor = globals.cursors[0].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            globals.root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                globals.root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -1116,18 +1114,18 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
         let globals = get_globals();
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            globals.root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                globals.root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -1371,18 +1369,18 @@ pub fn drag_tag(arg: &Arg) {
     if let Some(ref conn) = x11.conn {
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
-        if grab_pointer(
-            conn,
-            false,
-            globals.root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            0u32,
-            cursor,
-            CURRENT_TIME,
-        )
-        .is_err()
+        if conn
+            .grab_pointer(
+                false,
+                globals.root,
+                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+                GrabMode::ASYNC,
+                GrabMode::ASYNC,
+                x11rb::NONE,
+                cursor,
+                CURRENT_TIME,
+            )
+            .is_err()
         {
             return;
         }
@@ -1405,7 +1403,8 @@ pub fn drag_tag(arg: &Arg) {
                             }
                             last_time = m.time;
 
-                            last_motion = Some((m.event_x as i32, m.event_y as i32, m.state));
+                            last_motion =
+                                Some((m.event_x as i32, m.event_y as i32, u16::from(m.state)));
 
                             if m.event_y as i32 > {
                                 let globals = get_globals();

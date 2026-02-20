@@ -204,7 +204,9 @@ pub fn toggle_show_tags(arg: &Arg) {
             0
         };
 
-        ctrl_toggle(&mut showtags as &mut u32 as *mut u32 as *mut bool, arg.ui);
+        let mut show_bool = showtags != 0;
+        ctrl_toggle(&mut show_bool, arg.ui);
+        showtags = if show_bool { 1 } else { 0 };
 
         (selmon_id, showtags)
     };

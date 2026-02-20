@@ -7,7 +7,6 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
 
@@ -465,11 +464,13 @@ pub fn scratchpad_status(arg: &Arg) {
 
         let x11 = get_x11();
         if let Some(ref conn) = x11.conn {
-            let _ = conn.change_property8(
+            let _ = conn.change_property(
                 x11rb::protocol::xproto::PropMode::REPLACE,
                 root,
-                AtomEnum::WM_NAME.into(),
-                AtomEnum::STRING.into(),
+                AtomEnum::WM_NAME,
+                AtomEnum::STRING,
+                8u8,
+                status.len() as u32,
                 status.as_bytes(),
             );
             let _ = conn.flush();
@@ -513,11 +514,13 @@ pub fn scratchpad_status(arg: &Arg) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = conn.change_property8(
+        let _ = conn.change_property(
             x11rb::protocol::xproto::PropMode::REPLACE,
             root,
-            AtomEnum::WM_NAME.into(),
-            AtomEnum::STRING.into(),
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            8u8,
+            status.len() as u32,
             status.as_bytes(),
         );
         let _ = conn.flush();

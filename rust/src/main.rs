@@ -468,11 +468,13 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         &[wmcheckwin],
     );
 
-    let _ = conn.change_property8(
+    let _ = conn.change_property(
         PropMode::REPLACE,
         wmcheckwin,
         net_wm_name,
-        AtomEnum::STRING.into(),
+        AtomEnum::STRING,
+        8u8,
+        3u32,
         b"dwm",
     );
 

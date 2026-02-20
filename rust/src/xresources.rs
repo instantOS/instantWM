@@ -98,7 +98,7 @@ pub fn resource_load(name: &str, rtype: ResourceType, dst: &mut [u8]) {
 
     let Ok(reply) = cookie.reply() else { return };
 
-    let resource_str = String::from_utf8_lossy(reply.value());
+    let resource_str = String::from_utf8_lossy(&reply.value);
 
     for line in resource_str.lines() {
         let line = line.trim();
@@ -152,7 +152,7 @@ pub fn load_xresources() {
         return;
     };
 
-    let resource_str = String::from_utf8_lossy(res_reply.value());
+    let resource_str = String::from_utf8_lossy(&res_reply.value);
 
     load_color_resources(&resource_str);
     load_tag_resources(&resource_str);

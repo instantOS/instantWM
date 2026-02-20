@@ -236,11 +236,13 @@ pub fn set_client_state(win: Window, state: i32) {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         let data: [u8; 8] = unsafe { std::mem::transmute([state as u32, 0u32]) };
-        let _ = conn.change_property8(
+        let _ = conn.change_property(
             PropMode::REPLACE,
             win,
             globals.wmatom[WmAtom::State as usize],
             globals.wmatom[WmAtom::State as usize],
+            8u8,
+            data.len() as u32,
             &data,
         );
         let _ = conn.flush();
@@ -258,11 +260,13 @@ pub fn set_client_tag_prop(win: Window) {
                 0
             };
             let data: [u8; 8] = unsafe { std::mem::transmute([c.tags, mon_num]) };
-            let _ = conn.change_property8(
+            let _ = conn.change_property(
                 PropMode::REPLACE,
                 win,
                 globals.netatom[NetAtom::ClientInfo as usize],
                 AtomEnum::CARDINAL,
+                8u8,
+                data.len() as u32,
                 &data,
             );
             let _ = conn.flush();
@@ -1900,11 +1904,13 @@ pub fn update_wm_hints(win: Window) {
                         new_data[4..data.len()].copy_from_slice(&data[4..]);
 
                         drop(globals);
-                        let _ = conn.change_property8(
+                        let _ = conn.change_property(
                             PropMode::REPLACE,
                             win,
                             AtomEnum::WM_HINTS,
                             AtomEnum::WM_HINTS,
+                            8u8,
+                            new_data.len() as u32,
                             &new_data,
                         );
                         let _ = conn.flush();
@@ -2190,11 +2196,13 @@ pub fn set_urgent(win: Window, urg: bool) {
                     new_data[4..data.len()].copy_from_slice(&data[4..]);
                 }
 
-                let _ = conn.change_property8(
+                let _ = conn.change_property(
                     PropMode::REPLACE,
                     win,
                     AtomEnum::WM_HINTS,
                     AtomEnum::WM_HINTS,
+                    8u8,
+                    new_data.len() as u32,
                     &new_data,
                 );
                 let _ = conn.flush();

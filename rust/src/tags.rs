@@ -41,7 +41,7 @@ pub fn name_tag(arg: &Arg) {
         let current_tag = globals
             .monitors
             .get(globals.selmon.unwrap())
-            .and_then(|m| m.tagset[m.seltags as usize]);
+            .map(|m| m.tagset[m.seltags as usize]);
         if let Some(tagset) = current_tag {
             if (tagset & (1 << i)) != 0 {
                 drop(globals);
@@ -1227,11 +1227,11 @@ pub fn win_view(_arg: Option<&Arg>) {
                                     .get(sel_mon_id)
                                     .and_then(|m| m.pertag.as_ref().map(|p| p.current_tag))
                             } else {
-                                1
+                                None
                             }
                         };
                         view(&Arg {
-                            ui: 1 << (current_tag - 1),
+                            ui: 1 << (current_tag.unwrap_or(1) - 1),
                             ..Default::default()
                         });
                     } else {
