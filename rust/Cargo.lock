@@ -250,6 +250,8 @@ dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
+ "libloading",
+ "once_cell",
  "rustix",
  "x11rb-protocol",
  "xcursor",

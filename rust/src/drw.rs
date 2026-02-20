@@ -1,12 +1,9 @@
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_uint, c_ulong};
+use std::ffi::CString;
+use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use x11rb::protocol::xproto::{Arc, CreateGCAux, Drawable, Gcontext, Point, Rectangle, Window};
-use x11rb::rust_connection::RustConnection;
-use x11rb::wrapper::ConnectionExt;
-use x11rb::x11_utils::X11Error;
+use x11rb::protocol::xproto::{Drawable, Gcontext, Point, Window};
 
 use crate::util::{between, die, min};
 
@@ -41,7 +38,12 @@ pub struct XRenderColor {
 
 #[repr(C)]
 pub struct XftFont {
-    _private: [u8; 0],
+    pub ascent: c_int,
+    pub descent: c_int,
+    pub height: c_int,
+    pub max_advance_width: c_int,
+    pub charset: *mut libc::c_void,
+    pub pattern: *mut libc::c_void,
 }
 
 #[repr(C)]
@@ -79,6 +81,107 @@ pub const FC_SCALABLE: &[u8] = b"scalable\0";
 pub const FcMatchPattern: c_int = 1;
 pub const FcTrue: FcBool = 1;
 
+#[link(name = "X11")]
+extern "C" {
+    pub fn XOpenDisplay(name: *const c_char) -> *mut libc::c_void;
+    pub fn XCloseDisplay(display: *mut libc::c_void);
+    pub fn XDefaultScreen(display: *mut libc::c_void) -> c_int;
+    pub fn XDefaultRootWindow(display: *mut libc::c_void) -> Window;
+    pub fn XDefaultVisual(display: *mut libc::c_void, screen: c_int) -> *mut libc::c_void;
+    pub fn XDefaultColormap(display: *mut libc::c_void, screen: c_int) -> c_ulong;
+    pub fn XDefaultDepth(display: *mut libc::c_void, screen: c_int) -> c_int;
+    pub fn XCreatePixmap(
+        display: *mut libc::c_void,
+        d: Drawable,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) -> Drawable;
+    pub fn XFreePixmap(display: *mut libc::c_void, pixmap: Drawable);
+    pub fn XCreateGC(
+        display: *mut libc::c_void,
+        d: Drawable,
+        valuemask: c_ulong,
+        values: *mut libc::c_void,
+    ) -> Gcontext;
+    pub fn XFreeGC(display: *mut libc::c_void, gc: Gcontext);
+    pub fn XSetForeground(display: *mut libc::c_void, gc: Gcontext, foreground: c_ulong);
+    pub fn XFillRectangle(
+        display: *mut libc::c_void,
+        d: Drawable,
+        gc: Gcontext,
+        x: c_int,
+        y: c_int,
+        width: u32,
+        height: u32,
+    );
+    pub fn XDrawRectangle(
+        display: *mut libc::c_void,
+        d: Drawable,
+        gc: Gcontext,
+        x: c_int,
+        y: c_int,
+        width: u32,
+        height: u32,
+    );
+    pub fn XFillArc(
+        display: *mut libc::c_void,
+        d: Drawable,
+        gc: Gcontext,
+        x: c_int,
+        y: c_int,
+        width: u32,
+        height: u32,
+        angle1: c_int,
+        angle2: c_int,
+    );
+    pub fn XDrawArc(
+        display: *mut libc::c_void,
+        d: Drawable,
+        gc: Gcontext,
+        x: c_int,
+        y: c_int,
+        width: u32,
+        height: u32,
+        angle1: c_int,
+        angle2: c_int,
+    );
+    pub fn XFillPolygon(
+        display: *mut libc::c_void,
+        d: Drawable,
+        gc: Gcontext,
+        points: *mut Point,
+        npoints: c_int,
+        shape: c_int,
+        mode: c_int,
+    );
+    pub fn XCopyArea(
+        display: *mut libc::c_void,
+        src: Drawable,
+        dest: Drawable,
+        gc: Gcontext,
+        src_x: c_int,
+        src_y: c_int,
+        width: u32,
+        height: u32,
+        dest_x: c_int,
+        dest_y: c_int,
+    );
+    pub fn XSync(display: *mut libc::c_void, discard: c_int);
+    pub fn XSetLineAttributes(
+        display: *mut libc::c_void,
+        gc: Gcontext,
+        line_width: c_int,
+        line_style: c_int,
+        cap_style: c_int,
+        join_style: c_int,
+    );
+    pub fn XCreateFontCursor(display: *mut libc::c_void, shape: u32) -> u32;
+    pub fn XFreeCursor(display: *mut libc::c_void, cursor: u32);
+    pub fn XGetXCBConnection(display: *mut libc::c_void) -> *mut libc::c_void;
+}
+
+#[link(name = "Xft")]
 extern "C" {
     pub fn XftFontOpenName(
         display: *mut libc::c_void,
@@ -118,7 +221,16 @@ extern "C" {
         name: *const c_char,
         result: *mut XftColor,
     ) -> c_int;
+    pub fn XftFontMatch(
+        display: *mut libc::c_void,
+        screen: c_int,
+        pattern: *mut FcPattern,
+        result: *mut XftResult,
+    ) -> *mut FcPattern;
+}
 
+#[link(name = "fontconfig")]
+extern "C" {
     pub fn FcNameParse(name: *const u8) -> *mut FcPattern;
     pub fn FcPatternDuplicate(pattern: *mut FcPattern) -> *mut FcPattern;
     pub fn FcPatternDestroy(pattern: *mut FcPattern);
@@ -130,13 +242,6 @@ extern "C" {
     pub fn FcPatternAddBool(pattern: *mut FcPattern, object: *const u8, value: FcBool) -> FcBool;
     pub fn FcConfigSubstitute(config: *mut libc::c_void, pattern: *mut FcPattern, kind: c_int);
     pub fn FcDefaultSubstitute(pattern: *mut FcPattern);
-    pub fn XftFontMatch(
-        display: *mut libc::c_void,
-        screen: c_int,
-        pattern: *mut FcPattern,
-        result: *mut XftResult,
-    ) -> *mut FcPattern;
-
     pub fn FcCharSetCreate() -> *mut FcCharSet;
     pub fn FcCharSetAddChar(fcs: *mut FcCharSet, ucs4: u32) -> FcBool;
     pub fn FcCharSetDestroy(fcs: *mut FcCharSet);
@@ -146,6 +251,9 @@ extern "C" {
 pub struct Clr {
     pub color: XftColor,
 }
+
+unsafe impl Send for Clr {}
+unsafe impl Sync for Clr {}
 
 impl Default for Clr {
     fn default() -> Self {
@@ -174,22 +282,25 @@ pub struct Cur {
     pub cursor: u32,
 }
 
+unsafe impl Send for Cur {}
+unsafe impl Sync for Cur {}
+
 impl Cur {
     pub fn new(cursor: u32) -> Self {
         Self { cursor }
     }
 }
 
-#[derive(Debug)]
 pub struct Fnt {
-    pub display: *mut libc::c_void,
+    display: *mut libc::c_void,
     pub h: u32,
     pub xfont: *mut XftFont,
     pub pattern: *mut FcPattern,
     pub next: Option<Box<Fnt>>,
     ascent: i32,
-    descent: i32,
 }
+
+unsafe impl Send for Fnt {}
 
 impl Fnt {
     pub fn height(&self) -> u32 {
@@ -229,65 +340,76 @@ pub struct Drw {
     ellipsis_width: u32,
 }
 
+unsafe impl Send for Drw {}
+unsafe impl Sync for Drw {}
+
 impl Drw {
-    pub fn new(
-        conn: &RustConnection,
-        screen: usize,
-        root: Window,
-        w: u32,
-        h: u32,
-    ) -> Result<Self, X11Error> {
-        let screen_info = conn.setup().roots.get(screen).ok_or_else(|| {
-            X11Error::from(x11rb::x11_utils::X11Error::make_error(
-                0,
-                0,
-                x11rb::x11_utils::Extension::Unknown,
-            ))
-        })?;
+    pub fn new(display_name: Option<&str>) -> Result<Self, String> {
+        let display = unsafe {
+            let name_ptr = display_name
+                .and_then(|s| CString::new(s).ok())
+                .map(|cs| cs.as_ptr())
+                .unwrap_or(ptr::null());
+            XOpenDisplay(name_ptr)
+        };
 
-        let depth = screen_info.root_depth;
-        let visual = screen_info.root_visual;
-        let colormap = screen_info.default_colormap;
+        if display.is_null() {
+            return Err("cannot open display".to_string());
+        }
 
-        let drawable = conn.generate_id()?;
-        conn.create_pixmap(depth, drawable, root, w, h)?;
+        unsafe {
+            let screen = XDefaultScreen(display);
+            let root = XDefaultRootWindow(display);
+            let visual = XDefaultVisual(display, screen);
+            let colormap = XDefaultColormap(display, screen);
+            let depth = XDefaultDepth(display, screen);
 
-        let gc = conn.generate_id()?;
-        conn.create_gc(gc, root, &CreateGCAux::new())?;
+            let w = 1;
+            let h = 1;
 
-        let display_ptr = unsafe { x11rb::ffi::get_xcb_display(conn.get_raw_xcb_connection()) };
+            let drawable = XCreatePixmap(display, root, w, h, depth as u32);
+            let gc = XCreateGC(display, root, 0, ptr::null_mut());
+            XSetLineAttributes(display, gc, 1, 0, 0, 0);
 
-        Ok(Self {
-            w,
-            h,
-            display: display_ptr,
-            screen: screen as i32,
-            root,
-            drawable,
-            gc,
-            scheme: None,
-            fonts: None,
-            depth,
-            visual: visual as *mut libc::c_void,
-            colormap,
-            nomatches: [0; NOMATCHES_LEN],
-            ellipsis_width: 0,
-        })
+            Ok(Self {
+                w,
+                h,
+                display,
+                screen,
+                root,
+                drawable,
+                gc,
+                scheme: None,
+                fonts: None,
+                depth: depth as u8,
+                visual,
+                colormap,
+                nomatches: [0; NOMATCHES_LEN],
+                ellipsis_width: 0,
+            })
+        }
     }
 
-    pub fn resize(&mut self, conn: &RustConnection, w: u32, h: u32) -> Result<(), X11Error> {
+    pub fn display(&self) -> *mut libc::c_void {
+        self.display
+    }
+
+    pub fn screen(&self) -> i32 {
+        self.screen
+    }
+
+    pub fn root(&self) -> Window {
+        self.root
+    }
+
+    pub fn resize(&mut self, w: u32, h: u32) {
         self.w = w;
         self.h = h;
 
-        conn.free_pixmap(self.drawable)?;
-
-        let screen_info = conn.setup().roots.get(self.screen as usize).unwrap();
-        let depth = screen_info.root_depth;
-
-        self.drawable = conn.generate_id()?;
-        conn.create_pixmap(depth, self.drawable, self.root, w, h)?;
-
-        Ok(())
+        unsafe {
+            XFreePixmap(self.display, self.drawable);
+            self.drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
+        }
     }
 
     pub fn set_scheme(&mut self, scheme: Vec<Clr>) {
@@ -370,7 +492,6 @@ impl Drw {
             pattern,
             next: None,
             ascent,
-            descent,
         });
 
         Ok(Some(font))
@@ -421,29 +542,23 @@ impl Drw {
         Ok(scheme)
     }
 
-    pub fn cur_create(&self, conn: &RustConnection, shape: u16) -> Result<Cur, X11Error> {
-        let cursor = conn.generate_id()?;
-        conn.open_font(cursor, shape)?;
-        Ok(Cur::new(cursor))
+    pub fn cur_create(&self, shape: u32) -> Cur {
+        unsafe {
+            let cursor = XCreateFontCursor(self.display, shape);
+            Cur::new(cursor)
+        }
     }
 
-    pub fn cur_free(&self, conn: &RustConnection, cursor: &Cur) -> Result<(), X11Error> {
-        conn.free_cursor(cursor.cursor)
+    pub fn cur_free(&self, cursor: &Cur) {
+        unsafe {
+            XFreeCursor(self.display, cursor.cursor);
+        }
     }
 
-    pub fn rect(
-        &self,
-        conn: &RustConnection,
-        x: i16,
-        y: i16,
-        w: u16,
-        h: u16,
-        filled: bool,
-        invert: bool,
-    ) -> Result<(), X11Error> {
+    pub fn rect(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
         let scheme = match &self.scheme {
             Some(s) => s,
-            None => return Ok(()),
+            None => return,
         };
 
         let fg_pixel = if invert {
@@ -452,45 +567,29 @@ impl Drw {
             scheme[COL_FG].pixel()
         };
 
-        conn.change_gc(
-            self.gc,
-            &x11rb::protocol::xproto::ChangeGCAux::new().foreground(fg_pixel),
-        )?;
+        unsafe {
+            XSetForeground(self.display, self.gc, fg_pixel as c_ulong);
 
-        if filled {
-            let rect = Rectangle {
-                x,
-                y,
-                width: w,
-                height: h,
-            };
-            conn.poly_fill_rectangle(self.drawable, self.gc, &[rect])?;
-        } else {
-            let rect = Rectangle {
-                x,
-                y,
-                width: w.saturating_sub(1),
-                height: h.saturating_sub(1),
-            };
-            conn.poly_rectangle(self.drawable, self.gc, &[rect])?;
+            if filled {
+                XFillRectangle(self.display, self.drawable, self.gc, x, y, w, h);
+            } else {
+                XDrawRectangle(
+                    self.display,
+                    self.drawable,
+                    self.gc,
+                    x,
+                    y,
+                    w.saturating_sub(1),
+                    h.saturating_sub(1),
+                );
+            }
         }
-
-        Ok(())
     }
 
-    pub fn circ(
-        &self,
-        conn: &RustConnection,
-        x: i16,
-        y: i16,
-        w: u16,
-        h: u16,
-        filled: bool,
-        invert: bool,
-    ) -> Result<(), X11Error> {
+    pub fn circ(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
         let scheme = match &self.scheme {
             Some(s) => s,
-            None => return Ok(()),
+            None => return,
         };
 
         let fg_pixel = if invert {
@@ -499,32 +598,45 @@ impl Drw {
             scheme[COL_FG].pixel()
         };
 
-        conn.change_gc(
-            self.gc,
-            &x11rb::protocol::xproto::ChangeGCAux::new().foreground(fg_pixel),
-        )?;
+        unsafe {
+            XSetForeground(self.display, self.gc, fg_pixel as c_ulong);
 
-        let arc = Arc {
-            x,
-            y,
-            width: if filled { w } else { w.saturating_sub(1) },
-            height: if filled { h } else { h.saturating_sub(1) },
-            angle1: 0,
-            angle2: 360 * 64,
-        };
+            let (width, height) = if filled {
+                (w, h)
+            } else {
+                (w.saturating_sub(1), h.saturating_sub(1))
+            };
 
-        if filled {
-            conn.poly_fill_arc(self.drawable, self.gc, &[arc])?;
-        } else {
-            conn.poly_arc(self.drawable, self.gc, &[arc])?;
+            if filled {
+                XFillArc(
+                    self.display,
+                    self.drawable,
+                    self.gc,
+                    x,
+                    y,
+                    width,
+                    height,
+                    0,
+                    360 * 64,
+                );
+            } else {
+                XDrawArc(
+                    self.display,
+                    self.drawable,
+                    self.gc,
+                    x,
+                    y,
+                    width,
+                    height,
+                    0,
+                    360 * 64,
+                );
+            }
         }
-
-        Ok(())
     }
 
     pub fn text(
         &mut self,
-        conn: &RustConnection,
         x: i32,
         y: i32,
         w: u32,
@@ -569,11 +681,7 @@ impl Drw {
         }
 
         if !render {
-            w = if invert != 0 {
-                invert as u32
-            } else {
-                !invert as u32
-            };
+            w = if invert { invert as u32 } else { !0 };
         } else {
             let fg_pixel = if invert {
                 scheme[COL_FG].pixel()
@@ -581,58 +689,40 @@ impl Drw {
                 scheme[COL_BG].pixel()
             };
 
-            let _ = conn.change_gc(
-                self.gc,
-                &x11rb::protocol::xproto::ChangeGCAux::new().foreground(fg_pixel),
-            );
-
-            if detail_height > 0 {
-                let _ = conn.poly_fill_rectangle(
-                    self.drawable,
-                    self.gc,
-                    &[Rectangle {
-                        x: x as i16,
-                        y: y as i16,
-                        width: w as u16,
-                        height: (h as u16).saturating_sub(detail_height as u16),
-                    }],
-                );
-
-                let detail_pixel = scheme[COL_DETAIL].pixel();
-                let _ = conn.change_gc(
-                    self.gc,
-                    &x11rb::protocol::xproto::ChangeGCAux::new().foreground(detail_pixel),
-                );
-
-                let _ = conn.poly_fill_rectangle(
-                    self.drawable,
-                    self.gc,
-                    &[Rectangle {
-                        x: x as i16,
-                        y: (y + h as i32 - detail_height) as i16,
-                        width: w as u16,
-                        height: detail_height as u16,
-                    }],
-                );
-            } else {
-                let _ = conn.poly_fill_rectangle(
-                    self.drawable,
-                    self.gc,
-                    &[Rectangle {
-                        x: x as i16,
-                        y: y as i16,
-                        width: w as u16,
-                        height: h as u16,
-                    }],
-                );
-            }
-
             unsafe {
+                XSetForeground(self.display, self.gc, fg_pixel as c_ulong);
+
+                if detail_height > 0 {
+                    XFillRectangle(
+                        self.display,
+                        self.drawable,
+                        self.gc,
+                        x,
+                        y,
+                        w,
+                        h.saturating_sub(detail_height as u32),
+                    );
+
+                    let detail_pixel = scheme[COL_DETAIL].pixel();
+                    XSetForeground(self.display, self.gc, detail_pixel as c_ulong);
+                    XFillRectangle(
+                        self.display,
+                        self.drawable,
+                        self.gc,
+                        x,
+                        y + h as i32 - detail_height,
+                        w,
+                        detail_height as u32,
+                    );
+                } else {
+                    XFillRectangle(self.display, self.drawable, self.gc, x, y, w, h);
+                }
+
                 d = XftDrawCreate(self.display, self.drawable, self.visual, self.colormap);
             }
 
             x += lpad as i32;
-            w -= lpad;
+            w = w.saturating_sub(lpad);
         }
 
         usedfont = fonts as *const Fnt as *mut Fnt;
@@ -666,11 +756,16 @@ impl Drw {
 
                         if charexists {
                             let f = unsafe { &*cur_font };
-                            tmpw = self.font_getexts(f, &text_bytes[text_pos..text_pos + charlen]);
+                            let text_slice = if text_pos + charlen <= text_bytes.len() {
+                                &text_bytes[text_pos..text_pos + charlen]
+                            } else {
+                                &text_bytes[text_pos..]
+                            };
+                            tmpw = self.font_getexts(f, text_slice);
 
                             if ew + self.ellipsis_width <= w {
                                 ellipsis_x = x + ew as i32;
-                                ellipsis_w = w - ew;
+                                ellipsis_w = w.saturating_sub(ew);
                                 ellipsis_len = utf8strlen;
                             }
 
@@ -692,8 +787,8 @@ impl Drw {
                         }
 
                         unsafe {
-                            cur_font = if (*cur_font).next.is_some() {
-                                (&*(cur_font).next.as_ref().unwrap()) as *const Fnt as *mut Fnt
+                            cur_font = if !(*cur_font).next.is_null() {
+                                (*cur_font).next.as_ref().unwrap() as *const Fnt as *mut Fnt
                             } else {
                                 ptr::null_mut()
                             };
@@ -739,8 +834,7 @@ impl Drw {
             }
 
             if render && overflow {
-                let _ = self.text(
-                    conn,
+                self.text_inner(
                     ellipsis_x,
                     y,
                     ellipsis_w,
@@ -795,24 +889,22 @@ impl Drw {
                         FcPatternDestroy(fcpattern);
 
                         if !match_pattern.is_null() {
-                            if let Ok(Some(new_font)) = self.xfont_create(None, Some(match_pattern))
+                            if let Ok(Some(mut new_font)) =
+                                self.xfont_create(None, Some(match_pattern))
                             {
                                 let f = new_font.as_ref();
-                                unsafe {
-                                    if XftCharExists(self.display, f.xfont, utf8codepoint) != 0 {
-                                        let mut last = self.fonts.as_mut().unwrap();
-                                        while last.next.is_some() {
-                                            last = last.next.as_mut().unwrap();
-                                        }
-                                        usedfont = new_font.as_ref() as *const Fnt as *mut Fnt;
-                                        last.next = Some(new_font);
-                                    } else {
-                                        let idx = NOMATCHES_IDX.fetch_add(1, Ordering::SeqCst);
-                                        self.nomatches[idx as usize % NOMATCHES_LEN] =
-                                            utf8codepoint;
-                                        usedfont =
-                                            self.fonts.as_ref().unwrap() as *const Fnt as *mut Fnt;
+                                if XftCharExists(self.display, f.xfont, utf8codepoint) != 0 {
+                                    let mut last = self.fonts.as_mut().unwrap();
+                                    while last.next.is_some() {
+                                        last = last.next.as_mut().unwrap();
                                     }
+                                    usedfont = new_font.as_ref() as *const Fnt as *mut Fnt;
+                                    last.next = Some(new_font);
+                                } else {
+                                    let idx = NOMATCHES_IDX.fetch_add(1, Ordering::SeqCst);
+                                    self.nomatches[idx as usize % NOMATCHES_LEN] = utf8codepoint;
+                                    usedfont =
+                                        self.fonts.as_ref().unwrap() as *const Fnt as *mut Fnt;
                                 }
                             }
                         }
@@ -832,19 +924,24 @@ impl Drw {
         x + if render { w as i32 } else { 0 }
     }
 
-    pub fn arrow(
-        &self,
-        conn: &RustConnection,
-        x: i16,
-        y: i16,
-        w: u16,
-        h: u16,
-        direction: bool,
-        slash: bool,
-    ) -> Result<(), X11Error> {
+    fn text_inner(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: u32,
+        h: u32,
+        lpad: u32,
+        text: &str,
+        invert: bool,
+        detail_height: i32,
+    ) -> i32 {
+        self.text(x, y, w, h, lpad, text, invert, detail_height)
+    }
+
+    pub fn arrow(&self, x: i16, y: i16, w: u16, h: u16, direction: bool, slash: bool) {
         let scheme = match &self.scheme {
             Some(s) => s,
-            None => return Ok(()),
+            None => return,
         };
 
         let x = if direction { x } else { x + w as i16 };
@@ -859,80 +956,61 @@ impl Drw {
             h as i16 / 2
         };
 
-        conn.change_gc(
-            self.gc,
-            &x11rb::protocol::xproto::ChangeGCAux::new().foreground(scheme[COL_BG].pixel()),
-        )?;
+        unsafe {
+            XSetForeground(self.display, self.gc, scheme[COL_BG].pixel() as c_ulong);
 
-        let points = [
-            Point { x, y },
-            Point {
-                x: (x as i32 + w as i32) as i16,
-                y: y + hh,
-            },
-            Point { x, y: y + h as i16 },
-        ];
+            let mut points = [
+                Point { x, y },
+                Point {
+                    x: (x as i32 + w as i32) as i16,
+                    y: y + hh,
+                },
+                Point { x, y: y + h as i16 },
+            ];
 
-        conn.poly_fill_polygon(
-            self.drawable,
-            self.gc,
-            x11rb::protocol::xproto::Shape::NONCONVEX,
-            x11rb::protocol::xproto::CoordMode::ORIGIN,
-            &points,
-        )?;
-
-        Ok(())
+            XFillPolygon(
+                self.display,
+                self.drawable,
+                self.gc,
+                points.as_mut_ptr(),
+                3,
+                1,
+                0,
+            );
+        }
     }
 
-    pub fn map(
-        &self,
-        conn: &RustConnection,
-        win: Window,
-        x: i16,
-        y: i16,
-        w: u16,
-        h: u16,
-    ) -> Result<(), X11Error> {
-        conn.copy_area(self.drawable, win, self.gc, x, y, w, h, x, y)?;
-        conn.flush()?;
-        Ok(())
+    pub fn map(&self, win: Window, x: i16, y: i16, w: u16, h: u16) {
+        unsafe {
+            XCopyArea(
+                self.display,
+                self.drawable,
+                win,
+                self.gc,
+                x as c_int,
+                y as c_int,
+                w as u32,
+                h as u32,
+                x as c_int,
+                y as c_int,
+            );
+            XSync(self.display, 0);
+        }
     }
 
     pub fn fontset_getwidth(&mut self, text: &str) -> u32 {
         if self.fonts.is_none() || text.is_empty() {
             return 0;
         }
-        self.text_inner_width(text, 0)
+        self.text(0, 0, 0, 0, 0, text, 0, 0) as u32
     }
 
     pub fn fontset_getwidth_clamp(&mut self, text: &str, n: u32) -> u32 {
         if self.fonts.is_none() || text.is_empty() || n == 0 {
             return 0;
         }
-        let tmp = self.text_inner_width(text, n);
+        let tmp = self.text(0, 0, 0, 0, 0, text, n as i32, 0) as u32;
         min(n, tmp)
-    }
-
-    fn text_inner_width(&mut self, text: &str, clamp: u32) -> u32 {
-        let result = self.text(
-            unsafe {
-                &x11rb::rust_connection::RustConnection::from_raw_xcb_connection(
-                    x11rb::ffi::get_raw_xcb_display(self.display) as *mut _,
-                    false,
-                )
-                .ok()
-                .unwrap()
-            },
-            0,
-            0,
-            0,
-            0,
-            0,
-            text,
-            clamp as i32,
-            0,
-        );
-        result as u32
     }
 
     pub fn font_getexts(&self, font: &Fnt, text: &[u8]) -> u32 {
@@ -1001,10 +1079,11 @@ impl Drw {
 impl Drop for Drw {
     fn drop(&mut self) {
         unsafe {
-            let _ = x11rb::rust_connection::RustConnection::from_raw_xcb_connection(
-                self.display as *mut _,
-                true,
-            );
+            if !self.display.is_null() {
+                XFreePixmap(self.display, self.drawable);
+                XFreeGC(self.display, self.gc);
+                XCloseDisplay(self.display);
+            }
         }
     }
 }
