@@ -152,7 +152,7 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
 }
 
 pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
 
     let current_mon_id = match g.selmon {
         Some(id) => id,

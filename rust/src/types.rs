@@ -246,6 +246,8 @@ impl Default for ClientInner {
             scratchpad_restore_tags: 0,
             mon_id: None,
             win: 0,
+            next: None,
+            snext: None,
         }
     }
 }
@@ -312,6 +314,10 @@ pub struct MonitorInner {
     pub barwin: Window,
     pub showtags: u32,
     pub pertag: Option<Box<Pertag>>,
+    pub clients: Option<Window>,
+    pub sel: Option<Window>,
+    pub overlay: Option<Window>,
+    pub stack: Option<Window>,
 }
 
 impl Default for MonitorInner {
@@ -346,6 +352,10 @@ impl Default for MonitorInner {
             barwin: 0,
             showtags: 0,
             pertag: None,
+            clients: None,
+            sel: None,
+            overlay: None,
+            stack: None,
         }
     }
 }
