@@ -320,7 +320,7 @@ fn detach(win: Window) {
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     let Some(mid) = mon_id else { return };
 
-    let mut traversal = Vec::new();
+    let mut traversal: Vec<(Window, Option<Window>, Option<Window>)> = Vec::new();
     let mut current = get_globals().monitors.get(mid).and_then(|m| m.clients);
     let mut prev: Option<Window> = None;
 

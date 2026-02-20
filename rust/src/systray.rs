@@ -168,13 +168,13 @@ pub fn update_systray() {
         return;
     }
 
-    let (x, by, showbar) = {
+    let (x, by, showbar, barwin) = {
         let m = systray_to_mon(None);
         let mon = match globals.monitors.get(m) {
             Some(mon) => mon,
             None => return,
         };
-        (mon.mx + mon.mw, mon.by, mon.showbar)
+        (mon.mx + mon.mw, mon.by, mon.showbar, mon.barwin)
     };
 
     let mut w: u32 = 1;
@@ -318,8 +318,6 @@ pub fn update_systray() {
     }
 
     let systray_win = systray.win;
-    let barwin = mon.barwin;
-    let by = mon.by;
 
     drop(globals);
 

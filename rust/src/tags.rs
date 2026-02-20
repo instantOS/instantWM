@@ -31,24 +31,38 @@ pub fn name_tag(arg: &Arg) {
         return;
     }
 
-    let globals = get_globals();
-    let numtags = globals.numtags as usize;
+    let (numtags, current_tag) = {
+        let globals = get_globals();
+        let numtags = globals.numtags as usize;
+        let current_tag = globals
+            .selmon
+            .and_then(|id| globals.monitors.get(id))
+            .map(|m| m.tagset[m.seltags as usize]);
+        (numtags, current_tag)
+    };
+
+    let Some(tagset) = current_tag else { return; };
 
     for i in 0..numtags {
         if i >= MAX_TAGS {
             break;
         }
-        let current_tag = globals
-            .monitors
-            .get(globals.selmon.unwrap())
-            .map(|m| m.tagset[m.seltags as usize]);
-        if let Some(tagset) = current_tag {
-            if (tagset & (1 << i)) != 0 {
-                drop(globals);
-                let mut globals = get_globals_mut();
-                if !name_bytes.is_empty() {
-                    globals.tags[i][..name_bytes.len()].copy_from_slice(name_bytes);
-                }
+        if (tagset & (1 << i)) != 0 {
+            let mut globals = get_globals_mut();
+            if !name_bytes.is_empty() {
+                globals.tags[i][..name_bytes.len()].copy_from_slice(name_bytes);
+                globals.tags[i][name_bytes.len()..]
+                    .iter_mut()
+                    .for_each(|b| *b = 0);
+            } else {
+                let default_tag = match i {
+                    8 => b"9".to_vec(),
+                    _ => vec![b'1' + i as u8],
+                };
+                globals.tags[i][..default_tag.len()].copy_from_slice(&default_tag);
+                globals.tags[i][default_tag.len()..]
+                    .iter_mut()
+                    .for_each(|b| *b = 0);
             }
         }
     }
@@ -596,17 +610,19 @@ pub fn tag_mon(arg: &Arg) {
         let xfact = (c_x - mon_mx) as f32 / mon_ww as f32;
         let yfact = (c_y - mon_my) as f32 / mon_wh as f32;
 
+        let (target_mx, target_my, target_ww, target_wh) = {
+            let globals = get_globals();
+            if let Some(mon) = globals.monitors.get(target_id) {
+                (mon.mx, mon.my, mon.ww, mon.wh)
+            } else {
+                (0, 0, 0, 0)
+            }
+        };
+
         send_mon(win, target_id);
 
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
-            let (target_mx, target_my, target_ww, target_wh) = {
-                if let Some(mon) = globals.monitors.get(target_id) {
-                    (mon.mx, mon.my, mon.ww, mon.wh)
-                } else {
-                    (0, 0, 0, 0)
-                }
-            };
             client.x = target_mx + (target_ww as f32 * xfact) as i32;
             client.y = target_my + (target_wh as f32 * yfact) as i32;
         }
@@ -752,16 +768,25 @@ fn shift_tag(dir: i32, offset: i32) {
 }
 
 fn reset_sticky_client(win: Window) {
+    let target_tags = {
+        let globals = get_globals();
+        if let Some(sel_mon_id) = globals.selmon {
+            if let Some(mon) = globals.monitors.get(sel_mon_id) {
+                mon.pertag.as_ref().map(|p| 1 << (p.current_tag - 1))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
     let mut globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.issticky {
             client.issticky = false;
-            if let Some(sel_mon_id) = globals.selmon {
-                if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                    if let Some(ref pertag) = mon.pertag {
-                        client.tags = 1 << (pertag.current_tag - 1);
-                    }
-                }
+            if let Some(tags) = target_tags {
+                client.tags = tags;
             }
         }
     }
