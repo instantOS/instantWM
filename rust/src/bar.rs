@@ -77,12 +77,12 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
                 pos += 1;
                 if pos < bytes.len() && bytes[pos] == b'f' {
                     pos += 1;
-                    let num_start = pos;
-                    while num_start < bytes.len() && bytes[num_start].is_ascii_digit() {
-                        num_start += 1;
+                    let mut num_end = pos;
+                    while num_end < bytes.len() && bytes[num_end].is_ascii_digit() {
+                        num_end += 1;
                     }
-                    if num_start > pos {
-                        if let Ok(num) = std::str::from_utf8(&bytes[pos..num_start]) {
+                    if num_end > pos {
+                        if let Ok(num) = std::str::from_utf8(&bytes[pos..num_end]) {
                             if let Ok(val) = num.parse::<i32>() {
                                 w += val;
                             }

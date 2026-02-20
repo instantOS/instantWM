@@ -378,6 +378,27 @@ pub struct Drw {
     ellipsis_width: u32,
 }
 
+impl Clone for Drw {
+    fn clone(&self) -> Self {
+        Self {
+            w: self.w,
+            h: self.h,
+            display: self.display,
+            screen: self.screen,
+            root: self.root,
+            drawable: self.drawable,
+            gc: self.gc,
+            scheme: self.scheme.clone(),
+            fonts: self.fonts.clone(),
+            depth: self.depth,
+            visual: self.visual,
+            colormap: self.colormap,
+            nomatches: self.nomatches,
+            ellipsis_width: self.ellipsis_width,
+        }
+    }
+}
+
 unsafe impl Send for Drw {}
 unsafe impl Sync for Drw {}
 

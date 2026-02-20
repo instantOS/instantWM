@@ -132,7 +132,7 @@ pub fn moveresize(_arg: &Arg) {
     }
 
     animate_client(win, nx, ny, c_w, c_h, 5, 0);
-    warp_cursor_to_client(win);
+    warp_cursor_to_client_impl(win);
 }
 
 pub fn get_cursor_client() -> Option<ClientInner> {
@@ -157,7 +157,7 @@ pub fn get_cursor_client() -> Option<ClientInner> {
 }
 
 pub fn warp(c: &ClientInner) {
-    warp_cursor_to_client(c.win);
+    warp_cursor_to_client_impl(c.win);
 }
 
 pub fn force_warp(c: &ClientInner) {
@@ -165,6 +165,60 @@ pub fn force_warp(c: &ClientInner) {
     if let Some(ref conn) = x11.conn {
         let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, 10);
         let _ = conn.flush();
+    }
+}
+
+fn warp_cursor_to_client_impl(win: Window) {
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let globals = get_globals();
+        let root = globals.root;
+        let bh = globals.bh;
+
+        if win == 0 {
+            if let Some(sel_mon_id) = globals.selmon {
+                if let Some(mon) = globals.monitors.get(sel_mon_id) {
+                    let _ = conn.warp_pointer(
+                        CURRENT_TIME,
+                        root,
+                        0,
+                        0,
+                        0,
+                        0,
+                        mon.wx + mon.ww / 2,
+                        mon.wy + mon.wh / 2,
+                    );
+                    let _ = conn.flush();
+                }
+            }
+            return;
+        }
+
+        if let Some(c) = globals.clients.get(&win) {
+            if let Some((x, y)) = get_root_ptr() {
+                let in_window = x > c.x - c.border_width
+                    && y > c.y - c.border_width
+                    && x < c.x + c.w + c.border_width * 2
+                    && y < c.y + c.h + c.border_width * 2;
+
+                let on_bar = if let Some(mon_id) = c.mon_id {
+                    if let Some(mon) = globals.monitors.get(mon_id) {
+                        (y > mon.by && y < mon.by + bh) || (mon.topbar && y == 0)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+
+                if in_window || on_bar {
+                    return;
+                }
+
+                let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, c.w / 2, c.h / 2);
+                let _ = conn.flush();
+            }
+        }
     }
 }
 

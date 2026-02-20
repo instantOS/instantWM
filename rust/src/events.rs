@@ -411,13 +411,6 @@ pub fn check_other_wm() {
     let root = get_globals().root;
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
-    let _ = conn.flush();
-
-    if let Ok(Some(_error)) = conn
-        .wait_for_reply_or_error(conn.send_request(&x11rb::protocol::xproto::GetInputFocusRequest))
-    {
-        crate::util::die("instantwm: another window manager is already running");
-    }
 }
 
 pub fn setup() {
