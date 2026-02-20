@@ -30,18 +30,17 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::bar::{draw_bars, update_bar_pos, update_bars, update_status};
+use crate::bar::{update_bars, update_status};
 use crate::config::{
     get_bordercolors, get_closebuttoncolors, get_fonts, get_keys, get_layouts, get_rules,
-    get_statusbarcolors, get_tagcolors, get_tags, get_tagsalt, get_windowcolors, MODKEY, TAGMASK,
+    get_statusbarcolors, get_tagcolors, get_tags, get_tagsalt, get_windowcolors, TAGMASK,
 };
-use crate::drw::{Cur, Drw};
-use crate::events::{check_other_wm, cleanup, run, scan};
+use crate::drw::Drw;
+use crate::events::{cleanup, run, scan};
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11, Globals, X11Connection, GLOBALS, X11};
+use crate::globals::{get_globals, get_globals_mut, get_x11, X11};
 use crate::keyboard::grab_keys;
-use crate::monitor::{create_monitor, update_geom};
-use crate::systray::update_systray;
+use crate::monitor::update_geom;
 use crate::types::*;
 use crate::util::die;
 use crate::xresources::{list_xresources, load_xresources, verify_tags_xres};
@@ -49,7 +48,6 @@ use crate::xresources::{list_xresources, load_xresources, verify_tags_xres};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
-static mut OTHER_WM_DETECTED: bool = false;
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -87,17 +85,10 @@ fn main() {
         eprintln!("warning: no locale support");
     }
 
-    let conn = match RustConnection::connect(None) {
-        Ok(c) => c,
+    let (conn, screen_num) = match RustConnection::connect(None) {
+        Ok((c, s)) => (c, s),
         Err(_) => die("instantwm: cannot open display"),
     };
-
-    let screen_num = conn
-        .setup()
-        .roots
-        .iter()
-        .position(|s| conn.setup().roots.len() == 1 || s.root == conn.setup().roots[0].root)
-        .unwrap_or(0);
 
     {
         let mut x11 = get_x11();
@@ -106,17 +97,17 @@ fn main() {
     }
 
     let x11 = get_x11();
-    let conn = x11.conn.as_ref().unwrap();
-    let screen = &conn.setup().roots[screen_num];
+    let conn_ref = x11.conn.as_ref().unwrap();
+    let screen = &conn_ref.setup().roots[screen_num];
     let root = screen.root;
 
-    check_other_wm_init(conn, root);
+    check_other_wm_init(conn_ref, root);
 
     init_globals(screen_num, root, screen);
 
     load_xresources();
 
-    setup(conn, screen_num, root, screen);
+    setup(conn_ref, screen_num, root, screen);
 
     scan();
 
@@ -136,7 +127,7 @@ fn set_locale() -> Result<(), ()> {
     Ok(())
 }
 
-fn check_other_wm_init(conn: &RustConnection, root: Window) {
+fn check_other_wm_init<C: Connection>(conn: &C, root: Window) {
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
 
     let result =
@@ -146,13 +137,6 @@ fn check_other_wm_init(conn: &RustConnection, root: Window) {
         die("instantwm: another window manager is already running");
     }
 
-    let _ = conn.flush();
-
-    if let Ok(_cookie) = conn.grab_server() {
-        let _ = conn.flush();
-    }
-
-    let _ = conn.ungrab_server();
     let _ = conn.flush();
 }
 
@@ -187,8 +171,8 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.tagmask = TAGMASK;
 }
 
-fn setup(
-    conn: &RustConnection,
+fn setup<C: Connection>(
+    conn: &C,
     screen_num: usize,
     root: Window,
     screen: &x11rb::protocol::xproto::Screen,
@@ -286,7 +270,7 @@ fn setup_signal_handlers() {
     }
 }
 
-fn init_atoms(conn: &RustConnection) {
+fn init_atoms<C: Connection>(conn: &C) {
     let utf8string = intern_atom(conn, "UTF8_STRING", false);
 
     let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
@@ -344,7 +328,7 @@ fn init_atoms(conn: &RustConnection) {
     globals.xatom[2] = xembed_info;
 }
 
-fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
+fn intern_atom<C: Connection>(conn: &C, name: &str, only_if_exists: bool) -> u32 {
     match conn.intern_atom(only_if_exists, name.as_bytes()) {
         Ok(cookie) => match cookie.reply() {
             Ok(reply) => reply.atom,
@@ -442,7 +426,7 @@ fn init_schemes(drw: &Drw) {
     globals.closebuttonschemes = closebuttonschemes;
 }
 
-fn init_wm_check_window(conn: &RustConnection, screen_num: usize, root: Window) {
+fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Window) {
     let wmcheckwin = conn.generate_id().ok().unwrap_or(0);
 
     if wmcheckwin == 0 {
@@ -536,7 +520,10 @@ fn run_autostart() {
             0 => {
                 libc::setsid();
 
-                let _ = libc::system(b"command -v instantautostart || { sleep 4 && notify-send 'instantutils missing, please install instantutils!!!'; } &\0".as_ptr() as *const i8);
+                let _ = libc::system(
+                    b"command -v instantautostart || { sleep 4 && notify-send 'instantutils missing, please install instantutils!!!'; } &\0"
+                        .as_ptr() as *const i8,
+                );
                 let _ = libc::system(b"instantautostart &\0".as_ptr() as *const i8);
 
                 libc::_exit(0);
