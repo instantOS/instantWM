@@ -1,7 +1,8 @@
 use crate::bar::{
-    close_win, down_scale_client, up_scale_client, window_title_mouse_handler,
+    down_scale_client, up_scale_client, window_title_mouse_handler,
     window_title_mouse_handler_right,
 };
+use crate::client::close_win;
 use crate::layouts::*;
 use crate::mouse::{
     force_resize_mouse, gesture_mouse, move_mouse, resize_aspect_mouse, resize_mouse,
@@ -682,59 +683,59 @@ const CONTROL: u32 = x11rb::protocol::xproto::ModMask::CONTROL.into();
 const SHIFT: u32 = x11rb::protocol::xproto::ModMask::SHIFT.into();
 const MOD1: u32 = x11rb::protocol::xproto::ModMask::M1.into();
 
-fn tagkeys(key: u32, tag: usize) -> [Key; 6] {
+fn tagkeys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     [
         Key {
             mod_mask: MODKEY,
-            keysym: key,
+            keysym: keysym,
             func: Some(view),
             arg: Arg {
-                ui: 1 << tag,
+                ui: 1 << tag_idx,
                 ..Default::default()
             },
         },
         Key {
             mod_mask: MODKEY | CONTROL,
-            keysym: key,
+            keysym: keysym,
             func: Some(toggle_view),
             arg: Arg {
-                ui: 1 << tag,
+                ui: 1 << tag_idx,
                 ..Default::default()
             },
         },
         Key {
             mod_mask: MODKEY | SHIFT,
-            keysym: key,
+            keysym: keysym,
             func: Some(tag),
             arg: Arg {
-                ui: 1 << tag,
+                ui: 1 << tag_idx,
                 ..Default::default()
             },
         },
         Key {
             mod_mask: MODKEY | MOD1,
-            keysym: key,
+            keysym: keysym,
             func: Some(follow_tag),
             arg: Arg {
-                ui: 1 << tag,
+                ui: 1 << tag_idx,
                 ..Default::default()
             },
         },
         Key {
             mod_mask: MODKEY | CONTROL | SHIFT,
-            keysym: key,
+            keysym: keysym,
             func: Some(toggle_tag),
             arg: Arg {
-                ui: 1 << tag,
+                ui: 1 << tag_idx,
                 ..Default::default()
             },
         },
         Key {
             mod_mask: MODKEY | MOD1 | SHIFT,
-            keysym: key,
+            keysym: keysym,
             func: Some(swap_tags),
             arg: Arg {
-                ui: 1 << tag,
+                ui: 1 << tag_idx,
                 ..Default::default()
             },
         },
