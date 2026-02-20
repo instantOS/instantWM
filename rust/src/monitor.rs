@@ -1,35 +1,596 @@
+use crate::bar::update_bar_pos;
+use crate::client::{unfocus, win_to_client};
+use crate::focus::focus;
+use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::scratchpad::scratchpad_show;
+use crate::tags::tagmon;
 use crate::types::*;
+use crate::util::ecalloc;
+use x11rb::protocol::xproto::Window;
+
+#[cfg(feature = "xinerama")]
+use x11rb::protocol::xinerama;
 
 pub fn create_monitor() -> MonitorInner {
-    MonitorInner::default()
+    let g = get_globals();
+
+    let mut m = MonitorInner {
+        tagset: [1, 1],
+        mfact: g.mfact,
+        nmaster: g.nmaster,
+        showbar: g.showbar,
+        topbar: g.topbar,
+        clientcount: 0,
+        overlaymode: 0,
+        sellt: 0,
+        ..Default::default()
+    };
+
+    let default_symbol = b"[]=";
+    m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
+
+    m.pertag = Some(Box::new(Pertag {
+        current_tag: 1,
+        prevtag: 1,
+        nmasters: ecalloc(MAX_TAGS),
+        mfacts: ecalloc(MAX_TAGS),
+        sellts: ecalloc(MAX_TAGS),
+        showbars: ecalloc(MAX_TAGS),
+        ltidxs: [[None; 2]; MAX_TAGS],
+    }));
+
+    if let Some(ref mut pertag) = m.pertag {
+        for i in 0..MAX_TAGS {
+            pertag.nmasters[i] = m.nmaster;
+            pertag.mfacts[i] = m.mfact;
+            pertag.sellts[i] = m.sellt;
+            pertag.showbars[i] = m.showbar;
+        }
+    }
+
+    m
 }
 
-pub fn cleanup_monitor(_mon: &mut MonitorInner) {}
+pub fn cleanup_monitor(mon_id: MonitorId) {
+    let mut g = get_globals_mut();
 
-pub fn update_geom() -> i32 {
-    0
+    if mon_id >= g.monitors.len() {
+        return;
+    }
+
+    let barwin = g.monitors[mon_id].barwin;
+
+    g.monitors.remove(mon_id);
+
+    if g.selmon == Some(mon_id) {
+        g.selmon = if g.monitors.is_empty() { None } else { Some(0) };
+    } else if let Some(sel) = g.selmon {
+        if sel > mon_id {
+            g.selmon = Some(sel - 1);
+        }
+    }
+
+    drop(g);
+
+    if barwin != 0 {
+        let x11 = get_x11();
+        if let Some(ref conn) = x11.conn {
+            let _ = x11rb::protocol::xproto::unmap_window(conn, barwin);
+            let _ = x11rb::protocol::xproto::destroy_window(conn, barwin);
+        }
+    }
 }
 
-pub fn update_bar_pos(_m: &mut MonitorInner) {}
+pub fn dir_to_mon(dir: i32) -> Option<MonitorId> {
+    let g = get_globals();
+    let selmon = g.selmon?;
 
-pub fn update_bars() {}
+    if g.monitors.len() <= 1 {
+        return Some(selmon);
+    }
 
-pub fn resize_bar_win(_m: &mut MonitorInner) {}
-
-pub fn dir_to_mon(_dir: i32) -> Option<MonitorInner> {
-    None
+    if dir > 0 {
+        if selmon + 1 >= g.monitors.len() {
+            Some(0)
+        } else {
+            Some(selmon + 1)
+        }
+    } else if selmon == 0 {
+        Some(g.monitors.len() - 1)
+    } else {
+        Some(selmon - 1)
+    }
 }
 
-pub fn rect_to_mon(_x: i32, _y: i32, _w: i32, _h: i32) -> Option<MonitorInner> {
-    None
+pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
+    let g = get_globals();
+
+    let selmon = g.selmon?;
+    let mut result = selmon;
+    let mut max_area = 0;
+
+    for (i, m) in g.monitors.iter().enumerate() {
+        let area = intersect(x, y, w, h, m);
+        if area > max_area {
+            max_area = area;
+            result = i;
+        }
+    }
+
+    Some(result)
 }
 
-pub fn win_to_mon(_w: u32) -> Option<MonitorInner> {
-    None
+pub fn win_to_mon(w: Window) -> Option<MonitorId> {
+    let g = get_globals();
+
+    if w == g.root {
+        if let Some((x, y)) = get_root_ptr() {
+            return rect_to_mon(x, y, 1, 1);
+        }
+        return g.selmon;
+    }
+
+    for (i, m) in g.monitors.iter().enumerate() {
+        if w == m.barwin {
+            return Some(i);
+        }
+    }
+
+    if let Some(client) = win_to_client(w) {
+        return client.mon_id;
+    }
+
+    g.selmon
 }
 
-pub fn arrange(_m: &mut MonitorInner) {}
+pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
+    let mut g = get_globals_mut();
+
+    let current_mon_id = match g.selmon {
+        Some(id) => id,
+        None => return,
+    };
+
+    if current_mon_id == target_mon_id {
+        return;
+    }
+
+    let client = match g.clients.get_mut(&c_win) {
+        Some(c) => c,
+        None => return,
+    };
+
+    let is_scratchpad = client.tags == SCRATCHPAD_MASK;
+    let old_mon_id = client.mon_id;
+
+    drop(g);
+
+    if let Some(ref mut c) = crate::client::win_to_client(c_win) {
+        unfocus(&mut c.clone(), true);
+    }
+
+    detach(c_win);
+    detach_stack(c_win);
+
+    {
+        let mut g = get_globals_mut();
+        if let Some(client) = g.clients.get_mut(&c_win) {
+            client.mon_id = Some(target_mon_id);
+
+            if !is_scratchpad {
+                let target_tags = if let Some(ref m) = g.monitors.get(target_mon_id) {
+                    m.tagset[m.seltags as usize]
+                } else {
+                    1
+                };
+                client.tags = target_tags;
+                reset_sticky(&mut client.clone());
+            }
+        }
+    }
+
+    attach(c_win);
+    attach_stack(c_win);
+    set_client_tag_prop(c_win);
+
+    focus(None);
+
+    {
+        let g = get_globals();
+        if let Some(ref c) = g.clients.get(&c_win) {
+            if !c.isfloating {
+                drop(g);
+                arrange(None);
+            }
+        }
+    }
+
+    if is_scratchpad {
+        let g = get_globals();
+        if let Some(ref c) = g.clients.get(&c_win) {
+            if c.is_scratchpad() && !c.issticky {
+                drop(g);
+
+                let mut g = get_globals_mut();
+                if let Some(ref mut sel) = g.selmon {
+                    unfocus_mon(*sel, false);
+                }
+                g.selmon = Some(target_mon_id);
+                drop(g);
+
+                let name_ptr = {
+                    let g = get_globals();
+                    g.clients.get(&c_win).map(|c| {
+                        let mut name = [0u8; SCRATCHPAD_NAME_LEN];
+                        name.copy_from_slice(&c.scratchpad_name);
+                        name
+                    })
+                };
+
+                if let Some(name) = name_ptr {
+                    let arg = Arg {
+                        v: Some(unsafe { std::mem::transmute::<*const u8, usize>(name.as_ptr()) }),
+                        ..Default::default()
+                    };
+                    scratchpad_show(&arg);
+                }
+
+                let mut g = get_globals_mut();
+                if let Some(ref mut sel) = g.selmon {
+                    unfocus_mon(*sel, false);
+                }
+                g.selmon = Some(current_mon_id);
+                drop(g);
+
+                focus(None);
+            }
+        }
+    }
+}
+
+pub fn focus_mon(arg: &Arg) {
+    let g = get_globals();
+
+    if g.monitors.len() <= 1 {
+        return;
+    }
+
+    let target = match dir_to_mon(arg.i) {
+        Some(id) => id,
+        None => return,
+    };
+
+    if Some(target) == g.selmon {
+        return;
+    }
+
+    let old_sel = g.selmon;
+    drop(g);
+
+    if let Some(old_id) = old_sel {
+        if let Some(ref mut c) = get_selected_client_mut(old_id) {
+            unfocus(c, false);
+        }
+    }
+
+    let mut g = get_globals_mut();
+    g.selmon = Some(target);
+    drop(g);
+
+    focus(None);
+}
+
+pub fn focus_n_mon(arg: &Arg) {
+    let g = get_globals();
+
+    if g.monitors.len() <= 1 {
+        return;
+    }
+
+    let mut target = 0;
+    for i in 0..arg.i as usize {
+        if i + 1 < g.monitors.len() {
+            target = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    let old_sel = g.selmon;
+    drop(g);
+
+    if let Some(old_id) = old_sel {
+        if let Some(ref mut c) = get_selected_client_mut(old_id) {
+            unfocus(c, false);
+        }
+    }
+
+    let mut g = get_globals_mut();
+    g.selmon = Some(target);
+    drop(g);
+
+    focus(None);
+}
+
+pub fn follow_mon(arg: &Arg) {
+    let c_win = {
+        let g = get_globals();
+        match g.selmon {
+            Some(mon_id) => g
+                .monitors
+                .get(mon_id)
+                .and_then(|_m| get_selected_client(mon_id).map(|c| c.win)),
+            None => None,
+        }
+    };
+
+    let c_win = match c_win {
+        Some(w) => w,
+        None => return,
+    };
+
+    tagmon(arg);
+
+    {
+        let mut g = get_globals_mut();
+        if let Some(ref c) = g.clients.get(&c_win) {
+            g.selmon = c.mon_id;
+        }
+        drop(g);
+    }
+
+    focus(None);
+
+    {
+        let g = get_globals();
+        if let Some(ref c) = g.clients.get(&c_win) {
+            let win = c.win;
+            drop(g);
+
+            focus(win_to_client(win).as_mut());
+
+            let x11 = get_x11();
+            if let Some(ref conn) = x11.conn {
+                let _ = x11rb::protocol::xproto::configure_window(
+                    conn,
+                    win,
+                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                        .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
+                );
+            }
+
+            warp_cursor_to_client(win);
+        }
+    }
+}
+
+#[cfg(feature = "xinerama")]
+fn is_unique_geom(unique: &[(i32, i32, i32, i32)], info: (i32, i32, i32, i32)) -> bool {
+    for u in unique {
+        if u.0 == info.0 && u.1 == info.1 && u.2 == info.2 && u.3 == info.3 {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn update_geom() -> bool {
+    let mut dirty = false;
+
+    #[cfg(feature = "xinerama")]
+    {
+        let x11 = get_x11();
+        if let Some(ref conn) = x11.conn {
+            if let Ok(is_active) = xinerama::is_active(conn) {
+                if is_active {
+                    if let Ok(screens) = xinerama::query_screens(conn) {
+                        let screen_info: Vec<(i32, i32, i32, i32)> = screens
+                            .screen_info
+                            .iter()
+                            .map(|s| {
+                                (
+                                    s.x_org as i32,
+                                    s.y_org as i32,
+                                    s.width as i32,
+                                    s.height as i32,
+                                )
+                            })
+                            .collect();
+
+                        let mut unique: Vec<(i32, i32, i32, i32)> = Vec::new();
+                        for info in &screen_info {
+                            if is_unique_geom(&unique, *info) {
+                                unique.push(*info);
+                            }
+                        }
+
+                        let nn = unique.len();
+                        let n = {
+                            let g = get_globals();
+                            g.monitors.len()
+                        };
+
+                        {
+                            let mut g = get_globals_mut();
+                            while g.monitors.len() < nn {
+                                g.monitors.push(create_monitor());
+                            }
+                        }
+
+                        for (i, info) in unique.iter().enumerate() {
+                            let mut g = get_globals_mut();
+                            if i >= n {
+                                dirty = true;
+                            }
+
+                            if let Some(ref mut m) = g.monitors.get_mut(i) {
+                                if i >= n
+                                    || m.mx != info.0
+                                    || m.my != info.1
+                                    || m.mw != info.2
+                                    || m.mh != info.3
+                                {
+                                    dirty = true;
+                                    m.num = i as i32;
+                                    m.mx = info.0;
+                                    m.my = info.1;
+                                    m.mw = info.2;
+                                    m.mh = info.3;
+                                    m.wx = info.0;
+                                    m.wy = info.1;
+                                    m.ww = info.2;
+                                    m.wh = info.3;
+                                    drop(g);
+                                    let mut g = get_globals_mut();
+                                    if let Some(ref mut m) = g.monitors.get_mut(i) {
+                                        update_bar_pos(m);
+                                    }
+                                }
+                            }
+                        }
+
+                        for i in nn..n {
+                            let clients_to_move: Vec<Window> = {
+                                let g = get_globals();
+                                g.clients
+                                    .values()
+                                    .filter(|c| c.mon_id == Some(i))
+                                    .map(|c| c.win)
+                                    .collect()
+                            };
+
+                            for win in clients_to_move {
+                                dirty = true;
+                                detach(win);
+                                detach_stack(win);
+
+                                let mut g = get_globals_mut();
+                                if let Some(ref mut c) = g.clients.get_mut(&win) {
+                                    c.mon_id = Some(0);
+                                }
+                                drop(g);
+
+                                attach(win);
+                                attach_stack(win);
+                            }
+
+                            let mut g = get_globals_mut();
+                            if g.selmon == Some(i) {
+                                g.selmon = Some(0);
+                            }
+                            drop(g);
+
+                            cleanup_monitor(i);
+                        }
+
+                        if dirty {
+                            let mut g = get_globals_mut();
+                            g.selmon = Some(0);
+                            drop(g);
+
+                            if let Some(m) = win_to_mon(x11.screen_num as u32) {
+                                let mut g = get_globals_mut();
+                                g.selmon = Some(m);
+                            }
+                        }
+
+                        return dirty;
+                    }
+                }
+            }
+        }
+    }
+
+    let g = get_globals();
+    if g.monitors.is_empty() {
+        drop(g);
+        let mut g = get_globals_mut();
+        g.monitors.push(create_monitor());
+        dirty = true;
+    }
+    drop(g);
+
+    let g = get_globals();
+    if let Some(ref m) = g.monitors.first() {
+        if m.mw != g.sw || m.mh != g.sh {
+            dirty = true;
+            drop(g);
+            let mut g = get_globals_mut();
+            if let Some(ref mut m) = g.monitors.first_mut() {
+                m.mw = g.sw;
+                m.mh = g.sh;
+                m.ww = g.sw;
+                m.wh = g.sh;
+                update_bar_pos(m);
+            }
+        }
+    }
+
+    dirty
+}
+
+pub fn arrange(_m: Option<&mut MonitorInner>) {}
 
 pub fn arrange_mon(_m: &mut MonitorInner) {}
 
 pub fn restack(_m: &mut MonitorInner) {}
+
+fn get_root_ptr() -> Option<(i32, i32)> {
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let g = get_globals();
+        if let Ok(reply) = x11rb::protocol::xproto::query_pointer(conn, g.root) {
+            return Some((reply.root_x as i32, reply.root_y as i32));
+        }
+    }
+    None
+}
+
+fn get_selected_client(mon_id: MonitorId) -> Option<ClientInner> {
+    let g = get_globals();
+    g.clients
+        .values()
+        .find(|c| c.mon_id == Some(mon_id))
+        .cloned()
+}
+
+fn get_selected_client_mut(mon_id: MonitorId) -> Option<&'static mut ClientInner> {
+    let g = get_globals();
+    let win = g
+        .clients
+        .values()
+        .find(|c| c.mon_id == Some(mon_id))
+        .map(|c| c.win);
+    drop(g);
+
+    if let Some(w) = win {
+        let mut g = get_globals_mut();
+        g.clients.get_mut(&w)?;
+        unsafe {
+            let ptr = g.clients.get_mut(&w).unwrap() as *mut ClientInner;
+            Some(&mut *ptr)
+        }
+    } else {
+        None
+    }
+}
+
+fn unfocus_mon(mon_id: MonitorId, set_focus: bool) {
+    if let Some(ref mut c) = get_selected_client_mut(mon_id) {
+        unfocus(c, set_focus);
+    }
+}
+
+fn detach(_win: Window) {}
+
+fn detach_stack(_win: Window) {}
+
+fn attach(_win: Window) {}
+
+fn attach_stack(_win: Window) {}
+
+fn set_client_tag_prop(_win: Window) {}
+
+fn reset_sticky(_c: &mut ClientInner) {}
+
+fn warp_cursor_to_client(_win: Window) {}

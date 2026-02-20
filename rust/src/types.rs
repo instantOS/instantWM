@@ -262,6 +262,7 @@ pub struct Pertag {
     pub mfacts: [f32; MAX_TAGS],
     pub sellts: [u32; MAX_TAGS],
     pub showbars: [bool; MAX_TAGS],
+    pub ltidxs: [[Option<usize>; 2]; MAX_TAGS],
 }
 
 impl Default for Pertag {
@@ -273,6 +274,7 @@ impl Default for Pertag {
             mfacts: [0.0; MAX_TAGS],
             sellts: [0; MAX_TAGS],
             showbars: [false; MAX_TAGS],
+            ltidxs: [[None; 2]; MAX_TAGS],
         }
     }
 }
@@ -307,6 +309,7 @@ pub struct MonitorInner {
     pub gesture: Gesture,
     pub barwin: Window,
     pub showtags: u32,
+    pub pertag: Option<Box<Pertag>>,
 }
 
 impl Default for MonitorInner {
@@ -340,6 +343,7 @@ impl Default for MonitorInner {
             gesture: Gesture::default(),
             barwin: 0,
             showtags: 0,
+            pertag: None,
         }
     }
 }
