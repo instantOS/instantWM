@@ -882,16 +882,16 @@ pub fn apply_rules(win: Window) {
                 }
 
                 let cur_mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
-                let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) =
-                    if let Some(mon_id) = cur_mon_id {
-                        globals
-                            .monitors
-                            .get(mon_id)
-                            .map(|m| (m.mw, m.wh, m.showbar, m.my, m.mx))
-                            .unwrap_or((0, 0, false, 0, 0))
-                    } else {
-                        (0, 0, false, 0, 0)
-                    };
+                let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) = if let Some(mon_id) = cur_mon_id
+                {
+                    globals
+                        .monitors
+                        .get(mon_id)
+                        .map(|m| (m.mw, m.wh, m.showbar, m.my, m.mx))
+                        .unwrap_or((0, 0, false, 0, 0))
+                } else {
+                    (0, 0, false, 0, 0)
+                };
 
                 if let Some(c) = globals.clients.get_mut(&win) {
                     match rule.isfloating {
@@ -924,10 +924,7 @@ pub fn apply_rules(win: Window) {
                     c.tags |= rule.tags;
                 }
 
-                let target_mon = globals
-                    .monitors
-                    .iter()
-                    .position(|m| m.num == rule.monitor);
+                let target_mon = globals.monitors.iter().position(|m| m.num == rule.monitor);
                 if let Some(mid) = target_mon {
                     if let Some(c) = globals.clients.get_mut(&win) {
                         c.mon_id = Some(mid);
@@ -937,7 +934,11 @@ pub fn apply_rules(win: Window) {
         }
     }
 
-    let (client_mon_id, client_tags) = globals.clients.get(&win).map(|c| (c.mon_id, c.tags)).unwrap_or((None, 0));
+    let (client_mon_id, client_tags) = globals
+        .clients
+        .get(&win)
+        .map(|c| (c.mon_id, c.tags))
+        .unwrap_or((None, 0));
     if let Some(mid) = client_mon_id {
         let mon_tags = globals
             .monitors
@@ -1515,12 +1516,12 @@ fn read_client_info(w: Window) {
                     let mon_num = data.next().unwrap_or(0);
 
                     let mut globals = get_globals_mut();
+                    let target_mon = globals
+                        .monitors
+                        .iter()
+                        .position(|m| m.num as u32 == mon_num);
                     if let Some(client) = globals.clients.get_mut(&w) {
                         client.tags = tags;
-                        let target_mon = globals
-                            .monitors
-                            .iter()
-                            .position(|m| m.num as u32 == mon_num);
                         if let Some(mid) = target_mon {
                             client.mon_id = Some(mid);
                         }
@@ -1598,89 +1599,102 @@ pub fn unmanage(win: Window, destroyed: bool) {
 pub fn set_fullscreen(win: Window, fullscreen: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
+        let (net_wm_fullscreen, net_wm_state) = {
+            let globals = get_globals();
+            (
+                globals.netatom[NetAtom::WMFullscreen as usize],
+                globals.netatom[NetAtom::WMState as usize],
+            )
+        };
+
         let mut globals = get_globals_mut();
 
-        if let Some(client) = globals.clients.get_mut(&win) {
-            if fullscreen && !client.is_fullscreen {
-                let net_wm_fullscreen = globals.netatom[NetAtom::WMFullscreen as usize];
-                let _ = conn.change_property32(
-                    PropMode::REPLACE,
-                    win,
-                    globals.netatom[NetAtom::WMState as usize],
-                    AtomEnum::ATOM,
-                    &[net_wm_fullscreen],
-                );
+        // Read client state first to avoid borrow conflicts
+        let client_state = globals.clients.get(&win).map(|c| {
+            (
+                c.is_fullscreen,
+                c.isfloating,
+                c.isfakefullscreen,
+                c.mon_id,
+                c.oldstate,
+                c.oldx,
+                c.oldy,
+                c.oldw,
+                c.oldh,
+            )
+        });
+        let Some((is_fs, is_floating, is_fake_fs, mon_id, _oldstate, oldx, oldy, oldw, oldh)) =
+            client_state
+        else {
+            return;
+        };
 
-                client.is_fullscreen = true;
-                client.oldstate = client.isfloating as i32;
-                save_bw(win);
+        if fullscreen && !is_fs {
+            let _ = conn.change_property32(
+                PropMode::REPLACE,
+                win,
+                net_wm_state,
+                AtomEnum::ATOM,
+                &[net_wm_fullscreen],
+            );
 
-                if !client.isfakefullscreen {
-                    client.border_width = 0;
-                    if !client.isfloating {
-                        let (mon_mx, mon_my, mon_mw, mon_mh) = if let Some(mon_id) = client.mon_id {
-                            if let Some(mon) = globals.monitors.get(mon_id) {
-                                (mon.mx, mon.my, mon.mw, mon.mh)
-                            } else {
-                                (0, 0, 0, 0)
-                            }
-                        } else {
-                            (0, 0, 0, 0)
-                        };
-                        drop(globals);
-                        animate_client(win, mon_mx, mon_my, mon_mw, mon_mh, 10, 0);
-                        globals = get_globals_mut();
-                    }
+            if let Some(c) = globals.clients.get_mut(&win) {
+                c.is_fullscreen = true;
+                c.oldstate = c.isfloating as i32;
+            }
+            save_bw(win);
 
-                    let (mon_mx, mon_my, mon_mw, mon_mh) = if let Some(mon_id) = client.mon_id {
-                        if let Some(mon) = globals.monitors.get(mon_id) {
-                            (mon.mx, mon.my, mon.mw, mon.mh)
-                        } else {
-                            (client.x, client.y, client.w, client.h)
-                        }
-                    } else {
-                        (client.x, client.y, client.w, client.h)
-                    };
+            if !is_fake_fs {
+                if let Some(c) = globals.clients.get_mut(&win) {
+                    c.border_width = 0;
+                }
+                let (mon_mx, mon_my, mon_mw, mon_mh) = if let Some(mid) = mon_id {
+                    globals
+                        .monitors
+                        .get(mid)
+                        .map(|m| (m.mx, m.my, m.mw, m.mh))
+                        .unwrap_or((0, 0, 0, 0))
+                } else {
+                    (0, 0, 0, 0)
+                };
 
-                    let _ = conn.configure_window(
-                        win,
-                        &ConfigureWindowAux::new()
-                            .x(mon_mx)
-                            .y(mon_my)
-                            .width(mon_mw as u32)
-                            .height(mon_mh as u32),
-                    );
-                    let _ = conn.configure_window(
-                        win,
-                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                    );
-                    let _ = conn.flush();
+                if !is_floating {
+                    drop(globals);
+                    animate_client(win, mon_mx, mon_my, mon_mw, mon_mh, 10, 0);
+                    globals = get_globals_mut();
                 }
 
-                client.isfloating = true;
-            } else if !fullscreen && client.is_fullscreen {
-                let _ = conn.change_property32(
-                    PropMode::REPLACE,
+                let _ = conn.configure_window(
                     win,
-                    globals.netatom[NetAtom::WMState as usize],
-                    AtomEnum::ATOM,
-                    &[],
+                    &ConfigureWindowAux::new()
+                        .x(mon_mx)
+                        .y(mon_my)
+                        .width(mon_mw as u32)
+                        .height(mon_mh as u32),
                 );
+                let _ = conn
+                    .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+                let _ = conn.flush();
+            }
 
-                client.is_fullscreen = false;
-                client.isfloating = client.oldstate != 0;
-                restore_border_width(win);
+            if let Some(c) = globals.clients.get_mut(&win) {
+                c.isfloating = true;
+            }
+        } else if !fullscreen && is_fs {
+            let _ =
+                conn.change_property32(PropMode::REPLACE, win, net_wm_state, AtomEnum::ATOM, &[]);
 
-                let (old_x, old_y, old_w, old_h) =
-                    (client.oldx, client.oldy, client.oldw, client.oldh);
-                let mon_id = client.mon_id;
+            if let Some(c) = globals.clients.get_mut(&win) {
+                c.is_fullscreen = false;
+                c.isfloating = c.oldstate != 0;
+            }
+            restore_border_width(win);
 
-                if !client.isfakefullscreen {
-                    drop(globals);
-                    resize_client(win, old_x, old_y, old_w, old_h);
-                    if let Some(mid) = mon_id {
-                        arrange(Some(mid));
-                    }
+            if !is_fake_fs {
+                drop(globals);
+                resize_client(win, oldx, oldy, oldw, oldh);
+                if let Some(mid) = mon_id {
+                    arrange(Some(mid));
                 }
             }
         }
@@ -1703,35 +1717,52 @@ pub fn toggle_fake_fullscreen(_arg: &Arg) {
 
     let Some(win) = sel_win else { return };
 
+    let (is_fullscreen, isfakefullscreen, mon_id, old_border_width) = {
+        let globals = get_globals();
+        globals
+            .clients
+            .get(&win)
+            .map(|c| {
+                (
+                    c.is_fullscreen,
+                    c.isfakefullscreen,
+                    c.mon_id,
+                    c.old_border_width,
+                )
+            })
+            .unwrap_or((false, false, None, 0))
+    };
+
+    if is_fullscreen && isfakefullscreen {
+        let borderpx = get_globals().borderpx as i32;
+        if let Some(mid) = mon_id {
+            let (mon_mx, mon_my, mon_mw, mon_mh) = get_globals()
+                .monitors
+                .get(mid)
+                .map(|m| (m.mx, m.my, m.mw, m.mh))
+                .unwrap_or((0, 0, 0, 0));
+            resize_client(
+                win,
+                mon_mx + borderpx,
+                mon_my + borderpx,
+                mon_mw - 2 * borderpx,
+                mon_mh - 2 * borderpx,
+            );
+
+            let x11 = get_x11();
+            if let Some(ref conn) = x11.conn {
+                let _ = conn
+                    .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+                let _ = conn.flush();
+            }
+        }
+    }
+
     let mut globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.is_fullscreen {
-            if client.isfakefullscreen {
-                let mon_id = client.mon_id;
-                let borderpx = globals.borderpx as i32;
-                if let Some(mid) = mon_id {
-                    if let Some(mon) = globals.monitors.get(mid) {
-                        drop(globals);
-                        resize_client(
-                            win,
-                            mon.mx + borderpx,
-                            mon.my + borderpx,
-                            mon.mw - 2 * borderpx,
-                            mon.mh - 2 * borderpx,
-                        );
-
-                        let x11 = get_x11();
-                        if let Some(ref conn) = x11.conn {
-                            let _ = conn.configure_window(
-                                win,
-                                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                            );
-                            let _ = conn.flush();
-                        }
-                    }
-                }
-            } else {
-                client.border_width = client.old_border_width;
+            if !client.isfakefullscreen {
+                client.border_width = old_border_width;
             }
         }
 

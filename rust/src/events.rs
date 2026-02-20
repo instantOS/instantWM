@@ -389,12 +389,16 @@ pub fn scan() {
 
     if let Ok(cookie) = conn.query_tree(root) {
         if let Ok(reply) = cookie.reply() {
+            drop(x11);
             for win in reply.children {
-                if let Ok(wa_cookie) = conn.get_window_attributes(win) {
-                    if let Ok(wa) = wa_cookie.reply() {
-                        if !wa.override_redirect {
-                            if win_to_client(win).is_none() {
-                                crate::client::manage(win, 0, 0, 800, 600, 1);
+                let x11 = get_x11();
+                if let Some(ref conn) = x11.conn {
+                    if let Ok(wa_cookie) = conn.get_window_attributes(win) {
+                        if let Ok(wa) = wa_cookie.reply() {
+                            if !wa.override_redirect {
+                                if win_to_client(win).is_none() {
+                                    crate::client::manage(win, 0, 0, 800, 600, 1);
+                                }
                             }
                         }
                     }
