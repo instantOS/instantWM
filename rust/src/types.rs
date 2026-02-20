@@ -318,6 +318,7 @@ pub struct MonitorInner {
     pub sel: Option<Window>,
     pub overlay: Option<Window>,
     pub stack: Option<Window>,
+    pub fullscreen: Option<Window>,
 }
 
 impl Default for MonitorInner {
@@ -356,6 +357,7 @@ impl Default for MonitorInner {
             sel: None,
             overlay: None,
             stack: None,
+            fullscreen: None,
         }
     }
 }
@@ -386,7 +388,7 @@ pub struct ResourcePref {
 #[derive(Debug, Clone)]
 pub struct Systray {
     pub win: Window,
-    pub icons: Vec<ClientId>,
+    pub icons: Vec<Window>,
 }
 
 #[derive(Debug, Clone)]
