@@ -6,7 +6,7 @@ use crate::types::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::protocol::xproto::Window;
+use x11rb::protocol::xproto::{Rectangle, Window};
 
 static DRAW_BAR_RECURSION: AtomicUsize = AtomicUsize::new(0);
 
@@ -19,6 +19,28 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub static mut PAUSEDRAW: bool = false;
 pub static mut COMMANDOFFSETS: [i32; 20] = [-1; 20];
+
+// Helper function to parse hex color to u32 (0x00RRGGBB format for x11rb)
+fn parse_color_to_u32(color: &str) -> u32 {
+    let color = color.trim_start_matches('#');
+    if color.len() == 6 {
+        let r = u32::from_str_radix(&color[0..2], 16).unwrap_or(0);
+        let g = u32::from_str_radix(&color[2..4], 16).unwrap_or(0);
+        let b = u32::from_str_radix(&color[4..6], 16).unwrap_or(0);
+        (r << 16) | (g << 8) | b
+    } else {
+        0x121212
+    }
+}
+
+// Helper to get color from scheme
+fn get_scheme_color(scheme: &[Clr], col_idx: usize) -> u32 {
+    if let Some(clr) = scheme.get(col_idx) {
+        (clr.color.pixel & 0x00FFFFFF) as u32
+    } else {
+        0x121212
+    }
+}
 
 pub fn text_width(text: &str) -> i32 {
     let g = get_globals();
@@ -361,58 +383,99 @@ pub fn draw_startmenu_icon(bh: i32) {
         .and_then(|i| g.monitors.get(i).map(|m| m.barwin))
         .unwrap_or(0);
 
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
-        // Set the drawable to the bar window so drawing goes directly to the window
-        if barwin != 0 {
-            drw.set_drawable(barwin);
-        }
-
-        if g.tagprefix {
-            let schemes = &g.tagschemes;
-            if schemes.len() > SchemeHover::NoHover as usize {
-                let hover_idx = SchemeHover::NoHover as usize;
-                if schemes[hover_idx].len() > SchemeTag::Focus as usize {
-                    drw.set_scheme(schemes[hover_idx][SchemeTag::Focus as usize].clone());
-                }
-            }
-        } else if let Some(ref scheme) = g.statusscheme {
-            drw.set_scheme(scheme.clone());
-        }
-
-        drw.rect(
-            0,
-            0,
-            startmenu_size as u32,
-            bh as u32,
-            true,
-            !startmenu_invert,
-        );
-        drw.rect(
-            5,
-            icon_offset,
-            STARTMENU_ICON_SIZE as u32,
-            STARTMENU_ICON_SIZE as u32,
-            true,
-            startmenu_invert,
-        );
-        drw.rect(
-            9,
-            icon_offset + 4,
-            STARTMENU_ICON_INNER as u32,
-            STARTMENU_ICON_INNER as u32,
-            true,
-            !startmenu_invert,
-        );
-        drw.rect(
-            19,
-            icon_offset + STARTMENU_ICON_SIZE,
-            STARTMENU_ICON_INNER as u32,
-            STARTMENU_ICON_INNER as u32,
-            true,
-            startmenu_invert,
-        );
+    if barwin == 0 {
+        return;
     }
+
+    // Get colors from scheme
+    let scheme = if g.tagprefix {
+        let schemes = &g.tagschemes;
+        if schemes.len() > SchemeHover::NoHover as usize {
+            let hover_idx = SchemeHover::NoHover as usize;
+            if schemes[hover_idx].len() > SchemeTag::Focus as usize {
+                Some(schemes[hover_idx][SchemeTag::Focus as usize].clone())
+            } else {
+                g.statusscheme.clone()
+            }
+        } else {
+            g.statusscheme.clone()
+        }
+    } else {
+        g.statusscheme.clone()
+    };
+
+    let Some(ref scheme) = scheme else { return };
+
+    // TEST: Use bright colors
+    let fg_color = 0xFFFFFF; // White
+    let bg_color = 0xFF0000; // Red
+
+    // Use x11rb to draw
+    let x11 = crate::globals::get_x11();
+    let Some(ref conn) = x11.conn else { return };
+
+    // Create GC with foreground color
+    let gc = conn.generate_id().unwrap();
+    let draw_color = if startmenu_invert { bg_color } else { fg_color };
+    let fill_color = if startmenu_invert { fg_color } else { bg_color };
+
+    // Draw startmenu background
+    let _ = conn.create_gc(
+        barwin,
+        gc,
+        &x11rb::protocol::xproto::CreateGCAux::new().foreground(draw_color),
+    );
+    let rects = [Rectangle {
+        x: 0,
+        y: 0,
+        width: startmenu_size as u16,
+        height: bh as u16,
+    }];
+    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+
+    // Draw startmenu icon (outer square)
+    let _ = conn.create_gc(
+        barwin,
+        gc,
+        &x11rb::protocol::xproto::CreateGCAux::new().foreground(fill_color),
+    );
+    let rects = [Rectangle {
+        x: 5,
+        y: icon_offset as i16,
+        width: STARTMENU_ICON_SIZE as u16,
+        height: STARTMENU_ICON_SIZE as u16,
+    }];
+    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+
+    // Draw startmenu icon (inner square 1)
+    let _ = conn.create_gc(
+        barwin,
+        gc,
+        &x11rb::protocol::xproto::CreateGCAux::new().foreground(draw_color),
+    );
+    let rects = [Rectangle {
+        x: 9,
+        y: (icon_offset + 4) as i16,
+        width: STARTMENU_ICON_INNER as u16,
+        height: STARTMENU_ICON_INNER as u16,
+    }];
+    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+
+    // Draw startmenu icon (inner square 2)
+    let _ = conn.create_gc(
+        barwin,
+        gc,
+        &x11rb::protocol::xproto::CreateGCAux::new().foreground(fill_color),
+    );
+    let rects = [Rectangle {
+        x: 19,
+        y: (icon_offset + STARTMENU_ICON_SIZE) as i16,
+        width: STARTMENU_ICON_INNER as u16,
+        height: STARTMENU_ICON_INNER as u16,
+    }];
+    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+
+    let _ = conn.flush();
 }
 
 pub fn get_tag_scheme(
@@ -480,20 +543,25 @@ pub fn draw_tag_indicators(
     urg: u32,
     bh: i32,
 ) -> i32 {
-    eprintln!("TRACE: draw_tag_indicators - START");
     let g = get_globals();
-    eprintln!("TRACE: draw_tag_indicators - after get_globals");
     let lrpad = g.lrpad;
     let show_alt_tag = g.showalttag;
     let bar_dragging = g.bar_dragging;
     let num_tags = g.numtags;
-    eprintln!("TRACE: draw_tag_indicators - num_tags = {}", num_tags);
 
     let tags = g.tags;
     let tags_alt = &g.tagsalt;
 
+    // Get bar window
+    let barwin = g
+        .selmon
+        .and_then(|i| g.monitors.get(i).map(|m| m.barwin))
+        .unwrap_or(0);
+    if barwin == 0 {
+        return x;
+    }
+
     for i in 0..num_tags as u32 {
-        eprintln!("TRACE: draw_tag_indicators - loop i = {}", i);
         if i >= 9 {
             continue;
         }
@@ -504,10 +572,6 @@ pub fn draw_tag_indicators(
         } else {
             false
         };
-        eprintln!(
-            "TRACE: draw_tag_indicators - i={}, is_hover={}",
-            i, is_hover
-        );
 
         let current_tag = m.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0);
         let actual_i = if i == 8 && current_tag > 9 {
@@ -520,7 +584,6 @@ pub fn draw_tag_indicators(
             if occupied_tags & (1 << actual_i) == 0
                 && m.tagset[m.seltags as usize] & (1 << actual_i) == 0
             {
-                eprintln!("TRACE: draw_tag_indicators - skipping tag {}", i);
                 continue;
             }
         }
@@ -535,7 +598,6 @@ pub fn draw_tag_indicators(
         } else {
             ""
         };
-        eprintln!("TRACE: draw_tag_indicators - tag_name = '{}'", tag_name);
 
         let display_name = if show_alt_tag && (actual_i as usize) < tags_alt.len() {
             tags_alt[actual_i as usize]
@@ -543,54 +605,65 @@ pub fn draw_tag_indicators(
             tag_name
         };
 
-        eprintln!("TRACE: draw_tag_indicators - before text_width");
         let w = text_width(display_name);
-        eprintln!("TRACE: draw_tag_indicators - w = {}", w);
 
         if let Some(scheme) = get_tag_scheme(m, actual_i, occupied_tags, is_hover) {
-            eprintln!("TRACE: draw_tag_indicators - got scheme");
-            if let Some(ref drw) = g.drw {
-                let mut drw = drw.clone();
-                eprintln!("TRACE: draw_tag_indicators - before set_scheme");
-                drw.set_scheme(scheme);
-                eprintln!("TRACE: draw_tag_indicators - after set_scheme");
+            let x11 = crate::globals::get_x11();
+            if let Some(ref conn) = x11.conn {
+                // TEST: Use bright colors for tag indicators
+                let bg_color = 0x00FF00; // Bright green for tag background
+                let detail_color = 0x0000FF; // Blue for detail bar
 
                 let detail_height = if is_hover {
                     if bar_dragging {
-                        let schemes = &g.tagschemes;
-                        if schemes.len() > SchemeHover::Hover as usize {
-                            let hover_idx = SchemeHover::Hover as usize;
-                            if schemes[hover_idx].len() > SchemeTag::Filled as usize {
-                                drw.set_scheme(
-                                    schemes[hover_idx][SchemeTag::Filled as usize].clone(),
-                                );
-                            }
-                        }
+                        DETAIL_BAR_HEIGHT_HOVER
+                    } else {
+                        DETAIL_BAR_HEIGHT_HOVER
                     }
-                    DETAIL_BAR_HEIGHT_HOVER
                 } else {
                     DETAIL_BAR_HEIGHT_NORMAL
                 };
 
                 let is_urgent = urg & (1 << actual_i) != 0;
-                eprintln!("TRACE: draw_tag_indicators - before drw.text");
-                drw.text(
-                    x,
-                    0,
-                    w as u32,
-                    bh as u32,
-                    (lrpad / 2) as u32,
-                    display_name,
-                    is_urgent,
-                    detail_height,
+                let draw_bg = if is_urgent { 0xFFFF00 } else { bg_color }; // Yellow for urgent
+
+                // Draw background
+                let gc = conn.generate_id().unwrap();
+                let _ = conn.create_gc(
+                    barwin,
+                    gc,
+                    &x11rb::protocol::xproto::CreateGCAux::new().foreground(draw_bg),
                 );
-                eprintln!("TRACE: draw_tag_indicators - after drw.text");
+                let rects = [Rectangle {
+                    x: x as i16,
+                    y: 0,
+                    width: w as u16,
+                    height: bh as u16,
+                }];
+                let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+
+                // Draw detail bar at bottom
+                if detail_height > 0 {
+                    let _ = conn.create_gc(
+                        barwin,
+                        gc,
+                        &x11rb::protocol::xproto::CreateGCAux::new().foreground(detail_color),
+                    );
+                    let rects = [Rectangle {
+                        x: x as i16,
+                        y: (bh - detail_height) as i16,
+                        width: w as u16,
+                        height: detail_height as u16,
+                    }];
+                    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+                }
+
+                let _ = conn.flush();
             }
         }
 
         x += w;
     }
-    eprintln!("TRACE: draw_tag_indicators - END");
     x
 }
 
@@ -1021,32 +1094,35 @@ pub fn draw_bar(m: &mut MonitorInner) {
 
     m.bt = n;
     m.bar_clients_width = window_width;
-    eprintln!("DEBUG draw_bar: before drw.map, barwin={}", m.barwin);
 
-    if let Some(ref drw) = g.drw {
-        // Use x11rb to draw directly to the window (Xlib drawing to x11rb windows doesn't work)
-        let x11 = crate::globals::get_x11();
-        if let Some(ref conn) = x11.conn {
-            // Create a GC for the window with background color
-            let gc = conn.generate_id().unwrap();
-            let _ = conn.create_gc(
-                m.barwin,
-                gc,
-                &x11rb::protocol::xproto::CreateGCAux::new()
-                    .foreground(0x00121212)  // Dark background color #121212
-            );
-            
-            // Draw background rectangle covering the entire bar
-            use x11rb::protocol::xproto::Rectangle;
-            let rects = [Rectangle { x: 0, y: 0, width: m.ww as u16, height: bh as u16 }];
-            let _ = conn.poly_fill_rectangle(m.barwin, gc, &rects);
-            
-            let _ = conn.flush();
-        }
+    // Use x11rb to draw the final bar background with correct colors
+    let x11 = crate::globals::get_x11();
+    eprintln!("DEBUG draw_bar final: x11.conn.is_some={}", x11.conn.is_some());
+    if let Some(ref conn) = x11.conn {
+        // TEST: Use bright red background
+        let bg_color = 0xFF0000; // Bright red for testing
+        eprintln!("DEBUG draw_bar final: drawing red background, barwin={}, color={:#x}", m.barwin, bg_color);
+
+        let gc = conn.generate_id().unwrap();
+        let _ = conn.create_gc(
+            m.barwin,
+            gc,
+            &x11rb::protocol::xproto::CreateGCAux::new().foreground(bg_color),
+        );
+
+        // Draw background covering the entire bar
+        let rects = [Rectangle {
+            x: 0,
+            y: 0,
+            width: m.ww as u16,
+            height: bh as u16,
+        }];
+        let _ = conn.poly_fill_rectangle(m.barwin, gc, &rects);
+        eprintln!("DEBUG draw_bar final: poly_fill_rectangle done");
+        let _ = conn.flush();
     }
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
-    eprintln!("DEBUG draw_bar: END");
 }
 
 pub fn draw_bars() {
