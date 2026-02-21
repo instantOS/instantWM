@@ -138,6 +138,8 @@ pub fn configure_request(e: &ConfigureRequestEvent) {
     }
 }
 
+pub fn create_notify(_e: &CreateNotifyEvent) {}
+
 pub fn destroy_notify(e: &DestroyNotifyEvent) {
     if let Some(win) = win_to_client(e.window) {
         unmanage(win, true);
@@ -175,9 +177,12 @@ pub fn expose(e: &ExposeEvent) {
     }
 
     if let Some(mon_id) = win_to_mon(e.window) {
-        let mut globals = get_globals_mut();
-        if let Some(mon) = globals.monitors.get_mut(mon_id) {
-            draw_bar(mon);
+        let mon = {
+            let globals = get_globals();
+            globals.monitors.get(mon_id).cloned()
+        };
+        if let Some(mut mon) = mon {
+            draw_bar(&mut mon);
         }
     }
 }
@@ -220,7 +225,6 @@ pub fn mapping_notify(_e: &MappingNotifyEvent) {
 }
 
 pub fn map_request(e: &MapRequestEvent) {
-    eprintln!("TRACE: map_request window={}", e.window);
     if let Some(_icon) = win_to_systray_icon(e.window) {
         update_systray();
         return;
@@ -246,10 +250,6 @@ pub fn map_request(e: &MapRequestEvent) {
                                 )
                             })
                             .unwrap_or((0, 0, 800, 600, 1));
-                        eprintln!(
-                            "TRACE: map_request manage win={} geom=({},{} {}x{} bw={})",
-                            e.window, x, y, width, height, border_width
-                        );
                         crate::client::manage(e.window, x, y, width, height, border_width);
                     }
                 }
@@ -376,11 +376,6 @@ pub fn run() {
                 Err(_) => return,
             }
         };
-        let rt = event.response_type();
-        if rt == MAP_REQUEST_EVENT || rt == MAP_NOTIFY_EVENT {
-            eprintln!("TRACE: event response_type={}", rt);
-        }
-
         dispatch_event(event);
     }
 }
@@ -391,6 +386,7 @@ fn dispatch_event(event: x11rb::protocol::Event) {
         x11rb::protocol::Event::ClientMessage(e) => client_message(&e),
         x11rb::protocol::Event::ConfigureNotify(e) => configure_notify(&e),
         x11rb::protocol::Event::ConfigureRequest(e) => configure_request(&e),
+        x11rb::protocol::Event::CreateNotify(e) => create_notify(&e),
         x11rb::protocol::Event::DestroyNotify(e) => destroy_notify(&e),
         x11rb::protocol::Event::EnterNotify(e) => enter_notify(&e),
         x11rb::protocol::Event::Expose(e) => expose(&e),

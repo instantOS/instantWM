@@ -1224,7 +1224,6 @@ pub fn manage(
     wa_height: u32,
     wa_border_width: u32,
 ) {
-    eprintln!("TRACE: manage start win={}", w);
     let mut c = ClientInner::default();
     c.win = w;
     c.x = wa_x;
@@ -1414,7 +1413,6 @@ pub fn manage(
 
     attach(w);
     attach_stack(w);
-    eprintln!("TRACE: manage attached win={}", w);
 
     {
         let globals = get_globals();
@@ -1486,7 +1484,6 @@ pub fn manage(
             let _ = conn.flush();
         }
     }
-    eprintln!("TRACE: manage mapped/focused win={}", w);
 
     crate::focus::focus(None);
 
@@ -1517,7 +1514,6 @@ pub fn manage(
             }
         }
     }
-    eprintln!("TRACE: manage end win={}", w);
 }
 
 fn get_transient_for_hint(w: Window) -> Option<Window> {

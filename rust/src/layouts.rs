@@ -1165,8 +1165,6 @@ pub fn restack(m: &mut MonitorInner) {
         }
 
         let _ = conn.flush();
-
-        while let Ok(Some(_)) = conn.poll_for_event() {}
     }
 }
 
