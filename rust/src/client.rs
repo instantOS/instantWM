@@ -719,45 +719,56 @@ pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
 }
 
 pub fn update_title(win: Window) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
+    let name = read_window_title(win);
+    let mut globals = get_globals_mut();
+    if let Some(client) = globals.clients.get_mut(&win) {
+        client.name = name;
+    }
+}
 
-        let name = if let Ok(cookie) = conn.get_property(
-            false,
-            win,
-            globals.netatom[NetAtom::WMName as usize],
-            AtomEnum::STRING,
-            0,
-            256,
-        ) {
-            if let Ok(reply) = cookie.reply() {
-                let bytes: Vec<u8> = match reply.value8() {
-                    Some(iter) => iter.collect(),
-                    None => Vec::new(),
-                };
-                let mut name = [0u8; 256];
-                let len = bytes.len().min(255);
-                name[..len].copy_from_slice(&bytes[..len]);
-                name
-            } else {
-                [0u8; 256]
-            }
-        } else {
-            [0u8; 256]
+fn broken_title() -> [u8; 256] {
+    let mut title = [0u8; 256];
+    title[..BROKEN.len()].copy_from_slice(BROKEN);
+    title
+}
+
+fn read_window_title(win: Window) -> [u8; 256] {
+    let x11 = get_x11();
+    let Some(ref conn) = x11.conn else {
+        return broken_title();
+    };
+
+    let net_wm_name = get_globals().netatom[NetAtom::WMName as usize];
+    for atom in [net_wm_name, AtomEnum::WM_NAME.into()] {
+        if atom == 0 {
+            continue;
+        }
+
+        let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::ANY, 0, 1024) else {
+            continue;
+        };
+        let Ok(reply) = cookie.reply() else {
+            continue;
         };
 
-        drop(globals);
+        if reply.format != 8 || reply.value.is_empty() {
+            continue;
+        }
 
-        let mut globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            if name[0] == 0 {
-                client.name[..BROKEN.len()].copy_from_slice(BROKEN);
-            } else {
-                client.name = name;
-            }
+        let mut title = [0u8; 256];
+        let len = reply
+            .value
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(reply.value.len())
+            .min(255);
+        title[..len].copy_from_slice(&reply.value[..len]);
+        if title[0] != 0 {
+            return title;
         }
     }
+
+    broken_title()
 }
 
 pub fn apply_rules(win: Window) {
@@ -1235,8 +1246,7 @@ pub fn manage(
     c.h = wa_height as i32;
     c.oldh = wa_height as i32;
     c.old_border_width = wa_border_width as i32;
-
-    update_title(w);
+    c.name = read_window_title(w);
 
     let trans = get_transient_for_hint(w);
 

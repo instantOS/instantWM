@@ -1,6 +1,6 @@
 use crate::config::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 use crate::drw::{Clr, Drw, COL_BG, COL_DETAIL, COL_FG};
-use crate::globals::{get_globals, get_globals_mut};
+use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::systray::{get_systray_width, update_systray};
 use crate::types::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -57,8 +57,17 @@ fn cstr_from_buf(buf: &[u8]) -> &str {
     std::str::from_utf8(&buf[..end]).unwrap_or("")
 }
 
+fn layout_symbol(m: &MonitorInner) -> &str {
+    let symbol = cstr_from_buf(&m.ltsymbol);
+    if symbol.is_empty() {
+        "[]="
+    } else {
+        symbol
+    }
+}
+
 pub fn get_layout_symbol_width(m: &MonitorInner) -> i32 {
-    let ltsymbol = cstr_from_buf(&m.ltsymbol);
+    let ltsymbol = layout_symbol(m);
     text_width(ltsymbol) + get_lrpad()
 }
 
@@ -89,46 +98,61 @@ pub fn click_status(_arg: &Arg) {
 }
 
 pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
-    let stext_str = match std::str::from_utf8(stext) {
-        Ok(s) if !s.is_empty() && s.chars().next() != Some('\0') => s,
-        _ => return 0,
-    };
+    let nul_pos = stext.iter().position(|&b| b == 0).unwrap_or(stext.len());
+    if nul_pos == 0 {
+        return 0;
+    }
+    let bytes = &stext[..nul_pos];
 
-    let text = stext_str.to_string();
-    let mut is_code = false;
     let mut w: i32 = 0;
+    let mut i: usize = 0;
+    let mut seg_start: usize = 0;
 
-    let bytes = text.as_bytes();
-    let mut pos = 0;
-    while pos < bytes.len() {
-        if bytes[pos] == b'^' {
-            if !is_code {
-                is_code = true;
-                let segment = std::str::from_utf8(&bytes[..pos]).unwrap_or("");
-                w += (text_width(segment) - get_lrpad()).max(0);
-                pos += 1;
-                if pos < bytes.len() && bytes[pos] == b'f' {
-                    pos += 1;
-                    let mut num_end = pos;
-                    while num_end < bytes.len() && bytes[num_end].is_ascii_digit() {
-                        num_end += 1;
-                    }
-                    if num_end > pos {
-                        if let Ok(num) = std::str::from_utf8(&bytes[pos..num_end]) {
-                            if let Ok(val) = num.parse::<i32>() {
-                                w += val;
-                            }
-                        }
-                    }
+    while i < bytes.len() {
+        if bytes[i] != b'^' {
+            i += 1;
+            continue;
+        }
+
+        if i > seg_start {
+            let segment = std::str::from_utf8(&bytes[seg_start..i]).unwrap_or("");
+            w += (text_width(segment) - get_lrpad()).max(0);
+        }
+
+        i += 1;
+        if i >= bytes.len() {
+            break;
+        }
+
+        match bytes[i] {
+            b'f' => {
+                i += 1;
+                let offset = parse_next_number(&bytes[i..]);
+                w += offset;
+                while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'-') {
+                    i += 1;
                 }
-            } else {
-                is_code = false;
+            }
+            b'^' => {
+                w += (text_width("^") - get_lrpad()).max(0);
+                i += 1;
+            }
+            _ => {
+                i += 1;
             }
         }
-        pos += 1;
+
+        while i < bytes.len() && bytes[i] != b'^' {
+            i += 1;
+        }
+        if i < bytes.len() {
+            i += 1;
+        }
+        seg_start = i;
     }
-    if !is_code {
-        let segment = std::str::from_utf8(&bytes[pos.saturating_sub(1)..]).unwrap_or("");
+
+    if seg_start < bytes.len() {
+        let segment = std::str::from_utf8(&bytes[seg_start..]).unwrap_or("");
         w += (text_width(segment) - get_lrpad()).max(0);
     }
 
@@ -160,98 +184,120 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
 
     let mut cmd_counter: i32 = 0;
     let mut custom_color = false;
-    let mut text_pos = 0;
-    is_code = false;
+    i = 0;
+    seg_start = 0;
 
-    while text_pos < bytes.len() {
-        if bytes[text_pos] == b'^' && !is_code {
-            is_code = true;
+    while i < bytes.len() {
+        if bytes[i] != b'^' {
+            i += 1;
+            continue;
+        }
 
-            let segment = std::str::from_utf8(&bytes[..text_pos]).unwrap_or("");
+        if i > seg_start {
+            let segment = std::str::from_utf8(&bytes[seg_start..i]).unwrap_or("");
             let seg_w = (text_width(segment) - get_lrpad()).max(0);
-
             if seg_w > 0 {
                 draw_text_at(x, 0, seg_w as u32, bh as u32, 0, segment, false, 0);
             }
             x += seg_w;
-            text_pos += 1;
+        }
 
-            while text_pos < bytes.len() && bytes[text_pos] != b'^' {
-                match bytes[text_pos] {
-                    b'c' => {
-                        text_pos += 1;
-                        if text_pos + 6 < bytes.len() {
-                            let color = std::str::from_utf8(&bytes[text_pos..text_pos + 7]);
-                            if let Ok(color_str) = color {
-                                custom_color = true;
-                                set_bg_color(color_str);
-                            }
-                            text_pos += 7;
-                        }
-                    }
-                    b't' => {
-                        text_pos += 1;
-                        if text_pos + 6 < bytes.len() {
-                            let color = std::str::from_utf8(&bytes[text_pos..text_pos + 7]);
-                            if let Ok(color_str) = color {
-                                custom_color = true;
-                                set_fg_color(color_str);
-                            }
-                            text_pos += 7;
-                        }
-                    }
-                    b'd' => {
-                        reset_status_colors();
-                        text_pos += 1;
-                    }
-                    b'r' => {
-                        text_pos += 1;
-                        let rx = parse_next_number(&bytes[text_pos..]);
-                        while text_pos < bytes.len() && bytes[text_pos] != b',' {
-                            text_pos += 1;
-                        }
-                        text_pos += 1;
-                        let ry = parse_next_number(&bytes[text_pos..]);
-                        while text_pos < bytes.len() && bytes[text_pos] != b',' {
-                            text_pos += 1;
-                        }
-                        text_pos += 1;
-                        let rw = parse_next_number(&bytes[text_pos..]);
-                        while text_pos < bytes.len() && bytes[text_pos] != b',' {
-                            text_pos += 1;
-                        }
-                        text_pos += 1;
-                        let rh = parse_next_number(&bytes[text_pos..]);
+        i += 1;
+        if i >= bytes.len() {
+            break;
+        }
 
-                        draw_rect_at(rx + x, ry, rw as u32, rh as u32, true, false);
+        if bytes[i] == b'^' {
+            let seg_w = (text_width("^") - get_lrpad()).max(0);
+            if seg_w > 0 {
+                draw_text_at(x, 0, seg_w as u32, bh as u32, 0, "^", false, 0);
+            }
+            x += seg_w;
+            i += 1;
+            seg_start = i;
+            continue;
+        }
+
+        match bytes[i] {
+            b'c' => {
+                i += 1;
+                if i + 6 < bytes.len() {
+                    if let Ok(color_str) = std::str::from_utf8(&bytes[i..i + 7]) {
+                        custom_color = true;
+                        set_bg_color(color_str);
                     }
-                    b'f' => {
-                        text_pos += 1;
-                        let offset = parse_next_number(&bytes[text_pos..]);
-                        x += offset;
-                    }
-                    b'o' => {
-                        if cmd_counter <= 20 {
-                            unsafe {
-                                COMMANDOFFSETS[cmd_counter as usize] = x;
-                            }
-                            cmd_counter += 1;
-                        }
-                        text_pos += 1;
-                    }
-                    _ => {
-                        text_pos += 1;
-                    }
+                    i += 7;
                 }
             }
-
-            if text_pos < bytes.len() {
-                text_pos += 1;
+            b't' => {
+                i += 1;
+                if i + 6 < bytes.len() {
+                    if let Ok(color_str) = std::str::from_utf8(&bytes[i..i + 7]) {
+                        custom_color = true;
+                        set_fg_color(color_str);
+                    }
+                    i += 7;
+                }
             }
-            is_code = false;
-        } else {
-            text_pos += 1;
+            b'd' => {
+                reset_status_colors();
+                i += 1;
+            }
+            b'r' => {
+                i += 1;
+                let rx = parse_next_number(&bytes[i..]);
+                while i < bytes.len() && bytes[i] != b',' {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+                let ry = parse_next_number(&bytes[i..]);
+                while i < bytes.len() && bytes[i] != b',' {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+                let rw = parse_next_number(&bytes[i..]);
+                while i < bytes.len() && bytes[i] != b',' {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+                let rh = parse_next_number(&bytes[i..]);
+                draw_rect_at(rx + x, ry, rw as u32, rh as u32, true, false);
+            }
+            b'f' => {
+                i += 1;
+                let offset = parse_next_number(&bytes[i..]);
+                x += offset;
+                while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'-') {
+                    i += 1;
+                }
+            }
+            b'o' => {
+                if cmd_counter <= 20 {
+                    unsafe {
+                        COMMANDOFFSETS[cmd_counter as usize] = x;
+                    }
+                    cmd_counter += 1;
+                }
+                i += 1;
+            }
+            _ => {
+                i += 1;
+            }
         }
+
+        while i < bytes.len() && bytes[i] != b'^' {
+            i += 1;
+        }
+        if i < bytes.len() {
+            i += 1;
+        }
+        seg_start = i;
     }
 
     if custom_color {
@@ -270,8 +316,8 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
         }
     }
 
-    if !is_code {
-        let remaining = std::str::from_utf8(&bytes[text_pos.saturating_sub(1)..]).unwrap_or("");
+    if seg_start < bytes.len() {
+        let remaining = std::str::from_utf8(&bytes[seg_start..]).unwrap_or("");
         let seg_w = (text_width(remaining) - get_lrpad()).max(0);
         if seg_w > 0 {
             draw_text_at(x, 0, seg_w as u32, bh as u32, 0, remaining, false, 0);
@@ -619,7 +665,7 @@ pub fn draw_tag_indicators(
 pub fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i32 {
     let g = get_globals();
     let lrpad = g.lrpad;
-    let ltsymbol = cstr_from_buf(&m.ltsymbol);
+    let ltsymbol = layout_symbol(m);
     let text_w = text_width(ltsymbol);
     let w = (text_w + lrpad).max(lrpad);
     let lpad = ((w - text_w) / 2).max(0) as u32;
@@ -915,12 +961,7 @@ pub fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, bh: i32)
 
 pub fn draw_bar(m: &mut MonitorInner) {
     let count = DRAW_BAR_RECURSION.fetch_add(1, Ordering::SeqCst);
-    eprintln!("TRACE: draw_bar - recursion count = {}", count + 1);
     if count > 50 {
-        eprintln!(
-            "ERROR: draw_bar infinite recursion detected! Count = {}",
-            count + 1
-        );
         std::process::abort();
     }
 
@@ -950,53 +991,26 @@ pub fn draw_bar(m: &mut MonitorInner) {
     let g = get_globals();
     let bh = g.bh;
     let showsystray = g.showsystray;
-
-    eprintln!(
-        "DEBUG draw_bar: m.barwin={}, m.ww={}, m.wx={}, m.by={}, bh={}",
-        m.barwin, m.ww, m.wx, m.by, bh
-    );
-    eprintln!("DEBUG draw_bar: g.drw.is_some={}", g.drw.is_some());
-    if let Some(ref drw) = g.drw {
-        eprintln!(
-            "DEBUG draw_bar: drw.w={}, drw.h={}, drw.drawable={}",
-            drw.w,
-            drw.h,
-            drw.drawable()
-        );
-    }
+    let is_selmon = g
+        .selmon
+        .and_then(|selmon_idx| g.monitors.get(selmon_idx))
+        .map_or(false, |selmon| selmon.num == m.num);
 
     let mut stw: i32 = 0;
-    if showsystray {
-        if let Some(selmon_idx) = g.selmon {
-            if g.monitors
-                .get(selmon_idx)
-                .map_or(false, |selmon| std::ptr::eq(selmon, m))
-            {
-                stw = get_systray_width() as i32;
-            }
-        }
+    if showsystray && is_selmon {
+        stw = get_systray_width() as i32;
     }
 
     let stext = g.stext.clone();
-    let stext_str = unsafe { std::str::from_utf8_unchecked(&stext) };
 
     let mut sw: i32 = 0;
-    if let Some(selmon_idx) = g.selmon {
-        if g.monitors
-            .get(selmon_idx)
-            .map_or(false, |selmon| std::ptr::eq(selmon, m))
-        {
-            sw = m.ww - stw - draw_status_bar(m, bh, &stext);
-        }
+    if is_selmon {
+        sw = m.ww - stw - draw_status_bar(m, bh, &stext);
     }
 
-    eprintln!("TRACE: draw_bar - before draw_startmenu_icon");
     draw_startmenu_icon(bh);
-    eprintln!("TRACE: draw_bar - before resize_bar_win");
     resize_bar_win(m);
-    eprintln!("TRACE: draw_bar - after resize_bar_win");
 
-    eprintln!("TRACE: draw_bar - before client loop");
     let mut occupied_tags: u32 = 0;
     let mut urg: u32 = 0;
     let mut n: i32 = 0;
@@ -1022,24 +1036,16 @@ pub fn draw_bar(m: &mut MonitorInner) {
             }
         }
     }
-    eprintln!("TRACE: draw_bar - after client loop");
 
     let startmenu_size = g.startmenusize as i32;
     let mut x = startmenu_size;
-    eprintln!("TRACE: draw_bar - before draw_tag_indicators");
     x = draw_tag_indicators(m, x, occupied_tags, urg, bh);
-    eprintln!("TRACE: draw_bar - after draw_tag_indicators, before draw_layout_indicator");
     x = draw_layout_indicator(m, x, bh);
-    eprintln!("TRACE: draw_bar - after draw_layout_indicator");
 
     let window_width = (m.ww - sw - x - stw).max(0);
     if window_width > bh {
-        eprintln!("TRACE: draw_bar - before draw_window_titles");
         draw_window_titles(m, x, window_width, n, bh);
-        eprintln!("TRACE: draw_bar - after draw_window_titles");
     }
-
-    eprintln!("TRACE: draw_bar - before final block");
 
     m.bt = n;
     m.bar_clients_width = window_width;
@@ -1104,23 +1110,17 @@ pub fn reset_bar() {
 fn reset_cursor() {}
 
 pub fn update_status() {
-    eprintln!("TRACE: update_status - start");
-    let (root, selmon_idx, monitors) = {
+    let (root, selmon_idx) = {
         let g = get_globals();
         let root = g.root;
         let selmon_idx = g.selmon;
-        let monitors = g.monitors.clone();
-        (root, selmon_idx, monitors)
-    }; // Read lock released here
-    eprintln!("TRACE: update_status - after getting initial data");
+        (root, selmon_idx)
+    };
 
     let text = get_text_prop(root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
-    eprintln!("TRACE: update_status - after get_text_prop");
 
     {
-        eprintln!("TRACE: update_status - before get_globals_mut");
         let mut g = get_globals_mut();
-        eprintln!("TRACE: update_status - after get_globals_mut");
         match text {
             Some(t) => {
                 if t.starts_with("ipc:") {
@@ -1142,17 +1142,32 @@ pub fn update_status() {
     } // Write lock released here
 
     if let Some(selmon_idx) = selmon_idx {
-        if let Some(m) = monitors.get(selmon_idx) {
-            let mut m = m.clone();
-            draw_bar(&mut m);
+        let mut g = get_globals_mut();
+        if let Some(m) = g.monitors.get_mut(selmon_idx) {
+            draw_bar(m);
         }
     }
 
     update_systray();
 }
 
-fn get_text_prop(_win: Window, _atom: u32) -> Option<String> {
-    None
+fn get_text_prop(win: Window, atom: u32) -> Option<String> {
+    let x11 = get_x11();
+    let conn = x11.conn.as_ref()?;
+    let reply = conn
+        .get_property(false, win, atom, x11rb::protocol::xproto::AtomEnum::ANY, 0, 4096)
+        .ok()?
+        .reply()
+        .ok()?;
+    if reply.format != 8 || reply.value.is_empty() {
+        return None;
+    }
+    let nul_pos = reply
+        .value
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(reply.value.len());
+    String::from_utf8(reply.value[..nul_pos].to_vec()).ok()
 }
 
 pub fn update_bar_pos(m: &mut MonitorInner) {
@@ -1228,32 +1243,17 @@ pub fn resize_bar_win(m: &MonitorInner) {
 }
 
 pub fn update_bars() {
-    eprintln!("DEBUG update_bars: START");
-    let (bh, showsystray, bar_configs, xlibdisplay, root) = {
+    let (bar_configs, xlibdisplay, root, status_bg) = {
         let g = get_globals();
         let bh = g.bh;
         let showsystray = g.showsystray;
+        let status_bg = parse_color_to_u32(g.statusbarcolors.get(1).copied().unwrap_or("#121212"));
         let xlibdisplay = g.xlibdisplay.0;
         let root = g.root;
 
-        eprintln!(
-            "DEBUG update_bars: monitors.len={}, xlibdisplay={:p}, root={}",
-            g.monitors.len(),
-            xlibdisplay,
-            root
-        );
-
         let mut bar_configs = Vec::new();
         for (i, m) in g.monitors.iter().enumerate() {
-            eprintln!(
-                "DEBUG update_bars: monitor {} barwin={}, showbar={}",
-                i, m.barwin, m.showbar
-            );
             if m.barwin != 0 {
-                eprintln!(
-                    "DEBUG update_bars: skipping monitor {} - barwin already set",
-                    i
-                );
                 continue;
             }
 
@@ -1265,20 +1265,11 @@ pub fn update_bars() {
                     }
                 }
             }
-            eprintln!(
-                "DEBUG update_bars: adding bar config for monitor {}: wx={}, by={}, w={}, bh={}",
-                i, m.wx, m.by, w, bh
-            );
             bar_configs.push((i, m.wx, m.by, w, bh));
         }
-        eprintln!("DEBUG update_bars: bar_configs.len={}", bar_configs.len());
-        (bh, showsystray, bar_configs, xlibdisplay, root)
+        (bar_configs, xlibdisplay, root, status_bg)
     };
 
-    eprintln!(
-        "DEBUG update_bars: xlibdisplay.is_null={}",
-        xlibdisplay.is_null()
-    );
     if xlibdisplay.is_null() {
         return;
     }
@@ -1287,16 +1278,11 @@ pub fn update_bars() {
     let x11 = crate::globals::get_x11();
     if let Some(ref conn) = x11.conn {
         for (i, wx, by, w, bh) in bar_configs {
-            eprintln!(
-                "DEBUG update_bars: creating window for monitor {}: wx={}, by={}, w={}, bh={}",
-                i, wx, by, w, bh
-            );
-
             let win_id = conn.generate_id().unwrap();
 
             let aux = x11rb::protocol::xproto::CreateWindowAux::new()
                 .override_redirect(1) // Don't manage our own bar!
-                .background_pixel(0xFF0000) // TEST: Red background
+                .background_pixel(status_bg)
                 .event_mask(
                     x11rb::protocol::xproto::EventMask::BUTTON_PRESS
                         | x11rb::protocol::xproto::EventMask::EXPOSURE
@@ -1320,17 +1306,10 @@ pub fn update_bars() {
             let _ = conn.map_window(win_id);
             let _ = conn.flush();
 
-            eprintln!(
-                "DEBUG update_bars: x11rb created and mapped win_id={}",
-                win_id
-            );
-
             let mut globals_mut = crate::globals::get_globals_mut();
             globals_mut.monitors[i].barwin = win_id;
-            eprintln!("DEBUG update_bars: stored barwin={} in globals", win_id);
         }
     }
-    eprintln!("DEBUG update_bars: END");
 }
 
 pub fn toggle_bar(_arg: &Arg) {

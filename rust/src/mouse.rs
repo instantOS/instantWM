@@ -1367,6 +1367,10 @@ pub fn drag_tag(arg: &Arg) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
+        let selmon_id = globals.selmon;
+        let mon_mx = selmon_id
+            .and_then(|id| globals.monitors.get(id).map(|m| m.mx))
+            .unwrap_or(0);
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
         if conn
@@ -1383,6 +1387,14 @@ pub fn drag_tag(arg: &Arg) {
             .is_err()
         {
             return;
+        }
+
+        if let Some(id) = selmon_id {
+            let mut gm = get_globals_mut();
+            gm.bar_dragging = true;
+            if let Some(mon) = gm.monitors.get_mut(id) {
+                draw_bar(mon);
+            }
         }
 
         let mut cursor_on_bar = true;
@@ -1422,9 +1434,22 @@ pub fn drag_tag(arg: &Arg) {
                                 break;
                             }
 
-                            let tag_x = get_tag_at_x(m.event_x as i32);
+                            let local_x = m.event_x as i32 - mon_mx;
+                            let tag_x = if local_x >= 0 {
+                                get_tag_at_x(local_x)
+                            } else {
+                                -1
+                            };
                             if last_tag != tag_x {
                                 last_tag = tag_x;
+                                if let Some(sel_mon_id) = selmon_id {
+                                    let mut gm = get_globals_mut();
+                                    if let Some(mon) = gm.monitors.get_mut(sel_mon_id) {
+                                        mon.gesture = Gesture::from_tag_index(tag_x as usize)
+                                            .unwrap_or(Gesture::None);
+                                        draw_bar(mon);
+                                    }
+                                }
                             }
                         }
                     }
@@ -1439,27 +1464,38 @@ pub fn drag_tag(arg: &Arg) {
         if cursor_on_bar {
             if let Some((x, _, state)) = last_motion {
                 let globals = get_globals();
-                if x < globals
-                    .monitors
-                    .get(globals.selmon.unwrap())
-                    .map(|m| m.mx)
-                    .unwrap_or(0)
-                    + tagwidth
-                {
-                    let tag_idx = get_tag_at_x(x);
+                let mon_x = globals
+                    .selmon
+                    .and_then(|id| globals.monitors.get(id).map(|m| m.mx))
+                    .unwrap_or(0);
+                let local_x = x - mon_x;
+
+                if local_x >= 0 && local_x < tagwidth {
+                    let tag_idx = get_tag_at_x(local_x);
                     if tag_idx >= 0 {
                         let tag_arg = Arg {
-                            ui: 1 << tag_idx,
+                            ui: 1u32 << (tag_idx as u32),
                             ..Default::default()
                         };
                         if (state as u32 & (ModMask::SHIFT.bits() as u32)) != 0 {
-                            follow_tag(&tag_arg);
+                            tag(&tag_arg);
                         } else if (state as u32 & (ModMask::CONTROL.bits() as u32)) != 0 {
                             tag_all(&tag_arg);
                         } else {
-                            tag(&tag_arg);
+                            follow_tag(&tag_arg);
                         }
                     }
+                }
+            }
+        }
+
+        {
+            let mut gm = get_globals_mut();
+            gm.bar_dragging = false;
+            if let Some(sel_mon_id) = gm.selmon {
+                if let Some(mon) = gm.monitors.get_mut(sel_mon_id) {
+                    mon.gesture = Gesture::None;
+                    draw_bar(mon);
                 }
             }
         }
