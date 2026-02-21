@@ -1263,48 +1263,41 @@ pub fn update_bars() {
         return;
     }
 
-    for (i, wx, by, w, bh) in bar_configs {
-        eprintln!(
-            "DEBUG update_bars: creating window for monitor {}: wx={}, by={}, w={}, bh={}",
-            i, wx, by, w, bh
-        );
-        unsafe {
-            use crate::drw::{XCreateSimpleWindow, XFlush, XMapWindow, XSelectInput, XSync};
-
-            eprintln!(
-                "DEBUG update_bars: calling XCreateSimpleWindow with root={}",
-                root
-            );
-            // Create a simple window first
-            let win_id = XCreateSimpleWindow(
-                xlibdisplay,
-                root,
-                wx as i32,
-                by as i32,
-                w,
-                bh as u32,
-                0,
-                0,
-                0,
-            );
-            eprintln!(
-                "DEBUG update_bars: XCreateSimpleWindow returned win_id={}",
-                win_id
-            );
-
-            // Set event mask
-            XSelectInput(
-                xlibdisplay,
+    // Use x11rb to create windows with proper attributes
+    let x11 = crate::globals::get_x11();
+    if let Some(ref conn) = x11.conn {
+        for (i, wx, by, w, bh) in bar_configs {
+            eprintln!("DEBUG update_bars: creating window for monitor {}: wx={}, by={}, w={}, bh={}", i, wx, by, w, bh);
+            
+            let win_id = conn.generate_id().unwrap();
+            
+            let aux = x11rb::protocol::xproto::CreateWindowAux::new()
+                .override_redirect(1)  // Don't manage our own bar!
+                .background_pixmap(1)  // PARENT_RELATIVE
+                .event_mask(
+                    x11rb::protocol::xproto::EventMask::BUTTON_PRESS
+                        | x11rb::protocol::xproto::EventMask::EXPOSURE
+                        | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
+                );
+            
+            let _ = conn.create_window(
+                x11rb::COPY_FROM_PARENT as u8,
                 win_id,
-                ((1 << 2) | (1 << 15) | (1 << 16)) as i64,
+                root,
+                wx as i16,
+                by as i16,
+                w as u16,
+                bh as u16,
+                0,
+                x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
+                x11rb::COPY_FROM_PARENT as u32,
+                &aux,
             );
-            eprintln!("DEBUG update_bars: XSelectInput done");
-
-            XMapWindow(xlibdisplay, win_id);
-            eprintln!("DEBUG update_bars: XMapWindow done");
-            XSync(xlibdisplay, 0);
-            XFlush(xlibdisplay);
-            eprintln!("DEBUG update_bars: XSync/XFlush done");
+            
+            let _ = conn.map_window(win_id);
+            let _ = conn.flush();
+            
+            eprintln!("DEBUG update_bars: x11rb created and mapped win_id={}", win_id);
 
             let mut globals_mut = crate::globals::get_globals_mut();
             globals_mut.monitors[i].barwin = win_id;

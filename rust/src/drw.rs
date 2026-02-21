@@ -106,6 +106,58 @@ pub const FC_SCALABLE: &[u8] = b"scalable\0";
 pub const FcMatchPattern: c_int = 1;
 pub const FcTrue: FcBool = 1;
 
+#[repr(C)]
+pub struct XWindowAttributes {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub border_width: u32,
+    pub depth: u32,
+    pub visual: *mut libc::c_void,
+    pub root: Window,
+    pub c_class: u8,
+    pub bit_gravity: u8,
+    pub win_gravity: u8,
+    pub backing_store: i32,
+    pub backing_planes: u64,
+    pub backing_pixel: u64,
+    pub save_under: u8,
+    pub colormap: u64,
+    pub map_installed: u8,
+    pub map_state: u8,
+    pub all_event_masks: i64,
+    pub your_event_mask: i64,
+    pub do_not_propagate_mask: u16,
+    pub override_redirect: u8,
+    pub screen: *mut libc::c_void,
+}
+
+#[repr(C)]
+pub struct XSetWindowAttributes {
+    pub background_pixmap: u64,    // Pixmap
+    pub background_pixel: u64,     // unsigned long
+    pub border_pixmap: u64,        // Pixmap
+    pub border_pixel: u64,         // unsigned long
+    pub bit_gravity: u32,          // int
+    pub win_gravity: u32,          // int
+    pub backing_store: u32,        // int
+    pub backing_planes: u64,       // unsigned long
+    pub backing_pixel: u64,        // unsigned long
+    pub save_under: u32,           // int
+    pub event_mask: u64,           // long
+    pub do_not_propagate_mask: u32, // int
+    pub override_redirect: u32,    // int
+    pub colormap: u64,             // Colormap
+    pub cursor: u64,               // Cursor
+}
+
+impl Default for XSetWindowAttributes {
+    fn default() -> Self {
+        unsafe { std::mem::zeroed() }
+    }
+}
+
 #[link(name = "X11")]
 extern "C" {
     pub fn XOpenDisplay(name: *const c_char) -> *mut libc::c_void;
@@ -227,6 +279,7 @@ extern "C" {
         values: *mut libc::c_void,
     );
     pub fn XSelectInput(display: *mut libc::c_void, w: Window, event_mask: i64);
+    pub fn XGetWindowAttributes(display: *mut libc::c_void, w: Window, attrs: *mut XWindowAttributes) -> i32;
     pub fn XCreateSimpleWindow(
         display: *mut libc::c_void,
         parent: Window,
@@ -457,17 +510,32 @@ impl Drw {
             FcInit();
             XftInit();
         }
-        let display = unsafe {
-            let name_ptr = display_name
-                .and_then(|s| CString::new(s).ok())
-                .map(|cs| cs.as_ptr())
-                .unwrap_or(ptr::null());
-            XOpenDisplay(name_ptr)
-        };
+        
+        // Use DISPLAY environment variable explicitly
+        let display_name_str = display_name
+            .map(|s| s.to_string())
+            .or_else(|| std::env::var("DISPLAY").ok());
+        
+        eprintln!("DEBUG Drw::new: display_name_str={:?}", display_name_str);
+        
+        // Keep the CString alive for the duration of XOpenDisplay call
+        let display_name_cstring = display_name_str
+            .as_ref()
+            .and_then(|s| CString::new(s.as_str()).ok());
+        let name_ptr = display_name_cstring
+            .as_ref()
+            .map(|cs| cs.as_ptr())
+            .unwrap_or(ptr::null());
+        
+        eprintln!("DEBUG Drw::new: opening X display with name_ptr={:p}", name_ptr);
+        let display = unsafe { XOpenDisplay(name_ptr) };
+        eprintln!("DEBUG Drw::new: XOpenDisplay returned {:p}", display);
 
         if display.is_null() {
             return Err("cannot open display".to_string());
         }
+        
+        eprintln!("DEBUG Drw::new: display opened successfully");
 
         unsafe {
             let screen = XDefaultScreen(display);
