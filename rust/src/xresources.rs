@@ -186,11 +186,11 @@ fn load_color_resources(resource_str: &str) {
                 );
 
                 if let Some(value) = find_resource(resource_str, &propname) {
-                    if i < globals.tagcolors.len()
-                        && u < globals.tagcolors[i].len()
-                        && q < globals.tagcolors[i][u].len()
+                    if i < globals.tags.colors.len()
+                        && u < globals.tags.colors[i].len()
+                        && q < globals.tags.colors[i][u].len()
                     {
-                        globals.tagcolors[i][u][q] = Box::leak(value.into_boxed_str());
+                        globals.tags.colors[i][u][q] = Box::leak(value.into_boxed_str());
                     }
                 }
             }
@@ -245,8 +245,8 @@ fn load_tag_resources(resource_str: &str) {
         if let Some(value) = find_resource(resource_str, &propname) {
             let bytes = value.as_bytes();
             let len = bytes.len().min(15);
-            globals.tags[i][..len].copy_from_slice(&bytes[..len]);
-            globals.tags[i][len] = 0;
+            globals.tags.names[i][..len].copy_from_slice(&bytes[..len]);
+            globals.tags.names[i][len] = 0;
         }
     }
 }
@@ -273,14 +273,14 @@ pub fn verify_tags_xres() {
     let mut globals = get_globals_mut();
 
     for i in 0..9 {
-        let len = globals.tags[i]
+        let len = globals.tags.names[i]
             .iter()
             .position(|&b| b == 0)
-            .unwrap_or(globals.tags[i].len());
+            .unwrap_or(globals.tags.names[i].len());
         if len > MAX_TAGLEN - 1 || len == 0 {
             let err = b"Xres err";
-            globals.tags[i][..err.len()].copy_from_slice(err);
-            globals.tags[i][err.len()] = 0;
+            globals.tags.names[i][..err.len()].copy_from_slice(err);
+            globals.tags.names[i][err.len()] = 0;
         }
     }
 }
