@@ -120,7 +120,9 @@ fn main() {
     load_xresources();
 
     eprintln!("TRACE: setup");
+    eprintln!("TRACE: setup - calling setup function");
     setup(screen_num, root, &screen);
+    eprintln!("TRACE: setup - returned from setup");
 
     eprintln!("TRACE: scan");
     scan();
@@ -198,23 +200,29 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
 }
 
 fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
+    eprintln!("TRACE: setup - before setup_signal_handlers");
     setup_signal_handlers();
+    eprintln!("TRACE: setup - after setup_signal_handlers");
 
     while unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) } > 0 {}
 
+    eprintln!("TRACE: setup - before Drw::new");
     let mut drw = match Drw::new(None) {
         Ok(d) => d,
         Err(_) => die("instantwm: cannot create drawing context"),
     };
+    eprintln!("TRACE: setup - after Drw::new");
 
     let fonts: Vec<&str> = {
         let g = get_globals();
         g.fonts.clone()
     };
 
+    eprintln!("TRACE: setup - before fontset_create");
     if drw.fontset_create(&fonts).is_err() {
         die("no fonts could be loaded.");
     }
+    eprintln!("TRACE: setup - after fontset_create");
 
     let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
 
@@ -237,9 +245,13 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         init_atoms(conn);
     }
 
+    eprintln!("TRACE: setup - before init_cursors");
     init_cursors(&drw);
+    eprintln!("TRACE: setup - after init_cursors");
 
+    eprintln!("TRACE: setup - before init_schemes");
     init_schemes(&drw);
+    eprintln!("TRACE: setup - after init_schemes");
 
     {
         let mut globals = get_globals_mut();
@@ -248,13 +260,19 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         globals.lrpad = font_height as i32;
     }
 
+    eprintln!("TRACE: setup - before update_geom");
     update_geom();
+    eprintln!("TRACE: setup - after update_geom");
 
     verify_tags_xres();
 
+    eprintln!("TRACE: setup - before update_bars");
     update_bars();
+    eprintln!("TRACE: setup - after update_bars");
 
+    eprintln!("TRACE: setup - before update_status");
     update_status();
+    eprintln!("TRACE: setup - after update_status");
 
     {
         let x11 = get_x11();
@@ -295,9 +313,13 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         let _ = conn.flush();
     }
 
+    eprintln!("TRACE: setup - before grab_keys");
     grab_keys();
+    eprintln!("TRACE: setup - after grab_keys");
 
+    eprintln!("TRACE: setup - before focus");
     focus(None);
+    eprintln!("TRACE: setup - after focus");
 }
 
 fn setup_signal_handlers() {

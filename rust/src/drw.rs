@@ -3,7 +3,7 @@ use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use x11rb::protocol::xproto::{Drawable, Gcontext, Point, Window};
+use x11rb::protocol::xproto::{Drawable, Point, Window};
 
 use crate::util::{between, die, min};
 
@@ -98,6 +98,7 @@ pub struct FcCharSet {
 pub type FcBool = c_int;
 pub type FcResult = c_int;
 pub type XftResult = c_int;
+pub type XlibGc = *mut libc::c_void;
 
 pub const FC_CHARSET: &[u8] = b"charset\0";
 pub const FC_SCALABLE: &[u8] = b"scalable\0";
@@ -127,13 +128,13 @@ extern "C" {
         d: Drawable,
         valuemask: c_ulong,
         values: *mut libc::c_void,
-    ) -> Gcontext;
-    pub fn XFreeGC(display: *mut libc::c_void, gc: Gcontext);
-    pub fn XSetForeground(display: *mut libc::c_void, gc: Gcontext, foreground: c_ulong);
+    ) -> XlibGc;
+    pub fn XFreeGC(display: *mut libc::c_void, gc: XlibGc);
+    pub fn XSetForeground(display: *mut libc::c_void, gc: XlibGc, foreground: c_ulong);
     pub fn XFillRectangle(
         display: *mut libc::c_void,
         d: Drawable,
-        gc: Gcontext,
+        gc: XlibGc,
         x: c_int,
         y: c_int,
         width: u32,
@@ -207,6 +208,7 @@ extern "C" {
 
 #[link(name = "Xft")]
 extern "C" {
+    pub fn XftInit() -> c_int;
     pub fn XftFontOpenName(
         display: *mut libc::c_void,
         screen: c_int,
@@ -255,6 +257,7 @@ extern "C" {
 
 #[link(name = "fontconfig")]
 extern "C" {
+    pub fn FcInit() -> FcBool;
     pub fn FcNameParse(name: *const u8) -> *mut FcPattern;
     pub fn FcPatternDuplicate(pattern: *mut FcPattern) -> *mut FcPattern;
     pub fn FcPatternDestroy(pattern: *mut FcPattern);
@@ -410,6 +413,15 @@ unsafe impl Sync for Drw {}
 
 impl Drw {
     pub fn new(display_name: Option<&str>) -> Result<Self, String> {
+        eprintln!("TRACE: Drw::new - before FcInit");
+        unsafe {
+            FcInit();
+        }
+        eprintln!("TRACE: Drw::new - after FcInit, before XftInit");
+        unsafe {
+            XftInit();
+        }
+        eprintln!("TRACE: Drw::new - after XftInit, before XOpenDisplay");
         let display = unsafe {
             let name_ptr = display_name
                 .and_then(|s| CString::new(s).ok())
@@ -421,20 +433,67 @@ impl Drw {
         if display.is_null() {
             return Err("cannot open display".to_string());
         }
+        eprintln!("TRACE: Drw::new - after XOpenDisplay");
 
+        eprintln!("TRACE: Drw::new - entering unsafe block");
         unsafe {
+            eprintln!("TRACE: Drw::new - before XDefaultScreen");
             let screen = XDefaultScreen(display);
+            eprintln!("TRACE: Drw::new - screen = {}", screen);
             let root = XDefaultRootWindow(display);
+            eprintln!("TRACE: Drw::new - root = {}", root);
+            if root == 0 {
+                XCloseDisplay(display);
+                return Err("cannot get root window".to_string());
+            }
+
+            eprintln!("TRACE: Drw::new - before XDefaultVisual");
             let visual = XDefaultVisual(display, screen);
+            eprintln!("TRACE: Drw::new - visual = {:p}", visual);
+            if visual.is_null() {
+                XCloseDisplay(display);
+                return Err("cannot get default visual".to_string());
+            }
+
+            eprintln!("TRACE: Drw::new - before XDefaultColormap");
             let colormap = XDefaultColormap(display, screen);
+            eprintln!("TRACE: Drw::new - colormap = {}", colormap);
+            if colormap == 0 {
+                XCloseDisplay(display);
+                return Err("cannot get default colormap".to_string());
+            }
+
+            eprintln!("TRACE: Drw::new - before XDefaultDepth");
             let depth = XDefaultDepth(display, screen);
+            eprintln!("TRACE: Drw::new - depth = {}", depth);
+            if depth <= 0 {
+                XCloseDisplay(display);
+                return Err("cannot get default depth".to_string());
+            }
 
             let w = 1;
             let h = 1;
 
+            eprintln!("TRACE: Drw::new - before XCreatePixmap");
             let drawable = XCreatePixmap(display, root, w, h, depth as u32);
+            eprintln!("TRACE: Drw::new - drawable = {}", drawable);
+            if drawable == 0 {
+                XCloseDisplay(display);
+                return Err("cannot create pixmap".to_string());
+            }
+
+            eprintln!("TRACE: Drw::new - before XCreateGC");
             let gc = XCreateGC(display, root, 0, ptr::null_mut());
+            eprintln!("TRACE: Drw::new - gc = {}", gc);
+            if gc == 0 {
+                XFreePixmap(display, drawable);
+                XCloseDisplay(display);
+                return Err("cannot create graphics context".to_string());
+            }
+
+            eprintln!("TRACE: Drw::new - before XSetLineAttributes");
             XSetLineAttributes(display, gc, 1, 0, 0, 0);
+            eprintln!("TRACE: Drw::new - before creating Self");
 
             Ok(Self {
                 w,
@@ -454,6 +513,7 @@ impl Drw {
                 owns_resources: true,
             })
         }
+        eprintln!("TRACE: Drw::new - completed");
     }
 
     pub fn display(&self) -> *mut libc::c_void {
@@ -729,7 +789,7 @@ impl Drw {
         let mut usedfont_idx: usize = 0;
         let mut nextfont_idx: Option<usize> = None;
         let mut utf8strlen: usize;
-        let render = x != 0 || y != 0 || w != 0 || h != 0;
+        let mut render = x != 0 || y != 0 || w != 0 || h != 0;
         let mut utf8codepoint: u32 = 0;
         let mut utf8str: &[u8];
         let mut charexists = false;
@@ -795,8 +855,13 @@ impl Drw {
                 d = XftDrawCreate(self.display, self.drawable, self.visual, self.colormap);
             }
 
-            x += lpad as i32;
-            w = w.saturating_sub(lpad);
+            if d.is_null() {
+                render = false;
+                w = u32::MAX;
+            } else {
+                x += lpad as i32;
+                w = w.saturating_sub(lpad);
+            }
         }
 
         if self.ellipsis_width == 0 && render {
@@ -1148,7 +1213,7 @@ impl Drw {
         self.drawable
     }
 
-    pub fn gc(&self) -> Gcontext {
+    pub fn gc(&self) -> XlibGc {
         self.gc
     }
 }
