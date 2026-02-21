@@ -1,0 +1,302 @@
+use crate::drw::{COL_BG, COL_FG};
+use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::systray::get_systray_width;
+use crate::types::{Arg, MonitorInner};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
+
+const MAX_COMMAND_OFFSETS: usize = 20;
+
+#[derive(Debug, Clone)]
+enum StatusItem {
+    Text(String),
+    SetBg(String),
+    SetFg(String),
+    ResetColors,
+    Rect {
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+    },
+    Offset(i32),
+    CommandOffset,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StatusLayout {
+    draw_start_x: i32,
+    total_width: i32,
+}
+
+pub(crate) fn click_status(_arg: &Arg) {
+    let Some((root_x, _root_y)) = root_pointer() else {
+        return;
+    };
+
+    let g = get_globals();
+    let Some(selmon_idx) = g.selmon else {
+        return;
+    };
+    let Some(mon) = g.monitors.get(selmon_idx) else {
+        return;
+    };
+    let local_x = root_x - mon.mx;
+
+    let mut idx: usize = 0;
+    while idx < MAX_COMMAND_OFFSETS {
+        let offset = unsafe { super::COMMANDOFFSETS[idx] };
+        if offset <= 0 || local_x < offset {
+            break;
+        }
+        idx += 1;
+    }
+}
+
+pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
+    let nul_pos = stext.iter().position(|&b| b == 0).unwrap_or(stext.len());
+    if nul_pos == 0 {
+        return 0;
+    }
+
+    let items = parse_status_items(&stext[..nul_pos]);
+    let layout = measure_layout(m, &items);
+
+    {
+        let mut g = get_globals_mut();
+        g.statuswidth = layout.total_width;
+    }
+
+    if let Some(ref drw) = get_globals().drw {
+        let mut drw = drw.clone();
+        draw_items(&mut drw, m, bh, &items, layout);
+    }
+
+    layout.draw_start_x
+}
+
+fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
+    let mut items = Vec::new();
+    let mut i = 0usize;
+    let mut text_start = 0usize;
+
+    while i < bytes.len() {
+        if bytes[i] != b'^' {
+            i += 1;
+            continue;
+        }
+
+        if i > text_start {
+            let text = std::str::from_utf8(&bytes[text_start..i]).unwrap_or("");
+            if !text.is_empty() {
+                items.push(StatusItem::Text(text.to_string()));
+            }
+        }
+
+        i += 1;
+        if i >= bytes.len() {
+            break;
+        }
+
+        if bytes[i] == b'^' {
+            items.push(StatusItem::Text("^".to_string()));
+            i += 1;
+            text_start = i;
+            continue;
+        }
+
+        let cmd = bytes[i];
+        i += 1;
+
+        match cmd {
+            b'c' => {
+                if i + 7 <= bytes.len() {
+                    if let Ok(color) = std::str::from_utf8(&bytes[i..i + 7]) {
+                        items.push(StatusItem::SetBg(color.to_string()));
+                    }
+                    i += 7;
+                }
+            }
+            b't' => {
+                if i + 7 <= bytes.len() {
+                    if let Ok(color) = std::str::from_utf8(&bytes[i..i + 7]) {
+                        items.push(StatusItem::SetFg(color.to_string()));
+                    }
+                    i += 7;
+                }
+            }
+            b'd' => items.push(StatusItem::ResetColors),
+            b'f' => items.push(StatusItem::Offset(parse_number(bytes, &mut i))),
+            b'o' => items.push(StatusItem::CommandOffset),
+            b'r' => {
+                let x = parse_number(bytes, &mut i);
+                consume_comma(bytes, &mut i);
+                let y = parse_number(bytes, &mut i);
+                consume_comma(bytes, &mut i);
+                let w = parse_number(bytes, &mut i);
+                consume_comma(bytes, &mut i);
+                let h = parse_number(bytes, &mut i);
+                items.push(StatusItem::Rect { x, y, w, h });
+            }
+            _ => {}
+        }
+
+        if i < bytes.len() && bytes[i] == b'^' {
+            i += 1;
+        }
+        text_start = i;
+    }
+
+    if text_start < bytes.len() {
+        let text = std::str::from_utf8(&bytes[text_start..]).unwrap_or("");
+        if !text.is_empty() {
+            items.push(StatusItem::Text(text.to_string()));
+        }
+    }
+
+    items
+}
+
+fn consume_comma(bytes: &[u8], i: &mut usize) {
+    if *i < bytes.len() && bytes[*i] == b',' {
+        *i += 1;
+    }
+}
+
+fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
+    let start = *i;
+    while *i < bytes.len() && (bytes[*i].is_ascii_digit() || bytes[*i] == b'-') {
+        *i += 1;
+    }
+    if *i > start {
+        std::str::from_utf8(&bytes[start..*i])
+            .ok()
+            .and_then(|n| n.parse::<i32>().ok())
+            .unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+fn measure_layout(m: &MonitorInner, items: &[StatusItem]) -> StatusLayout {
+    let mut width = 0i32;
+    let lrpad = super::get_lrpad();
+
+    for item in items {
+        match item {
+            StatusItem::Text(text) => width += (super::text_width(text) - lrpad).max(0),
+            StatusItem::Offset(offset) => width += *offset,
+            _ => {}
+        }
+    }
+
+    let draw_width = (width + 2).max(0);
+    let systray_w = get_systray_width() as i32;
+    let draw_start_x = m.ww - draw_width - systray_w;
+
+    StatusLayout {
+        draw_start_x,
+        total_width: width.max(0),
+    }
+}
+
+fn draw_items(
+    drw: &mut crate::drw::Drw,
+    m: &MonitorInner,
+    bh: i32,
+    items: &[StatusItem],
+    layout: StatusLayout,
+) {
+    let g = get_globals();
+    let mut scheme = g.statusscheme.clone().unwrap_or_default();
+    let base_scheme = scheme.clone();
+
+    if !scheme.is_empty() {
+        drw.set_scheme(scheme.clone());
+    }
+
+    let draw_width = (layout.total_width + 2).max(0);
+    if draw_width > 0 {
+        drw.rect(layout.draw_start_x, 0, draw_width as u32, bh as u32, true, true);
+    }
+
+    unsafe {
+        for offset in super::COMMANDOFFSETS.iter_mut() {
+            *offset = -1;
+        }
+    }
+
+    let mut x = layout.draw_start_x + 1;
+    let mut marker_idx = 0usize;
+    let lrpad = super::get_lrpad();
+
+    for item in items {
+        match item {
+            StatusItem::Text(text) => {
+                let seg_w = (super::text_width(text) - lrpad).max(0);
+                if seg_w > 0 {
+                    drw.text(x, 0, seg_w as u32, bh as u32, 0, text, false, 0);
+                }
+                x += seg_w;
+            }
+            StatusItem::Offset(offset) => x += *offset,
+            StatusItem::SetBg(color) => {
+                if !scheme.is_empty() {
+                    if let Ok(clr) = drw.clr_create(color) {
+                        if scheme.len() > COL_BG {
+                            scheme[COL_BG] = clr;
+                            drw.set_scheme(scheme.clone());
+                        }
+                    }
+                }
+            }
+            StatusItem::SetFg(color) => {
+                if !scheme.is_empty() {
+                    if let Ok(clr) = drw.clr_create(color) {
+                        if scheme.len() > COL_FG {
+                            scheme[COL_FG] = clr;
+                            drw.set_scheme(scheme.clone());
+                        }
+                    }
+                }
+            }
+            StatusItem::ResetColors => {
+                scheme = base_scheme.clone();
+                if !scheme.is_empty() {
+                    drw.set_scheme(scheme.clone());
+                }
+            }
+            StatusItem::Rect { x: rx, y, w, h } => {
+                let rw = (*w).max(0) as u32;
+                let rh = (*h).max(0) as u32;
+                if rw > 0 && rh > 0 {
+                    drw.rect(x + *rx, *y, rw, rh, true, false);
+                }
+            }
+            StatusItem::CommandOffset => {
+                if marker_idx < MAX_COMMAND_OFFSETS {
+                    unsafe {
+                        super::COMMANDOFFSETS[marker_idx] = x;
+                    }
+                    marker_idx += 1;
+                }
+            }
+        }
+    }
+
+    if marker_idx < MAX_COMMAND_OFFSETS {
+        unsafe {
+            super::COMMANDOFFSETS[marker_idx] = -1;
+        }
+    }
+
+    let _ = m;
+}
+
+fn root_pointer() -> Option<(i32, i32)> {
+    let x11 = get_x11();
+    let conn = x11.conn.as_ref()?;
+    let globals = get_globals();
+    let reply = conn.query_pointer(globals.root).ok()?.reply().ok()?;
+    Some((reply.root_x as i32, reply.root_y as i32))
+}
