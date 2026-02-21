@@ -411,7 +411,18 @@ pub fn hide_overlay(_arg: &Arg) {
         None => return,
     };
 
-    let (is_locked, overlay_mode, mon_mx, mon_my, mon_mw, mon_mh, client_x, client_h, client_w, is_fullscreen) = {
+    let (
+        is_locked,
+        overlay_mode,
+        mon_mx,
+        mon_my,
+        mon_mw,
+        mon_mh,
+        client_x,
+        client_h,
+        client_w,
+        is_fullscreen,
+    ) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&overlay_win) {
             let is_fullscreen = Some(overlay_win) == mon.fullscreen;

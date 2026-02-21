@@ -53,7 +53,8 @@ pub fn key_press(e: &KeyPressEvent) {
             let mut result = None;
             for key in &globals.keys {
                 if keysym == key.keysym as u32
-                    && clean_mask(key.mod_mask as u16, numlockmask) == clean_mask(state.bits() as u16, numlockmask)
+                    && clean_mask(key.mod_mask as u16, numlockmask)
+                        == clean_mask(state.bits() as u16, numlockmask)
                 {
                     result = Some((key.func, key.arg.clone()));
                     break;
@@ -68,7 +69,8 @@ pub fn key_press(e: &KeyPressEvent) {
                 if !has_sel {
                     for key in &globals.dkeys {
                         if keysym == key.keysym as u32
-                            && clean_mask(key.mod_mask as u16, numlockmask) == clean_mask(state.bits() as u16, numlockmask)
+                            && clean_mask(key.mod_mask as u16, numlockmask)
+                                == clean_mask(state.bits() as u16, numlockmask)
                         {
                             result = Some((key.func, key.arg.clone()));
                             break;
@@ -192,7 +194,10 @@ pub fn update_num_lock_mask() {
             if let Ok(reply) = cookie.reply() {
                 let mut new_numlockmask: u32 = 0;
 
-                let (keycode_min, keycode_max) = (conn.setup().min_keycode as u8, conn.setup().max_keycode as u8);
+                let (keycode_min, keycode_max) = (
+                    conn.setup().min_keycode as u8,
+                    conn.setup().max_keycode as u8,
+                );
                 let mapping = conn
                     .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
                     .unwrap()
@@ -201,8 +206,13 @@ pub fn update_num_lock_mask() {
 
                 for (i, keycode) in reply.keycodes.iter().enumerate() {
                     if *keycode >= keycode_min && *keycode <= keycode_max {
-                        let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-                        let keysym = if idx < mapping.keysyms.len() { mapping.keysyms[idx] } else { 0 };
+                        let idx = (*keycode - keycode_min) as usize
+                            * mapping.keysyms_per_keycode as usize;
+                        let keysym = if idx < mapping.keysyms.len() {
+                            mapping.keysyms[idx]
+                        } else {
+                            0
+                        };
                         if keysym == 0xff7f {
                             let mod_index = i / reply.keycodes_per_modifier() as usize;
                             if mod_index < 8 {

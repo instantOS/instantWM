@@ -93,7 +93,9 @@ pub fn get_command_by_id(id: usize) -> Option<&'static [&'static str]> {
         crate::config::CMD_KEYLAYOUTSWITCH => Some(crate::config::commands::KEYLAYOUTSWITCH_CMD),
         crate::config::CMD_ISWITCH => Some(crate::config::commands::ISWITCH_CMD),
         crate::config::CMD_INSTANTSWITCH => Some(crate::config::commands::INSTANTSWITCH_CMD),
-        crate::config::CMD_CARETINSTANTSWITCH => Some(crate::config::commands::CARETINSTANTSWITCH_CMD),
+        crate::config::CMD_CARETINSTANTSWITCH => {
+            Some(crate::config::commands::CARETINSTANTSWITCH_CMD)
+        }
         crate::config::CMD_INSTANTSKIPPY => Some(crate::config::commands::INSTANTSKIPPY_CMD),
         crate::config::CMD_INSTANTSHUTDOWN => Some(crate::config::commands::INSTANTSHUTDOWN_CMD),
         crate::config::CMD_SYSTEMMONITOR => Some(crate::config::commands::SYSTEMMONITOR_CMD),
@@ -119,6 +121,7 @@ pub fn get_command_by_id(id: usize) -> Option<&'static [&'static str]> {
         crate::config::CMD_UPVOL => Some(crate::config::commands::UPVOL_CMD),
         crate::config::CMD_DOWNVOL => Some(crate::config::commands::DOWNVOL_CMD),
         crate::config::CMD_MUTEVOL => Some(crate::config::commands::MUTEVOL_CMD),
+        crate::config::CMD_UPBRIGHT => Some(crate::config::commands::UPBRIGHT_CMD),
         crate::config::CMD_DOWNBRIGHT => Some(crate::config::commands::DOWNBRIGHT_CMD),
         _ => None,
     }

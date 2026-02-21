@@ -27,10 +27,10 @@ use std::process::exit;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
+use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
+use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
 
 use crate::bar::{update_bars, update_status};
 use crate::config::{

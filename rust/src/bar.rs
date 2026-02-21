@@ -3,6 +3,8 @@ use crate::drw::{Clr, Drw, COL_BG, COL_DETAIL, COL_FG};
 use crate::globals::{get_globals, get_globals_mut};
 use crate::systray::{get_systray_width, update_systray};
 use crate::types::*;
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
@@ -1081,7 +1083,17 @@ pub fn resize_bar_win(m: &MonitorInner) {
         }
     }
 
-    let _ = (w, bh, m.barwin);
+    let x11 = crate::globals::get_x11();
+    if let Some(ref conn) = x11.conn {
+        let _ = conn.configure_window(
+            m.barwin,
+            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .x(m.wx as i32)
+                .y(m.by as i32)
+                .width(w)
+                .height(bh as u32),
+        );
+    }
 }
 
 pub fn update_bars() {
@@ -1091,21 +1103,81 @@ pub fn update_bars() {
     let screen = g.screen;
     let root = g.root;
 
-    for (i, m) in g.monitors.iter().enumerate() {
-        if m.barwin != 0 {
-            continue;
-        }
+    let mut bar_configs = Vec::new();
+    {
+        for (i, m) in g.monitors.iter().enumerate() {
+            if m.barwin != 0 {
+                continue;
+            }
 
-        let mut w = m.ww as u32;
-        if showsystray {
-            if let Some(selmon_idx) = g.selmon {
-                if selmon_idx == i {
-                    w -= get_systray_width();
+            let mut w = m.ww as u32;
+            if showsystray {
+                if let Some(selmon_idx) = g.selmon {
+                    if selmon_idx == i {
+                        w -= crate::systray::get_systray_width() as u32;
+                    }
                 }
             }
+            bar_configs.push((i, m.wx, m.by, w, bh));
         }
+    }
 
-        let _ = (w, bh, screen, root);
+    let x11 = crate::globals::get_x11();
+    if let Some(ref conn) = x11.conn {
+        for (i, wx, by, w, bh) in bar_configs {
+            let win_id = conn.generate_id().unwrap();
+            let screen_obj = &conn.setup().roots[x11.screen_num];
+            let root = screen_obj.root;
+
+            let aux = x11rb::protocol::xproto::CreateWindowAux::new()
+                .override_redirect(1)
+                .background_pixmap(u32::from(
+                    x11rb::protocol::xproto::BackPixmap::PARENT_RELATIVE,
+                ))
+                .event_mask(
+                    x11rb::protocol::xproto::EventMask::BUTTON_PRESS
+                        | x11rb::protocol::xproto::EventMask::EXPOSURE
+                        | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
+                );
+
+            let _ = conn.create_window(
+                x11rb::COPY_FROM_PARENT as u8,
+                win_id,
+                root,
+                wx as i16,
+                by as i16,
+                w as u16,
+                bh as u16,
+                0,
+                x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
+                x11rb::COPY_FROM_PARENT as u32,
+                &aux,
+            );
+
+            {
+                let globals = crate::globals::get_globals();
+                if globals.showsystray && globals.selmon == Some(i) {
+                    if let Some(systray) = globals.systray.as_ref() {
+                        let _ = conn.map_window(systray.win);
+                        let _ = conn.configure_window(
+                            systray.win,
+                            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                                .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
+                        );
+                    }
+                }
+            }
+
+            let _ = conn.map_window(win_id);
+            let _ = conn.configure_window(
+                win_id,
+                &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                    .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
+            );
+
+            let mut globals_mut = crate::globals::get_globals_mut();
+            globals_mut.monitors[i].barwin = win_id;
+        }
     }
 }
 

@@ -41,7 +41,9 @@ pub fn name_tag(arg: &Arg) {
         (numtags, current_tag)
     };
 
-    let Some(tagset) = current_tag else { return; };
+    let Some(tagset) = current_tag else {
+        return;
+    };
 
     for i in 0..numtags {
         if i >= MAX_TAGS {

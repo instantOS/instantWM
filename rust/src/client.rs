@@ -1145,7 +1145,8 @@ pub fn kill_client(_arg: &Arg) {
 pub fn shut_kill(arg: &Arg) {
     let has_clients = {
         let globals = get_globals();
-        globals.selmon
+        globals
+            .selmon
             .and_then(|id| globals.monitors.get(id))
             .map_or(false, |m| m.clients.is_some())
     };

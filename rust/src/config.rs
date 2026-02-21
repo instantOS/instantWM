@@ -19,7 +19,9 @@ use crate::floating::{
     toggle_fullscreen_overview, toggle_overview,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
-use crate::keyboard::{down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press};
+use crate::keyboard::{
+    down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press,
+};
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{drag_tag, draw_window, move_resize};
@@ -35,9 +37,9 @@ use crate::tags::{
     toggle_view, view, view_to_left, view_to_right, win_view,
 };
 use crate::toggles::{
-    alt_tab_free, redraw_win, set_border_width, toggle_alt_tag, toggle_animated, toggle_double_draw,
-    toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_locked, toggle_prefix,
-    toggle_show_tags, toggle_sticky,
+    alt_tab_free, redraw_win, set_border_width, toggle_alt_tag, toggle_animated,
+    toggle_double_draw, toggle_focus_follows_float_mouse, toggle_focus_follows_mouse,
+    toggle_locked, toggle_prefix, toggle_show_tags, toggle_sticky,
 };
 use crate::util::spawn;
 
