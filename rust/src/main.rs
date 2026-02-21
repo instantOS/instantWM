@@ -491,16 +491,116 @@ fn init_schemes(drw: &Drw) {
         g.closebuttoncolors.clone()
     };
 
-    let borderscheme = drw.scm_create(&bordercolors).ok();
-    let statusscheme = drw.scm_create(&statusbarcolors).ok();
-
-    let mut tagschemes: Vec<Vec<Vec<crate::drw::Clr>>> = Vec::new();
-    for hover_schemes in &tagcolors {
-        let mut hover_vec: Vec<Vec<crate::drw::Clr>> = Vec::new();
-        for scheme_colors in hover_schemes {
-            if let Ok(scheme) = drw.scm_create(scheme_colors) {
-                hover_vec.push(scheme);
+    let borderscheme = drw.scm_create(&bordercolors).ok().map(|clr| {
+        if clr.len() >= 4 {
+            BorderScheme {
+                normal: ColorScheme::new(clr[0].clone(), clr[1].clone(), clr[1].clone()),
+                tile_focus: ColorScheme::new(clr[0].clone(), clr[1].clone(), clr[1].clone()),
+                float_focus: ColorScheme::new(clr[0].clone(), clr[2].clone(), clr[2].clone()),
+                snap: ColorScheme::new(clr[0].clone(), clr[3].clone(), clr[3].clone()),
             }
+        } else {
+            BorderScheme::default()
+        }
+    });
+
+    let statusscheme = drw.scm_create(&statusbarcolors).ok().map(|clr| {
+        StatusScheme {
+            colors: ColorScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone()),
+        }
+    });
+
+    let mut tagschemes_no_hover: Vec<ColorScheme> = Vec::new();
+    let mut tagschemes_hover: Vec<ColorScheme> = Vec::new();
+
+    if let Some(no_hover) = tagcolors.first() {
+        for scheme_colors in no_hover {
+            if let Ok(clr) = drw.scm_create(scheme_colors) {
+                if let Some(cs) = ColorScheme::from_vec(clr) {
+                    tagschemes_no_hover.push(cs);
+                }
+            }
+        }
+    }
+
+    if let Some(hover) = tagcolors.get(1) {
+        for scheme_colors in hover {
+            if let Ok(clr) = drw.scm_create(scheme_colors) {
+                if let Some(cs) = ColorScheme::from_vec(clr) {
+                    tagschemes_hover.push(cs);
+                }
+            }
+        }
+    }
+
+    let tagschemes = TagSchemes {
+        no_hover: tagschemes_no_hover,
+        hover: tagschemes_hover,
+    };
+
+    let mut windowschemes_no_hover: Vec<ColorScheme> = Vec::new();
+    let mut windowschemes_hover: Vec<ColorScheme> = Vec::new();
+
+    if let Some(no_hover) = windowcolors.first() {
+        for scheme_colors in no_hover {
+            if let Ok(clr) = drw.scm_create(scheme_colors) {
+                if let Some(cs) = ColorScheme::from_vec(clr) {
+                    windowschemes_no_hover.push(cs);
+                }
+            }
+        }
+    }
+
+    if let Some(hover) = windowcolors.get(1) {
+        for scheme_colors in hover {
+            if let Ok(clr) = drw.scm_create(scheme_colors) {
+                if let Some(cs) = ColorScheme::from_vec(clr) {
+                    windowschemes_hover.push(cs);
+                }
+            }
+        }
+    }
+
+    let windowschemes = WindowSchemes {
+        no_hover: windowschemes_no_hover,
+        hover: windowschemes_hover,
+    };
+
+    let mut closebuttonschemes_no_hover: Vec<ColorScheme> = Vec::new();
+    let mut closebuttonschemes_hover: Vec<ColorScheme> = Vec::new();
+
+    if let Some(no_hover) = closebuttoncolors.first() {
+        for scheme_colors in no_hover {
+            if let Ok(clr) = drw.scm_create(scheme_colors) {
+                if let Some(cs) = ColorScheme::from_vec(clr) {
+                    closebuttonschemes_no_hover.push(cs);
+                }
+            }
+        }
+    }
+
+    if let Some(hover) = closebuttoncolors.get(1) {
+        for scheme_colors in hover {
+            if let Ok(clr) = drw.scm_create(scheme_colors) {
+                if let Some(cs) = ColorScheme::from_vec(clr) {
+                    closebuttonschemes_hover.push(cs);
+                }
+            }
+        }
+    }
+
+    let closebuttonschemes = CloseButtonSchemes {
+        no_hover: closebuttonschemes_no_hover,
+        hover: closebuttonschemes_hover,
+    };
+
+    let mut globals = get_globals_mut();
+    globals.borderscheme = borderscheme;
+    globals.statusscheme = statusscheme;
+    globals.tags.schemes = tagschemes;
+    globals.windowschemes = windowschemes;
+    globals.closebuttonschemes = closebuttonschemes;
+}
         }
         tagschemes.push(hover_vec);
     }
