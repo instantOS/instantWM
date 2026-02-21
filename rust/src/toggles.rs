@@ -1,7 +1,8 @@
-use crate::bar::{draw_bar, get_tag_width};
+use crate::bar::draw_bar;
 use crate::client::resize;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::keyboard::grab_keys;
+use crate::tags::get_tag_width;
 use crate::types::*;
 
 pub fn ctrl_toggle(value: &mut bool, arg: u32) {

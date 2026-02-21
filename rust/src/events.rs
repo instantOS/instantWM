@@ -1,4 +1,4 @@
-use crate::bar::{draw_bar, get_layout_symbol_width, get_tag_at_x, get_tag_width, reset_bar};
+use crate::bar::{draw_bar, get_layout_symbol_width, reset_bar};
 use crate::client::{
     configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
     update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
@@ -11,6 +11,7 @@ use crate::keyboard::{
 use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
 use crate::systray::{get_systray_width, update_systray, win_to_systray_icon};
+use crate::tags::{get_tag_at_x, get_tag_width};
 use crate::types::*;
 use crate::util::clean_mask;
 use std::sync::atomic::Ordering;

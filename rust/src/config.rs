@@ -1,16 +1,13 @@
-use crate::bar::{
-    down_scale_client, up_scale_client, window_title_mouse_handler,
-    window_title_mouse_handler_right,
-};
 use crate::client::close_win;
 use crate::layouts::*;
 use crate::mouse::{
     force_resize_mouse, gesture_mouse, move_mouse, resize_aspect_mouse, resize_mouse,
+    window_title_mouse_handler, window_title_mouse_handler_right,
 };
 use crate::toggles::{hide_window, unhide_all};
 use crate::types::*;
 
-use crate::animation::{anim_left, anim_right};
+use crate::animation::{anim_left, anim_right, down_scale_client, up_scale_client};
 use crate::bar::{click_status, toggle_bar};
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::commands::{command_prefix, set_special_next};

@@ -1,0 +1,228 @@
+use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::systray::get_systray_width;
+use crate::types::{Arg, MonitorInner};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::protocol::xproto::Window;
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub(crate) fn update_status() {
+    let (root, selmon_idx) = {
+        let g = get_globals();
+        (g.root, g.selmon)
+    };
+
+    let text = get_text_prop(root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
+    {
+        let mut g = get_globals_mut();
+        match text {
+            Some(t) => {
+                if t.starts_with("ipc:") {
+                    return;
+                }
+                let bytes = t.as_bytes();
+                let len = bytes.len().min(g.stext.len() - 1);
+                g.stext[..len].copy_from_slice(&bytes[..len]);
+                g.stext[len] = 0;
+            }
+            None => {
+                let default_text = format!("instantwm-{}", VERSION);
+                let bytes = default_text.as_bytes();
+                let len = bytes.len().min(g.stext.len() - 1);
+                g.stext[..len].copy_from_slice(&bytes[..len]);
+                g.stext[len] = 0;
+            }
+        }
+    }
+
+    if let Some(selmon_idx) = selmon_idx {
+        let mut g = get_globals_mut();
+        if let Some(m) = g.monitors.get_mut(selmon_idx) {
+            super::draw_bar(m);
+        }
+    }
+
+    crate::systray::update_systray();
+}
+
+pub(crate) fn update_bar_pos(m: &mut MonitorInner) {
+    let bh = get_globals().bh;
+    update_bar_pos_with_bh(m, bh);
+}
+
+pub(crate) fn update_bar_pos_with_bh(m: &mut MonitorInner, bh: i32) {
+    m.wy = m.my;
+    m.wh = m.mh;
+
+    if m.showbar {
+        m.wh -= bh;
+        if m.topbar {
+            m.by = m.wy;
+            m.wy += bh;
+        } else {
+            m.by = m.wy + m.wh;
+        }
+    } else {
+        m.by = -bh;
+    }
+}
+
+pub(crate) fn resize_bar_win(m: &MonitorInner) {
+    let g = get_globals();
+    let bh = g.bh;
+    let showsystray = g.showsystray;
+    let is_selmon = g
+        .selmon
+        .and_then(|selmon_idx| g.monitors.get(selmon_idx))
+        .map_or(false, |selmon| selmon.num == m.num);
+
+    let mut w = m.ww as u32;
+    if showsystray && is_selmon {
+        w = w.saturating_sub(get_systray_width());
+    }
+
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let _ = conn.configure_window(
+            m.barwin,
+            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .x(m.wx as i32)
+                .y(m.by as i32)
+                .width(w)
+                .height(bh as u32),
+        );
+    }
+}
+
+pub(crate) fn update_bars() {
+    let (bar_configs, xlibdisplay, root, status_bg) = {
+        let g = get_globals();
+        let bh = g.bh;
+        let showsystray = g.showsystray;
+        let status_bg = parse_color_to_u32(g.statusbarcolors.get(1).copied().unwrap_or("#121212"));
+        let xlibdisplay = g.xlibdisplay.0;
+        let root = g.root;
+
+        let mut bar_configs = Vec::new();
+        for (i, m) in g.monitors.iter().enumerate() {
+            if m.barwin != 0 {
+                continue;
+            }
+
+            let mut w = m.ww as u32;
+            if showsystray {
+                if let Some(selmon_idx) = g.selmon {
+                    if selmon_idx == i {
+                        w = w.saturating_sub(crate::systray::get_systray_width() as u32);
+                    }
+                }
+            }
+            bar_configs.push((i, m.wx, m.by, w, bh));
+        }
+        (bar_configs, xlibdisplay, root, status_bg)
+    };
+
+    if xlibdisplay.is_null() {
+        return;
+    }
+
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        for (i, wx, by, w, bh) in bar_configs {
+            let win_id = conn.generate_id().unwrap();
+
+            let aux = x11rb::protocol::xproto::CreateWindowAux::new()
+                .override_redirect(1)
+                .background_pixel(status_bg)
+                .event_mask(
+                    x11rb::protocol::xproto::EventMask::BUTTON_PRESS
+                        | x11rb::protocol::xproto::EventMask::EXPOSURE
+                        | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
+                );
+
+            let _ = conn.create_window(
+                x11rb::COPY_FROM_PARENT as u8,
+                win_id,
+                root,
+                wx as i16,
+                by as i16,
+                w as u16,
+                bh as u16,
+                0,
+                x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
+                x11rb::COPY_FROM_PARENT as u32,
+                &aux,
+            );
+
+            let _ = conn.map_window(win_id);
+            let _ = conn.flush();
+
+            let mut globals_mut = get_globals_mut();
+            globals_mut.monitors[i].barwin = win_id;
+        }
+    }
+}
+
+pub(crate) fn toggle_bar(_arg: &Arg) {
+    let mut g = get_globals_mut();
+
+    let animated = g.animated;
+    let client_count = g.clients.len() as i32;
+    let mut tmp_no_anim = false;
+    if animated && client_count > 6 {
+        g.animated = false;
+        tmp_no_anim = true;
+    }
+
+    if let Some(selmon_idx) = g.selmon {
+        if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
+            selmon.showbar = !selmon.showbar;
+
+            if let Some(ref mut pertag) = selmon.pertag {
+                if (pertag.current_tag as usize) < pertag.showbars.len() {
+                    pertag.showbars[pertag.current_tag as usize] = selmon.showbar;
+                }
+            }
+
+            update_bar_pos(selmon);
+            let m = selmon.clone();
+            resize_bar_win(&m);
+        }
+    }
+
+    if tmp_no_anim {
+        g.animated = true;
+    }
+}
+
+fn get_text_prop(win: Window, atom: u32) -> Option<String> {
+    let x11 = get_x11();
+    let conn = x11.conn.as_ref()?;
+    let reply = conn
+        .get_property(false, win, atom, x11rb::protocol::xproto::AtomEnum::ANY, 0, 4096)
+        .ok()?
+        .reply()
+        .ok()?;
+    if reply.format != 8 || reply.value.is_empty() {
+        return None;
+    }
+    let nul_pos = reply
+        .value
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(reply.value.len());
+    String::from_utf8(reply.value[..nul_pos].to_vec()).ok()
+}
+
+fn parse_color_to_u32(color: &str) -> u32 {
+    let color = color.trim_start_matches('#');
+    if color.len() == 6 {
+        let r = u32::from_str_radix(&color[0..2], 16).unwrap_or(0);
+        let g = u32::from_str_radix(&color[2..4], 16).unwrap_or(0);
+        let b = u32::from_str_radix(&color[4..6], 16).unwrap_or(0);
+        (r << 16) | (g << 8) | b
+    } else {
+        0x121212
+    }
+}
