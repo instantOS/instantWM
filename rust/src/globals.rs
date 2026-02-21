@@ -58,7 +58,7 @@ pub struct Globals {
     pub resizehints: i32,
     pub tags: [[u8; 16]; MAX_TAGS],
     pub tagsalt: Vec<&'static str>,
-    pub layouts: Vec<Layout>,
+    pub layouts: Vec<&'static dyn Layout>,
     pub numtags: i32,
     pub keys_len: usize,
     pub dkeys_len: usize,

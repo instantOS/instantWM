@@ -197,11 +197,16 @@ pub struct Arg {
     pub v: Option<usize>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Layout {
-    pub symbol: &'static str,
-    pub arrange: fn(&mut MonitorInner),
-    pub is_tiling: bool,
+pub trait Layout: std::fmt::Debug {
+    fn symbol(&self) -> &'static str;
+    fn arrange(&self, m: &mut MonitorInner);
+    fn is_tiling(&self) -> bool;
+    fn is_monocle(&self) -> bool {
+        false
+    }
+    fn is_overview(&self) -> bool {
+        false
+    }
 }
 
 pub type ClientId = usize;

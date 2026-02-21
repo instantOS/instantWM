@@ -8,6 +8,100 @@ use crate::util::{max, min};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
+// ── Layout trait implementations ─────────────────────────────────────────────
+
+#[derive(Debug)]
+pub struct TileLayout;
+pub static TILE_LAYOUT: TileLayout = TileLayout;
+impl Layout for TileLayout {
+    fn symbol(&self) -> &'static str { "+" }
+    fn arrange(&self, m: &mut MonitorInner) { tile(m); }
+    fn is_tiling(&self) -> bool { true }
+}
+
+#[derive(Debug)]
+pub struct GridLayout;
+pub static GRID_LAYOUT: GridLayout = GridLayout;
+impl Layout for GridLayout {
+    fn symbol(&self) -> &'static str { "#" }
+    fn arrange(&self, m: &mut MonitorInner) { grid(m); }
+    fn is_tiling(&self) -> bool { true }
+}
+
+#[derive(Debug)]
+pub struct FloatingLayout;
+pub static FLOATING_LAYOUT: FloatingLayout = FloatingLayout;
+impl Layout for FloatingLayout {
+    fn symbol(&self) -> &'static str { "-" }
+    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
+    fn is_tiling(&self) -> bool { false }
+}
+
+#[derive(Debug)]
+pub struct MonocleLayout;
+pub static MONOCLE_LAYOUT: MonocleLayout = MonocleLayout;
+impl Layout for MonocleLayout {
+    fn symbol(&self) -> &'static str { "[M]" }
+    fn arrange(&self, m: &mut MonitorInner) { monocle(m); }
+    fn is_tiling(&self) -> bool { true }
+    fn is_monocle(&self) -> bool { true }
+}
+
+#[derive(Debug)]
+pub struct VertLayout;
+pub static VERT_LAYOUT: VertLayout = VertLayout;
+impl Layout for VertLayout {
+    fn symbol(&self) -> &'static str { "|||" }
+    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
+    fn is_tiling(&self) -> bool { false }
+}
+
+#[derive(Debug)]
+pub struct DeckLayout;
+pub static DECK_LAYOUT: DeckLayout = DeckLayout;
+impl Layout for DeckLayout {
+    fn symbol(&self) -> &'static str { "H[]" }
+    fn arrange(&self, m: &mut MonitorInner) { deck(m); }
+    fn is_tiling(&self) -> bool { true }
+}
+
+#[derive(Debug)]
+pub struct OverviewLayout;
+pub static OVERVIEW_LAYOUT: OverviewLayout = OverviewLayout;
+impl Layout for OverviewLayout {
+    fn symbol(&self) -> &'static str { "O" }
+    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
+    fn is_tiling(&self) -> bool { false }
+    fn is_overview(&self) -> bool { true }
+}
+
+#[derive(Debug)]
+pub struct BstackLayout;
+pub static BSTACK_LAYOUT: BstackLayout = BstackLayout;
+impl Layout for BstackLayout {
+    fn symbol(&self) -> &'static str { "TTT" }
+    fn arrange(&self, m: &mut MonitorInner) { bstack(m); }
+    fn is_tiling(&self) -> bool { true }
+}
+
+#[derive(Debug)]
+pub struct HorizLayout;
+pub static HORIZ_LAYOUT: HorizLayout = HorizLayout;
+impl Layout for HorizLayout {
+    fn symbol(&self) -> &'static str { "===" }
+    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
+    fn is_tiling(&self) -> bool { false }
+}
+
+/// Returns the currently active layout for the given monitor.
+pub fn get_current_layout(m: &MonitorInner) -> &'static dyn Layout {
+    let g = get_globals();
+    let idx = get_current_layout_idx(m).unwrap_or(0);
+    g.layouts.get(idx).copied().unwrap_or(&TILE_LAYOUT)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 pub fn tile(m: &mut MonitorInner) {
     let framecount = {
         let g = get_globals();
@@ -1014,8 +1108,8 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
                     if let Some(mon) = g.monitors.get(mid) {
                         let clientcount = mon.clientcount;
                         let layout_idx = get_current_layout_idx(mon).unwrap_or(0);
-                        let has_arrange = g.layouts.get(layout_idx).map_or(true, |l| l.is_tiling);
-                        let is_monocle = g.layouts.get(layout_idx).map_or(false, |l| l.symbol == "[M]");
+                        let has_arrange = g.layouts.get(layout_idx).map_or(true, |l| l.is_tiling());
+                        let is_monocle = g.layouts.get(layout_idx).map_or(false, |l| l.is_monocle());
                         (
                             is_floating,
                             is_fullscreen,
@@ -1063,24 +1157,16 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
         }
     }
 
-    let g = get_globals();
-    if let Some(symbol) = get_layout_symbol(m) {
-        let bytes = symbol.as_bytes();
-        let len = bytes.len().min(15);
-        m.ltsymbol[..len].copy_from_slice(&bytes[..len]);
-        if len < 16 {
-            m.ltsymbol[len] = 0;
-        }
+    let layout = get_current_layout(m);
+    let symbol = layout.symbol();
+    let bytes = symbol.as_bytes();
+    let len = bytes.len().min(15);
+    m.ltsymbol[..len].copy_from_slice(&bytes[..len]);
+    if len < 16 {
+        m.ltsymbol[len] = 0;
     }
 
-    let arrange_func = get_tiling_layout_func(m);
-    drop(g);
-
-    if let Some(func) = arrange_func {
-        func(m);
-    } else {
-        floatl(m);
-    }
+    layout.arrange(m);
 
     let mut g = get_globals_mut();
     if let Some(ref fullscreen_win) = m.overlay {
@@ -1116,11 +1202,7 @@ pub fn restack(m: &mut MonitorInner) {
     }
     let sel_win = sel_win.unwrap();
 
-    let has_arrange = {
-        let g = get_globals();
-        let idx = get_current_layout_idx(m).unwrap_or(0);
-        g.layouts.get(idx).map_or(true, |l| l.is_tiling)
-    };
+    let has_arrange = get_current_layout(m).is_tiling();
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -1171,31 +1253,8 @@ pub fn restack(m: &mut MonitorInner) {
     }
 }
 
-fn is_overview_layout(_m: &MonitorInner) -> bool {
-    false
-}
-
-fn get_layout_symbol(m: &MonitorInner) -> Option<&'static str> {
-    let g = get_globals();
-    if g.layouts.is_empty() {
-        return None;
-    }
-    let idx = get_current_layout_idx(m).unwrap_or(0);
-    g.layouts.get(idx).map(|l| l.symbol)
-}
-
-fn get_tiling_layout_func(m: &MonitorInner) -> Option<fn(&mut MonitorInner)> {
-    let g = get_globals();
-    if g.layouts.is_empty() {
-        return None;
-    }
-    let idx = get_current_layout_idx(m).unwrap_or(0);
-    let layout = g.layouts.get(idx)?;
-    if layout.is_tiling {
-        Some(layout.arrange)
-    } else {
-        None
-    }
+fn is_overview_layout(m: &MonitorInner) -> bool {
+    get_current_layout(m).is_overview()
 }
 
 pub fn set_layout(arg: &Arg) {
@@ -1334,12 +1393,12 @@ fn get_current_layout_symbol() -> Option<&'static str> {
             let idx = get_current_layout_idx(m);
             if let Some(i) = idx {
                 if i < g.layouts.len() {
-                    return Some(g.layouts[i].symbol);
+                    return Some(g.layouts[i].symbol());
                 }
             }
         }
     }
-    g.layouts.first().map(|l| l.symbol)
+    g.layouts.first().map(|l| l.symbol())
 }
 
 pub fn cycle_layout(arg: &Arg) {
@@ -1383,11 +1442,7 @@ pub fn cycle_layout(arg: &Arg) {
 
     let skip_overview = {
         let g = get_globals();
-        if new_idx < g.layouts.len() {
-            g.layouts[new_idx].symbol == "O"
-        } else {
-            false
-        }
+        g.layouts.get(new_idx).map_or(false, |l| l.is_overview())
     };
 
     let final_idx = if skip_overview {
@@ -1449,22 +1504,25 @@ pub fn set_mfact(arg: &Arg) {
         return;
     }
 
-    let g = get_globals();
-    let has_arrange = if let Some(selmon_id) = g.selmon {
-        if let Some(m) = g.monitors.get(selmon_id) {
-            let idx = get_current_layout_idx(m).unwrap_or(0);
-            g.layouts.get(idx).map_or(true, |l| l.is_tiling)
+    let has_arrange = {
+        let g = get_globals();
+        if let Some(selmon_id) = g.selmon {
+            if let Some(m) = g.monitors.get(selmon_id) {
+                let idx = get_current_layout_idx(m).unwrap_or(0);
+                g.layouts.get(idx).map_or(true, |l| l.is_tiling())
+            } else {
+                false
+            }
         } else {
             false
         }
-    } else {
-        false
     };
 
     if !has_arrange {
         return;
     }
 
+    let g = get_globals();
     let current_mfact = if let Some(selmon_id) = g.selmon {
         if let Some(m) = g.monitors.get(selmon_id) {
             m.mfact
@@ -1593,9 +1651,6 @@ pub fn all_client_count() -> i32 {
     g.clients.len() as i32
 }
 
-pub fn get_tiling_layout_func_for_mon(m: &MonitorInner) -> Option<fn(&mut MonitorInner)> {
-    get_tiling_layout_func(m)
-}
 
 pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;

@@ -509,7 +509,7 @@ fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
                             .get(lt_idx)
                             .map(|l| {
                                 let mut arr = [0u8; 16];
-                                let bytes = l.symbol.as_bytes();
+                                let bytes = l.symbol().as_bytes();
                                 arr[..bytes.len().min(16)]
                                     .copy_from_slice(&bytes[..bytes.len().min(16)]);
                                 arr

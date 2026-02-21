@@ -226,53 +226,17 @@ pub fn get_fonts() -> Vec<&'static str> {
     vec!["Inter-Regular:size=12", "Fira Code Nerd Font:size=12"]
 }
 
-pub fn get_layouts() -> Vec<Layout> {
+pub fn get_layouts() -> Vec<&'static dyn Layout> {
     vec![
-        Layout {
-            symbol: "+",
-            arrange: tile,
-            is_tiling: true,
-        },
-        Layout {
-            symbol: "#",
-            arrange: grid,
-            is_tiling: true,
-        },
-        Layout {
-            symbol: "-",
-            arrange: |_m: &mut MonitorInner| {},
-            is_tiling: false,
-        },
-        Layout {
-            symbol: "[M]",
-            arrange: monocle,
-            is_tiling: true,
-        },
-        Layout {
-            symbol: "|||",
-            arrange: |_m: &mut MonitorInner| {},
-            is_tiling: false,
-        },
-        Layout {
-            symbol: "H[]",
-            arrange: deck,
-            is_tiling: true,
-        },
-        Layout {
-            symbol: "O",
-            arrange: |_m: &mut MonitorInner| {},
-            is_tiling: false,
-        },
-        Layout {
-            symbol: "TTT",
-            arrange: bstack,
-            is_tiling: true,
-        },
-        Layout {
-            symbol: "===",
-            arrange: |_m: &mut MonitorInner| {},
-            is_tiling: false,
-        },
+        &TILE_LAYOUT,
+        &GRID_LAYOUT,
+        &FLOATING_LAYOUT,
+        &MONOCLE_LAYOUT,
+        &VERT_LAYOUT,
+        &DECK_LAYOUT,
+        &OVERVIEW_LAYOUT,
+        &BSTACK_LAYOUT,
+        &HORIZ_LAYOUT,
     ]
 }
 
@@ -2938,7 +2902,7 @@ pub struct Config {
     pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
     pub bordercolors: Vec<&'static str>,
     pub statusbarcolors: Vec<&'static str>,
-    pub layouts: Vec<Layout>,
+    pub layouts: Vec<&'static dyn Layout>,
     pub keys: Vec<Key>,
     pub dkeys: Vec<Key>,
     pub buttons: Vec<Button>,
