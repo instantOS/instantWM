@@ -1129,7 +1129,7 @@ pub fn toggle_overview(_arg: &Arg) {
             if let Some(sel_mon_id) = get_globals().selmon {
                 restore_all_floating(Some(sel_mon_id));
             }
-            win_view(None);
+            win_view(&Arg::default());
         } else {
             if let Some(sel_mon_id) = get_globals().selmon {
                 save_all_floating(Some(sel_mon_id));
@@ -1157,7 +1157,7 @@ pub fn toggle_fullscreen_overview(_arg: &Arg) {
 
     if let Some(current) = current_tag {
         if current == 0 {
-            win_view(None);
+            win_view(&Arg::default());
         } else {
             view(&Arg {
                 ui: !0,
@@ -1202,7 +1202,7 @@ pub fn focus_last_client(_arg: &Arg) {
     }
 }
 
-pub fn win_view(_arg: Option<&Arg>) {
+pub fn win_view(_arg: &Arg) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let focus_win = conn.get_input_focus();

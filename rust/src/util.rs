@@ -119,9 +119,7 @@ pub fn get_command_by_id(id: usize) -> Option<&'static [&'static str]> {
         crate::config::CMD_UPVOL => Some(crate::config::commands::UPVOL_CMD),
         crate::config::CMD_DOWNVOL => Some(crate::config::commands::DOWNVOL_CMD),
         crate::config::CMD_MUTEVOL => Some(crate::config::commands::MUTEVOL_CMD),
-        crate::config::CMD_UPBRIGHT => Some(crate::config::commands::UPBRIGHT_CMD),
         crate::config::CMD_DOWNBRIGHT => Some(crate::config::commands::DOWNBRIGHT_CMD),
-        crate::config::CMD_TAG => Some(crate::config::commands::TAG_CMD),
         _ => None,
     }
 }

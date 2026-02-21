@@ -1142,6 +1142,25 @@ pub fn kill_client(_arg: &Arg) {
     }
 }
 
+pub fn shut_kill(arg: &Arg) {
+    let has_clients = {
+        let globals = get_globals();
+        globals.selmon
+            .and_then(|id| globals.monitors.get(id))
+            .map_or(false, |m| m.clients.is_some())
+    };
+
+    if !has_clients {
+        let shut_arg = Arg {
+            v: Some(crate::config::CMD_INSTANTSHUTDOWN),
+            ..Default::default()
+        };
+        crate::util::spawn(&shut_arg);
+    } else {
+        kill_client(arg);
+    }
+}
+
 pub fn close_win(arg: &Arg) {
     let win = match arg.v {
         Some(ptr) => ptr as u32,
