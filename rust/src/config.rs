@@ -2858,9 +2858,9 @@ pub fn init_config() -> Config {
         decorhints: 1,
         mfact: 0.55,
         nmaster: 1,
-        tags: get_tags(),
-        tagsalt: get_tagsalt(),
-        tagcolors: get_tagcolors(),
+        tag_names: get_tags(),
+        tag_alt_names: get_tagsalt(),
+        tag_colors: get_tagcolors(),
         windowcolors: get_windowcolors(),
         closebuttoncolors: get_closebuttoncolors(),
         bordercolors: get_bordercolors(),
@@ -2874,8 +2874,7 @@ pub fn init_config() -> Config {
         resources: get_resources(),
         fonts: get_fonts(),
         external_commands: get_external_commands(),
-        tagmask: TAGMASK,
-        numtags: MAX_TAGS as i32,
+        num_tags: MAX_TAGS,
     }
 }
 
@@ -2895,9 +2894,9 @@ pub struct Config {
     pub decorhints: i32,
     pub mfact: f32,
     pub nmaster: i32,
-    pub tags: [[u8; MAX_TAGLEN]; MAX_TAGS],
-    pub tagsalt: Vec<&'static str>,
-    pub tagcolors: Vec<Vec<Vec<&'static str>>>,
+    pub tag_names: [[u8; MAX_TAGLEN]; MAX_TAGS],
+    pub tag_alt_names: Vec<&'static str>,
+    pub tag_colors: Vec<Vec<Vec<&'static str>>>,
     pub windowcolors: Vec<Vec<Vec<&'static str>>>,
     pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
     pub bordercolors: Vec<&'static str>,
@@ -2911,8 +2910,7 @@ pub struct Config {
     pub resources: Vec<ResourcePref>,
     pub fonts: Vec<&'static str>,
     pub external_commands: ExternalCommands,
-    pub tagmask: u32,
-    pub numtags: i32,
+    pub num_tags: usize,
 }
 
 pub fn run_autostart() {}

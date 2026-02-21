@@ -69,6 +69,54 @@ pub struct XAtoms {
     pub xembed_info: u32,
 }
 
+/// All tag-related configuration and runtime state, grouped in one place.
+///
+/// This replaces nine scattered fields on `Globals`:
+/// `tags`, `tagsalt`, `numtags`, `tagmask`, `tagcolors`, `tagschemes`,
+/// `tagwidth`, `showalttag`, and `tagprefix`.
+#[derive(Debug, Clone)]
+pub struct TagSet {
+    /// Primary tag labels (NUL-terminated, fixed-width to match X11 convention).
+    pub names: [[u8; 16]; MAX_TAGS],
+    /// Alternate labels shown when `show_alt` is true.
+    pub alt_names: Vec<&'static str>,
+    /// Number of active tags.
+    pub count: usize,
+    /// Raw colour strings from config/xresources, indexed [tag][hover_state][colour_index].
+    pub colors: Vec<Vec<Vec<&'static str>>>,
+    /// Compiled colour objects derived from `colors`.
+    pub schemes: Vec<Vec<Vec<crate::drw::Clr>>>,
+    /// Whether to display `alt_names` instead of `names`.
+    pub show_alt: bool,
+    /// Prefix-key mode: next tag key toggles rather than views.
+    pub prefix: bool,
+    /// Cached pixel width of the tag strip in the bar.
+    pub width: i32,
+}
+
+impl TagSet {
+    /// Bitmask covering all active tags: `(1 << count) - 1`.
+    #[inline]
+    pub fn mask(&self) -> u32 {
+        (1u32 << self.count).wrapping_sub(1)
+    }
+}
+
+impl Default for TagSet {
+    fn default() -> Self {
+        Self {
+            names: [[0; 16]; MAX_TAGS],
+            alt_names: Vec::new(),
+            count: 0,
+            colors: Vec::new(),
+            schemes: Vec::new(),
+            show_alt: false,
+            prefix: false,
+            width: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Click {
     TagBar,

@@ -33,7 +33,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
 
 use crate::bar::{update_bars, update_status};
-use crate::config::{init_config, TAGMASK};
+use crate::config::init_config;
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};
 use crate::focus::focus;
@@ -203,9 +203,10 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.mfact = cfg.mfact;
     globals.nmaster = cfg.nmaster;
 
-    globals.tags = cfg.tags;
-    globals.tagsalt = cfg.tagsalt;
-    globals.tagcolors = cfg.tagcolors;
+    globals.tags.names = cfg.tag_names;
+    globals.tags.alt_names = cfg.tag_alt_names;
+    globals.tags.colors = cfg.tag_colors;
+    globals.tags.count = cfg.num_tags;
     globals.windowcolors = cfg.windowcolors;
     globals.closebuttoncolors = cfg.closebuttoncolors;
     globals.bordercolors = cfg.bordercolors;
@@ -218,12 +219,6 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.commands = cfg.commands;
     globals.resources = cfg.resources;
     globals.fonts = cfg.fonts;
-    globals.tagmask = cfg.tagmask;
-    globals.numtags = cfg.numtags;
-
-    if globals.tagmask == 0 {
-        globals.tagmask = TAGMASK;
-    }
 }
 
 fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
@@ -485,7 +480,7 @@ fn init_schemes(drw: &Drw) {
     };
     let tagcolors: Vec<Vec<Vec<&str>>> = {
         let g = get_globals();
-        g.tagcolors.clone()
+        g.tags.colors.clone()
     };
     let windowcolors: Vec<Vec<Vec<&str>>> = {
         let g = get_globals();
@@ -535,7 +530,7 @@ fn init_schemes(drw: &Drw) {
     let mut globals = get_globals_mut();
     globals.borderscheme = borderscheme;
     globals.statusscheme = statusscheme;
-    globals.tagschemes = tagschemes;
+    globals.tags.schemes = tagschemes;
     globals.windowschemes = windowschemes;
     globals.closebuttonschemes = closebuttonschemes;
 }
