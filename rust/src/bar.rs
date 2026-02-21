@@ -87,7 +87,6 @@ pub fn draw_bar(m: &mut MonitorInner) {
     x = widgets::draw_tag_indicators(m, x, stats.occupied_tags, stats.urgent_tags, bh);
     x = widgets::draw_layout_indicator(m, x, bh);
 
-    layout.title_x = x;
     let status_offset = if is_selmon {
         layout.status_start_x
     } else {
@@ -139,10 +138,6 @@ pub fn reset_bar() {
         selmon.gesture = Gesture::None;
         draw_bar(selmon);
     }
-}
-
-pub fn click_status(arg: &Arg) {
-    status::click_status(arg);
 }
 
 pub fn update_status() {

@@ -1,9 +1,7 @@
 use crate::drw::{COL_BG, COL_FG};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::{get_globals, get_globals_mut};
 use crate::systray::get_systray_width;
-use crate::types::{Arg, MonitorInner};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
+use crate::types::MonitorInner;
 
 const MAX_COMMAND_OFFSETS: usize = 20;
 
@@ -27,30 +25,6 @@ enum StatusItem {
 struct StatusLayout {
     draw_start_x: i32,
     total_width: i32,
-}
-
-pub(crate) fn click_status(_arg: &Arg) {
-    let Some((root_x, _root_y)) = root_pointer() else {
-        return;
-    };
-
-    let g = get_globals();
-    let Some(selmon_idx) = g.selmon else {
-        return;
-    };
-    let Some(mon) = g.monitors.get(selmon_idx) else {
-        return;
-    };
-    let local_x = root_x - mon.mx;
-
-    let mut idx: usize = 0;
-    while idx < MAX_COMMAND_OFFSETS {
-        let offset = unsafe { super::COMMANDOFFSETS[idx] };
-        if offset <= 0 || local_x < offset {
-            break;
-        }
-        idx += 1;
-    }
 }
 
 pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
@@ -221,8 +195,8 @@ fn draw_items(
     }
 
     unsafe {
-        for offset in super::COMMANDOFFSETS.iter_mut() {
-            *offset = -1;
+        for idx in 0..MAX_COMMAND_OFFSETS {
+            super::COMMANDOFFSETS[idx] = -1;
         }
     }
 
@@ -293,10 +267,3 @@ fn draw_items(
     let _ = m;
 }
 
-fn root_pointer() -> Option<(i32, i32)> {
-    let x11 = get_x11();
-    let conn = x11.conn.as_ref()?;
-    let globals = get_globals();
-    let reply = conn.query_pointer(globals.root).ok()?.reply().ok()?;
-    Some((reply.root_x as i32, reply.root_y as i32))
-}

@@ -45,6 +45,5 @@ impl ClientBarStats {
 pub(crate) struct BarLayout {
     pub systray_width: i32,
     pub status_start_x: i32,
-    pub title_x: i32,
     pub title_width: i32,
 }
