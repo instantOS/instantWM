@@ -30,7 +30,9 @@ fn tagmon(arg: &Arg) {
 }
 
 pub fn create_monitor() -> MonitorInner {
+    eprintln!("TRACE: create_monitor - start");
     let g = get_globals();
+    eprintln!("TRACE: create_monitor - after get_globals");
 
     let mut m = MonitorInner {
         tagset: [1, 1],
@@ -43,9 +45,11 @@ pub fn create_monitor() -> MonitorInner {
         sellt: 0,
         ..Default::default()
     };
+    eprintln!("TRACE: create_monitor - after creating MonitorInner");
 
     let default_symbol = b"[]=";
     m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
+    eprintln!("TRACE: create_monitor - after setting ltsymbol");
 
     let pertag = Box::new(Pertag {
         current_tag: 1,
@@ -56,9 +60,12 @@ pub fn create_monitor() -> MonitorInner {
         showbars: [m.showbar; MAX_TAGS],
         ltidxs: [[None; 2]; MAX_TAGS],
     });
+    eprintln!("TRACE: create_monitor - after creating Pertag");
 
     m.pertag = Some(pertag);
+    eprintln!("TRACE: create_monitor - after setting pertag");
 
+    eprintln!("TRACE: create_monitor - returning");
     m
 }
 
@@ -384,17 +391,26 @@ fn is_unique_geom(unique: &[(i32, i32, i32, i32)], info: (i32, i32, i32, i32)) -
 }
 
 pub fn update_geom() -> bool {
+    eprintln!("TRACE: update_geom - start");
     let mut dirty = false;
 
     #[cfg(feature = "xinerama")]
     {
+        eprintln!("TRACE: update_geom - before get_x11");
         let x11 = get_x11();
+        eprintln!("TRACE: update_geom - after get_x11");
         if let Some(ref conn) = x11.conn {
+            eprintln!("TRACE: update_geom - before is_active");
             if let Ok(is_active_cookie) = xinerama::is_active(conn) {
+                eprintln!("TRACE: update_geom - before reply");
                 if let Ok(is_active) = is_active_cookie.reply() {
+                    eprintln!("TRACE: update_geom - is_active.state = {}", is_active.state);
                     if is_active.state != 0 {
+                        eprintln!("TRACE: update_geom - before query_screens");
                         if let Ok(screens_cookie) = xinerama::query_screens(conn) {
+                            eprintln!("TRACE: update_geom - before query_screens.reply");
                             if let Ok(screens) = screens_cookie.reply() {
+                                eprintln!("TRACE: update_geom - got screens, len = {}", screens.screen_info.len());
                                 let screen_info: Vec<(i32, i32, i32, i32)> = screens
                                     .screen_info
                                     .iter()
@@ -408,6 +424,7 @@ pub fn update_geom() -> bool {
                                     })
                                     .collect();
 
+                                eprintln!("TRACE: update_geom - screen_info = {:?}", screen_info);
                                 let mut unique: Vec<(i32, i32, i32, i32)> = Vec::new();
                                 for info in &screen_info {
                                     if is_unique_geom(&unique, *info) {
@@ -416,31 +433,39 @@ pub fn update_geom() -> bool {
                                 }
 
                                 let nn = unique.len();
+                                eprintln!("TRACE: update_geom - unique.len = {}", nn);
                                 let n = {
                                     let g = get_globals();
                                     g.monitors.len()
                                 };
+                                eprintln!("TRACE: update_geom - current monitors.len = {}", n);
 
                                 {
+                                    eprintln!("TRACE: update_geom - before create_monitor loop");
                                     let mut g = get_globals_mut();
                                     while g.monitors.len() < nn {
                                         g.monitors.push(create_monitor());
                                     }
+                                    eprintln!("TRACE: update_geom - after create_monitor loop");
                                 }
 
+                                eprintln!("TRACE: update_geom - before unique.iter().enumerate");
                                 for (i, info) in unique.iter().enumerate() {
+                                    eprintln!("TRACE: update_geom - iter i = {}", i);
                                     let mut g = get_globals_mut();
                                     if i >= n {
                                         dirty = true;
                                     }
 
                                     if let Some(ref mut m) = g.monitors.get_mut(i) {
+                                        eprintln!("TRACE: update_geom - got monitor {}", i);
                                         if i >= n
                                             || m.mx != info.0
                                             || m.my != info.1
                                             || m.mw != info.2
                                             || m.mh != info.3
                                         {
+                                            eprintln!("TRACE: update_geom - updating monitor {}", i);
                                             dirty = true;
                                             m.num = i as i32;
                                             m.mx = info.0;

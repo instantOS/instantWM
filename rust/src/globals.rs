@@ -172,7 +172,10 @@ impl Default for Globals {
 pub static GLOBALS: Lazy<RwLock<Globals>> = Lazy::new(|| RwLock::new(Globals::default()));
 
 pub fn get_globals() -> std::sync::RwLockReadGuard<'static, Globals> {
-    GLOBALS.read().unwrap()
+    eprintln!("TRACE: get_globals - called");
+    let guard = GLOBALS.read().unwrap();
+    eprintln!("TRACE: get_globals - acquired read lock");
+    guard
 }
 
 pub fn get_globals_mut() -> std::sync::RwLockWriteGuard<'static, Globals> {
