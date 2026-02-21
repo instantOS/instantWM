@@ -8,7 +8,7 @@ use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
-use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
+use crate::monitor::{arrange, rect_to_mon_rect, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
 use crate::systray::{get_systray_width, update_systray, win_to_systray_icon};
 use crate::tags::{get_tag_at_x, get_tag_width};
@@ -426,7 +426,12 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
     drop(globals);
 
     if focusfollowsmouse {
-        if let Some(m) = rect_to_mon(e.root_x as i32, e.root_y as i32, 1, 1) {
+        if let Some(m) = rect_to_mon_rect(&Rect {
+            x: e.root_x as i32,
+            y: e.root_y as i32,
+            w: 1,
+            h: 1,
+        }) {
             if Some(m) != selmon_id {
                 let globals = get_globals_mut();
                 globals.selmon = Some(m);

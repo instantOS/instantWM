@@ -44,23 +44,11 @@ pub fn create_monitor() -> MonitorInner {
         clientcount: 0,
         overlaymode: 0,
         sellt: 0,
+        current_tag: 1,
+        prev_tag: 1,
         ..Default::default()
     };
     eprintln!("TRACE: create_monitor - after creating MonitorInner");
-
-    let pertag = Box::new(Pertag {
-        current_tag: 1,
-        prevtag: 1,
-        nmasters: [m.nmaster; MAX_TAGS],
-        mfacts: [m.mfact; MAX_TAGS],
-        sellts: [m.sellt; MAX_TAGS],
-        showbars: [m.showbar; MAX_TAGS],
-        ltidxs: [[None; 2]; MAX_TAGS],
-    });
-    eprintln!("TRACE: create_monitor - after creating Pertag");
-
-    m.pertag = Some(pertag);
-    eprintln!("TRACE: create_monitor - after setting pertag");
 
     eprintln!("TRACE: create_monitor - returning");
     m
@@ -83,23 +71,11 @@ pub fn create_monitor_with_values(
         clientcount: 0,
         overlaymode: 0,
         sellt: 0,
+        current_tag: 1,
+        prev_tag: 1,
         ..Default::default()
     };
     eprintln!("TRACE: create_monitor_with_values - after creating MonitorInner");
-
-    let pertag = Box::new(Pertag {
-        current_tag: 1,
-        prevtag: 1,
-        nmasters: [m.nmaster; MAX_TAGS],
-        mfacts: [m.mfact; MAX_TAGS],
-        sellts: [m.sellt; MAX_TAGS],
-        showbars: [m.showbar; MAX_TAGS],
-        ltidxs: [[None; 2]; MAX_TAGS],
-    });
-    eprintln!("TRACE: create_monitor_with_values - after creating Pertag");
-
-    m.pertag = Some(pertag);
-    eprintln!("TRACE: create_monitor_with_values - after setting pertag");
 
     eprintln!("TRACE: create_monitor_with_values - returning");
     m
@@ -184,7 +160,7 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
 
     if w == g.root {
         if let Some((x, y)) = get_root_ptr() {
-            return rect_to_mon(x, y, 1, 1);
+            return rect_to_mon_rect(&Rect { x, y, w: 1, h: 1 });
         }
         return g.selmon;
     }
@@ -681,6 +657,52 @@ fn get_selected_client(mon_id: MonitorId) -> Option<Client> {
 fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
     let g = get_globals();
     g.monitors.get(mon_id).and_then(|m| m.sel)
+}
+
+/// Get the current tag for a monitor.
+/// Returns None if the monitor's current_tag is invalid.
+pub fn get_current_tag<'a>(mon: &MonitorInner, tags: &'a TagSet) -> Option<&'a Tag> {
+    if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
+        Some(&tags.tags[mon.current_tag - 1])
+    } else {
+        None
+    }
+}
+
+/// Get the current tag mutably.
+pub fn get_current_tag_mut<'a>(mon: &MonitorInner, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
+    if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
+        Some(&mut tags.tags[mon.current_tag - 1])
+    } else {
+        None
+    }
+}
+
+/// Get the current layout symbol for a monitor.
+pub fn get_current_ltsymbol(
+    mon: &MonitorInner,
+    tags: &TagSet,
+    layouts: &[Box<dyn Layout>],
+) -> String {
+    if let Some(tag) = get_current_tag(mon, tags) {
+        if let Some(lt_idx) = tag.ltidxs[tag.sellt as usize] {
+            layouts
+                .get(lt_idx)
+                .map(|l| l.symbol().to_string())
+                .unwrap_or_else(|| "[]=".to_string())
+        } else {
+            "[]=".to_string()
+        }
+    } else {
+        "[]=".to_string()
+    }
+}
+
+/// Check if the current tag's showbar is enabled.
+pub fn get_current_showbar(mon: &MonitorInner, tags: &TagSet) -> bool {
+    get_current_tag(mon, tags)
+        .map(|t| t.showbar)
+        .unwrap_or(true)
 }
 
 fn reset_sticky(_c: &mut Client) {}

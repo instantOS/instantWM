@@ -172,10 +172,9 @@ pub(crate) fn toggle_bar(_arg: &Arg) {
         if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
             selmon.showbar = !selmon.showbar;
 
-            if let Some(ref mut pertag) = selmon.pertag {
-                if (pertag.current_tag as usize) < pertag.showbars.len() {
-                    pertag.showbars[pertag.current_tag as usize] = selmon.showbar;
-                }
+            let current_tag = selmon.current_tag;
+            if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                g.tags.tags[current_tag - 1].showbar = selmon.showbar;
             }
 
             update_bar_pos(selmon);

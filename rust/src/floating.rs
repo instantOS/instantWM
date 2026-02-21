@@ -1,4 +1,4 @@
-use crate::animation::{animate_client, animate_client_rect, check_animate_rect};
+use crate::animation::{animate_client_rect, check_animate_rect};
 use crate::client::resize;
 use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
@@ -116,7 +116,7 @@ pub fn visible_client(win: Window) -> bool {
 pub fn save_all_floating(mon_id: Option<usize>) {
     let (numtags, _tagmask) = {
         let globals = get_globals();
-        (globals.tags.count, globals.tags.mask())
+        (globals.tags.count(), globals.tags.mask())
     };
 
     if let Some(mid) = mon_id {
@@ -124,13 +124,16 @@ pub fn save_all_floating(mon_id: Option<usize>) {
         {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mid) {
-                for i in 1..numtags {
-                    if i >= MAX_TAGS {
+                for i in 1..=numtags {
+                    if i > globals.tags.tags.len() {
                         break;
                     }
-                    let has_arrange = if let Some(ref pertag) = mon.pertag {
-                        if pertag.sellts[i] < 2 {
-                            pertag.ltidxs[i][pertag.sellts[i] as usize].is_some()
+                    let tag_idx = i - 1;
+
+                    let has_arrange = if tag_idx < globals.tags.tags.len() {
+                        let tag = &globals.tags.tags[tag_idx];
+                        if tag.sellt < 2 {
+                            tag.ltidxs[tag.sellt as usize].is_some()
                         } else {
                             false
                         }
@@ -145,7 +148,7 @@ pub fn save_all_floating(mon_id: Option<usize>) {
                     let mut current = mon.clients;
                     while let Some(c_win) = current {
                         if let Some(c) = globals.clients.get(&c_win) {
-                            if (c.tags & (1 << (i - 1))) != 0 && c.snapstatus == SnapPosition::None
+                            if (c.tags & (1 << tag_idx)) != 0 && c.snapstatus == SnapPosition::None
                             {
                                 to_save.push(c_win);
                             }
@@ -166,7 +169,7 @@ pub fn save_all_floating(mon_id: Option<usize>) {
 pub fn restore_all_floating(mon_id: Option<usize>) {
     let numtags = {
         let globals = get_globals();
-        globals.tags.count
+        globals.tags.count()
     };
 
     if let Some(mid) = mon_id {
@@ -174,13 +177,16 @@ pub fn restore_all_floating(mon_id: Option<usize>) {
         {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mid) {
-                for i in 1..numtags {
-                    if i >= MAX_TAGS {
+                for i in 1..=numtags {
+                    if i > globals.tags.tags.len() {
                         break;
                     }
-                    let has_arrange = if let Some(ref pertag) = mon.pertag {
-                        if pertag.sellts[i] < 2 {
-                            pertag.ltidxs[i][pertag.sellts[i] as usize].is_some()
+                    let tag_idx = i - 1;
+
+                    let has_arrange = if tag_idx < globals.tags.tags.len() {
+                        let tag = &globals.tags.tags[tag_idx];
+                        if tag.sellt < 2 {
+                            tag.ltidxs[tag.sellt as usize].is_some()
                         } else {
                             false
                         }
@@ -195,7 +201,7 @@ pub fn restore_all_floating(mon_id: Option<usize>) {
                     let mut current = mon.clients;
                     while let Some(c_win) = current {
                         if let Some(c) = globals.clients.get(&c_win) {
-                            if (c.tags & (1 << (i - 1))) != 0 && c.snapstatus == SnapPosition::None
+                            if (c.tags & (1 << tag_idx)) != 0 && c.snapstatus == SnapPosition::None
                             {
                                 to_restore.push(c_win);
                             }
@@ -252,11 +258,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
     let (snapstatus, saved_geo, border_width) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            (
-                client.snapstatus,
-                client.float_geo,
-                client.border_width,
-            )
+            (client.snapstatus, client.float_geo, client.border_width)
         } else {
             return;
         }
@@ -944,7 +946,17 @@ pub fn moveresize(arg: &Arg) {
         nx = (mon_mw + mon_mx) - c_w - border_width * 2;
     }
 
-    animate_client(win, nx, ny, c_w, c_h, 5, 0);
+    animate_client_rect(
+        win,
+        &Rect {
+            x: nx,
+            y: ny,
+            w: c_w,
+            h: c_h,
+        },
+        5,
+        0,
+    );
     warp_cursor_to_client(win);
 }
 
@@ -1113,7 +1125,7 @@ pub fn scale_client_win(win: Window, scale: i32) {
         y = bh;
     }
 
-    animate_client(win, x, y, w, h, 3, 0);
+    animate_client_rect(win, &Rect { x, y, w, h }, 3, 0);
 }
 
 pub fn apply_snap_mut(c: &mut Client, m: &MonitorInner) {

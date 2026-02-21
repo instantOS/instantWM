@@ -281,11 +281,7 @@ fn anim_scroll(arg: &Arg, dir: i32) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                if let Some(ref pertag) = mon.pertag {
-                    pertag.current_tag
-                } else {
-                    return;
-                }
+                mon.current_tag as u32
             } else {
                 return;
             }

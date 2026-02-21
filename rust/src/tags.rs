@@ -35,7 +35,7 @@ pub fn name_tag(arg: &Arg) {
 
     let (numtags, current_tag) = {
         let globals = get_globals();
-        let numtags = globals.tags.count;
+        let numtags = globals.tags.count();
         let current_tag = globals
             .selmon
             .and_then(|id| globals.monitors.get(id))
@@ -54,14 +54,18 @@ pub fn name_tag(arg: &Arg) {
         if (tagset & (1 << i)) != 0 {
             let globals = get_globals_mut();
             if !name_bytes.is_empty() {
-                globals.tags.names[i] = String::from_utf8_lossy(name_bytes).into_owned();
+                if i < globals.tags.tags.len() {
+                    globals.tags.tags[i].name = String::from_utf8_lossy(name_bytes).into_owned();
+                }
             } else {
                 let default_tag = if i == 8 {
                     "9".to_string()
                 } else {
                     ((b'1' + i as u8) as char).to_string()
                 };
-                globals.tags.names[i] = default_tag;
+                if i < globals.tags.tags.len() {
+                    globals.tags.tags[i].name = default_tag;
+                }
             }
         }
     }
@@ -69,11 +73,13 @@ pub fn name_tag(arg: &Arg) {
 
 pub fn reset_name_tag(_arg: &Arg) {
     let globals = get_globals_mut();
-    for i in 0..globals.tags.count {
+    for i in 0..globals.tags.count() {
         if i >= MAX_TAGS {
             break;
         }
-        globals.tags.names[i] = format!("{}", i + 1);
+        if i < globals.tags.tags.len() {
+            globals.tags.tags[i].name = format!("{}", i + 1);
+        }
     }
     globals.tags.width = 0;
 }
@@ -102,10 +108,9 @@ pub fn get_tag_width() -> i32 {
     }
 
     let start_menu_size = globals.startmenusize;
-    let numtags = globals.tags.count;
+    let numtags = globals.tags.count();
     let lrpad = globals.lrpad;
     let showalttag = globals.tags.show_alt;
-    let tagsalt = globals.tags.alt_names.clone();
 
     for i in 0..numtags {
         if i >= 9 {
@@ -139,9 +144,19 @@ pub fn get_tag_width() -> i32 {
             }
         }
 
-        let tag_name = globals.tags.names.get(i).map(|s| s.as_str()).unwrap_or("");
-        let display_name = if showalttag && i < tagsalt.len() {
-            tagsalt[i]
+        let tag_name = globals
+            .tags
+            .tags
+            .get(i)
+            .map(|t| t.name.as_str())
+            .unwrap_or("");
+        let display_name = if showalttag {
+            globals
+                .tags
+                .tags
+                .get(i)
+                .map(|t| t.alt_name)
+                .unwrap_or(tag_name)
         } else {
             tag_name
         };
@@ -176,10 +191,9 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
         }
     }
 
-    let numtags = globals.tags.count;
+    let numtags = globals.tags.count();
     let lrpad = globals.lrpad;
     let showalttag = globals.tags.show_alt;
-    let tagsalt = globals.tags.alt_names.clone();
 
     for i in 0..numtags {
         if i >= 9 {
@@ -213,9 +227,19 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
             }
         }
 
-        let tag_name = globals.tags.names.get(i).map(|s| s.as_str()).unwrap_or("");
-        let display_name = if showalttag && i < tagsalt.len() {
-            tagsalt[i]
+        let tag_name = globals
+            .tags
+            .tags
+            .get(i)
+            .map(|t| t.name.as_str())
+            .unwrap_or("");
+        let display_name = if showalttag {
+            globals
+                .tags
+                .tags
+                .get(i)
+                .map(|t| t.alt_name)
+                .unwrap_or(tag_name)
         } else {
             tag_name
         };
@@ -283,11 +307,7 @@ pub fn tag_all(arg: &Arg) {
 
     let current_tag = if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if let Some(ref pertag) = mon.pertag {
-                pertag.current_tag
-            } else {
-                return;
-            }
+            mon.current_tag
         } else {
             return;
         }
@@ -444,10 +464,8 @@ pub fn view(arg: &Arg) {
     if ui == !0u32 {
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                if let Some(ref mut pertag) = mon.pertag {
-                    pertag.prevtag = pertag.current_tag;
-                    pertag.current_tag = 0;
-                }
+                mon.prev_tag = mon.current_tag;
+                mon.current_tag = 0;
             }
         }
     } else {
@@ -458,13 +476,11 @@ pub fn view(arg: &Arg) {
 
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                if let Some(ref mut pertag) = mon.pertag {
-                    if i + 1 == pertag.current_tag {
-                        return;
-                    }
-                    pertag.prevtag = pertag.current_tag;
-                    pertag.current_tag = i + 1;
+                if i + 1 == mon.current_tag {
+                    return;
                 }
+                mon.prev_tag = mon.current_tag;
+                mon.current_tag = i + 1;
             }
         }
     }
@@ -481,22 +497,41 @@ pub fn view(arg: &Arg) {
 
 fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
     if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            if let Some(ref pertag) = mon.pertag {
-                let current_tag = pertag.current_tag as usize;
-                if current_tag < MAX_TAGS {
-                    mon.nmaster = pertag.nmasters[current_tag];
-                    mon.mfact = pertag.mfacts[current_tag];
-                    mon.sellt = pertag.sellts[current_tag];
-
-                    if let Some(lt_idx) = pertag.ltidxs[current_tag][mon.sellt as usize] {
-                        mon.ltsymbol = globals
-                            .layouts
-                            .get(lt_idx)
-                            .map(|l| l.symbol().to_string())
-                            .unwrap_or_else(|| "[]=".to_string());
-                    }
+        // We need to split the borrow here. We can't get a mutable reference to monitors
+        // and then access tags from globals because tags is part of globals.
+        // But MonitorInner is inside monitors vec.
+        // To satisfy borrow checker, we might need to copy values or index carefully.
+        // Actually, we can get the monitor first.
+        let (nmaster, mfact, sellt, lt_idx) = {
+            if let Some(mon) = globals.monitors.get(sel_mon_id) {
+                let current_tag = mon.current_tag;
+                if current_tag > 0 && current_tag <= globals.tags.tags.len() {
+                    let tag = &globals.tags.tags[current_tag - 1];
+                    (
+                        tag.nmaster,
+                        tag.mfact,
+                        tag.sellt,
+                        tag.ltidxs[tag.sellt as usize],
+                    )
+                } else {
+                    return;
                 }
+            } else {
+                return;
+            }
+        };
+
+        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
+            mon.nmaster = nmaster;
+            mon.mfact = mfact;
+            mon.sellt = sellt;
+
+            if let Some(lt_idx) = lt_idx {
+                mon.ltsymbol = globals
+                    .layouts
+                    .get(lt_idx)
+                    .map(|l| l.symbol().to_string())
+                    .unwrap_or_else(|| "[]=".to_string());
             }
         }
     }
@@ -531,10 +566,8 @@ pub fn toggle_view(arg: &Arg) {
     if new_tagset == !0u32 {
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                if let Some(ref mut pertag) = mon.pertag {
-                    pertag.prevtag = pertag.current_tag;
-                    pertag.current_tag = 0;
-                }
+                mon.prev_tag = mon.current_tag;
+                mon.current_tag = 0;
             }
         }
     } else {
@@ -545,12 +578,10 @@ pub fn toggle_view(arg: &Arg) {
 
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                if let Some(ref mut pertag) = mon.pertag {
-                    let current_tag = pertag.current_tag;
-                    if (new_tagset & (1 << (current_tag - 1))) == 0 {
-                        pertag.prevtag = current_tag;
-                        pertag.current_tag = i + 1;
-                    }
+                let current_tag = mon.current_tag;
+                if (new_tagset & (1 << (current_tag - 1))) == 0 {
+                    mon.prev_tag = current_tag;
+                    mon.current_tag = i + 1;
                 }
             }
         }
@@ -702,7 +733,7 @@ fn shift_tag(dir: i32, offset: i32) {
         let globals = get_globals();
         let current_tag = if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0)
+                mon.current_tag as u32
             } else {
                 return;
             }
@@ -764,7 +795,17 @@ fn shift_tag(dir: i32, offset: i32) {
         };
 
         let anim_offset = (mon_mw / 10) * if dir == DIR_LEFT { -1 } else { 1 };
-        crate::animation::animate_client(win, c_x + anim_offset, c_y, 0, 0, 7, 0);
+        crate::animation::animate_client_rect(
+            win,
+            &Rect {
+                x: c_x + anim_offset,
+                y: c_y,
+                w: 0,
+                h: 0,
+            },
+            7,
+            0,
+        );
     }
 
     let (tagset, tagmask) = {
@@ -809,7 +850,11 @@ fn reset_sticky_client(win: Window) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.pertag.as_ref().map(|p| 1 << (p.current_tag - 1))
+                if mon.current_tag > 0 {
+                    Some(1 << (mon.current_tag - 1))
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -842,7 +887,7 @@ fn view_scroll(dir: i32) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let current_tag = mon.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0);
+                let current_tag = mon.current_tag as u32;
                 (
                     current_tag,
                     mon.tagset[mon.seltags as usize],
@@ -886,14 +931,12 @@ fn view_scroll(dir: i32) {
             mon.seltags ^= 1;
             mon.tagset[mon.seltags as usize] = new_tagset;
 
-            if let Some(ref mut pertag) = mon.pertag {
-                pertag.prevtag = pertag.current_tag;
-                let mut i = 0;
-                while (new_tagset & (1 << i)) == 0 {
-                    i += 1;
-                }
-                pertag.current_tag = i + 1;
+            mon.prev_tag = mon.current_tag;
+            let mut i = 0;
+            while (new_tagset & (1 << i)) == 0 {
+                i += 1;
             }
+            mon.current_tag = i + 1;
         }
     }
 
@@ -928,7 +971,7 @@ pub fn shift_view_direction(forward: bool) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.tagset[mon.seltags as usize], globals.tags.count)
+                (mon.tagset[mon.seltags as usize], globals.tags.count())
             } else {
                 return;
             }
@@ -998,7 +1041,7 @@ pub fn swap_tags(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let current_tag = mon.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0);
+                let current_tag = mon.current_tag as u32;
                 (current_tag, mon.tagset[mon.seltags as usize])
             } else {
                 return;
@@ -1056,12 +1099,11 @@ pub fn swap_tags(arg: &Arg) {
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
             mon.tagset[mon.seltags as usize] = newtag;
-            if let Some(ref mut pertag) = mon.pertag {
-                if pertag.prevtag == target_idx + 1 {
-                    pertag.prevtag = current_tag;
-                }
-                pertag.current_tag = target_idx + 1;
+
+            if mon.prev_tag == target_idx + 1 {
+                mon.prev_tag = current_tag as usize;
             }
+            mon.current_tag = target_idx + 1;
         }
     }
 
@@ -1087,7 +1129,7 @@ pub fn follow_view(_arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.pertag.as_ref().map(|p| p.prevtag).unwrap_or(1)
+                mon.prev_tag
             } else {
                 return;
             }
@@ -1124,8 +1166,8 @@ pub fn reset_sticky(c: &mut Client) {
     let globals = get_globals();
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if let Some(ref pertag) = mon.pertag {
-                c.tags = 1 << (pertag.current_tag - 1);
+            if mon.current_tag > 0 {
+                c.tags = 1 << (mon.current_tag - 1);
             }
         }
     }
@@ -1144,18 +1186,12 @@ pub fn toggle_overview(_arg: &Arg) {
             false
         };
         let current_tag = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .and_then(|m| m.pertag.as_ref().map(|p| p.current_tag))
+            globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
         } else {
             None
         };
         let prevtag = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .and_then(|m| m.pertag.as_ref().map(|p| p.prevtag))
+            globals.monitors.get(sel_mon_id).map(|m| m.prev_tag)
         } else {
             None
         };
@@ -1192,10 +1228,7 @@ pub fn toggle_fullscreen_overview(_arg: &Arg) {
     let current_tag = {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .and_then(|m| m.pertag.as_ref().map(|p| p.current_tag))
+            globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
         } else {
             None
         }
@@ -1218,11 +1251,7 @@ pub fn last_view(_arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                if let Some(ref pertag) = mon.pertag {
-                    (pertag.current_tag, pertag.prevtag)
-                } else {
-                    return;
-                }
+                (mon.current_tag, mon.prev_tag)
             } else {
                 return;
             }
@@ -1293,10 +1322,7 @@ pub fn win_view(_arg: &Arg) {
                         let current_tag = {
                             let globals = get_globals();
                             if let Some(sel_mon_id) = globals.selmon {
-                                globals
-                                    .monitors
-                                    .get(sel_mon_id)
-                                    .and_then(|m| m.pertag.as_ref().map(|p| p.current_tag))
+                                globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
                             } else {
                                 None
                             }

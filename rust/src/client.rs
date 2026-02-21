@@ -1,4 +1,4 @@
-use crate::animation::animate_client;
+use crate::animation::animate_client_rect;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::*;
@@ -549,7 +549,7 @@ pub fn show(win: Window) {
         let _ = conn.flush();
     }
 
-    animate_client(win, x, y, 0, 0, 14, 0);
+    animate_client_rect(win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
     let mon_id = {
         let globals = get_globals();
@@ -586,7 +586,17 @@ pub fn hide(win: Window) {
     drop(globals);
 
     if animated {
-        animate_client(win, x, bh - h + 40, 0, 0, 10, 0);
+        animate_client_rect(
+            win,
+            &Rect {
+                x,
+                y: bh - h + 40,
+                w: 0,
+                h: 0,
+            },
+            10,
+            0,
+        );
     }
 
     let x11 = get_x11();
@@ -1104,7 +1114,17 @@ pub fn kill_client(_arg: &Arg) {
 
     if animated && win != anim_client && !is_fullscreen {
         ANIM_CLIENT.store(win, Ordering::Relaxed);
-        animate_client(win, 0, mon_mh - 20, 0, 0, 10, 0);
+        animate_client_rect(
+            win,
+            &Rect {
+                x: 0,
+                y: mon_mh - 20,
+                w: 0,
+                h: 0,
+            },
+            10,
+            0,
+        );
     }
 
     let wmatom_delete = globals.wmatom.delete;
@@ -1179,7 +1199,17 @@ pub fn close_win(arg: &Arg) {
         return;
     }
 
-    animate_client(win, 0, mon_mh - 20, 0, 0, 10, 0);
+    animate_client_rect(
+        win,
+        &Rect {
+            x: 0,
+            y: mon_mh - 20,
+            w: 0,
+            h: 0,
+        },
+        10,
+        0,
+    );
 
     let globals = get_globals();
     let wmatom_delete = globals.wmatom.delete;
@@ -1491,7 +1521,17 @@ pub fn manage(
                 h: c.geo.h,
             },
         );
-        animate_client(w, c.geo.x, c.geo.y + 70, 0, 0, 7, 0);
+        animate_client_rect(
+            w,
+            &Rect {
+                x: c.geo.x,
+                y: c.geo.y + 70,
+                w: 0,
+                h: 0,
+            },
+            7,
+            0,
+        );
 
         let has_arrange = if let Some(mon_id) = c.mon_id {
             let globals = get_globals();
@@ -1698,7 +1738,17 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
 
                 if !is_floating {
                     drop(globals);
-                    animate_client(win, mon_mx, mon_my, mon_mw, mon_mh, 10, 0);
+                    animate_client_rect(
+                        win,
+                        &Rect {
+                            x: mon_mx,
+                            y: mon_my,
+                            w: mon_mw,
+                            h: mon_mh,
+                        },
+                        10,
+                        0,
+                    );
                     globals = get_globals_mut();
                 }
 

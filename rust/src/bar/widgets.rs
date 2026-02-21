@@ -142,9 +142,7 @@ pub(crate) fn draw_tag_indicators(
     let lrpad = g.lrpad;
     let show_alt_tag = g.tags.show_alt;
     let bar_dragging = g.bar_dragging;
-    let num_tags = g.tags.count;
-
-    let tags_alt = g.tags.alt_names.clone();
+    let num_tags = g.tags.count();
 
     for i in 0..num_tags as u32 {
         if i >= 9 {
@@ -158,9 +156,9 @@ pub(crate) fn draw_tag_indicators(
             false
         };
 
-        let current_tag = m.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0);
+        let current_tag = m.current_tag;
         let actual_i = if i == 8 && current_tag > 9 {
-            current_tag - 1
+            (current_tag - 1) as u32
         } else {
             i
         };
@@ -172,15 +170,18 @@ pub(crate) fn draw_tag_indicators(
             continue;
         }
 
-        let tag_name = g
-            .tags
-            .names
-            .get(actual_i as usize)
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let tag = g.tags.tags.get(actual_i as usize);
+        let tag_name = tag.map(|t| t.name.as_str()).unwrap_or("");
 
-        let display_name = if show_alt_tag && (actual_i as usize) < tags_alt.len() {
-            tags_alt[actual_i as usize]
+        let display_name = if show_alt_tag {
+            tag.map(|t| {
+                if !t.alt_name.is_empty() {
+                    t.alt_name
+                } else {
+                    tag_name
+                }
+            })
+            .unwrap_or(tag_name)
         } else {
             tag_name
         };

@@ -303,19 +303,11 @@ pub struct XAtoms {
 }
 
 /// All tag-related configuration and runtime state, grouped in one place.
-///
-/// This replaces nine scattered fields on `Globals`:
-/// `tags`, `tagsalt`, `numtags`, `tagmask`, `tagcolors`, `tagschemes`,
-/// `tagwidth`, `showalttag`, and `tagprefix`.
 #[derive(Debug, Clone)]
 pub struct TagSet {
-    /// Primary tag labels, one per active tag.
-    pub names: Vec<String>,
-    /// Alternate labels shown when `show_alt` is true.
-    pub alt_names: Vec<&'static str>,
-    /// Number of active tags.
-    pub count: usize,
-    /// Raw colour strings from config/xresources, indexed [tag][hover_state][colour_index].
+    /// List of tags with their properties.
+    pub tags: Vec<Tag>,
+    /// Raw colour strings from config/xresources, indexed [hover_state][type][colour_index].
     pub colors: Vec<Vec<Vec<&'static str>>>,
     /// Compiled colour objects derived from `colors`.
     pub schemes: TagSchemes,
@@ -331,21 +323,51 @@ impl TagSet {
     /// Bitmask covering all active tags: `(1 << count) - 1`.
     #[inline]
     pub fn mask(&self) -> u32 {
-        (1u32 << self.count).wrapping_sub(1)
+        (1u32 << self.tags.len()).wrapping_sub(1)
+    }
+
+    /// Number of active tags.
+    #[inline]
+    pub fn count(&self) -> usize {
+        self.tags.len()
     }
 }
 
 impl Default for TagSet {
     fn default() -> Self {
         Self {
-            names: Vec::new(),
-            alt_names: Vec::new(),
-            count: 0,
+            tags: Vec::new(),
             colors: Vec::new(),
             schemes: TagSchemes::default(),
             show_alt: false,
             prefix: false,
             width: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Tag {
+    pub name: String,
+    pub alt_name: &'static str,
+    // Pertag / Layout fields
+    pub nmaster: i32,
+    pub mfact: f32,
+    pub sellt: u32,
+    pub showbar: bool,
+    pub ltidxs: [Option<usize>; 2],
+}
+
+impl Default for Tag {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            alt_name: "",
+            nmaster: 1,
+            mfact: 0.55,
+            sellt: 0,
+            showbar: true,
+            ltidxs: [None; 2],
         }
     }
 }
@@ -673,31 +695,6 @@ impl Client {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Pertag {
-    pub current_tag: u32,
-    pub prevtag: u32,
-    pub nmasters: [i32; MAX_TAGS],
-    pub mfacts: [f32; MAX_TAGS],
-    pub sellts: [u32; MAX_TAGS],
-    pub showbars: [bool; MAX_TAGS],
-    pub ltidxs: [[Option<usize>; 2]; MAX_TAGS],
-}
-
-impl Default for Pertag {
-    fn default() -> Self {
-        Self {
-            current_tag: 0,
-            prevtag: 0,
-            nmasters: [0; MAX_TAGS],
-            mfacts: [0.0; MAX_TAGS],
-            sellts: [0; MAX_TAGS],
-            showbars: [false; MAX_TAGS],
-            ltidxs: [[None; 2]; MAX_TAGS],
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
     pub ltsymbol: String,
     pub mfact: f32,
@@ -721,7 +718,8 @@ pub struct MonitorInner {
     pub gesture: Gesture,
     pub barwin: Window,
     pub showtags: u32,
-    pub pertag: Option<Box<Pertag>>,
+    pub current_tag: usize,
+    pub prev_tag: usize,
     pub clients: Option<Window>,
     pub sel: Option<Window>,
     pub overlay: Option<Window>,
@@ -754,7 +752,8 @@ impl Default for MonitorInner {
             gesture: Gesture::default(),
             barwin: 0,
             showtags: 0,
-            pertag: None,
+            current_tag: 0,
+            prev_tag: 0,
             clients: None,
             sel: None,
             overlay: None,

@@ -238,7 +238,9 @@ fn load_tag_resources(resource_str: &str) {
     for i in 0..9 {
         let propname = format!("tag.{}", i + 1);
         if let Some(value) = find_resource(resource_str, &propname) {
-            globals.tags.names[i] = value;
+            if i < globals.tags.tags.len() {
+                globals.tags.tags[i].name = value;
+            }
         }
     }
 }
@@ -265,9 +267,11 @@ pub fn verify_tags_xres() {
     let globals = get_globals_mut();
 
     for i in 0..9 {
-        let len = globals.tags.names[i].len();
-        if len > MAX_TAGLEN - 1 || len == 0 {
-            globals.tags.names[i] = "Xres err".to_string();
+        if i < globals.tags.tags.len() {
+            let len = globals.tags.tags[i].name.len();
+            if len > MAX_TAGLEN - 1 || len == 0 {
+                globals.tags.tags[i].name = "Xres err".to_string();
+            }
         }
     }
 }

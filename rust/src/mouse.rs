@@ -1,10 +1,10 @@
-use crate::animation::animate_client;
+use crate::animation::animate_client_rect;
 use crate::bar::draw_bar;
 use crate::client::{resize, unfocus_win};
 use crate::floating::{reset_snap, toggle_floating, SNAP_LEFT, SNAP_RIGHT, SNAP_TOP};
 use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::{rect_to_mon, send_mon};
+use crate::monitor::{rect_to_mon_rect, send_mon};
 use crate::tags::{follow_tag, get_tag_at_x, get_tag_width, tag, tag_all, view};
 use crate::types::*;
 use crate::util::spawn;
@@ -132,7 +132,17 @@ pub fn moveresize(_arg: &Arg) {
         nx = mon_mw + mon_mx - c_w - border_width * 2;
     }
 
-    animate_client(win, nx, ny, c_w, c_h, 5, 0);
+    animate_client_rect(
+        win,
+        &Rect {
+            x: nx,
+            y: ny,
+            w: c_w,
+            h: c_h,
+        },
+        5,
+        0,
+    );
     warp_cursor_to_client_impl(win);
 }
 
@@ -1325,7 +1335,7 @@ pub fn is_valid_window_size_rect(rect: &Rect, c_win: Window) -> bool {
 
 /// Handle monitor switch when a window is moved/resized to a different monitor.
 pub fn handle_monitor_switch(c_win: Window, rect: &Rect) {
-    let new_mon = rect_to_mon(rect.x, rect.y, rect.w, rect.h);
+    let new_mon = rect_to_mon_rect(rect);
     let current_mon = get_globals().selmon;
 
     if new_mon != current_mon {

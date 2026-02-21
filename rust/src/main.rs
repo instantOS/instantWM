@@ -203,10 +203,33 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.mfact = cfg.mfact;
     globals.nmaster = cfg.nmaster;
 
-    globals.tags.names = cfg.tag_names;
-    globals.tags.alt_names = cfg.tag_alt_names;
     globals.tags.colors = cfg.tag_colors;
-    globals.tags.count = cfg.num_tags;
+
+    let num_tags = cfg.num_tags;
+    globals.tags.tags = Vec::with_capacity(num_tags);
+    for i in 0..num_tags {
+        let name = if i < cfg.tag_names.len() {
+            cfg.tag_names[i].clone()
+        } else {
+            format!("{}", i + 1)
+        };
+
+        let alt_name = if i < cfg.tag_alt_names.len() {
+            cfg.tag_alt_names[i]
+        } else {
+            ""
+        };
+
+        let mut tag = Tag::default();
+        tag.name = name;
+        tag.alt_name = alt_name;
+        tag.nmaster = cfg.nmaster;
+        tag.mfact = cfg.mfact;
+        tag.showbar = cfg.showbar;
+        // sellt and ltidxs default to 0/None which is fine
+        globals.tags.tags.push(tag);
+    }
+
     globals.windowcolors = cfg.windowcolors;
     globals.closebuttoncolors = cfg.closebuttoncolors;
     globals.bordercolors = cfg.bordercolors;

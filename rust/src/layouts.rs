@@ -1,4 +1,4 @@
-use crate::animation::animate_client;
+use crate::animation::animate_client_rect;
 use crate::bar::draw_bar;
 use crate::client::{client_height, client_width, is_visible, next_tiled, resize, save_bw};
 use crate::floating::restore_border_width_win;
@@ -225,22 +225,26 @@ pub fn tile(m: &mut MonitorInner) {
             let h = (m.work_rect.h - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
 
             if n == 2 {
-                animate_client(
+                animate_client_rect(
                     win,
-                    m.work_rect.x,
-                    m.work_rect.y + my as i32,
-                    mw - 2 * border_width,
-                    h - 2 * border_width,
+                    &Rect {
+                        x: m.work_rect.x,
+                        y: m.work_rect.y + my as i32,
+                        w: mw - 2 * border_width,
+                        h: h - 2 * border_width,
+                    },
                     0,
                     0,
                 );
             } else {
-                animate_client(
+                animate_client_rect(
                     win,
-                    m.work_rect.x,
-                    m.work_rect.y + my as i32,
-                    mw - 2 * border_width,
-                    h - 2 * border_width,
+                    &Rect {
+                        x: m.work_rect.x,
+                        y: m.work_rect.y + my as i32,
+                        w: mw - 2 * border_width,
+                        h: h - 2 * border_width,
+                    },
                     framecount,
                     0,
                 );
@@ -260,12 +264,14 @@ pub fn tile(m: &mut MonitorInner) {
             }
         } else {
             let h = (m.work_rect.h - ty as i32) / (n - i) as i32;
-            animate_client(
+            animate_client_rect(
                 win,
-                m.work_rect.x + mw,
-                m.work_rect.y + ty as i32,
-                m.work_rect.w - mw - 2 * border_width,
-                h - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x + mw,
+                    y: m.work_rect.y + ty as i32,
+                    w: m.work_rect.w - mw - 2 * border_width,
+                    h: h - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -344,12 +350,14 @@ pub fn monocle(m: &mut MonitorInner) {
         } else {
             0
         };
-        animate_client(
+        animate_client_rect(
             win,
-            m.work_rect.x,
-            m.work_rect.y,
-            m.work_rect.w - 2 * border_width,
-            m.work_rect.h - 2 * border_width,
+            &Rect {
+                x: m.work_rect.x,
+                y: m.work_rect.y,
+                w: m.work_rect.w - 2 * border_width,
+                h: m.work_rect.h - 2 * border_width,
+            },
             frames,
             0,
         );
@@ -434,12 +442,14 @@ pub fn grid(m: &mut MonitorInner) {
             0
         };
 
-        animate_client(
+        animate_client_rect(
             win,
-            cx,
-            cy,
-            cw - 2 * border_width + aw,
-            ch - 2 * border_width + ah,
+            &Rect {
+                x: cx,
+                y: cy,
+                w: cw - 2 * border_width + aw,
+                h: ch - 2 * border_width + ah,
+            },
             framecount,
             0,
         );
@@ -599,12 +609,14 @@ pub fn bstack(m: &mut MonitorInner) {
 
         if i < m.nmaster as u32 {
             let w = (m.work_rect.w - mx) / (min(n, m.nmaster as u32) - i) as i32;
-            animate_client(
+            animate_client_rect(
                 win,
-                m.work_rect.x + mx,
-                m.work_rect.y,
-                w - 2 * border_width,
-                mh - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x + mx,
+                    y: m.work_rect.y,
+                    w: w - 2 * border_width,
+                    h: mh - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -615,12 +627,14 @@ pub fn bstack(m: &mut MonitorInner) {
             }
         } else {
             let h = m.work_rect.h - mh;
-            animate_client(
+            animate_client_rect(
                 win,
-                tx,
-                ty,
-                tw - 2 * border_width,
-                h - 2 * border_width,
+                &Rect {
+                    x: tx,
+                    y: ty,
+                    w: tw - 2 * border_width,
+                    h: h - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -698,12 +712,14 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
 
         if i < m.nmaster as u32 {
             let w = (m.work_rect.w - mx) / (min(n, m.nmaster as u32) - i) as i32;
-            animate_client(
+            animate_client_rect(
                 win,
-                m.work_rect.x + mx,
-                m.work_rect.y,
-                w - 2 * border_width,
-                mh - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x + mx,
+                    y: m.work_rect.y,
+                    w: w - 2 * border_width,
+                    h: mh - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -713,12 +729,14 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
                 mx += client_width(c);
             }
         } else {
-            animate_client(
+            animate_client_rect(
                 win,
-                tx,
-                ty,
-                m.work_rect.w - 2 * border_width,
-                th - 2 * border_width,
+                &Rect {
+                    x: tx,
+                    y: ty,
+                    w: m.work_rect.w - 2 * border_width,
+                    h: th - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -1362,44 +1380,55 @@ pub fn set_layout(arg: &Arg) {
     };
 
     if tagprefix {
-        multimon = true;
+        // When tagprefix is set, apply layout changes to ALL tags on ALL monitors
         let layout_idx = arg.v;
         {
             let g = get_globals_mut();
-            for m in g.monitors.iter_mut() {
-                for i in 0..20 {
-                    if arg.v.is_none() || layout_idx != get_current_layout_idx(m) {
-                        if let Some(ref mut pertag) = m.pertag {
-                            pertag.sellts[i] ^= 1;
-                        }
-                    }
-                    if let Some(idx) = layout_idx {
-                        if let Some(ref mut pertag) = m.pertag {
-                            pertag.ltidxs[i][pertag.sellts[i] as usize] = Some(idx);
-                        }
-                    }
+
+            // Update all tags
+            for tag in g.tags.tags.iter_mut() {
+                if arg.v.is_none() {
+                    tag.sellt ^= 1;
+                }
+                if let Some(idx) = layout_idx {
+                    tag.ltidxs[tag.sellt as usize] = Some(idx);
                 }
             }
+
+            // Sync monitor cache values from their current tags
+            for m in g.monitors.iter_mut() {
+                let current_tag = m.current_tag;
+                if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                    let tag = &g.tags.tags[current_tag - 1];
+                    m.sellt = tag.sellt;
+                }
+            }
+
             g.tags.prefix = false;
         }
+        // Recursively call set_layout to update ltsymbol and arrange the current monitor
         set_layout(arg);
+        return;
     } else {
         let layout_idx = arg.v;
         {
             let g = get_globals_mut();
             if let Some(selmon_id) = g.selmon {
                 if let Some(m) = g.monitors.get_mut(selmon_id) {
-                    if arg.v.is_none() || layout_idx != get_current_layout_idx(m) {
-                        if let Some(ref mut pertag) = m.pertag {
-                            let tag = pertag.current_tag as usize;
-                            pertag.sellts[tag] ^= 1;
+                    let current_tag = m.current_tag;
+
+                    if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                        let tag = &mut g.tags.tags[current_tag - 1];
+
+                        if arg.v.is_none() || layout_idx != get_current_layout_idx(m) {
+                            tag.sellt ^= 1;
                         }
-                    }
-                    if let Some(idx) = layout_idx {
-                        if let Some(ref mut pertag) = m.pertag {
-                            let tag = pertag.current_tag as usize;
-                            pertag.ltidxs[tag][pertag.sellts[tag] as usize] = Some(idx);
+                        if let Some(idx) = layout_idx {
+                            tag.ltidxs[tag.sellt as usize] = Some(idx);
                         }
+
+                        // Sync MonitorInner cache from tag
+                        m.sellt = tag.sellt;
                     }
                 }
             }
@@ -1470,9 +1499,11 @@ pub fn set_layout(arg: &Arg) {
 }
 
 fn get_current_layout_idx(m: &MonitorInner) -> Option<usize> {
-    if let Some(ref pertag) = m.pertag {
-        let tag = pertag.current_tag as usize;
-        pertag.ltidxs[tag][pertag.sellts[tag] as usize]
+    let g = get_globals();
+    let current_tag = m.current_tag;
+    if current_tag > 0 && current_tag <= g.tags.tags.len() {
+        let tag = &g.tags.tags[current_tag - 1];
+        tag.ltidxs[tag.sellt as usize]
     } else {
         None
     }
@@ -1596,9 +1627,9 @@ pub fn inc_nmaster_by(delta: i32) {
                 let new_nmaster = max(m.nmaster + delta, 0);
                 m.nmaster = new_nmaster;
 
-                if let Some(ref mut pertag) = m.pertag {
-                    let tag = pertag.current_tag as usize;
-                    pertag.nmasters[tag] = new_nmaster;
+                let current_tag = m.current_tag;
+                if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                    g.tags.tags[current_tag - 1].nmaster = new_nmaster;
                 }
             }
         }
@@ -1676,9 +1707,9 @@ pub fn set_mfact(arg: &Arg) {
         if let Some(selmon_id) = g.selmon {
             if let Some(m) = g.monitors.get_mut(selmon_id) {
                 m.mfact = f;
-                if let Some(ref mut pertag) = m.pertag {
-                    let tag = pertag.current_tag as usize;
-                    pertag.mfacts[tag] = f;
+                let current_tag = m.current_tag;
+                if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                    g.tags.tags[current_tag - 1].mfact = f;
                 }
             }
         }
@@ -1949,12 +1980,14 @@ pub fn horizgrid(m: &mut MonitorInner) {
                     0
                 };
 
-                animate_client(
+                animate_client_rect(
                     win,
-                    cx,
-                    cy,
-                    cw - 2 * border_width + aw,
-                    ch - 2 * border_width,
+                    &Rect {
+                        x: cx,
+                        y: cy,
+                        w: cw - 2 * border_width + aw,
+                        h: ch - 2 * border_width,
+                    },
                     framecount,
                     0,
                 );

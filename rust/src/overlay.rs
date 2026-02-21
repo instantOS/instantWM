@@ -1,4 +1,4 @@
-use crate::animation::animate_client;
+use crate::animation::animate_client_rect;
 use crate::client::{attach, attach_stack, detach, detach_stack, is_visible, resize};
 use crate::floating::save_bw_win;
 use crate::focus::focus;
@@ -214,7 +214,7 @@ pub fn show_overlay(_arg: &Arg) {
         None => return,
     };
 
-    let current_tag = mon.pertag.as_ref().map(|p| p.current_tag).unwrap_or(1);
+    let current_tag = mon.current_tag as u32;
     let mut current = mon.clients;
     while let Some(c_win) = current {
         if let Some(c) = globals.clients.get(&c_win) {
@@ -385,7 +385,17 @@ pub fn show_overlay(_arg: &Arg) {
             }
         };
 
-        animate_client(overlay_win, target_x, target_y, 0, 0, 15, 0);
+        animate_client_rect(
+            overlay_win,
+            &Rect {
+                x: target_x,
+                y: target_y,
+                w: 0,
+                h: 0,
+            },
+            15,
+            0,
+        );
 
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&overlay_win) {
@@ -479,16 +489,56 @@ pub fn hide_overlay(_arg: &Arg) {
     if is_locked {
         match overlay_mode {
             OVERLAY_TOP => {
-                animate_client(overlay_win, client_x, 0 - client_h, 0, 0, 15, 0);
+                animate_client_rect(
+                    overlay_win,
+                    &Rect {
+                        x: client_x,
+                        y: 0 - client_h,
+                        w: 0,
+                        h: 0,
+                    },
+                    15,
+                    0,
+                );
             }
             OVERLAY_RIGHT => {
-                animate_client(overlay_win, mon_mx + mon_mw, mon_mx + mon_mw, 0, 0, 15, 0);
+                animate_client_rect(
+                    overlay_win,
+                    &Rect {
+                        x: mon_mx + mon_mw,
+                        y: mon_mx + mon_mw,
+                        w: 0,
+                        h: 0,
+                    },
+                    15,
+                    0,
+                );
             }
             OVERLAY_BOTTOM => {
-                animate_client(overlay_win, client_x, mon_mh + mon_my, 0, 0, 15, 0);
+                animate_client_rect(
+                    overlay_win,
+                    &Rect {
+                        x: client_x,
+                        y: mon_mh + mon_my,
+                        w: 0,
+                        h: 0,
+                    },
+                    15,
+                    0,
+                );
             }
             OVERLAY_LEFT => {
-                animate_client(overlay_win, mon_mx - client_w, 40, 0, 0, 15, 0);
+                animate_client_rect(
+                    overlay_win,
+                    &Rect {
+                        x: mon_mx - client_w,
+                        y: 40,
+                        w: 0,
+                        h: 0,
+                    },
+                    15,
+                    0,
+                );
             }
             _ => {}
         }
