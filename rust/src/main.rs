@@ -40,7 +40,7 @@ use crate::config::{
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11, X11};
+use crate::globals::{get_globals, get_globals_mut, get_x11, get_x11_mut};
 use crate::keyboard::grab_keys;
 use crate::monitor::update_geom;
 use crate::types::*;
@@ -105,7 +105,7 @@ fn main() {
     );
 
     {
-        let mut x11 = get_x11();
+        let mut x11 = get_x11_mut();
         x11.conn = Some(conn);
         x11.screen_num = screen_num;
         eprintln!("TRACE: main - x11.conn and x11.screen_num set");
@@ -152,7 +152,7 @@ fn main() {
     eprintln!("TRACE: main - after cleanup");
 
     {
-        let mut x11 = get_x11();
+        let mut x11 = get_x11_mut();
         x11.conn = None;
         eprintln!("TRACE: main - x11.conn set to None");
     }

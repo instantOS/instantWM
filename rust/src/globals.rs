@@ -1,8 +1,9 @@
 use crate::drw::{Clr, Cur, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::{Mutex, RwLock};
+use std::sync::RwLock;
 use x11rb::protocol::xproto::Window;
 
 // Wrapper for Xlib display pointer that implements Send/Sync
@@ -202,8 +203,20 @@ impl Default for X11Connection {
     }
 }
 
-pub static X11: Lazy<Mutex<X11Connection>> = Lazy::new(|| Mutex::new(X11Connection::default()));
+// SAFETY: instantWM is a single-threaded window manager.
+// The X11 connection is only accessed from the main thread.
+// We use RefCell to allow re-entrant shared borrowing (which Mutex does not support).
+struct MainThreadCell<T>(RefCell<T>);
+unsafe impl<T> Sync for MainThreadCell<T> {}
+unsafe impl<T> Send for MainThreadCell<T> {}
 
-pub fn get_x11() -> std::sync::MutexGuard<'static, X11Connection> {
-    X11.lock().unwrap()
+pub static X11: Lazy<MainThreadCell<X11Connection>> =
+    Lazy::new(|| MainThreadCell(RefCell::new(X11Connection::default())));
+
+pub fn get_x11() -> std::cell::Ref<'static, X11Connection> {
+    X11.0.borrow()
+}
+
+pub fn get_x11_mut() -> std::cell::RefMut<'static, X11Connection> {
+    X11.0.borrow_mut()
 }

@@ -6,7 +6,7 @@ use crate::types::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::protocol::xproto::{Rectangle, Window};
+use x11rb::protocol::xproto::Window;
 
 static DRAW_BAR_RECURSION: AtomicUsize = AtomicUsize::new(0);
 
@@ -377,17 +377,7 @@ pub fn draw_startmenu_icon(bh: i32) {
 
     let startmenu_size = g.startmenusize as i32;
 
-    // Get the bar window to draw to
-    let barwin = g
-        .selmon
-        .and_then(|i| g.monitors.get(i).map(|m| m.barwin))
-        .unwrap_or(0);
-
-    if barwin == 0 {
-        return;
-    }
-
-    // Get colors from scheme
+    // Get colors from scheme, matching C version
     let scheme = if g.tagprefix {
         let schemes = &g.tagschemes;
         if schemes.len() > SchemeHover::NoHover as usize {
@@ -406,76 +396,47 @@ pub fn draw_startmenu_icon(bh: i32) {
 
     let Some(ref scheme) = scheme else { return };
 
-    // TEST: Use bright colors
-    let fg_color = 0xFFFFFF; // White
-    let bg_color = 0xFF0000; // Red
+    if let Some(ref drw) = g.drw {
+        let mut drw = drw.clone();
+        drw.set_scheme(scheme.clone());
 
-    // Use x11rb to draw
-    let x11 = crate::globals::get_x11();
-    let Some(ref conn) = x11.conn else { return };
-
-    // Create GC with foreground color
-    let gc = conn.generate_id().unwrap();
-    let draw_color = if startmenu_invert { bg_color } else { fg_color };
-    let fill_color = if startmenu_invert { fg_color } else { bg_color };
-
-    // Draw startmenu background
-    let _ = conn.create_gc(
-        barwin,
-        gc,
-        &x11rb::protocol::xproto::CreateGCAux::new().foreground(draw_color),
-    );
-    let rects = [Rectangle {
-        x: 0,
-        y: 0,
-        width: startmenu_size as u16,
-        height: bh as u16,
-    }];
-    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
-
-    // Draw startmenu icon (outer square)
-    let _ = conn.create_gc(
-        barwin,
-        gc,
-        &x11rb::protocol::xproto::CreateGCAux::new().foreground(fill_color),
-    );
-    let rects = [Rectangle {
-        x: 5,
-        y: icon_offset as i16,
-        width: STARTMENU_ICON_SIZE as u16,
-        height: STARTMENU_ICON_SIZE as u16,
-    }];
-    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
-
-    // Draw startmenu icon (inner square 1)
-    let _ = conn.create_gc(
-        barwin,
-        gc,
-        &x11rb::protocol::xproto::CreateGCAux::new().foreground(draw_color),
-    );
-    let rects = [Rectangle {
-        x: 9,
-        y: (icon_offset + 4) as i16,
-        width: STARTMENU_ICON_INNER as u16,
-        height: STARTMENU_ICON_INNER as u16,
-    }];
-    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
-
-    // Draw startmenu icon (inner square 2)
-    let _ = conn.create_gc(
-        barwin,
-        gc,
-        &x11rb::protocol::xproto::CreateGCAux::new().foreground(fill_color),
-    );
-    let rects = [Rectangle {
-        x: 19,
-        y: (icon_offset + STARTMENU_ICON_SIZE) as i16,
-        width: STARTMENU_ICON_INNER as u16,
-        height: STARTMENU_ICON_INNER as u16,
-    }];
-    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
-
-    let _ = conn.flush();
+        // Background rectangle
+        drw.rect(
+            0,
+            0,
+            startmenu_size as u32,
+            bh as u32,
+            true,
+            !startmenu_invert,
+        );
+        // Outer icon square
+        drw.rect(
+            5,
+            icon_offset,
+            STARTMENU_ICON_SIZE as u32,
+            STARTMENU_ICON_SIZE as u32,
+            true,
+            startmenu_invert,
+        );
+        // Inner icon square 1
+        drw.rect(
+            9,
+            icon_offset + 4,
+            STARTMENU_ICON_INNER as u32,
+            STARTMENU_ICON_INNER as u32,
+            true,
+            !startmenu_invert,
+        );
+        // Inner icon square 2
+        drw.rect(
+            19,
+            icon_offset + STARTMENU_ICON_SIZE,
+            STARTMENU_ICON_INNER as u32,
+            STARTMENU_ICON_INNER as u32,
+            true,
+            startmenu_invert,
+        );
+    }
 }
 
 pub fn get_tag_scheme(
@@ -550,16 +511,7 @@ pub fn draw_tag_indicators(
     let num_tags = g.numtags;
 
     let tags = g.tags;
-    let tags_alt = &g.tagsalt;
-
-    // Get bar window
-    let barwin = g
-        .selmon
-        .and_then(|i| g.monitors.get(i).map(|m| m.barwin))
-        .unwrap_or(0);
-    if barwin == 0 {
-        return x;
-    }
+    let tags_alt = g.tagsalt.clone();
 
     for i in 0..num_tags as u32 {
         if i >= 9 {
@@ -608,61 +560,43 @@ pub fn draw_tag_indicators(
         let w = text_width(display_name);
 
         if let Some(scheme) = get_tag_scheme(m, actual_i, occupied_tags, is_hover) {
-            let x11 = crate::globals::get_x11();
-            if let Some(ref conn) = x11.conn {
-                // TEST: Use bright colors for tag indicators
-                let bg_color = 0x00FF00; // Bright green for tag background
-                let detail_color = 0x0000FF; // Blue for detail bar
-
+            if let Some(ref drw) = g.drw {
+                let mut drw = drw.clone();
                 let detail_height = if is_hover {
-                    if bar_dragging {
-                        DETAIL_BAR_HEIGHT_HOVER
-                    } else {
-                        DETAIL_BAR_HEIGHT_HOVER
-                    }
+                    DETAIL_BAR_HEIGHT_HOVER
                 } else {
                     DETAIL_BAR_HEIGHT_NORMAL
                 };
 
-                let is_urgent = urg & (1 << actual_i) != 0;
-                let draw_bg = if is_urgent { 0xFFFF00 } else { bg_color }; // Yellow for urgent
-
-                // Draw background
-                let gc = conn.generate_id().unwrap();
-                let _ = conn.create_gc(
-                    barwin,
-                    gc,
-                    &x11rb::protocol::xproto::CreateGCAux::new().foreground(draw_bg),
-                );
-                let rects = [Rectangle {
-                    x: x as i16,
-                    y: 0,
-                    width: w as u16,
-                    height: bh as u16,
-                }];
-                let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
-
-                // Draw detail bar at bottom
-                if detail_height > 0 {
-                    let _ = conn.create_gc(
-                        barwin,
-                        gc,
-                        &x11rb::protocol::xproto::CreateGCAux::new().foreground(detail_color),
-                    );
-                    let rects = [Rectangle {
-                        x: x as i16,
-                        y: (bh - detail_height) as i16,
-                        width: w as u16,
-                        height: detail_height as u16,
-                    }];
-                    let _ = conn.poly_fill_rectangle(barwin, gc, &rects);
+                let mut draw_scheme = scheme.clone();
+                if is_hover && bar_dragging {
+                    // Use filled scheme when dragging over a tag
+                    let schemes = &g.tagschemes;
+                    if schemes.len() > SchemeHover::Hover as usize {
+                        if let Some(s) =
+                            schemes[SchemeHover::Hover as usize].get(SchemeTag::Filled as usize)
+                        {
+                            draw_scheme = s.clone();
+                        }
+                    }
                 }
+                drw.set_scheme(draw_scheme);
 
-                let _ = conn.flush();
+                let is_urgent = urg & (1 << actual_i) != 0;
+                x = drw.text(
+                    x,
+                    0,
+                    w as u32,
+                    bh as u32,
+                    (lrpad / 2) as u32,
+                    display_name,
+                    is_urgent,
+                    detail_height,
+                );
             }
+        } else {
+            x += w;
         }
-
-        x += w;
     }
     x
 }
@@ -1095,38 +1029,14 @@ pub fn draw_bar(m: &mut MonitorInner) {
     m.bt = n;
     m.bar_clients_width = window_width;
 
-    // Use x11rb to draw the final bar background with correct colors
-    let x11 = crate::globals::get_x11();
-    eprintln!("DEBUG draw_bar final: x11.conn.is_some={}", x11.conn.is_some());
-    if let Some(ref conn) = x11.conn {
-        // TEST: Use bright red background
-        let bg_color = 0xFF0000; // Bright red for testing
-        eprintln!("DEBUG draw_bar final: drawing red background, barwin={}, color={:#x}", m.barwin, bg_color);
-
-        let gc = conn.generate_id().unwrap();
-        let _ = conn.create_gc(
-            m.barwin,
-            gc,
-            &x11rb::protocol::xproto::CreateGCAux::new().foreground(bg_color),
-        );
-
-        // Draw background covering the entire bar
-        let rects = [Rectangle {
-            x: 0,
-            y: 0,
-            width: m.ww as u16,
-            height: bh as u16,
-        }];
-        let _ = conn.poly_fill_rectangle(m.barwin, gc, &rects);
-        eprintln!("DEBUG draw_bar final: poly_fill_rectangle done");
-        let _ = conn.flush();
-        eprintln!("DEBUG draw_bar final: flush done");
-        
-        // Sync to ensure drawing is complete
-        use x11rb::protocol::xproto::GET_INPUT_FOCUS_REQUEST;
-        let _ = conn.get_input_focus();
-        let _ = conn.flush();
-        eprintln!("DEBUG draw_bar final: sync done");
+    // Flush Xlib to ensure all Drw operations are sent to the X server
+    {
+        let g = get_globals();
+        if let Some(ref drw) = g.drw {
+            unsafe {
+                crate::drw::XFlush(drw.display());
+            }
+        }
     }
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);

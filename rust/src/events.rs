@@ -346,27 +346,29 @@ fn handle_bar_leave_reset(_e: &EnterNotifyEvent) {
 
 pub fn run() {
     eprintln!("TRACE: events::run - START");
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
-        eprintln!("TRACE: events::run - no connection, returning");
-        return;
-    };
 
     eprintln!("TRACE: events::run - entering event loop");
     loop {
-        eprintln!("TRACE: events::run - waiting for event");
-        match conn.wait_for_event() {
-            Ok(event) => {
-                eprintln!("TRACE: events::run - received event");
-                dispatch_event(event);
+        // Acquire the X11 borrow only to wait for the event, then release
+        // it before dispatching. This prevents deadlocks since event handlers
+        // also need to borrow X11.
+        let event = {
+            let x11 = get_x11();
+            let Some(ref conn) = x11.conn else {
+                eprintln!("TRACE: events::run - no connection, returning");
+                return;
+            };
+            match conn.wait_for_event() {
+                Ok(event) => event,
+                Err(e) => {
+                    eprintln!("TRACE: events::run - error waiting for event: {:?}", e);
+                    return;
+                }
             }
-            Err(e) => {
-                eprintln!("TRACE: events::run - error waiting for event: {:?}", e);
-                break;
-            }
-        }
+        }; // X11 borrow released here
+
+        dispatch_event(event);
     }
-    eprintln!("TRACE: events::run - END");
 }
 
 fn dispatch_event(event: x11rb::protocol::Event) {
