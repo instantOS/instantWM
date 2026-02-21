@@ -352,7 +352,7 @@ pub fn scratchpad_toggle(arg: &Arg) {
         let globals = get_globals();
         let selmon_id = globals.selmon.unwrap_or(0);
         if let Some(mon) = globals.monitors.get(selmon_id) {
-            mon.sellt != 0
+            !crate::monitor::is_current_layout_tiling(mon, &globals.tags)
         } else {
             false
         }

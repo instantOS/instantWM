@@ -318,7 +318,7 @@ pub fn up_key(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 false
             }
@@ -339,7 +339,7 @@ pub fn up_key(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 true
             }
@@ -383,7 +383,7 @@ pub fn down_key(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 false
             }
@@ -404,7 +404,7 @@ pub fn down_key(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 true
             }
@@ -435,7 +435,7 @@ pub fn space_toggle(_arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 true
             }

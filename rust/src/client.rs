@@ -479,7 +479,7 @@ pub fn show_hide(win: Option<Window>) {
                 let has_arrange = if let Some(mid) = mon_id {
                     let globals = get_globals();
                     if let Some(mon) = globals.monitors.get(mid) {
-                        mon.sellt == 0
+                        crate::monitor::is_current_layout_tiling(mon, &globals.tags)
                     } else {
                         false
                     }
@@ -1015,7 +1015,7 @@ pub fn apply_size_hints(
         let globals = get_globals();
         if let Some(mon_id) = c.mon_id {
             if let Some(mon) = globals.monitors.get(mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 true
             }
@@ -1244,6 +1244,7 @@ pub fn manage(
     wa_border_width: u32,
 ) {
     let mut c = Client::default();
+    //TODO: this should be constructing a rect struct the proper way
     c.win = w;
     c.geo.x = wa_x;
     c.old_geo.x = wa_x;
@@ -1285,6 +1286,7 @@ pub fn manage(
         client.border_width = borderpx;
     }
 
+    //TODO: this should be using the rectangle struct
     let (mon_mw, mon_mh, mon_mx, mon_my, mon_showbar, mon_ww, mon_wh, mon_wx, mon_wy) = {
         if let Some(mon_id) = c.mon_id {
             if let Some(mon) = globals.monitors.get(mon_id) {
@@ -1320,7 +1322,7 @@ pub fn manage(
 
     let is_monocle = if let Some(mon_id) = c.mon_id {
         if let Some(mon) = globals.monitors.get(mon_id) {
-            mon.sellt == 1
+            !crate::monitor::is_current_layout_tiling(mon, &globals.tags)
         } else {
             false
         }
@@ -1536,7 +1538,7 @@ pub fn manage(
         let has_arrange = if let Some(mon_id) = c.mon_id {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 false
             }
@@ -2287,7 +2289,7 @@ pub fn zoom(_arg: &Arg) {
     let has_arrange = if let Some(mid) = mon_id {
         let globals = get_globals();
         if let Some(mon) = globals.monitors.get(mid) {
-            mon.sellt == 0
+            crate::monitor::is_current_layout_tiling(mon, &globals.tags)
         } else {
             true
         }

@@ -43,7 +43,6 @@ pub fn create_monitor() -> MonitorInner {
         topbar: g.topbar,
         clientcount: 0,
         overlaymode: 0,
-        sellt: 0,
         current_tag: 1,
         prev_tag: 1,
         ..Default::default()
@@ -70,7 +69,6 @@ pub fn create_monitor_with_values(
         topbar,
         clientcount: 0,
         overlaymode: 0,
-        sellt: 0,
         current_tag: 1,
         prev_tag: 1,
         ..Default::default()
@@ -679,11 +677,7 @@ pub fn get_current_tag_mut<'a>(mon: &MonitorInner, tags: &'a mut TagSet) -> Opti
 }
 
 /// Get the current layout symbol for a monitor.
-pub fn get_current_ltsymbol(
-    mon: &MonitorInner,
-    tags: &TagSet,
-    layouts: &[Box<dyn Layout>],
-) -> String {
+pub fn get_current_ltsymbol(mon: &MonitorInner, tags: &TagSet, layouts: &[&dyn Layout]) -> String {
     if let Some(tag) = get_current_tag(mon, tags) {
         if let Some(lt_idx) = tag.ltidxs[tag.sellt as usize] {
             layouts
@@ -702,6 +696,13 @@ pub fn get_current_ltsymbol(
 pub fn get_current_showbar(mon: &MonitorInner, tags: &TagSet) -> bool {
     get_current_tag(mon, tags)
         .map(|t| t.showbar)
+        .unwrap_or(true)
+}
+
+/// Check if the current layout is tiling (sellt == 0).
+pub fn is_current_layout_tiling(mon: &MonitorInner, tags: &TagSet) -> bool {
+    get_current_tag(mon, tags)
+        .map(|t| t.sellt == 0)
         .unwrap_or(true)
 }
 

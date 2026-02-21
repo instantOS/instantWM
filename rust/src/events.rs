@@ -1,4 +1,4 @@
-use crate::bar::{draw_bar, get_layout_symbol_width, reset_bar};
+use crate::bar::{draw_bar, draw_bars, get_layout_symbol_width, reset_bar};
 use crate::client::{
     configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
     update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
@@ -33,7 +33,7 @@ static BAR_LEAVE_STATUS: AtomicI32 = AtomicI32::new(0);
 fn has_tiling_layout(mon_id: MonitorId) -> bool {
     let globals = get_globals();
     if let Some(mon) = globals.monitors.get(mon_id) {
-        mon.sellt == 0
+        crate::monitor::is_current_layout_tiling(mon, &globals.tags)
     } else {
         false
     }
@@ -547,6 +547,7 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
             }
             x if x == AtomEnum::WM_HINTS.into() => {
                 update_wm_hints(win);
+                draw_bars();
             }
             _ => {}
         }

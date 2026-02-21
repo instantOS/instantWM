@@ -1,3 +1,4 @@
+use crate::bar::draw_bars;
 use crate::client::{is_visible, set_focus, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
@@ -78,8 +79,20 @@ pub fn focus(win: Option<Window>) {
         let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
             mon.sel = target;
+            // Reset gesture on focus change, matching C behavior
+            if mon.gesture != Gesture::Overlay && mon.gesture != Gesture::None {
+                mon.gesture = Gesture::None;
+            }
+            if mon.gesture != Gesture::Overlay && mon.gesture != Gesture::CloseButton
+                && mon.gesture != Gesture::StartMenu
+            {
+                mon.gesture = Gesture::None;
+            }
         }
+        drop(globals);
     }
+
+    draw_bars();
 
     if let Some(w) = target.take() {
         set_focus(w);

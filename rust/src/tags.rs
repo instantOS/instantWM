@@ -1,4 +1,4 @@
-use crate::bar::text_width;
+use crate::bar::{draw_bars, text_width};
 use crate::client::set_client_tag_prop;
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::focus::focus;
@@ -69,6 +69,12 @@ pub fn name_tag(arg: &Arg) {
             }
         }
     }
+
+    {
+        let mut globals = get_globals_mut();
+        globals.tags.width = get_tag_width();
+    }
+    draw_bars();
 }
 
 pub fn reset_name_tag(_arg: &Arg) {
@@ -81,7 +87,9 @@ pub fn reset_name_tag(_arg: &Arg) {
             globals.tags.tags[i].name = format!("{}", i + 1);
         }
     }
-    globals.tags.width = 0;
+    globals.tags.width = get_tag_width();
+    drop(globals);
+    draw_bars();
 }
 
 pub fn get_tag_width() -> i32 {
@@ -502,17 +510,12 @@ fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
         // But MonitorInner is inside monitors vec.
         // To satisfy borrow checker, we might need to copy values or index carefully.
         // Actually, we can get the monitor first.
-        let (nmaster, mfact, sellt, lt_idx) = {
+        let (nmaster, mfact) = {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
                 let current_tag = mon.current_tag;
                 if current_tag > 0 && current_tag <= globals.tags.tags.len() {
                     let tag = &globals.tags.tags[current_tag - 1];
-                    (
-                        tag.nmaster,
-                        tag.mfact,
-                        tag.sellt,
-                        tag.ltidxs[tag.sellt as usize],
-                    )
+                    (tag.nmaster, tag.mfact)
                 } else {
                     return;
                 }
@@ -524,15 +527,6 @@ fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
         if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
             mon.nmaster = nmaster;
             mon.mfact = mfact;
-            mon.sellt = sellt;
-
-            if let Some(lt_idx) = lt_idx {
-                mon.ltsymbol = globals
-                    .layouts
-                    .get(lt_idx)
-                    .map(|l| l.symbol().to_string())
-                    .unwrap_or_else(|| "[]=".to_string());
-            }
         }
     }
 }

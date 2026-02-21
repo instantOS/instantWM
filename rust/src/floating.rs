@@ -90,7 +90,7 @@ pub fn check_floating(win: Window) -> bool {
         }
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                if mon.sellt != 0 {
+                if !crate::monitor::is_current_layout_tiling(mon, &globals.tags) {
                     return true;
                 }
             }
@@ -225,7 +225,7 @@ pub fn reset_snap(win: Window) {
         if let Some(client) = globals.clients.get(&win) {
             let has_tiling = if let Some(sel_mon_id) = globals.selmon {
                 if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                    mon.sellt == 0
+                    crate::monitor::is_current_layout_tiling(mon, &globals.tags)
                 } else {
                     true
                 }
@@ -589,7 +589,7 @@ fn has_tiling_layout() -> bool {
     let globals = get_globals();
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            return mon.sellt == 0;
+            return crate::monitor::is_current_layout_tiling(mon, &globals.tags);
         }
     }
     true

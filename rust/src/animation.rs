@@ -224,7 +224,7 @@ fn anim_scroll(arg: &Arg, dir: i32) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 false
             }
@@ -254,7 +254,7 @@ fn anim_scroll(arg: &Arg, dir: i32) {
                     .sel
                     .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
                     .unwrap_or(false);
-                let has_tiling = mon.sellt == 0;
+                let has_tiling = crate::monitor::is_current_layout_tiling(mon, &globals.tags);
                 (is_floating, has_tiling)
             } else {
                 (false, true)

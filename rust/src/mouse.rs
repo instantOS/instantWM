@@ -76,7 +76,7 @@ pub fn moveresize(_arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sellt == 0
+                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
             } else {
                 true
             }
@@ -376,7 +376,7 @@ pub fn move_mouse(_arg: &Arg) {
             globals
                 .monitors
                 .get(sel_mon_id)
-                .map(|m| m.sellt == 0)
+                .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
                 .unwrap_or(true)
         } else {
             true
@@ -526,7 +526,9 @@ pub fn move_mouse(_arg: &Arg) {
                                 globals
                                     .monitors
                                     .get(sel_mon_id)
-                                    .map(|m| m.sellt == 0)
+                                    .map(|m| {
+                                        crate::monitor::is_current_layout_tiling(m, &globals.tags)
+                                    })
                                     .unwrap_or(true)
                             } else {
                                 true
@@ -674,7 +676,9 @@ pub fn resize_mouse(_arg: &Arg) {
                                 globals
                                     .monitors
                                     .get(sel_mon_id)
-                                    .map(|m| m.sellt == 0)
+                                    .map(|m| {
+                                        crate::monitor::is_current_layout_tiling(m, &globals.tags)
+                                    })
                                     .unwrap_or(true)
                             } else {
                                 true
@@ -939,7 +943,7 @@ pub fn is_in_resize_border() -> bool {
                 globals
                     .monitors
                     .get(sel_mon_id)
-                    .map(|m| m.sellt == 0)
+                    .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
                     .unwrap_or(true)
             } else {
                 true

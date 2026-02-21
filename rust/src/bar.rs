@@ -27,16 +27,13 @@ pub fn text_width(text: &str) -> i32 {
     }
 }
 
-pub(crate) fn layout_symbol(m: &MonitorInner) -> &str {
-    if m.ltsymbol.is_empty() {
-        "[]="
-    } else {
-        &m.ltsymbol
-    }
+pub(crate) fn layout_symbol(m: &MonitorInner) -> String {
+    let g = get_globals();
+    crate::monitor::get_current_ltsymbol(m, &g.tags, &g.layouts)
 }
 
 pub fn get_layout_symbol_width(m: &MonitorInner) -> i32 {
-    text_width(layout_symbol(m)) + get_lrpad()
+    text_width(&layout_symbol(m)) + get_lrpad()
 }
 
 pub fn draw_bar(m: &mut MonitorInner) {
@@ -45,7 +42,9 @@ pub fn draw_bar(m: &mut MonitorInner) {
         std::process::abort();
     }
 
-    if PAUSEDRAW.load(Ordering::Relaxed) || !m.showbar {
+    let g = get_globals();
+    let showbar = crate::monitor::get_current_showbar(m, &g.tags);
+    if PAUSEDRAW.load(Ordering::Relaxed) || !showbar {
         DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
         return;
     }

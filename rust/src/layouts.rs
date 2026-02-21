@@ -324,10 +324,6 @@ pub fn monocle(m: &mut MonitorInner) {
         }
     }
 
-    if n > 0 {
-        m.ltsymbol = format!("[{}]", n);
-    }
-
     let g = get_globals();
     let animated = g.animated;
     let sel_win = g
@@ -478,11 +474,6 @@ pub fn deck(m: &mut MonitorInner) {
 
     if n == 0 {
         return;
-    }
-
-    let dn = n as i32 - m.nmaster;
-    if dn > 0 {
-        m.ltsymbol = format!("D {}", dn);
     }
 
     let mw: u32 = if n > m.nmaster as u32 {
@@ -1278,17 +1269,17 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
     }
 
     let layout = get_current_layout(m);
-    m.ltsymbol = layout.symbol().to_string();
     layout.arrange(m);
 
     let g = get_globals_mut();
+    let showbar = crate::monitor::get_current_showbar(m, &g.tags);
     if let Some(ref fullscreen_win) = m.overlay {
         if let Some(c) = g.clients.get_mut(fullscreen_win) {
             let tbw = c.border_width;
             if c.isfloating {
                 save_floating(*fullscreen_win);
             }
-            let showbar_offset = if m.showbar { g.bh } else { 0 };
+            let showbar_offset = if showbar { g.bh } else { 0 };
             resize(
                 *fullscreen_win,
                 &Rect {
@@ -1395,18 +1386,9 @@ pub fn set_layout(arg: &Arg) {
                 }
             }
 
-            // Sync monitor cache values from their current tags
-            for m in g.monitors.iter_mut() {
-                let current_tag = m.current_tag;
-                if current_tag > 0 && current_tag <= g.tags.tags.len() {
-                    let tag = &g.tags.tags[current_tag - 1];
-                    m.sellt = tag.sellt;
-                }
-            }
-
             g.tags.prefix = false;
         }
-        // Recursively call set_layout to update ltsymbol and arrange the current monitor
+        // Recursively call set_layout to arrange the current monitor
         set_layout(arg);
         return;
     } else {
@@ -1426,33 +1408,16 @@ pub fn set_layout(arg: &Arg) {
                         if let Some(idx) = layout_idx {
                             tag.ltidxs[tag.sellt as usize] = Some(idx);
                         }
-
-                        // Sync MonitorInner cache from tag
-                        m.sellt = tag.sellt;
                     }
                 }
             }
         }
 
-        let (selmon_sel, ltsymbol) = {
+        let selmon_sel = {
             let g = get_globals();
-            let sel = g
-                .selmon
-                .and_then(|id| g.monitors.get(id).and_then(|m| m.sel));
-            let symbol = get_current_layout_symbol();
-            (sel, symbol)
+            g.selmon
+                .and_then(|id| g.monitors.get(id).and_then(|m| m.sel))
         };
-
-        {
-            let g = get_globals_mut();
-            if let Some(selmon_id) = g.selmon {
-                if let Some(m) = g.monitors.get_mut(selmon_id) {
-                    if let Some(symbol) = ltsymbol {
-                        m.ltsymbol = symbol.to_string();
-                    }
-                }
-            }
-        }
 
         if selmon_sel.is_some() {
             let g = get_globals();

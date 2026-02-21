@@ -696,7 +696,6 @@ impl Client {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
-    pub ltsymbol: String,
     pub mfact: f32,
     pub nmaster: i32,
     pub num: i32,
@@ -706,7 +705,6 @@ pub struct MonitorInner {
     pub monitor_rect: Rect,
     pub work_rect: Rect,
     pub seltags: u32,
-    pub sellt: u32,
     pub tagset: [u32; 2],
     pub activeoffset: u32,
     pub titleoffset: u32,
@@ -730,7 +728,6 @@ pub struct MonitorInner {
 impl Default for MonitorInner {
     fn default() -> Self {
         Self {
-            ltsymbol: String::from("[]="),
             mfact: 0.55,
             nmaster: 1,
             num: 0,
@@ -740,7 +737,6 @@ impl Default for MonitorInner {
             monitor_rect: Rect::default(),
             work_rect: Rect::default(),
             seltags: 0,
-            sellt: 0,
             tagset: [0; 2],
             activeoffset: 0,
             titleoffset: 0,

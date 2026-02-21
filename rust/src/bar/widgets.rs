@@ -233,7 +233,7 @@ pub(crate) fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i3
     let g = get_globals();
     let lrpad = g.lrpad;
     let ltsymbol = super::layout_symbol(m);
-    let text_w = super::text_width(ltsymbol);
+    let text_w = super::text_width(&ltsymbol);
     let w = (text_w + lrpad).max(lrpad);
     let lpad = ((w - text_w) / 2).max(0) as u32;
 
@@ -247,7 +247,7 @@ pub(crate) fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i3
             };
             drw.set_scheme(scheme);
         }
-        x = drw.text(x, 0, w as u32, bh as u32, lpad, ltsymbol, false, 0);
+        x = drw.text(x, 0, w as u32, bh as u32, lpad, &ltsymbol, false, 0);
     }
 
     x
