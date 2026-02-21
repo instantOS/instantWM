@@ -3,6 +3,7 @@ use crate::types::*;
 use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::RwLock;
 use x11rb::protocol::xproto::Window;
 
@@ -180,6 +181,7 @@ impl Default for Globals {
 }
 
 pub static GLOBALS: Lazy<RwLock<Globals>> = Lazy::new(|| RwLock::new(Globals::default()));
+pub static RUNNING: AtomicBool = AtomicBool::new(true);
 
 pub fn get_globals() -> std::sync::RwLockReadGuard<'static, Globals> {
     GLOBALS.read().unwrap()

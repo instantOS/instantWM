@@ -4,13 +4,14 @@ use crate::client::{
     update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
 };
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::grab_keys;
 use crate::monitor::{arrange, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
 use crate::systray::{update_systray, win_to_systray_icon};
 use crate::types::*;
 use crate::util::clean_mask;
+use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -219,6 +220,7 @@ pub fn mapping_notify(_e: &MappingNotifyEvent) {
 }
 
 pub fn map_request(e: &MapRequestEvent) {
+    eprintln!("TRACE: map_request window={}", e.window);
     if let Some(_icon) = win_to_systray_icon(e.window) {
         update_systray();
         return;
@@ -230,7 +232,25 @@ pub fn map_request(e: &MapRequestEvent) {
             if let Ok(cookie) = conn.get_window_attributes(e.window) {
                 if let Ok(wa) = cookie.reply() {
                     if !wa.override_redirect {
-                        crate::client::manage(e.window, 0, 0, 800, 600, 1);
+                        let (x, y, width, height, border_width) = conn
+                            .get_geometry(e.window)
+                            .ok()
+                            .and_then(|geo| geo.reply().ok())
+                            .map(|geo| {
+                                (
+                                    geo.x as i32,
+                                    geo.y as i32,
+                                    geo.width as u32,
+                                    geo.height as u32,
+                                    geo.border_width as u32,
+                                )
+                            })
+                            .unwrap_or((0, 0, 800, 600, 1));
+                        eprintln!(
+                            "TRACE: map_request manage win={} geom=({},{} {}x{} bw={})",
+                            e.window, x, y, width, height, border_width
+                        );
+                        crate::client::manage(e.window, x, y, width, height, border_width);
                     }
                 }
             }
@@ -345,147 +365,133 @@ fn handle_bar_leave_reset(_e: &EnterNotifyEvent) {
 }
 
 pub fn run() {
-    eprintln!("TRACE: events::run - START");
-
-    eprintln!("TRACE: events::run - entering event loop");
-    loop {
-        // Acquire the X11 borrow only to wait for the event, then release
-        // it before dispatching. This prevents deadlocks since event handlers
-        // also need to borrow X11.
+    while RUNNING.load(Ordering::SeqCst) {
         let event = {
             let x11 = get_x11();
             let Some(ref conn) = x11.conn else {
-                eprintln!("TRACE: events::run - no connection, returning");
                 return;
             };
             match conn.wait_for_event() {
                 Ok(event) => event,
-                Err(e) => {
-                    eprintln!("TRACE: events::run - error waiting for event: {:?}", e);
-                    return;
-                }
+                Err(_) => return,
             }
-        }; // X11 borrow released here
+        };
+        let rt = event.response_type();
+        if rt == MAP_REQUEST_EVENT || rt == MAP_NOTIFY_EVENT {
+            eprintln!("TRACE: event response_type={}", rt);
+        }
 
         dispatch_event(event);
     }
 }
 
 fn dispatch_event(event: x11rb::protocol::Event) {
-    eprintln!(
-        "TRACE: dispatch_event - event type: {}",
-        event.response_type()
-    );
     match event {
-        x11rb::protocol::Event::ButtonPress(e) => {
-            eprintln!("TRACE: dispatch_event - ButtonPress");
-            button_press(&e)
-        }
-        x11rb::protocol::Event::ClientMessage(e) => {
-            eprintln!("TRACE: dispatch_event - ClientMessage");
-            client_message(&e)
-        }
-        x11rb::protocol::Event::ConfigureNotify(e) => {
-            eprintln!("TRACE: dispatch_event - ConfigureNotify");
-            configure_notify(&e)
-        }
-        x11rb::protocol::Event::ConfigureRequest(e) => {
-            eprintln!("TRACE: dispatch_event - ConfigureRequest");
-            configure_request(&e)
-        }
-        x11rb::protocol::Event::DestroyNotify(e) => {
-            eprintln!("TRACE: dispatch_event - DestroyNotify");
-            destroy_notify(&e)
-        }
-        x11rb::protocol::Event::EnterNotify(e) => {
-            eprintln!("TRACE: dispatch_event - EnterNotify");
-            enter_notify(&e)
-        }
-        x11rb::protocol::Event::Expose(e) => {
-            eprintln!("TRACE: dispatch_event - Expose");
-            expose(&e)
-        }
-        x11rb::protocol::Event::FocusIn(e) => {
-            eprintln!("TRACE: dispatch_event - FocusIn");
-            focus_in(&e)
-        }
-        x11rb::protocol::Event::KeyPress(e) => {
-            eprintln!("TRACE: dispatch_event - KeyPress");
-            key_press(&e)
-        }
-        x11rb::protocol::Event::KeyRelease(e) => {
-            eprintln!("TRACE: dispatch_event - KeyRelease");
-            key_release(&e)
-        }
-        x11rb::protocol::Event::MappingNotify(e) => {
-            eprintln!("TRACE: dispatch_event - MappingNotify");
-            mapping_notify(&e)
-        }
-        x11rb::protocol::Event::MapRequest(e) => {
-            eprintln!("TRACE: dispatch_event - MapRequest");
-            map_request(&e)
-        }
-        x11rb::protocol::Event::MotionNotify(e) => {
-            eprintln!("TRACE: dispatch_event - MotionNotify");
-            motion_notify(&e)
-        }
-        x11rb::protocol::Event::PropertyNotify(e) => {
-            eprintln!("TRACE: dispatch_event - PropertyNotify");
-            property_notify(&e)
-        }
-        x11rb::protocol::Event::ResizeRequest(e) => {
-            eprintln!("TRACE: dispatch_event - ResizeRequest");
-            resize_request(&e)
-        }
-        x11rb::protocol::Event::UnmapNotify(e) => {
-            eprintln!("TRACE: dispatch_event - UnmapNotify");
-            unmap_notify(&e)
-        }
-        x11rb::protocol::Event::LeaveNotify(e) => {
-            eprintln!("TRACE: dispatch_event - LeaveNotify");
-            leave_notify(&e)
-        }
-        _ => {
-            eprintln!("TRACE: dispatch_event - other event type");
-        }
+        x11rb::protocol::Event::ButtonPress(e) => button_press(&e),
+        x11rb::protocol::Event::ClientMessage(e) => client_message(&e),
+        x11rb::protocol::Event::ConfigureNotify(e) => configure_notify(&e),
+        x11rb::protocol::Event::ConfigureRequest(e) => configure_request(&e),
+        x11rb::protocol::Event::DestroyNotify(e) => destroy_notify(&e),
+        x11rb::protocol::Event::EnterNotify(e) => enter_notify(&e),
+        x11rb::protocol::Event::Expose(e) => expose(&e),
+        x11rb::protocol::Event::FocusIn(e) => focus_in(&e),
+        x11rb::protocol::Event::KeyPress(e) => key_press(&e),
+        x11rb::protocol::Event::KeyRelease(e) => key_release(&e),
+        x11rb::protocol::Event::MappingNotify(e) => mapping_notify(&e),
+        x11rb::protocol::Event::MapRequest(e) => map_request(&e),
+        x11rb::protocol::Event::MotionNotify(e) => motion_notify(&e),
+        x11rb::protocol::Event::PropertyNotify(e) => property_notify(&e),
+        x11rb::protocol::Event::ResizeRequest(e) => resize_request(&e),
+        x11rb::protocol::Event::UnmapNotify(e) => unmap_notify(&e),
+        x11rb::protocol::Event::LeaveNotify(e) => leave_notify(&e),
+        _ => {}
     }
 }
 
 pub fn scan() {
-    let root = get_globals().root;
-
-    let children = {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
-            if let Ok(cookie) = conn.query_tree(root) {
-                if let Ok(reply) = cookie.reply() {
-                    Some(reply.children)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    let (root, wm_state_atom) = {
+        let globals = get_globals();
+        (globals.root, globals.wmatom[WmAtom::State as usize])
     };
 
-    if let Some(children) = children {
-        for win in children {
-            let x11 = get_x11();
-            if let Some(ref conn) = x11.conn {
-                if let Ok(wa_cookie) = conn.get_window_attributes(win) {
-                    if let Ok(wa) = wa_cookie.reply() {
-                        if !wa.override_redirect {
-                            if win_to_client(win).is_none() {
-                                crate::client::manage(win, 0, 0, 800, 600, 1);
-                            }
-                        }
-                    }
-                }
+    let (managed, transients) = {
+        let x11 = get_x11();
+        let Some(ref conn) = x11.conn else {
+            return;
+        };
+
+        let Ok(tree_cookie) = conn.query_tree(root) else {
+            return;
+        };
+        let Ok(tree_reply) = tree_cookie.reply() else {
+            return;
+        };
+
+        let mut managed = Vec::new();
+        let mut transients = Vec::new();
+        for win in tree_reply.children {
+            let Ok(wa_cookie) = conn.get_window_attributes(win) else {
+                continue;
+            };
+            let Ok(wa) = wa_cookie.reply() else {
+                continue;
+            };
+            if wa.override_redirect {
+                continue;
+            }
+
+            let is_transient = conn
+                .get_property(false, win, AtomEnum::WM_TRANSIENT_FOR, AtomEnum::WINDOW, 0, 1)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .and_then(|reply| reply.value32().and_then(|mut values| values.next()))
+                .is_some();
+
+            let is_viewable = wa.map_state == MapState::VIEWABLE;
+            let is_iconic = conn
+                .get_property(false, win, wm_state_atom, wm_state_atom, 0, 2)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .and_then(|reply| reply.value32().and_then(|mut values| values.next()))
+                .map(|state| state == crate::client::WM_STATE_ICONIC as u32)
+                .unwrap_or(false);
+
+            if !is_viewable && !is_iconic {
+                continue;
+            }
+            if win_to_client(win).is_some() {
+                continue;
+            }
+
+            let (x, y, width, height, border_width) = conn
+                .get_geometry(win)
+                .ok()
+                .and_then(|geo| geo.reply().ok())
+                .map(|geo| {
+                    (
+                        geo.x as i32,
+                        geo.y as i32,
+                        geo.width as u32,
+                        geo.height as u32,
+                        geo.border_width as u32,
+                    )
+                })
+                .unwrap_or((0, 0, 800, 600, 1));
+            let attrs = (win, x, y, width, height, border_width);
+            if is_transient {
+                transients.push(attrs);
+            } else {
+                managed.push(attrs);
             }
         }
+        (managed, transients)
+    };
+
+    for (win, x, y, width, height, border_width) in managed {
+        crate::client::manage(win, x, y, width, height, border_width);
+    }
+    for (win, x, y, width, height, border_width) in transients {
+        crate::client::manage(win, x, y, width, height, border_width);
     }
 }
 

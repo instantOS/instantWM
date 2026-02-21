@@ -813,10 +813,10 @@ pub fn apply_rules(win: Window) {
 
     let mut globals = get_globals_mut();
 
-    let (special_next, rules, tagmask, bh) = {
-        let g = get_globals();
-        (g.specialnext, g.rules.clone(), g.tagmask, g.bh)
-    };
+    let special_next = globals.specialnext;
+    let rules = globals.rules.clone();
+    let tagmask = globals.tagmask;
+    let bh = globals.bh;
 
     if !globals.clients.contains_key(&win) {
         return;
@@ -1224,6 +1224,7 @@ pub fn manage(
     wa_height: u32,
     wa_border_width: u32,
 ) {
+    eprintln!("TRACE: manage start win={}", w);
     let mut c = ClientInner::default();
     c.win = w;
     c.x = wa_x;
@@ -1359,16 +1360,18 @@ pub fn manage(
     set_client_tag_prop(w);
     update_motif_hints(w);
 
-    let mut globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&w) {
-        client.saved_float_x = client.x;
-        client.saved_float_y = if client.y >= mon_my {
-            client.y
-        } else {
-            client.y + mon_my
-        };
-        client.saved_float_width = client.w;
-        client.saved_float_height = client.h;
+    {
+        let mut globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&w) {
+            client.saved_float_x = client.x;
+            client.saved_float_y = if client.y >= mon_my {
+                client.y
+            } else {
+                client.y + mon_my
+            };
+            client.saved_float_width = client.w;
+            client.saved_float_height = client.h;
+        }
     }
 
     if let Some(ref conn) = x11.conn {
@@ -1382,48 +1385,58 @@ pub fn manage(
 
     grab_buttons(w, false);
 
-    let (isfixed, isfloating) = {
+    let isfixed = {
         let globals = get_globals();
-        if let Some(client) = globals.clients.get(&w) {
-            (client.isfixed, client.isfloating)
-        } else {
-            (false, false)
-        }
+        globals
+            .clients
+            .get(&w)
+            .map(|client| client.isfixed)
+            .unwrap_or(false)
     };
 
-    if let Some(client) = globals.clients.get_mut(&w) {
-        if !client.isfloating {
-            client.isfloating = trans.is_some() || isfixed;
-            client.oldstate = client.isfloating as i32;
-        }
-        if client.isfloating {
-            if let Some(ref conn) = x11.conn {
-                let _ = conn
-                    .configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
-                let _ = conn.flush();
+    let mut should_raise = false;
+    {
+        let mut globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&w) {
+            if !client.isfloating {
+                client.isfloating = trans.is_some() || isfixed;
+                client.oldstate = client.isfloating as i32;
             }
+            should_raise = client.isfloating;
+        }
+    }
+    if should_raise {
+        if let Some(ref conn) = x11.conn {
+            let _ = conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+            let _ = conn.flush();
         }
     }
 
     attach(w);
     attach_stack(w);
+    eprintln!("TRACE: manage attached win={}", w);
 
-    if let Some(ref conn) = x11.conn {
-        let _ = conn.change_property32(
-            PropMode::APPEND,
-            globals.root,
-            globals.netatom[NetAtom::ClientList as usize],
-            AtomEnum::WINDOW,
-            &[w],
-        );
-        let _ = conn.flush();
+    {
+        let globals = get_globals();
+        if let Some(ref conn) = x11.conn {
+            let _ = conn.change_property32(
+                PropMode::APPEND,
+                globals.root,
+                globals.netatom[NetAtom::ClientList as usize],
+                AtomEnum::WINDOW,
+                &[w],
+            );
+            let _ = conn.flush();
+        }
     }
 
-    let sw = globals.sw;
-    let (cx, cy, cw, ch) = if let Some(client) = globals.clients.get(&w) {
-        (client.x, client.y, client.w, client.h)
-    } else {
-        return;
+    let (sw, cx, cy, cw, ch) = {
+        let globals = get_globals();
+        if let Some(client) = globals.clients.get(&w) {
+            (globals.sw, client.x, client.y, client.w, client.h)
+        } else {
+            return;
+        }
     };
 
     if let Some(ref conn) = x11.conn {
@@ -1442,25 +1455,26 @@ pub fn manage(
         set_client_state(w, WM_STATE_NORMAL);
     }
 
-    let sel_mon = globals.selmon;
-    if let Some(sel_mon_id) = sel_mon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if let Some(sel_win) = mon.sel {
-                drop(globals);
-                unfocus_win(sel_win, false);
-                globals = get_globals_mut();
+    let sel_win = {
+        let globals = get_globals();
+        globals
+            .selmon
+            .and_then(|sel_mon_id| globals.monitors.get(sel_mon_id))
+            .and_then(|mon| mon.sel)
+    };
+    if let Some(sel_win) = sel_win {
+        unfocus_win(sel_win, false);
+    }
+
+    let animated = {
+        let mut globals = get_globals_mut();
+        if let Some(mon_id) = c.mon_id {
+            if let Some(mon) = globals.monitors.get_mut(mon_id) {
+                mon.sel = Some(w);
             }
         }
-    }
-
-    if let Some(mon_id) = c.mon_id {
-        if let Some(mon) = globals.monitors.get_mut(mon_id) {
-            mon.sel = Some(w);
-        }
-    }
-
-    let animated = globals.animated;
-    drop(globals);
+        globals.animated
+    };
 
     if let Some(mon_id) = c.mon_id {
         arrange(Some(mon_id));
@@ -1472,6 +1486,7 @@ pub fn manage(
             let _ = conn.flush();
         }
     }
+    eprintln!("TRACE: manage mapped/focused win={}", w);
 
     crate::focus::focus(None);
 
@@ -1502,6 +1517,7 @@ pub fn manage(
             }
         }
     }
+    eprintln!("TRACE: manage end win={}", w);
 }
 
 fn get_transient_for_hint(w: Window) -> Option<Window> {

@@ -24,7 +24,7 @@ mod xresources;
 
 use std::env;
 use std::process::exit;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -40,7 +40,7 @@ use crate::config::{
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11, get_x11_mut};
+use crate::globals::{get_globals, get_globals_mut, get_x11, get_x11_mut, RUNNING};
 use crate::keyboard::grab_keys;
 use crate::monitor::update_geom;
 use crate::types::*;
@@ -48,8 +48,6 @@ use crate::util::die;
 use crate::xresources::{list_xresources, load_xresources, verify_tags_xres};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-static RUNNING: AtomicBool = AtomicBool::new(true);
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
