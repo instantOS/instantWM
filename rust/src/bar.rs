@@ -899,14 +899,18 @@ pub fn draw_bar(m: &mut MonitorInner) {
         return;
     }
 
-    let mut g = get_globals_mut();
+    // Resize the Drw drawable to match the bar window size
+    {
+        let mut g = get_globals_mut();
+        let bh = g.bh;
+        if let Some(ref mut drw) = g.drw {
+            drw.resize(m.ww as u32, bh as u32);
+        }
+    } // Release write lock here
+
+    let g = get_globals();
     let bh = g.bh;
     let showsystray = g.showsystray;
-
-    // Resize the Drw drawable to match the bar window size
-    if let Some(ref mut drw) = g.drw {
-        drw.resize(m.ww as u32, bh as u32);
-    }
 
     let mut stw: i32 = 0;
     if showsystray {
@@ -1177,11 +1181,11 @@ pub fn resize_bar_win(m: &MonitorInner) {
 }
 
 pub fn update_bars() {
-    let (bh, showsystray, screen, root, bar_configs) = {
+    let (bh, showsystray, bar_configs, xlibdisplay, root) = {
         let g = get_globals();
         let bh = g.bh;
         let showsystray = g.showsystray;
-        let screen = g.screen;
+        let xlibdisplay = g.xlibdisplay.0;
         let root = g.root;
 
         let mut bar_configs = Vec::new();
@@ -1199,86 +1203,38 @@ pub fn update_bars() {
                 }
             }
             bar_configs.push((i, m.wx, m.by, w, bh));
-            eprintln!(
-                "debug update_bars: monitor {}, wx {}, by {}, ww {}, bh {}",
-                i, m.wx, m.by, w, bh
-            );
         }
-        (bh, showsystray, screen, root, bar_configs)
-    }; // Read lock is released here
+        (bh, showsystray, bar_configs, xlibdisplay, root)
+    };
 
-    let x11 = crate::globals::get_x11();
-    if let Some(ref conn) = x11.conn {
-        for (i, wx, by, w, bh) in bar_configs {
-            let win_id = conn.generate_id().unwrap();
-            let screen_obj = &conn.setup().roots[x11.screen_num];
-            let root = screen_obj.root;
+    if xlibdisplay.is_null() {
+        return;
+    }
 
-            let aux = x11rb::protocol::xproto::CreateWindowAux::new()
-                .override_redirect(1)
-                .background_pixmap(u32::from(
-                    x11rb::protocol::xproto::BackPixmap::PARENT_RELATIVE,
-                ))
-                .event_mask(
-                    x11rb::protocol::xproto::EventMask::BUTTON_PRESS
-                        | x11rb::protocol::xproto::EventMask::EXPOSURE
-                        | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
-                );
-
-            eprintln!(
-                "debug update_bars: creating window id: {}, root: {}, event_mask config...",
-                win_id, root
-            );
-
-            eprintln!("TRACE: update_bars - before create_window");
-            let _ = conn.create_window(
-                x11rb::COPY_FROM_PARENT as u8,
-                win_id,
+    for (i, wx, by, w, bh) in bar_configs {
+        unsafe {
+            use crate::drw::{XCreateSimpleWindow, XMapWindow, XSync, XSelectInput};
+            
+            // Create a simple window first
+            let win_id = XCreateSimpleWindow(
+                xlibdisplay,
                 root,
-                wx as i16,
-                by as i16,
-                w as u16,
-                bh as u16,
+                wx as i32,
+                by as i32,
+                w,
+                bh as u32,
                 0,
-                x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
-                x11rb::COPY_FROM_PARENT as u32,
-                &aux,
+                0,
+                0,
             );
-            eprintln!("TRACE: update_bars - after create_window");
+            
+            // Set event mask
+            XSelectInput(xlibdisplay, win_id, ((1 << 2) | (1 << 15) | (1 << 16)) as i64);
+            
+            XMapWindow(xlibdisplay, win_id);
+            XSync(xlibdisplay, 0);
 
-            {
-                eprintln!("TRACE: update_bars - before get_globals for systray");
-                let globals = crate::globals::get_globals();
-                eprintln!("TRACE: update_bars - after get_globals for systray");
-                if globals.showsystray && globals.selmon == Some(i) {
-                    eprintln!("TRACE: update_bars - showsystray check passed");
-                    if let Some(systray) = globals.systray.as_ref() {
-                        eprintln!("TRACE: update_bars - before map_window systray");
-                        let _ = conn.map_window(systray.win);
-                        eprintln!("TRACE: update_bars - after map_window systray");
-                        let _ = conn.configure_window(
-                            systray.win,
-                            &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                                .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
-                        );
-                        eprintln!("TRACE: update_bars - after configure_window systray");
-                    }
-                }
-            }
-            eprintln!("TRACE: update_bars - before map_window win_id");
-
-            let _ = conn.map_window(win_id);
-            eprintln!("TRACE: update_bars - after map_window win_id");
-            let _ = conn.configure_window(
-                win_id,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
-            );
-            eprintln!("TRACE: update_bars - after configure_window win_id");
-
-            eprintln!("TRACE: update_bars - before get_globals_mut");
             let mut globals_mut = crate::globals::get_globals_mut();
-            eprintln!("TRACE: update_bars - after get_globals_mut");
             globals_mut.monitors[i].barwin = win_id;
         }
     }

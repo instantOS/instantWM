@@ -5,6 +5,13 @@ use std::collections::HashMap;
 use std::sync::{Mutex, RwLock};
 use x11rb::protocol::xproto::Window;
 
+// Wrapper for Xlib display pointer that implements Send/Sync
+// Xlib displays are thread-safe for reading (but not for concurrent writes to the same display)
+#[derive(Clone, Copy)]
+pub struct XlibDisplay(pub *mut libc::c_void);
+unsafe impl Send for XlibDisplay {}
+unsafe impl Sync for XlibDisplay {}
+
 pub struct Globals {
     pub screen: i32,
     pub root: Window,
@@ -38,6 +45,7 @@ pub struct Globals {
     pub systrayspacing: u32,
     pub systray: Option<Systray>,
     pub drw: Option<Drw>,
+    pub xlibdisplay: XlibDisplay,
     pub cursors: [Option<Cur>; 10],
     pub borderscheme: Option<Vec<Clr>>,
     pub statusscheme: Option<Vec<Clr>>,
@@ -120,6 +128,7 @@ impl Default for Globals {
             systrayspacing: 2,
             systray: None,
             drw: None,
+            xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             cursors: Default::default(),
             borderscheme: None,
             statusscheme: None,

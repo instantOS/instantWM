@@ -204,6 +204,49 @@ extern "C" {
     pub fn XCreateFontCursor(display: *mut libc::c_void, shape: u32) -> u32;
     pub fn XFreeCursor(display: *mut libc::c_void, cursor: u32);
     pub fn XGetXCBConnection(display: *mut libc::c_void) -> *mut libc::c_void;
+    pub fn XCreateWindow(
+        display: *mut libc::c_void,
+        parent: Window,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        border_width: u32,
+        depth: i32,
+        class: u32,
+        visual: *mut libc::c_void,
+        valuemask: u64,
+        attributes: *mut libc::c_void,
+    ) -> Window;
+    pub fn XMapWindow(display: *mut libc::c_void, window: Window);
+    pub fn XConfigureWindow(
+        display: *mut libc::c_void,
+        w: Window,
+        changes: u32,
+        values: *mut libc::c_void,
+    );
+    pub fn XSelectInput(
+        display: *mut libc::c_void,
+        w: Window,
+        event_mask: i64,
+    );
+    pub fn XCreateSimpleWindow(
+        display: *mut libc::c_void,
+        parent: Window,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        border_width: u32,
+        border: u32,
+        background: u32,
+    ) -> Window;
+    pub fn XChangeWindowAttributes(
+        display: *mut libc::c_void,
+        w: Window,
+        valuemask: u64,
+        attributes: *mut libc::c_void,
+    );
 }
 
 #[link(name = "Xft")]
@@ -413,15 +456,10 @@ unsafe impl Sync for Drw {}
 
 impl Drw {
     pub fn new(display_name: Option<&str>) -> Result<Self, String> {
-        eprintln!("TRACE: Drw::new - before FcInit");
         unsafe {
             FcInit();
-        }
-        eprintln!("TRACE: Drw::new - after FcInit, before XftInit");
-        unsafe {
             XftInit();
         }
-        eprintln!("TRACE: Drw::new - after XftInit, before XOpenDisplay");
         let display = unsafe {
             let name_ptr = display_name
                 .and_then(|s| CString::new(s).ok())
@@ -433,23 +471,16 @@ impl Drw {
         if display.is_null() {
             return Err("cannot open display".to_string());
         }
-        eprintln!("TRACE: Drw::new - after XOpenDisplay");
 
-        eprintln!("TRACE: Drw::new - entering unsafe block");
         unsafe {
-            eprintln!("TRACE: Drw::new - before XDefaultScreen");
             let screen = XDefaultScreen(display);
-            eprintln!("TRACE: Drw::new - screen = {}", screen);
             let root = XDefaultRootWindow(display);
-            eprintln!("TRACE: Drw::new - root = {}", root);
             if root == 0 {
                 XCloseDisplay(display);
                 return Err("cannot get root window".to_string());
             }
 
-            eprintln!("TRACE: Drw::new - before XDefaultVisual");
             let visual = XDefaultVisual(display, screen);
-            eprintln!("TRACE: Drw::new - visual = {:p}", visual);
             if visual.is_null() {
                 XCloseDisplay(display);
                 return Err("cannot get default visual".to_string());
@@ -531,11 +562,9 @@ impl Drw {
         self.w = w;
         self.h = h;
 
-        eprintln!("TRACE: Drw::resize - w={}, h={}", w, h);
         unsafe {
             XFreePixmap(self.display, self.drawable);
             self.drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
-            eprintln!("TRACE: Drw::resize - new drawable = {}", self.drawable);
         }
     }
 

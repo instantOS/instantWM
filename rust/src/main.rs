@@ -279,6 +279,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
 
     {
         let mut globals = get_globals_mut();
+        globals.xlibdisplay = crate::globals::XlibDisplay(drw.display());
         globals.drw = Some(drw);
         globals.bh = bh as i32;
         globals.lrpad = font_height as i32;
