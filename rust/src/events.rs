@@ -14,6 +14,7 @@ use crate::util::clean_mask;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use x11rb::CURRENT_TIME;
 
 pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
 
@@ -35,6 +36,13 @@ fn has_tiling_layout(mon_id: MonitorId) -> bool {
 }
 
 pub fn button_press(e: &ButtonPressEvent) {
+    // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
+        let _ = conn.flush();
+    }
+
     let globals = get_globals();
     let numlockmask = globals.numlockmask;
     let buttons = globals.buttons.clone();

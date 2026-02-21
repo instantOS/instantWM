@@ -2,6 +2,7 @@ use crate::client::{is_visible, set_focus, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
@@ -11,36 +12,82 @@ pub const FOCUS_DIR_DOWN: u32 = 2;
 pub const FOCUS_DIR_LEFT: u32 = 3;
 
 pub fn focus(win: Option<Window>) {
-    let globals = get_globals();
+    let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
+        let globals = get_globals();
+        let Some(sel_mon_id) = globals.selmon else {
+            return;
+        };
+        let Some(mon) = globals.monitors.get(sel_mon_id) else {
+            return;
+        };
 
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            let current_sel = mon.sel;
+        let mut target = win.filter(|w| {
+            globals
+                .clients
+                .get(w)
+                .map(|c| is_visible(c) && !crate::client::is_hidden(*w))
+                .unwrap_or(false)
+        });
 
-            drop(globals);
-
-            if win == current_sel {
-                return;
-            }
-
-            if let Some(cur_win) = current_sel {
-                unfocus_win(cur_win, true);
+        if target.is_none() {
+            let mut stack = mon.stack;
+            while let Some(c_win) = stack {
+                let Some(c) = globals.clients.get(&c_win) else {
+                    break;
+                };
+                if is_visible(c) && !crate::client::is_hidden(c_win) {
+                    target = Some(c_win);
+                    break;
+                }
+                stack = c.snext;
             }
         }
-    }
 
-    let mut globals = get_globals_mut();
+        (
+            sel_mon_id,
+            mon.sel,
+            target,
+            globals.root,
+            globals.netatom[NetAtom::ActiveWindow as usize],
+        )
+    };
 
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            mon.sel = win;
-        }
-    }
-
-    if let Some(w) = win {
-        if let Some(_client) = globals.clients.get(&w) {
-            drop(globals);
+    if current_sel == target {
+        // `mon.sel` can already be set before this call (e.g. manage path),
+        // but X input focus may still point to PointerRoot.
+        if let Some(w) = target {
             set_focus(w);
+        } else {
+            let x11 = get_x11();
+            if let Some(ref conn) = x11.conn {
+                let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+                let _ = conn.delete_property(root, net_active_window);
+                let _ = conn.flush();
+            }
+        }
+        return;
+    }
+
+    if let Some(cur_win) = current_sel {
+        // Match dwm behavior: don't force root focus before selecting the new client.
+        unfocus_win(cur_win, false);
+    }
+
+    {
+        let globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
+            mon.sel = target;
+        }
+    }
+
+    if let Some(w) = target.take() {
+        set_focus(w);
+    } else {
+        let x11 = get_x11();
+        if let Some(ref conn) = x11.conn {
+            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+            let _ = conn.delete_property(root, net_active_window);
+            let _ = conn.flush();
         }
     }
 }

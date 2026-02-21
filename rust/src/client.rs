@@ -1955,12 +1955,12 @@ pub fn update_wm_hints(win: Window) {
         {
             if let Ok(reply) = cookie.reply() {
                 let data = reply
-                    .value8()
-                    .map(|v| v.collect::<Vec<u8>>())
+                    .value32()
+                    .map(|v| v.collect::<Vec<u32>>())
                     .unwrap_or_default();
 
-                let flags = if data.len() >= 4 {
-                    u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
+                let flags = if let Some(flags) = data.first().copied() {
+                    flags
                 } else {
                     return;
                 };
@@ -1968,8 +1968,8 @@ pub fn update_wm_hints(win: Window) {
                 const INPUT_HINT: u32 = 1;
                 const X_URGENCY_HINT: u32 = 256;
 
-                let input = if flags & INPUT_HINT != 0 && data.len() >= 12 {
-                    i32::from_ne_bytes([data[8], data[9], data[10], data[11]])
+                let input = if flags & INPUT_HINT != 0 {
+                    data.get(1).copied().unwrap_or(0) as i32
                 } else {
                     0
                 };
@@ -1990,18 +1990,19 @@ pub fn update_wm_hints(win: Window) {
 
                     if is_sel && is_urgent {
                         let new_flags = flags & !X_URGENCY_HINT;
-                        let mut new_data = vec![0u8; data.len().max(36)];
-                        new_data[..4].copy_from_slice(&new_flags.to_ne_bytes());
-                        new_data[4..data.len()].copy_from_slice(&data[4..]);
+                        let mut new_data = data.clone();
+                        if new_data.is_empty() {
+                            new_data.push(new_flags);
+                        } else {
+                            new_data[0] = new_flags;
+                        }
 
                         drop(globals);
-                        let _ = conn.change_property(
+                        let _ = conn.change_property32(
                             PropMode::REPLACE,
                             win,
                             AtomEnum::WM_HINTS,
                             AtomEnum::WM_HINTS,
-                            8u8,
-                            new_data.len() as u32,
                             &new_data,
                         );
                         let _ = conn.flush();
