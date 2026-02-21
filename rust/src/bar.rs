@@ -1047,9 +1047,31 @@ fn get_text_prop(_win: Window, _atom: u32) -> Option<String> {
 }
 
 pub fn update_bar_pos(m: &mut MonitorInner) {
-    let g = get_globals();
-    let bh = g.bh;
+    // Pass bh as a parameter to avoid calling get_globals() which can deadlock
+    // if called while holding a write lock
+    let bh = {
+        let g = get_globals();
+        g.bh
+    };
 
+    m.wy = m.my;
+    m.wh = m.mh;
+
+    if m.showbar {
+        m.wh -= bh;
+        if m.topbar {
+            m.by = m.wy;
+            m.wy += bh;
+        } else {
+            m.by = m.wy + m.wh;
+        }
+    } else {
+        m.by = -bh;
+    }
+}
+
+// New version that takes bh as parameter to avoid deadlock
+pub fn update_bar_pos_with_bh(m: &mut MonitorInner, bh: i32) {
     m.wy = m.my;
     m.wh = m.mh;
 

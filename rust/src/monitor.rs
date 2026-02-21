@@ -491,6 +491,9 @@ pub fn update_geom() -> bool {
                                 }
 
                                 eprintln!("TRACE: update_geom - before unique.iter().enumerate");
+                                // Track which monitors need bar position updates
+                                let mut monitors_need_bar_update: Vec<usize> = Vec::new();
+
                                 for (i, info) in unique.iter().enumerate() {
                                     eprintln!("TRACE: update_geom - iter i = {}", i);
                                     let mut g = get_globals_mut();
@@ -517,12 +520,17 @@ pub fn update_geom() -> bool {
                                             m.wy = info.1;
                                             m.ww = info.2;
                                             m.wh = info.3;
-                                            drop(g);
-                                            let mut g = get_globals_mut();
-                                            if let Some(ref mut m) = g.monitors.get_mut(i) {
-                                                update_bar_pos(m);
-                                            }
+                                            monitors_need_bar_update.push(i);
                                         }
+                                    }
+                                }
+
+                                // Update bar positions for monitors that need it (without holding write lock)
+                                for monitor_idx in monitors_need_bar_update {
+                                    let mut g = get_globals_mut();
+                                    if let Some(ref mut m) = g.monitors.get_mut(monitor_idx) {
+                                        drop(g);
+                                        crate::bar::update_bar_pos(m);
                                     }
                                 }
 
