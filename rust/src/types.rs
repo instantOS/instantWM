@@ -2,6 +2,9 @@ use x11rb::protocol::xproto::Window;
 
 use crate::drw::Clr;
 
+/// X11 atom identifier (protocol type is CARDINAL / 32-bit).
+pub type Atom = u32;
+
 pub const MAX_TAGS: usize = 21;
 pub const SCRATCHPAD_TAG: usize = 20;
 pub const SCRATCHPAD_MASK: u32 = 1 << SCRATCHPAD_TAG;
@@ -503,7 +506,7 @@ pub type MonitorId = usize;
 
 //TODO: why do both client and clientInner exist?
 //TODO: dimensions should probaly be their own structs instead of 4 fields each time
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClientInner {
     pub name: String,
     pub mina: f32,
@@ -550,58 +553,15 @@ pub struct ClientInner {
     pub snext: Option<Window>,
 }
 
-impl Default for ClientInner {
-    //TODO: could this be a derive macro?
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            mina: 0.0,
-            maxa: 0.0,
-            x: 0,
-            y: 0,
-            w: 0,
-            h: 0,
-            saved_float_x: 0,
-            saved_float_y: 0,
-            saved_float_width: 0,
-            saved_float_height: 0,
-            oldx: 0,
-            oldy: 0,
-            oldw: 0,
-            oldh: 0,
-            basew: 0,
-            baseh: 0,
-            incw: 0,
-            inch: 0,
-            maxw: 0,
-            maxh: 0,
-            minw: 0,
-            minh: 0,
-            hintsvalid: 0,
-            border_width: 0,
-            old_border_width: 0,
-            tags: 0,
-            isfixed: false,
-            isfloating: false,
-            isurgent: false,
-            neverfocus: false,
-            oldstate: 0,
-            is_fullscreen: false,
-            isfakefullscreen: false,
-            islocked: false,
-            issticky: false,
-            snapstatus: SnapPosition::default(),
-            scratchpad_name: String::new(),
-            scratchpad_restore_tags: 0,
-            mon_id: None,
-            win: 0,
-            next: None,
-            snext: None,
-        }
-    }
-}
-
 impl ClientInner {
+    pub fn total_width(&self) -> i32 {
+        self.w + 2 * self.border_width
+    }
+
+    pub fn total_height(&self) -> i32 {
+        self.h + 2 * self.border_width
+    }
+
     pub fn is_scratchpad(&self) -> bool {
         !self.scratchpad_name.is_empty()
     }
@@ -776,13 +736,4 @@ pub fn intersect(x: i32, y: i32, w: i32, h: i32, m: &MonitorInner) -> i32 {
 
 pub fn is_visible(tags: u32, mon_tags: u32, _seltags: u32, issticky: bool) -> bool {
     (tags & mon_tags) != 0 || issticky
-}
-
-//TODO: this should probably be a method of the appropriate struct
-pub fn width(w: i32, border_width: i32) -> i32 {
-    w + 2 * border_width
-}
-
-pub fn height(h: i32, border_width: i32) -> i32 {
-    h + 2 * border_width
 }

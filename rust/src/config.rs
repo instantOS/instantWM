@@ -40,7 +40,7 @@ use crate::toggles::{
 };
 use crate::util::spawn;
 
-pub const BORDERPX: u32 = 3;
+pub const BORDERPX: i32 = 3;
 pub const MAX_TAGLEN: usize = 16;
 
 pub const MODKEY: u32 = 1 << 6; // Mod4Mask (Super/Windows key)
@@ -2568,7 +2568,7 @@ pub fn get_commands() -> Vec<XCommand> {
             cmd: "border",
             func: Some(set_border_width),
             arg: Arg {
-                i: BORDERPX as i32,
+                i: BORDERPX,
                 ..Default::default()
             },
             cmd_type: 5,
@@ -2873,11 +2873,11 @@ pub fn init_config() -> Config {
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub borderpx: u32,
-    pub snap: u32,
-    pub startmenusize: u32,
-    pub systraypinning: u32,
-    pub systrayspacing: u32,
+    pub borderpx: i32,
+    pub snap: i32,
+    pub startmenusize: i32,
+    pub systraypinning: usize,
+    pub systrayspacing: i32,
     pub systraypinningfailfirst: bool,
     pub showsystray: bool,
     pub showbar: bool,

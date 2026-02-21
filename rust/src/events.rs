@@ -47,7 +47,7 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
     };
 
     let ev_x = e.event_x as i32;
-    let start_menu_size = g.startmenusize as i32;
+    let start_menu_size = g.startmenusize;
     let tag_end = get_tag_width();
     let blw = get_layout_symbol_width(&mon);
 
@@ -450,7 +450,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
             mon.mx,
             mon.my,
             globals.bh,
-            globals.startmenusize as i32,
+            globals.startmenusize,
             mon.activeoffset as i32,
             mon.bar_clients_width,
             mon.gesture,

@@ -18,7 +18,7 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
         false
     };
 
-    let startmenu_size = g.startmenusize as i32;
+    let startmenu_size = g.startmenusize;
     let scheme: Option<ColorScheme> = if g.tags.prefix {
         let schemes = &g.tags.schemes;
         if !schemes.no_hover.is_empty() {

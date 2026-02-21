@@ -22,13 +22,13 @@ pub fn get_systray_width() -> u32 {
     if let Some(ref systray) = globals.systray {
         for &icon_win in &systray.icons {
             if let Some(c) = globals.clients.get(&icon_win) {
-                w += c.w as u32 + globals.systrayspacing;
+                w += c.w as u32 + globals.systrayspacing as u32;
             }
         }
     }
 
     if w > 0 {
-        w + globals.systrayspacing
+        w + globals.systrayspacing as u32
     } else {
         1
     }
@@ -365,7 +365,7 @@ pub fn update_systray() {
         );
         let _ = conn.map_window(icon_win);
 
-        w += systrayspacing;
+        w += systrayspacing as u32;
 
         if let Some(client) = globals.clients.get(&icon_win) {
             let icon_w = client.w;
@@ -388,7 +388,7 @@ pub fn update_systray() {
 
     drop(globals);
 
-    w = if w > 0 { w + systrayspacing } else { 1 };
+    w = if w > 0 { w + systrayspacing as u32 } else { 1 };
     let x = x - w as i32;
 
     let _ = conn.configure_window(
@@ -445,9 +445,9 @@ pub fn systray_to_mon(m: Option<MonitorId>) -> MonitorId {
     }
 
     let n = globals.monitors.len();
-    let target = (globals.systraypinning as usize).min(n);
+    let target = globals.systraypinning.min(n);
 
-    if globals.systraypinning as usize > n {
+    if globals.systraypinning > n {
         0
     } else {
         target.saturating_sub(1)

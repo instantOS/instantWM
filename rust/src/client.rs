@@ -1228,7 +1228,7 @@ pub fn manage(
     apply_rules(w);
 
     let mut globals = get_globals_mut();
-    let borderpx = globals.borderpx as i32;
+    let borderpx = globals.borderpx;
     if let Some(client) = globals.clients.get_mut(&w) {
         client.border_width = borderpx;
     }
@@ -1729,7 +1729,7 @@ pub fn toggle_fake_fullscreen(_arg: &Arg) {
     };
 
     if is_fullscreen && isfakefullscreen {
-        let borderpx = get_globals().borderpx as i32;
+        let borderpx = get_globals().borderpx;
         if let Some(mid) = mon_id {
             let (mon_mx, mon_my, mon_mw, mon_mh) = get_globals()
                 .monitors
@@ -1991,7 +1991,7 @@ pub fn update_motif_hints(win: Window) {
         return;
     }
     let motif_atom = globals.motifatom;
-    let borderpx = globals.borderpx as i32;
+    let borderpx = globals.borderpx;
     drop(globals);
 
     let x11 = get_x11();

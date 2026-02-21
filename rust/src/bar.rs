@@ -80,7 +80,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
     x11::resize_bar_win(m);
 
     let stats = ClientBarStats::collect(m, &g);
-    let mut x = g.startmenusize as i32;
+    let mut x = g.startmenusize;
     x = widgets::draw_tag_indicators(m, x, stats.occupied_tags, stats.urgent_tags, bh);
     x = widgets::draw_layout_indicator(m, x, bh);
 

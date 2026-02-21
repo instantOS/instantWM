@@ -468,7 +468,7 @@ pub fn move_mouse(_arg: &Arg) {
                         }
 
                         let globals = get_globals();
-                        let snap = globals.snap as i32;
+                        let snap = globals.snap;
                         let c = globals.clients.get(&win);
                         if let Some(client) = c {
                             let width = client.w + 2 * client.border_width;
@@ -626,7 +626,7 @@ pub fn resize_mouse(_arg: &Arg) {
                         let nh = (m.event_y as i32 - orig_top + 1).max(1);
 
                         let globals = get_globals();
-                        let snap = globals.snap as i32;
+                        let snap = globals.snap;
                         if let Some(client) = globals.clients.get(&win) {
                             let has_tiling = if let Some(sel_mon_id) = globals.selmon {
                                 globals
@@ -1517,7 +1517,7 @@ fn get_root_ptr() -> Option<(i32, i32)> {
 
 fn snap_to_monitor_edges(c: &ClientInner, nx: &mut i32, ny: &mut i32) {
     let globals = get_globals();
-    let snap = globals.snap as i32;
+    let snap = globals.snap;
 
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {

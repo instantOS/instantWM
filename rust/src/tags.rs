@@ -101,7 +101,7 @@ pub fn get_tag_width() -> i32 {
         }
     }
 
-    let start_menu_size = globals.startmenusize as i32;
+    let start_menu_size = globals.startmenusize;
     let numtags = globals.tags.count;
     let lrpad = globals.lrpad;
     let showalttag = globals.tags.show_alt;
@@ -156,7 +156,7 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
     let mut occupied_tags: u32 = 0;
 
     let globals = get_globals();
-    let start_menu_size = globals.startmenusize as i32;
+    let start_menu_size = globals.startmenusize;
     x = start_menu_size;
 
     let mut current = if let Some(sel_mon_id) = globals.selmon {

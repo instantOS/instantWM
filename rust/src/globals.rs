@@ -37,11 +37,14 @@ pub struct Globals {
     pub wmatom: WmAtoms,
     pub netatom: NetAtoms,
     pub xatom: XAtoms,
-    pub motifatom: u32,
+    pub motifatom: Atom,
+    /// X11 modifier mask for NumLock (used when matching/grabbing keys and buttons).
     pub numlockmask: u32,
     pub showsystray: bool,
-    pub systraypinning: u32,
-    pub systrayspacing: u32,
+    /// Number of systray icons to pin to the start (0 = no pinning).
+    pub systraypinning: usize,
+    /// Pixel gap between systray icons.
+    pub systrayspacing: i32,
     pub systray: Option<Systray>,
     pub drw: Option<Drw>,
     pub xlibdisplay: XlibDisplay,
@@ -50,8 +53,10 @@ pub struct Globals {
     pub statusscheme: Option<StatusScheme>,
     pub windowschemes: WindowSchemes,
     pub closebuttonschemes: CloseButtonSchemes,
-    pub startmenusize: u32,
-    pub snap: u32,
+    /// Start menu / tag bar width in pixels.
+    pub startmenusize: i32,
+    /// Snap-to-edge distance in pixels.
+    pub snap: i32,
     pub resizehints: i32,
     pub layouts: Vec<&'static dyn Layout>,
     pub commands: Vec<XCommand>,
@@ -65,7 +70,8 @@ pub struct Globals {
     pub dkeys: Vec<Key>,
     pub rules: Vec<Rule>,
     pub resources: Vec<ResourcePref>,
-    pub borderpx: u32,
+    /// Border width in pixels.
+    pub borderpx: i32,
     pub decorhints: i32,
     pub mfact: f32,
     pub nmaster: i32,

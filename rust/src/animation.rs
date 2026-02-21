@@ -285,7 +285,7 @@ fn anim_scroll(arg: &Arg, dir: i32) {
     };
 
     if animated {
-        let modifier = if dir == DIR_RIGHT { 1 } else { -1 };
+        let modifier: i32 = if dir == DIR_RIGHT { 1 } else { -1 };
         let target = current_tag + modifier as u32;
 
         let globals = get_globals();
