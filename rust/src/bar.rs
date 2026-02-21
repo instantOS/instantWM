@@ -494,7 +494,10 @@ pub fn draw_tag_indicators(
         } else {
             false
         };
-        eprintln!("TRACE: draw_tag_indicators - i={}, is_hover={}", i, is_hover);
+        eprintln!(
+            "TRACE: draw_tag_indicators - i={}, is_hover={}",
+            i, is_hover
+        );
 
         let current_tag = m.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0);
         let actual_i = if i == 8 && current_tag > 9 {
@@ -912,6 +915,20 @@ pub fn draw_bar(m: &mut MonitorInner) {
     let bh = g.bh;
     let showsystray = g.showsystray;
 
+    eprintln!(
+        "DEBUG draw_bar: m.barwin={}, m.ww={}, m.wx={}, m.by={}, bh={}",
+        m.barwin, m.ww, m.wx, m.by, bh
+    );
+    eprintln!("DEBUG draw_bar: g.drw.is_some={}", g.drw.is_some());
+    if let Some(ref drw) = g.drw {
+        eprintln!(
+            "DEBUG draw_bar: drw.w={}, drw.h={}, drw.drawable={}",
+            drw.w,
+            drw.h,
+            drw.drawable()
+        );
+    }
+
     let mut stw: i32 = 0;
     if showsystray {
         if let Some(selmon_idx) = g.selmon {
@@ -996,15 +1013,25 @@ pub fn draw_bar(m: &mut MonitorInner) {
             }
         }
     }
+    eprintln!("TRACE: draw_bar - after final block");
 
     m.bt = n;
     m.bar_clients_width = window_width;
+    eprintln!("DEBUG draw_bar: before drw.map, barwin={}", m.barwin);
 
     if let Some(ref drw) = g.drw {
+        eprintln!(
+            "DEBUG draw_bar: calling drw.map with barwin={}, ww={}, bh={}",
+            m.barwin, m.ww, bh
+        );
         drw.map(m.barwin, 0, 0, m.ww as u16, bh as u16);
+        eprintln!("DEBUG draw_bar: drw.map completed");
+    } else {
+        eprintln!("DEBUG draw_bar: ERROR - no drw in globals!");
     }
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+    eprintln!("DEBUG draw_bar: END");
 }
 
 pub fn draw_bars() {
@@ -1181,6 +1208,7 @@ pub fn resize_bar_win(m: &MonitorInner) {
 }
 
 pub fn update_bars() {
+    eprintln!("DEBUG update_bars: START");
     let (bh, showsystray, bar_configs, xlibdisplay, root) = {
         let g = get_globals();
         let bh = g.bh;
@@ -1188,9 +1216,24 @@ pub fn update_bars() {
         let xlibdisplay = g.xlibdisplay.0;
         let root = g.root;
 
+        eprintln!(
+            "DEBUG update_bars: monitors.len={}, xlibdisplay={:p}, root={}",
+            g.monitors.len(),
+            xlibdisplay,
+            root
+        );
+
         let mut bar_configs = Vec::new();
         for (i, m) in g.monitors.iter().enumerate() {
+            eprintln!(
+                "DEBUG update_bars: monitor {} barwin={}, showbar={}",
+                i, m.barwin, m.showbar
+            );
             if m.barwin != 0 {
+                eprintln!(
+                    "DEBUG update_bars: skipping monitor {} - barwin already set",
+                    i
+                );
                 continue;
             }
 
@@ -1202,19 +1245,36 @@ pub fn update_bars() {
                     }
                 }
             }
+            eprintln!(
+                "DEBUG update_bars: adding bar config for monitor {}: wx={}, by={}, w={}, bh={}",
+                i, m.wx, m.by, w, bh
+            );
             bar_configs.push((i, m.wx, m.by, w, bh));
         }
+        eprintln!("DEBUG update_bars: bar_configs.len={}", bar_configs.len());
         (bh, showsystray, bar_configs, xlibdisplay, root)
     };
 
+    eprintln!(
+        "DEBUG update_bars: xlibdisplay.is_null={}",
+        xlibdisplay.is_null()
+    );
     if xlibdisplay.is_null() {
         return;
     }
 
     for (i, wx, by, w, bh) in bar_configs {
+        eprintln!(
+            "DEBUG update_bars: creating window for monitor {}: wx={}, by={}, w={}, bh={}",
+            i, wx, by, w, bh
+        );
         unsafe {
-            use crate::drw::{XCreateSimpleWindow, XMapWindow, XSync, XSelectInput};
-            
+            use crate::drw::{XCreateSimpleWindow, XFlush, XMapWindow, XSelectInput, XSync};
+
+            eprintln!(
+                "DEBUG update_bars: calling XCreateSimpleWindow with root={}",
+                root
+            );
             // Create a simple window first
             let win_id = XCreateSimpleWindow(
                 xlibdisplay,
@@ -1227,17 +1287,31 @@ pub fn update_bars() {
                 0,
                 0,
             );
-            
+            eprintln!(
+                "DEBUG update_bars: XCreateSimpleWindow returned win_id={}",
+                win_id
+            );
+
             // Set event mask
-            XSelectInput(xlibdisplay, win_id, ((1 << 2) | (1 << 15) | (1 << 16)) as i64);
-            
+            XSelectInput(
+                xlibdisplay,
+                win_id,
+                ((1 << 2) | (1 << 15) | (1 << 16)) as i64,
+            );
+            eprintln!("DEBUG update_bars: XSelectInput done");
+
             XMapWindow(xlibdisplay, win_id);
+            eprintln!("DEBUG update_bars: XMapWindow done");
             XSync(xlibdisplay, 0);
+            XFlush(xlibdisplay);
+            eprintln!("DEBUG update_bars: XSync/XFlush done");
 
             let mut globals_mut = crate::globals::get_globals_mut();
             globals_mut.monitors[i].barwin = win_id;
+            eprintln!("DEBUG update_bars: stored barwin={} in globals", win_id);
         }
     }
+    eprintln!("DEBUG update_bars: END");
 }
 
 pub fn toggle_bar(_arg: &Arg) {

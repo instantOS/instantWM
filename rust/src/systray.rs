@@ -170,6 +170,11 @@ pub fn update_systray() {
         return;
     }
 
+    // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
+    unsafe {
+        crate::drw::XFlush(globals.xlibdisplay.0);
+    }
+
     eprintln!("TRACE: update_systray - before systray_to_mon");
     let (x, by, showbar, barwin) = {
         let m = systray_to_mon(None);
@@ -194,7 +199,10 @@ pub fn update_systray() {
         let globals = get_globals();
         globals.systray.is_some()
     };
-    eprintln!("TRACE: update_systray - systray_exists = {}", systray_exists);
+    eprintln!(
+        "TRACE: update_systray - systray_exists = {}",
+        systray_exists
+    );
 
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
@@ -225,7 +233,10 @@ pub fn update_systray() {
             eprintln!("TRACE: update_systray - generate_id failed");
             return;
         };
-        eprintln!("TRACE: update_systray - generated systray_win = {}", systray_win);
+        eprintln!(
+            "TRACE: update_systray - generated systray_win = {}",
+            systray_win
+        );
 
         eprintln!("TRACE: update_systray - before create_window");
         let result = conn.create_window(
@@ -255,7 +266,10 @@ pub fn update_systray() {
         let _ = result.and_then(|cookie| {
             eprintln!("TRACE: update_systray - before cookie.check");
             let r = cookie.check();
-            eprintln!("TRACE: update_systray - cookie.check result: {:?}", r.is_ok());
+            eprintln!(
+                "TRACE: update_systray - cookie.check result: {:?}",
+                r.is_ok()
+            );
             r.map_err(|_| x11rb::errors::ConnectionError::UnknownError)
         });
         eprintln!("TRACE: update_systray - after create_window reply");
@@ -304,21 +318,29 @@ pub fn update_systray() {
         eprintln!("TRACE: update_systray - before get_globals for manager_atom");
         let globals = get_globals();
         let manager_atom = globals.xatom[0];
-        eprintln!("TRACE: update_systray - before send_event");
-        send_event(
-            root,
-            manager_atom,
-            manager_atom,
-            CURRENT_TIME as i64,
-            net_system_tray as i64,
-            systray_win as i64,
-            0,
-            0,
-        );
-        eprintln!("TRACE: update_systray - after send_event, before flush");
 
-        let _ = conn.flush();
-        eprintln!("TRACE: update_systray - after flush");
+        // Send MANAGER event to root window to announce systray
+        // Use non-blocking approach
+        if let Some(ref conn) = x11.conn {
+            let event = ClientMessageEvent {
+                response_type: CLIENT_MESSAGE_EVENT,
+                format: 32,
+                sequence: 0,
+                window: root,
+                type_: manager_atom,
+                data: ClientMessageData::from([
+                    CURRENT_TIME as u32,
+                    net_system_tray as u32,
+                    systray_win as u32,
+                    0,
+                    0,
+                ]),
+            };
+            let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, &event);
+            // Don't flush here - let main event loop handle it
+        }
+
+        eprintln!("TRACE: update_systray - MANAGER event sent");
     }
 
     let globals = get_globals();
@@ -458,6 +480,7 @@ fn send_event(win: Window, proto: u32, mask: u32, d0: i64, d1: i64, d2: i64, d3:
             data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
         };
         let _ = conn.send_event(false, win, EventMask::from(mask), &event);
-        let _ = conn.flush();
+        // Don't flush here - let the main event loop handle it
+        // let _ = conn.flush();
     }
 }
