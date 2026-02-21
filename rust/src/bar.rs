@@ -1024,49 +1024,25 @@ pub fn draw_bar(m: &mut MonitorInner) {
     eprintln!("DEBUG draw_bar: before drw.map, barwin={}", m.barwin);
 
     if let Some(ref drw) = g.drw {
-        eprintln!(
-            "DEBUG draw_bar: drawing directly to barwin={}, ww={}, bh={}, display={:p}",
-            m.barwin, m.ww, bh, drw.display()
-        );
-        
-        // Use x11rb to draw directly to the window (bypass Xlib entirely)
+        // Use x11rb to draw directly to the window (Xlib drawing to x11rb windows doesn't work)
         let x11 = crate::globals::get_x11();
         if let Some(ref conn) = x11.conn {
-            // Create a GC for the window
+            // Create a GC for the window with background color
             let gc = conn.generate_id().unwrap();
             let _ = conn.create_gc(
                 m.barwin,
                 gc,
                 &x11rb::protocol::xproto::CreateGCAux::new()
-                    .foreground(0x00121212)  // Dark background color
+                    .foreground(0x00121212)  // Dark background color #121212
             );
             
-            // Draw a filled rectangle covering the entire bar
+            // Draw background rectangle covering the entire bar
             use x11rb::protocol::xproto::Rectangle;
             let rects = [Rectangle { x: 0, y: 0, width: m.ww as u16, height: bh as u16 }];
             let _ = conn.poly_fill_rectangle(m.barwin, gc, &rects);
             
-            // Draw some text indicator
-            let _ = conn.poly_fill_rectangle(
-                m.barwin, 
-                gc, 
-                &[Rectangle { x: 0, y: 0, width: 50, height: bh as u16 }]
-            );
-            
             let _ = conn.flush();
-            eprintln!("DEBUG draw_bar: x11rb drawing completed and flushed");
         }
-        
-        // Also flush Xlib for any Xlib drawing
-        unsafe {
-            use crate::drw::XFlush;
-            XFlush(drw.display());
-            
-            use crate::drw::XSync;
-            XSync(drw.display(), 0);
-        }
-    } else {
-        eprintln!("DEBUG draw_bar: ERROR - no drw in globals!");
     }
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
