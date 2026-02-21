@@ -33,9 +33,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
 
 use crate::bar::{update_bars, update_status};
-use crate::config::{
-    init_config, TAGMASK,
-};
+use crate::config::{init_config, TAGMASK};
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};
 use crate::focus::focus;

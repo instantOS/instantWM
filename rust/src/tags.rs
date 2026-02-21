@@ -1,3 +1,4 @@
+use crate::bar::text_width;
 use crate::client::{set_client_tag_prop, unfocus_win};
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::focus::focus;
@@ -109,6 +110,8 @@ pub fn get_tag_width() -> i32 {
     let start_menu_size = globals.startmenusize as i32;
     let numtags = globals.numtags;
     let lrpad = globals.lrpad;
+    let showalttag = globals.showalttag;
+    let tagsalt = globals.tagsalt.clone();
 
     for i in 0..numtags as usize {
         if i >= 9 {
@@ -142,8 +145,17 @@ pub fn get_tag_width() -> i32 {
             }
         }
 
-        let tag_len = globals.tags[i].iter().position(|&b| b == 0).unwrap_or(0);
-        x += lrpad * (tag_len as i32 + 2);
+        let tag_len = globals.tags[i]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(globals.tags[i].len());
+        let tag_name = std::str::from_utf8(&globals.tags[i][..tag_len]).unwrap_or("");
+        let display_name = if showalttag && i < tagsalt.len() {
+            tagsalt[i]
+        } else {
+            tag_name
+        };
+        x += text_width(display_name) + lrpad;
     }
 
     x + start_menu_size
@@ -176,6 +188,8 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
 
     let numtags = globals.numtags;
     let lrpad = globals.lrpad;
+    let showalttag = globals.showalttag;
+    let tagsalt = globals.tagsalt.clone();
 
     for i in 0..numtags as usize {
         if i >= 9 {
@@ -209,8 +223,17 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
             }
         }
 
-        let tag_len = globals.tags[i].iter().position(|&b| b == 0).unwrap_or(0);
-        x += lrpad * (tag_len as i32 + 2);
+        let tag_len = globals.tags[i]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(globals.tags[i].len());
+        let tag_name = std::str::from_utf8(&globals.tags[i][..tag_len]).unwrap_or("");
+        let display_name = if showalttag && i < tagsalt.len() {
+            tagsalt[i]
+        } else {
+            tag_name
+        };
+        x += text_width(display_name) + lrpad;
 
         if x >= ix {
             return i as i32;

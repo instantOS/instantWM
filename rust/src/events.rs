@@ -1,4 +1,4 @@
-use crate::bar::{draw_bar, get_layout_symbol_width, get_tag_width, reset_bar, text_width};
+use crate::bar::{draw_bar, get_layout_symbol_width, get_tag_at_x, get_tag_width, reset_bar};
 use crate::client::{
     configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
     update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
@@ -46,49 +46,8 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
 
     let ev_x = e.event_x as i32;
     let start_menu_size = g.startmenusize as i32;
-    let numtags = g.numtags as usize;
-    let mut x = start_menu_size;
-    let mut occupied_tags: u32 = 0;
+    let tag_end = get_tag_width();
     let blw = get_layout_symbol_width(&mon);
-
-    let mut current = mon.clients;
-    while let Some(c_win) = current {
-        if let Some(c) = g.clients.get(&c_win) {
-            occupied_tags |= if c.tags == 255 { 0 } else { c.tags };
-            current = c.next;
-        } else {
-            break;
-        }
-    }
-
-    let mut i = 0usize;
-    while i < numtags {
-        if i >= 9 {
-            i += 1;
-            continue;
-        }
-
-        if mon.showtags != 0 {
-            let tag_mask = 1u32 << i;
-            if (occupied_tags & tag_mask) == 0 && (mon.tagset[mon.seltags as usize] & tag_mask) == 0
-            {
-                i += 1;
-                continue;
-            }
-        }
-
-        let tag_len = g.tags[i]
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(g.tags[i].len());
-        let tag_text = std::str::from_utf8(&g.tags[i][..tag_len]).unwrap_or("");
-        x += text_width(tag_text);
-
-        if ev_x < x {
-            break;
-        }
-        i += 1;
-    }
 
     let status_hit_x = mon.ww - get_systray_width() as i32 - g.statuswidth + g.lrpad - 2;
     let bh = g.bh;
@@ -99,16 +58,17 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
         return (Click::StartMenu, arg);
     }
 
-    if i < numtags {
-        arg.ui = 1 << i;
+    let tag_idx = get_tag_at_x(ev_x);
+    if tag_idx >= 0 {
+        arg.ui = 1u32 << (tag_idx as u32);
         return (Click::TagBar, arg);
     }
 
-    if ev_x < x + blw {
+    if ev_x < tag_end + blw {
         return (Click::LtSymbol, arg);
     }
 
-    if mon.sel.is_none() && ev_x > x + blw && ev_x < x + blw + bh {
+    if mon.sel.is_none() && ev_x > tag_end + blw && ev_x < tag_end + blw + bh {
         return (Click::ShutDown, arg);
     }
 
@@ -136,7 +96,7 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
     drop(g);
 
     if !visible_clients.is_empty() {
-        let mut title_end = x + blw;
+        let mut title_end = tag_end + blw;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
@@ -457,14 +417,11 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
     }
     let selmon_id = globals.selmon;
     let focusfollowsmouse = globals.focusfollowsmouse;
-    let mut tagwidth = globals.tagwidth;
     drop(globals);
-
-    if tagwidth == 0 {
-        tagwidth = get_tag_width();
-        let mut globals = get_globals_mut();
-        globals.tagwidth = tagwidth;
-    }
+    let tagwidth = get_tag_width();
+    let mut globals = get_globals_mut();
+    globals.tagwidth = tagwidth;
+    drop(globals);
 
     if focusfollowsmouse {
         if let Some(m) = rect_to_mon(e.root_x as i32, e.root_y as i32, 1, 1) {
@@ -512,7 +469,8 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
         let new_gesture = if root_x < mx + startmenusize {
             Gesture::StartMenu
         } else {
-            let tag = crate::tags::get_tag_at_x(root_x);
+            let local_x = root_x - mx;
+            let tag = crate::tags::get_tag_at_x(local_x);
             if tag >= 0 {
                 Gesture::from_tag_index(tag as usize).unwrap_or(Gesture::None)
             } else {
