@@ -516,9 +516,23 @@ pub fn update_geom() -> bool {
 
     let g = get_globals();
     if g.monitors.is_empty() {
+        let (sw, sh) = (g.sw, g.sh);
         drop(g);
         let mut g = get_globals_mut();
         g.monitors.push(create_monitor());
+        if let Some(ref mut m) = g.monitors.first_mut() {
+            m.num = 0;
+            m.mx = 0;
+            m.my = 0;
+            m.mw = sw;
+            m.mh = sh;
+            m.wx = 0;
+            m.wy = 0;
+            m.ww = sw;
+            m.wh = sh;
+            update_bar_pos(m);
+        }
+        g.selmon = Some(0);
         dirty = true;
     } else {
         let sw = g.sw;
@@ -528,6 +542,7 @@ pub fn update_geom() -> bool {
             .first()
             .map(|m| m.mw != sw || m.mh != sh)
             .unwrap_or(false);
+        let needs_selmon = g.selmon.is_none();
         drop(g);
 
         if needs_update {
@@ -539,6 +554,13 @@ pub fn update_geom() -> bool {
                 m.ww = sw;
                 m.wh = sh;
                 update_bar_pos(m);
+            }
+        }
+
+        if needs_selmon {
+            let mut g = get_globals_mut();
+            if !g.monitors.is_empty() {
+                g.selmon = Some(0);
             }
         }
     }

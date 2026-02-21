@@ -89,7 +89,12 @@ fn main() {
 
     let (conn, screen_num) = match RustConnection::connect(None) {
         Ok((c, s)) => (c, s),
-        Err(_) => die("instantwm: cannot open display"),
+        Err(_) => {
+            eprintln!(
+                "instantwm: Failed to open the display from the DISPLAY environment variable."
+            );
+            std::process::exit(1);
+        }
     };
 
     {
@@ -98,23 +103,32 @@ fn main() {
         x11.screen_num = screen_num;
     }
 
-    let x11 = get_x11();
-    let conn_ref = x11.conn.as_ref().unwrap();
-    let screen = &conn_ref.setup().roots[screen_num];
+    let screen = {
+        let x11 = get_x11();
+        let conn_ref = x11.conn.as_ref().unwrap();
+        conn_ref.setup().roots[screen_num].clone()
+    };
     let root = screen.root;
 
-    check_other_wm_init(conn_ref, root);
+    eprintln!("TRACE: check_other_wm_init");
+    check_other_wm_init(root);
 
-    init_globals(screen_num, root, screen);
+    eprintln!("TRACE: init_globals");
+    init_globals(screen_num, root, &screen);
 
+    eprintln!("TRACE: load_xresources");
     load_xresources();
 
-    setup(conn_ref, screen_num, root, screen);
+    eprintln!("TRACE: setup");
+    setup(screen_num, root, &screen);
 
+    eprintln!("TRACE: scan");
     scan();
 
+    eprintln!("TRACE: run_autostart");
     run_autostart();
 
+    eprintln!("TRACE: run");
     run();
 
     cleanup();
@@ -129,14 +143,24 @@ fn set_locale() -> Result<(), ()> {
     Ok(())
 }
 
-fn check_other_wm_init<C: Connection>(conn: &C, root: Window) {
+fn check_other_wm_init(root: Window) {
+    let x11 = get_x11();
+    let Some(ref conn) = x11.conn else {
+        return;
+    };
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
 
     let result =
         conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
 
-    if result.is_err() {
-        die("instantwm: another window manager is already running");
+    if let Ok(cookie) = result {
+        if cookie.check().is_err() {
+            eprintln!("instantwm: another window manager is already running");
+            std::process::exit(1);
+        }
+    } else {
+        eprintln!("instantwm: another window manager is already running");
+        std::process::exit(1);
     }
 
     let _ = conn.flush();
@@ -173,12 +197,7 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.tagmask = TAGMASK;
 }
 
-fn setup<C: Connection>(
-    conn: &C,
-    screen_num: usize,
-    root: Window,
-    screen: &x11rb::protocol::xproto::Screen,
-) {
+fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
     setup_signal_handlers();
 
     while unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) } > 0 {}
@@ -217,7 +236,13 @@ fn setup<C: Connection>(
         globals.lrpad = font_height as i32;
     }
 
-    init_atoms(conn);
+    {
+        let x11 = get_x11();
+        let Some(ref conn) = x11.conn else {
+            return;
+        };
+        init_atoms(conn);
+    }
 
     init_cursors(&drw);
 
@@ -231,7 +256,13 @@ fn setup<C: Connection>(
 
     update_status();
 
-    init_wm_check_window(conn, screen_num, root);
+    {
+        let x11 = get_x11();
+        let Some(ref conn) = x11.conn else {
+            return;
+        };
+        init_wm_check_window(conn, screen_num, root);
+    }
 
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
@@ -249,14 +280,20 @@ fn setup<C: Connection>(
         g.cursors[0].as_ref().map(|c| c.cursor).unwrap_or(0)
     };
 
-    let _ = conn.change_window_attributes(
-        root,
-        &ChangeWindowAttributesAux::new()
-            .event_mask(mask)
-            .cursor(cursor),
-    );
+    {
+        let x11 = get_x11();
+        let Some(ref conn) = x11.conn else {
+            return;
+        };
+        let _ = conn.change_window_attributes(
+            root,
+            &ChangeWindowAttributesAux::new()
+                .event_mask(mask)
+                .cursor(cursor),
+        );
 
-    let _ = conn.flush();
+        let _ = conn.flush();
+    }
 
     grab_keys();
 
