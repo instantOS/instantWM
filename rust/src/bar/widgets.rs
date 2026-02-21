@@ -19,8 +19,8 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
     };
 
     let startmenu_size = g.startmenusize as i32;
-    let scheme = if g.tagprefix {
-        let schemes = &g.tagschemes;
+    let scheme = if g.tags.prefix {
+        let schemes = &g.tags.schemes;
         if schemes.len() > SchemeHover::NoHover as usize {
             let hover_idx = SchemeHover::NoHover as usize;
             if schemes[hover_idx].len() > SchemeTag::Focus as usize {
@@ -89,7 +89,7 @@ fn get_tag_scheme(
         SchemeHover::NoHover as usize
     };
 
-    let schemes = &g.tagschemes;
+    let schemes = &g.tags.schemes;
     if schemes.len() <= hover_idx {
         return None;
     }
@@ -142,12 +142,12 @@ pub(crate) fn draw_tag_indicators(
 ) -> i32 {
     let g = get_globals();
     let lrpad = g.lrpad;
-    let show_alt_tag = g.showalttag;
+    let show_alt_tag = g.tags.show_alt;
     let bar_dragging = g.bar_dragging;
-    let num_tags = g.numtags;
+    let num_tags = g.tags.count;
 
-    let tags = g.tags;
-    let tags_alt = g.tagsalt.clone();
+    let tag_names = g.tags.names;
+    let tags_alt = g.tags.alt_names.clone();
 
     for i in 0..num_tags as u32 {
         if i >= 9 {
@@ -175,8 +175,8 @@ pub(crate) fn draw_tag_indicators(
             continue;
         }
 
-        let tag_name = if actual_i < tags.len() as u32 {
-            let tag_bytes = &tags[actual_i as usize];
+        let tag_name = if (actual_i as usize) < tag_names.len() {
+            let tag_bytes = &tag_names[actual_i as usize];
             let len = tag_bytes
                 .iter()
                 .position(|&b| b == 0)
@@ -207,7 +207,7 @@ pub(crate) fn draw_tag_indicators(
 
                 let mut draw_scheme = scheme.clone();
                 if is_hover && bar_dragging {
-                    let schemes = &g.tagschemes;
+                    let schemes = &g.tags.schemes;
                     if schemes.len() > SchemeHover::Hover as usize {
                         if let Some(s) =
                             schemes[SchemeHover::Hover as usize].get(SchemeTag::Filled as usize)

@@ -14,10 +14,10 @@ const DIR_LEFT: i32 = 0;
 const DIR_RIGHT: i32 = 1;
 
 pub fn compute_prefix(arg: &Arg) -> u32 {
-    let tagprefix = get_globals().tagprefix;
+    let tagprefix = get_globals().tags.prefix;
     if tagprefix && arg.ui != 0 {
         let mut globals = get_globals_mut();
-        globals.tagprefix = false;
+        globals.tags.prefix = false;
         arg.ui << 10
     } else {
         arg.ui
@@ -35,7 +35,7 @@ pub fn name_tag(arg: &Arg) {
 
     let (numtags, current_tag) = {
         let globals = get_globals();
-        let numtags = globals.numtags as usize;
+        let numtags = globals.tags.count;
         let current_tag = globals
             .selmon
             .and_then(|id| globals.monitors.get(id))
@@ -54,8 +54,8 @@ pub fn name_tag(arg: &Arg) {
         if (tagset & (1 << i)) != 0 {
             let mut globals = get_globals_mut();
             if !name_bytes.is_empty() {
-                globals.tags[i][..name_bytes.len()].copy_from_slice(name_bytes);
-                globals.tags[i][name_bytes.len()..]
+                globals.tags.names[i][..name_bytes.len()].copy_from_slice(name_bytes);
+                globals.tags.names[i][name_bytes.len()..]
                     .iter_mut()
                     .for_each(|b| *b = 0);
             } else {
@@ -63,8 +63,8 @@ pub fn name_tag(arg: &Arg) {
                     8 => b"9".to_vec(),
                     _ => vec![b'1' + i as u8],
                 };
-                globals.tags[i][..default_tag.len()].copy_from_slice(&default_tag);
-                globals.tags[i][default_tag.len()..]
+                globals.tags.names[i][..default_tag.len()].copy_from_slice(&default_tag);
+                globals.tags.names[i][default_tag.len()..]
                     .iter_mut()
                     .for_each(|b| *b = 0);
             }
@@ -74,15 +74,15 @@ pub fn name_tag(arg: &Arg) {
 
 pub fn reset_name_tag(_arg: &Arg) {
     let mut globals = get_globals_mut();
-    for i in 0..globals.numtags as usize {
+    for i in 0..globals.tags.count {
         if i >= MAX_TAGS {
             break;
         }
         let default = format!("{}\0", i + 1);
         let bytes = default.as_bytes();
-        globals.tags[i][..bytes.len().min(16)].copy_from_slice(&bytes[..bytes.len().min(16)]);
+        globals.tags.names[i][..bytes.len().min(16)].copy_from_slice(&bytes[..bytes.len().min(16)]);
     }
-    globals.tagwidth = 0;
+    globals.tags.width = 0;
 }
 
 pub fn get_tag_width() -> i32 {
@@ -109,12 +109,12 @@ pub fn get_tag_width() -> i32 {
     }
 
     let start_menu_size = globals.startmenusize as i32;
-    let numtags = globals.numtags;
+    let numtags = globals.tags.count;
     let lrpad = globals.lrpad;
-    let showalttag = globals.showalttag;
-    let tagsalt = globals.tagsalt.clone();
+    let showalttag = globals.tags.show_alt;
+    let tagsalt = globals.tags.alt_names.clone();
 
-    for i in 0..numtags as usize {
+    for i in 0..numtags {
         if i >= 9 {
             continue;
         }
@@ -146,11 +146,11 @@ pub fn get_tag_width() -> i32 {
             }
         }
 
-        let tag_len = globals.tags[i]
+        let tag_len = globals.tags.names[i]
             .iter()
             .position(|&b| b == 0)
-            .unwrap_or(globals.tags[i].len());
-        let tag_name = std::str::from_utf8(&globals.tags[i][..tag_len]).unwrap_or("");
+            .unwrap_or(globals.tags.names[i].len());
+        let tag_name = std::str::from_utf8(&globals.tags.names[i][..tag_len]).unwrap_or("");
         let display_name = if showalttag && i < tagsalt.len() {
             tagsalt[i]
         } else {
@@ -187,12 +187,12 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
         }
     }
 
-    let numtags = globals.numtags;
+    let numtags = globals.tags.count;
     let lrpad = globals.lrpad;
-    let showalttag = globals.showalttag;
-    let tagsalt = globals.tagsalt.clone();
+    let showalttag = globals.tags.show_alt;
+    let tagsalt = globals.tags.alt_names.clone();
 
-    for i in 0..numtags as usize {
+    for i in 0..numtags {
         if i >= 9 {
             continue;
         }
@@ -224,11 +224,11 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
             }
         }
 
-        let tag_len = globals.tags[i]
+        let tag_len = globals.tags.names[i]
             .iter()
             .position(|&b| b == 0)
-            .unwrap_or(globals.tags[i].len());
-        let tag_name = std::str::from_utf8(&globals.tags[i][..tag_len]).unwrap_or("");
+            .unwrap_or(globals.tags.names[i].len());
+        let tag_name = std::str::from_utf8(&globals.tags.names[i][..tag_len]).unwrap_or("");
         let display_name = if showalttag && i < tagsalt.len() {
             tagsalt[i]
         } else {
@@ -256,7 +256,7 @@ fn set_client_tag_impl(tagmask_bits: u32) {
             globals
                 .selmon
                 .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel)),
-            globals.tagmask,
+            globals.tags.mask(),
         )
     };
 
@@ -314,7 +314,7 @@ pub fn tag_all(arg: &Arg) {
         return;
     }
 
-    let tagmask = globals.tagmask;
+    let tagmask = globals.tags.mask();
 
     let clients_to_tag: Vec<Window> = {
         let mut result = Vec::new();
@@ -362,7 +362,7 @@ pub fn tag_all(arg: &Arg) {
 
 pub fn follow_tag(arg: &Arg) {
     let ui = compute_prefix(arg);
-    let tagprefix = get_globals().tagprefix;
+    let tagprefix = get_globals().tags.prefix;
 
     if get_globals()
         .selmon
@@ -380,7 +380,7 @@ pub fn follow_tag(arg: &Arg) {
 
     if tagprefix {
         let mut globals = get_globals_mut();
-        globals.tagprefix = true;
+        globals.tags.prefix = true;
     }
 
     view(&a);
@@ -415,7 +415,7 @@ pub fn toggle_tag(arg: &Arg) {
     let (current_tags, tagmask) = {
         let globals = get_globals();
         let current = globals.clients.get(&win).map(|c| c.tags).unwrap_or(0);
-        (current, globals.tagmask)
+        (current, globals.tags.mask())
     };
 
     let new_tags = current_tags ^ (ui & tagmask);
@@ -436,7 +436,7 @@ pub fn toggle_tag(arg: &Arg) {
 
 pub fn view(arg: &Arg) {
     let ui = compute_prefix(arg);
-    let tagmask = get_globals().tagmask;
+    let tagmask = get_globals().tags.mask();
 
     let mut globals = get_globals_mut();
 
@@ -524,7 +524,7 @@ fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
 }
 
 pub fn toggle_view(arg: &Arg) {
-    let tagmask = get_globals().tagmask;
+    let tagmask = get_globals().tags.mask();
     let new_tagset = {
         let globals = get_globals();
         let current = if let Some(sel_mon_id) = globals.selmon {
@@ -760,7 +760,7 @@ fn shift_tag(dir: i32, offset: i32) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.tagset[mon.seltags as usize], globals.tagmask)
+                (mon.tagset[mon.seltags as usize], globals.tags.mask())
             } else {
                 return;
             }
@@ -835,7 +835,7 @@ fn view_scroll(dir: i32) {
                 (
                     current_tag,
                     mon.tagset[mon.seltags as usize],
-                    globals.tagmask,
+                    globals.tags.mask(),
                 )
             } else {
                 return;
@@ -913,7 +913,7 @@ pub fn shift_view(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.tagset[mon.seltags as usize], globals.numtags)
+                (mon.tagset[mon.seltags as usize], globals.tags.count)
             } else {
                 return;
             }
@@ -929,10 +929,10 @@ pub fn shift_view(arg: &Arg) {
 
     while !visible && count < 10 {
         if direction > 0 {
-            next_seltags = (tagset << shift) | (tagset >> (numtags as usize - 1 - shift as usize));
+            next_seltags = (tagset << shift) | (tagset >> (numtags - 1 - shift as usize));
         } else {
             next_seltags =
-                (tagset >> (-shift) as usize) | (tagset << (numtags as usize - 1 + shift as usize));
+                (tagset >> (-shift) as usize) | (tagset << (numtags - 1 + shift as usize));
         }
 
         let globals = get_globals();
@@ -972,7 +972,7 @@ pub fn shift_view(arg: &Arg) {
 
 pub fn swap_tags(arg: &Arg) {
     let ui = compute_prefix(arg);
-    let newtag = ui & get_globals().tagmask;
+    let newtag = ui & get_globals().tags.mask();
 
     let (current_tag, current_tagset) = {
         let globals = get_globals();

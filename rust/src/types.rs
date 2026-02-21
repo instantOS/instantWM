@@ -1,5 +1,7 @@
 use x11rb::protocol::xproto::Window;
 
+use crate::drw::Clr;
+
 pub const MAX_TAGS: usize = 21;
 pub const SCRATCHPAD_TAG: usize = 20;
 pub const SCRATCHPAD_MASK: u32 = 1 << SCRATCHPAD_TAG;
@@ -18,6 +20,222 @@ pub const SIDEBAR_WIDTH: i32 = 50;
 pub const OVERLAY_ACTIVATION_ZONE: i32 = 20;
 pub const OVERLAY_KEEP_ZONE_X: i32 = 40;
 pub const OVERLAY_KEEP_ZONE_Y: i32 = 30;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorScheme {
+    pub fg: Clr,
+    pub bg: Clr,
+    pub detail: Clr,
+}
+
+impl ColorScheme {
+    pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
+        Self { fg, bg, detail }
+    }
+
+    pub fn from_slice(slice: &[Clr]) -> Option<&Self> {
+        if slice.len() >= 3 {
+            Some(unsafe {
+                std::mem::transmute::<&[Clr], &[ColorScheme; 1]>(slice).get_unchecked(0)
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn from_vec(vec: Vec<Clr>) -> Option<Self> {
+        if vec.len() >= 3 {
+            Some(Self {
+                fg: vec[0].clone(),
+                bg: vec[1].clone(),
+                detail: vec[2].clone(),
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl Default for ColorScheme {
+    fn default() -> Self {
+        Self {
+            fg: Clr::default(),
+            bg: Clr::default(),
+            detail: Clr::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BorderScheme {
+    pub normal: ColorScheme,
+    pub tile_focus: ColorScheme,
+    pub float_focus: ColorScheme,
+    pub snap: ColorScheme,
+}
+
+impl Default for BorderScheme {
+    fn default() -> Self {
+        Self {
+            normal: ColorScheme::default(),
+            tile_focus: ColorScheme::default(),
+            float_focus: ColorScheme::default(),
+            snap: ColorScheme::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StatusScheme {
+    pub colors: ColorScheme,
+}
+
+impl Default for StatusScheme {
+    fn default() -> Self {
+        Self {
+            colors: ColorScheme::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagSchemes {
+    pub no_hover: Vec<ColorScheme>,
+    pub hover: Vec<ColorScheme>,
+}
+
+impl Default for TagSchemes {
+    fn default() -> Self {
+        Self {
+            no_hover: Vec::new(),
+            hover: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowSchemes {
+    pub no_hover: Vec<ColorScheme>,
+    pub hover: Vec<ColorScheme>,
+}
+
+impl Default for WindowSchemes {
+    fn default() -> Self {
+        Self {
+            no_hover: Vec::new(),
+            hover: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CloseButtonSchemes {
+    pub no_hover: Vec<ColorScheme>,
+    pub hover: Vec<ColorScheme>,
+}
+
+impl Default for CloseButtonSchemes {
+    fn default() -> Self {
+        Self {
+            no_hover: Vec::new(),
+            hover: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ColorSchemeStrings {
+    pub fg: &'static str,
+    pub bg: &'static str,
+    pub detail: &'static str,
+}
+
+impl ColorSchemeStrings {
+    pub fn new(fg: &'static str, bg: &'static str, detail: &'static str) -> Self {
+        Self { fg, bg, detail }
+    }
+
+    pub fn to_vec(&self) -> Vec<&'static str> {
+        vec![self.fg, self.bg, self.detail]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagColorConfigs {
+    pub no_hover: Vec<ColorSchemeStrings>,
+    pub hover: Vec<ColorSchemeStrings>,
+}
+
+impl Default for TagColorConfigs {
+    fn default() -> Self {
+        Self {
+            no_hover: Vec::new(),
+            hover: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowColorConfigs {
+    pub no_hover: Vec<ColorSchemeStrings>,
+    pub hover: Vec<ColorSchemeStrings>,
+}
+
+impl Default for WindowColorConfigs {
+    fn default() -> Self {
+        Self {
+            no_hover: Vec::new(),
+            hover: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CloseButtonColorConfigs {
+    pub no_hover: Vec<ColorSchemeStrings>,
+    pub hover: Vec<ColorSchemeStrings>,
+}
+
+impl Default for CloseButtonColorConfigs {
+    fn default() -> Self {
+        Self {
+            no_hover: Vec::new(),
+            hover: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BorderColorConfig {
+    pub normal: ColorSchemeStrings,
+    pub tile_focus: ColorSchemeStrings,
+    pub float_focus: ColorSchemeStrings,
+    pub snap: ColorSchemeStrings,
+}
+
+impl Default for BorderColorConfig {
+    fn default() -> Self {
+        Self {
+            normal: ColorSchemeStrings::new("", "", ""),
+            tile_focus: ColorSchemeStrings::new("", "", ""),
+            float_focus: ColorSchemeStrings::new("", "", ""),
+            snap: ColorSchemeStrings::new("", "", ""),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StatusColorConfig {
+    pub colors: ColorSchemeStrings,
+}
+
+impl Default for StatusColorConfig {
+    fn default() -> Self {
+        Self {
+            colors: ColorSchemeStrings::new("", "", ""),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cursor {

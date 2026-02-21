@@ -18,14 +18,14 @@ pub fn ctrl_toggle(value: &mut bool, arg: u32) {
 pub fn toggle_alt_tag(arg: &Arg) {
     let new_value = {
         let globals = get_globals();
-        let mut showalttag = globals.showalttag;
+        let mut showalttag = globals.tags.show_alt;
         ctrl_toggle(&mut showalttag, arg.ui);
         showalttag
     };
 
     {
         let mut globals = get_globals_mut();
-        globals.showalttag = new_value;
+        globals.tags.show_alt = new_value;
     }
 
     let monitors: Vec<usize> = {
@@ -47,11 +47,11 @@ pub fn toggle_alt_tag(arg: &Arg) {
 
     let tagwidth = get_tag_width();
     let mut globals = get_globals_mut();
-    globals.tagwidth = tagwidth;
+    globals.tags.width = tagwidth;
 }
 
 pub fn alt_tab_free(arg: &Arg) {
-    ctrl_toggle(&mut get_globals_mut().tagprefix, arg.ui);
+    ctrl_toggle(&mut get_globals_mut().tags.prefix, arg.ui);
     grab_keys();
 }
 
@@ -84,7 +84,7 @@ pub fn toggle_sticky(_arg: &Arg) {
 
 pub fn toggle_prefix(arg: &Arg) {
     let mut globals = get_globals_mut();
-    globals.tagprefix = !globals.tagprefix;
+    globals.tags.prefix = !globals.tags.prefix;
 
     if let Some(selmon_id) = globals.selmon {
         let selmon_id = selmon_id;
@@ -221,7 +221,7 @@ pub fn toggle_show_tags(arg: &Arg) {
 
     let tagwidth = get_tag_width();
     let mut globals = get_globals_mut();
-    globals.tagwidth = tagwidth;
+    globals.tags.width = tagwidth;
 
     if let Some(mon) = globals.monitors.get_mut(selmon_id) {
         draw_bar(mon);
