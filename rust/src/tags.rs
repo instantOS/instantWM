@@ -10,6 +10,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 const MAX_TAGLEN: usize = 16;
+
 const DIR_LEFT: i32 = 0;
 const DIR_RIGHT: i32 = 1;
 
@@ -683,7 +684,7 @@ pub fn tag_mon(arg: &Arg) {
 /// # Arguments
 /// * `offset` - Number of tag positions to shift (default: 1)
 pub fn tag_to_left_by(offset: i32) {
-    shift_tag(DIR_LEFT, offset.max(1));
+    shift_tag(Direction::Left, offset.max(1));
 }
 
 /// Move the selected client's tag to the right (to a higher-numbered tag).
@@ -691,7 +692,7 @@ pub fn tag_to_left_by(offset: i32) {
 /// # Arguments
 /// * `offset` - Number of tag positions to shift (default: 1)
 pub fn tag_to_right_by(offset: i32) {
-    shift_tag(DIR_RIGHT, offset.max(1));
+    shift_tag(Direction::Right, offset.max(1));
 }
 
 /// Legacy wrapper for key bindings. Use `tag_to_left_by` for new code.
@@ -704,7 +705,7 @@ pub fn tag_to_right(arg: &Arg) {
     tag_to_right_by(arg.i);
 }
 
-fn shift_tag(dir: i32, offset: i32) {
+fn shift_tag(dir: Direction, offset: i32) {
     let sel_win = {
         let globals = get_globals();
         globals
@@ -734,15 +735,20 @@ fn shift_tag(dir: i32, offset: i32) {
     };
 
     if Some(win) == overlay {
-        let mode = if dir == DIR_LEFT { 3 } else { 1 };
+        let mode = match dir {
+            Direction::Left => 3,
+            Direction::Right => 1,
+            Direction::Up => 0,
+            Direction::Down => 2,
+        };
         crate::overlay::set_overlay_mode(mode);
         return;
     }
 
-    if dir == DIR_LEFT && current_tag == 1 {
+    if dir == Direction::Left && current_tag == 1 {
         return;
     }
-    if dir == DIR_RIGHT && current_tag == 20 {
+    if dir == Direction::Right && current_tag == 20 {
         return;
     }
 
@@ -779,7 +785,13 @@ fn shift_tag(dir: i32, offset: i32) {
             (mon_mw, c_x, c_y)
         };
 
-        let anim_offset = (mon_mw / 10) * if dir == DIR_LEFT { -1 } else { 1 };
+        let anim_offset = (mon_mw / 10)
+            * match dir {
+                Direction::Left => -1,
+                Direction::Right => 1,
+                Direction::Up => -1,
+                Direction::Down => 1,
+            };
         crate::animation::animate_client_rect(
             win,
             &Rect {
@@ -811,18 +823,22 @@ fn shift_tag(dir: i32, offset: i32) {
     if is_single_tag {
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
-            if dir == DIR_LEFT && tagset > 1 {
-                client.tags >>= offset;
-                focus(None);
-                if let Some(sel_mon_id) = get_globals().selmon {
-                    arrange(Some(sel_mon_id));
+            match dir {
+                Direction::Left if tagset > 1 => {
+                    client.tags >>= offset;
+                    focus(None);
+                    if let Some(sel_mon_id) = get_globals().selmon {
+                        arrange(Some(sel_mon_id));
+                    }
                 }
-            } else if dir == DIR_RIGHT && (tagset & (tagmask >> 1)) != 0 {
-                client.tags <<= offset;
-                focus(None);
-                if let Some(sel_mon_id) = get_globals().selmon {
-                    arrange(Some(sel_mon_id));
+                Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
+                    client.tags <<= offset;
+                    focus(None);
+                    if let Some(sel_mon_id) = get_globals().selmon {
+                        arrange(Some(sel_mon_id));
+                    }
                 }
+                _ => {}
             }
         }
     }
@@ -858,14 +874,14 @@ fn reset_sticky_client(win: Window) {
 }
 
 pub fn view_to_left(_arg: &Arg) {
-    view_scroll(DIR_LEFT);
+    view_scroll(Direction::Left);
 }
 
 pub fn view_to_right(_arg: &Arg) {
-    view_scroll(DIR_RIGHT);
+    view_scroll(Direction::Right);
 }
 
-fn view_scroll(dir: i32) {
+fn view_scroll(dir: Direction) {
     let (current_tag, tagset, tagmask) = {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
@@ -884,10 +900,10 @@ fn view_scroll(dir: i32) {
         }
     };
 
-    if dir == DIR_LEFT && current_tag == 1 {
+    if dir == Direction::Left && current_tag == 1 {
         return;
     }
-    if dir == DIR_RIGHT && current_tag == 20 {
+    if dir == Direction::Right && current_tag == 20 {
         return;
     }
 
@@ -896,16 +912,31 @@ fn view_scroll(dir: i32) {
         return;
     }
 
-    let new_tagset = if dir == DIR_LEFT {
-        if tagset <= 1 {
-            return;
+    let new_tagset = match dir {
+        Direction::Left => {
+            if tagset <= 1 {
+                return;
+            }
+            tagset >> 1
         }
-        tagset >> 1
-    } else {
-        if (tagset & (tagmask >> 1)) == 0 {
-            return;
+        Direction::Right => {
+            if (tagset & (tagmask >> 1)) == 0 {
+                return;
+            }
+            tagset << 1
         }
-        tagset << 1
+        Direction::Up => {
+            if tagset <= 1 {
+                return;
+            }
+            tagset >> 1
+        }
+        Direction::Down => {
+            if (tagset & (tagmask >> 1)) == 0 {
+                return;
+            }
+            tagset << 1
+        }
     };
 
     let mut globals = get_globals_mut();

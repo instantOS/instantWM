@@ -1,13 +1,11 @@
 use crate::client::resize_client_rect;
 use crate::globals::{get_globals, get_x11};
+use crate::tags::{view_to_left, view_to_right};
 use crate::types::*;
 use std::thread;
 use std::time::Duration;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::Window;
-
-const DIR_LEFT: i32 = 0;
-const DIR_RIGHT: i32 = 1;
 
 pub fn ease_out_cubic(t: f64) -> f64 {
     let t = t - 1.0;
@@ -203,14 +201,14 @@ pub fn down_scale_client(arg: &Arg) {
 }
 
 pub fn anim_left(arg: &Arg) {
-    anim_scroll(arg, DIR_LEFT);
+    anim_scroll(arg, Direction::Left);
 }
 
 pub fn anim_right(arg: &Arg) {
-    anim_scroll(arg, DIR_RIGHT);
+    anim_scroll(arg, Direction::Right);
 }
 
-fn anim_scroll(arg: &Arg, dir: i32) {
+fn anim_scroll(arg: &Arg, dir: Direction) {
     let is_overview = {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
@@ -225,15 +223,13 @@ fn anim_scroll(arg: &Arg, dir: i32) {
     };
 
     if is_overview {
-        let focus_arg = Arg {
-            ui: if dir == DIR_RIGHT {
-                FOCUS_DIR_DOWN
-            } else {
-                FOCUS_DIR_UP
-            },
-            ..Default::default()
+        let focus_dir = match dir {
+            Direction::Left => Direction::Up,
+            Direction::Right => Direction::Down,
+            Direction::Up => Direction::Up,
+            Direction::Down => Direction::Down,
         };
-        crate::focus::direction_focus(&focus_arg);
+        crate::focus::focus_direction(focus_dir);
         return;
     }
 
@@ -262,7 +258,12 @@ fn anim_scroll(arg: &Arg, dir: i32) {
                 .selmon
                 .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
         } {
-            let snap_dir = if dir == DIR_RIGHT { 1 } else { 3 };
+            let snap_dir = match dir {
+                Direction::Right => SnapDirection::Right,
+                Direction::Left => SnapDirection::Left,
+                Direction::Up => SnapDirection::Up,
+                Direction::Down => SnapDirection::Down,
+            };
             change_snap(sel_win, snap_dir);
         }
         return;
@@ -285,11 +286,11 @@ fn anim_scroll(arg: &Arg, dir: i32) {
         return;
     }
 
-    if dir == DIR_LEFT && current_tag == 1 {
+    if dir == Direction::Left && current_tag == 1 {
         return;
     }
 
-    if dir == DIR_RIGHT && current_tag >= 20 {
+    if dir == Direction::Right && current_tag >= 20 {
         return;
     }
 
@@ -299,7 +300,12 @@ fn anim_scroll(arg: &Arg, dir: i32) {
     };
 
     if animated {
-        let modifier: i32 = if dir == DIR_RIGHT { 1 } else { -1 };
+        let modifier: i32 = match dir {
+            Direction::Right => 1,
+            Direction::Left => -1,
+            Direction::Up => -1,
+            Direction::Down => 1,
+        };
         let target = current_tag + modifier as u32;
 
         let globals = get_globals();
@@ -320,17 +326,21 @@ fn anim_scroll(arg: &Arg, dir: i32) {
         }
     }
 
-    if dir == DIR_RIGHT {
-        view_to_right(arg);
-    } else {
-        view_to_left(arg);
+    match dir {
+        Direction::Right => view_to_right(arg),
+        Direction::Left => view_to_left(arg),
+        Direction::Up => view_to_left(arg),
+        Direction::Down => view_to_right(arg),
     }
 }
 
-fn change_snap(_win: Window, _dir: i32) {}
+/// Direction for snap operations (used by change_snap).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapDirection {
+    Up,
+    Down,
+    Left,
+    Right,
+}
 
-fn view_to_left(_arg: &Arg) {}
-fn view_to_right(_arg: &Arg) {}
-
-const FOCUS_DIR_UP: u32 = 0;
-const FOCUS_DIR_DOWN: u32 = 2;
+fn change_snap(_win: Window, _dir: SnapDirection) {}
