@@ -525,14 +525,9 @@ pub fn update_geom() -> bool {
                                     }
                                 }
 
-                                // Update bar positions for monitors that need it (without holding write lock)
-                                for monitor_idx in monitors_need_bar_update {
-                                    let mut g = get_globals_mut();
-                                    if let Some(ref mut m) = g.monitors.get_mut(monitor_idx) {
-                                        drop(g);
-                                        crate::bar::update_bar_pos(m);
-                                    }
-                                }
+                                // TODO: Update bar positions for monitors that need it
+                                // Skipping for now to avoid deadlock - bar positions will be updated elsewhere
+                                eprintln!("TRACE: update_geom - {} monitors need bar update", monitors_need_bar_update.len());
 
                                 for i in nn..n {
                                     let clients_to_move: Vec<Window> = {
