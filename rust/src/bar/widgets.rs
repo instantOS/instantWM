@@ -1,5 +1,5 @@
-use crate::config::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
-use crate::drw::{Clr, Drw, COL_BG, COL_DETAIL};
+use crate::config::{SchemeClose, SchemeTag, SchemeWin};
+use crate::drw::Drw;
 use crate::globals::get_globals;
 use crate::types::*;
 
@@ -19,20 +19,23 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
     };
 
     let startmenu_size = g.startmenusize as i32;
-    let scheme = if g.tags.prefix {
+    let scheme: Option<ColorScheme> = if g.tags.prefix {
         let schemes = &g.tags.schemes;
-        if schemes.len() > SchemeHover::NoHover as usize {
-            let hover_idx = SchemeHover::NoHover as usize;
-            if schemes[hover_idx].len() > SchemeTag::Focus as usize {
-                Some(schemes[hover_idx][SchemeTag::Focus as usize].clone())
-            } else {
-                g.statusscheme.clone()
-            }
+        if !schemes.no_hover.is_empty() {
+            schemes.no_hover.get(SchemeTag::Focus as usize).cloned()
         } else {
-            g.statusscheme.clone()
+            g.statusscheme.as_ref().map(|s| ColorScheme {
+                fg: s.fg.clone(),
+                bg: s.bg.clone(),
+                detail: s.detail.clone(),
+            })
         }
     } else {
-        g.statusscheme.clone()
+        g.statusscheme.as_ref().map(|s| ColorScheme {
+            fg: s.fg.clone(),
+            bg: s.bg.clone(),
+            detail: s.detail.clone(),
+        })
     };
 
     let Some(ref scheme) = scheme else { return };
@@ -81,16 +84,15 @@ fn get_tag_scheme(
     i: u32,
     occupied_tags: u32,
     is_hover: bool,
-) -> Option<Vec<Clr>> {
+) -> Option<ColorScheme> {
     let g = get_globals();
-    let hover_idx = if is_hover {
-        SchemeHover::Hover as usize
+    let schemes = if is_hover {
+        &g.tags.schemes.hover
     } else {
-        SchemeHover::NoHover as usize
+        &g.tags.schemes.no_hover
     };
 
-    let schemes = &g.tags.schemes;
-    if schemes.len() <= hover_idx {
+    if schemes.is_empty() {
         return None;
     }
 
@@ -112,25 +114,21 @@ fn get_tag_scheme(
             .map_or(false, |selmon| selmon.num == m.num);
 
         if is_selected && sel_has_tag {
-            return schemes[hover_idx].get(SchemeTag::Focus as usize).cloned();
+            return schemes.get(SchemeTag::Focus as usize).cloned();
         }
         if m.tagset[m.seltags as usize] & (1 << i) != 0 {
-            return schemes[hover_idx].get(SchemeTag::NoFocus as usize).cloned();
+            return schemes.get(SchemeTag::NoFocus as usize).cloned();
         }
         if m.showtags == 0 {
-            return schemes[hover_idx].get(SchemeTag::Filled as usize).cloned();
+            return schemes.get(SchemeTag::Filled as usize).cloned();
         }
-        return schemes[hover_idx]
-            .get(SchemeTag::Inactive as usize)
-            .cloned();
+        return schemes.get(SchemeTag::Inactive as usize).cloned();
     }
 
     if m.tagset[m.seltags as usize] & (1 << i) != 0 {
-        return schemes[hover_idx].get(SchemeTag::Empty as usize).cloned();
+        return schemes.get(SchemeTag::Empty as usize).cloned();
     }
-    schemes[hover_idx]
-        .get(SchemeTag::Inactive as usize)
-        .cloned()
+    schemes.get(SchemeTag::Inactive as usize).cloned()
 }
 
 pub(crate) fn draw_tag_indicators(
@@ -207,11 +205,9 @@ pub(crate) fn draw_tag_indicators(
 
                 let mut draw_scheme = scheme.clone();
                 if is_hover && bar_dragging {
-                    let schemes = &g.tags.schemes;
-                    if schemes.len() > SchemeHover::Hover as usize {
-                        if let Some(s) =
-                            schemes[SchemeHover::Hover as usize].get(SchemeTag::Filled as usize)
-                        {
+                    let schemes = &g.tags.schemes.hover;
+                    if !schemes.is_empty() {
+                        if let Some(s) = schemes.get(SchemeTag::Filled as usize) {
                             draw_scheme = s.clone();
                         }
                     }
@@ -247,8 +243,13 @@ pub(crate) fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i3
 
     if let Some(ref drw) = g.drw {
         let mut drw = drw.clone();
-        if let Some(ref scheme) = g.statusscheme {
-            drw.set_scheme(scheme.clone());
+        if let Some(ref ss) = g.statusscheme {
+            let scheme = ColorScheme {
+                fg: ss.fg.clone(),
+                bg: ss.bg.clone(),
+                detail: ss.detail.clone(),
+            };
+            drw.set_scheme(scheme);
         }
         x = drw.text(x, 0, w as u32, bh as u32, lpad, ltsymbol, false, 0);
     }
@@ -256,16 +257,15 @@ pub(crate) fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i3
     x
 }
 
-fn get_window_scheme(c: &ClientInner, is_hover: bool) -> Option<Vec<Clr>> {
+fn get_window_scheme(c: &ClientInner, is_hover: bool) -> Option<ColorScheme> {
     let g = get_globals();
-    let hover_idx = if is_hover {
-        SchemeHover::Hover as usize
+    let schemes = if is_hover {
+        &g.windowschemes.hover
     } else {
-        SchemeHover::NoHover as usize
+        &g.windowschemes.no_hover
     };
 
-    let schemes = &g.windowschemes;
-    if schemes.len() <= hover_idx {
+    if schemes.is_empty() {
         return None;
     }
 
@@ -285,30 +285,24 @@ fn get_window_scheme(c: &ClientInner, is_hover: bool) -> Option<Vec<Clr>> {
 
     if is_selected {
         if is_overlay {
-            return schemes[hover_idx]
-                .get(SchemeWin::OverlayFocus as usize)
-                .cloned();
+            return schemes.get(SchemeWin::OverlayFocus as usize).cloned();
         }
         if c.issticky {
-            return schemes[hover_idx]
-                .get(SchemeWin::StickyFocus as usize)
-                .cloned();
+            return schemes.get(SchemeWin::StickyFocus as usize).cloned();
         }
-        return schemes[hover_idx].get(SchemeWin::Focus as usize).cloned();
+        return schemes.get(SchemeWin::Focus as usize).cloned();
     }
 
     if is_overlay {
-        return schemes[hover_idx].get(SchemeWin::Overlay as usize).cloned();
+        return schemes.get(SchemeWin::Overlay as usize).cloned();
     }
     if c.issticky {
-        return schemes[hover_idx].get(SchemeWin::Sticky as usize).cloned();
+        return schemes.get(SchemeWin::Sticky as usize).cloned();
     }
     if c.tags == 0 {
-        return schemes[hover_idx]
-            .get(SchemeWin::Minimized as usize)
-            .cloned();
+        return schemes.get(SchemeWin::Minimized as usize).cloned();
     }
-    schemes[hover_idx].get(SchemeWin::Normal as usize).cloned()
+    schemes.get(SchemeWin::Normal as usize).cloned()
 }
 
 pub(crate) fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
@@ -321,10 +315,10 @@ pub(crate) fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
         false
     };
 
-    let hover_idx = if close_hovered {
-        SchemeHover::Hover as usize
+    let schemes = if close_hovered {
+        &g.closebuttonschemes.hover
     } else {
-        SchemeHover::NoHover as usize
+        &g.closebuttonschemes.no_hover
     };
 
     if let Some(ref drw) = g.drw {
@@ -349,9 +343,8 @@ pub(crate) fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
             SchemeClose::Normal as usize
         };
 
-        let schemes = &g.closebuttonschemes;
-        if schemes.len() > hover_idx && schemes[hover_idx].len() > scheme_idx {
-            drw.set_scheme(schemes[hover_idx][scheme_idx].clone());
+        if let Some(scheme) = schemes.get(scheme_idx) {
+            drw.set_scheme(scheme.clone());
         }
 
         let button_x = x + bh / 6;
@@ -486,8 +479,13 @@ pub(crate) fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, b
 
     if let Some(ref drw) = g.drw {
         let mut drw = drw.clone();
-        if let Some(ref scheme) = g.statusscheme {
-            drw.set_scheme(scheme.clone());
+        if let Some(ref ss) = g.statusscheme {
+            let scheme = ColorScheme {
+                fg: ss.fg.clone(),
+                bg: ss.bg.clone(),
+                detail: ss.detail.clone(),
+            };
+            drw.set_scheme(scheme);
         }
         drw.rect(x, 0, w as u32, bh as u32, true, true);
         drw.text(

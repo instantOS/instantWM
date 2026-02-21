@@ -14,83 +14,141 @@ use x11rb::protocol::xproto::*;
 pub struct TileLayout;
 pub static TILE_LAYOUT: TileLayout = TileLayout;
 impl Layout for TileLayout {
-    fn symbol(&self) -> &'static str { "+" }
-    fn arrange(&self, m: &mut MonitorInner) { tile(m); }
-    fn is_tiling(&self) -> bool { true }
+    fn symbol(&self) -> &'static str {
+        "+"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        tile(m);
+    }
+    fn is_tiling(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
 pub struct GridLayout;
 pub static GRID_LAYOUT: GridLayout = GridLayout;
 impl Layout for GridLayout {
-    fn symbol(&self) -> &'static str { "#" }
-    fn arrange(&self, m: &mut MonitorInner) { grid(m); }
-    fn is_tiling(&self) -> bool { true }
+    fn symbol(&self) -> &'static str {
+        "#"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        grid(m);
+    }
+    fn is_tiling(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
 pub struct FloatingLayout;
 pub static FLOATING_LAYOUT: FloatingLayout = FloatingLayout;
 impl Layout for FloatingLayout {
-    fn symbol(&self) -> &'static str { "-" }
-    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
-    fn is_tiling(&self) -> bool { false }
+    fn symbol(&self) -> &'static str {
+        "-"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        floatl(m);
+    }
+    fn is_tiling(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug)]
 pub struct MonocleLayout;
 pub static MONOCLE_LAYOUT: MonocleLayout = MonocleLayout;
 impl Layout for MonocleLayout {
-    fn symbol(&self) -> &'static str { "[M]" }
-    fn arrange(&self, m: &mut MonitorInner) { monocle(m); }
-    fn is_tiling(&self) -> bool { true }
-    fn is_monocle(&self) -> bool { true }
+    fn symbol(&self) -> &'static str {
+        "[M]"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        monocle(m);
+    }
+    fn is_tiling(&self) -> bool {
+        true
+    }
+    fn is_monocle(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
 pub struct VertLayout;
 pub static VERT_LAYOUT: VertLayout = VertLayout;
 impl Layout for VertLayout {
-    fn symbol(&self) -> &'static str { "|||" }
-    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
-    fn is_tiling(&self) -> bool { false }
+    fn symbol(&self) -> &'static str {
+        "|||"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        floatl(m);
+    }
+    fn is_tiling(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Debug)]
 pub struct DeckLayout;
 pub static DECK_LAYOUT: DeckLayout = DeckLayout;
 impl Layout for DeckLayout {
-    fn symbol(&self) -> &'static str { "H[]" }
-    fn arrange(&self, m: &mut MonitorInner) { deck(m); }
-    fn is_tiling(&self) -> bool { true }
+    fn symbol(&self) -> &'static str {
+        "H[]"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        deck(m);
+    }
+    fn is_tiling(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
 pub struct OverviewLayout;
 pub static OVERVIEW_LAYOUT: OverviewLayout = OverviewLayout;
 impl Layout for OverviewLayout {
-    fn symbol(&self) -> &'static str { "O" }
-    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
-    fn is_tiling(&self) -> bool { false }
-    fn is_overview(&self) -> bool { true }
+    fn symbol(&self) -> &'static str {
+        "O"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        floatl(m);
+    }
+    fn is_tiling(&self) -> bool {
+        false
+    }
+    fn is_overview(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
 pub struct BstackLayout;
 pub static BSTACK_LAYOUT: BstackLayout = BstackLayout;
 impl Layout for BstackLayout {
-    fn symbol(&self) -> &'static str { "TTT" }
-    fn arrange(&self, m: &mut MonitorInner) { bstack(m); }
-    fn is_tiling(&self) -> bool { true }
+    fn symbol(&self) -> &'static str {
+        "TTT"
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        bstack(m);
+    }
+    fn is_tiling(&self) -> bool {
+        true
+    }
 }
 
 #[derive(Debug)]
 pub struct HorizLayout;
 pub static HORIZ_LAYOUT: HorizLayout = HorizLayout;
 impl Layout for HorizLayout {
-    fn symbol(&self) -> &'static str { "===" }
-    fn arrange(&self, m: &mut MonitorInner) { floatl(m); }
-    fn is_tiling(&self) -> bool { false }
+    fn symbol(&self) -> &'static str {
+        "==="
+    }
+    fn arrange(&self, m: &mut MonitorInner) {
+        floatl(m);
+    }
+    fn is_tiling(&self) -> bool {
+        false
+    }
 }
 
 /// Returns the currently active layout for the given monitor.
@@ -1109,7 +1167,8 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
                         let clientcount = mon.clientcount;
                         let layout_idx = get_current_layout_idx(mon).unwrap_or(0);
                         let has_arrange = g.layouts.get(layout_idx).map_or(true, |l| l.is_tiling());
-                        let is_monocle = g.layouts.get(layout_idx).map_or(false, |l| l.is_monocle());
+                        let is_monocle =
+                            g.layouts.get(layout_idx).map_or(false, |l| l.is_monocle());
                         (
                             is_floating,
                             is_fullscreen,
@@ -1650,7 +1709,6 @@ pub fn all_client_count() -> i32 {
     let g = get_globals();
     g.clients.len() as i32
 }
-
 
 pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;

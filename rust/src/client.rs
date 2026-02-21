@@ -170,14 +170,9 @@ pub fn get_state(win: Window) -> i32 {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
-        if let Ok(cookie) = conn.get_property(
-            false,
-            win,
-            globals.wmatom.state,
-            globals.wmatom.state,
-            0,
-            2,
-        ) {
+        if let Ok(cookie) =
+            conn.get_property(false, win, globals.wmatom.state, globals.wmatom.state, 0, 2)
+        {
             if let Ok(reply) = cookie.reply() {
                 if let Some(mut data) = reply.value32() {
                     return data.next().unwrap_or(WM_STATE_NORMAL as u32) as i32;
@@ -422,19 +417,15 @@ pub fn unfocus_win(win: Window, set_focus: bool) {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         if let Some(ref scheme) = globals.borderscheme {
-            if let Some(clr) = scheme.first() {
-                let _ = conn.change_window_attributes(
-                    win,
-                    &ChangeWindowAttributesAux::new().border_pixel(clr.pixel()),
-                );
-            }
+            let clr = &scheme.normal.bg;
+            let _ = conn.change_window_attributes(
+                win,
+                &ChangeWindowAttributesAux::new().border_pixel(clr.pixel()),
+            );
         }
         if set_focus {
             let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, globals.root, CURRENT_TIME);
-            let _ = conn.delete_property(
-                globals.root,
-                globals.netatom.active_window,
-            );
+            let _ = conn.delete_property(globals.root, globals.netatom.active_window);
         }
         let _ = conn.flush();
     }
@@ -1346,12 +1337,11 @@ pub fn manage(
         );
 
         if let Some(ref scheme) = globals.borderscheme {
-            if let Some(clr) = scheme.first() {
-                let _ = conn.change_window_attributes(
-                    w,
-                    &ChangeWindowAttributesAux::new().border_pixel(Some(clr.color.pixel as u32)),
-                );
-            }
+            let clr = &scheme.normal.bg;
+            let _ = conn.change_window_attributes(
+                w,
+                &ChangeWindowAttributesAux::new().border_pixel(Some(clr.pixel() as u32)),
+            );
         }
         let _ = conn.flush();
     }
@@ -1643,10 +1633,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
     if let Some(ref conn) = x11.conn {
         let (net_wm_fullscreen, net_wm_state) = {
             let globals = get_globals();
-            (
-                globals.netatom.wm_fullscreen,
-                globals.netatom.wm_state,
-            )
+            (globals.netatom.wm_fullscreen, globals.netatom.wm_state)
         };
 
         let mut globals = get_globals_mut();

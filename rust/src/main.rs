@@ -505,9 +505,7 @@ fn init_schemes(drw: &Drw) {
     });
 
     let statusscheme = drw.scm_create(&statusbarcolors).ok().map(|clr| {
-        StatusScheme {
-            colors: ColorScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone()),
-        }
+        StatusScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone())
     });
 
     let mut tagschemes_no_hover: Vec<ColorScheme> = Vec::new();

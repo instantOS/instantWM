@@ -370,7 +370,7 @@ pub fn up_key(arg: &Arg) {
                         conn,
                         win,
                         &ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(scheme[0].pixel() as u32)),
+                            .border_pixel(Some(scheme.normal.bg.pixel() as u32)),
                     );
                     let _ = conn.flush();
                 }
@@ -479,7 +479,7 @@ pub fn space_toggle(_arg: &Arg) {
                         conn,
                         win,
                         &ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(scheme[0].pixel() as u32)),
+                            .border_pixel(Some(scheme.normal.bg.pixel() as u32)),
                     );
                     let _ = conn.flush();
                 }

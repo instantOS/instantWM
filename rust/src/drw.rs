@@ -651,8 +651,8 @@ impl Drw {
         }
     }
 
-    pub fn set_scheme(&mut self, scheme: Vec<Clr>) {
-        self.scheme = Some(scheme);
+    pub fn set_scheme(&mut self, scheme: crate::types::ColorScheme) {
+        self.scheme = Some(scheme.as_vec());
     }
 
     pub fn get_scheme(&self) -> Option<&Vec<Clr>> {

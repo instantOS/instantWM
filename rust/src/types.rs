@@ -33,16 +33,6 @@ impl ColorScheme {
         Self { fg, bg, detail }
     }
 
-    pub fn from_slice(slice: &[Clr]) -> Option<&Self> {
-        if slice.len() >= 3 {
-            Some(unsafe {
-                std::mem::transmute::<&[Clr], &[ColorScheme; 1]>(slice).get_unchecked(0)
-            })
-        } else {
-            None
-        }
-    }
-
     pub fn from_vec(vec: Vec<Clr>) -> Option<Self> {
         if vec.len() >= 3 {
             Some(Self {
@@ -53,6 +43,10 @@ impl ColorScheme {
         } else {
             None
         }
+    }
+
+    pub fn as_vec(&self) -> Vec<Clr> {
+        vec![self.fg.clone(), self.bg.clone(), self.detail.clone()]
     }
 }
 
@@ -87,13 +81,23 @@ impl Default for BorderScheme {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusScheme {
-    pub colors: ColorScheme,
+    pub fg: Clr,
+    pub bg: Clr,
+    pub detail: Clr,
+}
+
+impl StatusScheme {
+    pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
+        Self { fg, bg, detail }
+    }
 }
 
 impl Default for StatusScheme {
     fn default() -> Self {
         Self {
-            colors: ColorScheme::default(),
+            fg: Clr::default(),
+            bg: Clr::default(),
+            detail: Clr::default(),
         }
     }
 }

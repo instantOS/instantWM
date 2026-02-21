@@ -181,9 +181,7 @@ fn draw_items(
     let mut scheme = g.statusscheme.clone().unwrap_or_default();
     let base_scheme = scheme.clone();
 
-    if !scheme.is_empty() {
-        drw.set_scheme(scheme.clone());
-    }
+    drw.set_scheme(scheme.clone());
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
@@ -216,30 +214,20 @@ fn draw_items(
             }
             StatusItem::Offset(offset) => x += *offset,
             StatusItem::SetBg(color) => {
-                if !scheme.is_empty() {
-                    if let Ok(clr) = drw.clr_create(color) {
-                        if scheme.len() > COL_BG {
-                            scheme[COL_BG] = clr;
-                            drw.set_scheme(scheme.clone());
-                        }
-                    }
+                if let Ok(clr) = drw.clr_create(color) {
+                    scheme.bg = clr;
+                    drw.set_scheme(scheme.clone());
                 }
             }
             StatusItem::SetFg(color) => {
-                if !scheme.is_empty() {
-                    if let Ok(clr) = drw.clr_create(color) {
-                        if scheme.len() > COL_FG {
-                            scheme[COL_FG] = clr;
-                            drw.set_scheme(scheme.clone());
-                        }
-                    }
+                if let Ok(clr) = drw.clr_create(color) {
+                    scheme.fg = clr;
+                    drw.set_scheme(scheme.clone());
                 }
             }
             StatusItem::ResetColors => {
                 scheme = base_scheme.clone();
-                if !scheme.is_empty() {
-                    drw.set_scheme(scheme.clone());
-                }
+                drw.set_scheme(scheme.clone());
             }
             StatusItem::Rect { x: rx, y, w, h } => {
                 let rw = (*w).max(0) as u32;

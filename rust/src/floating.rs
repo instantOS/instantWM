@@ -602,7 +602,7 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
             restore_border_width_win(win);
             if let Some(ref conn) = x11.conn {
                 if let Some(ref scheme) = globals.borderscheme {
-                    if let Some(clr) = scheme.first() {
+                    if let Some(clr) = scheme.float_focus.bg.color.pixel {
                         let _ = change_window_attributes(
                             conn,
                             win,

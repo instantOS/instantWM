@@ -220,7 +220,7 @@ pub fn update_systray() {
         let net_system_tray_horz = globals.netatom.system_tray_orientation_horz;
 
         let bg_pixel = if let Some(ref scheme) = globals.statusscheme {
-            scheme[1].color.pixel as u32
+            scheme.bg.color.pixel as u32
         } else {
             0
         };
@@ -354,7 +354,7 @@ pub fn update_systray() {
     let bg_pixel = globals
         .statusscheme
         .as_ref()
-        .map(|s| s[1].color.pixel as u32)
+        .map(|s| s.bg.color.pixel as u32)
         .unwrap_or(0);
 
     w = 0;
