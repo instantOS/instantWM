@@ -1,5 +1,5 @@
 use crate::bar::text_width;
-use crate::client::{set_client_tag_prop, unfocus_win};
+use crate::client::set_client_tag_prop;
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
@@ -16,7 +16,7 @@ const DIR_RIGHT: i32 = 1;
 pub fn compute_prefix(arg: &Arg) -> u32 {
     let tagprefix = get_globals().tags.prefix;
     if tagprefix && arg.ui != 0 {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.tags.prefix = false;
         arg.ui << 10
     } else {
@@ -52,7 +52,7 @@ pub fn name_tag(arg: &Arg) {
             break;
         }
         if (tagset & (1 << i)) != 0 {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if !name_bytes.is_empty() {
                 globals.tags.names[i] = String::from_utf8_lossy(name_bytes).into_owned();
             } else {
@@ -68,7 +68,7 @@ pub fn name_tag(arg: &Arg) {
 }
 
 pub fn reset_name_tag(_arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     for i in 0..globals.tags.count {
         if i >= MAX_TAGS {
             break;
@@ -260,7 +260,7 @@ fn set_client_tag_impl(tagmask_bits: u32) {
             .unwrap_or(false)
     };
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if is_scratchpad {
             client.issticky = false;
@@ -329,7 +329,7 @@ pub fn tag_all(arg: &Arg) {
     }
 
     for win in clients_to_tag {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             if client.tags == SCRATCHPAD_MASK {
                 client.issticky = false;
@@ -364,7 +364,7 @@ pub fn follow_tag(arg: &Arg) {
     tag(&a);
 
     if tagprefix {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.tags.prefix = true;
     }
 
@@ -405,7 +405,7 @@ pub fn toggle_tag(arg: &Arg) {
 
     let new_tags = current_tags ^ (ui & tagmask);
     if new_tags != 0 {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.tags = new_tags;
         }
@@ -638,7 +638,7 @@ pub fn tag_mon(arg: &Arg) {
 
         send_mon(win, target_id);
 
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.geo.x = target_mx + (target_ww as f32 * xfact) as i32;
             client.geo.y = target_my + (target_wh as f32 * yfact) as i32;
@@ -783,7 +783,7 @@ fn shift_tag(dir: i32, offset: i32) {
     let is_single_tag = (tagset & tagmask).count_ones() == 1;
 
     if is_single_tag {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             if dir == DIR_LEFT && tagset > 1 {
                 client.tags >>= offset;
@@ -818,7 +818,7 @@ fn reset_sticky_client(win: Window) {
         }
     };
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.issticky {
             client.issticky = false;
@@ -1043,7 +1043,7 @@ pub fn swap_tags(arg: &Arg) {
     };
 
     for win in clients_to_swap {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.tags ^= current_tagset ^ newtag;
             if client.tags == 0 {
@@ -1052,7 +1052,7 @@ pub fn swap_tags(arg: &Arg) {
         }
     }
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
             mon.tagset[mon.seltags as usize] = newtag;
@@ -1096,7 +1096,7 @@ pub fn follow_view(_arg: &Arg) {
         }
     };
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         client.tags = 1 << (prevtag - 1);
     }

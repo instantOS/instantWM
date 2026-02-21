@@ -1,22 +1,13 @@
 use crate::animation::animate_client;
 use crate::bar::draw_bar;
-use crate::client::{is_visible, next_tiled, resize, resize_client, unfocus_win};
-use crate::floating::{
-    change_snap, reset_snap, save_floating_win, toggle_floating, SNAP_BOTTOM, SNAP_BOTTOM_LEFT,
-    SNAP_BOTTOM_RIGHT, SNAP_LEFT, SNAP_RIGHT, SNAP_TOP, SNAP_TOP_LEFT, SNAP_TOP_RIGHT,
-};
+use crate::client::{resize, unfocus_win};
+use crate::floating::{reset_snap, toggle_floating, SNAP_LEFT, SNAP_RIGHT, SNAP_TOP};
 use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::{arrange, rect_to_mon, send_mon};
-use crate::overlay::{create_overlay, set_overlay, set_overlay_mode};
-use crate::tags::{
-    follow_tag, get_tag_at_x, get_tag_width, move_left, move_right, tag, tag_all, tag_to_left,
-    tag_to_right, view,
-};
+use crate::monitor::{rect_to_mon, send_mon};
+use crate::tags::{follow_tag, get_tag_at_x, get_tag_width, tag, tag_all, view};
 use crate::types::*;
 use crate::util::spawn;
-use std::ffi::CStr;
-use std::io::Read;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -399,7 +390,16 @@ pub fn move_mouse(_arg: &Arg) {
                 && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
                 && c.geo.h >= mon.monitor_rect.h - MAX_UNMAXIMIZE_OFFSET
             {
-                resize(win, saved_x, saved_y, saved_w, saved_h, false);
+                resize(
+                    win,
+                    &Rect {
+                        x: saved_x,
+                        y: saved_y,
+                        w: saved_w,
+                        h: saved_h,
+                    },
+                    false,
+                );
             }
             (
                 c.geo.x,
@@ -530,7 +530,16 @@ pub fn move_mouse(_arg: &Arg) {
                                 drop(globals);
                                 toggle_floating(&Arg::default());
                             } else if !has_tiling || client.isfloating {
-                                resize(win, adj_nx, adj_ny, client.geo.w, client.geo.h, true);
+                                resize(
+                                    win,
+                                    &Rect {
+                                        x: adj_nx,
+                                        y: adj_ny,
+                                        w: client.geo.w,
+                                        h: client.geo.h,
+                                    },
+                                    true,
+                                );
                             }
                         }
                     }
@@ -669,7 +678,16 @@ pub fn resize_mouse(_arg: &Arg) {
                                 drop(globals);
                                 toggle_floating(&Arg::default());
                             } else if !has_tiling || client.isfloating {
-                                resize(win, client.geo.x, client.geo.y, nw, nh, true);
+                                resize(
+                                    win,
+                                    &Rect {
+                                        x: client.geo.x,
+                                        y: client.geo.y,
+                                        w: nw,
+                                        h: nh,
+                                    },
+                                    true,
+                                );
                             }
                         }
                     }
@@ -803,7 +821,16 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
                                 }
                             }
 
-                            resize(win, client.geo.x, client.geo.y, nw, nh, true);
+                            resize(
+                                win,
+                                &Rect {
+                                    x: client.geo.x,
+                                    y: client.geo.y,
+                                    w: nw,
+                                    h: nh,
+                                },
+                                true,
+                            );
                         }
                     }
                     _ => {}
@@ -1226,18 +1253,18 @@ pub fn draw_window(_arg: &Arg) {
         let stdout = String::from_utf8_lossy(&out.stdout);
         let dims = parse_slop_output(&stdout);
 
-        if let Some((x, y, w, h)) = dims {
-            if w > MIN_WINDOW_SIZE && h > MIN_WINDOW_SIZE {
+        if let Some(rect) = dims {
+            if rect.w > MIN_WINDOW_SIZE && rect.h > MIN_WINDOW_SIZE {
                 let globals = get_globals();
                 if let Some(c) = globals.clients.get(&win) {
-                    let is_different = (c.geo.w - w).abs() > 20
-                        || (c.geo.h - h).abs() > 20
-                        || (c.geo.x - x).abs() > 20
-                        || (c.geo.y - y).abs() > 20;
+                    let is_different = (c.geo.w - rect.w).abs() > 20
+                        || (c.geo.h - rect.h).abs() > 20
+                        || (c.geo.x - rect.x).abs() > 20
+                        || (c.geo.y - rect.y).abs() > 20;
 
                     if is_different {
                         drop(globals);
-                        handle_monitor_switch(win, x, y, w, h);
+                        handle_monitor_switch(win, &rect);
 
                         let is_floating = {
                             let globals = get_globals();
@@ -1249,10 +1276,10 @@ pub fn draw_window(_arg: &Arg) {
                         };
 
                         if is_floating {
-                            resize(win, x, y, w, h, true);
+                            resize(win, &rect, true);
                         } else {
                             toggle_floating(&Arg::default());
-                            resize(win, x, y, w, h, true);
+                            resize(win, &rect, true);
                         }
                     }
                 }
@@ -1261,7 +1288,8 @@ pub fn draw_window(_arg: &Arg) {
     }
 }
 
-pub fn parse_slop_output(output: &str) -> Option<(i32, i32, i32, i32)> {
+/// Parse slop output and return a Rect.
+pub fn parse_slop_output(output: &str) -> Option<Rect> {
     let parts: Vec<&str> = output.split('x').collect();
     if parts.len() < 5 {
         return None;
@@ -1272,7 +1300,7 @@ pub fn parse_slop_output(output: &str) -> Option<(i32, i32, i32, i32)> {
     let w = parts.get(3)?.parse().ok()?;
     let h = parts.get(4)?.trim_end().parse().ok()?;
 
-    Some((x, y, w, h))
+    Some(Rect { x, y, w, h })
 }
 
 pub fn is_valid_window_size(x: i32, y: i32, width: i32, height: i32, c_win: Window) -> bool {
@@ -1291,8 +1319,13 @@ pub fn is_valid_window_size(x: i32, y: i32, width: i32, height: i32, c_win: Wind
     }
 }
 
-pub fn handle_monitor_switch(c_win: Window, x: i32, y: i32, width: i32, height: i32) {
-    let new_mon = rect_to_mon(x, y, width, height);
+pub fn is_valid_window_size_rect(rect: &Rect, c_win: Window) -> bool {
+    is_valid_window_size(rect.x, rect.y, rect.w, rect.h, c_win)
+}
+
+/// Handle monitor switch when a window is moved/resized to a different monitor.
+pub fn handle_monitor_switch(c_win: Window, rect: &Rect) {
+    let new_mon = rect_to_mon(rect.x, rect.y, rect.w, rect.h);
     let current_mon = get_globals().selmon;
 
     if new_mon != current_mon {
@@ -1303,7 +1336,7 @@ pub fn handle_monitor_switch(c_win: Window, x: i32, y: i32, width: i32, height: 
                     unfocus_win(cur_sel, false);
                 }
             }
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             globals.selmon = Some(target);
             drop(globals);
             focus(None);
@@ -1311,33 +1344,17 @@ pub fn handle_monitor_switch(c_win: Window, x: i32, y: i32, width: i32, height: 
     }
 }
 
+/// Handle monitor switch for a client based on its current geometry.
 pub fn handle_client_monitor_switch(c_win: Window) {
-    let (c_x, c_y, c_w, c_h) = {
+    let rect = {
         let globals = get_globals();
-        if let Some(c) = globals.clients.get(&c_win) {
-            (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
-        } else {
-            return;
+        match globals.clients.get(&c_win) {
+            Some(c) => c.geo,
+            None => return,
         }
     };
 
-    let new_mon = rect_to_mon(c_x, c_y, c_w, c_h);
-    let current_mon = get_globals().selmon;
-
-    if new_mon != current_mon {
-        if let Some(target) = new_mon {
-            send_mon(c_win, target);
-            if let Some(cur) = current_mon {
-                if let Some(cur_sel) = get_globals().monitors.get(cur).and_then(|m| m.sel) {
-                    unfocus_win(cur_sel, false);
-                }
-            }
-            let mut globals = get_globals_mut();
-            globals.selmon = Some(target);
-            drop(globals);
-            focus(None);
-        }
-    }
+    handle_monitor_switch(c_win, &rect);
 }
 
 pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i32) {
@@ -1350,12 +1367,22 @@ pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i3
             .unwrap_or(false)
     };
 
+    let rect = Rect {
+        x,
+        y,
+        w: width,
+        h: height,
+    };
     if is_floating {
-        resize(c_win, x, y, width, height, true);
+        resize(c_win, &rect, true);
     } else {
         toggle_floating(&Arg::default());
-        resize(c_win, x, y, width, height, true);
+        resize(c_win, &rect, true);
     }
+}
+
+pub fn apply_window_resize_rect(c_win: Window, rect: &Rect) {
+    apply_window_resize(c_win, rect.x, rect.y, rect.w, rect.h);
 }
 
 pub fn drag_tag(arg: &Arg) {
@@ -1414,7 +1441,7 @@ pub fn drag_tag(arg: &Arg) {
         }
 
         if let Some(id) = selmon_id {
-            let mut gm = get_globals_mut();
+            let gm = get_globals_mut();
             gm.bar_dragging = true;
             if let Some(mon) = gm.monitors.get_mut(id) {
                 draw_bar(mon);
@@ -1467,7 +1494,7 @@ pub fn drag_tag(arg: &Arg) {
                             if last_tag != tag_x {
                                 last_tag = tag_x;
                                 if let Some(sel_mon_id) = selmon_id {
-                                    let mut gm = get_globals_mut();
+                                    let gm = get_globals_mut();
                                     if let Some(mon) = gm.monitors.get_mut(sel_mon_id) {
                                         mon.gesture = Gesture::from_tag_index(tag_x as usize)
                                             .unwrap_or(Gesture::None);
@@ -1514,7 +1541,7 @@ pub fn drag_tag(arg: &Arg) {
         }
 
         {
-            let mut gm = get_globals_mut();
+            let gm = get_globals_mut();
             gm.bar_dragging = false;
             if let Some(sel_mon_id) = gm.selmon {
                 if let Some(mon) = gm.monitors.get_mut(sel_mon_id) {

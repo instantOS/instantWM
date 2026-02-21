@@ -51,7 +51,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
     }
 
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         let bh = g.bh;
         if let Some(ref mut drw) = g.drw {
             drw.set_drawable(m.barwin);
@@ -110,7 +110,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
 pub fn draw_bars() {
     let monitor_count = get_globals().monitors.len();
     for i in 0..monitor_count {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(m) = g.monitors.get_mut(i) {
             draw_bar(m);
         }
@@ -118,7 +118,7 @@ pub fn draw_bars() {
 }
 
 pub fn reset_bar() {
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
     let Some(selmon_idx) = g.selmon else {
         return;
     };

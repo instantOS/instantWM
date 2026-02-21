@@ -1,7 +1,6 @@
-use crate::drw::{COL_BG, COL_FG};
 use crate::globals::{get_globals, get_globals_mut};
 use crate::systray::get_systray_width;
-use crate::types::MonitorInner;
+use crate::types::{MonitorInner, Rect};
 use std::sync::atomic::Ordering;
 
 const MAX_COMMAND_OFFSETS: usize = 20;
@@ -12,7 +11,7 @@ enum StatusItem {
     SetBg(String),
     SetFg(String),
     ResetColors,
-    Rect { x: i32, y: i32, w: i32, h: i32 },
+    Rect(Rect),
     Offset(i32),
     CommandOffset,
 }
@@ -32,7 +31,7 @@ pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &str) -> i32
     let layout = measure_layout(m, &items);
 
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.statuswidth = layout.total_width;
     }
 
@@ -105,7 +104,7 @@ fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
                 let w = parse_number(bytes, &mut i);
                 consume_comma(bytes, &mut i);
                 let h = parse_number(bytes, &mut i);
-                items.push(StatusItem::Rect { x, y, w, h });
+                items.push(StatusItem::Rect(Rect { x, y, w, h }));
             }
             _ => {}
         }
@@ -228,11 +227,11 @@ fn draw_items(
                 scheme = base_scheme.clone();
                 drw.set_scheme(scheme.clone());
             }
-            StatusItem::Rect { x: rx, y, w, h } => {
-                let rw = (*w).max(0) as u32;
-                let rh = (*h).max(0) as u32;
+            StatusItem::Rect(r) => {
+                let rw = (r.w).max(0) as u32;
+                let rh = (r.h).max(0) as u32;
                 if rw > 0 && rh > 0 {
-                    drw.rect(x + *rx, *y, rw, rh, true, false);
+                    drw.rect(x + r.x, r.y, rw, rh, true, false);
                 }
             }
             StatusItem::CommandOffset => {

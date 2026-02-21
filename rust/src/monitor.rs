@@ -1,6 +1,6 @@
-use crate::bar::{draw_bar, draw_bars, update_bar_pos};
+use crate::bar::update_bar_pos;
 use crate::client::{
-    attach, attach_stack, detach, detach_stack, is_visible, set_client_tag_prop, unfocus_win,
+    attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
 };
 use crate::focus::focus;
@@ -106,7 +106,7 @@ pub fn create_monitor_with_values(
 }
 
 pub fn cleanup_monitor(mon_id: MonitorId) {
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
 
     if mon_id >= g.monitors.len() {
         return;
@@ -164,7 +164,7 @@ pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
     let mut max_area = 0;
 
     for (i, m) in g.monitors.iter().enumerate() {
-        let area = intersect(x, y, w, h, m);
+        let area = intersect(&Rect { x, y, w, h }, m);
         if area > max_area {
             max_area = area;
             result = i;
@@ -172,6 +172,11 @@ pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
     }
 
     Some(result)
+}
+
+/// Find the monitor that a Rect intersects with most.
+pub fn rect_to_mon_rect(rect: &Rect) -> Option<MonitorId> {
+    rect_to_mon(rect.x, rect.y, rect.w, rect.h)
 }
 
 pub fn win_to_mon(w: Window) -> Option<MonitorId> {
@@ -237,7 +242,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
     detach_stack(c_win);
 
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(client) = g.clients.get_mut(&c_win) {
             client.mon_id = Some(target_mon_id);
 
@@ -270,7 +275,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
             if c.is_scratchpad() && !c.issticky {
                 drop(g);
 
-                let mut g = get_globals_mut();
+                let g = get_globals_mut();
                 if let Some(ref mut sel) = g.selmon {
                     if let Some(win) = get_selected_client_win(*sel) {
                         unfocus_win(win, false);
@@ -288,7 +293,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                     crate::scratchpad::scratchpad_show_name(&name);
                 }
 
-                let mut g = get_globals_mut();
+                let g = get_globals_mut();
                 if let Some(ref mut sel) = g.selmon {
                     if let Some(win) = get_selected_client_win(*sel) {
                         unfocus_win(win, false);
@@ -328,7 +333,7 @@ pub fn focus_mon(arg: &Arg) {
         }
     }
 
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
     g.selmon = Some(target);
     drop(g);
 
@@ -360,7 +365,7 @@ pub fn focus_n_mon(arg: &Arg) {
         }
     }
 
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
     g.selmon = Some(target);
     drop(g);
 
@@ -384,7 +389,7 @@ pub fn follow_mon(arg: &Arg) {
     tagmon(arg);
 
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(ref c) = g.clients.get(&c_win) {
             g.selmon = c.mon_id;
         }
@@ -408,14 +413,12 @@ pub fn follow_mon(arg: &Arg) {
     }
 }
 
+/// Check if a Rect is unique in a list of Rects (no duplicate geometry).
 #[cfg(feature = "xinerama")]
-fn is_unique_geom(unique: &[(i32, i32, i32, i32)], info: (i32, i32, i32, i32)) -> bool {
-    for u in unique {
-        if u.0 == info.0 && u.1 == info.1 && u.2 == info.2 && u.3 == info.3 {
-            return false;
-        }
-    }
-    true
+fn is_unique_geom(unique: &[Rect], info: &Rect) -> bool {
+    !unique
+        .iter()
+        .any(|u| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
 }
 
 pub fn update_geom() -> bool {
@@ -442,23 +445,21 @@ pub fn update_geom() -> bool {
                                     "TRACE: update_geom - got screens, len = {}",
                                     screens.screen_info.len()
                                 );
-                                let screen_info: Vec<(i32, i32, i32, i32)> = screens
+                                let screen_info: Vec<Rect> = screens
                                     .screen_info
                                     .iter()
-                                    .map(|s| {
-                                        (
-                                            s.x_org as i32,
-                                            s.y_org as i32,
-                                            s.width as i32,
-                                            s.height as i32,
-                                        )
+                                    .map(|s| Rect {
+                                        x: s.x_org as i32,
+                                        y: s.y_org as i32,
+                                        w: s.width as i32,
+                                        h: s.height as i32,
                                     })
                                     .collect();
 
                                 eprintln!("TRACE: update_geom - screen_info = {:?}", screen_info);
-                                let mut unique: Vec<(i32, i32, i32, i32)> = Vec::new();
+                                let mut unique: Vec<Rect> = Vec::new();
                                 for info in &screen_info {
-                                    if is_unique_geom(&unique, *info) {
+                                    if is_unique_geom(&unique, info) {
                                         unique.push(*info);
                                     }
                                 }
@@ -473,7 +474,7 @@ pub fn update_geom() -> bool {
 
                                 {
                                     eprintln!("TRACE: update_geom - before create_monitor loop");
-                                    let mut g = get_globals_mut();
+                                    let g = get_globals_mut();
                                     // Get values before the loop to use in create_monitor
                                     let mfact = g.mfact;
                                     let nmaster = g.nmaster;
@@ -493,7 +494,7 @@ pub fn update_geom() -> bool {
 
                                 for (i, info) in unique.iter().enumerate() {
                                     eprintln!("TRACE: update_geom - iter i = {}", i);
-                                    let mut g = get_globals_mut();
+                                    let g = get_globals_mut();
                                     if i >= n {
                                         dirty = true;
                                     }
@@ -501,10 +502,10 @@ pub fn update_geom() -> bool {
                                     if let Some(ref mut m) = g.monitors.get_mut(i) {
                                         eprintln!("TRACE: update_geom - got monitor {}", i);
                                         if i >= n
-                                            || m.monitor_rect.x != info.0
-                                            || m.monitor_rect.y != info.1
-                                            || m.monitor_rect.w != info.2
-                                            || m.monitor_rect.h != info.3
+                                            || m.monitor_rect.x != info.x
+                                            || m.monitor_rect.y != info.y
+                                            || m.monitor_rect.w != info.w
+                                            || m.monitor_rect.h != info.h
                                         {
                                             eprintln!(
                                                 "TRACE: update_geom - updating monitor {}",
@@ -512,21 +513,15 @@ pub fn update_geom() -> bool {
                                             );
                                             dirty = true;
                                             m.num = i as i32;
-                                            m.monitor_rect.x = info.0;
-                                            m.monitor_rect.y = info.1;
-                                            m.monitor_rect.w = info.2;
-                                            m.monitor_rect.h = info.3;
-                                            m.work_rect.x = info.0;
-                                            m.work_rect.y = info.1;
-                                            m.work_rect.w = info.2;
-                                            m.work_rect.h = info.3;
+                                            m.monitor_rect = *info;
+                                            m.work_rect = *info;
                                             monitors_need_bar_update.push(i);
                                         }
                                     }
                                 }
 
                                 for idx in &monitors_need_bar_update {
-                                    let mut g = get_globals_mut();
+                                    let g = get_globals_mut();
                                     if let Some(ref mut m) = g.monitors.get_mut(*idx) {
                                         update_bar_pos(m);
                                     }
@@ -551,7 +546,7 @@ pub fn update_geom() -> bool {
                                         detach(win);
                                         detach_stack(win);
 
-                                        let mut g = get_globals_mut();
+                                        let g = get_globals_mut();
                                         if let Some(ref mut c) = g.clients.get_mut(&win) {
                                             c.mon_id = Some(0);
                                         }
@@ -561,7 +556,7 @@ pub fn update_geom() -> bool {
                                         attach_stack(win);
                                     }
 
-                                    let mut g = get_globals_mut();
+                                    let g = get_globals_mut();
                                     if g.selmon == Some(i) {
                                         g.selmon = Some(0);
                                     }
@@ -571,12 +566,12 @@ pub fn update_geom() -> bool {
                                 }
 
                                 if dirty {
-                                    let mut g = get_globals_mut();
+                                    let g = get_globals_mut();
                                     g.selmon = Some(0);
                                     drop(g);
 
                                     if let Some(m) = win_to_mon(x11.screen_num as u32) {
-                                        let mut g = get_globals_mut();
+                                        let g = get_globals_mut();
                                         g.selmon = Some(m);
                                     }
                                 }
@@ -594,7 +589,7 @@ pub fn update_geom() -> bool {
     if g.monitors.is_empty() {
         let (sw, sh) = (g.sw, g.sh);
         drop(g);
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.monitors.push(create_monitor());
         if let Some(ref mut m) = g.monitors.first_mut() {
             m.num = 0;
@@ -623,7 +618,7 @@ pub fn update_geom() -> bool {
 
         if needs_update {
             dirty = true;
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             if let Some(ref mut m) = g.monitors.first_mut() {
                 m.monitor_rect.w = sw;
                 m.monitor_rect.h = sh;
@@ -634,7 +629,7 @@ pub fn update_geom() -> bool {
         }
 
         if needs_selmon {
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             if !g.monitors.is_empty() {
                 g.selmon = Some(0);
             }

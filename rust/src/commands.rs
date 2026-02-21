@@ -125,7 +125,7 @@ pub fn x_command() -> i32 {
 }
 
 pub fn set_special_next(arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.specialnext = match arg.ui {
         0 => SpecialNext::None,
         _ => SpecialNext::Float,
@@ -133,12 +133,12 @@ pub fn set_special_next(arg: &Arg) {
 }
 
 pub fn command_prefix(arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.tags.prefix = arg.ui != 0;
 
     if let Some(selmon_id) = globals.selmon {
         drop(globals);
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(selmon_id) {
             draw_bar(mon);
         }

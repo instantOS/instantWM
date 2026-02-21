@@ -1,9 +1,4 @@
-use crate::config::{
-    get_bordercolors, get_closebuttoncolors, get_statusbarcolors, get_tagcolors, get_tags,
-    get_windowcolors,
-};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::types::*;
 use x11rb::protocol::xproto::ConnectionExt;
 
 const NUM_SCHEMEHOVERTYPES: usize = 2;
@@ -159,7 +154,7 @@ pub fn load_xresources() {
 }
 
 fn load_color_resources(resource_str: &str) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
 
     for i in 0..NUM_SCHEMEHOVERTYPES {
         for q in 0..NUM_SCHEMECOLORTYPES {
@@ -238,7 +233,7 @@ fn load_color_resources(resource_str: &str) {
 }
 
 fn load_tag_resources(resource_str: &str) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
 
     for i in 0..9 {
         let propname = format!("tag.{}", i + 1);
@@ -267,7 +262,7 @@ fn find_resource(resource_str: &str, name: &str) -> Option<String> {
 }
 
 pub fn verify_tags_xres() {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
 
     for i in 0..9 {
         let len = globals.tags.names[i].len();

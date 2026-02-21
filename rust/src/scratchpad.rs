@@ -1,4 +1,4 @@
-use crate::client::{attach, attach_stack, detach, detach_stack, is_visible};
+use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::focus::{focus, warp_cursor_to_client};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
@@ -149,7 +149,7 @@ pub fn scratchpad_make(arg: &Arg) {
     };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&sel_win) {
             client.scratchpad_name = name;
 
@@ -218,7 +218,7 @@ pub fn scratchpad_unmake(_arg: &Arg) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&sel_win) {
             client.scratchpad_name.clear();
             client.issticky = false;
@@ -256,7 +256,7 @@ pub(crate) fn scratchpad_show_name(name: &str) {
     };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&found) {
             client.issticky = true;
             client.isfloating = true;
@@ -268,7 +268,7 @@ pub(crate) fn scratchpad_show_name(name: &str) {
         detach_stack(found);
 
         {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(client) = globals.clients.get_mut(&found) {
                 client.mon_id = current_mon;
             }
@@ -286,7 +286,7 @@ pub(crate) fn scratchpad_show_name(name: &str) {
     };
     if let Some(mid) = selmon_id {
         arrange(Some(mid));
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(mid) {
             restack(mon);
         }
@@ -328,7 +328,7 @@ pub(crate) fn scratchpad_hide_name(name: &str) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&found) {
             client.issticky = false;
             client.tags = SCRATCHPAD_MASK;

@@ -1,4 +1,4 @@
-use crate::drw::{Clr, Cur, Drw};
+use crate::drw::{Cur, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;

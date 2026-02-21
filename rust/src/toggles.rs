@@ -24,7 +24,7 @@ pub fn toggle_alt_tag(arg: &Arg) {
     };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.tags.show_alt = new_value;
     }
 
@@ -39,14 +39,14 @@ pub fn toggle_alt_tag(arg: &Arg) {
     };
 
     for i in monitors {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(i) {
             draw_bar(mon);
         }
     }
 
     let tagwidth = get_tag_width();
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.tags.width = tagwidth;
 }
 
@@ -68,7 +68,7 @@ pub fn toggle_sticky(_arg: &Arg) {
     let Some(win) = sel_win else { return };
 
     let mon_id = {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.issticky = !client.issticky;
             client.mon_id
@@ -83,13 +83,13 @@ pub fn toggle_sticky(_arg: &Arg) {
 }
 
 pub fn toggle_prefix(arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.tags.prefix = !globals.tags.prefix;
 
     if let Some(selmon_id) = globals.selmon {
         let selmon_id = selmon_id;
         drop(globals);
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(selmon_id) {
             draw_bar(mon);
         }
@@ -97,7 +97,7 @@ pub fn toggle_prefix(arg: &Arg) {
 }
 
 pub fn toggle_animated(arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     ctrl_toggle(&mut globals.animated, arg.ui);
 }
 
@@ -126,7 +126,7 @@ pub fn set_border_width(arg: &Arg) {
     let d = old_bw - new_bw;
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.border_width = new_bw;
         }
@@ -141,7 +141,7 @@ pub fn set_border_width(arg: &Arg) {
         }
     };
 
-    resize(win, x, y, w, h, false);
+    resize(win, &Rect { x, y, w, h }, false);
 }
 
 pub fn toggle_focus_follows_mouse(arg: &Arg) {
@@ -153,7 +153,7 @@ pub fn toggle_focus_follows_float_mouse(arg: &Arg) {
 }
 
 pub fn toggle_double_draw(_arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.doubledraw = !globals.doubledraw;
 }
 
@@ -170,7 +170,7 @@ pub fn toggle_locked(_arg: &Arg) {
     let Some(win) = sel_win else { return };
 
     let mon_id = {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.islocked = !client.islocked;
             client.mon_id
@@ -183,7 +183,7 @@ pub fn toggle_locked(_arg: &Arg) {
         let globals = get_globals();
         if let Some(selmon_id) = globals.selmon {
             drop(globals);
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(mon) = globals.monitors.get_mut(selmon_id) {
                 draw_bar(mon);
             }
@@ -213,14 +213,14 @@ pub fn toggle_show_tags(arg: &Arg) {
     };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(selmon_id) {
             mon.showtags = new_showtags;
         }
     }
 
     let tagwidth = get_tag_width();
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.tags.width = tagwidth;
 
     if let Some(mon) = globals.monitors.get_mut(selmon_id) {
@@ -266,7 +266,7 @@ pub fn redraw_win(_arg: &Arg) {
     };
 
     for i in monitors {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(i) {
             draw_bar(mon);
         }

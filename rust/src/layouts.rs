@@ -503,10 +503,12 @@ pub fn deck(m: &mut MonitorInner) {
             let h = (m.work_rect.h - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
             resize(
                 win,
-                m.work_rect.x,
-                m.work_rect.y + my as i32,
-                mw as i32 - 2 * border_width,
-                h - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x,
+                    y: m.work_rect.y + my as i32,
+                    w: mw as i32 - 2 * border_width,
+                    h: h - 2 * border_width,
+                },
                 false,
             );
 
@@ -517,10 +519,12 @@ pub fn deck(m: &mut MonitorInner) {
         } else {
             resize(
                 win,
-                m.work_rect.x + mw as i32,
-                m.work_rect.y,
-                m.work_rect.w - mw as i32 - 2 * border_width,
-                m.work_rect.h - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x + mw as i32,
+                    y: m.work_rect.y,
+                    w: m.work_rect.w - mw as i32 - 2 * border_width,
+                    h: m.work_rect.h - 2 * border_width,
+                },
                 false,
             );
         }
@@ -775,18 +779,20 @@ pub fn tcl(m: &mut MonitorInner) {
 
     resize(
         first_win.unwrap(),
-        if n < 3 {
-            m.work_rect.x
-        } else {
-            m.work_rect.x + sw
+        &Rect {
+            x: if n < 3 {
+                m.work_rect.x
+            } else {
+                m.work_rect.x + sw
+            },
+            y: m.work_rect.y,
+            w: if n == 1 {
+                m.work_rect.w - bdw
+            } else {
+                mw - bdw
+            },
+            h: m.work_rect.h - bdw,
         },
-        m.work_rect.y,
-        if n == 1 {
-            m.work_rect.w - bdw
-        } else {
-            mw - bdw
-        },
-        m.work_rect.h - bdw,
         false,
     );
 
@@ -827,7 +833,16 @@ pub fn tcl(m: &mut MonitorInner) {
             } else {
                 actual_h - 2 * border_width
             };
-            resize(win, x, y, w - 2 * border_width, rh, false);
+            resize(
+                win,
+                &Rect {
+                    x,
+                    y,
+                    w: w - 2 * border_width,
+                    h: rh,
+                },
+                false,
+            );
 
             if actual_h != m.work_rect.h {
                 let g = get_globals();
@@ -873,7 +888,16 @@ pub fn tcl(m: &mut MonitorInner) {
         } else {
             actual_h - 2 * border_width
         };
-        resize(win, x, y, w - 2 * border_width, rh, false);
+        resize(
+            win,
+            &Rect {
+                x,
+                y,
+                w: w - 2 * border_width,
+                h: rh,
+            },
+            false,
+        );
 
         if actual_h != m.work_rect.h {
             let g = get_globals();
@@ -950,7 +974,16 @@ pub fn overviewlayout(m: &mut MonitorInner) {
                     save_floating(win);
                 }
 
-                resize(win, tmpx, tmpy, cw, ch, false);
+                resize(
+                    win,
+                    &Rect {
+                        x: tmpx,
+                        y: tmpy,
+                        w: cw,
+                        h: ch,
+                    },
+                    false,
+                );
 
                 let _ = configure_window(
                     conn,
@@ -983,7 +1016,7 @@ pub fn floatl(m: &mut MonitorInner) {
 
     drop(g);
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.animated = false;
     }
 
@@ -1015,7 +1048,7 @@ pub fn floatl(m: &mut MonitorInner) {
     drop(g);
 
     if let Some(id) = selmon_id {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(mon) = g.monitors.get_mut(id) {
             restack(mon);
         }
@@ -1041,7 +1074,7 @@ pub fn floatl(m: &mut MonitorInner) {
     }
 
     if animated_store {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.animated = true;
     }
 }
@@ -1112,12 +1145,12 @@ fn apply_snap_for_window(win: Window, m: &MonitorInner) {
             SnapPosition::None => return,
         };
 
-        resize(win, x, y, w, h, false);
+        resize(win, &Rect { x, y, w, h }, false);
     }
 }
 
 fn save_floating(win: Window) {
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
     if let Some(c) = g.clients.get_mut(&win) {
         c.float_geo.x = c.geo.x;
         c.float_geo.y = c.geo.y;
@@ -1130,13 +1163,13 @@ pub fn arrange(mon_id: Option<MonitorId>) {
     reset_cursor();
 
     if let Some(id) = mon_id {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(m) = g.monitors.get_mut(id) {
             let stack = m.stack;
             drop(g);
             show_hide(stack);
         }
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(m) = g.monitors.get_mut(id) {
             arrange_monitor(m);
             restack(m);
@@ -1151,7 +1184,7 @@ pub fn arrange(mon_id: Option<MonitorId>) {
             show_hide(stack);
         }
 
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         for m in g.monitors.iter_mut() {
             arrange_monitor(m);
         }
@@ -1201,14 +1234,14 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
         drop(g);
 
         {
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             if let Some(_c) = g.clients.get_mut(&win) {
                 if !is_floating
                     && !is_fullscreen
                     && ((mon_clientcount == 1 && has_arrange) || is_monocle)
                 {
                     save_bw(win);
-                    let mut g = get_globals_mut();
+                    let g = get_globals_mut();
                     if let Some(c) = g.clients.get_mut(&win) {
                         c.border_width = 0;
                     }
@@ -1230,7 +1263,7 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
     m.ltsymbol = layout.symbol().to_string();
     layout.arrange(m);
 
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
     if let Some(ref fullscreen_win) = m.overlay {
         if let Some(c) = g.clients.get_mut(fullscreen_win) {
             let tbw = c.border_width;
@@ -1240,10 +1273,12 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
             let showbar_offset = if m.showbar { g.bh } else { 0 };
             resize(
                 *fullscreen_win,
-                m.monitor_rect.x,
-                m.monitor_rect.y + showbar_offset,
-                m.monitor_rect.w - 2 * tbw,
-                m.monitor_rect.h - showbar_offset - 2 * tbw,
+                &Rect {
+                    x: m.monitor_rect.x,
+                    y: m.monitor_rect.y + showbar_offset,
+                    w: m.monitor_rect.w - 2 * tbw,
+                    h: m.monitor_rect.h - showbar_offset - 2 * tbw,
+                },
                 false,
             );
         }
@@ -1330,7 +1365,7 @@ pub fn set_layout(arg: &Arg) {
         multimon = true;
         let layout_idx = arg.v;
         {
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             for m in g.monitors.iter_mut() {
                 for i in 0..20 {
                     if arg.v.is_none() || layout_idx != get_current_layout_idx(m) {
@@ -1351,7 +1386,7 @@ pub fn set_layout(arg: &Arg) {
     } else {
         let layout_idx = arg.v;
         {
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             if let Some(selmon_id) = g.selmon {
                 if let Some(m) = g.monitors.get_mut(selmon_id) {
                     if arg.v.is_none() || layout_idx != get_current_layout_idx(m) {
@@ -1380,7 +1415,7 @@ pub fn set_layout(arg: &Arg) {
         };
 
         {
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             if let Some(selmon_id) = g.selmon {
                 if let Some(m) = g.monitors.get_mut(selmon_id) {
                     if let Some(symbol) = ltsymbol {
@@ -1396,7 +1431,7 @@ pub fn set_layout(arg: &Arg) {
                 arrange(Some(selmon_id));
             }
         } else {
-            let mut g = get_globals_mut();
+            let g = get_globals_mut();
             if let Some(selmon_id) = g.selmon {
                 if let Some(m) = g.monitors.get_mut(selmon_id) {
                     draw_bar(m);
@@ -1420,14 +1455,14 @@ pub fn set_layout(arg: &Arg) {
             let g = get_globals();
             if Some(mon_id) != g.selmon {
                 drop(g);
-                let mut g = get_globals_mut();
+                let g = get_globals_mut();
                 g.selmon = Some(mon_id);
                 drop(g);
                 set_layout(arg);
             }
         }
 
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.selmon = tmpmon;
         drop(g);
         crate::focus::focus(None);
@@ -1550,7 +1585,7 @@ pub fn inc_nmaster_by(delta: i32) {
     let ccount = client_count();
 
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(selmon_id) = g.selmon {
             if let Some(m) = g.monitors.get_mut(selmon_id) {
                 if delta > 0 && m.nmaster >= ccount as i32 {
@@ -1632,12 +1667,12 @@ pub fn set_mfact(arg: &Arg) {
     };
 
     if animated {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.animated = false;
     }
 
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(selmon_id) = g.selmon {
             if let Some(m) = g.monitors.get_mut(selmon_id) {
                 m.mfact = f;
@@ -1655,7 +1690,7 @@ pub fn set_mfact(arg: &Arg) {
     }
 
     if animated {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         g.animated = true;
     }
 }
@@ -1803,7 +1838,16 @@ pub fn fibonacci(m: &mut MonitorInner, spiral: bool) {
             }
         }
 
-        resize(win, x, y, w - 2 * border_width, h - 2 * border_width, false);
+        resize(
+            win,
+            &Rect {
+                x,
+                y,
+                w: w - 2 * border_width,
+                h: h - 2 * border_width,
+            },
+            false,
+        );
 
         if i % 2 == 0 {
             if !spiral {

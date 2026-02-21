@@ -554,6 +554,68 @@ impl Rect {
     pub fn total_height(&self, border_width: i32) -> i32 {
         self.h + 2 * border_width
     }
+
+    /// Convert to a 4-tuple (x, y, w, h) for compatibility with legacy code.
+    #[inline]
+    pub fn as_tuple(&self) -> (i32, i32, i32, i32) {
+        (self.x, self.y, self.w, self.h)
+    }
+
+    /// Create a Rect from a 4-tuple.
+    #[inline]
+    pub fn from_tuple((x, y, w, h): (i32, i32, i32, i32)) -> Self {
+        Self { x, y, w, h }
+    }
+
+    /// Create a new Rect with adjusted position.
+    #[inline]
+    pub fn with_pos(&self, x: i32, y: i32) -> Self {
+        Self {
+            x,
+            y,
+            w: self.w,
+            h: self.h,
+        }
+    }
+
+    /// Create a new Rect with adjusted size.
+    #[inline]
+    pub fn with_size(&self, w: i32, h: i32) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            w,
+            h,
+        }
+    }
+
+    /// Create a new Rect with borders subtracted.
+    #[inline]
+    pub fn without_borders(&self, border_width: i32) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            w: self.w - 2 * border_width,
+            h: self.h - 2 * border_width,
+        }
+    }
+
+    /// Create a new Rect with borders added.
+    #[inline]
+    pub fn with_borders(&self, border_width: i32) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+            w: self.w + 2 * border_width,
+            h: self.h + 2 * border_width,
+        }
+    }
+
+    /// Check if this rect has valid positive dimensions.
+    #[inline]
+    pub fn is_valid(&self) -> bool {
+        self.w > 0 && self.h > 0
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -564,6 +626,7 @@ pub struct Client {
     pub geo: Rect,
     pub float_geo: Rect,
     pub old_geo: Rect,
+    //TODO: should probably come up with a struct for these
     pub basew: i32,
     pub baseh: i32,
     pub incw: i32,
@@ -572,6 +635,7 @@ pub struct Client {
     pub maxh: i32,
     pub minw: i32,
     pub minh: i32,
+
     pub hintsvalid: i32,
     pub border_width: i32,
     pub old_border_width: i32,
@@ -633,7 +697,6 @@ impl Default for Pertag {
     }
 }
 
-//TODO: dimensions should probably be their own struct, with utils for commonly used operations
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
     pub ltsymbol: String,

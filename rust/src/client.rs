@@ -28,7 +28,7 @@ pub const MWM_DECOR_BORDER: u32 = 1 << 1;
 pub const MWM_DECOR_TITLE: u32 = 1 << 3;
 
 pub fn attach(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mon_id) = mon_id {
         let old_head = globals.monitors.get(mon_id).and_then(|m| m.clients);
@@ -42,7 +42,7 @@ pub fn attach(win: Window) {
 }
 
 pub fn attach_stack(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mon_id) = mon_id {
         let old_stack = globals.monitors.get(mon_id).and_then(|m| m.stack);
@@ -56,7 +56,7 @@ pub fn attach_stack(win: Window) {
 }
 
 pub fn detach(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let mon_id = {
         if let Some(client) = globals.clients.get(&win) {
             client.mon_id
@@ -95,7 +95,7 @@ pub fn detach(win: Window) {
 }
 
 pub fn detach_stack(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let mon_id = {
         if let Some(client) = globals.clients.get(&win) {
             client.mon_id
@@ -488,7 +488,7 @@ pub fn show_hide(win: Option<Window>) {
                 };
 
                 if (!has_arrange || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-                    resize(current, x, y, w, h, false);
+                    resize(current, &Rect { x, y, w, h }, false);
                 }
                 show_hide(snext);
             } else {
@@ -542,7 +542,7 @@ pub fn show(win: Window) {
     }
 
     set_client_state(win, WM_STATE_NORMAL);
-    resize(win, x, -50, w, h, false);
+    resize(win, &Rect { x, y: -50, w, h }, false);
 
     if let Some(ref conn) = x11.conn {
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
@@ -644,7 +644,7 @@ pub fn hide(win: Window) {
         let _ = conn.flush();
     }
 
-    resize(win, x, y, w, h, false);
+    resize(win, &Rect { x, y, w, h }, false);
 
     let snext = {
         let globals = get_globals();
@@ -661,18 +661,27 @@ pub fn hide(win: Window) {
     }
 }
 
-pub fn resize(win: Window, x: i32, y: i32, w: i32, h: i32, interact: bool) {
-    let mut globals = get_globals_mut();
+/// Resize a window using a Rect struct.
+pub fn resize(win: Window, rect: &Rect, interact: bool) {
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        let mut nx = x;
-        let mut ny = y;
-        let mut nw = w;
-        let mut nh = h;
+        let mut nx = rect.x;
+        let mut ny = rect.y;
+        let mut nw = rect.w;
+        let mut nh = rect.h;
         let result = apply_size_hints(client, &mut nx, &mut ny, &mut nw, &mut nh, interact);
         let client_count = globals.clients.len();
         if result || client_count == 1 {
             drop(globals);
-            resize_client(win, nx, ny, nw, nh);
+            resize_client_rect(
+                win,
+                &Rect {
+                    x: nx,
+                    y: ny,
+                    w: nw,
+                    h: nh,
+                },
+            );
         }
     }
 }
@@ -680,7 +689,7 @@ pub fn resize(win: Window, x: i32, y: i32, w: i32, h: i32, interact: bool) {
 pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.old_geo.x = client.geo.x;
             client.geo.x = x;
@@ -710,9 +719,14 @@ pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
     }
 }
 
+/// Resize a client window using a Rect struct.
+pub fn resize_client_rect(win: Window, rect: &Rect) {
+    resize_client(win, rect.x, rect.y, rect.w, rect.h);
+}
+
 pub fn update_title(win: Window) {
     let name = read_window_title(win);
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         client.name = name;
     }
@@ -784,7 +798,7 @@ pub fn apply_rules(win: Window) {
         return;
     };
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
 
     let special_next = globals.specialnext;
     let rules = globals.rules.clone();
@@ -1229,13 +1243,13 @@ pub fn manage(
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.clients.insert(w, c.clone());
     }
 
     apply_rules(w);
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let borderpx = globals.borderpx;
     if let Some(client) = globals.clients.get_mut(&w) {
         client.border_width = borderpx;
@@ -1333,7 +1347,7 @@ pub fn manage(
     update_motif_hints(w);
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&w) {
             client.float_geo.x = client.geo.x;
             client.float_geo.y = if client.geo.y >= mon_my {
@@ -1368,7 +1382,7 @@ pub fn manage(
 
     let mut should_raise = false;
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&w) {
             if !client.isfloating {
                 client.isfloating = trans.is_some() || isfixed;
@@ -1445,7 +1459,7 @@ pub fn manage(
     }
 
     let animated = {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon_id) = c.mon_id {
             if let Some(mon) = globals.monitors.get_mut(mon_id) {
                 mon.sel = Some(w);
@@ -1468,7 +1482,15 @@ pub fn manage(
     crate::focus::focus(None);
 
     if animated && !c.is_fullscreen {
-        resize_client(w, c.geo.x, c.geo.y - 70, c.geo.w, c.geo.h);
+        resize_client_rect(
+            w,
+            &Rect {
+                x: c.geo.x,
+                y: c.geo.y - 70,
+                w: c.geo.w,
+                h: c.geo.h,
+            },
+        );
         animate_client(w, c.geo.x, c.geo.y + 70, 0, 0, 7, 0);
 
         let has_arrange = if let Some(mon_id) = c.mon_id {
@@ -1531,7 +1553,7 @@ fn read_client_info(w: Window) {
                             .iter()
                             .position(|m| m.num as u32 == mon_num)
                     };
-                    let mut globals = get_globals_mut();
+                    let globals = get_globals_mut();
                     if let Some(client) = globals.clients.get_mut(&w) {
                         client.tags = tags;
                         if let Some(mid) = target_mon {
@@ -1556,7 +1578,7 @@ pub fn unmanage(win: Window, destroyed: bool) {
     };
 
     if is_overlay {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         for mon in &mut globals.monitors {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
@@ -1596,7 +1618,7 @@ pub fn unmanage(win: Window, destroyed: bool) {
         }
     }
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.clients.remove(&win);
 
     drop(globals);
@@ -1708,7 +1730,15 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
 
             if !is_fake_fs {
                 drop(globals);
-                resize_client(win, oldx, oldy, oldw, oldh);
+                resize_client_rect(
+                    win,
+                    &Rect {
+                        x: oldx,
+                        y: oldy,
+                        w: oldw,
+                        h: oldh,
+                    },
+                );
                 if let Some(mid) = mon_id {
                     arrange(Some(mid));
                 }
@@ -1764,12 +1794,14 @@ pub fn toggle_fake_fullscreen(_arg: &Arg) {
                     )
                 })
                 .unwrap_or((0, 0, 0, 0));
-            resize_client(
+            resize_client_rect(
                 win,
-                mon_mx + borderpx,
-                mon_my + borderpx,
-                mon_mw - 2 * borderpx,
-                mon_mh - 2 * borderpx,
+                &Rect {
+                    x: mon_mx + borderpx,
+                    y: mon_my + borderpx,
+                    w: mon_mw - 2 * borderpx,
+                    h: mon_mh - 2 * borderpx,
+                },
             );
 
             let x11 = get_x11();
@@ -1781,7 +1813,7 @@ pub fn toggle_fake_fullscreen(_arg: &Arg) {
         }
     }
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.is_fullscreen {
             if !client.isfakefullscreen {
@@ -1889,7 +1921,7 @@ pub fn update_size_hints(c: &mut Client) {
 }
 
 fn update_size_hints_win(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         update_size_hints(client);
     }
@@ -1913,7 +1945,7 @@ pub fn update_window_type(win: Window) {
         }
 
         if wtype == Some(atom_dialog) {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(client) = globals.clients.get_mut(&win) {
                 client.isfloating = true;
             }
@@ -2060,14 +2092,23 @@ pub fn update_motif_hints(win: Window) {
                         };
 
                         {
-                            let mut globals = get_globals_mut();
+                            let globals = get_globals_mut();
                             if let Some(client) = globals.clients.get_mut(&win) {
                                 client.border_width = new_bw;
                                 client.old_border_width = new_bw;
                             }
                         }
 
-                        resize(win, c_x, c_y, c_w - 2 * new_bw, c_h - 2 * new_bw, false);
+                        resize(
+                            win,
+                            &Rect {
+                                x: c_x,
+                                y: c_y,
+                                w: c_w - 2 * new_bw,
+                                h: c_h - 2 * new_bw,
+                            },
+                            false,
+                        );
                     }
                 }
             }
@@ -2122,14 +2163,14 @@ fn grab_buttons(win: Window, focused: bool) {
 }
 
 pub fn save_bw(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         client.old_border_width = client.border_width;
     }
 }
 
 pub fn restore_border_width(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         client.border_width = client.old_border_width;
     }
@@ -2243,7 +2284,7 @@ pub fn zoom(_arg: &Arg) {
 pub fn set_urgent(win: Window, urg: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.isurgent = urg;
         }
@@ -2291,7 +2332,7 @@ pub fn set_urgent(win: Window, urg: bool) {
 }
 
 pub fn scale_client(win: Window, scale: i32) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         let mon_id = client.mon_id;
         let old_x = client.geo.x;
@@ -2323,12 +2364,21 @@ pub fn scale_client(win: Window, scale: i32) {
         let new_x = mon_mx + (mon_mw - new_w) / 2 - border_width;
         let new_y = mon_my + (mon_mh - new_h) / 2 - border_width;
 
-        resize(win, new_x, new_y, new_w, new_h, false);
+        resize(
+            win,
+            &Rect {
+                x: new_x,
+                y: new_y,
+                w: new_w,
+                h: new_h,
+            },
+            false,
+        );
     }
 }
 
 pub fn save_floating(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         client.float_geo.x = client.geo.x;
         client.float_geo.y = client.geo.y;
@@ -2351,11 +2401,11 @@ pub fn restore_floating(win: Window) {
             return;
         }
     };
-    resize(win, x, y, w, h, false);
+    resize(win, &Rect { x, y, w, h }, false);
 }
 
 pub fn change_floating(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.snapstatus != SnapPosition::None {
             client.snapstatus = SnapPosition::None;

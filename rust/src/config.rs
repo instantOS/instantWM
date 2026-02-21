@@ -432,8 +432,6 @@ pub mod commands {
     pub const DOWNBRIGHT_CMD: &[&str] = &["/usr/share/instantassist/utils/b.sh", "-"];
 }
 
-pub use commands::*;
-
 pub fn get_external_commands() -> ExternalCommands {
     ExternalCommands {
         instantmenucmd: commands::INSTANTMENU_CMD.to_vec(),

@@ -15,7 +15,7 @@ pub(crate) fn update_status() {
 
     let text = get_text_prop(root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
     {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         match text {
             Some(t) => {
                 if t.starts_with("ipc:") {
@@ -30,7 +30,7 @@ pub(crate) fn update_status() {
     }
 
     if let Some(selmon_idx) = selmon_idx {
-        let mut g = get_globals_mut();
+        let g = get_globals_mut();
         if let Some(m) = g.monitors.get_mut(selmon_idx) {
             super::draw_bar(m);
         }
@@ -151,14 +151,14 @@ pub(crate) fn update_bars() {
             let _ = conn.map_window(win_id);
             let _ = conn.flush();
 
-            let mut globals_mut = get_globals_mut();
+            let globals_mut = get_globals_mut();
             globals_mut.monitors[i].barwin = win_id;
         }
     }
 }
 
 pub(crate) fn toggle_bar(_arg: &Arg) {
-    let mut g = get_globals_mut();
+    let g = get_globals_mut();
 
     let animated = g.animated;
     let client_count = g.clients.len() as i32;

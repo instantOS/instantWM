@@ -1,14 +1,12 @@
 use crate::animation::animate_client;
 use crate::client::{attach, attach_stack, detach, detach_stack, is_visible, resize};
-use crate::floating::{restore_border_width_win, save_bw_win};
+use crate::floating::save_bw_win;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
-use crate::monitor::restack;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-use x11rb::CURRENT_TIME;
 
 pub const OVERLAY_TOP: i32 = 0;
 pub const OVERLAY_RIGHT: i32 = 1;
@@ -82,7 +80,7 @@ pub fn create_overlay(_arg: &Arg) {
     if Some(sel_win) == sel_overlay {
         reset_overlay();
         {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             for mon in &mut globals.monitors {
                 mon.overlay = None;
             }
@@ -95,7 +93,7 @@ pub fn create_overlay(_arg: &Arg) {
     reset_overlay();
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         for mon in &mut globals.monitors {
             mon.overlay = Some(temp_client);
             mon.overlaystatus = 0;
@@ -105,7 +103,7 @@ pub fn create_overlay(_arg: &Arg) {
     save_bw_win(temp_client);
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&temp_client) {
             client.border_width = 0;
             client.islocked = true;
@@ -127,7 +125,7 @@ pub fn create_overlay(_arg: &Arg) {
     };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&temp_client) {
             if overlay_mode == OVERLAY_TOP || overlay_mode == OVERLAY_BOTTOM {
                 client.geo.h = mon_wh / 3;
@@ -172,7 +170,7 @@ pub fn reset_overlay() {
     };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&overlay_win) {
             client.border_width = client.old_border_width;
             client.issticky = false;
@@ -233,7 +231,7 @@ pub fn show_overlay(_arg: &Arg) {
     drop(globals);
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         for mon in &mut globals.monitors {
             mon.overlaystatus = 1;
         }
@@ -243,7 +241,7 @@ pub fn show_overlay(_arg: &Arg) {
     detach_stack(overlay_win);
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&overlay_win) {
             client.mon_id = Some(selmon_id);
             client.isfloating = true;
@@ -283,40 +281,48 @@ pub fn show_overlay(_arg: &Arg) {
             OVERLAY_TOP => {
                 resize(
                     overlay_win,
-                    mon_mx + 20,
-                    mon_my + yoffset - client_h,
-                    mon_ww - 40,
-                    client_h,
+                    &Rect {
+                        x: mon_mx + 20,
+                        y: mon_my + yoffset - client_h,
+                        w: mon_ww - 40,
+                        h: client_h,
+                    },
                     true,
                 );
             }
             OVERLAY_RIGHT => {
                 resize(
                     overlay_win,
-                    mon_mx + mon_mw - 20,
-                    mon_my + 40,
-                    client_w,
-                    mon_mh - 80,
+                    &Rect {
+                        x: mon_mx + mon_mw - 20,
+                        y: mon_my + 40,
+                        w: client_w,
+                        h: mon_mh - 80,
+                    },
                     true,
                 );
             }
             OVERLAY_BOTTOM => {
                 resize(
                     overlay_win,
-                    mon_mx + 20,
-                    mon_my + mon_mh,
-                    mon_ww - 40,
-                    client_h,
+                    &Rect {
+                        x: mon_mx + 20,
+                        y: mon_my + mon_mh,
+                        w: mon_ww - 40,
+                        h: client_h,
+                    },
                     true,
                 );
             }
             OVERLAY_LEFT => {
                 resize(
                     overlay_win,
-                    mon_mx - client_w + 20,
-                    mon_my + 40,
-                    client_w,
-                    mon_mh - 80,
+                    &Rect {
+                        x: mon_mx - client_w + 20,
+                        y: mon_my + 40,
+                        w: client_w,
+                        h: mon_mh - 80,
+                    },
                     true,
                 );
             }
@@ -330,7 +336,7 @@ pub fn show_overlay(_arg: &Arg) {
             if let Some(client) = globals.clients.get(&overlay_win) {
                 let tags = mon.tagset[mon.seltags as usize];
                 drop(globals);
-                let mut globals = get_globals_mut();
+                let globals = get_globals_mut();
                 if let Some(c) = globals.clients.get_mut(&overlay_win) {
                     c.tags = tags;
                 }
@@ -339,7 +345,7 @@ pub fn show_overlay(_arg: &Arg) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&overlay_win) {
             if !client.isfloating {
                 client.isfloating = true;
@@ -381,7 +387,7 @@ pub fn show_overlay(_arg: &Arg) {
 
         animate_client(overlay_win, target_x, target_y, 0, 0, 15, 0);
 
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&overlay_win) {
             client.issticky = true;
         }
@@ -464,7 +470,7 @@ pub fn hide_overlay(_arg: &Arg) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&overlay_win) {
             client.issticky = false;
         }
@@ -489,7 +495,7 @@ pub fn hide_overlay(_arg: &Arg) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         for mon in &mut globals.monitors {
             mon.overlaystatus = 0;
         }
@@ -542,7 +548,7 @@ pub fn set_overlay(_arg: &Arg) {
 
 pub fn set_overlay_mode(mode: i32) {
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         for mon in &mut globals.monitors {
             mon.overlaymode = mode;
         }
@@ -565,7 +571,7 @@ pub fn set_overlay_mode(mode: i32) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         let selmon_id = globals.selmon.unwrap_or(0);
         if let Some(mon) = globals.monitors.get(selmon_id) {
             if let Some(overlay_win) = mon.overlay {
@@ -647,7 +653,7 @@ pub fn reset_overlay_size() {
     let Some(win) = overlay_win else { return };
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.isfloating = true;
         }
@@ -659,10 +665,12 @@ pub fn reset_overlay_size() {
         OVERLAY_TOP => {
             resize(
                 win,
-                mon_mx + 20,
-                mon_my + yoffset,
-                mon_ww - 40,
-                mon_wh / 3,
+                &Rect {
+                    x: mon_mx + 20,
+                    y: mon_my + yoffset,
+                    w: mon_ww - 40,
+                    h: mon_wh / 3,
+                },
                 true,
             );
         }
@@ -677,10 +685,12 @@ pub fn reset_overlay_size() {
             };
             resize(
                 win,
-                mon_mx + mon_mw - client_w,
-                mon_my + 40,
-                mon_mw / 3,
-                mon_mh - 80,
+                &Rect {
+                    x: mon_mx + mon_mw - client_w,
+                    y: mon_my + 40,
+                    w: mon_mw / 3,
+                    h: mon_mh - 80,
+                },
                 true,
             );
         }
@@ -695,15 +705,26 @@ pub fn reset_overlay_size() {
             };
             resize(
                 win,
-                mon_mx + 20,
-                mon_my + mon_mh - client_h,
-                mon_ww - 40,
-                mon_wh / 3,
+                &Rect {
+                    x: mon_mx + 20,
+                    y: mon_my + mon_mh - client_h,
+                    w: mon_ww - 40,
+                    h: mon_wh / 3,
+                },
                 true,
             );
         }
         OVERLAY_LEFT => {
-            resize(win, mon_mx, mon_my + 40, mon_mw / 3, mon_mh - 80, true);
+            resize(
+                win,
+                &Rect {
+                    x: mon_mx,
+                    y: mon_my + 40,
+                    w: mon_mw / 3,
+                    h: mon_mh - 80,
+                },
+                true,
+            );
         }
         _ => {}
     }

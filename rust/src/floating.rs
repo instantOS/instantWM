@@ -1,5 +1,5 @@
-use crate::animation::{animate_client, check_animate};
-use crate::client::{is_visible, resize, resize_client, save_bw, save_floating};
+use crate::animation::{animate_client, animate_client_rect, check_animate_rect};
+use crate::client::resize;
 use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
@@ -37,34 +37,24 @@ static SNAP_MATRIX: [[i32; 4]; 10] = [
 ];
 
 pub fn save_floating_win(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        client.float_geo.x = client.geo.x;
-        client.float_geo.y = client.geo.y;
-        client.float_geo.w = client.geo.w;
-        client.float_geo.h = client.geo.h;
+        client.float_geo = client.geo;
     }
 }
 
 pub fn restore_floating_win(win: Window) {
-    let (x, y, w, h) = {
+    let float_geo = {
         let globals = get_globals();
-        if let Some(client) = globals.clients.get(&win) {
-            (
-                client.float_geo.x,
-                client.float_geo.y,
-                client.float_geo.w,
-                client.float_geo.h,
-            )
-        } else {
-            return;
-        }
+        globals.clients.get(&win).map(|c| c.float_geo)
     };
-    resize(win, x, y, w, h, false);
+    if let Some(rect) = float_geo {
+        resize(win, &rect, false);
+    }
 }
 
 pub fn save_bw_win(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.border_width != 0 {
             client.old_border_width = client.border_width;
@@ -73,7 +63,7 @@ pub fn save_bw_win(win: Window) {
 }
 
 pub fn restore_border_width_win(win: Window) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.old_border_width != 0 {
             client.border_width = client.old_border_width;
@@ -82,15 +72,14 @@ pub fn restore_border_width_win(win: Window) {
 }
 
 pub fn apply_size(win: Window) {
-    let (x, y, w, h) = {
+    let geo = {
         let globals = get_globals();
-        if let Some(client) = globals.clients.get(&win) {
-            (client.geo.x + 1, client.geo.y, client.geo.w, client.geo.h)
-        } else {
-            return;
-        }
+        globals.clients.get(&win).map(|c| c.geo)
     };
-    resize(win, x, y, w, h, false);
+    if let Some(mut rect) = geo {
+        rect.x += 1;
+        resize(win, &rect, false);
+    }
 }
 
 pub fn check_floating(win: Window) -> bool {
@@ -125,7 +114,7 @@ pub fn visible_client(win: Window) -> bool {
 }
 
 pub fn save_all_floating(mon_id: Option<usize>) {
-    let (numtags, tagmask) = {
+    let (numtags, _tagmask) = {
         let globals = get_globals();
         (globals.tags.count, globals.tags.mask())
     };
@@ -248,7 +237,7 @@ pub fn reset_snap(win: Window) {
     }
 
     if is_floating || !has_tiling {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.snapstatus = SnapPosition::None;
         }
@@ -260,15 +249,12 @@ pub fn reset_snap(win: Window) {
 }
 
 pub fn apply_snap(win: Window, mon_id: Option<usize>) {
-    let (snapstatus, saved_x, saved_y, saved_w, saved_h, border_width) = {
+    let (snapstatus, saved_geo, border_width) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
             (
                 client.snapstatus,
-                client.float_geo.x,
-                client.float_geo.y,
-                client.float_geo.w,
-                client.float_geo.h,
+                client.float_geo,
                 client.border_width,
             )
         } else {
@@ -277,7 +263,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
     };
 
     if let Some(mid) = mon_id {
-        let (m_mx, m_my, m_mw, m_mh, m_wh, mony) = {
+        let (m_mx, _m_my, m_mw, m_mh, m_wh, mony) = {
             let globals = get_globals();
             if let Some(m) = globals.monitors.get(mid) {
                 let mony = m.monitor_rect.y + if m.showbar { globals.bh } else { 0 };
@@ -300,61 +286,127 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
 
         match snapstatus {
             SnapPosition::None => {
-                check_animate(win, saved_x, saved_y, saved_w, saved_h, 7, 0);
+                check_animate_rect(win, &saved_geo, 7, 0);
             }
             SnapPosition::Top => {
-                check_animate(win, m_mx, mony, m_mw, m_mh / 2, 7, 0);
+                check_animate_rect(
+                    win,
+                    &Rect {
+                        x: m_mx,
+                        y: mony,
+                        w: m_mw,
+                        h: m_mh / 2,
+                    },
+                    7,
+                    0,
+                );
             }
             SnapPosition::TopRight => {
-                check_animate(win, m_mx + m_mw / 2, mony, m_mw / 2, m_mh / 2, 7, 0);
+                check_animate_rect(
+                    win,
+                    &Rect {
+                        x: m_mx + m_mw / 2,
+                        y: mony,
+                        w: m_mw / 2,
+                        h: m_mh / 2,
+                    },
+                    7,
+                    0,
+                );
             }
             SnapPosition::Right => {
-                check_animate(
+                check_animate_rect(
                     win,
-                    m_mx + m_mw / 2,
-                    mony,
-                    m_mw / 2 - border_width * 2,
-                    m_wh - border_width * 2,
+                    &Rect {
+                        x: m_mx + m_mw / 2,
+                        y: mony,
+                        w: m_mw / 2 - border_width * 2,
+                        h: m_wh - border_width * 2,
+                    },
                     7,
                     0,
                 );
             }
             SnapPosition::BottomRight => {
-                check_animate(
+                check_animate_rect(
                     win,
-                    m_mx + m_mw / 2,
-                    mony + m_mh / 2,
-                    m_mw / 2,
-                    m_wh / 2,
+                    &Rect {
+                        x: m_mx + m_mw / 2,
+                        y: mony + m_mh / 2,
+                        w: m_mw / 2,
+                        h: m_wh / 2,
+                    },
                     7,
                     0,
                 );
             }
             SnapPosition::Bottom => {
-                check_animate(win, m_mx, mony + m_mh / 2, m_mw, m_mh / 2, 7, 0);
+                check_animate_rect(
+                    win,
+                    &Rect {
+                        x: m_mx,
+                        y: mony + m_mh / 2,
+                        w: m_mw,
+                        h: m_mh / 2,
+                    },
+                    7,
+                    0,
+                );
             }
             SnapPosition::BottomLeft => {
-                check_animate(win, m_mx, mony + m_mh / 2, m_mw / 2, m_wh / 2, 7, 0);
+                check_animate_rect(
+                    win,
+                    &Rect {
+                        x: m_mx,
+                        y: mony + m_mh / 2,
+                        w: m_mw / 2,
+                        h: m_wh / 2,
+                    },
+                    7,
+                    0,
+                );
             }
             SnapPosition::Left => {
-                check_animate(win, m_mx, mony, m_mw / 2, m_wh, 7, 0);
+                check_animate_rect(
+                    win,
+                    &Rect {
+                        x: m_mx,
+                        y: mony,
+                        w: m_mw / 2,
+                        h: m_wh,
+                    },
+                    7,
+                    0,
+                );
             }
             SnapPosition::TopLeft => {
-                check_animate(win, m_mx, mony, m_mw / 2, m_mh / 2, 7, 0);
+                check_animate_rect(
+                    win,
+                    &Rect {
+                        x: m_mx,
+                        y: mony,
+                        w: m_mw / 2,
+                        h: m_mh / 2,
+                    },
+                    7,
+                    0,
+                );
             }
             SnapPosition::Maximized => {
                 save_bw_win(win);
-                let mut globals = get_globals_mut();
+                let globals = get_globals_mut();
                 if let Some(client) = globals.clients.get_mut(&win) {
                     client.border_width = 0;
                 }
                 drop(globals);
-                check_animate(
+                check_animate_rect(
                     win,
-                    m_mx,
-                    mony,
-                    m_mw - border_width * 2,
-                    m_mh + border_width * 2,
+                    &Rect {
+                        x: m_mx,
+                        y: mony,
+                        w: m_mw - border_width * 2,
+                        h: m_mh + border_width * 2,
+                    },
                     7,
                     0,
                 );
@@ -429,7 +481,7 @@ pub fn change_snap(win: Window, snap_mode: i32) {
     }
 
     let mon_id = {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.snapstatus = new_snap_pos;
             client.mon_id
@@ -473,7 +525,7 @@ pub fn temp_fullscreen(_arg: &Arg) {
             apply_size(win);
         }
 
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
                 mon.fullscreen = None;
@@ -482,7 +534,7 @@ pub fn temp_fullscreen(_arg: &Arg) {
     } else {
         let Some(win) = sel_win else { return };
 
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
                 mon.fullscreen = Some(win);
@@ -495,7 +547,7 @@ pub fn temp_fullscreen(_arg: &Arg) {
     }
 
     if animated {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.animated = false;
         drop(globals);
 
@@ -503,7 +555,7 @@ pub fn temp_fullscreen(_arg: &Arg) {
             arrange(Some(sel_mon_id));
         }
 
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.animated = true;
     } else {
         if let Some(sel_mon_id) = get_globals().selmon {
@@ -600,7 +652,7 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
     let x11 = get_x11();
 
     if floating {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.isfloating = true;
         }
@@ -620,28 +672,21 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
             }
         }
 
-        let (saved_x, saved_y, saved_w, saved_h) = {
+        let saved_geo = {
             let globals = get_globals();
-            if let Some(client) = globals.clients.get(&win) {
-                (
-                    client.float_geo.x,
-                    client.float_geo.y,
-                    client.float_geo.w,
-                    client.float_geo.h,
-                )
-            } else {
-                return;
-            }
+            globals.clients.get(&win).map(|c| c.float_geo)
         };
 
+        let Some(saved_geo) = saved_geo else { return };
+
         if animate {
-            animate_client(win, saved_x, saved_y, saved_w, saved_h, 7, 0);
+            animate_client_rect(win, &saved_geo, 7, 0);
         } else {
-            resize(win, saved_x, saved_y, saved_w, saved_h, false);
+            resize(win, &saved_geo, false);
         }
     } else {
         let client_count = get_globals().clients.len();
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.isfloating = false;
 
@@ -652,10 +697,7 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
                 }
             }
 
-            client.float_geo.x = client.geo.x;
-            client.float_geo.y = client.geo.y;
-            client.float_geo.w = client.geo.w;
-            client.float_geo.h = client.geo.h;
+            client.float_geo = client.geo;
         }
     }
 }
@@ -815,10 +857,12 @@ pub fn center_window(_arg: &Arg) {
 
     resize(
         win,
-        mx + (mw / 2) - (w / 2),
-        my + (mh / 2) - (h / 2) + y_offset,
-        w,
-        h,
+        &Rect {
+            x: mx + (mw / 2) - (w / 2),
+            y: my + (mh / 2) - (h / 2) + y_offset,
+            w,
+            h,
+        },
         true,
     );
 }
@@ -953,7 +997,16 @@ pub fn key_resize(arg: &Arg) {
     let nw = c_w + resize_deltas[dir_idx][0];
     let nh = c_h + resize_deltas[dir_idx][1];
 
-    resize(win, c_x, c_y, nw, nh, true);
+    resize(
+        win,
+        &Rect {
+            x: c_x,
+            y: c_y,
+            w: nw,
+            h: nh,
+        },
+        true,
+    );
 }
 
 pub fn upscale_client(arg: &Arg) {
@@ -1064,7 +1117,7 @@ pub fn scale_client_win(win: Window, scale: i32) {
 }
 
 pub fn apply_snap_mut(c: &mut Client, m: &MonitorInner) {
-    let mony = m.monitor_rect.y + if m.showbar { 0 } else { 0 };
+    let _mony = m.monitor_rect.y + if m.showbar { 0 } else { 0 };
 
     match c.snapstatus {
         SnapPosition::None => {}

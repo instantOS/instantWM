@@ -152,7 +152,7 @@ pub fn button_press(e: &ButtonPressEvent) {
 
     if let Some(clicked_mon) = win_to_mon(e.event) {
         if selmon_id != Some(clicked_mon) && (focusfollowsmouse || e.detail <= 3) {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             globals.selmon = Some(clicked_mon);
             selmon_id = Some(clicked_mon);
             drop(globals);
@@ -168,7 +168,7 @@ pub fn button_press(e: &ButtonPressEvent) {
         click_arg.v = Some(win as usize);
         if focusfollowsmouse || e.detail <= 3 {
             focus(Some(win));
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(mon_id) = globals.clients.get(&win).and_then(|c| c.mon_id) {
                 if let Some(mon) = globals.monitors.get_mut(mon_id) {
                     restack(mon);
@@ -272,7 +272,7 @@ pub fn configure_notify(e: &ConfigureNotifyEvent) {
     drop(globals);
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.sw = e.width as i32;
         globals.sh = e.height as i32;
     }
@@ -341,7 +341,7 @@ pub fn expose(e: &ExposeEvent) {
     }
 
     if let Some(mon_id) = win_to_mon(e.window) {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(mon_id) {
             if e.window != mon.barwin {
                 return;
@@ -421,14 +421,14 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
     let focusfollowsmouse = globals.focusfollowsmouse;
     drop(globals);
     let tagwidth = get_tag_width();
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.tags.width = tagwidth;
     drop(globals);
 
     if focusfollowsmouse {
         if let Some(m) = rect_to_mon(e.root_x as i32, e.root_y as i32, 1, 1) {
             if Some(m) != selmon_id {
-                let mut globals = get_globals_mut();
+                let globals = get_globals_mut();
                 globals.selmon = Some(m);
                 drop(globals);
                 focus(None);
@@ -481,7 +481,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
         };
 
         if new_gesture != gesture {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(mon) = globals.monitors.get_mut(selmon_idx) {
                 mon.gesture = new_gesture;
                 draw_bar(mon);
@@ -507,7 +507,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
         };
 
         if new_gesture != gesture {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(mon) = globals.monitors.get_mut(selmon_idx) {
                 mon.gesture = new_gesture;
                 draw_bar(mon);
@@ -535,7 +535,7 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
     if let Some(win) = win_to_client(e.window) {
         match e.atom {
             x if x == AtomEnum::WM_NORMAL_HINTS.into() => {
-                let mut globals = get_globals_mut();
+                let globals = get_globals_mut();
                 if let Some(c) = globals.clients.get_mut(&win) {
                     c.hintsvalid = 0;
                 }
@@ -596,7 +596,7 @@ fn handle_active_window(win: Window) {
         if let Some(mon_id) = c.mon_id {
             drop(globals);
             focus(Some(win));
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(mon) = globals.monitors.get_mut(mon_id) {
                 restack(mon);
             }
@@ -764,7 +764,7 @@ pub fn setup() {
     let root = screen.root;
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.screen = x11.screen_num as i32;
         globals.root = root;
         globals.sw = screen.width_in_pixels as i32;

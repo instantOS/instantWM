@@ -1,17 +1,12 @@
-use crate::floating::{
-    change_snap, reset_snap, save_floating_win, toggle_floating, SNAP_MAXIMIZED,
-};
+use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating};
 use crate::focus::direction_focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::{hide_window, unhide_one};
 use crate::types::*;
-use crate::util::spawn;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-
-use x11rb::wrapper::ConnectionExt as KeyboardConnectionExt;
 
 pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> u32 {
     if let Ok(cookie) = conn.get_keyboard_mapping(keycode, 1) {
@@ -222,7 +217,7 @@ pub fn update_num_lock_mask() {
                     }
                 }
 
-                let mut globals = get_globals_mut();
+                let globals = get_globals_mut();
                 globals.numlockmask = new_numlockmask;
             }
         }
@@ -487,7 +482,7 @@ pub fn space_toggle(_arg: &Arg) {
 
             save_floating_win(win);
 
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(client) = globals.clients.get_mut(&win) {
                 client.snapstatus = SnapPosition::Maximized;
             }

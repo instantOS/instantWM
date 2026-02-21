@@ -1,4 +1,4 @@
-use crate::client::resize_client;
+use crate::client::resize_client_rect;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use std::thread;
@@ -22,28 +22,12 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
     let (start_x, start_y, start_w, start_h) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            (
-                if reset_pos != 0 {
-                    client.geo.x
-                } else {
-                    client.old_geo.x
-                },
-                if reset_pos != 0 {
-                    client.geo.y
-                } else {
-                    client.old_geo.y
-                },
-                if reset_pos != 0 {
-                    client.geo.w
-                } else {
-                    client.old_geo.w
-                },
-                if reset_pos != 0 {
-                    client.geo.h
-                } else {
-                    client.old_geo.h
-                },
-            )
+            let start_rect = if reset_pos != 0 {
+                client.geo
+            } else {
+                client.old_geo
+            };
+            (start_rect.x, start_rect.y, start_rect.w, start_rect.h)
         } else {
             return;
         }
@@ -57,7 +41,15 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         if !globals.animated {
             if target_w > 0 && target_h > 0 {
                 drop(globals);
-                resize_client(win, x, y, target_w, target_h);
+                resize_client_rect(
+                    win,
+                    &Rect {
+                        x,
+                        y,
+                        w: target_w,
+                        h: target_h,
+                    },
+                );
             }
             return;
         }
@@ -107,7 +99,15 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                     let step_y = (start_y as f64 + progress * dy) as i32;
 
                     if actual_w > 0 && actual_h > 0 {
-                        resize_client(win, step_x, step_y, actual_w, actual_h);
+                        resize_client_rect(
+                            win,
+                            &Rect {
+                                x: step_x,
+                                y: step_y,
+                                w: actual_w,
+                                h: actual_h,
+                            },
+                        );
                     }
 
                     let _ = conn.flush();
@@ -118,11 +118,27 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
 
         if reset_pos != 0 {
             if actual_w > 0 && actual_h > 0 {
-                resize_client(win, start_x, start_y, actual_w, actual_h);
+                resize_client_rect(
+                    win,
+                    &Rect {
+                        x: start_x,
+                        y: start_y,
+                        w: actual_w,
+                        h: actual_h,
+                    },
+                );
             }
         } else {
             if actual_w > 0 && actual_h > 0 {
-                resize_client(win, x, y, actual_w, actual_h);
+                resize_client_rect(
+                    win,
+                    &Rect {
+                        x,
+                        y,
+                        w: actual_w,
+                        h: actual_h,
+                    },
+                );
             }
         }
     }
@@ -140,8 +156,18 @@ pub fn check_animate(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, r
     }
 }
 
+/// Animate a window using a Rect struct.
+pub fn animate_client_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
+    animate_client(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
+}
+
+/// Check and animate a window using a Rect struct.
+pub fn check_animate_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
+    check_animate(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
+}
+
 pub fn toggle_animated(_arg: &Arg) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.animated = !globals.animated;
 }
 

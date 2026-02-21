@@ -1,4 +1,4 @@
-use crate::client::{apply_size_hints, set_client_state, win_to_client};
+use crate::client::{apply_size_hints, set_client_state};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -42,7 +42,7 @@ pub fn remove_systray_icon(icon_win: Window) {
 
     drop(globals);
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     if let Some(ref mut systray) = globals.systray {
         systray.icons.retain(|&w| w != icon_win);
     }
@@ -51,7 +51,7 @@ pub fn remove_systray_icon(icon_win: Window) {
 }
 
 pub fn update_systray_icon_geom(icon_win: Window, w: i32, h: i32) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let bh = globals.bh;
     if let Some(client) = globals.clients.get_mut(&icon_win) {
         client.geo.h = bh;
@@ -115,7 +115,7 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
     drop(globals);
 
     if (flags & XEMBED_MAPPED) != 0 && current_tags == 0 {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&icon_win) {
             client.tags = 1;
         }
@@ -139,7 +139,7 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
             XEMBED_EMBEDDED_VERSION as i64,
         );
     } else if (flags & XEMBED_MAPPED) == 0 && current_tags != 0 {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&icon_win) {
             client.tags = 0;
         }
@@ -311,7 +311,7 @@ pub fn update_systray() {
 
         {
             eprintln!("TRACE: update_systray - before get_globals_mut for systray");
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             eprintln!("TRACE: update_systray - after get_globals_mut for systray");
             globals.systray = Some(Systray {
                 win: systray_win,

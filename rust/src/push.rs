@@ -1,4 +1,4 @@
-use crate::client::{is_visible, next_tiled, resize};
+use crate::client::{is_visible, next_tiled};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::monitor::arrange;
@@ -62,7 +62,7 @@ pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
     r
 }
 
-pub fn client_count_mon(mon: &Monitor) -> i32 {
+pub fn client_count_mon(mon: &MonitorInner) -> i32 {
     let globals = get_globals();
     let mut n = 0;
     let mut current = next_tiled(mon.clients);
@@ -165,7 +165,7 @@ pub fn push_up(arg: &Arg) {
         detach(win);
 
         {
-            let mut globals_guard = get_globals_mut();
+            let globals_guard = get_globals_mut();
             let globals = &mut *globals_guard;
             let clients = &mut globals.clients;
             let monitors = &mut globals.monitors;
@@ -218,7 +218,7 @@ pub fn push_up(arg: &Arg) {
         detach(win);
 
         if let Some(last_win) = last {
-            let mut globals = get_globals_mut();
+            let globals = get_globals_mut();
             if let Some(client) = globals.clients.get_mut(&last_win) {
                 client.next = Some(win);
             }
@@ -281,7 +281,7 @@ pub fn push_down(arg: &Arg) {
         detach(win);
 
         let next_c_next = get_globals().clients.get(&next_win).and_then(|c| c.next);
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.next = next_c_next;
         }
@@ -304,7 +304,7 @@ fn attach(win: Window) {
 
     let mon_clients = get_globals().monitors.get(mon_id).and_then(|m| m.clients);
 
-    let mut globals_guard = get_globals_mut();
+    let globals_guard = get_globals_mut();
     let globals = &mut *globals_guard;
     let clients = &mut globals.clients;
     let monitors = &mut globals.monitors;
@@ -333,7 +333,7 @@ fn detach(win: Window) {
 
     let client_next = get_globals().clients.get(&win).and_then(|c| c.next);
 
-    let mut globals_guard = get_globals_mut();
+    let globals_guard = get_globals_mut();
     let globals = &mut *globals_guard;
     let clients = &mut globals.clients;
     let monitors = &mut globals.monitors;

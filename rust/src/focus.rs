@@ -244,7 +244,7 @@ pub fn focus_last_client(_arg: &Arg) {
                 if let Some(sel) = globals.monitors.get(sel_mon_id).and_then(|m| m.sel) {
                     drop(globals);
                     unfocus_win(sel, false);
-                    let mut globals = get_globals_mut();
+                    let globals = get_globals_mut();
                     globals.selmon = Some(last_mid);
                 }
             }
