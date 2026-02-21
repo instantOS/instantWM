@@ -143,7 +143,7 @@ extern "C" {
     pub fn XDrawRectangle(
         display: *mut libc::c_void,
         d: Drawable,
-        gc: Gcontext,
+        gc: XlibGc,
         x: c_int,
         y: c_int,
         width: u32,
@@ -152,7 +152,7 @@ extern "C" {
     pub fn XFillArc(
         display: *mut libc::c_void,
         d: Drawable,
-        gc: Gcontext,
+        gc: XlibGc,
         x: c_int,
         y: c_int,
         width: u32,
@@ -163,7 +163,7 @@ extern "C" {
     pub fn XDrawArc(
         display: *mut libc::c_void,
         d: Drawable,
-        gc: Gcontext,
+        gc: XlibGc,
         x: c_int,
         y: c_int,
         width: u32,
@@ -174,7 +174,7 @@ extern "C" {
     pub fn XFillPolygon(
         display: *mut libc::c_void,
         d: Drawable,
-        gc: Gcontext,
+        gc: XlibGc,
         points: *mut Point,
         npoints: c_int,
         shape: c_int,
@@ -184,7 +184,7 @@ extern "C" {
         display: *mut libc::c_void,
         src: Drawable,
         dest: Drawable,
-        gc: Gcontext,
+        gc: XlibGc,
         src_x: c_int,
         src_y: c_int,
         width: u32,
@@ -195,7 +195,7 @@ extern "C" {
     pub fn XSync(display: *mut libc::c_void, discard: c_int);
     pub fn XSetLineAttributes(
         display: *mut libc::c_void,
-        gc: Gcontext,
+        gc: XlibGc,
         line_width: c_int,
         line_style: c_int,
         cap_style: c_int,
@@ -375,7 +375,7 @@ pub struct Drw {
     screen: i32,
     root: Window,
     drawable: Drawable,
-    gc: Gcontext,
+    gc: XlibGc,
     scheme: Option<Vec<Clr>>,
     pub fonts: Option<Box<Fnt>>,
     depth: u8,
@@ -484,8 +484,8 @@ impl Drw {
 
             eprintln!("TRACE: Drw::new - before XCreateGC");
             let gc = XCreateGC(display, root, 0, ptr::null_mut());
-            eprintln!("TRACE: Drw::new - gc = {}", gc);
-            if gc == 0 {
+            eprintln!("TRACE: Drw::new - gc = {:p}", gc);
+            if gc.is_null() {
                 XFreePixmap(display, drawable);
                 XCloseDisplay(display);
                 return Err("cannot create graphics context".to_string());
@@ -513,7 +513,6 @@ impl Drw {
                 owns_resources: true,
             })
         }
-        eprintln!("TRACE: Drw::new - completed");
     }
 
     pub fn display(&self) -> *mut libc::c_void {
