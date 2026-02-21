@@ -21,17 +21,10 @@ pub(crate) fn update_status() {
                 if t.starts_with("ipc:") {
                     return;
                 }
-                let bytes = t.as_bytes();
-                let len = bytes.len().min(g.stext.len() - 1);
-                g.stext[..len].copy_from_slice(&bytes[..len]);
-                g.stext[len] = 0;
+                g.stext = t;
             }
             None => {
-                let default_text = format!("instantwm-{}", VERSION);
-                let bytes = default_text.as_bytes();
-                let len = bytes.len().min(g.stext.len() - 1);
-                g.stext[..len].copy_from_slice(&bytes[..len]);
-                g.stext[len] = 0;
+                g.stext = format!("instantwm-{}", VERSION);
             }
         }
     }

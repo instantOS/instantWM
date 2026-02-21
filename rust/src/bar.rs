@@ -27,17 +27,11 @@ pub fn text_width(text: &str) -> i32 {
     }
 }
 
-fn cstr_from_buf(buf: &[u8]) -> &str {
-    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-    std::str::from_utf8(&buf[..end]).unwrap_or("")
-}
-
 pub(crate) fn layout_symbol(m: &MonitorInner) -> &str {
-    let symbol = cstr_from_buf(&m.ltsymbol);
-    if symbol.is_empty() {
+    if m.ltsymbol.is_empty() {
         "[]="
     } else {
-        symbol
+        &m.ltsymbol
     }
 }
 

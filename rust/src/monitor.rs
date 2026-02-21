@@ -48,9 +48,6 @@ pub fn create_monitor() -> MonitorInner {
         ..Default::default()
     };
     eprintln!("TRACE: create_monitor - after creating MonitorInner");
-    let default_symbol = b"[]=";
-    m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
-    eprintln!("TRACE: create_monitor - after setting ltsymbol");
 
     let pertag = Box::new(Pertag {
         current_tag: 1,
@@ -90,9 +87,6 @@ pub fn create_monitor_with_values(
         ..Default::default()
     };
     eprintln!("TRACE: create_monitor_with_values - after creating MonitorInner");
-    let default_symbol = b"[]=";
-    m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
-    eprintln!("TRACE: create_monitor_with_values - after setting ltsymbol");
 
     let pertag = Box::new(Pertag {
         current_tag: 1,
@@ -290,7 +284,8 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                     let g = get_globals();
                     g.clients.get(&c_win).map(|c| {
                         let mut name = [0u8; SCRATCHPAD_NAME_LEN];
-                        name.copy_from_slice(&c.scratchpad_name);
+                        let bytes = c.scratchpad_name.as_bytes();
+                        name[..bytes.len()].copy_from_slice(bytes);
                         name
                     })
                 };

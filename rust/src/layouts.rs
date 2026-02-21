@@ -319,13 +319,7 @@ pub fn monocle(m: &mut MonitorInner) {
     }
 
     if n > 0 {
-        let symbol = format!("[{}]", n);
-        let bytes = symbol.as_bytes();
-        let len = bytes.len().min(15);
-        m.ltsymbol[..len].copy_from_slice(&bytes[..len]);
-        if len < 16 {
-            m.ltsymbol[len] = 0;
-        }
+        m.ltsymbol = format!("[{}]", n);
     }
 
     let g = get_globals();
@@ -478,13 +472,7 @@ pub fn deck(m: &mut MonitorInner) {
 
     let dn = n as i32 - m.nmaster;
     if dn > 0 {
-        let symbol = format!("D {}", dn);
-        let bytes = symbol.as_bytes();
-        let len = bytes.len().min(15);
-        m.ltsymbol[..len].copy_from_slice(&bytes[..len]);
-        if len < 16 {
-            m.ltsymbol[len] = 0;
-        }
+        m.ltsymbol = format!("D {}", dn);
     }
 
     let mw: u32 = if n > m.nmaster as u32 {
@@ -1217,14 +1205,7 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
     }
 
     let layout = get_current_layout(m);
-    let symbol = layout.symbol();
-    let bytes = symbol.as_bytes();
-    let len = bytes.len().min(15);
-    m.ltsymbol[..len].copy_from_slice(&bytes[..len]);
-    if len < 16 {
-        m.ltsymbol[len] = 0;
-    }
-
+    m.ltsymbol = layout.symbol().to_string();
     layout.arrange(m);
 
     let mut g = get_globals_mut();
@@ -1381,12 +1362,7 @@ pub fn set_layout(arg: &Arg) {
             if let Some(selmon_id) = g.selmon {
                 if let Some(m) = g.monitors.get_mut(selmon_id) {
                     if let Some(symbol) = ltsymbol {
-                        let bytes = symbol.as_bytes();
-                        let len = bytes.len().min(15);
-                        m.ltsymbol[..len].copy_from_slice(&bytes[..len]);
-                        if len < 16 {
-                            m.ltsymbol[len] = 0;
-                        }
+                        m.ltsymbol = symbol.to_string();
                     }
                 }
             }

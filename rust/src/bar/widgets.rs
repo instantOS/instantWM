@@ -144,7 +144,6 @@ pub(crate) fn draw_tag_indicators(
     let bar_dragging = g.bar_dragging;
     let num_tags = g.tags.count;
 
-    let tag_names = g.tags.names;
     let tags_alt = g.tags.alt_names.clone();
 
     for i in 0..num_tags as u32 {
@@ -173,16 +172,12 @@ pub(crate) fn draw_tag_indicators(
             continue;
         }
 
-        let tag_name = if (actual_i as usize) < tag_names.len() {
-            let tag_bytes = &tag_names[actual_i as usize];
-            let len = tag_bytes
-                .iter()
-                .position(|&b| b == 0)
-                .unwrap_or(tag_bytes.len());
-            std::str::from_utf8(&tag_bytes[..len]).unwrap_or("")
-        } else {
-            ""
-        };
+        let tag_name = g
+            .tags
+            .names
+            .get(actual_i as usize)
+            .map(|s| s.as_str())
+            .unwrap_or("");
 
         let display_name = if show_alt_tag && (actual_i as usize) < tags_alt.len() {
             tags_alt[actual_i as usize]
@@ -404,9 +399,7 @@ fn draw_window_title(m: &mut MonitorInner, c: &ClientInner, x: i32, width: i32, 
         false
     };
 
-    let client_name = unsafe { std::str::from_utf8_unchecked(&c.name) };
-    let name_len = client_name.chars().take_while(|&ch| ch != '\0').count();
-    let client_name = &client_name[..name_len.min(client_name.len())];
+    let client_name = c.name.as_str();
     let text_w = super::text_width(client_name);
 
     if let Some(ref drw) = g.drw {

@@ -243,10 +243,7 @@ fn load_tag_resources(resource_str: &str) {
     for i in 0..9 {
         let propname = format!("tag.{}", i + 1);
         if let Some(value) = find_resource(resource_str, &propname) {
-            let bytes = value.as_bytes();
-            let len = bytes.len().min(15);
-            globals.tags.names[i][..len].copy_from_slice(&bytes[..len]);
-            globals.tags.names[i][len] = 0;
+            globals.tags.names[i] = value;
         }
     }
 }
@@ -273,14 +270,9 @@ pub fn verify_tags_xres() {
     let mut globals = get_globals_mut();
 
     for i in 0..9 {
-        let len = globals.tags.names[i]
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(globals.tags.names[i].len());
+        let len = globals.tags.names[i].len();
         if len > MAX_TAGLEN - 1 || len == 0 {
-            let err = b"Xres err";
-            globals.tags.names[i][..err.len()].copy_from_slice(err);
-            globals.tags.names[i][err.len()] = 0;
+            globals.tags.names[i] = "Xres err".to_string();
         }
     }
 }

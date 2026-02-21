@@ -29,10 +29,6 @@ pub struct ColorScheme {
 }
 
 impl ColorScheme {
-    pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
-        Self { fg, bg, detail }
-    }
-
     pub fn from_vec(vec: Vec<Clr>) -> Option<Self> {
         if vec.len() >= 3 {
             Some(Self {
@@ -89,6 +85,14 @@ pub struct StatusScheme {
 impl StatusScheme {
     pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
         Self { fg, bg, detail }
+    }
+
+    pub fn as_color_scheme(&self) -> ColorScheme {
+        ColorScheme {
+            fg: self.fg.clone(),
+            bg: self.bg.clone(),
+            detail: self.detail.clone(),
+        }
     }
 }
 

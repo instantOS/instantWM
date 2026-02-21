@@ -54,19 +54,14 @@ pub fn name_tag(arg: &Arg) {
         if (tagset & (1 << i)) != 0 {
             let mut globals = get_globals_mut();
             if !name_bytes.is_empty() {
-                globals.tags.names[i][..name_bytes.len()].copy_from_slice(name_bytes);
-                globals.tags.names[i][name_bytes.len()..]
-                    .iter_mut()
-                    .for_each(|b| *b = 0);
+                globals.tags.names[i] = String::from_utf8_lossy(name_bytes).into_owned();
             } else {
-                let default_tag = match i {
-                    8 => b"9".to_vec(),
-                    _ => vec![b'1' + i as u8],
+                let default_tag = if i == 8 {
+                    "9".to_string()
+                } else {
+                    ((b'1' + i as u8) as char).to_string()
                 };
-                globals.tags.names[i][..default_tag.len()].copy_from_slice(&default_tag);
-                globals.tags.names[i][default_tag.len()..]
-                    .iter_mut()
-                    .for_each(|b| *b = 0);
+                globals.tags.names[i] = default_tag;
             }
         }
     }
@@ -78,9 +73,7 @@ pub fn reset_name_tag(_arg: &Arg) {
         if i >= MAX_TAGS {
             break;
         }
-        let default = format!("{}\0", i + 1);
-        let bytes = default.as_bytes();
-        globals.tags.names[i][..bytes.len().min(16)].copy_from_slice(&bytes[..bytes.len().min(16)]);
+        globals.tags.names[i] = format!("{}", i + 1);
     }
     globals.tags.width = 0;
 }
@@ -146,11 +139,7 @@ pub fn get_tag_width() -> i32 {
             }
         }
 
-        let tag_len = globals.tags.names[i]
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(globals.tags.names[i].len());
-        let tag_name = std::str::from_utf8(&globals.tags.names[i][..tag_len]).unwrap_or("");
+        let tag_name = globals.tags.names.get(i).map(|s| s.as_str()).unwrap_or("");
         let display_name = if showalttag && i < tagsalt.len() {
             tagsalt[i]
         } else {
@@ -224,11 +213,7 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
             }
         }
 
-        let tag_len = globals.tags.names[i]
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(globals.tags.names[i].len());
-        let tag_name = std::str::from_utf8(&globals.tags.names[i][..tag_len]).unwrap_or("");
+        let tag_name = globals.tags.names.get(i).map(|s| s.as_str()).unwrap_or("");
         let display_name = if showalttag && i < tagsalt.len() {
             tagsalt[i]
         } else {
@@ -508,14 +493,8 @@ fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
                         mon.ltsymbol = globals
                             .layouts
                             .get(lt_idx)
-                            .map(|l| {
-                                let mut arr = [0u8; 16];
-                                let bytes = l.symbol().as_bytes();
-                                arr[..bytes.len().min(16)]
-                                    .copy_from_slice(&bytes[..bytes.len().min(16)]);
-                                arr
-                            })
-                            .unwrap_or([0u8; 16]);
+                            .map(|l| l.symbol().to_string())
+                            .unwrap_or_else(|| "[]=".to_string());
                     }
                 }
             }

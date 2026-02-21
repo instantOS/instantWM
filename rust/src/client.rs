@@ -14,7 +14,7 @@ use x11rb::CURRENT_TIME;
 pub static ANIM_CLIENT: AtomicU32 = AtomicU32::new(0);
 /// The previously focused window (0 = none), used by focus-last-client.
 pub static LAST_CLIENT: AtomicU32 = AtomicU32::new(0);
-pub const BROKEN: &[u8; 10] = b"broken\0\0\0\0";
+pub const BROKEN: &str = "broken";
 
 pub const WM_STATE_NORMAL: i32 = 1;
 pub const WM_STATE_ICONIC: i32 = 3;
@@ -718,16 +718,10 @@ pub fn update_title(win: Window) {
     }
 }
 
-fn broken_title() -> [u8; 256] {
-    let mut title = [0u8; 256];
-    title[..BROKEN.len()].copy_from_slice(BROKEN);
-    title
-}
-
-fn read_window_title(win: Window) -> [u8; 256] {
+fn read_window_title(win: Window) -> String {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
-        return broken_title();
+        return BROKEN.to_string();
     };
 
     let net_wm_name = get_globals().netatom.wm_name;
@@ -747,20 +741,18 @@ fn read_window_title(win: Window) -> [u8; 256] {
             continue;
         }
 
-        let mut title = [0u8; 256];
         let len = reply
             .value
             .iter()
             .position(|&b| b == 0)
-            .unwrap_or(reply.value.len())
-            .min(255);
-        title[..len].copy_from_slice(&reply.value[..len]);
-        if title[0] != 0 {
+            .unwrap_or(reply.value.len());
+        let title = String::from_utf8_lossy(&reply.value[..len]).into_owned();
+        if !title.is_empty() {
             return title;
         }
     }
 
-    broken_title()
+    BROKEN.to_string()
 }
 
 pub fn apply_rules(win: Window) {
@@ -773,42 +765,20 @@ pub fn apply_rules(win: Window) {
                 let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
                 let parts: Vec<&[u8]> = data.split(|&b| b == 0).filter(|s| !s.is_empty()).collect();
                 // WM_CLASS is encoded as: instance\0class\0
-                let instance = parts
+                let instance: Vec<u8> = parts
                     .get(0)
-                    .map(|s| {
-                        let mut arr = [0u8; 256];
-                        let len = s.len().min(255);
-                        arr[..len].copy_from_slice(&s[..len]);
-                        arr
-                    })
-                    .unwrap_or_else(|| {
-                        let mut arr = [0u8; 256];
-                        arr[..BROKEN.len()].copy_from_slice(BROKEN);
-                        arr
-                    });
-                let class = parts
+                    .map(|s| s.to_vec())
+                    .unwrap_or_else(|| BROKEN.as_bytes().to_vec());
+                let class: Vec<u8> = parts
                     .get(1)
-                    .map(|s| {
-                        let mut arr = [0u8; 256];
-                        let len = s.len().min(255);
-                        arr[..len].copy_from_slice(&s[..len]);
-                        arr
-                    })
-                    .unwrap_or_else(|| {
-                        let mut arr = [0u8; 256];
-                        arr[..BROKEN.len()].copy_from_slice(BROKEN);
-                        arr
-                    });
+                    .map(|s| s.to_vec())
+                    .unwrap_or_else(|| BROKEN.as_bytes().to_vec());
                 (class, instance)
             } else {
-                let mut arr = [0u8; 256];
-                arr[..BROKEN.len()].copy_from_slice(BROKEN);
-                (arr, arr)
+                (BROKEN.as_bytes().to_vec(), BROKEN.as_bytes().to_vec())
             }
         } else {
-            let mut arr = [0u8; 256];
-            arr[..BROKEN.len()].copy_from_slice(BROKEN);
-            (arr, arr)
+            (BROKEN.as_bytes().to_vec(), BROKEN.as_bytes().to_vec())
         }
     } else {
         return;
@@ -828,7 +798,7 @@ pub fn apply_rules(win: Window) {
     // Read client info we need for matching
     let (client_name_copy, client_mon_id) = {
         let c = globals.clients.get(&win).unwrap();
-        (c.name, c.mon_id)
+        (c.name.clone(), c.mon_id)
     };
 
     // Initialize client fields
@@ -850,12 +820,8 @@ pub fn apply_rules(win: Window) {
                 .title
                 .map(|t| {
                     let title_bytes = t.as_bytes();
-                    let name_bytes: Vec<u8> = client_name_copy
-                        .iter()
-                        .take_while(|&&b| b != 0)
-                        .copied()
-                        .collect();
-                    name_bytes
+                    client_name_copy
+                        .as_bytes()
                         .windows(title_bytes.len())
                         .any(|w| w == title_bytes)
                 })

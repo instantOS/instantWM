@@ -23,13 +23,12 @@ struct StatusLayout {
     total_width: i32,
 }
 
-pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
-    let nul_pos = stext.iter().position(|&b| b == 0).unwrap_or(stext.len());
-    if nul_pos == 0 {
+pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &str) -> i32 {
+    if stext.is_empty() {
         return 0;
     }
 
-    let items = parse_status_items(&stext[..nul_pos]);
+    let items = parse_status_items(stext.as_bytes());
     let layout = measure_layout(m, &items);
 
     {
@@ -178,7 +177,7 @@ fn draw_items(
     layout: StatusLayout,
 ) {
     let g = get_globals();
-    let mut scheme = g.statusscheme.clone().unwrap_or_default();
+    let mut scheme = g.statusscheme.clone().unwrap_or_default().as_color_scheme();
     let base_scheme = scheme.clone();
 
     drw.set_scheme(scheme.clone());
