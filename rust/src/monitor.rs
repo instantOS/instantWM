@@ -30,7 +30,7 @@ fn tagmon(arg: &Arg) {
 }
 
 pub fn create_monitor() -> MonitorInner {
-    eprintln!("TRACE: create_monitor - start");
+    eprintln!("TRACE: create_monitor - start (WARNING: this version calls get_globals, may deadlock)");
     let g = get_globals();
     eprintln!("TRACE: create_monitor - after get_globals");
 
@@ -46,7 +46,6 @@ pub fn create_monitor() -> MonitorInner {
         ..Default::default()
     };
     eprintln!("TRACE: create_monitor - after creating MonitorInner");
-
     let default_symbol = b"[]=";
     m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
     eprintln!("TRACE: create_monitor - after setting ltsymbol");
@@ -66,6 +65,43 @@ pub fn create_monitor() -> MonitorInner {
     eprintln!("TRACE: create_monitor - after setting pertag");
 
     eprintln!("TRACE: create_monitor - returning");
+    m
+}
+
+pub fn create_monitor_with_values(mfact: f32, nmaster: i32, showbar: bool, topbar: bool) -> MonitorInner {
+    eprintln!("TRACE: create_monitor_with_values - start");
+
+    let mut m = MonitorInner {
+        tagset: [1, 1],
+        mfact,
+        nmaster,
+        showbar,
+        topbar,
+        clientcount: 0,
+        overlaymode: 0,
+        sellt: 0,
+        ..Default::default()
+    };
+    eprintln!("TRACE: create_monitor_with_values - after creating MonitorInner");
+    let default_symbol = b"[]=";
+    m.ltsymbol[..default_symbol.len()].copy_from_slice(default_symbol);
+    eprintln!("TRACE: create_monitor_with_values - after setting ltsymbol");
+
+    let pertag = Box::new(Pertag {
+        current_tag: 1,
+        prevtag: 1,
+        nmasters: [m.nmaster; MAX_TAGS],
+        mfacts: [m.mfact; MAX_TAGS],
+        sellts: [m.sellt; MAX_TAGS],
+        showbars: [m.showbar; MAX_TAGS],
+        ltidxs: [[None; 2]; MAX_TAGS],
+    });
+    eprintln!("TRACE: create_monitor_with_values - after creating Pertag");
+
+    m.pertag = Some(pertag);
+    eprintln!("TRACE: create_monitor_with_values - after setting pertag");
+
+    eprintln!("TRACE: create_monitor_with_values - returning");
     m
 }
 
@@ -443,8 +479,13 @@ pub fn update_geom() -> bool {
                                 {
                                     eprintln!("TRACE: update_geom - before create_monitor loop");
                                     let mut g = get_globals_mut();
+                                    // Get values before the loop to use in create_monitor
+                                    let mfact = g.mfact;
+                                    let nmaster = g.nmaster;
+                                    let showbar = g.showbar;
+                                    let topbar = g.topbar;
                                     while g.monitors.len() < nn {
-                                        g.monitors.push(create_monitor());
+                                        g.monitors.push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
                                     }
                                     eprintln!("TRACE: update_geom - after create_monitor loop");
                                 }
