@@ -274,6 +274,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     update_status();
     eprintln!("TRACE: setup - after update_status");
 
+    eprintln!("TRACE: setup - before init_wm_check_window");
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
@@ -281,7 +282,9 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         };
         init_wm_check_window(conn, screen_num, root);
     }
+    eprintln!("TRACE: setup - after init_wm_check_window");
 
+    eprintln!("TRACE: setup - before setting event mask");
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
@@ -312,6 +315,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
 
         let _ = conn.flush();
     }
+    eprintln!("TRACE: setup - after setting event mask");
 
     eprintln!("TRACE: setup - before grab_keys");
     grab_keys();
