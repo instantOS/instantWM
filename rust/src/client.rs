@@ -768,8 +768,7 @@ pub fn apply_rules(win: Window) {
         if let Ok(cookie) = hint {
             if let Ok(reply) = cookie.reply() {
                 let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
-                let parts: Vec<&[u8]> =
-                    data.split(|&b| b == 0).filter(|s| !s.is_empty()).collect();
+                let parts: Vec<&[u8]> = data.split(|&b| b == 0).filter(|s| !s.is_empty()).collect();
                 // WM_CLASS is encoded as: instance\0class\0
                 let instance = parts
                     .get(0)
@@ -1407,7 +1406,8 @@ pub fn manage(
     }
     if should_raise {
         if let Some(ref conn) = x11.conn {
-            let _ = conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+            let _ =
+                conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
             let _ = conn.flush();
         }
     }
@@ -1538,14 +1538,8 @@ fn read_client_info(w: Window) {
             let globals = get_globals();
             globals.netatom[NetAtom::ClientInfo as usize]
         };
-        if let Ok(cookie) = conn.get_property(
-            false,
-            w,
-            client_info_atom,
-            AtomEnum::CARDINAL,
-            0,
-            2,
-        ) {
+        if let Ok(cookie) = conn.get_property(false, w, client_info_atom, AtomEnum::CARDINAL, 0, 2)
+        {
             if let Ok(reply) = cookie.reply() {
                 if let Some(mut data) = reply.value32() {
                     let tags = data.next().unwrap_or(0);
@@ -1553,7 +1547,10 @@ fn read_client_info(w: Window) {
 
                     let target_mon = {
                         let globals = get_globals();
-                        globals.monitors.iter().position(|m| m.num as u32 == mon_num)
+                        globals
+                            .monitors
+                            .iter()
+                            .position(|m| m.num as u32 == mon_num)
                     };
                     let mut globals = get_globals_mut();
                     if let Some(client) = globals.clients.get_mut(&w) {

@@ -1,14 +1,16 @@
-use crate::bar::{draw_bar, get_tag_width, reset_bar};
+use crate::bar::{draw_bar, get_layout_symbol_width, get_tag_width, reset_bar, text_width};
 use crate::client::{
     configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
     update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
 };
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
-use crate::keyboard::{grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release};
-use crate::monitor::{arrange, restack, update_geom, win_to_mon};
+use crate::keyboard::{
+    grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
+};
+use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
-use crate::systray::{update_systray, win_to_systray_icon};
+use crate::systray::{get_systray_width, update_systray, win_to_systray_icon};
 use crate::types::*;
 use crate::util::clean_mask;
 use std::sync::atomic::Ordering;
@@ -35,6 +37,141 @@ fn has_tiling_layout(mon_id: MonitorId) -> bool {
     }
 }
 
+fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
+    let mut arg = Arg::default();
+    let g = get_globals();
+    let Some(mon) = g.monitors.get(mon_id).cloned() else {
+        return (Click::RootWin, arg);
+    };
+
+    let ev_x = e.event_x as i32;
+    let start_menu_size = g.startmenusize as i32;
+    let numtags = g.numtags as usize;
+    let mut x = start_menu_size;
+    let mut occupied_tags: u32 = 0;
+    let blw = get_layout_symbol_width(&mon);
+
+    let mut current = mon.clients;
+    while let Some(c_win) = current {
+        if let Some(c) = g.clients.get(&c_win) {
+            occupied_tags |= if c.tags == 255 { 0 } else { c.tags };
+            current = c.next;
+        } else {
+            break;
+        }
+    }
+
+    let mut i = 0usize;
+    while i < numtags {
+        if i >= 9 {
+            i += 1;
+            continue;
+        }
+
+        if mon.showtags != 0 {
+            let tag_mask = 1u32 << i;
+            if (occupied_tags & tag_mask) == 0 && (mon.tagset[mon.seltags as usize] & tag_mask) == 0
+            {
+                i += 1;
+                continue;
+            }
+        }
+
+        let tag_len = g.tags[i]
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(g.tags[i].len());
+        let tag_text = std::str::from_utf8(&g.tags[i][..tag_len]).unwrap_or("");
+        x += text_width(tag_text);
+
+        if ev_x < x {
+            break;
+        }
+        i += 1;
+    }
+
+    let status_hit_x = mon.ww - get_systray_width() as i32 - g.statuswidth + g.lrpad - 2;
+    let bh = g.bh;
+    drop(g);
+
+    if ev_x < start_menu_size {
+        reset_bar();
+        return (Click::StartMenu, arg);
+    }
+
+    if i < numtags {
+        arg.ui = 1 << i;
+        return (Click::TagBar, arg);
+    }
+
+    if ev_x < x + blw {
+        return (Click::LtSymbol, arg);
+    }
+
+    if mon.sel.is_none() && ev_x > x + blw && ev_x < x + blw + bh {
+        return (Click::ShutDown, arg);
+    }
+
+    if ev_x > status_hit_x {
+        return (Click::StatusText, arg);
+    }
+
+    let g = get_globals();
+    let mut visible_clients: Vec<Window> = Vec::new();
+    let mut current = mon.clients;
+    while let Some(c_win) = current {
+        let Some(c) = g.clients.get(&c_win) else {
+            break;
+        };
+        current = c.next;
+        if crate::types::is_visible(
+            c.tags,
+            mon.tagset[mon.seltags as usize],
+            mon.seltags,
+            c.issticky,
+        ) {
+            visible_clients.push(c_win);
+        }
+    }
+    drop(g);
+
+    if !visible_clients.is_empty() {
+        let mut title_end = x + blw;
+        let total_width = if mon.bar_clients_width > 0 {
+            mon.bar_clients_width + 1
+        } else {
+            (mon.ww - title_end).max(0)
+        };
+        let each_width = total_width / visible_clients.len() as i32;
+        let mut remainder = total_width % visible_clients.len() as i32;
+
+        for c_win in visible_clients {
+            let mut this_width = each_width;
+            if remainder > 0 {
+                this_width += 1;
+                remainder -= 1;
+            }
+            title_end += this_width;
+            if ev_x > title_end {
+                continue;
+            }
+
+            arg.v = Some(c_win as usize);
+            let title_start = title_end - this_width;
+            let resize_start = title_start + this_width - RESIZE_WIDGET_WIDTH;
+            if mon.sel == Some(c_win) && ev_x < title_start + CLOSE_BUTTON_HIT_WIDTH {
+                return (Click::CloseButton, arg);
+            }
+            if mon.sel == Some(c_win) && ev_x > resize_start {
+                return (Click::ResizeWidget, arg);
+            }
+            return (Click::WinTitle, arg);
+        }
+    }
+
+    (Click::RootWin, arg)
+}
+
 pub fn button_press(e: &ButtonPressEvent) {
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
     let x11 = get_x11();
@@ -47,38 +184,67 @@ pub fn button_press(e: &ButtonPressEvent) {
     let numlockmask = globals.numlockmask;
     let buttons = globals.buttons.clone();
     let altcursor = globals.altcursor;
-    let selmon_id = globals.selmon;
-    let root = globals.root;
+    let mut selmon_id = globals.selmon;
+    let focusfollowsmouse = globals.focusfollowsmouse;
     drop(globals);
 
-    if let Some(sel_id) = selmon_id {
-        if let Some(mon) = get_globals().monitors.get(sel_id) {
-            if let Some(sel_win) = mon.sel {
-                let is_floating = get_globals()
-                    .clients
-                    .get(&sel_win)
-                    .map(|c| c.isfloating)
-                    .unwrap_or(false);
-                let has_tiling = has_tiling_layout(sel_id);
-                if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
-                    reset_cursor();
-                    resize_mouse(&Arg::default());
-                    return;
+    if let Some(clicked_mon) = win_to_mon(e.event) {
+        if selmon_id != Some(clicked_mon) && (focusfollowsmouse || e.detail <= 3) {
+            let mut globals = get_globals_mut();
+            globals.selmon = Some(clicked_mon);
+            selmon_id = Some(clicked_mon);
+            drop(globals);
+            focus(None);
+        }
+    }
+
+    let mut click_target = Click::RootWin;
+    let mut click_arg = Arg::default();
+
+    if let Some(win) = win_to_client(e.event) {
+        click_target = Click::ClientWin;
+        click_arg.v = Some(win as usize);
+        if focusfollowsmouse || e.detail <= 3 {
+            focus(Some(win));
+            let mut globals = get_globals_mut();
+            if let Some(mon_id) = globals.clients.get(&win).and_then(|c| c.mon_id) {
+                if let Some(mon) = globals.monitors.get_mut(mon_id) {
+                    restack(mon);
+                }
+            }
+        }
+    } else if let Some(sel_id) = selmon_id {
+        let globals = get_globals();
+        if let Some(mon) = globals.monitors.get(sel_id) {
+            if e.event == mon.barwin {
+                drop(globals);
+                (click_target, click_arg) = classify_bar_click(e, sel_id);
+            } else if (e.root_x as i32) > mon.mx + mon.mw - 50 {
+                click_target = Click::SideBar;
+            }
+        }
+    }
+
+    if click_target == Click::RootWin {
+        if let Some(sel_id) = selmon_id {
+            if let Some(mon) = get_globals().monitors.get(sel_id) {
+                if let Some(sel_win) = mon.sel {
+                    let is_floating = get_globals()
+                        .clients
+                        .get(&sel_win)
+                        .map(|c| c.isfloating)
+                        .unwrap_or(false);
+                    let has_tiling = has_tiling_layout(sel_id);
+                    if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
+                        reset_cursor();
+                        resize_mouse(&Arg::default());
+                        return;
+                    }
                 }
             }
         }
     }
 
-    let click_target = if win_to_client(e.event).is_some() {
-        Click::ClientWin
-    } else if e.event == root {
-        Click::RootWin
-    } else if win_to_mon(e.event).is_some() {
-        // Detailed bar-region hit-testing is not yet implemented in this port.
-        Click::WinTitle
-    } else {
-        Click::RootWin
-    };
     let clean_state = clean_mask(e.state.into(), numlockmask);
 
     for button in &buttons {
@@ -89,7 +255,21 @@ pub fn button_press(e: &ButtonPressEvent) {
             continue;
         }
         if let Some(func) = button.func {
-            func(&button.arg);
+            let dispatch_arg = if matches!(
+                click_target,
+                Click::TagBar
+                    | Click::WinTitle
+                    | Click::CloseButton
+                    | Click::ShutDown
+                    | Click::SideBar
+                    | Click::ResizeWidget
+            ) && button.arg.i == 0
+            {
+                click_arg
+            } else {
+                button.arg
+            };
+            func(&dispatch_arg);
         }
     }
 }
@@ -199,12 +379,12 @@ pub fn expose(e: &ExposeEvent) {
     }
 
     if let Some(mon_id) = win_to_mon(e.window) {
-        let mon = {
-            let globals = get_globals();
-            globals.monitors.get(mon_id).cloned()
-        };
-        if let Some(mut mon) = mon {
-            draw_bar(&mut mon);
+        let mut globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(mon_id) {
+            if e.window != mon.barwin {
+                return;
+            }
+            draw_bar(mon);
         }
     }
 }
@@ -270,13 +450,111 @@ pub fn map_request(e: &MapRequestEvent) {
 }
 
 pub fn motion_notify(_e: &MotionNotifyEvent) {
+    let e = _e;
     let globals = get_globals();
+    if e.event != globals.root {
+        return;
+    }
+    let selmon_id = globals.selmon;
+    let focusfollowsmouse = globals.focusfollowsmouse;
     let mut tagwidth = globals.tagwidth;
+    drop(globals);
+
     if tagwidth == 0 {
         tagwidth = get_tag_width();
-        drop(globals);
         let mut globals = get_globals_mut();
         globals.tagwidth = tagwidth;
+    }
+
+    if focusfollowsmouse {
+        if let Some(m) = rect_to_mon(e.root_x as i32, e.root_y as i32, 1, 1) {
+            if Some(m) != selmon_id {
+                let mut globals = get_globals_mut();
+                globals.selmon = Some(m);
+                drop(globals);
+                focus(None);
+                return;
+            }
+        }
+    }
+
+    let Some(selmon_idx) = get_globals().selmon else {
+        return;
+    };
+
+    let (mx, my, bh, startmenusize, activeoffset, bar_clients_width, gesture, has_sel, x_limit) = {
+        let globals = get_globals();
+        let Some(mon) = globals.monitors.get(selmon_idx) else {
+            return;
+        };
+        (
+            mon.mx,
+            mon.my,
+            globals.bh,
+            globals.startmenusize as i32,
+            mon.activeoffset as i32,
+            mon.bar_clients_width,
+            mon.gesture,
+            mon.sel.is_some(),
+            mon.mx + tagwidth + get_layout_symbol_width(mon),
+        )
+    };
+
+    let root_x = e.root_x as i32;
+    let root_y = e.root_y as i32;
+
+    if root_y >= my + bh - 3 {
+        reset_bar();
+        return;
+    }
+
+    if root_x < x_limit {
+        let new_gesture = if root_x < mx + startmenusize {
+            Gesture::StartMenu
+        } else {
+            let tag = crate::tags::get_tag_at_x(root_x);
+            if tag >= 0 {
+                Gesture::from_tag_index(tag as usize).unwrap_or(Gesture::None)
+            } else {
+                Gesture::None
+            }
+        };
+
+        if new_gesture != gesture {
+            let mut globals = get_globals_mut();
+            if let Some(mon) = globals.monitors.get_mut(selmon_idx) {
+                mon.gesture = new_gesture;
+                draw_bar(mon);
+            }
+        }
+        return;
+    }
+
+    let title_limit = {
+        let globals = get_globals();
+        let Some(mon) = globals.monitors.get(selmon_idx) else {
+            return;
+        };
+        mon.mx + get_layout_symbol_width(mon) + tagwidth + bar_clients_width
+    };
+
+    if has_sel && root_x < title_limit {
+        let new_gesture = if root_x > activeoffset && root_x < activeoffset + CLOSE_BUTTON_HIT_WIDTH
+        {
+            Gesture::CloseButton
+        } else {
+            Gesture::None
+        };
+
+        if new_gesture != gesture {
+            let mut globals = get_globals_mut();
+            if let Some(mon) = globals.monitors.get_mut(selmon_idx) {
+                mon.gesture = new_gesture;
+                draw_bar(mon);
+            }
+        }
+    } else {
+        reset_bar();
     }
 }
 
@@ -448,7 +726,14 @@ pub fn scan() {
             }
 
             let is_transient = conn
-                .get_property(false, win, AtomEnum::WM_TRANSIENT_FOR, AtomEnum::WINDOW, 0, 1)
+                .get_property(
+                    false,
+                    win,
+                    AtomEnum::WM_TRANSIENT_FOR,
+                    AtomEnum::WINDOW,
+                    0,
+                    1,
+                )
                 .ok()
                 .and_then(|cookie| cookie.reply().ok())
                 .and_then(|reply| reply.value32().and_then(|mut values| values.next()))

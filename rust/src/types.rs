@@ -106,12 +106,63 @@ pub enum OverlayDirection {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u32)]
 pub enum Gesture {
     #[default]
     None = 0,
+    Tag1 = 1,
+    Tag2 = 2,
+    Tag3 = 3,
+    Tag4 = 4,
+    Tag5 = 5,
+    Tag6 = 6,
+    Tag7 = 7,
+    Tag8 = 8,
+    Tag9 = 9,
+    Tag10 = 10,
+    Tag11 = 11,
+    Tag12 = 12,
+    Tag13 = 13,
+    Tag14 = 14,
+    Tag15 = 15,
+    Tag16 = 16,
+    Tag17 = 17,
+    Tag18 = 18,
+    Tag19 = 19,
+    Tag20 = 20,
+    Tag21 = 21,
     Overlay = 30,
     CloseButton = 31,
     StartMenu = 32,
+}
+
+impl Gesture {
+    pub fn from_tag_index(tag_index: usize) -> Option<Self> {
+        match tag_index {
+            0 => Some(Self::Tag1),
+            1 => Some(Self::Tag2),
+            2 => Some(Self::Tag3),
+            3 => Some(Self::Tag4),
+            4 => Some(Self::Tag5),
+            5 => Some(Self::Tag6),
+            6 => Some(Self::Tag7),
+            7 => Some(Self::Tag8),
+            8 => Some(Self::Tag9),
+            9 => Some(Self::Tag10),
+            10 => Some(Self::Tag11),
+            11 => Some(Self::Tag12),
+            12 => Some(Self::Tag13),
+            13 => Some(Self::Tag14),
+            14 => Some(Self::Tag15),
+            15 => Some(Self::Tag16),
+            16 => Some(Self::Tag17),
+            17 => Some(Self::Tag18),
+            18 => Some(Self::Tag19),
+            19 => Some(Self::Tag20),
+            20 => Some(Self::Tag21),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

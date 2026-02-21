@@ -1,4 +1,4 @@
-use crate::bar::update_bar_pos;
+use crate::bar::{draw_bar, draw_bars, update_bar_pos};
 use crate::client::{
     attach, attach_stack, detach, detach_stack, is_visible, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
@@ -655,11 +655,25 @@ pub fn update_geom() -> bool {
     dirty
 }
 
-pub fn arrange(_m: Option<MonitorId>) {}
+pub fn arrange(m: Option<MonitorId>) {
+    match m {
+        Some(mon_id) => {
+            let mut g = get_globals_mut();
+            if let Some(mon) = g.monitors.get_mut(mon_id) {
+                draw_bar(mon);
+            }
+        }
+        None => draw_bars(),
+    }
+}
 
-pub fn arrange_mon(_m: &mut MonitorInner) {}
+pub fn arrange_mon(m: &mut MonitorInner) {
+    draw_bar(m);
+}
 
-pub fn restack(_m: &mut MonitorInner) {}
+pub fn restack(m: &mut MonitorInner) {
+    draw_bar(m);
+}
 
 pub fn tag_mon(arg: &Arg) {
     crate::tags::tag_mon(arg);

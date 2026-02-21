@@ -1,8 +1,8 @@
 use crate::drw::{Clr, Cur, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use std::cell::UnsafeCell;
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
 

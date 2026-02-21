@@ -34,8 +34,7 @@ use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
 
 use crate::bar::{update_bars, update_status};
 use crate::config::{
-    get_bordercolors, get_closebuttoncolors, get_fonts, get_keys, get_layouts, get_rules,
-    get_statusbarcolors, get_tagcolors, get_tags, get_tagsalt, get_windowcolors, TAGMASK,
+    init_config, TAGMASK,
 };
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};
@@ -185,33 +184,55 @@ fn check_other_wm_init(root: Window) {
 
 fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
     let mut globals = get_globals_mut();
+    let cfg = init_config();
 
     globals.screen = screen_num as i32;
     globals.root = root;
     globals.sw = screen.width_in_pixels as i32;
     globals.sh = screen.height_in_pixels as i32;
 
-    globals.tags = get_tags();
-    globals.tagsalt = get_tagsalt();
-    globals.layouts = get_layouts();
-    globals.keys = get_keys();
-    globals.rules = get_rules();
-    globals.fonts = get_fonts();
+    globals.borderpx = cfg.borderpx;
+    globals.snap = cfg.snap;
+    globals.startmenusize = cfg.startmenusize;
+    globals.systraypinning = cfg.systraypinning;
+    globals.systrayspacing = cfg.systrayspacing;
+    globals.showsystray = cfg.showsystray;
+    globals.showbar = cfg.showbar;
+    globals.topbar = cfg.topbar;
+    globals.barheight = cfg.barheight;
+    globals.resizehints = cfg.resizehints;
+    globals.decorhints = cfg.decorhints;
+    globals.mfact = cfg.mfact;
+    globals.nmaster = cfg.nmaster;
 
-    globals.tagcolors = get_tagcolors();
-    globals.windowcolors = get_windowcolors();
-    globals.closebuttoncolors = get_closebuttoncolors();
-    globals.bordercolors = get_bordercolors();
-    globals.statusbarcolors = get_statusbarcolors();
+    globals.tags = cfg.tags;
+    globals.tagsalt = cfg.tagsalt;
+    globals.tagcolors = cfg.tagcolors;
+    globals.windowcolors = cfg.windowcolors;
+    globals.closebuttoncolors = cfg.closebuttoncolors;
+    globals.bordercolors = cfg.bordercolors;
+    globals.statusbarcolors = cfg.statusbarcolors;
+    globals.layouts = cfg.layouts;
+    globals.keys = cfg.keys;
+    globals.dkeys = cfg.dkeys;
+    globals.buttons = cfg.buttons;
+    globals.rules = cfg.rules;
+    globals.commands = cfg.commands;
+    globals.resources = cfg.resources;
+    globals.fonts = cfg.fonts;
+    globals.tagmask = cfg.tagmask;
+    globals.numtags = cfg.numtags;
 
     globals.keys_len = globals.keys.len();
+    globals.dkeys_len = globals.dkeys.len();
+    globals.commands_len = globals.commands.len();
     globals.buttons_len = globals.buttons.len();
     globals.layouts_len = globals.layouts.len();
     globals.rules_len = globals.rules.len();
     globals.fonts_len = globals.fonts.len();
-
-    globals.numtags = 9;
-    globals.tagmask = TAGMASK;
+    if globals.tagmask == 0 {
+        globals.tagmask = TAGMASK;
+    }
 }
 
 fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {

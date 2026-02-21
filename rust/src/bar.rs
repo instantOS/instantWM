@@ -54,7 +54,7 @@ pub fn text_width(text: &str) -> i32 {
 
 pub fn get_layout_symbol_width(m: &MonitorInner) -> i32 {
     let ltsymbol = unsafe { std::str::from_utf8_unchecked(&m.ltsymbol) };
-    (text_width(ltsymbol) as f32 * 1.5) as i32
+    ((text_width(ltsymbol) + get_lrpad()) as f32 * 1.5) as i32
 }
 
 pub fn click_status(_arg: &Arg) {
@@ -100,7 +100,7 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
             if !is_code {
                 is_code = true;
                 let segment = std::str::from_utf8(&bytes[..pos]).unwrap_or("");
-                w += text_width(segment) - get_lrpad();
+                w += (text_width(segment) - get_lrpad()).max(0);
                 pos += 1;
                 if pos < bytes.len() && bytes[pos] == b'f' {
                     pos += 1;
@@ -124,15 +124,17 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
     }
     if !is_code {
         let segment = std::str::from_utf8(&bytes[pos.saturating_sub(1)..]).unwrap_or("");
-        w += text_width(segment) - get_lrpad();
+        w += (text_width(segment) - get_lrpad()).max(0);
     }
+
+    w = w.max(0);
 
     {
         let mut g = get_globals_mut();
         g.statuswidth = w;
     }
 
-    w += 2;
+    w = (w + 2).max(0);
     let stw = get_systray_width() as i32;
     let ret = m.ww - w - stw;
     let mut x = ret;
@@ -144,7 +146,9 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
             if let Some(ref scheme) = g.statusscheme {
                 drw.set_scheme(scheme.clone());
             }
-            drw.rect(x, 0, w as u32, bh as u32, true, true);
+            if w > 0 {
+                drw.rect(x, 0, w as u32, bh as u32, true, true);
+            }
         }
     }
     x += 1;
@@ -159,9 +163,11 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
             is_code = true;
 
             let segment = std::str::from_utf8(&bytes[..text_pos]).unwrap_or("");
-            let seg_w = text_width(segment) - get_lrpad();
+            let seg_w = (text_width(segment) - get_lrpad()).max(0);
 
-            draw_text_at(x, 0, seg_w as u32, bh as u32, 0, segment, false, 0);
+            if seg_w > 0 {
+                draw_text_at(x, 0, seg_w as u32, bh as u32, 0, segment, false, 0);
+            }
             x += seg_w;
             text_pos += 1;
 
@@ -261,8 +267,10 @@ pub fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &[u8]) -> i32 {
 
     if !is_code {
         let remaining = std::str::from_utf8(&bytes[text_pos.saturating_sub(1)..]).unwrap_or("");
-        let seg_w = text_width(remaining) - get_lrpad();
-        draw_text_at(x, 0, seg_w as u32, bh as u32, 0, remaining, false, 0);
+        let seg_w = (text_width(remaining) - get_lrpad()).max(0);
+        if seg_w > 0 {
+            draw_text_at(x, 0, seg_w as u32, bh as u32, 0, remaining, false, 0);
+        }
     }
 
     ret
@@ -557,7 +565,7 @@ pub fn draw_tag_indicators(
             tag_name
         };
 
-        let w = text_width(display_name);
+        let w = text_width(display_name) + lrpad;
 
         if let Some(scheme) = get_tag_scheme(m, actual_i, occupied_tags, is_hover) {
             if let Some(ref drw) = g.drw {
@@ -1017,7 +1025,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
     x = draw_layout_indicator(m, x, bh);
     eprintln!("TRACE: draw_bar - after draw_layout_indicator");
 
-    let window_width = m.ww - sw - x - stw;
+    let window_width = (m.ww - sw - x - stw).max(0);
     if window_width > bh {
         eprintln!("TRACE: draw_bar - before draw_window_titles");
         draw_window_titles(m, x, window_width, n, bh);
@@ -1057,9 +1065,9 @@ pub fn reset_bar() {
     let mut g = get_globals_mut();
 
     let should_reset = if let Some(selmon_idx) = g.selmon {
-        g.monitors.get(selmon_idx).map_or(false, |selmon| {
-            selmon.sel.is_some() || selmon.gesture != Gesture::None
-        })
+        g.monitors
+            .get(selmon_idx)
+            .map_or(false, |selmon| selmon.gesture != Gesture::None)
     } else {
         false
     };
@@ -1070,7 +1078,6 @@ pub fn reset_bar() {
 
     if let Some(selmon_idx) = g.selmon {
         if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
-            selmon.sel = None;
             selmon.gesture = Gesture::None;
         }
     }
@@ -1378,20 +1385,29 @@ fn get_lrpad() -> i32 {
 }
 
 pub fn get_tag_width() -> i32 {
-    let g = get_globals();
-    g.tagwidth
+    crate::tags::get_tag_width()
 }
 
-pub fn get_tag_at_x(_x: i32) -> i32 {
-    -1
+pub fn get_tag_at_x(x: i32) -> i32 {
+    crate::tags::get_tag_at_x(x)
 }
 
-pub fn window_title_mouse_handler(_arg: &Arg) {}
+pub fn window_title_mouse_handler(arg: &Arg) {
+    crate::mouse::window_title_mouse_handler(arg);
+}
 
-pub fn window_title_mouse_handler_right(_arg: &Arg) {}
+pub fn window_title_mouse_handler_right(arg: &Arg) {
+    crate::mouse::window_title_mouse_handler_right(arg);
+}
 
-pub fn close_win(_arg: &Arg) {}
+pub fn close_win(arg: &Arg) {
+    crate::client::close_win(arg);
+}
 
-pub fn up_scale_client(_arg: &Arg) {}
+pub fn up_scale_client(arg: &Arg) {
+    crate::animation::up_scale_client(arg);
+}
 
-pub fn down_scale_client(_arg: &Arg) {}
+pub fn down_scale_client(arg: &Arg) {
+    crate::animation::down_scale_client(arg);
+}
