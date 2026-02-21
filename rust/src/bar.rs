@@ -1120,6 +1120,13 @@ pub fn draw_bar(m: &mut MonitorInner) {
         let _ = conn.poly_fill_rectangle(m.barwin, gc, &rects);
         eprintln!("DEBUG draw_bar final: poly_fill_rectangle done");
         let _ = conn.flush();
+        eprintln!("DEBUG draw_bar final: flush done");
+        
+        // Sync to ensure drawing is complete
+        use x11rb::protocol::xproto::GET_INPUT_FOCUS_REQUEST;
+        let _ = conn.get_input_focus();
+        let _ = conn.flush();
+        eprintln!("DEBUG draw_bar final: sync done");
     }
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
@@ -1367,7 +1374,7 @@ pub fn update_bars() {
 
             let aux = x11rb::protocol::xproto::CreateWindowAux::new()
                 .override_redirect(1) // Don't manage our own bar!
-                .background_pixmap(1) // PARENT_RELATIVE
+                .background_pixel(0xFF0000) // TEST: Red background
                 .event_mask(
                     x11rb::protocol::xproto::EventMask::BUTTON_PRESS
                         | x11rb::protocol::xproto::EventMask::EXPOSURE
