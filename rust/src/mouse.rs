@@ -1336,10 +1336,10 @@ pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i3
 
 pub fn drag_tag(arg: &Arg) {
     let globals = get_globals();
-    let tagwidth = if globals.tagwidth == 0 {
+    let tagwidth = if globals.tags.width == 0 {
         get_tag_width()
     } else {
-        globals.tagwidth
+        globals.tags.width
     };
 
     let current_tagset = if let Some(sel_mon_id) = globals.selmon {
@@ -1351,7 +1351,7 @@ pub fn drag_tag(arg: &Arg) {
         None
     };
 
-    if (arg.ui & globals.tagmask) != current_tagset.unwrap_or(0) {
+    if (arg.ui & globals.tags.mask()) != current_tagset.unwrap_or(0) {
         drop(globals);
         view(arg);
         return;

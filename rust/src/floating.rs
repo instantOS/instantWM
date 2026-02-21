@@ -127,7 +127,7 @@ pub fn visible_client(win: Window) -> bool {
 pub fn save_all_floating(mon_id: Option<usize>) {
     let (numtags, tagmask) = {
         let globals = get_globals();
-        (globals.numtags, globals.tagmask)
+        (globals.tags.count, globals.tags.mask())
     };
 
     if let Some(mid) = mon_id {
@@ -135,7 +135,7 @@ pub fn save_all_floating(mon_id: Option<usize>) {
         {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mid) {
-                for i in 1..numtags as usize {
+                for i in 1..numtags {
                     if i >= MAX_TAGS {
                         break;
                     }
@@ -177,7 +177,7 @@ pub fn save_all_floating(mon_id: Option<usize>) {
 pub fn restore_all_floating(mon_id: Option<usize>) {
     let numtags = {
         let globals = get_globals();
-        globals.numtags
+        globals.tags.count
     };
 
     if let Some(mid) = mon_id {
@@ -185,7 +185,7 @@ pub fn restore_all_floating(mon_id: Option<usize>) {
         {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mid) {
-                for i in 1..numtags as usize {
+                for i in 1..numtags {
                     if i >= MAX_TAGS {
                         break;
                     }

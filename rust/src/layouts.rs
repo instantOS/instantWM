@@ -1261,7 +1261,7 @@ pub fn set_layout(arg: &Arg) {
     let mut multimon = false;
     let tagprefix = {
         let g = get_globals();
-        g.tagprefix
+        g.tags.prefix
     };
 
     if tagprefix {
@@ -1283,7 +1283,7 @@ pub fn set_layout(arg: &Arg) {
                     }
                 }
             }
-            g.tagprefix = false;
+            g.tags.prefix = false;
         }
         set_layout(arg);
     } else {

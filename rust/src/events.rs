@@ -422,7 +422,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
     drop(globals);
     let tagwidth = get_tag_width();
     let mut globals = get_globals_mut();
-    globals.tagwidth = tagwidth;
+    globals.tags.width = tagwidth;
     drop(globals);
 
     if focusfollowsmouse {

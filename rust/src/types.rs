@@ -303,7 +303,7 @@ pub struct TagSet {
     /// Raw colour strings from config/xresources, indexed [tag][hover_state][colour_index].
     pub colors: Vec<Vec<Vec<&'static str>>>,
     /// Compiled colour objects derived from `colors`.
-    pub schemes: Vec<Vec<Vec<crate::drw::Clr>>>,
+    pub schemes: TagSchemes,
     /// Whether to display `alt_names` instead of `names`.
     pub show_alt: bool,
     /// Prefix-key mode: next tag key toggles rather than views.
@@ -327,7 +327,7 @@ impl Default for TagSet {
             alt_names: Vec::new(),
             count: 0,
             colors: Vec::new(),
-            schemes: Vec::new(),
+            schemes: TagSchemes::default(),
             show_alt: false,
             prefix: false,
             width: 0,

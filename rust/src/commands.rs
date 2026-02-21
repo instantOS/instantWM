@@ -134,7 +134,7 @@ pub fn set_special_next(arg: &Arg) {
 
 pub fn command_prefix(arg: &Arg) {
     let mut globals = get_globals_mut();
-    globals.tagprefix = arg.ui != 0;
+    globals.tags.prefix = arg.ui != 0;
 
     if let Some(selmon_id) = globals.selmon {
         drop(globals);

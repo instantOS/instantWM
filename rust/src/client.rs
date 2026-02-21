@@ -827,7 +827,7 @@ pub fn apply_rules(win: Window) {
 
     let special_next = globals.specialnext;
     let rules = globals.rules.clone();
-    let tagmask = globals.tagmask;
+    let tagmask = globals.tags.mask();
     let bh = globals.bh;
 
     if !globals.clients.contains_key(&win) {
