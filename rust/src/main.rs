@@ -230,13 +230,6 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     };
 
     {
-        let mut globals = get_globals_mut();
-        globals.drw = Some(drw.clone());
-        globals.bh = bh as i32;
-        globals.lrpad = font_height as i32;
-    }
-
-    {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
             return;
@@ -247,6 +240,13 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     init_cursors(&drw);
 
     init_schemes(&drw);
+
+    {
+        let mut globals = get_globals_mut();
+        globals.drw = Some(drw);
+        globals.bh = bh as i32;
+        globals.lrpad = font_height as i32;
+    }
 
     update_geom();
 

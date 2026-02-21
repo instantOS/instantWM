@@ -322,6 +322,7 @@ pub struct Fnt {
     pub pattern: *mut FcPattern,
     pub next: Option<Box<Fnt>>,
     ascent: i32,
+    owns_resources: bool,
 }
 
 unsafe impl Send for Fnt {}
@@ -336,6 +337,7 @@ impl Clone for Fnt {
             pattern: self.pattern,
             next: self.next.clone(),
             ascent: self.ascent,
+            owns_resources: false,
         }
     }
 }
@@ -349,11 +351,13 @@ impl Fnt {
 impl Drop for Fnt {
     fn drop(&mut self) {
         unsafe {
-            if !self.pattern.is_null() {
-                FcPatternDestroy(self.pattern);
-            }
-            if !self.xfont.is_null() && !self.display.is_null() {
-                XftFontClose(self.display, self.xfont);
+            if self.owns_resources {
+                if !self.pattern.is_null() {
+                    FcPatternDestroy(self.pattern);
+                }
+                if !self.xfont.is_null() && !self.display.is_null() {
+                    XftFontClose(self.display, self.xfont);
+                }
             }
         }
     }
@@ -376,6 +380,7 @@ pub struct Drw {
     colormap: c_ulong,
     nomatches: [u32; NOMATCHES_LEN],
     ellipsis_width: u32,
+    owns_resources: bool,
 }
 
 impl Clone for Drw {
@@ -395,6 +400,7 @@ impl Clone for Drw {
             colormap: self.colormap,
             nomatches: self.nomatches,
             ellipsis_width: self.ellipsis_width,
+            owns_resources: false,
         }
     }
 }
@@ -445,6 +451,7 @@ impl Drw {
                 colormap,
                 nomatches: [0; NOMATCHES_LEN],
                 ellipsis_width: 0,
+                owns_resources: true,
             })
         }
     }
@@ -518,7 +525,7 @@ impl Drw {
             }
 
             unsafe {
-                pattern = FcNameParse(name.as_ptr());
+                pattern = FcNameParse(c_name.as_ptr() as *const u8);
             }
 
             if pattern.is_null() {
@@ -555,6 +562,7 @@ impl Drw {
             pattern,
             next: None,
             ascent,
+            owns_resources: true,
         });
 
         Ok(Some(font))
@@ -1148,7 +1156,7 @@ impl Drw {
 impl Drop for Drw {
     fn drop(&mut self) {
         unsafe {
-            if !self.display.is_null() {
+            if self.owns_resources && !self.display.is_null() {
                 XFreePixmap(self.display, self.drawable);
                 XFreeGC(self.display, self.gc);
                 XCloseDisplay(self.display);
