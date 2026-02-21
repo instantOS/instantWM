@@ -5,7 +5,6 @@ use crate::client::{
 };
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::scratchpad::scratchpad_show;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
 
@@ -280,22 +279,13 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                 g.selmon = Some(target_mon_id);
                 drop(g);
 
-                let name_ptr = {
+                let sp_name = {
                     let g = get_globals();
-                    g.clients.get(&c_win).map(|c| {
-                        let mut name = [0u8; SCRATCHPAD_NAME_LEN];
-                        let bytes = c.scratchpad_name.as_bytes();
-                        name[..bytes.len()].copy_from_slice(bytes);
-                        name
-                    })
+                    g.clients.get(&c_win).map(|c| c.scratchpad_name.clone())
                 };
 
-                if let Some(name) = name_ptr {
-                    let arg = Arg {
-                        v: Some(unsafe { std::mem::transmute::<*const u8, usize>(name.as_ptr()) }),
-                        ..Default::default()
-                    };
-                    scratchpad_show(&arg);
+                if let Some(name) = sp_name {
+                    crate::scratchpad::scratchpad_show_name(&name);
                 }
 
                 let mut g = get_globals_mut();
@@ -535,10 +525,14 @@ pub fn update_geom() -> bool {
                                     }
                                 }
 
-                                // TODO: Update bar positions for monitors that need it
-                                // Skipping for now to avoid deadlock - bar positions will be updated elsewhere
+                                for idx in &monitors_need_bar_update {
+                                    let mut g = get_globals_mut();
+                                    if let Some(ref mut m) = g.monitors.get_mut(*idx) {
+                                        update_bar_pos(m);
+                                    }
+                                }
                                 eprintln!(
-                                    "TRACE: update_geom - {} monitors need bar update",
+                                    "TRACE: update_geom - {} monitors had bar update",
                                     monitors_need_bar_update.len()
                                 );
 

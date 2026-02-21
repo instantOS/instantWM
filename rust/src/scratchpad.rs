@@ -29,8 +29,23 @@ pub fn unhide_one() -> bool {
     false
 }
 
-pub fn scratchpad_find(name: &[u8]) -> Option<Window> {
-    if name.is_empty() || name[0] == 0 {
+fn extract_name(arg: &Arg) -> Option<String> {
+    let ptr = arg.v? as *const u8;
+    let slice = unsafe {
+        let len = (0..SCRATCHPAD_NAME_LEN)
+            .find(|&i| *ptr.add(i) == 0)
+            .unwrap_or(SCRATCHPAD_NAME_LEN);
+        std::slice::from_raw_parts(ptr, len)
+    };
+    if slice.is_empty() {
+        None
+    } else {
+        Some(String::from_utf8_lossy(slice).into_owned())
+    }
+}
+
+fn scratchpad_find(name: &str) -> Option<Window> {
+    if name.is_empty() {
         return None;
     }
 
@@ -39,15 +54,8 @@ pub fn scratchpad_find(name: &[u8]) -> Option<Window> {
         let mut current = mon.clients;
         while let Some(c_win) = current {
             if let Some(c) = globals.clients.get(&c_win) {
-                if c.is_scratchpad() {
-                    let name_len = c
-                        .scratchpad_name
-                        .iter()
-                        .position(|&b| b == 0)
-                        .unwrap_or(c.scratchpad_name.len());
-                    if &c.scratchpad_name[..name_len] == name {
-                        return Some(c_win);
-                    }
+                if c.is_scratchpad() && c.scratchpad_name == name {
+                    return Some(c_win);
                 }
                 current = c.next;
             } else {
@@ -97,9 +105,7 @@ pub fn scratchpad_identify_client(c: &mut ClientInner) {
     });
 
     if let Some(name) = match_name {
-        let len = name.len().min(c.scratchpad_name.len() - 1);
-        c.scratchpad_name[..len].copy_from_slice(&name[..len]);
-        c.scratchpad_name[len] = 0;
+        c.scratchpad_name = String::from_utf8_lossy(name).into_owned();
         c.scratchpad_restore_tags = 0;
         c.tags = SCRATCHPAD_MASK;
         c.issticky = true;
@@ -108,22 +114,10 @@ pub fn scratchpad_identify_client(c: &mut ClientInner) {
 }
 
 pub fn scratchpad_make(arg: &Arg) {
-    let name_ptr = arg.v;
-    let name = match name_ptr {
-        Some(ptr) => unsafe {
-            let ptr = ptr as *const u8;
-            let len = (0..SCRATCHPAD_NAME_LEN)
-                .find(|&i| *ptr.add(i) == 0)
-                .unwrap_or(SCRATCHPAD_NAME_LEN);
-            let slice = std::slice::from_raw_parts(ptr, len);
-            slice.to_vec()
-        },
+    let name = match extract_name(arg) {
+        Some(n) => n,
         None => return,
     };
-
-    if name.is_empty() {
-        return;
-    }
 
     let sel_win = {
         let globals = get_globals();
@@ -157,9 +151,7 @@ pub fn scratchpad_make(arg: &Arg) {
     {
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&sel_win) {
-            let len = name.len().min(client.scratchpad_name.len() - 1);
-            client.scratchpad_name[..len].copy_from_slice(&name[..len]);
-            client.scratchpad_name[len] = 0;
+            client.scratchpad_name = name;
 
             if !was_scratchpad {
                 client.scratchpad_restore_tags = old_tags;
@@ -228,7 +220,7 @@ pub fn scratchpad_unmake(_arg: &Arg) {
     {
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&sel_win) {
-            client.scratchpad_name[0] = 0;
+            client.scratchpad_name.clear();
             client.issticky = false;
             client.tags = if restore_tags != 0 {
                 restore_tags
@@ -245,24 +237,13 @@ pub fn scratchpad_unmake(_arg: &Arg) {
 }
 
 pub fn scratchpad_show(arg: &Arg) {
-    let name_ptr = arg.v;
-    let name = match name_ptr {
-        Some(ptr) => unsafe {
-            let ptr = ptr as *const u8;
-            let len = (0..SCRATCHPAD_NAME_LEN)
-                .find(|&i| *ptr.add(i) == 0)
-                .unwrap_or(SCRATCHPAD_NAME_LEN);
-            let slice = std::slice::from_raw_parts(ptr, len);
-            slice.to_vec()
-        },
-        None => return,
-    };
-
-    if name.is_empty() {
-        return;
+    if let Some(name) = extract_name(arg) {
+        scratchpad_show_name(&name);
     }
+}
 
-    let found = match scratchpad_find(&name) {
+pub(crate) fn scratchpad_show_name(name: &str) {
+    let found = match scratchpad_find(name) {
         Some(w) => w,
         None => return,
     };
@@ -322,24 +303,13 @@ pub fn scratchpad_show(arg: &Arg) {
 }
 
 pub fn scratchpad_hide(arg: &Arg) {
-    let name_ptr = arg.v;
-    let name = match name_ptr {
-        Some(ptr) => unsafe {
-            let ptr = ptr as *const u8;
-            let len = (0..SCRATCHPAD_NAME_LEN)
-                .find(|&i| *ptr.add(i) == 0)
-                .unwrap_or(SCRATCHPAD_NAME_LEN);
-            let slice = std::slice::from_raw_parts(ptr, len);
-            slice.to_vec()
-        },
-        None => return,
-    };
-
-    if name.is_empty() {
-        return;
+    if let Some(name) = extract_name(arg) {
+        scratchpad_hide_name(&name);
     }
+}
 
-    let found = match scratchpad_find(&name) {
+pub(crate) fn scratchpad_hide_name(name: &str) {
+    let found = match scratchpad_find(name) {
         Some(w) => w,
         None => return,
     };
@@ -373,22 +343,10 @@ pub fn scratchpad_hide(arg: &Arg) {
 }
 
 pub fn scratchpad_toggle(arg: &Arg) {
-    let name_ptr = arg.v;
-    let name = match name_ptr {
-        Some(ptr) => unsafe {
-            let ptr = ptr as *const u8;
-            let len = (0..SCRATCHPAD_NAME_LEN)
-                .find(|&i| *ptr.add(i) == 0)
-                .unwrap_or(SCRATCHPAD_NAME_LEN);
-            let slice = std::slice::from_raw_parts(ptr, len);
-            slice.to_vec()
-        },
+    let name = match extract_name(arg) {
+        Some(n) => n,
         None => return,
     };
-
-    if name.is_empty() {
-        return;
-    }
 
     let is_overview = {
         let globals = get_globals();
@@ -418,47 +376,26 @@ pub fn scratchpad_toggle(arg: &Arg) {
             .unwrap_or(false)
     };
 
-    let name_copy = name.clone();
-    let toggle_arg = Arg {
-        v: Some(unsafe { std::mem::transmute::<*const u8, usize>(name_copy.as_ptr()) }),
-        ..Default::default()
-    };
-
     if is_sticky {
-        scratchpad_hide(&toggle_arg);
+        scratchpad_hide_name(&name);
     } else {
-        scratchpad_show(&toggle_arg);
+        scratchpad_show_name(&name);
     }
 }
 
 pub fn scratchpad_status(arg: &Arg) {
-    let name_ptr = arg.v;
-    let name = match name_ptr {
-        Some(ptr) => unsafe {
-            let ptr = ptr as *const u8;
-            let len = (0..SCRATCHPAD_NAME_LEN)
-                .find(|&i| *ptr.add(i) == 0)
-                .unwrap_or(SCRATCHPAD_NAME_LEN);
-            let slice = std::slice::from_raw_parts(ptr, len);
-            slice.to_vec()
-        },
-        None => vec![],
-    };
+    let name = extract_name(arg).unwrap_or_default();
 
     let globals = get_globals();
     let root = globals.root;
 
-    if !name.is_empty() && name != b"all" {
+    if !name.is_empty() && name != "all" {
         let found = scratchpad_find(&name);
         let visible = found
             .map(|w| globals.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
             .unwrap_or(false);
 
-        let status = format!(
-            "ipc:scratchpad:{}:{}",
-            String::from_utf8_lossy(&name),
-            if visible { 1 } else { 0 }
-        );
+        let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
 
         drop(globals);
 
@@ -486,17 +423,14 @@ pub fn scratchpad_status(arg: &Arg) {
         while let Some(c_win) = current {
             if let Some(c) = globals.clients.get(&c_win) {
                 if c.is_scratchpad() {
-                    let name_len = c
-                        .scratchpad_name
-                        .iter()
-                        .position(|&b| b == 0)
-                        .unwrap_or(c.scratchpad_name.len());
-                    let name_str = String::from_utf8_lossy(&c.scratchpad_name[..name_len]);
-
                     if !first {
                         status.push(',');
                     }
-                    status.push_str(&format!("{}={}", name_str, if c.issticky { 1 } else { 0 }));
+                    status.push_str(&format!(
+                        "{}={}",
+                        c.scratchpad_name,
+                        if c.issticky { 1 } else { 0 }
+                    ));
                     first = false;
                 }
                 current = c.next;

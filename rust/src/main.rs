@@ -504,9 +504,10 @@ fn init_schemes(drw: &Drw) {
         }
     });
 
-    let statusscheme = drw.scm_create(&statusbarcolors).ok().map(|clr| {
-        StatusScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone())
-    });
+    let statusscheme = drw
+        .scm_create(&statusbarcolors)
+        .ok()
+        .map(|clr| StatusScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone()));
 
     let mut tagschemes_no_hover: Vec<ColorScheme> = Vec::new();
     let mut tagschemes_hover: Vec<ColorScheme> = Vec::new();
@@ -599,39 +600,6 @@ fn init_schemes(drw: &Drw) {
     globals.windowschemes = windowschemes;
     globals.closebuttonschemes = closebuttonschemes;
 }
-        }
-        tagschemes.push(hover_vec);
-    }
-
-    let mut windowschemes: Vec<Vec<Vec<crate::drw::Clr>>> = Vec::new();
-    for hover_schemes in &windowcolors {
-        let mut hover_vec: Vec<Vec<crate::drw::Clr>> = Vec::new();
-        for scheme_colors in hover_schemes {
-            if let Ok(scheme) = drw.scm_create(scheme_colors) {
-                hover_vec.push(scheme);
-            }
-        }
-        windowschemes.push(hover_vec);
-    }
-
-    let mut closebuttonschemes: Vec<Vec<Vec<crate::drw::Clr>>> = Vec::new();
-    for hover_schemes in &closebuttoncolors {
-        let mut hover_vec: Vec<Vec<crate::drw::Clr>> = Vec::new();
-        for scheme_colors in hover_schemes {
-            if let Ok(scheme) = drw.scm_create(scheme_colors) {
-                hover_vec.push(scheme);
-            }
-        }
-        closebuttonschemes.push(hover_vec);
-    }
-
-    let mut globals = get_globals_mut();
-    globals.borderscheme = borderscheme;
-    globals.statusscheme = statusscheme;
-    globals.tags.schemes = tagschemes;
-    globals.windowschemes = windowschemes;
-    globals.closebuttonschemes = closebuttonschemes;
-}
 
 fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Window) {
     let wmcheckwin = conn.generate_id().ok().unwrap_or(0);
@@ -658,12 +626,29 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         let g = get_globals();
         let na = g.netatom;
         let net_atoms = vec![
-            na.active_window, na.supported, na.system_tray, na.system_tray_op,
-            na.system_tray_orientation, na.system_tray_orientation_horz,
-            na.wm_name, na.wm_state, na.wm_check, na.wm_fullscreen,
-            na.wm_window_type, na.wm_window_type_dialog, na.client_list, na.client_info,
+            na.active_window,
+            na.supported,
+            na.system_tray,
+            na.system_tray_op,
+            na.system_tray_orientation,
+            na.system_tray_orientation_horz,
+            na.wm_name,
+            na.wm_state,
+            na.wm_check,
+            na.wm_fullscreen,
+            na.wm_window_type,
+            na.wm_window_type_dialog,
+            na.client_list,
+            na.client_info,
         ];
-        (na.wm_check, na.wm_name, na.supported, net_atoms, na.client_list, na.client_info)
+        (
+            na.wm_check,
+            na.wm_name,
+            na.supported,
+            net_atoms,
+            na.client_list,
+            na.client_info,
+        )
     };
 
     let _ = conn.change_property32(
@@ -727,7 +712,6 @@ fn run_autostart() {
         }
     }
 }
-
 
 pub fn xerror(_display: *mut libc::c_void, _ee: *mut libc::c_void) -> i32 {
     0

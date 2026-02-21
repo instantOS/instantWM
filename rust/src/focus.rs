@@ -213,12 +213,7 @@ pub fn focus_last_client(_arg: &Arg) {
 
     if last_client.is_scratchpad() {
         drop(globals);
-        let name = last_client.scratchpad_name;
-        let arg = Arg {
-            v: Some(unsafe { std::mem::transmute::<*const u8, usize>(name.as_ptr()) }),
-            ..Default::default()
-        };
-        crate::scratchpad::scratchpad_show(&arg);
+        crate::scratchpad::scratchpad_show_name(&last_client.scratchpad_name);
         return;
     }
 

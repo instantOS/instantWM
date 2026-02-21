@@ -1632,7 +1632,7 @@ pub fn command_layout(arg: &Arg) {
 }
 
 fn reset_cursor() {
-    // TODO: implement cursor reset
+    crate::mouse::reset_cursor();
 }
 
 fn show_hide(win: Option<Window>) {

@@ -29,6 +29,10 @@ pub struct ColorScheme {
 }
 
 impl ColorScheme {
+    pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
+        Self { fg, bg, detail }
+    }
+
     pub fn from_vec(vec: Vec<Clr>) -> Option<Self> {
         if vec.len() >= 3 {
             Some(Self {
@@ -389,35 +393,36 @@ pub enum OverlayDirection {
     Left,
 }
 
+//simplify
+//probably could also be an enum with None, Tag(u32), Overlay, CloseButton, StartMenu variants
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[repr(u32)]
 pub enum Gesture {
     #[default]
-    None = 0,
-    Tag1 = 1,
-    Tag2 = 2,
-    Tag3 = 3,
-    Tag4 = 4,
-    Tag5 = 5,
-    Tag6 = 6,
-    Tag7 = 7,
-    Tag8 = 8,
-    Tag9 = 9,
-    Tag10 = 10,
-    Tag11 = 11,
-    Tag12 = 12,
-    Tag13 = 13,
-    Tag14 = 14,
-    Tag15 = 15,
-    Tag16 = 16,
-    Tag17 = 17,
-    Tag18 = 18,
-    Tag19 = 19,
-    Tag20 = 20,
-    Tag21 = 21,
-    Overlay = 30,
-    CloseButton = 31,
-    StartMenu = 32,
+    None,
+    Tag1,
+    Tag2,
+    Tag3,
+    Tag4,
+    Tag5,
+    Tag6,
+    Tag7,
+    Tag8,
+    Tag9,
+    Tag10,
+    Tag11,
+    Tag12,
+    Tag13,
+    Tag14,
+    Tag15,
+    Tag16,
+    Tag17,
+    Tag18,
+    Tag19,
+    Tag20,
+    Tag21,
+    Overlay,
+    CloseButton,
+    StartMenu,
 }
 
 impl Gesture {
@@ -496,6 +501,8 @@ pub trait Layout: std::fmt::Debug {
 pub type ClientId = usize;
 pub type MonitorId = usize;
 
+//TODO: why do both client and clientInner exist?
+//TODO: dimensions should probaly be their own structs instead of 4 fields each time
 #[derive(Debug, Clone)]
 pub struct ClientInner {
     pub name: String,
@@ -544,6 +551,7 @@ pub struct ClientInner {
 }
 
 impl Default for ClientInner {
+    //TODO: could this be a derive macro?
     fn default() -> Self {
         Self {
             name: String::new(),
@@ -624,6 +632,7 @@ impl Default for Pertag {
     }
 }
 
+//TODO: dimensions should probably be their own struct, with utils for commonly used operations
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
     pub ltsymbol: String,
@@ -769,6 +778,7 @@ pub fn is_visible(tags: u32, mon_tags: u32, _seltags: u32, issticky: bool) -> bo
     (tags & mon_tags) != 0 || issticky
 }
 
+//TODO: this should probably be a method of the appropriate struct
 pub fn width(w: i32, border_width: i32) -> i32 {
     w + 2 * border_width
 }

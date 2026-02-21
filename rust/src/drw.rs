@@ -376,6 +376,12 @@ pub struct Clr {
     pub color: XftColor,
 }
 
+impl PartialEq for Clr {
+    fn eq(&self, other: &Self) -> bool {
+        self.color.pixel == other.color.pixel
+    }
+}
+
 unsafe impl Send for Clr {}
 unsafe impl Sync for Clr {}
 
