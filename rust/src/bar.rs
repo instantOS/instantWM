@@ -901,10 +901,19 @@ pub fn draw_bar(m: &mut MonitorInner) {
     }
 
     eprintln!("TRACE: draw_bar - before get_globals");
-    let g = get_globals();
+    let (bh, showsystray) = {
+        let g = get_globals();
+        (g.bh, g.showsystray)
+    };
     eprintln!("TRACE: draw_bar - after get_globals");
-    let bh = g.bh;
-    let showsystray = g.showsystray;
+    
+    // Resize the Drw drawable to match the bar window size
+    {
+        let mut g = get_globals_mut();
+        if let Some(ref mut drw) = g.drw {
+            drw.resize(m.ww as u32, bh as u32);
+        }
+    }
 
     let mut stw: i32 = 0;
     if showsystray {
@@ -995,6 +1004,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
     m.bar_clients_width = window_width;
 
     if let Some(ref drw) = g.drw {
+        eprintln!("TRACE: draw_bar - before drw.map, drw.w={}, drw.h={}, barwin={}, m.ww={}, bh={}", drw.w, drw.h, m.barwin, m.ww, bh);
         drw.map(m.barwin, 0, 0, m.ww as u16, bh as u16);
     }
 
@@ -1087,22 +1097,15 @@ pub fn update_status() {
             }
         }
     } // Write lock released here
-    eprintln!("TRACE: update_status - after updating stext");
 
     if let Some(selmon_idx) = selmon_idx {
-        eprintln!("TRACE: update_status - selmon_idx = {}", selmon_idx);
         if let Some(m) = monitors.get(selmon_idx) {
-            eprintln!("TRACE: update_status - before draw_bar");
             let mut m = m.clone();
-            // TEMP: Skip draw_bar to avoid stack overflow
-            // draw_bar(&mut m);
-            eprintln!("TRACE: update_status - skipped draw_bar");
+            draw_bar(&mut m);
         }
     }
 
-    eprintln!("TRACE: update_status - before update_systray");
     update_systray();
-    eprintln!("TRACE: update_status - after update_systray");
 }
 
 fn get_text_prop(_win: Window, _atom: u32) -> Option<String> {

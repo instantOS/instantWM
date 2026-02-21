@@ -531,9 +531,11 @@ impl Drw {
         self.w = w;
         self.h = h;
 
+        eprintln!("TRACE: Drw::resize - w={}, h={}", w, h);
         unsafe {
             XFreePixmap(self.display, self.drawable);
             self.drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
+            eprintln!("TRACE: Drw::resize - new drawable = {}", self.drawable);
         }
     }
 
@@ -863,7 +865,7 @@ impl Drw {
             }
         }
 
-        if self.ellipsis_width == 0 && render {
+        if self.ellipsis_width == 0 && render && detail_height >= 0 {
             self.ellipsis_width = self.fontset_getwidth("...");
         }
 
@@ -976,7 +978,7 @@ impl Drw {
                 w = w.saturating_sub(ew);
             }
 
-            if render && overflow {
+            if render && overflow && text != "..." {
                 self.text_inner(
                     ellipsis_x,
                     y,
@@ -1076,7 +1078,13 @@ impl Drw {
         invert: bool,
         detail_height: i32,
     ) -> i32 {
-        self.text(x, y, w, h, lpad, text, invert, detail_height)
+        // When drawing ellipsis, don't allow recursive ellipsis drawing
+        // to avoid infinite recursion. Pass h=0 to skip ellipsis calculation.
+        if text == "..." {
+            self.text(x, y, w, h, lpad, text, invert, -1)
+        } else {
+            self.text(x, y, w, h, lpad, text, invert, detail_height)
+        }
     }
 
     pub fn arrow(&self, x: i16, y: i16, w: u16, h: u16, direction: bool, slash: bool) {
