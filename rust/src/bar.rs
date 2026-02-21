@@ -1119,6 +1119,7 @@ pub fn update_bars() {
                 }
             }
             bar_configs.push((i, m.wx, m.by, w, bh));
+            eprintln!("debug update_bars: monitor {}, wx {}, by {}, ww {}, bh {}", i, m.wx, m.by, w, bh);
         }
     }
 
@@ -1139,6 +1140,8 @@ pub fn update_bars() {
                         | x11rb::protocol::xproto::EventMask::EXPOSURE
                         | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
                 );
+
+            eprintln!("debug update_bars: creating window id: {}, root: {}, event_mask config...", win_id, root);
 
             let _ = conn.create_window(
                 x11rb::COPY_FROM_PARENT as u8,
