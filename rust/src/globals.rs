@@ -1,10 +1,9 @@
 use crate::drw::{Clr, Cur, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::cell::UnsafeCell;
 use std::sync::atomic::AtomicBool;
-use std::sync::RwLock;
 use x11rb::protocol::xproto::Window;
 
 // Wrapper for Xlib display pointer that implements Send/Sync
@@ -180,15 +179,22 @@ impl Default for Globals {
     }
 }
 
-pub static GLOBALS: Lazy<RwLock<Globals>> = Lazy::new(|| RwLock::new(Globals::default()));
+// SAFETY: instantWM is a single-threaded window manager.
+// Globals are accessed from the main thread event loop, like dwm's C globals.
+struct MainThreadCell<T>(UnsafeCell<T>);
+unsafe impl<T> Sync for MainThreadCell<T> {}
+unsafe impl<T> Send for MainThreadCell<T> {}
+
+pub static GLOBALS: Lazy<MainThreadCell<Globals>> =
+    Lazy::new(|| MainThreadCell(UnsafeCell::new(Globals::default())));
 pub static RUNNING: AtomicBool = AtomicBool::new(true);
 
-pub fn get_globals() -> std::sync::RwLockReadGuard<'static, Globals> {
-    GLOBALS.read().unwrap()
+pub fn get_globals() -> &'static Globals {
+    unsafe { &*GLOBALS.0.get() }
 }
 
-pub fn get_globals_mut() -> std::sync::RwLockWriteGuard<'static, Globals> {
-    GLOBALS.write().unwrap()
+pub fn get_globals_mut() -> &'static mut Globals {
+    unsafe { &mut *GLOBALS.0.get() }
 }
 
 pub struct X11Connection {
@@ -205,20 +211,13 @@ impl Default for X11Connection {
     }
 }
 
-// SAFETY: instantWM is a single-threaded window manager.
-// The X11 connection is only accessed from the main thread.
-// We use RefCell to allow re-entrant shared borrowing (which Mutex does not support).
-struct MainThreadCell<T>(RefCell<T>);
-unsafe impl<T> Sync for MainThreadCell<T> {}
-unsafe impl<T> Send for MainThreadCell<T> {}
-
 pub static X11: Lazy<MainThreadCell<X11Connection>> =
-    Lazy::new(|| MainThreadCell(RefCell::new(X11Connection::default())));
+    Lazy::new(|| MainThreadCell(UnsafeCell::new(X11Connection::default())));
 
-pub fn get_x11() -> std::cell::Ref<'static, X11Connection> {
-    X11.0.borrow()
+pub fn get_x11() -> &'static X11Connection {
+    unsafe { &*X11.0.get() }
 }
 
-pub fn get_x11_mut() -> std::cell::RefMut<'static, X11Connection> {
-    X11.0.borrow_mut()
+pub fn get_x11_mut() -> &'static mut X11Connection {
+    unsafe { &mut *X11.0.get() }
 }

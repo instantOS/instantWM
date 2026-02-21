@@ -768,9 +768,10 @@ pub fn apply_rules(win: Window) {
         if let Ok(cookie) = hint {
             if let Ok(reply) = cookie.reply() {
                 let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
-                let mut parts: Vec<&[u8]> =
+                let parts: Vec<&[u8]> =
                     data.split(|&b| b == 0).filter(|s| !s.is_empty()).collect();
-                let class = parts
+                // WM_CLASS is encoded as: instance\0class\0
+                let instance = parts
                     .get(0)
                     .map(|s| {
                         let mut arr = [0u8; 256];
@@ -783,7 +784,7 @@ pub fn apply_rules(win: Window) {
                         arr[..BROKEN.len()].copy_from_slice(BROKEN);
                         arr
                     });
-                let instance = parts
+                let class = parts
                     .get(1)
                     .map(|s| {
                         let mut arr = [0u8; 256];
@@ -1533,11 +1534,14 @@ fn get_transient_for_hint(w: Window) -> Option<Window> {
 fn read_client_info(w: Window) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
+        let client_info_atom = {
+            let globals = get_globals();
+            globals.netatom[NetAtom::ClientInfo as usize]
+        };
         if let Ok(cookie) = conn.get_property(
             false,
             w,
-            globals.netatom[NetAtom::ClientInfo as usize],
+            client_info_atom,
             AtomEnum::CARDINAL,
             0,
             2,
@@ -1547,11 +1551,11 @@ fn read_client_info(w: Window) {
                     let tags = data.next().unwrap_or(0);
                     let mon_num = data.next().unwrap_or(0);
 
+                    let target_mon = {
+                        let globals = get_globals();
+                        globals.monitors.iter().position(|m| m.num as u32 == mon_num)
+                    };
                     let mut globals = get_globals_mut();
-                    let target_mon = globals
-                        .monitors
-                        .iter()
-                        .position(|m| m.num as u32 == mon_num);
                     if let Some(client) = globals.clients.get_mut(&w) {
                         client.tags = tags;
                         if let Some(mid) = target_mon {

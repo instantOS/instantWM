@@ -5,7 +5,7 @@ use crate::client::{
 };
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
-use crate::keyboard::grab_keys;
+use crate::keyboard::{grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release};
 use crate::monitor::{arrange, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
 use crate::systray::{update_systray, win_to_systray_icon};
@@ -34,12 +34,13 @@ fn has_tiling_layout(mon_id: MonitorId) -> bool {
     }
 }
 
-pub fn button_press(_e: &ButtonPressEvent) {
+pub fn button_press(e: &ButtonPressEvent) {
     let globals = get_globals();
     let numlockmask = globals.numlockmask;
     let buttons = globals.buttons.clone();
     let altcursor = globals.altcursor;
     let selmon_id = globals.selmon;
+    let root = globals.root;
     drop(globals);
 
     if let Some(sel_id) = selmon_id {
@@ -60,14 +61,27 @@ pub fn button_press(_e: &ButtonPressEvent) {
         }
     }
 
+    let click_target = if win_to_client(e.event).is_some() {
+        Click::ClientWin
+    } else if e.event == root {
+        Click::RootWin
+    } else if win_to_mon(e.event).is_some() {
+        // Detailed bar-region hit-testing is not yet implemented in this port.
+        Click::WinTitle
+    } else {
+        Click::RootWin
+    };
+    let clean_state = clean_mask(e.state.into(), numlockmask);
+
     for button in &buttons {
-        if button.func.is_some() {
-            let clean_button_mask = clean_mask(button.mask, numlockmask);
-            if clean_button_mask == clean_mask(0, numlockmask) {
-                if let Some(func) = button.func {
-                    func(&button.arg);
-                }
-            }
+        if button.click != click_target || button.button != e.detail {
+            continue;
+        }
+        if clean_mask(button.mask, numlockmask) != clean_state {
+            continue;
+        }
+        if let Some(func) = button.func {
+            func(&button.arg);
         }
     }
 }
@@ -200,25 +214,12 @@ pub fn focus_in(_e: &FocusInEvent) {
 }
 
 pub fn key_press(e: &KeyPressEvent) {
-    let globals = get_globals();
-    let numlockmask = globals.numlockmask;
-    let keys = globals.keys.clone();
-    drop(globals);
-
-    for key in &keys {
-        if key.keysym == e.detail as u32 {
-            let clean_key_mask = clean_mask(key.mod_mask, numlockmask);
-            let clean_state = clean_mask(e.state.into(), numlockmask);
-            if clean_key_mask == clean_state {
-                if let Some(func) = key.func {
-                    func(&key.arg);
-                }
-            }
-        }
-    }
+    keyboard_key_press(e);
 }
 
-pub fn key_release(_e: &KeyReleaseEvent) {}
+pub fn key_release(e: &KeyReleaseEvent) {
+    keyboard_key_release(e);
+}
 
 pub fn mapping_notify(_e: &MappingNotifyEvent) {
     grab_keys();
@@ -233,26 +234,28 @@ pub fn map_request(e: &MapRequestEvent) {
     if win_to_client(e.window).is_none() {
         let x11 = get_x11();
         if let Some(ref conn) = x11.conn {
-            if let Ok(cookie) = conn.get_window_attributes(e.window) {
-                if let Ok(wa) = cookie.reply() {
-                    if !wa.override_redirect {
-                        let (x, y, width, height, border_width) = conn
-                            .get_geometry(e.window)
-                            .ok()
-                            .and_then(|geo| geo.reply().ok())
-                            .map(|geo| {
-                                (
-                                    geo.x as i32,
-                                    geo.y as i32,
-                                    geo.width as u32,
-                                    geo.height as u32,
-                                    geo.border_width as u32,
-                                )
-                            })
-                            .unwrap_or((0, 0, 800, 600, 1));
-                        crate::client::manage(e.window, x, y, width, height, border_width);
-                    }
-                }
+            let override_redirect = conn
+                .get_window_attributes(e.window)
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|wa| wa.override_redirect)
+                .unwrap_or(false);
+            if !override_redirect {
+                let (x, y, width, height, border_width) = conn
+                    .get_geometry(e.window)
+                    .ok()
+                    .and_then(|geo| geo.reply().ok())
+                    .map(|geo| {
+                        (
+                            geo.x as i32,
+                            geo.y as i32,
+                            geo.width as u32,
+                            geo.height as u32,
+                            geo.border_width as u32,
+                        )
+                    })
+                    .unwrap_or((0, 0, 800, 600, 1));
+                crate::client::manage(e.window, x, y, width, height, border_width);
             }
         }
     }
