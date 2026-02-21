@@ -62,7 +62,7 @@ pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
     r
 }
 
-pub fn client_count_mon(mon: &MonitorInner) -> i32 {
+pub fn client_count_mon(mon: &Monitor) -> i32 {
     let globals = get_globals();
     let mut n = 0;
     let mut current = next_tiled(mon.clients);

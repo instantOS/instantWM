@@ -501,10 +501,10 @@ pub fn update_geom() -> bool {
                                     if let Some(ref mut m) = g.monitors.get_mut(i) {
                                         eprintln!("TRACE: update_geom - got monitor {}", i);
                                         if i >= n
-                                            || m.mx != info.0
-                                            || m.my != info.1
-                                            || m.mw != info.2
-                                            || m.mh != info.3
+                                            || m.monitor_rect.x != info.0
+                                            || m.monitor_rect.y != info.1
+                                            || m.monitor_rect.w != info.2
+                                            || m.monitor_rect.h != info.3
                                         {
                                             eprintln!(
                                                 "TRACE: update_geom - updating monitor {}",
@@ -512,14 +512,14 @@ pub fn update_geom() -> bool {
                                             );
                                             dirty = true;
                                             m.num = i as i32;
-                                            m.mx = info.0;
-                                            m.my = info.1;
-                                            m.mw = info.2;
-                                            m.mh = info.3;
-                                            m.wx = info.0;
-                                            m.wy = info.1;
-                                            m.ww = info.2;
-                                            m.wh = info.3;
+                                            m.monitor_rect.x = info.0;
+                                            m.monitor_rect.y = info.1;
+                                            m.monitor_rect.w = info.2;
+                                            m.monitor_rect.h = info.3;
+                                            m.work_rect.x = info.0;
+                                            m.work_rect.y = info.1;
+                                            m.work_rect.w = info.2;
+                                            m.work_rect.h = info.3;
                                             monitors_need_bar_update.push(i);
                                         }
                                     }
@@ -598,14 +598,14 @@ pub fn update_geom() -> bool {
         g.monitors.push(create_monitor());
         if let Some(ref mut m) = g.monitors.first_mut() {
             m.num = 0;
-            m.mx = 0;
-            m.my = 0;
-            m.mw = sw;
-            m.mh = sh;
-            m.wx = 0;
-            m.wy = 0;
-            m.ww = sw;
-            m.wh = sh;
+            m.monitor_rect.x = 0;
+            m.monitor_rect.y = 0;
+            m.monitor_rect.w = sw;
+            m.monitor_rect.h = sh;
+            m.work_rect.x = 0;
+            m.work_rect.y = 0;
+            m.work_rect.w = sw;
+            m.work_rect.h = sh;
             update_bar_pos(m);
         }
         g.selmon = Some(0);
@@ -616,7 +616,7 @@ pub fn update_geom() -> bool {
         let needs_update = g
             .monitors
             .first()
-            .map(|m| m.mw != sw || m.mh != sh)
+            .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
             .unwrap_or(false);
         let needs_selmon = g.selmon.is_none();
         drop(g);
@@ -625,10 +625,10 @@ pub fn update_geom() -> bool {
             dirty = true;
             let mut g = get_globals_mut();
             if let Some(ref mut m) = g.monitors.first_mut() {
-                m.mw = sw;
-                m.mh = sh;
-                m.ww = sw;
-                m.wh = sh;
+                m.monitor_rect.w = sw;
+                m.monitor_rect.h = sh;
+                m.work_rect.w = sw;
+                m.work_rect.h = sh;
                 update_bar_pos(m);
             }
         }

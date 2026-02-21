@@ -24,24 +24,24 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         if let Some(client) = globals.clients.get(&win) {
             (
                 if reset_pos != 0 {
-                    client.x
+                    client.geo.x
                 } else {
-                    client.oldx
+                    client.old_geo.x
                 },
                 if reset_pos != 0 {
-                    client.y
+                    client.geo.y
                 } else {
-                    client.oldy
+                    client.old_geo.y
                 },
                 if reset_pos != 0 {
-                    client.w
+                    client.geo.w
                 } else {
-                    client.oldw
+                    client.old_geo.w
                 },
                 if reset_pos != 0 {
-                    client.h
+                    client.geo.h
                 } else {
-                    client.oldh
+                    client.old_geo.h
                 },
             )
         } else {
@@ -65,7 +65,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         let (mon_mw, mon_mh) = {
             if let Some(mon_id) = globals.clients.get(&win).and_then(|c| c.mon_id) {
                 if let Some(mon) = globals.monitors.get(mon_id) {
-                    (mon.mw, mon.mh)
+                    (mon.monitor_rect.w, mon.monitor_rect.h)
                 } else {
                     (0, 0)
                 }
@@ -131,7 +131,8 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
 pub fn check_animate(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, reset_pos: i32) {
     let globals = get_globals();
     if let Some(client) = globals.clients.get(&win) {
-        let should_animate = client.x != x || client.y != y || client.w != w || client.h != h;
+        let should_animate =
+            client.geo.x != x || client.geo.y != y || client.geo.w != w || client.geo.h != h;
         drop(globals);
         if should_animate {
             animate_client(win, x, y, w, h, frames, reset_pos);

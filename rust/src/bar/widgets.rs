@@ -425,7 +425,7 @@ fn draw_window_title(m: &mut MonitorInner, c: &Client, x: i32, width: i32, bh: i
 
     if is_selected {
         draw_close_button(c, x, bh);
-        m.activeoffset = m.mx as u32 + x as u32;
+        m.activeoffset = m.monitor_rect.x as u32 + x as u32;
     }
 }
 

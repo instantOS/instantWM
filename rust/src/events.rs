@@ -51,7 +51,7 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
     let tag_end = get_tag_width();
     let blw = get_layout_symbol_width(&mon);
 
-    let status_hit_x = mon.ww - get_systray_width() as i32 - g.statuswidth + g.lrpad - 2;
+    let status_hit_x = mon.work_rect.w - get_systray_width() as i32 - g.statuswidth + g.lrpad - 2;
     let bh = g.bh;
     drop(g);
 
@@ -102,7 +102,7 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
-            (mon.ww - title_end).max(0)
+            (mon.work_rect.w - title_end).max(0)
         };
         let each_width = total_width / visible_clients.len() as i32;
         let mut remainder = total_width % visible_clients.len() as i32;
@@ -181,7 +181,7 @@ pub fn button_press(e: &ButtonPressEvent) {
             if e.event == mon.barwin {
                 drop(globals);
                 (click_target, click_arg) = classify_bar_click(e, sel_id);
-            } else if (e.root_x as i32) > mon.mx + mon.mw - 50 {
+            } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
                 click_target = Click::SideBar;
             }
         }
@@ -447,15 +447,15 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
             return;
         };
         (
-            mon.mx,
-            mon.my,
+            mon.monitor_rect.x,
+            mon.monitor_rect.y,
             globals.bh,
             globals.startmenusize,
             mon.activeoffset as i32,
             mon.bar_clients_width,
             mon.gesture,
             mon.sel.is_some(),
-            mon.mx + tagwidth + get_layout_symbol_width(mon),
+            mon.monitor_rect.x + tagwidth + get_layout_symbol_width(mon),
         )
     };
 
@@ -495,7 +495,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
         let Some(mon) = globals.monitors.get(selmon_idx) else {
             return;
         };
-        mon.mx + get_layout_symbol_width(mon) + tagwidth + bar_clients_width
+        mon.monitor_rect.x + get_layout_symbol_width(mon) + tagwidth + bar_clients_width
     };
 
     if has_sel && root_x < title_limit {

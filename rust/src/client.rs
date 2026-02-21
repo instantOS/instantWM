@@ -856,7 +856,15 @@ pub fn apply_rules(win: Window) {
                     globals
                         .monitors
                         .get(mon_id)
-                        .map(|m| (m.mw, m.wh, m.showbar, m.my, m.mx))
+                        .map(|m| {
+                            (
+                                m.monitor_rect.w,
+                                m.work_rect.h,
+                                m.showbar,
+                                m.monitor_rect.y,
+                                m.monitor_rect.x,
+                            )
+                        })
                         .unwrap_or((0, 0, false, 0, 0))
                 } else {
                     (0, 0, false, 0, 0)
@@ -869,12 +877,12 @@ pub fn apply_rules(win: Window) {
                         }
                         RuleFloat::FloatFullscreen => {
                             c.isfloating = true;
-                            c.w = mon_mw;
-                            c.h = mon_wh;
+                            c.geo.w = mon_mw;
+                            c.geo.h = mon_wh;
                             if mon_showbar {
-                                c.y = mon_my + bh;
+                                c.geo.y = mon_my + bh;
                             }
-                            c.x = mon_mx;
+                            c.geo.x = mon_mx;
                         }
                         RuleFloat::Scratchpad => {
                             c.isfloating = true;
@@ -882,7 +890,7 @@ pub fn apply_rules(win: Window) {
                         RuleFloat::Float => {
                             c.isfloating = true;
                             if mon_showbar {
-                                c.y = mon_my + bh;
+                                c.geo.y = mon_my + bh;
                             }
                         }
                         RuleFloat::Tiled => {
@@ -953,17 +961,17 @@ pub fn apply_size_hints(
         }
     } else if let Some(mon_id) = c.mon_id {
         if let Some(m) = globals.monitors.get(mon_id) {
-            if *x >= m.wx + m.ww {
-                *x = m.wx + m.ww - client_width(c);
+            if *x >= m.work_rect.x + m.work_rect.w {
+                *x = m.work_rect.x + m.work_rect.w - client_width(c);
             }
-            if *y >= m.wy + m.wh {
-                *y = m.wy + m.wh - client_height(c);
+            if *y >= m.work_rect.y + m.work_rect.h {
+                *y = m.work_rect.y + m.work_rect.h - client_height(c);
             }
-            if *x + *w + 2 * c.border_width <= m.wx {
-                *x = m.wx;
+            if *x + *w + 2 * c.border_width <= m.work_rect.x {
+                *x = m.work_rect.x;
             }
-            if *y + *h + 2 * c.border_width <= m.wy {
-                *y = m.wy;
+            if *y + *h + 2 * c.border_width <= m.work_rect.y {
+                *y = m.work_rect.y;
             }
         }
     }
@@ -1035,7 +1043,7 @@ pub fn apply_size_hints(
         }
     }
 
-    *x != c.x || *y != c.y || *w != c.w || *h != c.h
+    *x != c.geo.x || *y != c.geo.y || *w != c.geo.w || *h != c.geo.h
 }
 
 pub fn kill_client(_arg: &Arg) {
@@ -1460,8 +1468,8 @@ pub fn manage(
     crate::focus::focus(None);
 
     if animated && !c.is_fullscreen {
-        resize_client(w, c.x, c.y - 70, c.w, c.h);
-        animate_client(w, c.x, c.y + 70, 0, 0, 7, 0);
+        resize_client(w, c.geo.x, c.geo.y - 70, c.geo.w, c.geo.h);
+        animate_client(w, c.geo.x, c.geo.y + 70, 0, 0, 7, 0);
 
         let has_arrange = if let Some(mon_id) = c.mon_id {
             let globals = get_globals();
@@ -1480,7 +1488,7 @@ pub fn manage(
                     .configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
                 let _ = conn.flush();
             }
-        } else if c.w > mon_mw - 30 || c.h > mon_mh - 30 {
+        } else if c.geo.w > mon_mw - 30 || c.geo.h > mon_mh - 30 {
             if let Some(mon_id) = c.mon_id {
                 arrange(Some(mon_id));
             }
@@ -1618,10 +1626,10 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                 c.isfakefullscreen,
                 c.mon_id,
                 c.oldstate,
-                c.oldx,
-                c.oldy,
-                c.oldw,
-                c.oldh,
+                c.old_geo.x,
+                c.old_geo.y,
+                c.old_geo.w,
+                c.old_geo.h,
             )
         });
         let Some((is_fs, is_floating, is_fake_fs, mon_id, _oldstate, oldx, oldy, oldw, oldh)) =
@@ -1653,7 +1661,14 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                     globals
                         .monitors
                         .get(mid)
-                        .map(|m| (m.mx, m.my, m.mw, m.mh))
+                        .map(|m| {
+                            (
+                                m.monitor_rect.x,
+                                m.monitor_rect.y,
+                                m.monitor_rect.w,
+                                m.monitor_rect.h,
+                            )
+                        })
                         .unwrap_or((0, 0, 0, 0))
                 } else {
                     (0, 0, 0, 0)
@@ -1740,7 +1755,14 @@ pub fn toggle_fake_fullscreen(_arg: &Arg) {
             let (mon_mx, mon_my, mon_mw, mon_mh) = get_globals()
                 .monitors
                 .get(mid)
-                .map(|m| (m.mx, m.my, m.mw, m.mh))
+                .map(|m| {
+                    (
+                        m.monitor_rect.x,
+                        m.monitor_rect.y,
+                        m.monitor_rect.w,
+                        m.monitor_rect.h,
+                    )
+                })
                 .unwrap_or((0, 0, 0, 0));
             resize_client(
                 win,
@@ -2020,7 +2042,7 @@ pub fn update_motif_hints(win: Window) {
                         let (c_w, c_h, c_x, c_y) = {
                             let globals = get_globals();
                             if let Some(c) = globals.clients.get(&win) {
-                                (client_width(c), client_height(c), c.x, c.y)
+                                (client_width(c), client_height(c), c.geo.x, c.geo.y)
                             } else {
                                 return;
                             }

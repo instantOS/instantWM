@@ -161,7 +161,7 @@ fn measure_layout(m: &MonitorInner, items: &[StatusItem]) -> StatusLayout {
 
     let draw_width = (width + 2).max(0);
     let systray_w = get_systray_width() as i32;
-    let draw_start_x = m.ww - draw_width - systray_w;
+    let draw_start_x = m.work_rect.w - draw_width - systray_w;
 
     StatusLayout {
         draw_start_x,

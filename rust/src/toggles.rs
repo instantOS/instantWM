@@ -135,7 +135,7 @@ pub fn set_border_width(arg: &Arg) {
     let (x, y, w, h) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&win) {
-            (c.x, c.y, c.w + 2 * d, c.h + 2 * d)
+            (c.geo.x, c.geo.y, c.geo.w + 2 * d, c.geo.h + 2 * d)
         } else {
             return;
         }

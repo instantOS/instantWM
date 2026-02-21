@@ -22,7 +22,7 @@ pub fn get_systray_width() -> u32 {
     if let Some(ref systray) = globals.systray {
         for &icon_win in &systray.icons {
             if let Some(c) = globals.clients.get(&icon_win) {
-                w += c.w as u32 + globals.systrayspacing as u32;
+                w += c.geo.w as u32 + globals.systrayspacing as u32;
             }
         }
     }
@@ -54,28 +54,28 @@ pub fn update_systray_icon_geom(icon_win: Window, w: i32, h: i32) {
     let mut globals = get_globals_mut();
     let bh = globals.bh;
     if let Some(client) = globals.clients.get_mut(&icon_win) {
-        client.h = bh;
+        client.geo.h = bh;
         if w == h {
-            client.w = bh;
+            client.geo.w = bh;
         } else if h == bh {
-            client.w = w;
+            client.geo.w = w;
         } else {
-            client.w = (bh as f32 * (w as f32 / h as f32)) as i32;
+            client.geo.w = (bh as f32 * (w as f32 / h as f32)) as i32;
         }
 
-        let mut x = client.x;
-        let mut y = client.y;
-        let mut cw = client.w;
-        let mut ch = client.h;
+        let mut x = client.geo.x;
+        let mut y = client.geo.y;
+        let mut cw = client.geo.w;
+        let mut ch = client.geo.h;
         let _ = apply_size_hints(client, &mut x, &mut y, &mut cw, &mut ch, false);
 
-        if client.h > bh {
-            if client.w == client.h {
-                client.w = bh;
+        if client.geo.h > bh {
+            if client.geo.w == client.geo.h {
+                client.geo.w = bh;
             } else {
-                client.w = (bh as f32 * (client.w as f32 / client.h as f32)) as i32;
+                client.geo.w = (bh as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
             }
-            client.h = bh;
+            client.geo.h = bh;
         }
     }
 }
@@ -186,7 +186,12 @@ pub fn update_systray() {
                 return;
             }
         };
-        (mon.mx + mon.mw, mon.by, mon.showbar, mon.barwin)
+        (
+            mon.monitor_rect.x + mon.monitor_rect.w,
+            mon.by,
+            mon.showbar,
+            mon.barwin,
+        )
     };
     eprintln!("TRACE: update_systray - got coords: x={}, by={}", x, by);
 
@@ -368,8 +373,8 @@ pub fn update_systray() {
         w += systrayspacing as u32;
 
         if let Some(client) = globals.clients.get(&icon_win) {
-            let icon_w = client.w;
-            let icon_h = client.h;
+            let icon_w = client.geo.w;
+            let icon_h = client.geo.h;
 
             let _ = conn.configure_window(
                 icon_win,

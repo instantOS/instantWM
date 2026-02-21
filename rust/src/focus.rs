@@ -105,7 +105,7 @@ pub fn focus_direction(direction: Direction) {
     let (sel_mon_id, source_win) = {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(selmon_id) {
+            if let Some(mon) = globals.monitors.get(sel_mon_id) {
                 if let Some(sel) = mon.sel {
                     (sel_mon_id, sel)
                 } else {
@@ -122,7 +122,10 @@ pub fn focus_direction(direction: Direction) {
     let (sx, sy) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&source_win) {
-            (client.x + client.w / 2, client.y + client.h / 2)
+            (
+                client.geo.x + client.geo.w / 2,
+                client.geo.y + client.geo.h / 2,
+            )
         } else {
             return;
         }

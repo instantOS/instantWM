@@ -45,16 +45,16 @@ pub(crate) fn update_bar_pos(m: &mut MonitorInner) {
 }
 
 pub(crate) fn update_bar_pos_with_bh(m: &mut MonitorInner, bh: i32) {
-    m.wy = m.my;
-    m.wh = m.mh;
+    m.work_rect.y = m.monitor_rect.y;
+    m.work_rect.h = m.monitor_rect.h;
 
     if m.showbar {
-        m.wh -= bh;
+        m.work_rect.h -= bh;
         if m.topbar {
-            m.by = m.wy;
-            m.wy += bh;
+            m.by = m.work_rect.y;
+            m.work_rect.y += bh;
         } else {
-            m.by = m.wy + m.wh;
+            m.by = m.work_rect.y + m.work_rect.h;
         }
     } else {
         m.by = -bh;
@@ -70,7 +70,7 @@ pub(crate) fn resize_bar_win(m: &MonitorInner) {
         .and_then(|selmon_idx| g.monitors.get(selmon_idx))
         .map_or(false, |selmon| selmon.num == m.num);
 
-    let mut w = m.ww as u32;
+    let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
         w = w.saturating_sub(get_systray_width());
     }
@@ -80,7 +80,7 @@ pub(crate) fn resize_bar_win(m: &MonitorInner) {
         let _ = conn.configure_window(
             m.barwin,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                .x(m.wx as i32)
+                .x(m.work_rect.x as i32)
                 .y(m.by as i32)
                 .width(w)
                 .height(bh as u32),
@@ -103,7 +103,7 @@ pub(crate) fn update_bars() {
                 continue;
             }
 
-            let mut w = m.ww as u32;
+            let mut w = m.work_rect.w as u32;
             if showsystray {
                 if let Some(selmon_idx) = g.selmon {
                     if selmon_idx == i {
@@ -111,7 +111,7 @@ pub(crate) fn update_bars() {
                     }
                 }
             }
-            bar_configs.push((i, m.wx, m.by, w, bh));
+            bar_configs.push((i, m.work_rect.x, m.by, w, bh));
         }
         (bar_configs, xlibdisplay, root, status_bg)
     };

@@ -39,10 +39,10 @@ static SNAP_MATRIX: [[i32; 4]; 10] = [
 pub fn save_floating_win(win: Window) {
     let mut globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        client.saved_float_x = client.x;
-        client.saved_float_y = client.y;
-        client.saved_float_width = client.w;
-        client.saved_float_height = client.h;
+        client.float_geo.x = client.geo.x;
+        client.float_geo.y = client.geo.y;
+        client.float_geo.w = client.geo.w;
+        client.float_geo.h = client.geo.h;
     }
 }
 
@@ -51,10 +51,10 @@ pub fn restore_floating_win(win: Window) {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
             (
-                client.saved_float_x,
-                client.saved_float_y,
-                client.saved_float_width,
-                client.saved_float_height,
+                client.float_geo.x,
+                client.float_geo.y,
+                client.float_geo.w,
+                client.float_geo.h,
             )
         } else {
             return;
@@ -85,7 +85,7 @@ pub fn apply_size(win: Window) {
     let (x, y, w, h) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            (client.x + 1, client.y, client.w, client.h)
+            (client.geo.x + 1, client.geo.y, client.geo.w, client.geo.h)
         } else {
             return;
         }
@@ -265,10 +265,10 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
         if let Some(client) = globals.clients.get(&win) {
             (
                 client.snapstatus,
-                client.saved_float_x,
-                client.saved_float_y,
-                client.saved_float_width,
-                client.saved_float_height,
+                client.float_geo.x,
+                client.float_geo.y,
+                client.float_geo.w,
+                client.float_geo.h,
                 client.border_width,
             )
         } else {
@@ -280,8 +280,15 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
         let (m_mx, m_my, m_mw, m_mh, m_wh, mony) = {
             let globals = get_globals();
             if let Some(m) = globals.monitors.get(mid) {
-                let mony = m.my + if m.showbar { globals.bh } else { 0 };
-                (m.mx, m.my, m.mw, m.mh, m.wh, mony)
+                let mony = m.monitor_rect.y + if m.showbar { globals.bh } else { 0 };
+                (
+                    m.monitor_rect.x,
+                    m.monitor_rect.y,
+                    m.monitor_rect.w,
+                    m.monitor_rect.h,
+                    m.work_rect.h,
+                    mony,
+                )
             } else {
                 return;
             }
@@ -617,10 +624,10 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
             let globals = get_globals();
             if let Some(client) = globals.clients.get(&win) {
                 (
-                    client.saved_float_x,
-                    client.saved_float_y,
-                    client.saved_float_width,
-                    client.saved_float_height,
+                    client.float_geo.x,
+                    client.float_geo.y,
+                    client.float_geo.w,
+                    client.float_geo.h,
                 )
             } else {
                 return;
@@ -645,10 +652,10 @@ fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders
                 }
             }
 
-            client.saved_float_x = client.x;
-            client.saved_float_y = client.y;
-            client.saved_float_width = client.w;
-            client.saved_float_height = client.h;
+            client.float_geo.x = client.geo.x;
+            client.float_geo.y = client.geo.y;
+            client.float_geo.w = client.geo.w;
+            client.float_geo.h = client.geo.h;
         }
     }
 }
@@ -770,7 +777,7 @@ pub fn center_window(_arg: &Arg) {
     let (w, h, is_floating) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            (client.w, client.h, client.isfloating)
+            (client.geo.w, client.geo.h, client.isfloating)
         } else {
             return;
         }
@@ -784,7 +791,13 @@ pub fn center_window(_arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.ww, mon.wh, mon.showbar, mon.mx, mon.my)
+                (
+                    mon.work_rect.w,
+                    mon.work_rect.h,
+                    mon.showbar,
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                )
             } else {
                 return;
             }
@@ -829,10 +842,10 @@ pub fn moveresize(arg: &Arg) {
         if let Some(client) = globals.clients.get(&win) {
             (
                 client.isfloating,
-                client.x,
-                client.y,
-                client.w,
-                client.h,
+                client.geo.x,
+                client.geo.y,
+                client.geo.w,
+                client.geo.h,
                 client.border_width,
             )
         } else {
@@ -860,7 +873,12 @@ pub fn moveresize(arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.mx, mon.my, mon.mw, mon.mh)
+                (
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                    mon.monitor_rect.w,
+                    mon.monitor_rect.h,
+                )
             } else {
                 return;
             }
@@ -903,7 +921,13 @@ pub fn key_resize(arg: &Arg) {
     let (is_floating, c_x, c_y, c_w, c_h) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            (client.isfloating, client.x, client.y, client.w, client.h)
+            (
+                client.isfloating,
+                client.geo.x,
+                client.geo.y,
+                client.geo.w,
+                client.geo.h,
+            )
         } else {
             return;
         }
@@ -980,7 +1004,13 @@ pub fn scale_client_win(win: Window, scale: i32) {
     let (is_floating, c_x, c_y, c_w, c_h) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            (client.isfloating, client.x, client.y, client.w, client.h)
+            (
+                client.isfloating,
+                client.geo.x,
+                client.geo.y,
+                client.geo.w,
+                client.geo.h,
+            )
         } else {
             return;
         }
@@ -994,7 +1024,13 @@ pub fn scale_client_win(win: Window, scale: i32) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.mx, mon.my, mon.mw, mon.mh, globals.bh)
+                (
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                    mon.monitor_rect.w,
+                    mon.monitor_rect.h,
+                    globals.bh,
+                )
             } else {
                 return;
             }

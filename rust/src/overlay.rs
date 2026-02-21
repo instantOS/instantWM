@@ -120,7 +120,7 @@ pub fn create_overlay(_arg: &Arg) {
         let globals = get_globals();
         let selmon_id = globals.selmon.unwrap_or(0);
         if let Some(mon) = globals.monitors.get(selmon_id) {
-            (mon.overlaymode, mon.ww, mon.wh)
+            (mon.overlaymode, mon.work_rect.w, mon.work_rect.h)
         } else {
             (0, 0, 0)
         }
@@ -130,9 +130,9 @@ pub fn create_overlay(_arg: &Arg) {
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&temp_client) {
             if overlay_mode == OVERLAY_TOP || overlay_mode == OVERLAY_BOTTOM {
-                client.h = mon_wh / 3;
+                client.geo.h = mon_wh / 3;
             } else {
-                client.w = mon_ww / 3;
+                client.geo.w = mon_ww / 3;
             }
         }
     }
@@ -256,7 +256,14 @@ pub fn show_overlay(_arg: &Arg) {
     let (overlay_mode, mon_mx, mon_my, mon_mw, mon_mh, mon_ww) = {
         let globals = get_globals();
         if let Some(mon) = globals.monitors.get(selmon_id) {
-            (mon.overlaymode, mon.mx, mon.my, mon.mw, mon.mh, mon.ww)
+            (
+                mon.overlaymode,
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+                mon.work_rect.w,
+            )
         } else {
             return;
         }
@@ -265,7 +272,7 @@ pub fn show_overlay(_arg: &Arg) {
     let (client_w, client_h, is_locked) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&overlay_win) {
-            (c.w, c.h, c.islocked)
+            (c.geo.w, c.geo.h, c.islocked)
         } else {
             return;
         }
@@ -355,10 +362,16 @@ pub fn show_overlay(_arg: &Arg) {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(selmon_id) {
                 match overlay_mode {
-                    OVERLAY_TOP => (overlay_win as i32, mon.my + yoffset),
-                    OVERLAY_RIGHT => (mon.mx + mon.mw - client_w, mon.my + 40),
-                    OVERLAY_BOTTOM => (mon.mx + 20, mon.my + mon.mh - client_h),
-                    OVERLAY_LEFT => (mon.mx, mon.my + 40),
+                    OVERLAY_TOP => (overlay_win as i32, mon.monitor_rect.y + yoffset),
+                    OVERLAY_RIGHT => (
+                        mon.monitor_rect.x + mon.monitor_rect.w - client_w,
+                        mon.monitor_rect.y + 40,
+                    ),
+                    OVERLAY_BOTTOM => (
+                        mon.monitor_rect.x + 20,
+                        mon.monitor_rect.y + mon.monitor_rect.h - client_h,
+                    ),
+                    OVERLAY_LEFT => (mon.monitor_rect.x, mon.monitor_rect.y + 40),
                     _ => (0, 0),
                 }
             } else {
@@ -432,13 +445,13 @@ pub fn hide_overlay(_arg: &Arg) {
             (
                 is_locked,
                 mon.overlaymode,
-                mon.mx,
-                mon.my,
-                mon.mw,
-                mon.mh,
-                c.x,
-                c.h,
-                c.w,
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+                c.geo.x,
+                c.geo.h,
+                c.geo.w,
                 is_fullscreen,
             )
         } else {
@@ -541,8 +554,8 @@ pub fn set_overlay_mode(mode: i32) {
         let mon = globals.monitors.get(selmon_id);
         (
             mon.and_then(|m| m.overlay).is_some(),
-            mon.map(|m| m.wh).unwrap_or(0),
-            mon.map(|m| m.ww).unwrap_or(0),
+            mon.map(|m| m.work_rect.h).unwrap_or(0),
+            mon.map(|m| m.work_rect.w).unwrap_or(0),
             mon.map(|m| m.overlaystatus).unwrap_or(0),
         )
     };
@@ -558,9 +571,9 @@ pub fn set_overlay_mode(mode: i32) {
             if let Some(overlay_win) = mon.overlay {
                 if let Some(client) = globals.clients.get_mut(&overlay_win) {
                     if mode == OVERLAY_TOP || mode == OVERLAY_BOTTOM {
-                        client.h = mon_wh / 3;
+                        client.geo.h = mon_wh / 3;
                     } else {
-                        client.w = mon_ww / 3;
+                        client.geo.w = mon_ww / 3;
                     }
                 }
             }
@@ -607,12 +620,12 @@ pub fn reset_overlay_size() {
             (
                 overlay_win.is_some(),
                 mon.overlaymode,
-                mon.mx,
-                mon.my,
-                mon.mw,
-                mon.mh,
-                mon.ww,
-                mon.wh,
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+                mon.work_rect.w,
+                mon.work_rect.h,
                 mon.showbar,
                 globals.bh,
             )
@@ -656,7 +669,11 @@ pub fn reset_overlay_size() {
         OVERLAY_RIGHT => {
             let client_w = {
                 let globals = get_globals();
-                globals.clients.get(&win).map(|c| c.w).unwrap_or(mon_mw / 3)
+                globals
+                    .clients
+                    .get(&win)
+                    .map(|c| c.geo.w)
+                    .unwrap_or(mon_mw / 3)
             };
             resize(
                 win,
@@ -670,7 +687,11 @@ pub fn reset_overlay_size() {
         OVERLAY_BOTTOM => {
             let client_h = {
                 let globals = get_globals();
-                globals.clients.get(&win).map(|c| c.h).unwrap_or(mon_wh / 3)
+                globals
+                    .clients
+                    .get(&win)
+                    .map(|c| c.geo.h)
+                    .unwrap_or(mon_wh / 3)
             };
             resize(
                 win,

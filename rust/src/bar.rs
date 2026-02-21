@@ -55,7 +55,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
         let bh = g.bh;
         if let Some(ref mut drw) = g.drw {
             drw.set_drawable(m.barwin);
-            drw.w = m.ww as u32;
+            drw.w = m.work_rect.w as u32;
             drw.h = bh as u32;
         }
     }
@@ -87,9 +87,9 @@ pub fn draw_bar(m: &mut MonitorInner) {
     let status_offset = if is_selmon {
         layout.status_start_x
     } else {
-        m.ww
+        m.work_rect.w
     };
-    layout.title_width = (m.ww - status_offset - x - layout.systray_width).max(0);
+    layout.title_width = (m.work_rect.w - status_offset - x - layout.systray_width).max(0);
 
     if layout.title_width > bh {
         widgets::draw_window_titles(m, x, layout.title_width, stats.visible_clients, bh);

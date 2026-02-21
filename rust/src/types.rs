@@ -730,6 +730,35 @@ pub struct Systray {
     pub icons: Vec<Window>,
 }
 
+/// Action that can be bound to a key or button.
+/// This enum allows different function signatures to be used in bindings.
+#[derive(Debug, Clone, Copy)]
+pub enum Action {
+    /// No action
+    None,
+    /// Function taking an Arg pointer (legacy)
+    WithArg(fn(&Arg)),
+    /// Focus stack with direction
+    FocusStack(bool),
+    /// Focus in a direction
+    FocusDirection(Direction),
+    /// Cycle layout forward/backward
+    CycleLayout(bool),
+    /// Increment nmaster by delta
+    IncNmaster(i32),
+    /// Shift view forward/backward
+    ShiftView(bool),
+    /// Tag to left/right by offset
+    TagToLeft(i32),
+    TagToRight(i32),
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Key {
     pub mod_mask: u32,

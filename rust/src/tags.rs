@@ -604,9 +604,16 @@ pub fn tag_mon(arg: &Arg) {
                     None
                 };
                 let (mx, my, ww, wh) = mon
-                    .map(|m| (m.mx, m.my, m.ww, m.wh))
+                    .map(|m| {
+                        (
+                            m.monitor_rect.x,
+                            m.monitor_rect.y,
+                            m.work_rect.w,
+                            m.work_rect.h,
+                        )
+                    })
                     .unwrap_or((0, 0, 0, 0));
-                (c.x, c.y, mx, my, ww, wh)
+                (c.geo.x, c.geo.y, mx, my, ww, wh)
             } else {
                 return;
             }
@@ -618,7 +625,12 @@ pub fn tag_mon(arg: &Arg) {
         let (target_mx, target_my, target_ww, target_wh) = {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(target_id) {
-                (mon.mx, mon.my, mon.ww, mon.wh)
+                (
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                    mon.work_rect.w,
+                    mon.work_rect.h,
+                )
             } else {
                 (0, 0, 0, 0)
             }
@@ -628,8 +640,8 @@ pub fn tag_mon(arg: &Arg) {
 
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
-            client.x = target_mx + (target_ww as f32 * xfact) as i32;
-            client.y = target_my + (target_wh as f32 * yfact) as i32;
+            client.geo.x = target_mx + (target_ww as f32 * xfact) as i32;
+            client.geo.y = target_my + (target_wh as f32 * yfact) as i32;
         }
 
         if let Some(sel_mon_id) = globals.selmon {
@@ -735,14 +747,18 @@ fn shift_tag(dir: i32, offset: i32) {
         let (mon_mw, c_x, c_y) = {
             let globals = get_globals();
             let mon_mw = if let Some(sel_mon_id) = globals.selmon {
-                globals.monitors.get(sel_mon_id).map(|m| m.mw).unwrap_or(0)
+                globals
+                    .monitors
+                    .get(sel_mon_id)
+                    .map(|m| m.monitor_rect.w)
+                    .unwrap_or(0)
             } else {
                 0
             };
             let (c_x, c_y) = globals
                 .clients
                 .get(&win)
-                .map(|c| (c.x, c.y))
+                .map(|c| (c.geo.x, c.geo.y))
                 .unwrap_or((0, 0));
             (mon_mw, c_x, c_y)
         };

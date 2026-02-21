@@ -193,12 +193,12 @@ pub fn tile(m: &mut MonitorInner) {
     let mut mw: i32;
     if n > m.nmaster as u32 {
         mw = if m.nmaster > 0 {
-            (m.mfact * m.ww as f32) as i32
+            (m.mfact * m.work_rect.w as f32) as i32
         } else {
             0
         };
     } else {
-        mw = m.ww;
+        mw = m.work_rect.w;
         if n > 1 && n < m.nmaster as u32 {
             m.nmaster = n as i32;
             tile(m);
@@ -222,13 +222,13 @@ pub fn tile(m: &mut MonitorInner) {
         };
 
         if i < m.nmaster as u32 {
-            let h = (m.wh - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
+            let h = (m.work_rect.h - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
 
             if n == 2 {
                 animate_client(
                     win,
-                    m.wx,
-                    m.wy + my as i32,
+                    m.work_rect.x,
+                    m.work_rect.y + my as i32,
                     mw - 2 * border_width,
                     h - 2 * border_width,
                     0,
@@ -237,8 +237,8 @@ pub fn tile(m: &mut MonitorInner) {
             } else {
                 animate_client(
                     win,
-                    m.wx,
-                    m.wy + my as i32,
+                    m.work_rect.x,
+                    m.work_rect.y + my as i32,
                     mw - 2 * border_width,
                     h - 2 * border_width,
                     framecount,
@@ -247,24 +247,24 @@ pub fn tile(m: &mut MonitorInner) {
                 if m.nmaster == 1 && n > 1 {
                     let g = get_globals();
                     if let Some(c) = g.clients.get(&win) {
-                        mw = c.w + c.border_width * 2;
+                        mw = c.geo.w + c.border_width * 2;
                     }
                 }
             }
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                if my as i32 + client_height(c) < m.wh {
+                if my as i32 + client_height(c) < m.work_rect.h {
                     my += client_height(c) as u32;
                 }
             }
         } else {
-            let h = (m.wh - ty as i32) / (n - i) as i32;
+            let h = (m.work_rect.h - ty as i32) / (n - i) as i32;
             animate_client(
                 win,
-                m.wx + mw,
-                m.wy + ty as i32,
-                m.ww - mw - 2 * border_width,
+                m.work_rect.x + mw,
+                m.work_rect.y + ty as i32,
+                m.work_rect.w - mw - 2 * border_width,
                 h - 2 * border_width,
                 framecount,
                 0,
@@ -272,7 +272,7 @@ pub fn tile(m: &mut MonitorInner) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                if ty as i32 + client_height(c) < m.wh {
+                if ty as i32 + client_height(c) < m.work_rect.h {
                     ty += client_height(c) as u32;
                 }
             }
@@ -346,10 +346,10 @@ pub fn monocle(m: &mut MonitorInner) {
         };
         animate_client(
             win,
-            m.wx,
-            m.wy,
-            m.ww - 2 * border_width,
-            m.wh - 2 * border_width,
+            m.work_rect.x,
+            m.work_rect.y,
+            m.work_rect.w - 2 * border_width,
+            m.work_rect.h - 2 * border_width,
             frames,
             0,
         );
@@ -360,7 +360,7 @@ pub fn monocle(m: &mut MonitorInner) {
 
 pub fn grid(m: &mut MonitorInner) {
     let g = get_globals();
-    if m.clientcount <= 2 && m.mw > m.mh {
+    if m.clientcount <= 2 && m.monitor_rect.w > m.monitor_rect.h {
         tile(m);
         return;
     }
@@ -405,8 +405,8 @@ pub fn grid(m: &mut MonitorInner) {
         rows as u32
     };
 
-    let ch = m.wh / if rows > 0 { rows } else { 1 };
-    let cw = m.ww / if cols > 0 { cols as i32 } else { 1 };
+    let ch = m.work_rect.h / if rows > 0 { rows } else { 1 };
+    let cw = m.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
 
     let mut i: i32 = 0;
     let mut c_win = next_tiled(m.clients);
@@ -420,16 +420,16 @@ pub fn grid(m: &mut MonitorInner) {
             }
         };
 
-        let cx = m.wx + (i / rows) * cw;
-        let cy = m.wy + (i % rows) * ch;
+        let cx = m.work_rect.x + (i / rows) * cw;
+        let cy = m.work_rect.y + (i % rows) * ch;
 
         let ah = if (i + 1) % rows == 0 {
-            m.wh - ch * rows
+            m.work_rect.h - ch * rows
         } else {
             0
         };
         let aw = if i >= rows * (cols as i32 - 1) {
-            m.ww - cw * cols as i32
+            m.work_rect.w - cw * cols as i32
         } else {
             0
         };
@@ -477,12 +477,12 @@ pub fn deck(m: &mut MonitorInner) {
 
     let mw: u32 = if n > m.nmaster as u32 {
         if m.nmaster > 0 {
-            (m.mfact * m.ww as f32) as u32
+            (m.mfact * m.work_rect.w as f32) as u32
         } else {
             0
         }
     } else {
-        m.ww as u32
+        m.work_rect.w as u32
     };
 
     let mut my: u32 = 0;
@@ -500,11 +500,11 @@ pub fn deck(m: &mut MonitorInner) {
         };
 
         if i < m.nmaster as u32 {
-            let h = (m.wh - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
+            let h = (m.work_rect.h - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
             resize(
                 win,
-                m.wx,
-                m.wy + my as i32,
+                m.work_rect.x,
+                m.work_rect.y + my as i32,
                 mw as i32 - 2 * border_width,
                 h - 2 * border_width,
                 false,
@@ -517,10 +517,10 @@ pub fn deck(m: &mut MonitorInner) {
         } else {
             resize(
                 win,
-                m.wx + mw as i32,
-                m.wy,
-                m.ww - mw as i32 - 2 * border_width,
-                m.wh - 2 * border_width,
+                m.work_rect.x + mw as i32,
+                m.work_rect.y,
+                m.work_rect.w - mw as i32 - 2 * border_width,
+                m.work_rect.h - 2 * border_width,
                 false,
             );
         }
@@ -566,20 +566,20 @@ pub fn bstack(m: &mut MonitorInner) {
 
     if n > m.nmaster as u32 {
         mh = if m.nmaster > 0 {
-            (m.mfact * m.wh as f32) as i32
+            (m.mfact * m.work_rect.h as f32) as i32
         } else {
             0
         };
-        tw = m.ww / (n - m.nmaster as u32) as i32;
-        ty = m.wy + mh;
+        tw = m.work_rect.w / (n - m.nmaster as u32) as i32;
+        ty = m.work_rect.y + mh;
     } else {
-        mh = m.wh;
-        tw = m.ww;
-        ty = m.wy;
+        mh = m.work_rect.h;
+        tw = m.work_rect.w;
+        ty = m.work_rect.y;
     }
 
     let mut mx: i32 = 0;
-    let mut tx: i32 = m.wx;
+    let mut tx: i32 = m.work_rect.x;
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
 
@@ -594,11 +594,11 @@ pub fn bstack(m: &mut MonitorInner) {
         };
 
         if i < m.nmaster as u32 {
-            let w = (m.ww - mx) / (min(n, m.nmaster as u32) - i) as i32;
+            let w = (m.work_rect.w - mx) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client(
                 win,
-                m.wx + mx,
-                m.wy,
+                m.work_rect.x + mx,
+                m.work_rect.y,
                 w - 2 * border_width,
                 mh - 2 * border_width,
                 framecount,
@@ -610,7 +610,7 @@ pub fn bstack(m: &mut MonitorInner) {
                 mx += client_width(c);
             }
         } else {
-            let h = m.wh - mh;
+            let h = m.work_rect.h - mh;
             animate_client(
                 win,
                 tx,
@@ -623,7 +623,7 @@ pub fn bstack(m: &mut MonitorInner) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                if tw != m.ww {
+                if tw != m.work_rect.w {
                     tx += client_width(c);
                 }
             }
@@ -666,19 +666,19 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
 
     let (mh, th, mut ty) = if n > m.nmaster as u32 {
         let mh = if m.nmaster > 0 {
-            (m.mfact * m.wh as f32) as i32
+            (m.mfact * m.work_rect.h as f32) as i32
         } else {
             0
         };
-        let th = (m.wh - mh) / (n - m.nmaster as u32) as i32;
-        let ty = m.wy + mh;
+        let th = (m.work_rect.h - mh) / (n - m.nmaster as u32) as i32;
+        let ty = m.work_rect.y + mh;
         (mh, th, ty)
     } else {
-        (m.wh, m.wh, m.wy)
+        (m.work_rect.h, m.work_rect.h, m.work_rect.y)
     };
 
     let mut mx: i32 = 0;
-    let tx: i32 = m.wx;
+    let tx: i32 = m.work_rect.x;
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
 
@@ -693,11 +693,11 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
         };
 
         if i < m.nmaster as u32 {
-            let w = (m.ww - mx) / (min(n, m.nmaster as u32) - i) as i32;
+            let w = (m.work_rect.w - mx) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client(
                 win,
-                m.wx + mx,
-                m.wy,
+                m.work_rect.x + mx,
+                m.work_rect.y,
                 w - 2 * border_width,
                 mh - 2 * border_width,
                 framecount,
@@ -713,7 +713,7 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
                 win,
                 tx,
                 ty,
-                m.ww - 2 * border_width,
+                m.work_rect.w - 2 * border_width,
                 th - 2 * border_width,
                 framecount,
                 0,
@@ -721,7 +721,7 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                if th != m.wh {
+                if th != m.work_rect.h {
                     let mut new_ty = ty;
                     new_ty += client_height(c);
                     drop(g);
@@ -761,8 +761,8 @@ pub fn tcl(m: &mut MonitorInner) {
         return;
     }
 
-    let mw = (m.mfact * m.ww as f32) as i32;
-    let sw = (m.ww - mw) / 2;
+    let mw = (m.mfact * m.work_rect.w as f32) as i32;
+    let sw = (m.work_rect.w - mw) / 2;
 
     let (bdw, first_next) = {
         let g = get_globals();
@@ -775,10 +775,18 @@ pub fn tcl(m: &mut MonitorInner) {
 
     resize(
         first_win.unwrap(),
-        if n < 3 { m.wx } else { m.wx + sw },
-        m.wy,
-        if n == 1 { m.ww - bdw } else { mw - bdw },
-        m.wh - bdw,
+        if n < 3 {
+            m.work_rect.x
+        } else {
+            m.work_rect.x + sw
+        },
+        m.work_rect.y,
+        if n == 1 {
+            m.work_rect.w - bdw
+        } else {
+            mw - bdw
+        },
+        m.work_rect.h - bdw,
         false,
     );
 
@@ -787,20 +795,20 @@ pub fn tcl(m: &mut MonitorInner) {
     }
     let n = n - 1;
 
-    let w = (m.ww - mw) / if n > 1 { 2 } else { 1 };
+    let w = (m.work_rect.w - mw) / if n > 1 { 2 } else { 1 };
 
     let mut c_win = next_tiled(first_next);
     if n > 1 {
-        let x = m.wx + mw + sw;
-        let mut y = m.wy;
-        let h = m.wh / (n / 2) as i32;
+        let x = m.work_rect.x + mw + sw;
+        let mut y = m.work_rect.y;
+        let h = m.work_rect.h / (n / 2) as i32;
 
         let bh = {
             let g = get_globals();
             g.bh
         };
 
-        let actual_h = if h < bh { m.wh } else { h };
+        let actual_h = if h < bh { m.work_rect.h } else { h };
 
         let mut i: u32 = 0;
         while c_win.is_some() && i < n / 2 {
@@ -815,16 +823,16 @@ pub fn tcl(m: &mut MonitorInner) {
             };
 
             let rh = if i + 1 == n / 2 {
-                m.wy + m.wh - y - 2 * border_width
+                m.work_rect.y + m.work_rect.h - y - 2 * border_width
             } else {
                 actual_h - 2 * border_width
             };
             resize(win, x, y, w - 2 * border_width, rh, false);
 
-            if actual_h != m.wh {
+            if actual_h != m.work_rect.h {
                 let g = get_globals();
                 if let Some(c) = g.clients.get(&win) {
-                    y = c.y + client_height(c);
+                    y = c.geo.y + client_height(c);
                 }
             }
 
@@ -833,16 +841,20 @@ pub fn tcl(m: &mut MonitorInner) {
         }
     }
 
-    let x = if (n + 1) / 2 == 1 { mw + m.wx } else { m.wx };
-    let mut y = m.wy;
-    let h = m.wh / ((n + 1) / 2) as i32;
+    let x = if (n + 1) / 2 == 1 {
+        mw + m.work_rect.x
+    } else {
+        m.work_rect.x
+    };
+    let mut y = m.work_rect.y;
+    let h = m.work_rect.h / ((n + 1) / 2) as i32;
 
     let bh = {
         let g = get_globals();
         g.bh
     };
 
-    let actual_h = if h < bh { m.wh } else { h };
+    let actual_h = if h < bh { m.work_rect.h } else { h };
 
     let mut i: u32 = 0;
     while c_win.is_some() {
@@ -857,16 +869,16 @@ pub fn tcl(m: &mut MonitorInner) {
         };
 
         let rh = if i + 1 == (n + 1) / 2 {
-            m.wy + m.wh - y - 2 * border_width
+            m.work_rect.y + m.work_rect.h - y - 2 * border_width
         } else {
             actual_h - 2 * border_width
         };
         resize(win, x, y, w - 2 * border_width, rh, false);
 
-        if actual_h != m.wh {
+        if actual_h != m.work_rect.h {
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                y = c.y + client_height(c);
+                y = c.geo.y + client_height(c);
             }
         }
 
@@ -890,7 +902,14 @@ pub fn overviewlayout(m: &mut MonitorInner) {
         let g = get_globals();
         if let Some(selmon_id) = g.selmon {
             if let Some(mon) = g.monitors.get(selmon_id) {
-                (mon.mx, mon.my, mon.wh, mon.ww, mon.showbar, mon.barwin)
+                (
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                    mon.work_rect.h,
+                    mon.work_rect.w,
+                    mon.showbar,
+                    mon.barwin,
+                )
             } else {
                 return;
             }
@@ -923,7 +942,7 @@ pub fn overviewlayout(m: &mut MonitorInner) {
                     continue;
                 }
 
-                let (cw, ch, is_floating) = (c.w, c.h, c.isfloating);
+                let (cw, ch, is_floating) = (c.geo.w, c.geo.h, c.isfloating);
                 let next_client = c.next;
                 drop(g);
 
@@ -1037,56 +1056,59 @@ fn apply_snap_for_window(win: Window, m: &MonitorInner) {
 
         let (x, y, w, h) = match snapstatus {
             SnapPosition::Top => (
-                m.wx,
-                m.wy,
-                m.ww - 2 * border_width,
-                m.wh / 2 - 2 * border_width,
+                m.work_rect.x,
+                m.work_rect.y,
+                m.work_rect.w - 2 * border_width,
+                m.work_rect.h / 2 - 2 * border_width,
             ),
             SnapPosition::TopRight => (
-                m.wx + m.ww / 2,
-                m.wy,
-                m.ww / 2 - 2 * border_width,
-                m.wh / 2 - 2 * border_width,
+                m.work_rect.x + m.work_rect.w / 2,
+                m.work_rect.y,
+                m.work_rect.w / 2 - 2 * border_width,
+                m.work_rect.h / 2 - 2 * border_width,
             ),
             SnapPosition::Right => (
-                m.wx + m.ww / 2,
-                m.wy,
-                m.ww / 2 - 2 * border_width,
-                m.wh - 2 * border_width,
+                m.work_rect.x + m.work_rect.w / 2,
+                m.work_rect.y,
+                m.work_rect.w / 2 - 2 * border_width,
+                m.work_rect.h - 2 * border_width,
             ),
             SnapPosition::BottomRight => (
-                m.wx + m.ww / 2,
-                m.wy + m.wh / 2,
-                m.ww / 2 - 2 * border_width,
-                m.wh / 2 - 2 * border_width,
+                m.work_rect.x + m.work_rect.w / 2,
+                m.work_rect.y + m.work_rect.h / 2,
+                m.work_rect.w / 2 - 2 * border_width,
+                m.work_rect.h / 2 - 2 * border_width,
             ),
             SnapPosition::Bottom => (
-                m.wx,
-                m.wy + m.wh / 2,
-                m.ww - 2 * border_width,
-                m.wh / 2 - 2 * border_width,
+                m.work_rect.x,
+                m.work_rect.y + m.work_rect.h / 2,
+                m.work_rect.w - 2 * border_width,
+                m.work_rect.h / 2 - 2 * border_width,
             ),
             SnapPosition::BottomLeft => (
-                m.wx,
-                m.wy + m.wh / 2,
-                m.ww / 2 - 2 * border_width,
-                m.wh / 2 - 2 * border_width,
+                m.work_rect.x,
+                m.work_rect.y + m.work_rect.h / 2,
+                m.work_rect.w / 2 - 2 * border_width,
+                m.work_rect.h / 2 - 2 * border_width,
             ),
             SnapPosition::Left => (
-                m.wx,
-                m.wy,
-                m.ww / 2 - 2 * border_width,
-                m.wh - 2 * border_width,
+                m.work_rect.x,
+                m.work_rect.y,
+                m.work_rect.w / 2 - 2 * border_width,
+                m.work_rect.h - 2 * border_width,
             ),
             SnapPosition::TopLeft => (
-                m.wx,
-                m.wy,
-                m.ww / 2 - 2 * border_width,
-                m.wh / 2 - 2 * border_width,
+                m.work_rect.x,
+                m.work_rect.y,
+                m.work_rect.w / 2 - 2 * border_width,
+                m.work_rect.h / 2 - 2 * border_width,
             ),
-            SnapPosition::Maximized => {
-                (m.wx, m.wy, m.ww - 2 * border_width, m.wh - 2 * border_width)
-            }
+            SnapPosition::Maximized => (
+                m.work_rect.x,
+                m.work_rect.y,
+                m.work_rect.w - 2 * border_width,
+                m.work_rect.h - 2 * border_width,
+            ),
             SnapPosition::None => return,
         };
 
@@ -1097,10 +1119,10 @@ fn apply_snap_for_window(win: Window, m: &MonitorInner) {
 fn save_floating(win: Window) {
     let mut g = get_globals_mut();
     if let Some(c) = g.clients.get_mut(&win) {
-        c.saved_float_x = c.x;
-        c.saved_float_y = c.y;
-        c.saved_float_width = c.w;
-        c.saved_float_height = c.h;
+        c.float_geo.x = c.geo.x;
+        c.float_geo.y = c.geo.y;
+        c.float_geo.w = c.geo.w;
+        c.float_geo.h = c.geo.h;
     }
 }
 
@@ -1218,10 +1240,10 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
             let showbar_offset = if m.showbar { g.bh } else { 0 };
             resize(
                 *fullscreen_win,
-                m.mx,
-                m.my + showbar_offset,
-                m.mw - 2 * tbw,
-                m.mh - showbar_offset - 2 * tbw,
+                m.monitor_rect.x,
+                m.monitor_rect.y + showbar_offset,
+                m.monitor_rect.w - 2 * tbw,
+                m.monitor_rect.h - showbar_offset - 2 * tbw,
                 false,
             );
         }
@@ -1749,10 +1771,10 @@ pub fn fibonacci(m: &mut MonitorInner, spiral: bool) {
         return;
     }
 
-    let mut x = m.wx;
-    let mut y = m.wy;
-    let mut w = m.ww;
-    let mut h = m.wh;
+    let mut x = m.work_rect.x;
+    let mut y = m.work_rect.y;
+    let mut w = m.work_rect.w;
+    let mut h = m.work_rect.h;
 
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
@@ -1844,7 +1866,7 @@ pub fn horizgrid(m: &mut MonitorInner) {
         } else {
             n / cols
         };
-        let cw = m.ww / cols as i32;
+        let cw = m.work_rect.w / cols as i32;
 
         let mut c_win = next_tiled(m.clients);
         let mut count = 0;
@@ -1873,12 +1895,12 @@ pub fn horizgrid(m: &mut MonitorInner) {
                     }
                 };
 
-                let ch = m.wh / cn as i32;
-                let cx = m.wx + col as i32 * cw;
-                let cy = m.wy + row as i32 * ch;
+                let ch = m.work_rect.h / cn as i32;
+                let cx = m.work_rect.x + col as i32 * cw;
+                let cy = m.work_rect.y + row as i32 * ch;
 
                 let aw = if col == cols - 1 {
-                    m.ww - cols as i32 * cw + cw
+                    m.work_rect.w - cols as i32 * cw + cw
                 } else {
                     0
                 };
