@@ -10,6 +10,37 @@ use crate::mouse::{
 use crate::toggles::{hide_window, unhide_all};
 use crate::types::*;
 
+use crate::animation::{anim_left, anim_right};
+use crate::bar::{click_status, toggle_bar};
+use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
+use crate::commands::{command_prefix, set_special_next};
+use crate::floating::{
+    center_window, distribute_clients, temp_fullscreen, toggle_floating,
+    toggle_fullscreen_overview, toggle_overview,
+};
+use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
+use crate::keyboard::{down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press};
+use crate::layouts::command_layout;
+use crate::monitor::{focus_mon, follow_mon};
+use crate::mouse::{drag_tag, draw_window, move_resize};
+use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
+use crate::push::{push_down, push_up};
+use crate::scratchpad::{
+    scratchpad_hide, scratchpad_make, scratchpad_show, scratchpad_status, scratchpad_toggle,
+    scratchpad_unmake,
+};
+use crate::tags::{
+    desktop_set, follow_tag, follow_view, last_view, move_left, move_right, name_tag, quit,
+    reset_name_tag, shift_view, swap_tags, tag, tag_mon, tag_to_left, tag_to_right, toggle_tag,
+    toggle_view, view, view_to_left, view_to_right, win_view,
+};
+use crate::toggles::{
+    alt_tab_free, redraw_win, set_border_width, toggle_alt_tag, toggle_animated, toggle_double_draw,
+    toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_locked, toggle_prefix,
+    toggle_show_tags, toggle_sticky,
+};
+use crate::util::spawn;
+
 pub const BORDERPX: u32 = 3;
 pub const MAX_TAGLEN: usize = 16;
 
@@ -349,7 +380,7 @@ pub fn get_rules() -> Vec<Rule> {
 
 pub const SCRATCHPAD_CLASS: &str = "scratchpad_default";
 
-mod commands {
+pub mod commands {
     pub const INSTANTMENU_CMD: &[&str] = &["instantmenu_run"];
     pub const CLIPMENU_CMD: &[&str] = &["instantclipmenu"];
     pub const SMART_CMD: &[&str] = &["instantmenu_smartrun"];
@@ -2788,56 +2819,56 @@ pub fn get_resources() -> Vec<ResourcePref> {
     ]
 }
 
-const CMD_DEFAULT: usize = 0;
-const CMD_TERM: usize = 1;
-const CMD_INSTANTMENU: usize = 2;
-const CMD_CLIPMENU: usize = 3;
-const CMD_SMART: usize = 4;
-const CMD_INSTANTMENU_ST: usize = 5;
-const CMD_QUICKMENU: usize = 6;
-const CMD_INSTANTASSIST: usize = 7;
-const CMD_INSTANTREPEAT: usize = 8;
-const CMD_INSTANTPACMAN: usize = 9;
-const CMD_INSTANTSHARE: usize = 10;
-const CMD_NAUTILUS: usize = 11;
-const CMD_SLOCK: usize = 12;
-const CMD_ONEKEYLOCK: usize = 13;
-const CMD_LANGSWITCH: usize = 14;
-const CMD_OSLOCK: usize = 15;
-const CMD_HELP: usize = 16;
-const CMD_SEARCH: usize = 17;
-const CMD_KEYLAYOUTSWITCH: usize = 18;
-const CMD_ISWITCH: usize = 19;
-const CMD_INSTANTSWITCH: usize = 20;
-const CMD_CARETINSTANTSWITCH: usize = 21;
-const CMD_INSTANTSKIPPY: usize = 22;
-const CMD_INSTANTSHUTDOWN: usize = 23;
-const CMD_SYSTEMMONITOR: usize = 24;
-const CMD_NOTIFY: usize = 25;
-const CMD_YAZI: usize = 26;
-const CMD_PANTHER: usize = 27;
-const CMD_CONTROLCENTER: usize = 28;
-const CMD_DISPLAY: usize = 29;
-const CMD_PAVUCONTROL: usize = 30;
-const CMD_INSTANTSETTINGS: usize = 31;
-const CMD_CODE: usize = 32;
-const CMD_STARTMENU: usize = 33;
-const CMD_SCROT: usize = 34;
-const CMD_FSCROT: usize = 35;
-const CMD_CLIPSCROT: usize = 36;
-const CMD_FCLIPSCROT: usize = 37;
-const CMD_FIREFOX: usize = 38;
-const CMD_EDITOR: usize = 39;
-const CMD_PLAYERNEXT: usize = 40;
-const CMD_PLAYERPREVIOUS: usize = 41;
-const CMD_PLAYERPAUSE: usize = 42;
-const CMD_SPOTICLI: usize = 43;
-const CMD_UPVOL: usize = 44;
-const CMD_DOWNVOL: usize = 45;
-const CMD_MUTEVOL: usize = 46;
-const CMD_UPBRIGHT: usize = 47;
-const CMD_DOWNBRIGHT: usize = 48;
-const CMD_TAG: usize = 49;
+pub const CMD_DEFAULT: usize = 0;
+pub const CMD_TERM: usize = 1;
+pub const CMD_INSTANTMENU: usize = 2;
+pub const CMD_CLIPMENU: usize = 3;
+pub const CMD_SMART: usize = 4;
+pub const CMD_INSTANTMENU_ST: usize = 5;
+pub const CMD_QUICKMENU: usize = 6;
+pub const CMD_INSTANTASSIST: usize = 7;
+pub const CMD_INSTANTREPEAT: usize = 8;
+pub const CMD_INSTANTPACMAN: usize = 9;
+pub const CMD_INSTANTSHARE: usize = 10;
+pub const CMD_NAUTILUS: usize = 11;
+pub const CMD_SLOCK: usize = 12;
+pub const CMD_ONEKEYLOCK: usize = 13;
+pub const CMD_LANGSWITCH: usize = 14;
+pub const CMD_OSLOCK: usize = 15;
+pub const CMD_HELP: usize = 16;
+pub const CMD_SEARCH: usize = 17;
+pub const CMD_KEYLAYOUTSWITCH: usize = 18;
+pub const CMD_ISWITCH: usize = 19;
+pub const CMD_INSTANTSWITCH: usize = 20;
+pub const CMD_CARETINSTANTSWITCH: usize = 21;
+pub const CMD_INSTANTSKIPPY: usize = 22;
+pub const CMD_INSTANTSHUTDOWN: usize = 23;
+pub const CMD_SYSTEMMONITOR: usize = 24;
+pub const CMD_NOTIFY: usize = 25;
+pub const CMD_YAZI: usize = 26;
+pub const CMD_PANTHER: usize = 27;
+pub const CMD_CONTROLCENTER: usize = 28;
+pub const CMD_DISPLAY: usize = 29;
+pub const CMD_PAVUCONTROL: usize = 30;
+pub const CMD_INSTANTSETTINGS: usize = 31;
+pub const CMD_CODE: usize = 32;
+pub const CMD_STARTMENU: usize = 33;
+pub const CMD_SCROT: usize = 34;
+pub const CMD_FSCROT: usize = 35;
+pub const CMD_CLIPSCROT: usize = 36;
+pub const CMD_FCLIPSCROT: usize = 37;
+pub const CMD_FIREFOX: usize = 38;
+pub const CMD_EDITOR: usize = 39;
+pub const CMD_PLAYERNEXT: usize = 40;
+pub const CMD_PLAYERPREVIOUS: usize = 41;
+pub const CMD_PLAYERPAUSE: usize = 42;
+pub const CMD_SPOTICLI: usize = 43;
+pub const CMD_UPVOL: usize = 44;
+pub const CMD_DOWNVOL: usize = 45;
+pub const CMD_MUTEVOL: usize = 46;
+pub const CMD_UPBRIGHT: usize = 47;
+pub const CMD_DOWNBRIGHT: usize = 48;
+pub const CMD_TAG: usize = 49;
 
 pub fn init_config() -> Config {
     Config {
@@ -2913,95 +2944,6 @@ pub struct Config {
 }
 
 pub fn run_autostart() {}
-
-pub fn spawn(_arg: &Arg) {}
-
-pub fn click_status(_arg: &Arg) {}
-
-pub fn quit(_arg: &Arg) {}
-
-pub fn kill_client(_arg: &Arg) {}
-
-pub fn shut_kill(_arg: &Arg) {}
-
-pub fn zoom(_arg: &Arg) {}
-
-pub fn toggle_prefix(_arg: &Arg) {}
-
-pub fn set_special_next(_arg: &Arg) {}
-
-pub fn direction_focus(_arg: &Arg) {}
-
-pub fn view(_arg: &Arg) {}
-pub fn toggle_view(_arg: &Arg) {}
-pub fn tag(_arg: &Arg) {}
-pub fn follow_tag(_arg: &Arg) {}
-pub fn toggle_tag(_arg: &Arg) {}
-pub fn swap_tags(_arg: &Arg) {}
-pub fn key_resize(_arg: &Arg) {}
-pub fn distribute_clients(_arg: &Arg) {}
-pub fn draw_window(_arg: &Arg) {}
-pub fn redraw_win(_arg: &Arg) {}
-pub fn create_overlay(_arg: &Arg) {}
-pub fn set_overlay(_arg: &Arg) {}
-pub fn toggle_bar(_arg: &Arg) {}
-pub fn focus_stack(_arg: &Arg) {}
-pub fn down_key(_arg: &Arg) {}
-pub fn down_press(_arg: &Arg) {}
-pub fn up_key(_arg: &Arg) {}
-pub fn up_press(_arg: &Arg) {}
-pub fn push_down(_arg: &Arg) {}
-pub fn push_up(_arg: &Arg) {}
-pub fn toggle_alt_tag(_arg: &Arg) {}
-pub fn toggle_animated(_arg: &Arg) {}
-pub fn toggle_sticky(_arg: &Arg) {}
-pub fn scratchpad_make(_arg: &Arg) {}
-pub fn scratchpad_toggle(_arg: &Arg) {}
-pub fn scratchpad_unmake(_arg: &Arg) {}
-pub fn scratchpad_show(_arg: &Arg) {}
-pub fn scratchpad_hide(_arg: &Arg) {}
-pub fn scratchpad_status(_arg: &Arg) {}
-pub fn toggle_fake_fullscreen(_arg: &Arg) {}
-pub fn temp_fullscreen(_arg: &Arg) {}
-pub fn toggle_double_draw(_arg: &Arg) {}
-pub fn warp_to_focus(_arg: &Arg) {}
-pub fn center_window(_arg: &Arg) {}
-pub fn toggle_show_tags(_arg: &Arg) {}
-pub fn toggle_focus_follows_mouse(_arg: &Arg) {}
-pub fn toggle_focus_follows_float_mouse(_arg: &Arg) {}
-pub fn alt_tab_free(_arg: &Arg) {}
-pub fn last_view(_arg: &Arg) {}
-pub fn focus_last_client(_arg: &Arg) {}
-pub fn follow_view(_arg: &Arg) {}
-pub fn anim_left(_arg: &Arg) {}
-pub fn anim_right(_arg: &Arg) {}
-pub fn toggle_overview(_arg: &Arg) {}
-pub fn toggle_fullscreen_overview(_arg: &Arg) {}
-pub fn shift_view(_arg: &Arg) {}
-pub fn move_left(_arg: &Arg) {}
-pub fn move_right(_arg: &Arg) {}
-pub fn tag_to_left(_arg: &Arg) {}
-pub fn tag_to_right(_arg: &Arg) {}
-pub fn move_resize(_arg: &Arg) {}
-pub fn space_toggle(_arg: &Arg) {}
-pub fn focus_mon(_arg: &Arg) {}
-pub fn tag_mon(_arg: &Arg) {}
-pub fn follow_mon(_arg: &Arg) {}
-pub fn focus_nmon(_arg: &Arg) {}
-pub fn desktop_set(_arg: &Arg) {}
-pub fn win_view(_arg: &Arg) {}
-pub fn view_to_left(_arg: &Arg) {}
-pub fn view_to_right(_arg: &Arg) {}
-pub fn toggle_locked(_arg: &Arg) {}
-pub fn show_overlay(_arg: &Arg) {}
-pub fn hide_overlay(_arg: &Arg) {}
-pub fn toggle_floating(_arg: &Arg) {}
-pub fn drag_tag(_arg: &Arg) {}
-pub fn set_border_width(_arg: &Arg) {}
-pub fn command_layout(_arg: &Arg) {}
-pub fn command_prefix(_arg: &Arg) {}
-pub fn name_tag(_arg: &Arg) {}
-pub fn reset_name_tag(_arg: &Arg) {}
 
 pub fn get_tag_color(hover: SchemeHover, tag_scheme: SchemeTag, col: ColIndex) -> &'static str {
     use colors::*;

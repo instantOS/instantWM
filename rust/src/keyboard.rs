@@ -11,7 +11,16 @@ use crate::util::spawn;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-fn keycode_to_keysym(keycode: u8, _index: i32) -> u32 {
+use x11rb::wrapper::ConnectionExt as KeyboardConnectionExt;
+
+pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> u32 {
+    if let Ok(cookie) = conn.get_keyboard_mapping(keycode, 1) {
+        if let Ok(reply) = cookie.reply() {
+            if index < reply.keysyms_per_keycode as usize {
+                return reply.keysyms[index];
+            }
+        }
+    }
     0
 }
 
@@ -36,7 +45,7 @@ pub fn key_press(e: &KeyPressEvent) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let keysym = keycode_to_keysym(keycode, 0);
+        let keysym = keycode_to_keysym(conn, keycode, 0);
 
         let matching_key = {
             let globals = get_globals();
@@ -106,13 +115,28 @@ pub fn grab_keys() {
             (numlockmask as u16) | ModMask::LOCK.bits(),
         ];
 
+        let mapping = conn
+            .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
+            .unwrap()
+            .reply()
+            .unwrap();
+
+        let get_keysym = |keycode: u8| -> u32 {
+            let index = (keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
+            if index < mapping.keysyms.len() {
+                mapping.keysyms[index]
+            } else {
+                0
+            }
+        };
+
         for keycode in keycode_min..=keycode_max {
             if keycode > 255 {
                 continue;
             }
 
             for key in &keys {
-                let keysym = keycode_to_keysym(keycode, 0);
+                let keysym = get_keysym(keycode);
                 if keysym == key.keysym as u32 {
                     for &modif in &modifiers {
                         if free_alt_tab && key.mod_mask == ModMask::M1.bits() as u32 {
@@ -138,7 +162,7 @@ pub fn grab_keys() {
                 .is_some();
             if !has_sel {
                 for key in &dkeys {
-                    let keysym = keycode_to_keysym(keycode, 0);
+                    let keysym = get_keysym(keycode);
                     if keysym == key.keysym as u32 {
                         for &modif in &modifiers {
                             let _ = grab_key(
@@ -168,9 +192,17 @@ pub fn update_num_lock_mask() {
             if let Ok(reply) = cookie.reply() {
                 let mut new_numlockmask: u32 = 0;
 
+                let (keycode_min, keycode_max) = (conn.setup().min_keycode as u8, conn.setup().max_keycode as u8);
+                let mapping = conn
+                    .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
+                    .unwrap()
+                    .reply()
+                    .unwrap();
+
                 for (i, keycode) in reply.keycodes.iter().enumerate() {
-                    if *keycode != 0 {
-                        let keysym = keycode_to_keysym(*keycode, 0);
+                    if *keycode >= keycode_min && *keycode <= keycode_max {
+                        let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
+                        let keysym = if idx < mapping.keysyms.len() { mapping.keysyms[idx] } else { 0 };
                         if keysym == 0xff7f {
                             let mod_index = i / reply.keycodes_per_modifier() as usize;
                             if mod_index < 8 {
