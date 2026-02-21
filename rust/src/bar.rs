@@ -896,23 +896,16 @@ pub fn draw_bar(m: &mut MonitorInner) {
 
     if !m.showbar {
         DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
-        eprintln!("TRACE: draw_bar - !m.showbar, returning");
         return;
     }
 
-    eprintln!("TRACE: draw_bar - before get_globals");
-    let (bh, showsystray) = {
-        let g = get_globals();
-        (g.bh, g.showsystray)
-    };
-    eprintln!("TRACE: draw_bar - after get_globals");
-    
+    let mut g = get_globals_mut();
+    let bh = g.bh;
+    let showsystray = g.showsystray;
+
     // Resize the Drw drawable to match the bar window size
-    {
-        let mut g = get_globals_mut();
-        if let Some(ref mut drw) = g.drw {
-            drw.resize(m.ww as u32, bh as u32);
-        }
+    if let Some(ref mut drw) = g.drw {
+        drw.resize(m.ww as u32, bh as u32);
     }
 
     let mut stw: i32 = 0;
@@ -1004,7 +997,6 @@ pub fn draw_bar(m: &mut MonitorInner) {
     m.bar_clients_width = window_width;
 
     if let Some(ref drw) = g.drw {
-        eprintln!("TRACE: draw_bar - before drw.map, drw.w={}, drw.h={}, barwin={}, m.ww={}, bh={}", drw.w, drw.h, m.barwin, m.ww, bh);
         drw.map(m.barwin, 0, 0, m.ww as u16, bh as u16);
     }
 
