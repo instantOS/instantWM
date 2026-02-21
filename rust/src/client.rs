@@ -1232,16 +1232,15 @@ pub fn manage(
     wa_border_width: u32,
 ) {
     let mut c = Client::default();
-    //TODO: this should be constructing a rect struct the proper way
     c.win = w;
-    c.geo.x = wa_x;
-    c.old_geo.x = wa_x;
-    c.geo.y = wa_y;
-    c.old_geo.y = wa_y;
-    c.geo.w = wa_width as i32;
-    c.old_geo.w = wa_width as i32;
-    c.geo.h = wa_height as i32;
-    c.old_geo.h = wa_height as i32;
+    let geo = Rect {
+        x: wa_x,
+        y: wa_y,
+        w: wa_width as i32,
+        h: wa_height as i32,
+    };
+    c.geo = geo;
+    c.old_geo = geo;
     c.old_border_width = wa_border_width as i32;
     c.name = read_window_title(w);
 
@@ -1274,38 +1273,27 @@ pub fn manage(
         client.border_width = borderpx;
     }
 
-    //TODO: this should be using the rectangle struct
-    let (mon_mw, mon_mh, mon_mx, mon_my, mon_showbar, mon_ww, mon_wh, mon_wx, mon_wy) = {
+    let (mon_showbar, mon_work_rect, mon_monitor_rect) = {
         if let Some(mon_id) = c.mon_id {
             if let Some(mon) = globals.monitors.get(mon_id) {
-                (
-                    mon.monitor_rect.w,
-                    mon.monitor_rect.h,
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                    mon.showbar,
-                    mon.work_rect.w,
-                    mon.work_rect.h,
-                    mon.work_rect.x,
-                    mon.work_rect.y,
-                )
+                (mon.showbar, mon.work_rect, mon.monitor_rect)
             } else {
-                (0, 0, 0, 0, false, 0, 0, 0, 0)
+                (false, Rect::default(), Rect::default())
             }
         } else {
-            (0, 0, 0, 0, false, 0, 0, 0, 0)
+            (false, Rect::default(), Rect::default())
         }
     };
 
     if let Some(client) = globals.clients.get_mut(&w) {
-        if client.geo.x + client_width(client) > mon_wx + mon_ww {
-            client.geo.x = mon_wx + mon_ww - client_width(client);
+        if client.geo.x + client_width(client) > mon_work_rect.x + mon_work_rect.w {
+            client.geo.x = mon_work_rect.x + mon_work_rect.w - client_width(client);
         }
-        if client.geo.y + client_height(client) > mon_wy + mon_wh {
-            client.geo.y = mon_wy + mon_wh - client_height(client);
+        if client.geo.y + client_height(client) > mon_work_rect.y + mon_work_rect.h {
+            client.geo.y = mon_work_rect.y + mon_work_rect.h - client_height(client);
         }
-        client.geo.x = max(client.geo.x, mon_wx);
-        client.geo.y = max(client.geo.y, mon_wy);
+        client.geo.x = max(client.geo.x, mon_work_rect.x);
+        client.geo.y = max(client.geo.y, mon_work_rect.y);
     }
 
     let is_monocle = if let Some(mon_id) = c.mon_id {
@@ -1328,7 +1316,10 @@ pub fn manage(
             (false, 0, 0)
         };
 
-        let border_width = if !isfloating && is_monocle && cw > mon_mw - 30 && ch > mon_mh - 30 - bh
+        let border_width = if !isfloating
+            && is_monocle
+            && cw > mon_monitor_rect.w - 30
+            && ch > mon_monitor_rect.h - 30 - bh
         {
             0
         } else {
@@ -1368,10 +1359,10 @@ pub fn manage(
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&w) {
             client.float_geo.x = client.geo.x;
-            client.float_geo.y = if client.geo.y >= mon_my {
+            client.float_geo.y = if client.geo.y >= mon_monitor_rect.y {
                 client.geo.y
             } else {
-                client.geo.y + mon_my
+                client.geo.y + mon_monitor_rect.y
             };
             client.float_geo.w = client.geo.w;
             client.float_geo.h = client.geo.h;
@@ -1538,7 +1529,7 @@ pub fn manage(
                     .configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
                 let _ = conn.flush();
             }
-        } else if c.geo.w > mon_mw - 30 || c.geo.h > mon_mh - 30 {
+        } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
             if let Some(mon_id) = c.mon_id {
                 arrange(Some(mon_id));
             }
@@ -1675,14 +1666,10 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                 c.isfakefullscreen,
                 c.mon_id,
                 c.oldstate,
-                c.old_geo.x,
-                c.old_geo.y,
-                c.old_geo.w,
-                c.old_geo.h,
+                c.old_geo,
             )
         });
-        let Some((is_fs, is_floating, is_fake_fs, mon_id, _oldstate, oldx, oldy, oldw, oldh)) =
-            client_state
+        let Some((is_fs, is_floating, is_fake_fs, mon_id, _oldstate, old_geo)) = client_state
         else {
             return;
         };
@@ -1706,45 +1693,28 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                 if let Some(c) = globals.clients.get_mut(&win) {
                     c.border_width = 0;
                 }
-                let (mon_mx, mon_my, mon_mw, mon_mh) = if let Some(mid) = mon_id {
+                let mon_rect = if let Some(mid) = mon_id {
                     globals
                         .monitors
                         .get(mid)
-                        .map(|m| {
-                            (
-                                m.monitor_rect.x,
-                                m.monitor_rect.y,
-                                m.monitor_rect.w,
-                                m.monitor_rect.h,
-                            )
-                        })
-                        .unwrap_or((0, 0, 0, 0))
+                        .map(|m| m.monitor_rect)
+                        .unwrap_or_default()
                 } else {
-                    (0, 0, 0, 0)
+                    Rect::default()
                 };
 
                 if !is_floating {
-                    animate_client_rect(
-                        win,
-                        &Rect {
-                            x: mon_mx,
-                            y: mon_my,
-                            w: mon_mw,
-                            h: mon_mh,
-                        },
-                        10,
-                        0,
-                    );
+                    animate_client_rect(win, &mon_rect, 10, 0);
                     globals = get_globals_mut();
                 }
 
                 let _ = conn.configure_window(
                     win,
                     &ConfigureWindowAux::new()
-                        .x(mon_mx)
-                        .y(mon_my)
-                        .width(mon_mw as u32)
-                        .height(mon_mh as u32),
+                        .x(mon_rect.x)
+                        .y(mon_rect.y)
+                        .width(mon_rect.w as u32)
+                        .height(mon_rect.h as u32),
                 );
                 let _ = conn
                     .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
@@ -1765,15 +1735,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
             restore_border_width(win);
 
             if !is_fake_fs {
-                resize_client_rect(
-                    win,
-                    &Rect {
-                        x: oldx,
-                        y: oldy,
-                        w: oldw,
-                        h: oldh,
-                    },
-                );
+                resize_client_rect(win, &old_geo);
                 if let Some(mid) = mon_id {
                     arrange(Some(mid));
                 }
@@ -2366,32 +2328,24 @@ pub fn scale_client(win: Window, scale: i32) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         let mon_id = client.mon_id;
-        let old_x = client.geo.x;
-        let old_y = client.geo.y;
-        let old_w = client.geo.w;
-        let old_h = client.geo.h;
+        let old_geo = client.geo;
         let border_width = client.border_width;
 
-        let (mon_mw, mon_mh, mon_mx, mon_my) = if let Some(mid) = mon_id {
+        let mon_rect = if let Some(mid) = mon_id {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mid) {
-                (
-                    mon.monitor_rect.w,
-                    mon.monitor_rect.h,
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                )
+                mon.monitor_rect
             } else {
-                (old_w, old_h, old_x, old_y)
+                old_geo
             }
         } else {
             (old_w, old_h, old_x, old_y)
         };
 
-        let new_w = old_w * scale / 100;
-        let new_h = old_h * scale / 100;
-        let new_x = mon_mx + (mon_mw - new_w) / 2 - border_width;
-        let new_y = mon_my + (mon_mh - new_h) / 2 - border_width;
+        let new_w = old_geo.w * scale / 100;
+        let new_h = old_geo.h * scale / 100;
+        let new_x = mon_rect.x + (mon_rect.w - new_w) / 2 - border_width;
+        let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
 
         resize(
             win,
@@ -2404,33 +2358,6 @@ pub fn scale_client(win: Window, scale: i32) {
             false,
         );
     }
-}
-
-pub fn save_floating(win: Window) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        client.float_geo.x = client.geo.x;
-        client.float_geo.y = client.geo.y;
-        client.float_geo.w = client.geo.w;
-        client.float_geo.h = client.geo.h;
-    }
-}
-
-pub fn restore_floating(win: Window) {
-    let (x, y, w, h) = {
-        let globals = get_globals();
-        if let Some(client) = globals.clients.get(&win) {
-            (
-                client.float_geo.x,
-                client.float_geo.y,
-                client.float_geo.w,
-                client.float_geo.h,
-            )
-        } else {
-            return;
-        }
-    };
-    resize(win, &Rect { x, y, w, h }, false);
 }
 
 pub fn change_floating(win: Window) {

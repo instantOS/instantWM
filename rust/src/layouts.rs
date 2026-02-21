@@ -1154,10 +1154,7 @@ fn apply_snap_for_window(win: Window, m: &MonitorInner) {
 fn save_floating(win: Window) {
     let g = get_globals_mut();
     if let Some(c) = g.clients.get_mut(&win) {
-        c.float_geo.x = c.geo.x;
-        c.float_geo.y = c.geo.y;
-        c.float_geo.w = c.geo.w;
-        c.float_geo.h = c.geo.h;
+        c.float_geo = c.geo;
     }
 }
 
