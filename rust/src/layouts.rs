@@ -1436,7 +1436,11 @@ fn get_current_layout_symbol() -> Option<&'static str> {
     g.layouts.first().map(|l| l.symbol())
 }
 
-pub fn cycle_layout(arg: &Arg) {
+/// Cycle to the next or previous layout.
+///
+/// # Arguments
+/// * `forward` - If true, cycle forward; if false, cycle backward.
+pub fn cycle_layout_direction(forward: bool) {
     let current_idx = {
         let g = get_globals();
         if let Some(selmon_id) = g.selmon {
@@ -1460,7 +1464,7 @@ pub fn cycle_layout(arg: &Arg) {
 
     let current = current_idx.unwrap_or(0);
 
-    let new_idx = if arg.i > 0 {
+    let new_idx = if forward {
         let next = current + 1;
         if next >= layouts_len {
             0
@@ -1481,7 +1485,7 @@ pub fn cycle_layout(arg: &Arg) {
     };
 
     let final_idx = if skip_overview {
-        if arg.i > 0 {
+        if forward {
             let next = new_idx + 1;
             if next >= layouts_len {
                 0
@@ -1499,25 +1503,40 @@ pub fn cycle_layout(arg: &Arg) {
         new_idx
     };
 
+    set_layout_by_index(final_idx);
+}
+
+/// Set the layout by its index in the layout list.
+pub fn set_layout_by_index(layout_idx: usize) {
     set_layout(&Arg {
-        v: Some(final_idx),
+        v: Some(layout_idx),
         ..Default::default()
     });
 }
 
-pub fn inc_nmaster(arg: &Arg) {
+/// Legacy wrapper for key bindings. Use `cycle_layout_direction` for new code.
+pub fn cycle_layout(arg: &Arg) {
+    cycle_layout_direction(arg.i > 0);
+}
+
+/// Adjust the number of master clients in the layout.
+///
+/// # Arguments
+/// * `delta` - The amount to add (positive) or subtract (negative) from nmaster.
+///             Use `inc_nmaster_by(1)` to increase, `inc_nmaster_by(-1)` to decrease.
+pub fn inc_nmaster_by(delta: i32) {
     let ccount = client_count();
 
     {
         let mut g = get_globals_mut();
         if let Some(selmon_id) = g.selmon {
             if let Some(m) = g.monitors.get_mut(selmon_id) {
-                if arg.i > 0 && m.nmaster >= ccount as i32 {
+                if delta > 0 && m.nmaster >= ccount as i32 {
                     m.nmaster = ccount as i32;
                     return;
                 }
 
-                let new_nmaster = max(m.nmaster + arg.i, 0);
+                let new_nmaster = max(m.nmaster + delta, 0);
                 m.nmaster = new_nmaster;
 
                 if let Some(ref mut pertag) = m.pertag {
@@ -1532,6 +1551,11 @@ pub fn inc_nmaster(arg: &Arg) {
     if let Some(selmon_id) = g.selmon {
         arrange(Some(selmon_id));
     }
+}
+
+/// Legacy wrapper for key bindings. Use `inc_nmaster_by` for new code.
+pub fn inc_nmaster(arg: &Arg) {
+    inc_nmaster_by(arg.i);
 }
 
 pub fn set_mfact(arg: &Arg) {

@@ -1027,8 +1027,8 @@ pub fn scale_client_win(win: Window, scale: i32) {
     animate_client(win, x, y, w, h, 3, 0);
 }
 
-pub fn apply_snap_mut(c: &mut ClientInner, m: &MonitorInner) {
-    let mony = m.my + if m.showbar { 0 } else { 0 };
+pub fn apply_snap_mut(c: &mut Client, m: &MonitorInner) {
+    let mony = m.monitor_rect.y + if m.showbar { 0 } else { 0 };
 
     match c.snapstatus {
         SnapPosition::None => {}
@@ -1039,7 +1039,7 @@ pub fn apply_snap_mut(c: &mut ClientInner, m: &MonitorInner) {
     }
 }
 
-pub fn reset_sticky(_c: &mut ClientInner) {}
+pub fn reset_sticky(_c: &mut Client) {}
 
 pub fn set_border_width(_arg: &Arg) {}
 

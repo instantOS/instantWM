@@ -673,7 +673,7 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     None
 }
 
-fn get_selected_client(mon_id: MonitorId) -> Option<ClientInner> {
+fn get_selected_client(mon_id: MonitorId) -> Option<Client> {
     let g = get_globals();
     if let Some(mon) = g.monitors.get(mon_id) {
         if let Some(win) = mon.sel {
@@ -688,6 +688,6 @@ fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
     g.monitors.get(mon_id).and_then(|m| m.sel)
 }
 
-fn reset_sticky(_c: &mut ClientInner) {}
+fn reset_sticky(_c: &mut Client) {}
 
 fn warp_cursor_to_client(_win: Window) {}

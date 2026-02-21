@@ -252,7 +252,7 @@ pub(crate) fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i3
     x
 }
 
-fn get_window_scheme(c: &ClientInner, is_hover: bool) -> Option<ColorScheme> {
+fn get_window_scheme(c: &Client, is_hover: bool) -> Option<ColorScheme> {
     let g = get_globals();
     let schemes = if is_hover {
         &g.windowschemes.hover
@@ -300,7 +300,7 @@ fn get_window_scheme(c: &ClientInner, is_hover: bool) -> Option<ColorScheme> {
     schemes.get(SchemeWin::Normal as usize).cloned()
 }
 
-pub(crate) fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
+pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
     let g = get_globals();
 
     let close_hovered = if let Some(selmon_idx) = g.selmon {
@@ -384,7 +384,7 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
     0
 }
 
-fn draw_window_title(m: &mut MonitorInner, c: &ClientInner, x: i32, width: i32, bh: i32) {
+fn draw_window_title(m: &mut MonitorInner, c: &Client, x: i32, width: i32, bh: i32) {
     let g = get_globals();
 
     let is_hover = if let Some(selmon_idx) = g.selmon {
@@ -438,7 +438,7 @@ pub(crate) fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, b
         let mut remainder = total_width % n;
         let mut x = x;
 
-        let clients: Vec<ClientInner> = g.clients.values().cloned().collect();
+        let clients: Vec<Client> = g.clients.values().cloned().collect();
         for c in clients.iter() {
             let mon_match = c.mon_id.map_or(false, |mon_id| {
                 g.selmon.map_or(false, |selmon_idx| mon_id == selmon_idx)

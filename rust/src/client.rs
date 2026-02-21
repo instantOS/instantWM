@@ -1059,7 +1059,7 @@ pub fn kill_client(_arg: &Arg) {
         if let Some(c) = globals.clients.get(&win) {
             let mh = if let Some(mon_id) = c.mon_id {
                 if let Some(mon) = globals.monitors.get(mon_id) {
-                    mon.mh
+                    mon.monitor_rect.h
                 } else {
                     0
                 }
@@ -1140,7 +1140,7 @@ pub fn close_win(arg: &Arg) {
         if let Some(c) = globals.clients.get(&win) {
             let mh = if let Some(mon_id) = c.mon_id {
                 if let Some(mon) = globals.monitors.get(mon_id) {
-                    mon.mh
+                    mon.monitor_rect.h
                 } else {
                     0
                 }
@@ -1237,15 +1237,15 @@ pub fn manage(
         if let Some(mon_id) = c.mon_id {
             if let Some(mon) = globals.monitors.get(mon_id) {
                 (
-                    mon.mw,
-                    mon.mh,
-                    mon.mx,
-                    mon.my,
+                    mon.monitor_rect.w,
+                    mon.monitor_rect.h,
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
                     mon.showbar,
-                    mon.ww,
-                    mon.wh,
-                    mon.wx,
-                    mon.wy,
+                    mon.work_rect.w,
+                    mon.work_rect.h,
+                    mon.work_rect.x,
+                    mon.work_rect.y,
                 )
             } else {
                 (0, 0, 0, 0, false, 0, 0, 0, 0)
@@ -1256,14 +1256,14 @@ pub fn manage(
     };
 
     if let Some(client) = globals.clients.get_mut(&w) {
-        if client.x + client_width(client) > mon_wx + mon_ww {
-            client.x = mon_wx + mon_ww - client_width(client);
+        if client.geo.x + client_width(client) > mon_wx + mon_ww {
+            client.geo.x = mon_wx + mon_ww - client_width(client);
         }
-        if client.y + client_height(client) > mon_wy + mon_wh {
-            client.y = mon_wy + mon_wh - client_height(client);
+        if client.geo.y + client_height(client) > mon_wy + mon_wh {
+            client.geo.y = mon_wy + mon_wh - client_height(client);
         }
-        client.x = max(client.x, mon_wx);
-        client.y = max(client.y, mon_wy);
+        client.geo.x = max(client.geo.x, mon_wx);
+        client.geo.y = max(client.geo.y, mon_wy);
     }
 
     let is_monocle = if let Some(mon_id) = c.mon_id {
@@ -1281,7 +1281,7 @@ pub fn manage(
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let (isfloating, cw, ch) = if let Some(client) = globals.clients.get(&w) {
-            (client.isfloating, client.w, client.h)
+            (client.isfloating, client.geo.w, client.geo.h)
         } else {
             (false, 0, 0)
         };
@@ -1327,14 +1327,14 @@ pub fn manage(
     {
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&w) {
-            client.saved_float_x = client.x;
-            client.saved_float_y = if client.y >= mon_my {
-                client.y
+            client.float_geo.x = client.geo.x;
+            client.float_geo.y = if client.geo.y >= mon_my {
+                client.geo.y
             } else {
-                client.y + mon_my
+                client.geo.y + mon_my
             };
-            client.saved_float_width = client.w;
-            client.saved_float_height = client.h;
+            client.float_geo.w = client.geo.w;
+            client.float_geo.h = client.geo.h;
         }
     }
 
@@ -1397,7 +1397,13 @@ pub fn manage(
     let (sw, cx, cy, cw, ch) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&w) {
-            (globals.sw, client.x, client.y, client.w, client.h)
+            (
+                globals.sw,
+                client.geo.x,
+                client.geo.y,
+                client.geo.w,
+                client.geo.h,
+            )
         } else {
             return;
         }
@@ -2266,10 +2272,10 @@ pub fn scale_client(win: Window, scale: i32) {
     let mut globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         let mon_id = client.mon_id;
-        let old_x = client.x;
-        let old_y = client.y;
-        let old_w = client.w;
-        let old_h = client.h;
+        let old_x = client.geo.x;
+        let old_y = client.geo.y;
+        let old_w = client.geo.w;
+        let old_h = client.geo.h;
         let border_width = client.border_width;
 
         drop(globals);
@@ -2277,7 +2283,12 @@ pub fn scale_client(win: Window, scale: i32) {
         let (mon_mw, mon_mh, mon_mx, mon_my) = if let Some(mid) = mon_id {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(mid) {
-                (mon.mw, mon.mh, mon.mx, mon.my)
+                (
+                    mon.monitor_rect.w,
+                    mon.monitor_rect.h,
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                )
             } else {
                 (old_w, old_h, old_x, old_y)
             }
@@ -2297,10 +2308,10 @@ pub fn scale_client(win: Window, scale: i32) {
 pub fn save_floating(win: Window) {
     let mut globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        client.saved_float_x = client.x;
-        client.saved_float_y = client.y;
-        client.saved_float_width = client.w;
-        client.saved_float_height = client.h;
+        client.float_geo.x = client.geo.x;
+        client.float_geo.y = client.geo.y;
+        client.float_geo.w = client.geo.w;
+        client.float_geo.h = client.geo.h;
     }
 }
 
@@ -2309,10 +2320,10 @@ pub fn restore_floating(win: Window) {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
             (
-                client.saved_float_x,
-                client.saved_float_y,
-                client.saved_float_width,
-                client.saved_float_height,
+                client.float_geo.x,
+                client.float_geo.y,
+                client.float_geo.w,
+                client.float_geo.h,
             )
         } else {
             return;

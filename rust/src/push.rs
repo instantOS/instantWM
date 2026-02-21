@@ -118,9 +118,9 @@ pub fn all_client_count() -> i32 {
     n
 }
 
-pub fn client_distance(c1: &ClientInner, c2: &ClientInner) -> i32 {
-    let x = ((c1.x + c1.w) / 2 - (c2.x + c2.w) / 2).abs();
-    let y = ((c1.y + c1.h) / 2 - (c2.y + c2.h) / 2).abs();
+pub fn client_distance(c1: &Client, c2: &Client) -> i32 {
+    let x = ((c1.geo.x + c1.geo.w) / 2 - (c2.geo.x + c2.geo.w) / 2).abs();
+    let y = ((c1.geo.y + c1.geo.h) / 2 - (c2.geo.y + c2.geo.h) / 2).abs();
 
     ((y * y + x * x) as f64).sqrt() as i32
 }

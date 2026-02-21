@@ -82,7 +82,7 @@ pub fn scratchpad_any_visible(mon: &MonitorInner) -> bool {
     false
 }
 
-pub fn scratchpad_identify_client(c: &mut ClientInner) {
+pub fn scratchpad_identify_client(c: &mut Client) {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else { return };
 

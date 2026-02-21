@@ -473,12 +473,26 @@ pub enum SpecialNext {
     Float,
 }
 
+/// Direction for focus movement and similar operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Up,
     Down,
     Left,
     Right,
+}
+
+impl Direction {
+    /// Convert from direction index used in Arg.ui (0=Up, 1=Right, 2=Down, 3=Left)
+    pub fn from_index(index: u32) -> Option<Self> {
+        match index {
+            0 => Some(Self::Up),
+            1 => Some(Self::Right),
+            2 => Some(Self::Down),
+            3 => Some(Self::Left),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

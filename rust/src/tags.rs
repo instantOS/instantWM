@@ -650,14 +650,30 @@ pub fn tag_mon(arg: &Arg) {
     }
 }
 
-pub fn tag_to_left(arg: &Arg) {
-    let offset = arg.i.max(1);
-    shift_tag(DIR_LEFT, offset);
+/// Move the selected client's tag to the left (to a lower-numbered tag).
+///
+/// # Arguments
+/// * `offset` - Number of tag positions to shift (default: 1)
+pub fn tag_to_left_by(offset: i32) {
+    shift_tag(DIR_LEFT, offset.max(1));
 }
 
+/// Move the selected client's tag to the right (to a higher-numbered tag).
+///
+/// # Arguments
+/// * `offset` - Number of tag positions to shift (default: 1)
+pub fn tag_to_right_by(offset: i32) {
+    shift_tag(DIR_RIGHT, offset.max(1));
+}
+
+/// Legacy wrapper for key bindings. Use `tag_to_left_by` for new code.
+pub fn tag_to_left(arg: &Arg) {
+    tag_to_left_by(arg.i);
+}
+
+/// Legacy wrapper for key bindings. Use `tag_to_right_by` for new code.
 pub fn tag_to_right(arg: &Arg) {
-    let offset = arg.i.max(1);
-    shift_tag(DIR_RIGHT, offset);
+    tag_to_right_by(arg.i);
 }
 
 fn shift_tag(dir: i32, offset: i32) {
@@ -885,8 +901,12 @@ pub fn move_right(arg: &Arg) {
     view_to_right(arg);
 }
 
-pub fn shift_view(arg: &Arg) {
-    let direction = arg.i;
+/// Shift view to the next/previous tag that has visible clients.
+///
+/// # Arguments
+/// * `forward` - If true, shift to higher-numbered tags; if false, shift to lower.
+pub fn shift_view_direction(forward: bool) {
+    let direction = if forward { 1 } else { -1 };
 
     let (tagset, numtags) = {
         let globals = get_globals();
@@ -947,6 +967,11 @@ pub fn shift_view(arg: &Arg) {
         };
         view(&a);
     }
+}
+
+/// Legacy wrapper for key bindings. Use `shift_view_direction` for new code.
+pub fn shift_view(arg: &Arg) {
+    shift_view_direction(arg.i > 0);
 }
 
 pub fn swap_tags(arg: &Arg) {
@@ -1074,7 +1099,7 @@ pub fn follow_view(_arg: &Arg) {
     }
 }
 
-pub fn reset_sticky(c: &mut ClientInner) {
+pub fn reset_sticky(c: &mut Client) {
     if !c.issticky {
         return;
     }

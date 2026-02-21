@@ -97,13 +97,15 @@ pub fn unfocus(_win: Window, _set_focus: bool) {}
 
 pub fn set_focus_win(_win: Window) {}
 
-pub fn direction_focus(arg: &Arg) {
-    let direction = arg.ui;
-
+/// Focus the client in the given direction.
+///
+/// # Arguments
+/// * `direction` - The direction to focus (Up, Down, Left, Right)
+pub fn focus_direction(direction: Direction) {
     let (sel_mon_id, source_win) = {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            if let Some(mon) = globals.monitors.get(selmon_id) {
                 if let Some(sel) = mon.sel {
                     (sel_mon_id, sel)
                 } else {
@@ -145,36 +147,39 @@ pub fn direction_focus(arg: &Arg) {
                 continue;
             }
 
-            let cx = c.x + c.w / 2;
-            let cy = c.y + c.h / 2;
+            let cx = c.geo.x + c.geo.w / 2;
+            let cy = c.geo.y + c.geo.h / 2;
 
             let skip = c_win == source_win
-                || (direction == FOCUS_DIR_UP && cy > sy)
-                || (direction == FOCUS_DIR_RIGHT && cx < sx)
-                || (direction == FOCUS_DIR_DOWN && cy < sy)
-                || (direction == FOCUS_DIR_LEFT && cx > sx);
+                || (direction == Direction::Up && cy > sy)
+                || (direction == Direction::Right && cx < sx)
+                || (direction == Direction::Down && cy < sy)
+                || (direction == Direction::Left && cx > sx);
 
             if skip {
                 current = c.next;
                 continue;
             }
 
-            let score = if direction % 2 == 0 {
-                let dist_x = (sx - cx).abs();
-                let dist_y = (sy - cy).abs();
-                if dist_x > dist_y {
-                    current = c.next;
-                    continue;
+            let score = match direction {
+                Direction::Up | Direction::Down => {
+                    let dist_x = (sx - cx).abs();
+                    let dist_y = (sy - cy).abs();
+                    if dist_x > dist_y {
+                        current = c.next;
+                        continue;
+                    }
+                    dist_x + dist_y / 4
                 }
-                dist_x + dist_y / 4
-            } else {
-                let dist_x = (sx - cx).abs();
-                let dist_y = (sy - cy).abs();
-                if dist_y > dist_x {
-                    current = c.next;
-                    continue;
+                Direction::Left | Direction::Right => {
+                    let dist_x = (sx - cx).abs();
+                    let dist_y = (sy - cy).abs();
+                    if dist_y > dist_x {
+                        current = c.next;
+                        continue;
+                    }
+                    dist_y + dist_x / 4
                 }
-                dist_y + dist_x / 4
             };
 
             if score < min_score || min_score == 0 {
@@ -195,6 +200,13 @@ pub fn direction_focus(arg: &Arg) {
         if found_one {
             focus(Some(c));
         }
+    }
+}
+
+/// Legacy wrapper for key bindings. Use `focus_direction` for new code.
+pub fn direction_focus(arg: &Arg) {
+    if let Some(dir) = Direction::from_index(arg.ui) {
+        focus_direction(dir);
     }
 }
 
@@ -278,8 +290,8 @@ pub fn warp(c_win: Window) {
                     0,
                     0,
                     0,
-                    (c.w / 2) as i16,
-                    (c.h / 2) as i16,
+                    (c.geo.w / 2) as i16,
+                    (c.geo.h / 2) as i16,
                 );
                 let _ = conn.flush();
             }
@@ -292,7 +304,16 @@ pub fn force_warp(c_win: Window) {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&c_win) {
-            let _ = conn.warp_pointer(CURRENT_TIME, c.win, 0, 0, 0, 0, (c.w / 2) as i16, 10 as i16);
+            let _ = conn.warp_pointer(
+                CURRENT_TIME,
+                c.win,
+                0,
+                0,
+                0,
+                0,
+                (c.geo.w / 2) as i16,
+                10 as i16,
+            );
             let _ = conn.flush();
         }
     }
@@ -315,8 +336,8 @@ pub fn warp_cursor_to_client(c_win: Window) {
                         0,
                         0,
                         0,
-                        (mon.wx + mon.ww / 2) as i16,
-                        (mon.wy + mon.wh / 2) as i16,
+                        (mon.work_rect.x + mon.work_rect.w / 2) as i16,
+                        (mon.work_rect.y + mon.work_rect.h / 2) as i16,
                     );
                     let _ = conn.flush();
                 }
@@ -326,10 +347,11 @@ pub fn warp_cursor_to_client(c_win: Window) {
 
         if let Some(c) = globals.clients.get(&c_win) {
             if let Some((x, y)) = get_root_ptr() {
-                let in_window = x > c.x - c.border_width
-                    && y > c.y - c.border_width
-                    && x < c.x + c.w + c.border_width * 2
-                    && y < c.y + c.h + c.border_width * 2;
+                let in_window = c.geo.contains_point(x, y)
+                    || (x > c.geo.x - c.border_width
+                        && y > c.geo.y - c.border_width
+                        && x < c.geo.x + c.geo.w + c.border_width * 2
+                        && y < c.geo.y + c.geo.h + c.border_width * 2);
 
                 let on_bar = if let Some(mon_id) = c.mon_id {
                     if let Some(mon) = globals.monitors.get(mon_id) {
@@ -352,8 +374,8 @@ pub fn warp_cursor_to_client(c_win: Window) {
                     0,
                     0,
                     0,
-                    (c.w / 2) as i16,
-                    (c.h / 2) as i16,
+                    (c.geo.w / 2) as i16,
+                    (c.geo.h / 2) as i16,
                 );
                 let _ = conn.flush();
             }
@@ -369,16 +391,16 @@ pub fn warp_into(c_win: Window) {
 
         if let Some(c) = globals.clients.get(&c_win) {
             if let Some((mut x, mut y)) = get_root_ptr() {
-                if x < c.x {
-                    x = c.x + 10;
-                } else if x > c.x + c.w {
-                    x = c.x + c.w - 10;
+                if x < c.geo.x {
+                    x = c.geo.x + 10;
+                } else if x > c.geo.x + c.geo.w {
+                    x = c.geo.x + c.geo.w - 10;
                 }
 
-                if y < c.y {
-                    y = c.y + 10;
-                } else if y > c.y + c.h {
-                    y = c.y + c.h - 10;
+                if y < c.geo.y {
+                    y = c.geo.y + 10;
+                } else if y > c.geo.y + c.geo.h {
+                    y = c.geo.y + c.geo.h - 10;
                 }
 
                 let _ = conn.warp_pointer(CURRENT_TIME, root, 0, 0, 0, 0, x as i16, y as i16);
@@ -418,9 +440,11 @@ fn get_root_ptr() -> Option<(i32, i32)> {
 
 fn view(_arg: &Arg) {}
 
-pub fn focus_stack(arg: &Arg) {
-    let direction = arg.i;
-
+/// Focus the next/previous client in the stack.
+///
+/// # Arguments
+/// * `forward` - If true, focus the next client; if false, focus the previous.
+pub fn focus_stack_direction(forward: bool) {
     let sel_win = {
         let globals = get_globals();
         let selmon_id = match globals.selmon {
@@ -468,7 +492,7 @@ pub fn focus_stack(arg: &Arg) {
         None => 0,
     };
 
-    let next_idx = if direction > 0 {
+    let next_idx = if forward {
         (current_idx + 1) % stack.len()
     } else {
         if current_idx == 0 {
@@ -479,4 +503,9 @@ pub fn focus_stack(arg: &Arg) {
     };
 
     focus(Some(stack[next_idx]));
+}
+
+/// Legacy wrapper for key bindings. Use `focus_stack_direction` for new code.
+pub fn focus_stack(arg: &Arg) {
+    focus_stack_direction(arg.i > 0);
 }
