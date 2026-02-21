@@ -52,9 +52,14 @@ pub fn text_width(text: &str) -> i32 {
     }
 }
 
+fn cstr_from_buf(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    std::str::from_utf8(&buf[..end]).unwrap_or("")
+}
+
 pub fn get_layout_symbol_width(m: &MonitorInner) -> i32 {
-    let ltsymbol = unsafe { std::str::from_utf8_unchecked(&m.ltsymbol) };
-    ((text_width(ltsymbol) + get_lrpad()) as f32 * 1.5) as i32
+    let ltsymbol = cstr_from_buf(&m.ltsymbol);
+    text_width(ltsymbol) + get_lrpad()
 }
 
 pub fn click_status(_arg: &Arg) {
@@ -565,7 +570,9 @@ pub fn draw_tag_indicators(
             tag_name
         };
 
-        let w = text_width(display_name) + lrpad;
+        let text_w = text_width(display_name);
+        let w = text_w + lrpad;
+        let lpad = ((w - text_w) / 2).max(0) as u32;
 
         if let Some(scheme) = get_tag_scheme(m, actual_i, occupied_tags, is_hover) {
             if let Some(ref drw) = g.drw {
@@ -596,7 +603,7 @@ pub fn draw_tag_indicators(
                     0,
                     w as u32,
                     bh as u32,
-                    (lrpad / 2) as u32,
+                    lpad,
                     display_name,
                     is_urgent,
                     detail_height,
@@ -611,11 +618,11 @@ pub fn draw_tag_indicators(
 
 pub fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i32 {
     let g = get_globals();
-    let w = get_layout_symbol_width(m);
-
-    let ltsymbol = unsafe { std::str::from_utf8_unchecked(&m.ltsymbol) };
+    let lrpad = g.lrpad;
+    let ltsymbol = cstr_from_buf(&m.ltsymbol);
     let text_w = text_width(ltsymbol);
-    let lpad = ((w - text_w) as f32 * 0.5 + 10.0) as u32;
+    let w = (text_w + lrpad).max(lrpad);
+    let lpad = ((w - text_w) / 2).max(0) as u32;
 
     if let Some(ref drw) = g.drw {
         let mut drw = drw.clone();
@@ -1088,10 +1095,8 @@ pub fn reset_bar() {
 
     let selmon_idx = g.selmon;
     if let Some(idx) = selmon_idx {
-        let monitors = g.monitors.clone();
-        if let Some(m) = monitors.get(idx) {
-            let mut m = m.clone();
-            draw_bar(&mut m);
+        if let Some(m) = g.monitors.get_mut(idx) {
+            draw_bar(m);
         }
     }
 }
