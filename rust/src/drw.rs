@@ -135,21 +135,21 @@ pub struct XWindowAttributes {
 
 #[repr(C)]
 pub struct XSetWindowAttributes {
-    pub background_pixmap: u64,    // Pixmap
-    pub background_pixel: u64,     // unsigned long
-    pub border_pixmap: u64,        // Pixmap
-    pub border_pixel: u64,         // unsigned long
-    pub bit_gravity: u32,          // int
-    pub win_gravity: u32,          // int
-    pub backing_store: u32,        // int
-    pub backing_planes: u64,       // unsigned long
-    pub backing_pixel: u64,        // unsigned long
-    pub save_under: u32,           // int
-    pub event_mask: u64,           // long
+    pub background_pixmap: u64,     // Pixmap
+    pub background_pixel: u64,      // unsigned long
+    pub border_pixmap: u64,         // Pixmap
+    pub border_pixel: u64,          // unsigned long
+    pub bit_gravity: u32,           // int
+    pub win_gravity: u32,           // int
+    pub backing_store: u32,         // int
+    pub backing_planes: u64,        // unsigned long
+    pub backing_pixel: u64,         // unsigned long
+    pub save_under: u32,            // int
+    pub event_mask: u64,            // long
     pub do_not_propagate_mask: u32, // int
-    pub override_redirect: u32,    // int
-    pub colormap: u64,             // Colormap
-    pub cursor: u64,               // Cursor
+    pub override_redirect: u32,     // int
+    pub colormap: u64,              // Colormap
+    pub cursor: u64,                // Cursor
 }
 
 impl Default for XSetWindowAttributes {
@@ -279,7 +279,11 @@ extern "C" {
         values: *mut libc::c_void,
     );
     pub fn XSelectInput(display: *mut libc::c_void, w: Window, event_mask: i64);
-    pub fn XGetWindowAttributes(display: *mut libc::c_void, w: Window, attrs: *mut XWindowAttributes) -> i32;
+    pub fn XGetWindowAttributes(
+        display: *mut libc::c_void,
+        w: Window,
+        attrs: *mut XWindowAttributes,
+    ) -> i32;
     pub fn XCreateSimpleWindow(
         display: *mut libc::c_void,
         parent: Window,
@@ -510,14 +514,14 @@ impl Drw {
             FcInit();
             XftInit();
         }
-        
+
         // Use DISPLAY environment variable explicitly
         let display_name_str = display_name
             .map(|s| s.to_string())
             .or_else(|| std::env::var("DISPLAY").ok());
-        
+
         eprintln!("DEBUG Drw::new: display_name_str={:?}", display_name_str);
-        
+
         // Keep the CString alive for the duration of XOpenDisplay call
         let display_name_cstring = display_name_str
             .as_ref()
@@ -526,15 +530,18 @@ impl Drw {
             .as_ref()
             .map(|cs| cs.as_ptr())
             .unwrap_or(ptr::null());
-        
-        eprintln!("DEBUG Drw::new: opening X display with name_ptr={:p}", name_ptr);
+
+        eprintln!(
+            "DEBUG Drw::new: opening X display with name_ptr={:p}",
+            name_ptr
+        );
         let display = unsafe { XOpenDisplay(name_ptr) };
         eprintln!("DEBUG Drw::new: XOpenDisplay returned {:p}", display);
 
         if display.is_null() {
             return Err("cannot open display".to_string());
         }
-        
+
         eprintln!("DEBUG Drw::new: display opened successfully");
 
         unsafe {
@@ -630,6 +637,17 @@ impl Drw {
         unsafe {
             XFreePixmap(self.display, self.drawable);
             self.drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
+        }
+    }
+
+    pub fn set_drawable(&mut self, drawable: Drawable) {
+        self.drawable = drawable;
+        // The GC was created for a pixmap, so we need to recreate it for the window
+        // to ensure compatibility
+        unsafe {
+            XFreeGC(self.display, self.gc);
+            self.gc = XCreateGC(self.display, drawable, 0, std::ptr::null_mut());
+            XSetLineAttributes(self.display, self.gc, 1, 0, 0, 0);
         }
     }
 
@@ -784,7 +802,13 @@ impl Drw {
     pub fn rect(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
         let scheme = match &self.scheme {
             Some(s) => s,
-            None => return,
+            None => {
+                eprintln!(
+                    "DEBUG rect: NO SCHEME SET! x={}, y={}, w={}, h={}",
+                    x, y, w, h
+                );
+                return;
+            }
         };
 
         let fg_pixel = if invert {
@@ -793,11 +817,18 @@ impl Drw {
             scheme[COL_FG].pixel()
         };
 
+        eprintln!(
+            "DEBUG rect: drawable={}, x={}, y={}, w={}, h={}, filled={}, fg_pixel={:#x}, gc={:p}",
+            self.drawable, x, y, w, h, filled, fg_pixel, self.gc
+        );
+
         unsafe {
             XSetForeground(self.display, self.gc, fg_pixel as c_ulong);
+            eprintln!("DEBUG rect: XSetForeground called");
 
             if filled {
                 XFillRectangle(self.display, self.drawable, self.gc, x, y, w, h);
+                eprintln!("DEBUG rect: XFillRectangle called");
             } else {
                 XDrawRectangle(
                     self.display,
@@ -808,6 +839,7 @@ impl Drw {
                     w.saturating_sub(1),
                     h.saturating_sub(1),
                 );
+                eprintln!("DEBUG rect: XDrawRectangle called");
             }
         }
     }
@@ -1224,7 +1256,12 @@ impl Drw {
     }
 
     pub fn map(&self, win: Window, x: i16, y: i16, w: u16, h: u16) {
+        eprintln!(
+            "DEBUG drw.map: copying from drawable={} to win={}, x={}, y={}, w={}, h={}",
+            self.drawable, win, x, y, w, h
+        );
         unsafe {
+            // Set up error handler to catch XCopyArea errors
             XCopyArea(
                 self.display,
                 self.drawable,
@@ -1238,6 +1275,7 @@ impl Drw {
                 y as c_int,
             );
             XSync(self.display, 0);
+            eprintln!("DEBUG drw.map: XCopyArea and XSync completed");
         }
     }
 

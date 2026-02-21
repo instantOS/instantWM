@@ -355,8 +355,18 @@ pub fn draw_startmenu_icon(bh: i32) {
 
     let startmenu_size = g.startmenusize as i32;
 
+    // Get the bar window to draw to
+    let barwin = g
+        .selmon
+        .and_then(|i| g.monitors.get(i).map(|m| m.barwin))
+        .unwrap_or(0);
+
     if let Some(ref drw) = g.drw {
         let mut drw = drw.clone();
+        // Set the drawable to the bar window so drawing goes directly to the window
+        if barwin != 0 {
+            drw.set_drawable(barwin);
+        }
 
         if g.tagprefix {
             let schemes = &g.tagschemes;
@@ -907,7 +917,11 @@ pub fn draw_bar(m: &mut MonitorInner) {
         let mut g = get_globals_mut();
         let bh = g.bh;
         if let Some(ref mut drw) = g.drw {
-            drw.resize(m.ww as u32, bh as u32);
+            // Instead of resizing the pixmap, set the drawable to the window directly
+            // This avoids the XCopyArea across different X11 connections
+            drw.set_drawable(m.barwin);
+            drw.w = m.ww as u32;
+            drw.h = bh as u32;
         }
     } // Release write lock here
 
@@ -1004,16 +1018,6 @@ pub fn draw_bar(m: &mut MonitorInner) {
     }
 
     eprintln!("TRACE: draw_bar - before final block");
-    {
-        let g = get_globals();
-        if let Some(ref drw) = g.drw {
-            let mut drw = drw.clone();
-            if let Some(ref scheme) = g.statusscheme {
-                drw.set_scheme(scheme.clone());
-            }
-        }
-    }
-    eprintln!("TRACE: draw_bar - after final block");
 
     m.bt = n;
     m.bar_clients_width = window_width;
@@ -1021,11 +1025,46 @@ pub fn draw_bar(m: &mut MonitorInner) {
 
     if let Some(ref drw) = g.drw {
         eprintln!(
-            "DEBUG draw_bar: calling drw.map with barwin={}, ww={}, bh={}",
-            m.barwin, m.ww, bh
+            "DEBUG draw_bar: drawing directly to barwin={}, ww={}, bh={}, display={:p}",
+            m.barwin, m.ww, bh, drw.display()
         );
-        drw.map(m.barwin, 0, 0, m.ww as u16, bh as u16);
-        eprintln!("DEBUG draw_bar: drw.map completed");
+        
+        // Use x11rb to draw directly to the window (bypass Xlib entirely)
+        let x11 = crate::globals::get_x11();
+        if let Some(ref conn) = x11.conn {
+            // Create a GC for the window
+            let gc = conn.generate_id().unwrap();
+            let _ = conn.create_gc(
+                m.barwin,
+                gc,
+                &x11rb::protocol::xproto::CreateGCAux::new()
+                    .foreground(0x00121212)  // Dark background color
+            );
+            
+            // Draw a filled rectangle covering the entire bar
+            use x11rb::protocol::xproto::Rectangle;
+            let rects = [Rectangle { x: 0, y: 0, width: m.ww as u16, height: bh as u16 }];
+            let _ = conn.poly_fill_rectangle(m.barwin, gc, &rects);
+            
+            // Draw some text indicator
+            let _ = conn.poly_fill_rectangle(
+                m.barwin, 
+                gc, 
+                &[Rectangle { x: 0, y: 0, width: 50, height: bh as u16 }]
+            );
+            
+            let _ = conn.flush();
+            eprintln!("DEBUG draw_bar: x11rb drawing completed and flushed");
+        }
+        
+        // Also flush Xlib for any Xlib drawing
+        unsafe {
+            use crate::drw::XFlush;
+            XFlush(drw.display());
+            
+            use crate::drw::XSync;
+            XSync(drw.display(), 0);
+        }
     } else {
         eprintln!("DEBUG draw_bar: ERROR - no drw in globals!");
     }
@@ -1267,19 +1306,22 @@ pub fn update_bars() {
     let x11 = crate::globals::get_x11();
     if let Some(ref conn) = x11.conn {
         for (i, wx, by, w, bh) in bar_configs {
-            eprintln!("DEBUG update_bars: creating window for monitor {}: wx={}, by={}, w={}, bh={}", i, wx, by, w, bh);
-            
+            eprintln!(
+                "DEBUG update_bars: creating window for monitor {}: wx={}, by={}, w={}, bh={}",
+                i, wx, by, w, bh
+            );
+
             let win_id = conn.generate_id().unwrap();
-            
+
             let aux = x11rb::protocol::xproto::CreateWindowAux::new()
-                .override_redirect(1)  // Don't manage our own bar!
-                .background_pixmap(1)  // PARENT_RELATIVE
+                .override_redirect(1) // Don't manage our own bar!
+                .background_pixmap(1) // PARENT_RELATIVE
                 .event_mask(
                     x11rb::protocol::xproto::EventMask::BUTTON_PRESS
                         | x11rb::protocol::xproto::EventMask::EXPOSURE
                         | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
                 );
-            
+
             let _ = conn.create_window(
                 x11rb::COPY_FROM_PARENT as u8,
                 win_id,
@@ -1293,11 +1335,14 @@ pub fn update_bars() {
                 x11rb::COPY_FROM_PARENT as u32,
                 &aux,
             );
-            
+
             let _ = conn.map_window(win_id);
             let _ = conn.flush();
-            
-            eprintln!("DEBUG update_bars: x11rb created and mapped win_id={}", win_id);
+
+            eprintln!(
+                "DEBUG update_bars: x11rb created and mapped win_id={}",
+                win_id
+            );
 
             let mut globals_mut = crate::globals::get_globals_mut();
             globals_mut.monitors[i].barwin = win_id;
