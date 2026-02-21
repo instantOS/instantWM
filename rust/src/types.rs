@@ -504,25 +504,52 @@ pub trait Layout: std::fmt::Debug {
 pub type ClientId = usize;
 pub type MonitorId = usize;
 
-//TODO: why do both client and clientInner exist?
-//TODO: dimensions should probaly be their own structs instead of 4 fields each time
-#[derive(Debug, Clone, Default)]
-pub struct ClientInner {
-    pub name: String,
-    pub mina: f32,
-    pub maxa: f32,
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Rect {
     pub x: i32,
     pub y: i32,
     pub w: i32,
     pub h: i32,
-    pub saved_float_x: i32,
-    pub saved_float_y: i32,
-    pub saved_float_width: i32,
-    pub saved_float_height: i32,
-    pub oldx: i32,
-    pub oldy: i32,
-    pub oldw: i32,
-    pub oldh: i32,
+}
+
+impl Rect {
+    pub fn area(&self) -> i32 {
+        self.w * self.h
+    }
+
+    pub fn contains_point(&self, px: i32, py: i32) -> bool {
+        px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
+    }
+
+    pub fn intersects_other(&self, other: &Rect) -> bool {
+        let x1 = self.x.max(other.x);
+        let y1 = self.y.max(other.y);
+        let x2 = (self.x + self.w).min(other.x + other.w);
+        let y2 = (self.y + self.h).min(other.y + other.h);
+        x1 < x2 && y1 < y2
+    }
+
+    pub fn center(&self) -> (i32, i32) {
+        (self.x + self.w / 2, self.y + self.h / 2)
+    }
+
+    pub fn total_width(&self, border_width: i32) -> i32 {
+        self.w + 2 * border_width
+    }
+
+    pub fn total_height(&self, border_width: i32) -> i32 {
+        self.h + 2 * border_width
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Client {
+    pub name: String,
+    pub mina: f32,
+    pub maxa: f32,
+    pub geo: Rect,
+    pub float_geo: Rect,
+    pub old_geo: Rect,
     pub basew: i32,
     pub baseh: i32,
     pub incw: i32,
@@ -553,13 +580,13 @@ pub struct ClientInner {
     pub snext: Option<Window>,
 }
 
-impl ClientInner {
+impl Client {
     pub fn total_width(&self) -> i32 {
-        self.w + 2 * self.border_width
+        self.geo.total_width(self.border_width)
     }
 
     pub fn total_height(&self) -> i32 {
-        self.h + 2 * self.border_width
+        self.geo.total_height(self.border_width)
     }
 
     pub fn is_scratchpad(&self) -> bool {
@@ -602,14 +629,8 @@ pub struct MonitorInner {
     pub by: i32,
     pub bar_clients_width: i32,
     pub bt: i32,
-    pub mx: i32,
-    pub my: i32,
-    pub mw: i32,
-    pub mh: i32,
-    pub wx: i32,
-    pub wy: i32,
-    pub ww: i32,
-    pub wh: i32,
+    pub monitor_rect: Rect,
+    pub work_rect: Rect,
     pub seltags: u32,
     pub sellt: u32,
     pub tagset: [u32; 2],
@@ -641,14 +662,8 @@ impl Default for MonitorInner {
             by: 0,
             bar_clients_width: 0,
             bt: 0,
-            mx: 0,
-            my: 0,
-            mw: 0,
-            mh: 0,
-            wx: 0,
-            wy: 0,
-            ww: 0,
-            wh: 0,
+            monitor_rect: Rect::default(),
+            work_rect: Rect::default(),
             seltags: 0,
             sellt: 0,
             tagset: [0; 2],
@@ -726,11 +741,11 @@ pub struct XCommand {
     pub cmd_type: u32,
 }
 
-pub fn intersect(x: i32, y: i32, w: i32, h: i32, m: &MonitorInner) -> i32 {
-    let x1 = x.max(m.wx);
-    let y1 = y.max(m.wy);
-    let x2 = (x + w).min(m.wx + m.ww);
-    let y2 = (y + h).min(m.wy + m.wh);
+pub fn intersect(r: &Rect, m: &MonitorInner) -> i32 {
+    let x1 = r.x.max(m.work_rect.x);
+    let y1 = r.y.max(m.work_rect.y);
+    let x2 = (r.x + r.w).min(m.work_rect.x + m.work_rect.w);
+    let y2 = (r.y + r.h).min(m.work_rect.y + m.work_rect.h);
     (x2 - x1).max(0) * (y2 - y1).max(0)
 }
 

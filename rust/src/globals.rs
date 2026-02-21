@@ -20,7 +20,7 @@ pub struct Globals {
     pub sh: i32,
     pub monitors: Vec<MonitorInner>,
     pub selmon: Option<MonitorId>,
-    pub clients: HashMap<Window, ClientInner>,
+    pub clients: HashMap<Window, Client>,
     pub client_list: Vec<ClientId>,
     pub bh: i32,
     pub lrpad: i32,

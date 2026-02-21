@@ -152,7 +152,7 @@ pub fn detach_stack(win: Window) {
     }
 }
 
-pub fn is_visible(c: &ClientInner) -> bool {
+pub fn is_visible(c: &Client) -> bool {
     if c.issticky {
         return true;
     }
@@ -183,12 +183,12 @@ pub fn get_state(win: Window) -> i32 {
     WM_STATE_NORMAL
 }
 
-pub fn client_width(c: &ClientInner) -> i32 {
-    c.w + 2 * c.border_width
+pub fn client_width(c: &Client) -> i32 {
+    c.geo.w + 2 * c.border_width
 }
 
-pub fn client_height(c: &ClientInner) -> i32 {
-    c.h + 2 * c.border_width
+pub fn client_height(c: &Client) -> i32 {
+    c.geo.h + 2 * c.border_width
 }
 
 pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
@@ -363,10 +363,10 @@ pub fn configure(win: Window) {
                 event: win,
                 window: win,
                 above_sibling: 0,
-                x: c.x as i16,
-                y: c.y as i16,
-                width: c.w as u16,
-                height: c.h as u16,
+                x: c.geo.x as i16,
+                y: c.geo.y as i16,
+                width: c.geo.w as u16,
+                height: c.geo.h as u16,
                 border_width: c.border_width as u16,
                 override_redirect: false,
             };
@@ -450,7 +450,7 @@ pub fn show_hide(win: Option<Window>) {
                 let (x, y) = {
                     let globals = get_globals();
                     if let Some(client) = globals.clients.get(&current) {
-                        (client.x, client.y)
+                        (client.geo.x, client.geo.y)
                     } else {
                         return;
                     }
@@ -466,10 +466,10 @@ pub fn show_hide(win: Option<Window>) {
                             client.is_fullscreen,
                             client.isfakefullscreen,
                             client.mon_id,
-                            client.x,
-                            client.y,
-                            client.w,
-                            client.h,
+                            client.geo.x,
+                            client.geo.y,
+                            client.geo.w,
+                            client.geo.h,
                         )
                     } else {
                         return;
@@ -504,7 +504,7 @@ pub fn show_hide(win: Option<Window>) {
                 let y = {
                     let globals = get_globals();
                     if let Some(client) = globals.clients.get(&current) {
-                        client.y
+                        client.geo.y
                     } else {
                         0
                     }
@@ -528,10 +528,10 @@ pub fn show(win: Window) {
         return;
     }
 
-    let x = client.x;
-    let y = client.y;
-    let w = client.w;
-    let h = client.h;
+    let x = client.geo.x;
+    let y = client.geo.y;
+    let w = client.geo.w;
+    let h = client.geo.h;
 
     drop(globals);
 
@@ -575,10 +575,10 @@ pub fn hide(win: Window) {
         return;
     }
 
-    let x = client.x;
-    let y = client.y;
-    let w = client.w;
-    let h = client.h;
+    let x = client.geo.x;
+    let y = client.geo.y;
+    let w = client.geo.w;
+    let h = client.geo.h;
     let mon_id = client.mon_id;
     let bh = globals.bh;
     let animated = globals.animated;
@@ -682,14 +682,14 @@ pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
     if let Some(ref conn) = x11.conn {
         let mut globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
-            client.oldx = client.x;
-            client.x = x;
-            client.oldy = client.y;
-            client.y = y;
-            client.oldw = client.w;
-            client.w = w;
-            client.oldh = client.h;
-            client.h = h;
+            client.old_geo.x = client.geo.x;
+            client.geo.x = x;
+            client.old_geo.y = client.geo.y;
+            client.geo.y = y;
+            client.old_geo.w = client.geo.w;
+            client.geo.w = w;
+            client.old_geo.h = client.geo.h;
+            client.geo.h = h;
 
             let border_width = client.border_width;
 
@@ -926,7 +926,7 @@ pub fn apply_rules(win: Window) {
 }
 
 pub fn apply_size_hints(
-    c: &mut ClientInner,
+    c: &mut Client,
     x: &mut i32,
     y: &mut i32,
     w: &mut i32,
@@ -1191,16 +1191,16 @@ pub fn manage(
     wa_height: u32,
     wa_border_width: u32,
 ) {
-    let mut c = ClientInner::default();
+    let mut c = Client::default();
     c.win = w;
-    c.x = wa_x;
-    c.oldx = wa_x;
-    c.y = wa_y;
-    c.oldy = wa_y;
-    c.w = wa_width as i32;
-    c.oldw = wa_width as i32;
-    c.h = wa_height as i32;
-    c.oldh = wa_height as i32;
+    c.geo.x = wa_x;
+    c.old_geo.x = wa_x;
+    c.geo.y = wa_y;
+    c.old_geo.y = wa_y;
+    c.geo.w = wa_width as i32;
+    c.old_geo.w = wa_width as i32;
+    c.geo.h = wa_height as i32;
+    c.old_geo.h = wa_height as i32;
     c.old_border_width = wa_border_width as i32;
     c.name = read_window_title(w);
 
@@ -1765,7 +1765,7 @@ pub fn toggle_fake_fullscreen(_arg: &Arg) {
     }
 }
 
-pub fn update_size_hints(c: &mut ClientInner) {
+pub fn update_size_hints(c: &mut Client) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         if let Ok(cookie) = conn.get_property(

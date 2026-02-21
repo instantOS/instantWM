@@ -70,10 +70,10 @@ pub fn moveresize(_arg: &Arg) {
         if let Some(client) = globals.clients.get(&win) {
             (
                 client.isfloating,
-                client.x,
-                client.y,
-                client.w,
-                client.h,
+                client.geo.x,
+                client.geo.y,
+                client.geo.w,
+                client.geo.h,
                 client.border_width,
             )
         } else {
@@ -102,7 +102,15 @@ pub fn moveresize(_arg: &Arg) {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.mx, mon.my, mon.mw, mon.mh, mon.ww, mon.wh, globals.bh)
+                (
+                    mon.monitor_rect.x,
+                    mon.monitor_rect.y,
+                    mon.monitor_rect.w,
+                    mon.monitor_rect.h,
+                    mon.work_rect.w,
+                    mon.work_rect.h,
+                    globals.bh,
+                )
             } else {
                 return;
             }
@@ -137,7 +145,7 @@ pub fn moveresize(_arg: &Arg) {
     warp_cursor_to_client_impl(win);
 }
 
-pub fn get_cursor_client() -> Option<ClientInner> {
+pub fn get_cursor_client() -> Option<Client> {
     let globals = get_globals();
 
     let (x, y) = get_root_ptr()?;
@@ -146,7 +154,7 @@ pub fn get_cursor_client() -> Option<ClientInner> {
         let mut current = mon.clients;
         while let Some(c_win) = current {
             if let Some(c) = globals.clients.get(&c_win) {
-                if x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h {
+                if c.geo.contains_point(x, y) {
                     return Some(c.clone());
                 }
                 current = c.next;
@@ -158,11 +166,11 @@ pub fn get_cursor_client() -> Option<ClientInner> {
     None
 }
 
-pub fn warp(c: &ClientInner) {
+pub fn warp(c: &Client) {
     warp_cursor_to_client_impl(c.win);
 }
 
-pub fn force_warp(c: &ClientInner) {
+pub fn force_warp(c: &Client) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let _ = conn.warp_pointer(
@@ -172,7 +180,7 @@ pub fn force_warp(c: &ClientInner) {
             0i16,
             0u16,
             0u16,
-            (c.w / 2) as i16,
+            (c.geo.w / 2) as i16,
             10i16,
         );
         let _ = conn.flush();
@@ -196,8 +204,8 @@ fn warp_cursor_to_client_impl(win: Window) {
                         0,
                         0,
                         0,
-                        (mon.wx + mon.ww / 2) as i16,
-                        (mon.wy + mon.wh / 2) as i16,
+                        (mon.work_rect.x + mon.work_rect.w / 2) as i16,
+                        (mon.work_rect.y + mon.work_rect.h / 2) as i16,
                     );
                     let _ = conn.flush();
                 }
@@ -207,10 +215,11 @@ fn warp_cursor_to_client_impl(win: Window) {
 
         if let Some(c) = globals.clients.get(&win) {
             if let Some((x, y)) = get_root_ptr() {
-                let in_window = x > c.x - c.border_width
-                    && y > c.y - c.border_width
-                    && x < c.x + c.w + c.border_width * 2
-                    && y < c.y + c.h + c.border_width * 2;
+                let in_window = c.geo.contains_point(x, y)
+                    || (x > c.geo.x - c.border_width
+                        && y > c.geo.y - c.border_width
+                        && x < c.geo.x + c.geo.w + c.border_width * 2
+                        && y < c.geo.y + c.geo.h + c.border_width * 2);
 
                 let on_bar = if let Some(mon_id) = c.mon_id {
                     if let Some(mon) = globals.monitors.get(mon_id) {
@@ -233,8 +242,8 @@ fn warp_cursor_to_client_impl(win: Window) {
                     0,
                     0,
                     0,
-                    (c.w / 2) as i16,
-                    (c.h / 2) as i16,
+                    (c.geo.w / 2) as i16,
+                    (c.geo.h / 2) as i16,
                 );
                 let _ = conn.flush();
             }
@@ -242,7 +251,7 @@ fn warp_cursor_to_client_impl(win: Window) {
     }
 }
 
-pub fn warp_cursor_to_client_win(c: &ClientInner) {
+pub fn warp_cursor_to_client_win(c: &Client) {
     warp_cursor_to_client_impl(c.win);
 }
 
@@ -361,12 +370,7 @@ pub fn move_mouse(_arg: &Arg) {
             None => return,
         };
         let snapstatus = c.snapstatus;
-        let saved = (
-            c.saved_float_x,
-            c.saved_float_y,
-            c.saved_float_width,
-            c.saved_float_height,
-        );
+        let saved = (c.float_geo.x, c.float_geo.y, c.float_geo.w, c.float_geo.h);
         let has_tiling = if let Some(sel_mon_id) = globals.selmon {
             globals
                 .monitors
@@ -390,14 +394,24 @@ pub fn move_mouse(_arg: &Arg) {
             let c = globals.clients.get(&win).unwrap();
             let mon = globals.monitors.get(globals.selmon.unwrap()).unwrap();
             let bh = globals.bh;
-            if c.x >= mon.mx - MAX_UNMAXIMIZE_OFFSET
-                && c.y >= mon.my + bh - MAX_UNMAXIMIZE_OFFSET
-                && c.w >= mon.mw - MAX_UNMAXIMIZE_OFFSET
-                && c.h >= mon.mh - MAX_UNMAXIMIZE_OFFSET
+            if c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
+                && c.geo.y >= mon.monitor_rect.y + bh - MAX_UNMAXIMIZE_OFFSET
+                && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
+                && c.geo.h >= mon.monitor_rect.h - MAX_UNMAXIMIZE_OFFSET
             {
                 resize(win, saved_x, saved_y, saved_w, saved_h, false);
             }
-            (c.x, c.y, c.w, c.h, mon.mw, mon.mh, mon.mx, mon.my, bh)
+            (
+                c.geo.x,
+                c.geo.y,
+                c.geo.w,
+                c.geo.h,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                bh,
+            )
         };
         let _ = (c_x, c_y, c_w, c_h, mon_mw, mon_mh, mon_mx, mon_my, bh);
     }
@@ -433,7 +447,7 @@ pub fn move_mouse(_arg: &Arg) {
             globals
                 .clients
                 .get(&win)
-                .map(|c| (c.x, c.y))
+                .map(|c| (c.geo.x, c.geo.y))
                 .unwrap_or((0, 0))
         };
 
@@ -471,23 +485,29 @@ pub fn move_mouse(_arg: &Arg) {
                         let snap = globals.snap;
                         let c = globals.clients.get(&win);
                         if let Some(client) = c {
-                            let width = client.w + 2 * client.border_width;
-                            let height = client.h + 2 * client.border_width;
+                            let width = client.geo.total_width(client.border_width);
+                            let height = client.geo.total_height(client.border_width);
 
                             let mut adj_nx = nx;
                             let mut adj_ny = ny;
 
                             if let Some(sel_mon_id) = globals.selmon {
                                 if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                                    if (mon.wx - nx).abs() < snap {
-                                        adj_nx = mon.wx;
-                                    } else if (mon.wx + mon.ww - (nx + width)).abs() < snap {
-                                        adj_nx = mon.wx + mon.ww - width;
+                                    if (mon.work_rect.x - nx).abs() < snap {
+                                        adj_nx = mon.work_rect.x;
+                                    } else if (mon.work_rect.x + mon.work_rect.w - (nx + width))
+                                        .abs()
+                                        < snap
+                                    {
+                                        adj_nx = mon.work_rect.x + mon.work_rect.w - width;
                                     }
-                                    if (mon.wy - ny).abs() < snap {
-                                        adj_ny = mon.wy;
-                                    } else if (mon.wy + mon.wh - (ny + height)).abs() < snap {
-                                        adj_ny = mon.wy + mon.wh - height;
+                                    if (mon.work_rect.y - ny).abs() < snap {
+                                        adj_ny = mon.work_rect.y;
+                                    } else if (mon.work_rect.y + mon.work_rect.h - (ny + height))
+                                        .abs()
+                                        < snap
+                                    {
+                                        adj_ny = mon.work_rect.y + mon.work_rect.h - height;
                                     }
                                 }
                             }
@@ -504,12 +524,13 @@ pub fn move_mouse(_arg: &Arg) {
 
                             if !client.isfloating
                                 && has_tiling
-                                && ((nx - client.x).abs() > snap || (ny - client.y).abs() > snap)
+                                && ((nx - client.geo.x).abs() > snap
+                                    || (ny - client.geo.y).abs() > snap)
                             {
                                 drop(globals);
                                 toggle_floating(&Arg::default());
                             } else if !has_tiling || client.isfloating {
-                                resize(win, adj_nx, adj_ny, client.w, client.h, true);
+                                resize(win, adj_nx, adj_ny, client.geo.w, client.geo.h, true);
                             }
                         }
                     }
@@ -529,13 +550,15 @@ fn check_edge_snap(x: i32, y: i32) -> i32 {
     let globals = get_globals();
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if x < mon.mx + OVERLAY_ZONE_WIDTH && x > mon.mx - 1 {
+            if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
                 return SNAP_LEFT;
             }
-            if x > mon.mx + mon.mw - OVERLAY_ZONE_WIDTH && x < mon.mx + mon.mw + 1 {
+            if x > mon.monitor_rect.x + mon.monitor_rect.w - OVERLAY_ZONE_WIDTH
+                && x < mon.monitor_rect.x + mon.monitor_rect.w + 1
+            {
                 return SNAP_RIGHT;
             }
-            if y <= mon.my + if mon.showbar { globals.bh } else { 5 } {
+            if y <= mon.monitor_rect.y + if mon.showbar { globals.bh } else { 5 } {
                 return SNAP_TOP;
             }
         }
@@ -597,7 +620,7 @@ pub fn resize_mouse(_arg: &Arg) {
         let (orig_left, orig_top, orig_right, orig_bottom) = {
             let globals = get_globals();
             if let Some(c) = globals.clients.get(&win) {
-                (c.x, c.y, c.x + c.w, c.y + c.h)
+                (c.geo.x, c.geo.y, c.geo.x + c.geo.w, c.geo.y + c.geo.h)
             } else {
                 return;
             }
@@ -640,12 +663,13 @@ pub fn resize_mouse(_arg: &Arg) {
 
                             if !client.isfloating
                                 && has_tiling
-                                && ((nw - client.w).abs() > snap || (nh - client.h).abs() > snap)
+                                && ((nw - client.geo.w).abs() > snap
+                                    || (nh - client.geo.h).abs() > snap)
                             {
                                 drop(globals);
                                 toggle_floating(&Arg::default());
                             } else if !has_tiling || client.isfloating {
-                                resize(win, client.x, client.y, nw, nh, true);
+                                resize(win, client.geo.x, client.geo.y, nw, nh, true);
                             }
                         }
                     }
@@ -719,7 +743,7 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
         let (orig_left, orig_top) = {
             let globals = get_globals();
             if let Some(c) = globals.clients.get(&win) {
-                (c.x, c.y)
+                (c.geo.x, c.geo.y)
             } else {
                 return;
             }
@@ -779,7 +803,7 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
                                 }
                             }
 
-                            resize(win, client.x, client.y, nw, nh, true);
+                            resize(win, client.geo.x, client.geo.y, nw, nh, true);
                         }
                     }
                     _ => {}
@@ -839,7 +863,7 @@ pub fn gesture_mouse(_arg: &Arg) {
                             let globals = get_globals();
                             if let Some(sel_mon_id) = globals.selmon {
                                 if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                                    let threshold = mon.mh / 30;
+                                    let threshold = mon.monitor_rect.h / 30;
                                     if (last_y - m.event_y as i32).abs() > threshold {
                                         drop(globals);
                                         spawn(&Arg::default());
@@ -883,7 +907,7 @@ pub fn is_in_resize_border() -> bool {
             } else {
                 true
             };
-            (c.isfloating, has_tiling, c.x, c.y, c.w, c.h)
+            (c.isfloating, has_tiling, c.geo.x, c.geo.y, c.geo.w, c.geo.h)
         } else {
             return false;
         }
@@ -901,7 +925,7 @@ pub fn is_in_resize_border() -> bool {
     let bh = globals.bh;
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if mon.showbar && y < mon.my + bh {
+            if mon.showbar && y < mon.monitor_rect.y + bh {
                 return false;
             }
         }
@@ -1206,10 +1230,10 @@ pub fn draw_window(_arg: &Arg) {
             if w > MIN_WINDOW_SIZE && h > MIN_WINDOW_SIZE {
                 let globals = get_globals();
                 if let Some(c) = globals.clients.get(&win) {
-                    let is_different = (c.w - w).abs() > 20
-                        || (c.h - h).abs() > 20
-                        || (c.x - x).abs() > 20
-                        || (c.y - y).abs() > 20;
+                    let is_different = (c.geo.w - w).abs() > 20
+                        || (c.geo.h - h).abs() > 20
+                        || (c.geo.x - x).abs() > 20
+                        || (c.geo.y - y).abs() > 20;
 
                     if is_different {
                         drop(globals);
@@ -1258,10 +1282,10 @@ pub fn is_valid_window_size(x: i32, y: i32, width: i32, height: i32, c_win: Wind
             && height > MIN_WINDOW_SIZE
             && x > -SLOP_MARGIN
             && y > -SLOP_MARGIN
-            && ((c.w - width).abs() > 20
-                || (c.h - height).abs() > 20
-                || (c.x - x).abs() > 20
-                || (c.y - y).abs() > 20)
+            && ((c.geo.w - width).abs() > 20
+                || (c.geo.h - height).abs() > 20
+                || (c.geo.x - x).abs() > 20
+                || (c.geo.y - y).abs() > 20)
     } else {
         false
     }
@@ -1291,7 +1315,7 @@ pub fn handle_client_monitor_switch(c_win: Window) {
     let (c_x, c_y, c_w, c_h) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&c_win) {
-            (c.x, c.y, c.w, c.h)
+            (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
         } else {
             return;
         }
@@ -1369,7 +1393,7 @@ pub fn drag_tag(arg: &Arg) {
     if let Some(ref conn) = x11.conn {
         let selmon_id = globals.selmon;
         let mon_mx = selmon_id
-            .and_then(|id| globals.monitors.get(id).map(|m| m.mx))
+            .and_then(|id| globals.monitors.get(id).map(|m| m.monitor_rect.x))
             .unwrap_or(0);
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
@@ -1466,7 +1490,7 @@ pub fn drag_tag(arg: &Arg) {
                 let globals = get_globals();
                 let mon_x = globals
                     .selmon
-                    .and_then(|id| globals.monitors.get(id).map(|m| m.mx))
+                    .and_then(|id| globals.monitors.get(id).map(|m| m.monitor_rect.x))
                     .unwrap_or(0);
                 let local_x = x - mon_x;
 
@@ -1515,25 +1539,25 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     None
 }
 
-fn snap_to_monitor_edges(c: &ClientInner, nx: &mut i32, ny: &mut i32) {
+fn snap_to_monitor_edges(c: &Client, nx: &mut i32, ny: &mut i32) {
     let globals = get_globals();
     let snap = globals.snap;
 
     if let Some(sel_mon_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            let width = c.w + 2 * c.border_width;
-            let height = c.h + 2 * c.border_width;
+            let width = c.geo.total_width(c.border_width);
+            let height = c.geo.total_height(c.border_width);
 
-            if (mon.wx - *nx).abs() < snap {
-                *nx = mon.wx;
-            } else if (mon.wx + mon.ww - (*nx + width)).abs() < snap {
-                *nx = mon.wx + mon.ww - width;
+            if (mon.work_rect.x - *nx).abs() < snap {
+                *nx = mon.work_rect.x;
+            } else if (mon.work_rect.x + mon.work_rect.w - (*nx + width)).abs() < snap {
+                *nx = mon.work_rect.x + mon.work_rect.w - width;
             }
 
-            if (mon.wy - *ny).abs() < snap {
-                *ny = mon.wy;
-            } else if (mon.wy + mon.wh - (*ny + height)).abs() < snap {
-                *ny = mon.wy + mon.wh - height;
+            if (mon.work_rect.y - *ny).abs() < snap {
+                *ny = mon.work_rect.y;
+            } else if (mon.work_rect.y + mon.work_rect.h - (*ny + height)).abs() < snap {
+                *ny = mon.work_rect.y + mon.work_rect.h - height;
             }
         }
     }
