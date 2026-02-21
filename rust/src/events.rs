@@ -53,7 +53,6 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
 
     let status_hit_x = mon.work_rect.w - get_systray_width() as i32 - g.statuswidth + g.lrpad - 2;
     let bh = g.bh;
-    drop(g);
 
     if ev_x < start_menu_size {
         reset_bar();
@@ -95,7 +94,6 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
             visible_clients.push(c_win);
         }
     }
-    drop(g);
 
     if !visible_clients.is_empty() {
         let mut title_end = tag_end + blw;
@@ -148,14 +146,12 @@ pub fn button_press(e: &ButtonPressEvent) {
     let altcursor = globals.altcursor;
     let mut selmon_id = globals.selmon;
     let focusfollowsmouse = globals.focusfollowsmouse;
-    drop(globals);
 
     if let Some(clicked_mon) = win_to_mon(e.event) {
         if selmon_id != Some(clicked_mon) && (focusfollowsmouse || e.detail <= 3) {
             let globals = get_globals_mut();
             globals.selmon = Some(clicked_mon);
             selmon_id = Some(clicked_mon);
-            drop(globals);
             focus(None);
         }
     }
@@ -179,7 +175,6 @@ pub fn button_press(e: &ButtonPressEvent) {
         let globals = get_globals();
         if let Some(mon) = globals.monitors.get(sel_id) {
             if e.event == mon.barwin {
-                drop(globals);
                 (click_target, click_arg) = classify_bar_click(e, sel_id);
             } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
                 click_target = Click::SideBar;
@@ -243,7 +238,6 @@ pub fn client_message(e: &ClientMessageEvent) {
     let net_system_tray_op = globals.netatom.system_tray_op;
     let net_wm_state = globals.netatom.wm_state;
     let net_active_window = globals.netatom.active_window;
-    drop(globals);
 
     if showsystray && e.window == systray_win && e.type_ == net_system_tray_op {
         let data = e.data.as_data32();
@@ -269,7 +263,6 @@ pub fn configure_notify(e: &ConfigureNotifyEvent) {
     if e.window != globals.root {
         return;
     }
-    drop(globals);
 
     {
         let globals = get_globals_mut();
@@ -319,7 +312,6 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
     if !globals.focusfollowsmouse {
         return;
     }
-    drop(globals);
 
     let c = win_to_client(e.event);
     if let Some(win) = c {
@@ -327,7 +319,6 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
         if let Some(sel_id) = globals.selmon {
             if let Some(mon) = globals.monitors.get(sel_id) {
                 if mon.sel != Some(win) {
-                    drop(globals);
                     focus(Some(win));
                 }
             }
@@ -356,7 +347,6 @@ pub fn focus_in(_e: &FocusInEvent) {
     if let Some(sel_id) = globals.selmon {
         if let Some(mon) = globals.monitors.get(sel_id) {
             if let Some(sel_win) = mon.sel {
-                drop(globals);
                 crate::client::set_focus(sel_win);
             }
         }
@@ -419,11 +409,9 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
     }
     let selmon_id = globals.selmon;
     let focusfollowsmouse = globals.focusfollowsmouse;
-    drop(globals);
     let tagwidth = get_tag_width();
     let globals = get_globals_mut();
     globals.tags.width = tagwidth;
-    drop(globals);
 
     if focusfollowsmouse {
         if let Some(m) = rect_to_mon_rect(&Rect {
@@ -435,7 +423,6 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
             if Some(m) != selmon_id {
                 let globals = get_globals_mut();
                 globals.selmon = Some(m);
-                drop(globals);
                 focus(None);
                 return;
             }
@@ -531,11 +518,9 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
 
     let globals = get_globals();
     if e.window == globals.root {
-        drop(globals);
         crate::bar::update_status();
         return;
     }
-    drop(globals);
 
     if let Some(win) = win_to_client(e.window) {
         match e.atom {
@@ -600,7 +585,6 @@ fn handle_active_window(win: Window) {
     let globals = get_globals();
     if let Some(c) = globals.clients.get(&win) {
         if let Some(mon_id) = c.mon_id {
-            drop(globals);
             focus(Some(win));
             let globals = get_globals_mut();
             if let Some(mon) = globals.monitors.get_mut(mon_id) {

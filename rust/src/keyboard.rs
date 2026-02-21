@@ -486,7 +486,6 @@ pub fn space_toggle(_arg: &Arg) {
             if let Some(client) = globals.clients.get_mut(&win) {
                 client.snapstatus = SnapPosition::Maximized;
             }
-            drop(globals);
 
             if let Some(sel_mon_id) = get_globals().selmon {
                 arrange(Some(sel_mon_id));

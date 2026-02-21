@@ -83,13 +83,13 @@ pub fn focus(win: Option<Window>) {
             if mon.gesture != Gesture::Overlay && mon.gesture != Gesture::None {
                 mon.gesture = Gesture::None;
             }
-            if mon.gesture != Gesture::Overlay && mon.gesture != Gesture::CloseButton
+            if mon.gesture != Gesture::Overlay
+                && mon.gesture != Gesture::CloseButton
                 && mon.gesture != Gesture::StartMenu
             {
                 mon.gesture = Gesture::None;
             }
         }
-        drop(globals);
     }
 
     draw_bars();
@@ -210,8 +210,6 @@ pub fn focus_direction(direction: Direction) {
         }
     }
 
-    drop(globals);
-
     if let Some(c) = out_client {
         if found_one {
             focus(Some(c));
@@ -240,7 +238,6 @@ pub fn focus_last_client(_arg: &Arg) {
     };
 
     if last_client.is_scratchpad() {
-        drop(globals);
         crate::scratchpad::scratchpad_show_name(&last_client.scratchpad_name);
         return;
     }
@@ -248,14 +245,11 @@ pub fn focus_last_client(_arg: &Arg) {
     let tags = last_client.tags;
     let last_mon_id = last_client.mon_id;
 
-    drop(globals);
-
     if let Some(last_mid) = last_mon_id {
         let globals = get_globals();
         if let Some(sel_mon_id) = globals.selmon {
             if sel_mon_id != last_mid {
                 if let Some(sel) = globals.monitors.get(sel_mon_id).and_then(|m| m.sel) {
-                    drop(globals);
                     unfocus_win(sel, false);
                     let globals = get_globals_mut();
                     globals.selmon = Some(last_mid);

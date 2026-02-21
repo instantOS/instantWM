@@ -40,8 +40,6 @@ pub fn remove_systray_icon(icon_win: Window) {
         return;
     }
 
-    drop(globals);
-
     let globals = get_globals_mut();
     if let Some(ref mut systray) = globals.systray {
         systray.icons.retain(|&w| w != icon_win);
@@ -92,8 +90,6 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
         return;
     }
 
-    drop(globals);
-
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else { return };
 
@@ -111,8 +107,6 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
             return;
         }
     };
-
-    drop(globals);
 
     if (flags & XEMBED_MAPPED) != 0 && current_tags == 0 {
         let globals = get_globals_mut();
@@ -197,8 +191,6 @@ pub fn update_systray() {
 
     let mut w: u32 = 1;
 
-    drop(globals);
-
     eprintln!("TRACE: update_systray - before systray_exists check");
     let systray_exists = {
         let globals = get_globals();
@@ -230,7 +222,6 @@ pub fn update_systray() {
             0
         };
 
-        drop(globals);
         eprintln!("TRACE: update_systray - before generate_id");
 
         let systray_win = conn.generate_id().ok();
@@ -390,8 +381,6 @@ pub fn update_systray() {
     }
 
     let systray_win = systray.win;
-
-    drop(globals);
 
     w = if w > 0 { w + systrayspacing as u32 } else { 1 };
     let x = x - w as i32;

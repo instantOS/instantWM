@@ -442,8 +442,6 @@ pub fn show_hide(win: Option<Window>) {
         let is_vis = is_visible(c);
         let snext = c.snext;
 
-        drop(globals);
-
         let x11 = get_x11();
         if let Some(ref conn) = x11.conn {
             if is_vis {
@@ -533,8 +531,6 @@ pub fn show(win: Window) {
     let w = client.geo.w;
     let h = client.geo.h;
 
-    drop(globals);
-
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let _ = conn.map_window(win);
@@ -582,8 +578,6 @@ pub fn hide(win: Window) {
     let mon_id = client.mon_id;
     let bh = globals.bh;
     let animated = globals.animated;
-
-    drop(globals);
 
     if animated {
         animate_client_rect(
@@ -682,7 +676,6 @@ pub fn resize(win: Window, rect: &Rect, interact: bool) {
         let result = apply_size_hints(client, &mut nx, &mut ny, &mut nw, &mut nh, interact);
         let client_count = globals.clients.len();
         if result || client_count == 1 {
-            drop(globals);
             resize_client_rect(
                 win,
                 &Rect {
@@ -722,7 +715,6 @@ pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
                     .border_width(border_width as u32),
             );
         }
-        drop(globals);
 
         configure(win);
         let _ = conn.flush();
@@ -1009,7 +1001,6 @@ pub fn apply_size_hints(
     }
 
     let resizehints = globals.resizehints;
-    drop(globals);
 
     let has_arrange = {
         let globals = get_globals();
@@ -1129,8 +1120,6 @@ pub fn kill_client(_arg: &Arg) {
 
     let wmatom_delete = globals.wmatom.delete;
 
-    drop(globals);
-
     if !send_event(
         win,
         wmatom_delete,
@@ -1213,7 +1202,6 @@ pub fn close_win(arg: &Arg) {
 
     let globals = get_globals();
     let wmatom_delete = globals.wmatom.delete;
-    drop(globals);
 
     if !send_event(
         win,
@@ -1365,8 +1353,6 @@ pub fn manage(
         }
         let _ = conn.flush();
     }
-
-    drop(globals);
 
     configure(w);
     update_window_type(w);
@@ -1663,7 +1649,6 @@ pub fn unmanage(win: Window, destroyed: bool) {
     let globals = get_globals_mut();
     globals.clients.remove(&win);
 
-    drop(globals);
     crate::focus::focus(None);
     update_client_list();
 
@@ -1739,7 +1724,6 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                 };
 
                 if !is_floating {
-                    drop(globals);
                     animate_client_rect(
                         win,
                         &Rect {
@@ -1781,7 +1765,6 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
             restore_border_width(win);
 
             if !is_fake_fs {
-                drop(globals);
                 resize_client_rect(
                     win,
                     &Rect {
@@ -1990,8 +1973,6 @@ pub fn update_window_type(win: Window) {
         let atom_fullscreen = globals.netatom.wm_fullscreen;
         let atom_dialog = globals.netatom.wm_window_type_dialog;
 
-        drop(globals);
-
         if state == Some(atom_fullscreen) {
             set_fullscreen(win, true);
         }
@@ -2068,7 +2049,6 @@ pub fn update_wm_hints(win: Window) {
                             new_data[0] = new_flags;
                         }
 
-                        drop(globals);
                         let _ = conn.change_property32(
                             PropMode::REPLACE,
                             win,
@@ -2104,7 +2084,6 @@ pub fn update_motif_hints(win: Window) {
     }
     let motif_atom = globals.motifatom;
     let borderpx = globals.borderpx;
-    drop(globals);
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -2392,8 +2371,6 @@ pub fn scale_client(win: Window, scale: i32) {
         let old_w = client.geo.w;
         let old_h = client.geo.h;
         let border_width = client.border_width;
-
-        drop(globals);
 
         let (mon_mw, mon_mh, mon_mx, mon_my) = if let Some(mid) = mon_id {
             let globals = get_globals();

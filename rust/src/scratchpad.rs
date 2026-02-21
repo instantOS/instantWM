@@ -397,8 +397,6 @@ pub fn scratchpad_status(arg: &Arg) {
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
 
-        drop(globals);
-
         let x11 = get_x11();
         if let Some(ref conn) = x11.conn {
             let _ = conn.change_property(
@@ -443,8 +441,6 @@ pub fn scratchpad_status(arg: &Arg) {
     if first {
         status.push_str("none");
     }
-
-    drop(globals);
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {

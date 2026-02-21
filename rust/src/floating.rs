@@ -247,7 +247,6 @@ pub fn reset_snap(win: Window) {
         if let Some(client) = globals.clients.get_mut(&win) {
             client.snapstatus = SnapPosition::None;
         }
-        drop(globals);
         restore_border_width_win(win);
         restore_floating_win(win);
         apply_size(win);
@@ -400,7 +399,6 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
                 if let Some(client) = globals.clients.get_mut(&win) {
                     client.border_width = 0;
                 }
-                drop(globals);
                 check_animate_rect(
                     win,
                     &Rect {
@@ -551,7 +549,6 @@ pub fn temp_fullscreen(_arg: &Arg) {
     if animated {
         let globals = get_globals_mut();
         globals.animated = false;
-        drop(globals);
 
         if let Some(sel_mon_id) = get_globals().selmon {
             arrange(Some(sel_mon_id));

@@ -1,5 +1,5 @@
 use crate::client::resize_client_rect;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::{get_globals, get_x11};
 use crate::types::*;
 use std::thread;
 use std::time::Duration;
@@ -40,7 +40,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         let globals = get_globals();
         if !globals.animated {
             if target_w > 0 && target_h > 0 {
-                drop(globals);
                 resize_client_rect(
                     win,
                     &Rect {
@@ -76,8 +75,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         } else {
             target_h
         };
-
-        drop(globals);
 
         let dx = (x - start_x) as f64;
         let dy = (y - start_y) as f64;
@@ -149,7 +146,6 @@ pub fn check_animate(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, r
     if let Some(client) = globals.clients.get(&win) {
         let should_animate =
             client.geo.x != x || client.geo.y != y || client.geo.w != w || client.geo.h != h;
-        drop(globals);
         if should_animate {
             animate_client(win, x, y, w, h, frames, reset_pos);
         }
@@ -164,11 +160,6 @@ pub fn animate_client_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32
 /// Check and animate a window using a Rect struct.
 pub fn check_animate_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     check_animate(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
-}
-
-pub fn toggle_animated(_arg: &Arg) {
-    let globals = get_globals_mut();
-    globals.animated = !globals.animated;
 }
 
 pub fn up_scale_client(arg: &Arg) {
@@ -318,7 +309,7 @@ fn anim_scroll(arg: &Arg, dir: i32) {
                 while let Some(c_win) = current {
                     if let Some(c) = globals.clients.get(&c_win) {
                         if (c.tags & (1 << (target - 1))) != 0 && !c.isfloating {
-                            let _ = std::mem::drop(());
+                            // Empty block - was drop(())
                         }
                         current = c.next;
                     } else {

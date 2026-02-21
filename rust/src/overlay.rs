@@ -228,8 +228,6 @@ pub fn show_overlay(_arg: &Arg) {
         }
     }
 
-    drop(globals);
-
     {
         let globals = get_globals_mut();
         for mon in &mut globals.monitors {
@@ -335,7 +333,6 @@ pub fn show_overlay(_arg: &Arg) {
         if let Some(mon) = globals.monitors.get(selmon_id) {
             if let Some(client) = globals.clients.get(&overlay_win) {
                 let tags = mon.tagset[mon.seltags as usize];
-                drop(globals);
                 let globals = get_globals_mut();
                 if let Some(c) = globals.clients.get_mut(&overlay_win) {
                     c.tags = tags;

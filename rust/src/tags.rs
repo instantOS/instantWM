@@ -88,7 +88,6 @@ pub fn reset_name_tag(_arg: &Arg) {
         }
     }
     globals.tags.width = get_tag_width();
-    drop(globals);
     draw_bars();
 }
 
@@ -299,7 +298,6 @@ fn set_client_tag_impl(tagmask_bits: u32) {
         }
         client.tags = tagmask_bits & tagmask;
     }
-    drop(globals);
 
     set_client_tag_prop(win);
     focus(None);
@@ -349,8 +347,6 @@ pub fn tag_all(arg: &Arg) {
         }
         result
     };
-
-    drop(globals);
 
     if ui & tagmask == 0 {
         return;
@@ -437,7 +433,6 @@ pub fn toggle_tag(arg: &Arg) {
         if let Some(client) = globals.clients.get_mut(&win) {
             client.tags = new_tags;
         }
-        drop(globals);
         set_client_tag_prop(win);
         focus(None);
 
@@ -494,8 +489,6 @@ pub fn view(arg: &Arg) {
     }
 
     apply_pertag_settings(&mut globals);
-
-    drop(globals);
     focus(None);
 
     if let Some(sel_mon_id) = get_globals().selmon {
@@ -582,8 +575,6 @@ pub fn toggle_view(arg: &Arg) {
     }
 
     apply_pertag_settings(&mut globals);
-
-    drop(globals);
     focus(None);
 
     if let Some(sel_mon_id) = get_globals().selmon {
@@ -822,14 +813,12 @@ fn shift_tag(dir: i32, offset: i32) {
         if let Some(client) = globals.clients.get_mut(&win) {
             if dir == DIR_LEFT && tagset > 1 {
                 client.tags >>= offset;
-                drop(globals);
                 focus(None);
                 if let Some(sel_mon_id) = get_globals().selmon {
                     arrange(Some(sel_mon_id));
                 }
             } else if dir == DIR_RIGHT && (tagset & (tagmask >> 1)) != 0 {
                 client.tags <<= offset;
-                drop(globals);
                 focus(None);
                 if let Some(sel_mon_id) = get_globals().selmon {
                     arrange(Some(sel_mon_id));
@@ -935,8 +924,6 @@ fn view_scroll(dir: i32) {
     }
 
     apply_pertag_settings(&mut globals);
-
-    drop(globals);
     focus(None);
 
     if let Some(sel_mon_id) = get_globals().selmon {
@@ -1100,8 +1087,6 @@ pub fn swap_tags(arg: &Arg) {
             mon.current_tag = target_idx + 1;
         }
     }
-
-    drop(globals);
     focus(None);
 
     if let Some(sel_mon_id) = get_globals().selmon {
@@ -1136,8 +1121,6 @@ pub fn follow_view(_arg: &Arg) {
     if let Some(client) = globals.clients.get_mut(&win) {
         client.tags = 1 << (prevtag - 1);
     }
-
-    drop(globals);
 
     let a = Arg {
         ui: 1 << (prevtag - 1),

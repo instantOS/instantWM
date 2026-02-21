@@ -88,7 +88,6 @@ pub fn toggle_prefix(arg: &Arg) {
 
     if let Some(selmon_id) = globals.selmon {
         let selmon_id = selmon_id;
-        drop(globals);
         let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(selmon_id) {
             draw_bar(mon);
@@ -182,7 +181,6 @@ pub fn toggle_locked(_arg: &Arg) {
     {
         let globals = get_globals();
         if let Some(selmon_id) = globals.selmon {
-            drop(globals);
             let globals = get_globals_mut();
             if let Some(mon) = globals.monitors.get_mut(selmon_id) {
                 draw_bar(mon);

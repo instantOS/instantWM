@@ -345,7 +345,6 @@ pub fn move_mouse(_arg: &Arg) {
                             return;
                         }
                         if Some(sel) == mon.fullscreen {
-                            drop(globals);
                             crate::floating::temp_fullscreen(&Arg::default());
                             return;
                         }
@@ -539,7 +538,6 @@ pub fn move_mouse(_arg: &Arg) {
                                 && ((nx - client.geo.x).abs() > snap
                                     || (ny - client.geo.y).abs() > snap)
                             {
-                                drop(globals);
                                 toggle_floating(&Arg::default());
                             } else if !has_tiling || client.isfloating {
                                 resize(
@@ -689,7 +687,6 @@ pub fn resize_mouse(_arg: &Arg) {
                                 && ((nw - client.geo.w).abs() > snap
                                     || (nh - client.geo.h).abs() > snap)
                             {
-                                drop(globals);
                                 toggle_floating(&Arg::default());
                             } else if !has_tiling || client.isfloating {
                                 resize(
@@ -906,7 +903,6 @@ pub fn gesture_mouse(_arg: &Arg) {
                                 if let Some(mon) = globals.monitors.get(sel_mon_id) {
                                     let threshold = mon.monitor_rect.h / 30;
                                     if (last_y - m.event_y as i32).abs() > threshold {
-                                        drop(globals);
                                         spawn(&Arg::default());
                                         last_y = m.event_y as i32;
                                     }
@@ -1277,7 +1273,6 @@ pub fn draw_window(_arg: &Arg) {
                         || (c.geo.y - rect.y).abs() > 20;
 
                     if is_different {
-                        drop(globals);
                         handle_monitor_switch(win, &rect);
 
                         let is_floating = {
@@ -1352,7 +1347,6 @@ pub fn handle_monitor_switch(c_win: Window, rect: &Rect) {
             }
             let globals = get_globals_mut();
             globals.selmon = Some(target);
-            drop(globals);
             focus(None);
         }
     }
@@ -1417,7 +1411,6 @@ pub fn drag_tag(arg: &Arg) {
     };
 
     if (arg.ui & globals.tags.mask()) != current_tagset.unwrap_or(0) {
-        drop(globals);
         view(arg);
         return;
     }

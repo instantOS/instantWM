@@ -21,7 +21,6 @@ fn tagmon(arg: &Arg) {
                     .find(|c| c.mon_id == Some(mon_id))
                     .map(|c| c.win)
             }) {
-                drop(g);
                 send_mon(client, target);
             }
         }
@@ -97,8 +96,6 @@ pub fn cleanup_monitor(mon_id: MonitorId) {
             g.selmon = Some(sel - 1);
         }
     }
-
-    drop(g);
 
     if barwin != 0 {
         let x11 = get_x11();
@@ -206,8 +203,6 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         (is_sp, tags)
     };
 
-    drop(g);
-
     if let Some(_win) = get_win_to_client(c_win) {
         unfocus_win(c_win, true);
     }
@@ -237,7 +232,6 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         let g = get_globals();
         if let Some(ref c) = g.clients.get(&c_win) {
             if !c.isfloating {
-                drop(g);
                 arrange(None);
             }
         }
@@ -247,8 +241,6 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         let g = get_globals();
         if let Some(ref c) = g.clients.get(&c_win) {
             if c.is_scratchpad() && !c.issticky {
-                drop(g);
-
                 let g = get_globals_mut();
                 if let Some(ref mut sel) = g.selmon {
                     if let Some(win) = get_selected_client_win(*sel) {
@@ -256,7 +248,6 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                     }
                 }
                 g.selmon = Some(target_mon_id);
-                drop(g);
 
                 let sp_name = {
                     let g = get_globals();
@@ -274,7 +265,6 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                     }
                 }
                 g.selmon = Some(current_mon_id);
-                drop(g);
 
                 focus(None);
             }
@@ -299,7 +289,6 @@ pub fn focus_mon(arg: &Arg) {
     }
 
     let old_sel = g.selmon;
-    drop(g);
 
     if let Some(old_id) = old_sel {
         if let Some(win) = get_selected_client_win(old_id) {
@@ -309,7 +298,6 @@ pub fn focus_mon(arg: &Arg) {
 
     let g = get_globals_mut();
     g.selmon = Some(target);
-    drop(g);
 
     focus(None);
 }
@@ -331,7 +319,6 @@ pub fn focus_n_mon(arg: &Arg) {
     }
 
     let old_sel = g.selmon;
-    drop(g);
 
     if let Some(old_id) = old_sel {
         if let Some(win) = get_selected_client_win(old_id) {
@@ -341,7 +328,6 @@ pub fn focus_n_mon(arg: &Arg) {
 
     let g = get_globals_mut();
     g.selmon = Some(target);
-    drop(g);
 
     focus(None);
 }
@@ -367,7 +353,6 @@ pub fn follow_mon(arg: &Arg) {
         if let Some(ref c) = g.clients.get(&c_win) {
             g.selmon = c.mon_id;
         }
-        drop(g);
     }
 
     focus(Some(c_win));
@@ -524,7 +509,6 @@ pub fn update_geom() -> bool {
                                         if let Some(ref mut c) = g.clients.get_mut(&win) {
                                             c.mon_id = Some(0);
                                         }
-                                        drop(g);
 
                                         attach(win);
                                         attach_stack(win);
@@ -534,7 +518,6 @@ pub fn update_geom() -> bool {
                                     if g.selmon == Some(i) {
                                         g.selmon = Some(0);
                                     }
-                                    drop(g);
 
                                     cleanup_monitor(i);
                                 }
@@ -542,7 +525,6 @@ pub fn update_geom() -> bool {
                                 if dirty {
                                     let g = get_globals_mut();
                                     g.selmon = Some(0);
-                                    drop(g);
 
                                     if let Some(m) = win_to_mon(x11.screen_num as u32) {
                                         let g = get_globals_mut();
@@ -562,7 +544,6 @@ pub fn update_geom() -> bool {
     let g = get_globals();
     if g.monitors.is_empty() {
         let (sw, sh) = (g.sw, g.sh);
-        drop(g);
         let g = get_globals_mut();
         g.monitors.push(create_monitor());
         if let Some(ref mut m) = g.monitors.first_mut() {
@@ -588,7 +569,6 @@ pub fn update_geom() -> bool {
             .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
             .unwrap_or(false);
         let needs_selmon = g.selmon.is_none();
-        drop(g);
 
         if needs_update {
             dirty = true;

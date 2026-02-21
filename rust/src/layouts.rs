@@ -737,7 +737,6 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
                 if th != m.work_rect.h {
                     let mut new_ty = ty;
                     new_ty += client_height(c);
-                    drop(g);
                     ty = new_ty;
                 }
             }
@@ -977,7 +976,6 @@ pub fn overviewlayout(m: &mut MonitorInner) {
 
                 let (cw, ch, is_floating) = (c.geo.w, c.geo.h, c.isfloating);
                 let next_client = c.next;
-                drop(g);
 
                 if is_floating {
                     save_floating(win);
@@ -1023,7 +1021,6 @@ pub fn floatl(m: &mut MonitorInner) {
     let g = get_globals();
     let animated_store = g.animated;
 
-    drop(g);
     {
         let g = get_globals_mut();
         g.animated = false;
@@ -1040,7 +1037,6 @@ pub fn floatl(m: &mut MonitorInner) {
 
             let snapstatus = c.snapstatus;
             let next_client = c.next;
-            drop(g);
 
             if snapstatus != SnapPosition::None {
                 apply_snap_for_window(win, m);
@@ -1054,7 +1050,6 @@ pub fn floatl(m: &mut MonitorInner) {
 
     let g = get_globals();
     let selmon_id = g.selmon;
-    drop(g);
 
     if let Some(id) = selmon_id {
         let g = get_globals_mut();
@@ -1093,8 +1088,6 @@ fn apply_snap_for_window(win: Window, m: &MonitorInner) {
     if let Some(c) = g.clients.get(&win) {
         let snapstatus = c.snapstatus;
         let border_width = c.border_width;
-
-        drop(g);
 
         let (x, y, w, h) = match snapstatus {
             SnapPosition::Top => (
@@ -1175,7 +1168,6 @@ pub fn arrange(mon_id: Option<MonitorId>) {
         let g = get_globals_mut();
         if let Some(m) = g.monitors.get_mut(id) {
             let stack = m.stack;
-            drop(g);
             show_hide(stack);
         }
         let g = get_globals_mut();
@@ -1239,8 +1231,6 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
                 continue;
             }
         };
-
-        drop(g);
 
         {
             let g = get_globals_mut();
@@ -1318,7 +1308,6 @@ pub fn restack(m: &mut MonitorInner) {
             .get(&sel_win)
             .map(|c| c.isfloating)
             .unwrap_or(false);
-        drop(g);
 
         if is_floating || !has_arrange {
             let _ = configure_window(
@@ -1339,7 +1328,6 @@ pub fn restack(m: &mut MonitorInner) {
                     let is_floating = c.isfloating;
                     let visible = is_visible(c);
                     let snext = c.snext;
-                    drop(g);
 
                     if !is_floating && visible {
                         let _ = configure_window(conn, win, &wc);
@@ -1448,17 +1436,14 @@ pub fn set_layout(arg: &Arg) {
         for mon_id in monitors {
             let g = get_globals();
             if Some(mon_id) != g.selmon {
-                drop(g);
                 let g = get_globals_mut();
                 g.selmon = Some(mon_id);
-                drop(g);
                 set_layout(arg);
             }
         }
 
         let g = get_globals_mut();
         g.selmon = tmpmon;
-        drop(g);
         crate::focus::focus(None);
     }
 }
@@ -1509,7 +1494,6 @@ pub fn cycle_layout_direction(forward: bool) {
 
     let g = get_globals();
     let layouts_len = g.layouts.len();
-    drop(g);
 
     if layouts_len == 0 {
         return;
@@ -1654,8 +1638,6 @@ pub fn set_mfact(arg: &Arg) {
     if f < 0.05 || f > 0.95 {
         return;
     }
-
-    drop(g);
 
     let animated = {
         let g = get_globals();
