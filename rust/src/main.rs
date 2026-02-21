@@ -221,13 +221,6 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.tagmask = cfg.tagmask;
     globals.numtags = cfg.numtags;
 
-    globals.keys_len = globals.keys.len();
-    globals.dkeys_len = globals.dkeys.len();
-    globals.commands_len = globals.commands.len();
-    globals.buttons_len = globals.buttons.len();
-    globals.layouts_len = globals.layouts.len();
-    globals.rules_len = globals.rules.len();
-    globals.fonts_len = globals.fonts.len();
     if globals.tagmask == 0 {
         globals.tagmask = TAGMASK;
     }
@@ -419,31 +412,34 @@ fn init_atoms<C: Connection>(conn: &C) {
     let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
 
     let mut globals = get_globals_mut();
-    globals.wmatom[0] = wm_protocols;
-    globals.wmatom[1] = wm_delete;
-    globals.wmatom[2] = wm_state;
-    globals.wmatom[3] = wm_take_focus;
-
-    globals.netatom[0] = net_active_window;
-    globals.netatom[1] = net_supported;
-    globals.netatom[2] = net_system_tray;
-    globals.netatom[3] = net_system_tray_op;
-    globals.netatom[4] = net_system_tray_orientation;
-    globals.netatom[5] = net_system_tray_orientation_horz;
-    globals.netatom[6] = net_wm_name;
-    globals.netatom[7] = net_wm_state;
-    globals.netatom[8] = net_wm_check;
-    globals.netatom[9] = net_wm_fullscreen;
-    globals.netatom[10] = net_wm_window_type;
-    globals.netatom[11] = net_wm_window_type_dialog;
-    globals.netatom[12] = net_client_list;
-    globals.netatom[13] = net_client_info;
-
+    globals.wmatom = crate::types::WmAtoms {
+        protocols: wm_protocols,
+        delete: wm_delete,
+        state: wm_state,
+        take_focus: wm_take_focus,
+    };
+    globals.netatom = crate::types::NetAtoms {
+        active_window: net_active_window,
+        supported: net_supported,
+        system_tray: net_system_tray,
+        system_tray_op: net_system_tray_op,
+        system_tray_orientation: net_system_tray_orientation,
+        system_tray_orientation_horz: net_system_tray_orientation_horz,
+        wm_name: net_wm_name,
+        wm_state: net_wm_state,
+        wm_check: net_wm_check,
+        wm_fullscreen: net_wm_fullscreen,
+        wm_window_type: net_wm_window_type,
+        wm_window_type_dialog: net_wm_window_type_dialog,
+        client_list: net_client_list,
+        client_info: net_client_info,
+    };
     globals.motifatom = motifatom;
-
-    globals.xatom[0] = xembed_manager;
-    globals.xatom[1] = xembed;
-    globals.xatom[2] = xembed_info;
+    globals.xatom = crate::types::XAtoms {
+        manager: xembed_manager,
+        xembed,
+        xembed_info,
+    };
 }
 
 fn intern_atom<C: Connection>(conn: &C, name: &str, only_if_exists: bool) -> u32 {
@@ -565,17 +561,16 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         &CreateWindowAux::new(),
     );
 
-    let net_wm_check = {
+    let (net_wm_check, net_wm_name, net_supported, net_atoms, net_client_list, net_client_info) = {
         let g = get_globals();
-        g.netatom[NetAtom::WMCheck as usize]
-    };
-    let net_wm_name = {
-        let g = get_globals();
-        g.netatom[NetAtom::WMName as usize]
-    };
-    let net_supported = {
-        let g = get_globals();
-        g.netatom[NetAtom::Supported as usize]
+        let na = g.netatom;
+        let net_atoms = vec![
+            na.active_window, na.supported, na.system_tray, na.system_tray_op,
+            na.system_tray_orientation, na.system_tray_orientation_horz,
+            na.wm_name, na.wm_state, na.wm_check, na.wm_fullscreen,
+            na.wm_window_type, na.wm_window_type_dialog, na.client_list, na.client_info,
+        ];
+        (na.wm_check, na.wm_name, na.supported, net_atoms, na.client_list, na.client_info)
     };
 
     let _ = conn.change_property32(
@@ -604,10 +599,6 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         &[wmcheckwin],
     );
 
-    let net_atoms: Vec<u32> = {
-        let g = get_globals();
-        g.netatom.to_vec()
-    };
     let _ = conn.change_property32(
         PropMode::REPLACE,
         root,
@@ -615,15 +606,6 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         u32::from(AtomEnum::ATOM),
         &net_atoms,
     );
-
-    let net_client_list = {
-        let g = get_globals();
-        g.netatom[NetAtom::ClientList as usize]
-    };
-    let net_client_info = {
-        let g = get_globals();
-        g.netatom[NetAtom::ClientInfo as usize]
-    };
 
     let _ = conn.delete_property(root, net_client_list);
     let _ = conn.delete_property(root, net_client_info);
@@ -653,52 +635,6 @@ fn run_autostart() {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NetAtom {
-    ActiveWindow = 0,
-    Supported = 1,
-    SystemTray = 2,
-    SystemTrayOP = 3,
-    SystemTrayOrientation = 4,
-    SystemTrayOrientationHorz = 5,
-    WMName = 6,
-    WMState = 7,
-    WMCheck = 8,
-    WMFullscreen = 9,
-    WMWindowType = 10,
-    WMWindowTypeDialog = 11,
-    ClientList = 12,
-    ClientInfo = 13,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WmAtom {
-    Protocols = 0,
-    Delete = 1,
-    State = 2,
-    TakeFocus = 3,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XAtom {
-    Manager = 0,
-    Xembed = 1,
-    XembedInfo = 2,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CursorType {
-    Normal = 0,
-    Resize = 1,
-    Move = 2,
-    Click = 3,
-    Vert = 4,
-    Hor = 5,
-    BL = 6,
-    BR = 7,
-    TL = 8,
-    TR = 9,
-}
 
 pub fn xerror(_display: *mut libc::c_void, _ee: *mut libc::c_void) -> i32 {
     0

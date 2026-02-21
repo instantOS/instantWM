@@ -6,13 +6,16 @@ mod x11;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::types::*;
 use model::{BarLayout, ClientBarStats};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 
 static DRAW_BAR_RECURSION: AtomicUsize = AtomicUsize::new(0);
 const MAX_BAR_RECURSION: usize = 50;
 
-pub static mut PAUSEDRAW: bool = false;
-pub static mut COMMANDOFFSETS: [i32; 20] = [-1; 20];
+/// Pause bar drawing (e.g. during animations).
+pub static PAUSEDRAW: AtomicBool = AtomicBool::new(false);
+/// Per-command click-region x-offsets; sentinel value -1 marks end of list.
+const INIT_COMMAND_OFFSET: AtomicI32 = AtomicI32::new(-1);
+pub static COMMANDOFFSETS: [AtomicI32; 20] = [INIT_COMMAND_OFFSET; 20];
 
 pub fn text_width(text: &str) -> i32 {
     let g = get_globals();
@@ -48,7 +51,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
         std::process::abort();
     }
 
-    if unsafe { PAUSEDRAW } || !m.showbar {
+    if PAUSEDRAW.load(Ordering::Relaxed) || !m.showbar {
         DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
         return;
     }

@@ -33,30 +33,40 @@ pub enum Cursor {
     BR,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NetAtom {
-    Supported,
-    WMName,
-    WMState,
-    WMCheck,
-    SystemTray,
-    SystemTrayOP,
-    SystemTrayOrientation,
-    SystemTrayOrientationHorz,
-    WMFullscreen,
-    ActiveWindow,
-    WMWindowType,
-    WMWindowTypeDialog,
-    ClientList,
-    ClientInfo,
+/// Named struct for WM protocol atoms (replaces `wmatom: [u32; 4]`)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WmAtoms {
+    pub protocols: u32,
+    pub delete: u32,
+    pub state: u32,
+    pub take_focus: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WmAtom {
-    Protocols,
-    Delete,
-    State,
-    TakeFocus,
+/// Named struct for EWMH / NET atoms (replaces `netatom: [u32; 14]`)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NetAtoms {
+    pub active_window: u32,
+    pub supported: u32,
+    pub system_tray: u32,
+    pub system_tray_op: u32,
+    pub system_tray_orientation: u32,
+    pub system_tray_orientation_horz: u32,
+    pub wm_name: u32,
+    pub wm_state: u32,
+    pub wm_check: u32,
+    pub wm_fullscreen: u32,
+    pub wm_window_type: u32,
+    pub wm_window_type_dialog: u32,
+    pub client_list: u32,
+    pub client_info: u32,
+}
+
+/// Named struct for XEmbed / ICCCM atoms (replaces `xatom: [u32; 3]`)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct XAtoms {
+    pub manager: u32,
+    pub xembed: u32,
+    pub xembed_info: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

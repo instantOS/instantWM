@@ -2,6 +2,7 @@ use crate::drw::{COL_BG, COL_FG};
 use crate::globals::{get_globals, get_globals_mut};
 use crate::systray::get_systray_width;
 use crate::types::MonitorInner;
+use std::sync::atomic::Ordering;
 
 const MAX_COMMAND_OFFSETS: usize = 20;
 
@@ -196,10 +197,8 @@ fn draw_items(
         );
     }
 
-    unsafe {
-        for idx in 0..MAX_COMMAND_OFFSETS {
-            super::COMMANDOFFSETS[idx] = -1;
-        }
+    for idx in 0..MAX_COMMAND_OFFSETS {
+        super::COMMANDOFFSETS[idx].store(-1, Ordering::Relaxed);
     }
 
     let mut x = layout.draw_start_x + 1;
@@ -251,9 +250,7 @@ fn draw_items(
             }
             StatusItem::CommandOffset => {
                 if marker_idx < MAX_COMMAND_OFFSETS {
-                    unsafe {
-                        super::COMMANDOFFSETS[marker_idx] = x;
-                    }
+                    super::COMMANDOFFSETS[marker_idx].store(x, Ordering::Relaxed);
                     marker_idx += 1;
                 }
             }
@@ -261,9 +258,7 @@ fn draw_items(
     }
 
     if marker_idx < MAX_COMMAND_OFFSETS {
-        unsafe {
-            super::COMMANDOFFSETS[marker_idx] = -1;
-        }
+        super::COMMANDOFFSETS[marker_idx].store(-1, Ordering::Relaxed);
     }
 
     let _ = m;

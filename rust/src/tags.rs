@@ -5,6 +5,7 @@ use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::{arrange, dir_to_mon, send_mon};
 use crate::types::*;
+use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -1221,9 +1222,9 @@ pub fn last_view(_arg: &Arg) {
 }
 
 pub fn focus_last_client(_arg: &Arg) {
-    let last_client = unsafe { crate::client::LAST_CLIENT };
-    if let Some(win) = last_client {
-        focus(Some(win));
+    let last_client = crate::client::LAST_CLIENT.load(Ordering::Relaxed);
+    if last_client != 0 {
+        focus(Some(last_client));
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::client::{is_visible, set_focus, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
+use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -48,7 +49,7 @@ pub fn focus(win: Option<Window>) {
             mon.sel,
             target,
             globals.root,
-            globals.netatom[NetAtom::ActiveWindow as usize],
+            globals.netatom.active_window,
         )
     };
 
@@ -198,12 +199,11 @@ pub fn direction_focus(arg: &Arg) {
 }
 
 pub fn focus_last_client(_arg: &Arg) {
-    let last_client_win = unsafe { crate::client::LAST_CLIENT };
-
-    let last_win = match last_client_win {
-        Some(w) => w,
-        None => return,
-    };
+    let last_client_win = crate::client::LAST_CLIENT.load(Ordering::Relaxed);
+    if last_client_win == 0 {
+        return;
+    }
+    let last_win = last_client_win;
 
     let globals = get_globals();
     let last_client = match globals.clients.get(&last_win) {
@@ -251,9 +251,7 @@ pub fn focus_last_client(_arg: &Arg) {
     };
 
     if let Some(cur) = current_sel {
-        unsafe {
-            crate::client::LAST_CLIENT = Some(cur);
-        }
+        crate::client::LAST_CLIENT.store(cur, Ordering::Relaxed);
     }
 
     let arg = Arg {

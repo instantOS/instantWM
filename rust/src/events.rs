@@ -14,7 +14,7 @@ use crate::systray::{get_systray_width, update_systray, win_to_systray_icon};
 use crate::tags::{get_tag_at_x, get_tag_width};
 use crate::types::*;
 use crate::util::clean_mask;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI32, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -27,7 +27,8 @@ pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
 pub const XEMBED_MODALITY_ON: u32 = 10;
 pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
-static mut BAR_LEAVE_STATUS: i32 = 0;
+/// Non-zero when the cursor left the bar and a reset is pending.
+static BAR_LEAVE_STATUS: AtomicI32 = AtomicI32::new(0);
 
 fn has_tiling_layout(mon_id: MonitorId) -> bool {
     let globals = get_globals();
@@ -239,9 +240,9 @@ pub fn client_message(e: &ClientMessageEvent) {
     let globals = get_globals();
     let showsystray = globals.showsystray;
     let systray_win = globals.systray.as_ref().map(|s| s.win).unwrap_or(0);
-    let net_system_tray_op = globals.netatom[NetAtom::SystemTrayOP as usize];
-    let net_wm_state = globals.netatom[NetAtom::WMState as usize];
-    let net_active_window = globals.netatom[NetAtom::ActiveWindow as usize];
+    let net_system_tray_op = globals.netatom.system_tray_op;
+    let net_wm_state = globals.netatom.wm_state;
+    let net_active_window = globals.netatom.active_window;
     drop(globals);
 
     if showsystray && e.window == systray_win && e.type_ == net_system_tray_op {
@@ -545,7 +546,7 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
             _ => {}
         }
 
-        let net_wm_name = get_globals().netatom[NetAtom::WMName as usize];
+        let net_wm_name = get_globals().netatom.wm_name;
         if e.atom == AtomEnum::WM_NAME.into() || e.atom == net_wm_name {
             update_title(win);
         }
@@ -604,11 +605,9 @@ fn handle_active_window(win: Window) {
 }
 
 fn handle_bar_leave_reset(_e: &EnterNotifyEvent) {
-    unsafe {
-        if BAR_LEAVE_STATUS != 0 {
-            reset_bar();
-            BAR_LEAVE_STATUS = 0;
-        }
+    if BAR_LEAVE_STATUS.load(Ordering::Relaxed) != 0 {
+        reset_bar();
+        BAR_LEAVE_STATUS.store(0, Ordering::Relaxed);
     }
 }
 
@@ -655,7 +654,7 @@ fn dispatch_event(event: x11rb::protocol::Event) {
 pub fn scan() {
     let (root, wm_state_atom) = {
         let globals = get_globals();
-        (globals.root, globals.wmatom[WmAtom::State as usize])
+        (globals.root, globals.wmatom.state)
     };
 
     let (managed, transients) = {

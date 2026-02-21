@@ -3,14 +3,17 @@ use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::*;
 use crate::util::{max, min};
+use std::sync::atomic::{AtomicU32, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
-pub static mut ANIM_CLIENT: Option<Window> = None;
-pub static mut LAST_CLIENT: Option<Window> = None;
+/// The window currently being animated (0 = none).
+pub static ANIM_CLIENT: AtomicU32 = AtomicU32::new(0);
+/// The previously focused window (0 = none), used by focus-last-client.
+pub static LAST_CLIENT: AtomicU32 = AtomicU32::new(0);
 pub const BROKEN: &[u8; 10] = b"broken\0\0\0\0";
 
 pub const WM_STATE_NORMAL: i32 = 1;
@@ -170,8 +173,8 @@ pub fn get_state(win: Window) -> i32 {
         if let Ok(cookie) = conn.get_property(
             false,
             win,
-            globals.wmatom[WmAtom::State as usize],
-            globals.wmatom[WmAtom::State as usize],
+            globals.wmatom.state,
+            globals.wmatom.state,
             0,
             2,
         ) {
@@ -245,8 +248,8 @@ pub fn set_client_state(win: Window, state: i32) {
         let _ = conn.change_property(
             PropMode::REPLACE,
             win,
-            globals.wmatom[WmAtom::State as usize],
-            globals.wmatom[WmAtom::State as usize],
+            globals.wmatom.state,
+            globals.wmatom.state,
             8u8,
             data.len() as u32,
             &data,
@@ -269,7 +272,7 @@ pub fn set_client_tag_prop(win: Window) {
             let _ = conn.change_property(
                 PropMode::REPLACE,
                 win,
-                globals.netatom[NetAtom::ClientInfo as usize],
+                globals.netatom.client_info,
                 AtomEnum::CARDINAL,
                 8u8,
                 data.len() as u32,
@@ -293,9 +296,9 @@ pub fn send_event(
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
-        let wmatom_protocols = globals.wmatom[WmAtom::Protocols as usize];
-        let wmatom_take_focus = globals.wmatom[WmAtom::TakeFocus as usize];
-        let wmatom_delete = globals.wmatom[WmAtom::Delete as usize];
+        let wmatom_protocols = globals.wmatom.protocols;
+        let wmatom_take_focus = globals.wmatom.take_focus;
+        let wmatom_delete = globals.wmatom.delete;
 
         let (exists, message_type) = if proto == wmatom_take_focus || proto == wmatom_delete {
             let mut exists = false;
@@ -347,7 +350,7 @@ fn get_wm_protocols(
     conn.get_property(
         false,
         win,
-        globals.wmatom[WmAtom::Protocols as usize],
+        globals.wmatom.protocols,
         AtomEnum::ATOM,
         0,
         1024,
@@ -388,16 +391,16 @@ pub fn set_focus(win: Window) {
                 let _ = conn.change_property32(
                     PropMode::REPLACE,
                     globals.root,
-                    globals.netatom[NetAtom::ActiveWindow as usize],
+                    globals.netatom.active_window,
                     AtomEnum::WINDOW,
                     &[win],
                 );
             }
             send_event(
                 win,
-                globals.wmatom[WmAtom::TakeFocus as usize],
+                globals.wmatom.take_focus,
                 0,
-                globals.wmatom[WmAtom::TakeFocus as usize] as i64,
+                globals.wmatom.take_focus as i64,
                 CURRENT_TIME as i64,
                 0,
                 0,
@@ -412,9 +415,7 @@ pub fn unfocus_win(win: Window, set_focus: bool) {
     if win == 0 {
         return;
     }
-    unsafe {
-        LAST_CLIENT = Some(win);
-    }
+    LAST_CLIENT.store(win, Ordering::Relaxed);
     grab_buttons(win, false);
 
     let x11 = get_x11();
@@ -432,7 +433,7 @@ pub fn unfocus_win(win: Window, set_focus: bool) {
             let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, globals.root, CURRENT_TIME);
             let _ = conn.delete_property(
                 globals.root,
-                globals.netatom[NetAtom::ActiveWindow as usize],
+                globals.netatom.active_window,
             );
         }
         let _ = conn.flush();
@@ -738,7 +739,7 @@ fn read_window_title(win: Window) -> [u8; 256] {
         return broken_title();
     };
 
-    let net_wm_name = get_globals().netatom[NetAtom::WMName as usize];
+    let net_wm_name = get_globals().netatom.wm_name;
     for atom in [net_wm_name, AtomEnum::WM_NAME.into()] {
         if atom == 0 {
             continue;
@@ -1120,16 +1121,14 @@ pub fn kill_client(_arg: &Arg) {
 
     let globals = get_globals();
     let animated = globals.animated;
-    let anim_client = unsafe { ANIM_CLIENT };
+    let anim_client = ANIM_CLIENT.load(Ordering::Relaxed);
 
-    if animated && Some(win) != anim_client && !is_fullscreen {
-        unsafe {
-            ANIM_CLIENT = Some(win);
-        }
+    if animated && win != anim_client && !is_fullscreen {
+        ANIM_CLIENT.store(win, Ordering::Relaxed);
         animate_client(win, 0, mon_mh - 20, 0, 0, 10, 0);
     }
 
-    let wmatom_delete = globals.wmatom[WmAtom::Delete as usize];
+    let wmatom_delete = globals.wmatom.delete;
 
     drop(globals);
 
@@ -1204,7 +1203,7 @@ pub fn close_win(arg: &Arg) {
     animate_client(win, 0, mon_mh - 20, 0, 0, 10, 0);
 
     let globals = get_globals();
-    let wmatom_delete = globals.wmatom[WmAtom::Delete as usize];
+    let wmatom_delete = globals.wmatom.delete;
     drop(globals);
 
     if !send_event(
@@ -1431,7 +1430,7 @@ pub fn manage(
             let _ = conn.change_property32(
                 PropMode::APPEND,
                 globals.root,
-                globals.netatom[NetAtom::ClientList as usize],
+                globals.netatom.client_list,
                 AtomEnum::WINDOW,
                 &[w],
             );
@@ -1546,7 +1545,7 @@ fn read_client_info(w: Window) {
     if let Some(ref conn) = x11.conn {
         let client_info_atom = {
             let globals = get_globals();
-            globals.netatom[NetAtom::ClientInfo as usize]
+            globals.netatom.client_info
         };
         if let Ok(cookie) = conn.get_property(false, w, client_info_atom, AtomEnum::CARDINAL, 0, 2)
         {
@@ -1645,8 +1644,8 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
         let (net_wm_fullscreen, net_wm_state) = {
             let globals = get_globals();
             (
-                globals.netatom[NetAtom::WMFullscreen as usize],
-                globals.netatom[NetAtom::WMState as usize],
+                globals.netatom.wm_fullscreen,
+                globals.netatom.wm_state,
             )
         };
 
@@ -1920,11 +1919,11 @@ pub fn update_window_type(win: Window) {
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
 
-        let state = get_atom_prop(conn, win, globals.netatom[NetAtom::WMState as usize]);
-        let wtype = get_atom_prop(conn, win, globals.netatom[NetAtom::WMWindowType as usize]);
+        let state = get_atom_prop(conn, win, globals.netatom.wm_state);
+        let wtype = get_atom_prop(conn, win, globals.netatom.wm_window_type);
 
-        let atom_fullscreen = globals.netatom[NetAtom::WMFullscreen as usize];
-        let atom_dialog = globals.netatom[NetAtom::WMWindowTypeDialog as usize];
+        let atom_fullscreen = globals.netatom.wm_fullscreen;
+        let atom_dialog = globals.netatom.wm_window_type_dialog;
 
         drop(globals);
 
@@ -2159,7 +2158,7 @@ pub fn update_client_list() {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
-        let _ = conn.delete_property(globals.root, globals.netatom[NetAtom::ClientList as usize]);
+        let _ = conn.delete_property(globals.root, globals.netatom.client_list);
 
         for mon in &globals.monitors {
             let mut current = mon.clients;
@@ -2167,7 +2166,7 @@ pub fn update_client_list() {
                 let _ = conn.change_property32(
                     PropMode::APPEND,
                     globals.root,
-                    globals.netatom[NetAtom::ClientList as usize],
+                    globals.netatom.client_list,
                     AtomEnum::WINDOW,
                     &[cur_win],
                 );

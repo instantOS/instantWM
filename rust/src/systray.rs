@@ -87,7 +87,7 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
         return;
     }
 
-    let xembed_info_atom = globals.xatom[2];
+    let xembed_info_atom = globals.xatom.xembed_info;
     if ev.atom != xembed_info_atom {
         return;
     }
@@ -216,8 +216,8 @@ pub fn update_systray() {
         let root = globals.root;
         let bh = globals.bh;
 
-        let net_system_tray = globals.netatom[NetAtom::SystemTray as usize];
-        let net_system_tray_horz = globals.netatom[NetAtom::SystemTrayOrientationHorz as usize];
+        let net_system_tray = globals.netatom.system_tray;
+        let net_system_tray_horz = globals.netatom.system_tray_orientation_horz;
 
         let bg_pixel = if let Some(ref scheme) = globals.statusscheme {
             scheme[1].color.pixel as u32
@@ -317,7 +317,7 @@ pub fn update_systray() {
 
         eprintln!("TRACE: update_systray - before get_globals for manager_atom");
         let globals = get_globals();
-        let manager_atom = globals.xatom[0];
+        let manager_atom = globals.xatom.manager;
 
         // Send MANAGER event to root window to announce systray
         // Use non-blocking approach
