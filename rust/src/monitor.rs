@@ -656,23 +656,15 @@ pub fn update_geom() -> bool {
 }
 
 pub fn arrange(m: Option<MonitorId>) {
-    match m {
-        Some(mon_id) => {
-            let mut g = get_globals_mut();
-            if let Some(mon) = g.monitors.get_mut(mon_id) {
-                draw_bar(mon);
-            }
-        }
-        None => draw_bars(),
-    }
+    crate::layouts::arrange(m);
 }
 
 pub fn arrange_mon(m: &mut MonitorInner) {
-    draw_bar(m);
+    crate::layouts::arrange_monitor(m);
 }
 
 pub fn restack(m: &mut MonitorInner) {
-    draw_bar(m);
+    crate::layouts::restack(m);
 }
 
 pub fn tag_mon(arg: &Arg) {

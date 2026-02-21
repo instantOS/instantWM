@@ -355,7 +355,11 @@ pub(crate) fn draw_close_button(c: &ClientInner, x: i32, bh: i32) {
         }
 
         let button_x = x + bh / 6;
-        let detail_offset = if close_hovered { CLOSE_BUTTON_DETAIL } else { 0 };
+        let detail_offset = if close_hovered {
+            CLOSE_BUTTON_DETAIL
+        } else {
+            0
+        };
         let button_y = (bh - CLOSE_BUTTON_WIDTH) / 2 - detail_offset;
 
         unsafe {

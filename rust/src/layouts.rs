@@ -1013,8 +1013,9 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
                 if let Some(mid) = mon_id {
                     if let Some(mon) = g.monitors.get(mid) {
                         let clientcount = mon.clientcount;
-                        let has_arrange = mon.sellt == 0;
-                        let is_monocle = false;
+                        let layout_idx = get_current_layout_idx(mon).unwrap_or(0);
+                        let has_arrange = g.layouts.get(layout_idx).map_or(true, |l| l.is_tiling);
+                        let is_monocle = g.layouts.get(layout_idx).map_or(false, |l| l.symbol == "[M]");
                         (
                             is_floating,
                             is_fullscreen,
@@ -1115,9 +1116,11 @@ pub fn restack(m: &mut MonitorInner) {
     }
     let sel_win = sel_win.unwrap();
 
-    let g = get_globals();
-    let has_arrange = m.sellt == 0;
-    drop(g);
+    let has_arrange = {
+        let g = get_globals();
+        let idx = get_current_layout_idx(m).unwrap_or(0);
+        g.layouts.get(idx).map_or(true, |l| l.is_tiling)
+    };
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -1172,20 +1175,27 @@ fn is_overview_layout(_m: &MonitorInner) -> bool {
     false
 }
 
-fn get_layout_symbol(_m: &MonitorInner) -> Option<&'static str> {
+fn get_layout_symbol(m: &MonitorInner) -> Option<&'static str> {
     let g = get_globals();
     if g.layouts.is_empty() {
         return None;
     }
-    Some(g.layouts.first()?.symbol)
+    let idx = get_current_layout_idx(m).unwrap_or(0);
+    g.layouts.get(idx).map(|l| l.symbol)
 }
 
-fn get_tiling_layout_func(_m: &MonitorInner) -> Option<fn(&mut MonitorInner)> {
+fn get_tiling_layout_func(m: &MonitorInner) -> Option<fn(&mut MonitorInner)> {
     let g = get_globals();
     if g.layouts.is_empty() {
         return None;
     }
-    Some(g.layouts.first()?.arrange)
+    let idx = get_current_layout_idx(m).unwrap_or(0);
+    let layout = g.layouts.get(idx)?;
+    if layout.is_tiling {
+        Some(layout.arrange)
+    } else {
+        None
+    }
 }
 
 pub fn set_layout(arg: &Arg) {
@@ -1442,7 +1452,8 @@ pub fn set_mfact(arg: &Arg) {
     let g = get_globals();
     let has_arrange = if let Some(selmon_id) = g.selmon {
         if let Some(m) = g.monitors.get(selmon_id) {
-            m.sellt == 0
+            let idx = get_current_layout_idx(m).unwrap_or(0);
+            g.layouts.get(idx).map_or(true, |l| l.is_tiling)
         } else {
             false
         }

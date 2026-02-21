@@ -200,7 +200,14 @@ fn get_text_prop(win: Window, atom: u32) -> Option<String> {
     let x11 = get_x11();
     let conn = x11.conn.as_ref()?;
     let reply = conn
-        .get_property(false, win, atom, x11rb::protocol::xproto::AtomEnum::ANY, 0, 4096)
+        .get_property(
+            false,
+            win,
+            atom,
+            x11rb::protocol::xproto::AtomEnum::ANY,
+            0,
+            4096,
+        )
         .ok()?
         .reply()
         .ok()?;

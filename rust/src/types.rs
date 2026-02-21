@@ -201,6 +201,7 @@ pub struct Arg {
 pub struct Layout {
     pub symbol: &'static str,
     pub arrange: fn(&mut MonitorInner),
+    pub is_tiling: bool,
 }
 
 pub type ClientId = usize;

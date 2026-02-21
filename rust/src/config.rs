@@ -231,38 +231,47 @@ pub fn get_layouts() -> Vec<Layout> {
         Layout {
             symbol: "+",
             arrange: tile,
+            is_tiling: true,
         },
         Layout {
             symbol: "#",
             arrange: grid,
+            is_tiling: true,
         },
         Layout {
             symbol: "-",
             arrange: |_m: &mut MonitorInner| {},
+            is_tiling: false,
         },
         Layout {
             symbol: "[M]",
             arrange: monocle,
+            is_tiling: true,
         },
         Layout {
             symbol: "|||",
             arrange: |_m: &mut MonitorInner| {},
+            is_tiling: false,
         },
         Layout {
             symbol: "H[]",
             arrange: deck,
+            is_tiling: true,
         },
         Layout {
             symbol: "O",
             arrange: |_m: &mut MonitorInner| {},
+            is_tiling: false,
         },
         Layout {
             symbol: "TTT",
             arrange: bstack,
+            is_tiling: true,
         },
         Layout {
             symbol: "===",
             arrange: |_m: &mut MonitorInner| {},
+            is_tiling: false,
         },
     ]
 }

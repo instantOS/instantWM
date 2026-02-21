@@ -14,7 +14,9 @@ impl ClientBarStats {
 
         for client in globals.clients.values() {
             let on_selected_monitor = client.mon_id.map_or(false, |mon_id| {
-                globals.selmon.map_or(false, |selmon_idx| mon_id == selmon_idx)
+                globals
+                    .selmon
+                    .map_or(false, |selmon_idx| mon_id == selmon_idx)
             });
 
             if !on_selected_monitor {

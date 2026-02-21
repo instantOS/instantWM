@@ -11,12 +11,7 @@ enum StatusItem {
     SetBg(String),
     SetFg(String),
     ResetColors,
-    Rect {
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
-    },
+    Rect { x: i32, y: i32, w: i32, h: i32 },
     Offset(i32),
     CommandOffset,
 }
@@ -191,7 +186,14 @@ fn draw_items(
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
-        drw.rect(layout.draw_start_x, 0, draw_width as u32, bh as u32, true, true);
+        drw.rect(
+            layout.draw_start_x,
+            0,
+            draw_width as u32,
+            bh as u32,
+            true,
+            true,
+        );
     }
 
     unsafe {
@@ -266,4 +268,3 @@ fn draw_items(
 
     let _ = m;
 }
-
