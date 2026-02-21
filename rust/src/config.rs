@@ -207,15 +207,8 @@ pub fn get_tags_default() -> [&'static str; MAX_TAGS] {
     ]
 }
 
-pub fn get_tags() -> [[u8; MAX_TAGLEN]; MAX_TAGS] {
-    let default = get_tags_default();
-    let mut tags = [[0u8; MAX_TAGLEN]; MAX_TAGS];
-    for (i, &tag) in default.iter().enumerate() {
-        let bytes = tag.as_bytes();
-        let len = bytes.len().min(MAX_TAGLEN);
-        tags[i][..len].copy_from_slice(&bytes[..len]);
-    }
-    tags
+pub fn get_tags() -> Vec<String> {
+    get_tags_default().iter().map(|&s| s.to_string()).collect()
 }
 
 pub fn get_tagsalt() -> Vec<&'static str> {
@@ -2894,7 +2887,7 @@ pub struct Config {
     pub decorhints: i32,
     pub mfact: f32,
     pub nmaster: i32,
-    pub tag_names: [[u8; MAX_TAGLEN]; MAX_TAGS],
+    pub tag_names: Vec<String>,
     pub tag_alt_names: Vec<&'static str>,
     pub tag_colors: Vec<Vec<Vec<&'static str>>>,
     pub windowcolors: Vec<Vec<Vec<&'static str>>>,

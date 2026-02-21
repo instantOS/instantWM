@@ -298,8 +298,8 @@ pub struct XAtoms {
 /// `tagwidth`, `showalttag`, and `tagprefix`.
 #[derive(Debug, Clone)]
 pub struct TagSet {
-    /// Primary tag labels (NUL-terminated, fixed-width to match X11 convention).
-    pub names: [[u8; 16]; MAX_TAGS],
+    /// Primary tag labels, one per active tag.
+    pub names: Vec<String>,
     /// Alternate labels shown when `show_alt` is true.
     pub alt_names: Vec<&'static str>,
     /// Number of active tags.
@@ -327,7 +327,7 @@ impl TagSet {
 impl Default for TagSet {
     fn default() -> Self {
         Self {
-            names: [[0; 16]; MAX_TAGS],
+            names: Vec::new(),
             alt_names: Vec::new(),
             count: 0,
             colors: Vec::new(),
@@ -494,7 +494,7 @@ pub type MonitorId = usize;
 
 #[derive(Debug, Clone)]
 pub struct ClientInner {
-    pub name: [u8; 256],
+    pub name: String,
     pub mina: f32,
     pub maxa: f32,
     pub x: i32,
@@ -531,7 +531,7 @@ pub struct ClientInner {
     pub islocked: bool,
     pub issticky: bool,
     pub snapstatus: SnapPosition,
-    pub scratchpad_name: [u8; SCRATCHPAD_NAME_LEN],
+    pub scratchpad_name: String,
     pub scratchpad_restore_tags: u32,
     pub mon_id: Option<MonitorId>,
     pub win: Window,
@@ -542,7 +542,7 @@ pub struct ClientInner {
 impl Default for ClientInner {
     fn default() -> Self {
         Self {
-            name: [0; 256],
+            name: String::new(),
             mina: 0.0,
             maxa: 0.0,
             x: 0,
@@ -579,7 +579,7 @@ impl Default for ClientInner {
             islocked: false,
             issticky: false,
             snapstatus: SnapPosition::default(),
-            scratchpad_name: [0; SCRATCHPAD_NAME_LEN],
+            scratchpad_name: String::new(),
             scratchpad_restore_tags: 0,
             mon_id: None,
             win: 0,
@@ -591,7 +591,7 @@ impl Default for ClientInner {
 
 impl ClientInner {
     pub fn is_scratchpad(&self) -> bool {
-        self.scratchpad_name[0] != 0
+        !self.scratchpad_name.is_empty()
     }
 }
 
@@ -622,7 +622,7 @@ impl Default for Pertag {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
-    pub ltsymbol: [u8; 16],
+    pub ltsymbol: String,
     pub mfact: f32,
     pub nmaster: i32,
     pub num: i32,
@@ -661,7 +661,7 @@ pub struct MonitorInner {
 impl Default for MonitorInner {
     fn default() -> Self {
         Self {
-            ltsymbol: [0; 16],
+            ltsymbol: String::from("[]="),
             mfact: 0.55,
             nmaster: 1,
             num: 0,

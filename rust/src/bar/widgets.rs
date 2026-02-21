@@ -1,5 +1,5 @@
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
-use crate::drw::Drw;
+use crate::drw::{Drw, COL_BG, COL_DETAIL};
 use crate::globals::get_globals;
 use crate::types::*;
 
