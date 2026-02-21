@@ -85,12 +85,7 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
             break;
         };
         current = c.next;
-        if crate::types::is_visible(
-            c.tags,
-            mon.tagset[mon.seltags as usize],
-            mon.seltags,
-            c.issticky,
-        ) {
+        if c.is_visible() {
             visible_clients.push(c_win);
         }
     }

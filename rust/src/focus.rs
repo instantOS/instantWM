@@ -1,5 +1,5 @@
 use crate::bar::draw_bars;
-use crate::client::{is_visible, set_focus, unfocus_win};
+use crate::client::{set_focus, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use std::sync::atomic::Ordering;
@@ -27,7 +27,7 @@ pub fn focus(win: Option<Window>) {
             globals
                 .clients
                 .get(w)
-                .map(|c| is_visible(c) && !crate::client::is_hidden(*w))
+                .map(|c| c.is_visible() && !crate::client::is_hidden(*w))
                 .unwrap_or(false)
         });
 
@@ -37,7 +37,7 @@ pub fn focus(win: Option<Window>) {
                 let Some(c) = globals.clients.get(&c_win) else {
                     break;
                 };
-                if is_visible(c) && !crate::client::is_hidden(c_win) {
+                if c.is_visible() && !crate::client::is_hidden(c_win) {
                     target = Some(c_win);
                     break;
                 }
@@ -158,7 +158,7 @@ pub fn focus_direction(direction: Direction) {
     let mut current = current_mon.clients;
     while let Some(c_win) = current {
         if let Some(c) = globals.clients.get(&c_win) {
-            if !is_visible(c) {
+            if !c.is_visible() {
                 current = c.next;
                 continue;
             }
@@ -482,7 +482,7 @@ pub fn focus_stack_direction(forward: bool) {
             let mut current = mon.stack;
             while let Some(c_win) = current {
                 if let Some(c) = globals.clients.get(&c_win) {
-                    if is_visible(c) {
+                    if c.is_visible() {
                         stack.push(c_win);
                     }
                     current = c.snext;

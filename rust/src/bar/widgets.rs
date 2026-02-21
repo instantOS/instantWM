@@ -448,13 +448,7 @@ pub(crate) fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, b
                 continue;
             }
 
-            let is_visible = crate::types::is_visible(
-                c.tags,
-                m.tagset[m.seltags as usize],
-                m.seltags,
-                c.issticky,
-            );
-            if !is_visible {
+            if !c.is_visible() {
                 continue;
             }
 

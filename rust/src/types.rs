@@ -692,6 +692,20 @@ impl Client {
     pub fn is_scratchpad(&self) -> bool {
         !self.scratchpad_name.is_empty()
     }
+
+    pub fn is_visible(&self) -> bool {
+        if self.issticky {
+            return true;
+        }
+        if let Some(mon_id) = self.mon_id {
+            let globals = crate::globals::get_globals();
+            if let Some(mon) = globals.monitors.get(mon_id) {
+                let tags = mon.tagset[mon.seltags as usize];
+                return (self.tags & tags) != 0;
+            }
+        }
+        false
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -848,8 +862,4 @@ pub fn intersect(r: &Rect, m: &MonitorInner) -> i32 {
     let x2 = (r.x + r.w).min(m.work_rect.x + m.work_rect.w);
     let y2 = (r.y + r.h).min(m.work_rect.y + m.work_rect.h);
     (x2 - x1).max(0) * (y2 - y1).max(0)
-}
-
-pub fn is_visible(tags: u32, mon_tags: u32, _seltags: u32, issticky: bool) -> bool {
-    (tags & mon_tags) != 0 || issticky
 }

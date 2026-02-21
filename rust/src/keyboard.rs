@@ -527,7 +527,7 @@ pub fn focus_stack(arg: &Arg) {
     while let Some(c_win) = current {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&c_win) {
-            let visible = crate::client::is_visible(c) && !crate::client::is_hidden(c_win);
+            let visible = c.is_visible() && !crate::client::is_hidden(c_win);
 
             if found_current && visible && !c.isfloating {
                 next = Some(c_win);
@@ -549,7 +549,7 @@ pub fn focus_stack(arg: &Arg) {
         while let Some(c_win) = current {
             let globals = get_globals();
             if let Some(c) = globals.clients.get(&c_win) {
-                let visible = crate::client::is_visible(c) && !crate::client::is_hidden(c_win);
+                let visible = c.is_visible() && !crate::client::is_hidden(c_win);
                 if visible && !c.isfloating {
                     next = Some(c_win);
                     break;

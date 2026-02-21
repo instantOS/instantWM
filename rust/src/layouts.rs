@@ -1,6 +1,6 @@
 use crate::animation::animate_client_rect;
 use crate::bar::draw_bar;
-use crate::client::{client_height, client_width, is_visible, next_tiled, resize, save_bw};
+use crate::client::{client_height, client_width, next_tiled, resize, save_bw};
 use crate::floating::restore_border_width_win;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
@@ -315,7 +315,7 @@ pub fn monocle(m: &mut MonitorInner) {
     while let Some(win) = c_win {
         let g = get_globals();
         if let Some(c) = g.clients.get(&win) {
-            if is_visible(c) {
+            if c.is_visible() {
                 n += 1;
             }
             c_win = c.next;
@@ -1030,7 +1030,7 @@ pub fn floatl(m: &mut MonitorInner) {
     while let Some(win) = c_win {
         let g = get_globals();
         if let Some(c) = g.clients.get(&win) {
-            if !is_visible(c) {
+            if !c.is_visible() {
                 c_win = c.next;
                 continue;
             }
@@ -1323,7 +1323,7 @@ pub fn restack(m: &mut MonitorInner) {
                 let g = get_globals();
                 if let Some(c) = g.clients.get(&win) {
                     let is_floating = c.isfloating;
-                    let visible = is_visible(c);
+                    let visible = c.is_visible();
                     let snext = c.snext;
 
                     if !is_floating && visible {
@@ -1704,7 +1704,7 @@ pub fn client_count() -> i32 {
             let mut c_win = mon.clients;
             while let Some(win) = c_win {
                 if let Some(c) = g.clients.get(&win) {
-                    if is_visible(c) && !c.isfloating {
+                    if c.is_visible() && !c.isfloating {
                         count += 1;
                     }
                     c_win = c.next;
@@ -1725,7 +1725,7 @@ pub fn client_count_mon(m: &MonitorInner) -> i32 {
     let mut c_win = m.clients;
     while let Some(win) = c_win {
         if let Some(c) = g.clients.get(&win) {
-            if is_visible(c) && !c.isfloating {
+            if c.is_visible() && !c.isfloating {
                 count += 1;
             }
             c_win = c.next;
@@ -1748,7 +1748,7 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
 
     while let Some(win) = current {
         if let Some(c) = g.clients.get(&win) {
-            if is_visible(c) {
+            if c.is_visible() {
                 return Some(win);
             }
             current = c.next;

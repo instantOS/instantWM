@@ -23,13 +23,7 @@ impl ClientBarStats {
                 continue;
             }
 
-            let is_visible = crate::types::is_visible(
-                client.tags,
-                monitor.tagset[monitor.seltags as usize],
-                monitor.seltags,
-                client.issticky,
-            );
-            if is_visible {
+            if client.is_visible() {
                 stats.visible_clients += 1;
             }
 

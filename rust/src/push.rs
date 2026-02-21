@@ -1,4 +1,4 @@
-use crate::client::{is_visible, next_tiled};
+use crate::client::next_tiled;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::monitor::arrange;
@@ -15,7 +15,7 @@ pub fn next_c(c_win: Option<Window>, include_floating: bool) -> Option<Window> {
 
     while let Some(win) = current {
         if let Some(c) = globals.clients.get(&win) {
-            if is_visible(c) {
+            if c.is_visible() {
                 return Some(win);
             }
             current = c.next;
@@ -49,7 +49,7 @@ pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
         }
 
         if let Some(c) = globals.clients.get(&win) {
-            if (include_floating || !c.isfloating) && is_visible(c) {
+            if (include_floating || !c.isfloating) && c.is_visible() {
                 r = Some(win);
             }
             p = Some(win);

@@ -135,7 +135,7 @@ pub fn detach_stack(win: Window) {
                         let is_vis = globals
                             .clients
                             .get(&t_win)
-                            .map(|tc| is_visible(tc))
+                            .map(|tc| tc.is_visible())
                             .unwrap_or(false);
                         let is_hid = is_hidden(t_win);
                         if is_vis && !is_hid {
@@ -152,20 +152,7 @@ pub fn detach_stack(win: Window) {
     }
 }
 
-pub fn is_visible(c: &Client) -> bool {
-    if c.issticky {
-        return true;
-    }
-    if let Some(mon_id) = c.mon_id {
-        let globals = get_globals();
-        if let Some(mon) = globals.monitors.get(mon_id) {
-            let tags = mon.tagset[mon.seltags as usize];
-            return (c.tags & tags) != 0;
-        }
-    }
-    false
-}
-
+//TODO: should this return an enum or type alias?
 pub fn get_state(win: Window) -> i32 {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -183,6 +170,7 @@ pub fn get_state(win: Window) -> i32 {
     WM_STATE_NORMAL
 }
 
+//TODO: these next two should probably be methods on Client
 pub fn client_width(c: &Client) -> i32 {
     c.geo.w + 2 * c.border_width
 }
@@ -197,7 +185,7 @@ pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
 
     while let Some(win) = current {
         if let Some(c) = globals.clients.get(&win) {
-            if !c.isfloating && is_visible(c) && !is_hidden(win) {
+            if !c.isfloating && c.is_visible() && !is_hidden(win) {
                 return Some(win);
             }
             current = c.next;
@@ -225,6 +213,7 @@ pub fn pop(win: Window) {
     }
 }
 
+//TODO: what does this do? Why does it return a window not a client?
 pub fn win_to_client(w: Window) -> Option<Window> {
     let globals = get_globals();
     for (&win, _c) in globals.clients.iter() {
@@ -439,7 +428,7 @@ pub fn show_hide(win: Option<Window>) {
 
     let globals = get_globals();
     if let Some(c) = globals.clients.get(&current) {
-        let is_vis = is_visible(c);
+        let is_vis = c.is_visible();
         let snext = c.snext;
 
         let x11 = get_x11();
@@ -1745,20 +1734,9 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
 }
 
 pub fn toggle_fake_fullscreen(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    let Some(win) = crate::util::get_sel_win() else {
+        return;
     };
-
-    let Some(win) = sel_win else { return };
 
     let (is_fullscreen, isfakefullscreen, mon_id, old_border_width) = {
         let globals = get_globals();
@@ -2039,6 +2017,7 @@ pub fn update_wm_hints(win: Window) {
     }
 }
 
+//TODO: this is quite long and nested, should probably be refactored
 pub fn update_motif_hints(win: Window) {
     let globals = get_globals();
     if globals.decorhints == 0 {
@@ -2109,6 +2088,7 @@ pub fn update_motif_hints(win: Window) {
     }
 }
 
+//TODO: this should probably be a method?
 pub fn is_hidden(win: Window) -> bool {
     get_state(win) == WM_STATE_ICONIC
 }
@@ -2155,6 +2135,7 @@ fn grab_buttons(win: Window, focused: bool) {
     }
 }
 
+//TODO: rename to be easier to understand
 pub fn save_bw(win: Window) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
@@ -2196,21 +2177,12 @@ pub fn update_client_list() {
     }
 }
 
+/// Zooms the selected window to the master position.
+/// If the selected window is already master, zooms the next tiled window.
 pub fn zoom(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    let Some(win) = crate::util::get_sel_win() else {
+        return;
     };
-
-    let Some(win) = sel_win else { return };
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -2274,6 +2246,8 @@ pub fn zoom(_arg: &Arg) {
     pop(win);
 }
 
+//TODO: why is this unused? Are there features yet to be ported over from the C
+//codebase?
 pub fn set_urgent(win: Window, urg: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -2339,7 +2313,7 @@ pub fn scale_client(win: Window, scale: i32) {
                 old_geo
             }
         } else {
-            (old_w, old_h, old_x, old_y)
+            old_geo
         };
 
         let new_w = old_geo.w * scale / 100;

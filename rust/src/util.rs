@@ -4,6 +4,9 @@ use std::os::fd::AsRawFd;
 use std::process::exit;
 use std::ptr;
 
+use x11rb::protocol::xproto::Window;
+
+use crate::globals::get_globals;
 use crate::types::*;
 
 pub fn die(fmt: &str) -> ! {
@@ -251,6 +254,24 @@ pub fn close_fd(fd: i32) -> bool {
 
 pub fn get_x11_fd(conn: &x11rb::rust_connection::RustConnection) -> Option<i32> {
     Some(conn.stream().as_raw_fd())
+}
+
+/// Get the currently selected window from the selected monitor.
+/// Returns `None` if no monitor is selected or no window is selected on that monitor.
+#[inline]
+pub fn get_sel_win() -> Option<Window> {
+    let globals = get_globals();
+    globals
+        .selmon
+        .and_then(|sel_mon_id| globals.monitors.get(sel_mon_id))
+        .and_then(|mon| mon.sel)
+}
+
+/// Get the currently selected monitor ID.
+/// Returns `None` if no monitor is selected.
+#[inline]
+pub fn get_sel_mon() -> Option<MonitorId> {
+    get_globals().selmon
 }
 
 #[cfg(test)]

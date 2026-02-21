@@ -1,5 +1,5 @@
 use crate::animation::animate_client_rect;
-use crate::client::{attach, attach_stack, detach, detach_stack, is_visible, resize};
+use crate::client::{attach, attach_stack, detach, detach_stack, resize};
 use crate::floating::save_bw_win;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
@@ -571,7 +571,7 @@ pub fn set_overlay(_arg: &Arg) {
             };
 
             let visible = if let Some(c) = globals.clients.get(&overlay_win) {
-                is_visible(c) || c.issticky
+                c.is_visible() || c.issticky
             } else {
                 false
             };
