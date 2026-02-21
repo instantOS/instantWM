@@ -3,9 +3,12 @@ use crate::drw::{Clr, Drw, COL_BG, COL_DETAIL, COL_FG};
 use crate::globals::{get_globals, get_globals_mut};
 use crate::systray::{get_systray_width, update_systray};
 use crate::types::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
+
+static DRAW_BAR_RECURSION: AtomicUsize = AtomicUsize::new(0);
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
@@ -467,16 +470,20 @@ pub fn draw_tag_indicators(
     urg: u32,
     bh: i32,
 ) -> i32 {
+    eprintln!("TRACE: draw_tag_indicators - START");
     let g = get_globals();
+    eprintln!("TRACE: draw_tag_indicators - after get_globals");
     let lrpad = g.lrpad;
     let show_alt_tag = g.showalttag;
     let bar_dragging = g.bar_dragging;
     let num_tags = g.numtags;
+    eprintln!("TRACE: draw_tag_indicators - num_tags = {}", num_tags);
 
     let tags = g.tags;
     let tags_alt = &g.tagsalt;
 
     for i in 0..num_tags as u32 {
+        eprintln!("TRACE: draw_tag_indicators - loop i = {}", i);
         if i >= 9 {
             continue;
         }
@@ -487,6 +494,7 @@ pub fn draw_tag_indicators(
         } else {
             false
         };
+        eprintln!("TRACE: draw_tag_indicators - i={}, is_hover={}", i, is_hover);
 
         let current_tag = m.pertag.as_ref().map(|p| p.current_tag).unwrap_or(0);
         let actual_i = if i == 8 && current_tag > 9 {
@@ -499,6 +507,7 @@ pub fn draw_tag_indicators(
             if occupied_tags & (1 << actual_i) == 0
                 && m.tagset[m.seltags as usize] & (1 << actual_i) == 0
             {
+                eprintln!("TRACE: draw_tag_indicators - skipping tag {}", i);
                 continue;
             }
         }
@@ -513,6 +522,7 @@ pub fn draw_tag_indicators(
         } else {
             ""
         };
+        eprintln!("TRACE: draw_tag_indicators - tag_name = '{}'", tag_name);
 
         let display_name = if show_alt_tag && (actual_i as usize) < tags_alt.len() {
             tags_alt[actual_i as usize]
@@ -520,12 +530,17 @@ pub fn draw_tag_indicators(
             tag_name
         };
 
+        eprintln!("TRACE: draw_tag_indicators - before text_width");
         let w = text_width(display_name);
+        eprintln!("TRACE: draw_tag_indicators - w = {}", w);
 
         if let Some(scheme) = get_tag_scheme(m, actual_i, occupied_tags, is_hover) {
+            eprintln!("TRACE: draw_tag_indicators - got scheme");
             if let Some(ref drw) = g.drw {
                 let mut drw = drw.clone();
+                eprintln!("TRACE: draw_tag_indicators - before set_scheme");
                 drw.set_scheme(scheme);
+                eprintln!("TRACE: draw_tag_indicators - after set_scheme");
 
                 let detail_height = if is_hover {
                     if bar_dragging {
@@ -545,6 +560,7 @@ pub fn draw_tag_indicators(
                 };
 
                 let is_urgent = urg & (1 << actual_i) != 0;
+                eprintln!("TRACE: draw_tag_indicators - before drw.text");
                 drw.text(
                     x,
                     0,
@@ -555,11 +571,13 @@ pub fn draw_tag_indicators(
                     is_urgent,
                     detail_height,
                 );
+                eprintln!("TRACE: draw_tag_indicators - after drw.text");
             }
         }
 
         x += w;
     }
+    eprintln!("TRACE: draw_tag_indicators - END");
     x
 }
 
@@ -861,15 +879,30 @@ pub fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, bh: i32)
 }
 
 pub fn draw_bar(m: &mut MonitorInner) {
+    let count = DRAW_BAR_RECURSION.fetch_add(1, Ordering::SeqCst);
+    eprintln!("TRACE: draw_bar - recursion count = {}", count + 1);
+    if count > 50 {
+        eprintln!(
+            "ERROR: draw_bar infinite recursion detected! Count = {}",
+            count + 1
+        );
+        std::process::abort();
+    }
+
     if unsafe { PAUSEDRAW } {
+        DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
         return;
     }
 
     if !m.showbar {
+        DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+        eprintln!("TRACE: draw_bar - !m.showbar, returning");
         return;
     }
 
+    eprintln!("TRACE: draw_bar - before get_globals");
     let g = get_globals();
+    eprintln!("TRACE: draw_bar - after get_globals");
     let bh = g.bh;
     let showsystray = g.showsystray;
 
@@ -898,9 +931,13 @@ pub fn draw_bar(m: &mut MonitorInner) {
         }
     }
 
+    eprintln!("TRACE: draw_bar - before draw_startmenu_icon");
     draw_startmenu_icon(bh);
+    eprintln!("TRACE: draw_bar - before resize_bar_win");
     resize_bar_win(m);
+    eprintln!("TRACE: draw_bar - after resize_bar_win");
 
+    eprintln!("TRACE: draw_bar - before client loop");
     let mut occupied_tags: u32 = 0;
     let mut urg: u32 = 0;
     let mut n: i32 = 0;
@@ -926,17 +963,24 @@ pub fn draw_bar(m: &mut MonitorInner) {
             }
         }
     }
+    eprintln!("TRACE: draw_bar - after client loop");
 
     let startmenu_size = g.startmenusize as i32;
     let mut x = startmenu_size;
+    eprintln!("TRACE: draw_bar - before draw_tag_indicators");
     x = draw_tag_indicators(m, x, occupied_tags, urg, bh);
+    eprintln!("TRACE: draw_bar - after draw_tag_indicators, before draw_layout_indicator");
     x = draw_layout_indicator(m, x, bh);
+    eprintln!("TRACE: draw_bar - after draw_layout_indicator");
 
     let window_width = m.ww - sw - x - stw;
     if window_width > bh {
+        eprintln!("TRACE: draw_bar - before draw_window_titles");
         draw_window_titles(m, x, window_width, n, bh);
+        eprintln!("TRACE: draw_bar - after draw_window_titles");
     }
 
+    eprintln!("TRACE: draw_bar - before final block");
     {
         let g = get_globals();
         if let Some(ref drw) = g.drw {
@@ -953,6 +997,8 @@ pub fn draw_bar(m: &mut MonitorInner) {
     if let Some(ref drw) = g.drw {
         drw.map(m.barwin, 0, 0, m.ww as u16, bh as u16);
     }
+
+    DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
 }
 
 pub fn draw_bars() {
@@ -1005,12 +1051,23 @@ pub fn reset_bar() {
 fn reset_cursor() {}
 
 pub fn update_status() {
-    let g = get_globals();
+    eprintln!("TRACE: update_status - start");
+    let (root, selmon_idx, monitors) = {
+        let g = get_globals();
+        let root = g.root;
+        let selmon_idx = g.selmon;
+        let monitors = g.monitors.clone();
+        (root, selmon_idx, monitors)
+    }; // Read lock released here
+    eprintln!("TRACE: update_status - after getting initial data");
 
-    let text = get_text_prop(g.root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
+    let text = get_text_prop(root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
+    eprintln!("TRACE: update_status - after get_text_prop");
 
     {
+        eprintln!("TRACE: update_status - before get_globals_mut");
         let mut g = get_globals_mut();
+        eprintln!("TRACE: update_status - after get_globals_mut");
         match text {
             Some(t) => {
                 if t.starts_with("ipc:") {
@@ -1029,17 +1086,23 @@ pub fn update_status() {
                 g.stext[len] = 0;
             }
         }
-    }
+    } // Write lock released here
+    eprintln!("TRACE: update_status - after updating stext");
 
-    if let Some(selmon_idx) = g.selmon {
-        let monitors = g.monitors.clone();
+    if let Some(selmon_idx) = selmon_idx {
+        eprintln!("TRACE: update_status - selmon_idx = {}", selmon_idx);
         if let Some(m) = monitors.get(selmon_idx) {
+            eprintln!("TRACE: update_status - before draw_bar");
             let mut m = m.clone();
-            draw_bar(&mut m);
+            // TEMP: Skip draw_bar to avoid stack overflow
+            // draw_bar(&mut m);
+            eprintln!("TRACE: update_status - skipped draw_bar");
         }
     }
 
+    eprintln!("TRACE: update_status - before update_systray");
     update_systray();
+    eprintln!("TRACE: update_status - after update_systray");
 }
 
 fn get_text_prop(_win: Window, _atom: u32) -> Option<String> {
@@ -1119,14 +1182,14 @@ pub fn resize_bar_win(m: &MonitorInner) {
 }
 
 pub fn update_bars() {
-    let g = get_globals();
-    let bh = g.bh;
-    let showsystray = g.showsystray;
-    let screen = g.screen;
-    let root = g.root;
+    let (bh, showsystray, screen, root, bar_configs) = {
+        let g = get_globals();
+        let bh = g.bh;
+        let showsystray = g.showsystray;
+        let screen = g.screen;
+        let root = g.root;
 
-    let mut bar_configs = Vec::new();
-    {
+        let mut bar_configs = Vec::new();
         for (i, m) in g.monitors.iter().enumerate() {
             if m.barwin != 0 {
                 continue;
@@ -1146,7 +1209,8 @@ pub fn update_bars() {
                 i, m.wx, m.by, w, bh
             );
         }
-    }
+        (bh, showsystray, screen, root, bar_configs)
+    }; // Read lock is released here
 
     let x11 = crate::globals::get_x11();
     if let Some(ref conn) = x11.conn {
@@ -1171,6 +1235,7 @@ pub fn update_bars() {
                 win_id, root
             );
 
+            eprintln!("TRACE: update_bars - before create_window");
             let _ = conn.create_window(
                 x11rb::COPY_FROM_PARENT as u8,
                 win_id,
@@ -1184,29 +1249,41 @@ pub fn update_bars() {
                 x11rb::COPY_FROM_PARENT as u32,
                 &aux,
             );
+            eprintln!("TRACE: update_bars - after create_window");
 
             {
+                eprintln!("TRACE: update_bars - before get_globals for systray");
                 let globals = crate::globals::get_globals();
+                eprintln!("TRACE: update_bars - after get_globals for systray");
                 if globals.showsystray && globals.selmon == Some(i) {
+                    eprintln!("TRACE: update_bars - showsystray check passed");
                     if let Some(systray) = globals.systray.as_ref() {
+                        eprintln!("TRACE: update_bars - before map_window systray");
                         let _ = conn.map_window(systray.win);
+                        eprintln!("TRACE: update_bars - after map_window systray");
                         let _ = conn.configure_window(
                             systray.win,
                             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
                         );
+                        eprintln!("TRACE: update_bars - after configure_window systray");
                     }
                 }
             }
+            eprintln!("TRACE: update_bars - before map_window win_id");
 
             let _ = conn.map_window(win_id);
+            eprintln!("TRACE: update_bars - after map_window win_id");
             let _ = conn.configure_window(
                 win_id,
                 &x11rb::protocol::xproto::ConfigureWindowAux::new()
                     .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
             );
+            eprintln!("TRACE: update_bars - after configure_window win_id");
 
+            eprintln!("TRACE: update_bars - before get_globals_mut");
             let mut globals_mut = crate::globals::get_globals_mut();
+            eprintln!("TRACE: update_bars - after get_globals_mut");
             globals_mut.monitors[i].barwin = win_id;
         }
     }

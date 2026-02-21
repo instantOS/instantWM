@@ -30,7 +30,9 @@ fn tagmon(arg: &Arg) {
 }
 
 pub fn create_monitor() -> MonitorInner {
-    eprintln!("TRACE: create_monitor - start (WARNING: this version calls get_globals, may deadlock)");
+    eprintln!(
+        "TRACE: create_monitor - start (WARNING: this version calls get_globals, may deadlock)"
+    );
     let g = get_globals();
     eprintln!("TRACE: create_monitor - after get_globals");
 
@@ -68,7 +70,12 @@ pub fn create_monitor() -> MonitorInner {
     m
 }
 
-pub fn create_monitor_with_values(mfact: f32, nmaster: i32, showbar: bool, topbar: bool) -> MonitorInner {
+pub fn create_monitor_with_values(
+    mfact: f32,
+    nmaster: i32,
+    showbar: bool,
+    topbar: bool,
+) -> MonitorInner {
     eprintln!("TRACE: create_monitor_with_values - start");
 
     let mut m = MonitorInner {
@@ -446,7 +453,10 @@ pub fn update_geom() -> bool {
                         if let Ok(screens_cookie) = xinerama::query_screens(conn) {
                             eprintln!("TRACE: update_geom - before query_screens.reply");
                             if let Ok(screens) = screens_cookie.reply() {
-                                eprintln!("TRACE: update_geom - got screens, len = {}", screens.screen_info.len());
+                                eprintln!(
+                                    "TRACE: update_geom - got screens, len = {}",
+                                    screens.screen_info.len()
+                                );
                                 let screen_info: Vec<(i32, i32, i32, i32)> = screens
                                     .screen_info
                                     .iter()
@@ -485,7 +495,9 @@ pub fn update_geom() -> bool {
                                     let showbar = g.showbar;
                                     let topbar = g.topbar;
                                     while g.monitors.len() < nn {
-                                        g.monitors.push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
+                                        g.monitors.push(create_monitor_with_values(
+                                            mfact, nmaster, showbar, topbar,
+                                        ));
                                     }
                                     eprintln!("TRACE: update_geom - after create_monitor loop");
                                 }
@@ -509,7 +521,10 @@ pub fn update_geom() -> bool {
                                             || m.mw != info.2
                                             || m.mh != info.3
                                         {
-                                            eprintln!("TRACE: update_geom - updating monitor {}", i);
+                                            eprintln!(
+                                                "TRACE: update_geom - updating monitor {}",
+                                                i
+                                            );
                                             dirty = true;
                                             m.num = i as i32;
                                             m.mx = info.0;
@@ -527,7 +542,10 @@ pub fn update_geom() -> bool {
 
                                 // TODO: Update bar positions for monitors that need it
                                 // Skipping for now to avoid deadlock - bar positions will be updated elsewhere
-                                eprintln!("TRACE: update_geom - {} monitors need bar update", monitors_need_bar_update.len());
+                                eprintln!(
+                                    "TRACE: update_geom - {} monitors need bar update",
+                                    monitors_need_bar_update.len()
+                                );
 
                                 for i in nn..n {
                                     let clients_to_move: Vec<Window> = {

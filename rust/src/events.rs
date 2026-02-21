@@ -345,39 +345,107 @@ fn handle_bar_leave_reset(_e: &EnterNotifyEvent) {
 }
 
 pub fn run() {
+    eprintln!("TRACE: events::run - START");
     let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let Some(ref conn) = x11.conn else {
+        eprintln!("TRACE: events::run - no connection, returning");
+        return;
+    };
 
+    eprintln!("TRACE: events::run - entering event loop");
     loop {
+        eprintln!("TRACE: events::run - waiting for event");
         match conn.wait_for_event() {
             Ok(event) => {
+                eprintln!("TRACE: events::run - received event");
                 dispatch_event(event);
             }
-            Err(_) => break,
+            Err(e) => {
+                eprintln!("TRACE: events::run - error waiting for event: {:?}", e);
+                break;
+            }
         }
     }
+    eprintln!("TRACE: events::run - END");
 }
 
 fn dispatch_event(event: x11rb::protocol::Event) {
+    eprintln!(
+        "TRACE: dispatch_event - event type: {}",
+        event.response_type()
+    );
     match event {
-        x11rb::protocol::Event::ButtonPress(e) => button_press(&e),
-        x11rb::protocol::Event::ClientMessage(e) => client_message(&e),
-        x11rb::protocol::Event::ConfigureNotify(e) => configure_notify(&e),
-        x11rb::protocol::Event::ConfigureRequest(e) => configure_request(&e),
-        x11rb::protocol::Event::DestroyNotify(e) => destroy_notify(&e),
-        x11rb::protocol::Event::EnterNotify(e) => enter_notify(&e),
-        x11rb::protocol::Event::Expose(e) => expose(&e),
-        x11rb::protocol::Event::FocusIn(e) => focus_in(&e),
-        x11rb::protocol::Event::KeyPress(e) => key_press(&e),
-        x11rb::protocol::Event::KeyRelease(e) => key_release(&e),
-        x11rb::protocol::Event::MappingNotify(e) => mapping_notify(&e),
-        x11rb::protocol::Event::MapRequest(e) => map_request(&e),
-        x11rb::protocol::Event::MotionNotify(e) => motion_notify(&e),
-        x11rb::protocol::Event::PropertyNotify(e) => property_notify(&e),
-        x11rb::protocol::Event::ResizeRequest(e) => resize_request(&e),
-        x11rb::protocol::Event::UnmapNotify(e) => unmap_notify(&e),
-        x11rb::protocol::Event::LeaveNotify(e) => leave_notify(&e),
-        _ => {}
+        x11rb::protocol::Event::ButtonPress(e) => {
+            eprintln!("TRACE: dispatch_event - ButtonPress");
+            button_press(&e)
+        }
+        x11rb::protocol::Event::ClientMessage(e) => {
+            eprintln!("TRACE: dispatch_event - ClientMessage");
+            client_message(&e)
+        }
+        x11rb::protocol::Event::ConfigureNotify(e) => {
+            eprintln!("TRACE: dispatch_event - ConfigureNotify");
+            configure_notify(&e)
+        }
+        x11rb::protocol::Event::ConfigureRequest(e) => {
+            eprintln!("TRACE: dispatch_event - ConfigureRequest");
+            configure_request(&e)
+        }
+        x11rb::protocol::Event::DestroyNotify(e) => {
+            eprintln!("TRACE: dispatch_event - DestroyNotify");
+            destroy_notify(&e)
+        }
+        x11rb::protocol::Event::EnterNotify(e) => {
+            eprintln!("TRACE: dispatch_event - EnterNotify");
+            enter_notify(&e)
+        }
+        x11rb::protocol::Event::Expose(e) => {
+            eprintln!("TRACE: dispatch_event - Expose");
+            expose(&e)
+        }
+        x11rb::protocol::Event::FocusIn(e) => {
+            eprintln!("TRACE: dispatch_event - FocusIn");
+            focus_in(&e)
+        }
+        x11rb::protocol::Event::KeyPress(e) => {
+            eprintln!("TRACE: dispatch_event - KeyPress");
+            key_press(&e)
+        }
+        x11rb::protocol::Event::KeyRelease(e) => {
+            eprintln!("TRACE: dispatch_event - KeyRelease");
+            key_release(&e)
+        }
+        x11rb::protocol::Event::MappingNotify(e) => {
+            eprintln!("TRACE: dispatch_event - MappingNotify");
+            mapping_notify(&e)
+        }
+        x11rb::protocol::Event::MapRequest(e) => {
+            eprintln!("TRACE: dispatch_event - MapRequest");
+            map_request(&e)
+        }
+        x11rb::protocol::Event::MotionNotify(e) => {
+            eprintln!("TRACE: dispatch_event - MotionNotify");
+            motion_notify(&e)
+        }
+        x11rb::protocol::Event::PropertyNotify(e) => {
+            eprintln!("TRACE: dispatch_event - PropertyNotify");
+            property_notify(&e)
+        }
+        x11rb::protocol::Event::ResizeRequest(e) => {
+            eprintln!("TRACE: dispatch_event - ResizeRequest");
+            resize_request(&e)
+        }
+        x11rb::protocol::Event::UnmapNotify(e) => {
+            eprintln!("TRACE: dispatch_event - UnmapNotify");
+            unmap_notify(&e)
+        }
+        x11rb::protocol::Event::LeaveNotify(e) => {
+            eprintln!("TRACE: dispatch_event - LeaveNotify");
+            leave_notify(&e)
+        }
+        _ => {
+            eprintln!("TRACE: dispatch_event - other event type");
+        }
     }
 }
 

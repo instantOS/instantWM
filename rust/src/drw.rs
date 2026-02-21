@@ -1219,14 +1219,11 @@ impl Drw {
 
 impl Drop for Drw {
     fn drop(&mut self) {
-        eprintln!("TRACE: Drop for Drw called, owns_resources = {}", self.owns_resources);
         unsafe {
             if self.owns_resources && !self.display.is_null() {
-                eprintln!("TRACE: Drw::drop - freeing resources");
                 XFreePixmap(self.display, self.drawable);
                 XFreeGC(self.display, self.gc);
                 XCloseDisplay(self.display);
-                eprintln!("TRACE: Drw::drop - resources freed");
             }
         }
     }

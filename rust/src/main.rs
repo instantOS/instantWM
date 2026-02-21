@@ -83,10 +83,13 @@ fn main() {
         die("usage: instantwm [-VX]");
     }
 
+    eprintln!("TRACE: main - before set_locale");
     if let Err(_) = set_locale() {
         eprintln!("warning: no locale support");
     }
+    eprintln!("TRACE: main - after set_locale");
 
+    eprintln!("TRACE: main - before RustConnection::connect");
     let (conn, screen_num) = match RustConnection::connect(None) {
         Ok((c, s)) => (c, s),
         Err(_) => {
@@ -96,11 +99,16 @@ fn main() {
             std::process::exit(1);
         }
     };
+    eprintln!(
+        "TRACE: main - after RustConnection::connect, screen_num={}",
+        screen_num
+    );
 
     {
         let mut x11 = get_x11();
         x11.conn = Some(conn);
         x11.screen_num = screen_num;
+        eprintln!("TRACE: main - x11.conn and x11.screen_num set");
     }
 
     let screen = {
@@ -109,35 +117,44 @@ fn main() {
         conn_ref.setup().roots[screen_num].clone()
     };
     let root = screen.root;
+    eprintln!("TRACE: main - screen and root obtained, root={}", root);
 
-    eprintln!("TRACE: check_other_wm_init");
+    eprintln!("TRACE: main - before check_other_wm_init");
     check_other_wm_init(root);
+    eprintln!("TRACE: main - after check_other_wm_init");
 
-    eprintln!("TRACE: init_globals");
+    eprintln!("TRACE: main - before init_globals");
     init_globals(screen_num, root, &screen);
+    eprintln!("TRACE: main - after init_globals");
 
-    eprintln!("TRACE: load_xresources");
+    eprintln!("TRACE: main - before load_xresources");
     load_xresources();
+    eprintln!("TRACE: main - after load_xresources");
 
-    eprintln!("TRACE: setup");
-    eprintln!("TRACE: setup - calling setup function");
+    eprintln!("TRACE: main - before setup");
     setup(screen_num, root, &screen);
-    eprintln!("TRACE: setup - returned from setup");
+    eprintln!("TRACE: main - after setup");
 
-    eprintln!("TRACE: scan");
+    eprintln!("TRACE: main - before scan");
     scan();
+    eprintln!("TRACE: main - after scan");
 
-    eprintln!("TRACE: run_autostart");
+    eprintln!("TRACE: main - before run_autostart");
     run_autostart();
+    eprintln!("TRACE: main - after run_autostart");
 
-    eprintln!("TRACE: run");
+    eprintln!("TRACE: main - before run");
     run();
+    eprintln!("TRACE: main - after run (should not reach here unless exiting)");
 
+    eprintln!("TRACE: main - before cleanup");
     cleanup();
+    eprintln!("TRACE: main - after cleanup");
 
     {
         let mut x11 = get_x11();
         x11.conn = None;
+        eprintln!("TRACE: main - x11.conn set to None");
     }
 }
 
@@ -200,6 +217,7 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
 }
 
 fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
+    eprintln!("TRACE: setup - START");
     eprintln!("TRACE: setup - before setup_signal_handlers");
     setup_signal_handlers();
     eprintln!("TRACE: setup - after setup_signal_handlers");
@@ -225,24 +243,30 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     eprintln!("TRACE: setup - after fontset_create");
 
     let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
+    eprintln!("TRACE: setup - font_height = {}", font_height);
 
     let barheight = {
         let g = get_globals();
         g.barheight
     };
+    eprintln!("TRACE: setup - barheight = {}", barheight);
 
     let bh = if barheight > 0 {
         font_height + barheight as u32
     } else {
         font_height + 12
     };
+    eprintln!("TRACE: setup - bh = {}", bh);
 
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
+            eprintln!("TRACE: setup - no connection, returning early");
             return;
         };
+        eprintln!("TRACE: setup - before init_atoms");
         init_atoms(conn);
+        eprintln!("TRACE: setup - after init_atoms");
     }
 
     eprintln!("TRACE: setup - before init_cursors");
@@ -258,13 +282,19 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         globals.drw = Some(drw);
         globals.bh = bh as i32;
         globals.lrpad = font_height as i32;
+        eprintln!(
+            "TRACE: setup - globals set (drw, bh={}, lrpad={})",
+            bh, font_height
+        );
     }
 
     eprintln!("TRACE: setup - before update_geom");
     update_geom();
     eprintln!("TRACE: setup - after update_geom");
 
+    eprintln!("TRACE: setup - before verify_tags_xres");
     verify_tags_xres();
+    eprintln!("TRACE: setup - after verify_tags_xres");
 
     eprintln!("TRACE: setup - before update_bars");
     update_bars();
@@ -278,6 +308,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
+            eprintln!("TRACE: setup - no connection, returning early");
             return;
         };
         init_wm_check_window(conn, screen_num, root);
@@ -300,10 +331,12 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         let g = get_globals();
         g.cursors[0].as_ref().map(|c| c.cursor).unwrap_or(0)
     };
+    eprintln!("TRACE: setup - cursor = {}", cursor);
 
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
+            eprintln!("TRACE: setup - no connection, returning early");
             return;
         };
         let _ = conn.change_window_attributes(
@@ -314,6 +347,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
         );
 
         let _ = conn.flush();
+        eprintln!("TRACE: setup - event mask and cursor set");
     }
     eprintln!("TRACE: setup - after setting event mask");
 
@@ -324,6 +358,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     eprintln!("TRACE: setup - before focus");
     focus(None);
     eprintln!("TRACE: setup - after focus");
+    eprintln!("TRACE: setup - END");
 }
 
 fn setup_signal_handlers() {
