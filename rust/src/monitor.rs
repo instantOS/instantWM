@@ -15,15 +15,14 @@ use x11rb::protocol::xinerama;
 fn tagmon(arg: &Arg) {
     if let Some(target) = dir_to_mon(arg.i) {
         let g = get_globals();
-        if let Some(mon_id) = g.selmon {
-            if let Some(client) = g.monitors.get(mon_id).and_then(|_m| {
-                g.clients
-                    .values()
-                    .find(|c| c.mon_id == Some(mon_id))
-                    .map(|c| c.win)
-            }) {
-                send_mon(client, target);
-            }
+        let mon_id = g.selmon;
+        if let Some(client) = g.monitors.get(mon_id).and_then(|_m| {
+            g.clients
+                .values()
+                .find(|c| c.mon_id == Some(mon_id))
+                .map(|c| c.win)
+        }) {
+            send_mon(client, target);
         }
     }
 }
@@ -295,20 +294,17 @@ pub fn focus_mon(arg: &Arg) {
         None => return,
     };
 
-    if Some(target) == g.selmon {
+    if target == g.selmon {
         return;
     }
 
-    let old_sel = g.selmon;
-
-    if let Some(old_id) = old_sel {
-        if let Some(win) = get_selected_client_win(old_id) {
-            unfocus_win(win, false);
-        }
+    let old_id = g.selmon;
+    if let Some(win) = get_selected_client_win(old_id) {
+        unfocus_win(win, false);
     }
 
     let g = get_globals_mut();
-    g.selmon = Some(target);
+    g.selmon = target;
 
     focus(None);
 }
@@ -329,16 +325,13 @@ pub fn focus_n_mon(arg: &Arg) {
         }
     }
 
-    let old_sel = g.selmon;
-
-    if let Some(old_id) = old_sel {
-        if let Some(win) = get_selected_client_win(old_id) {
-            unfocus_win(win, false);
-        }
+    let old_id = g.selmon;
+    if let Some(win) = get_selected_client_win(old_id) {
+        unfocus_win(win, false);
     }
 
     let g = get_globals_mut();
-    g.selmon = Some(target);
+    g.selmon = target;
 
     focus(None);
 }
@@ -346,10 +339,7 @@ pub fn focus_n_mon(arg: &Arg) {
 pub fn follow_mon(arg: &Arg) {
     let c_win = {
         let g = get_globals();
-        match g.selmon {
-            Some(mon_id) => g.monitors.get(mon_id).and_then(|m| m.sel),
-            None => None,
-        }
+        g.monitors.get(g.selmon).and_then(|m| m.sel)
     };
 
     let c_win = match c_win {
@@ -362,7 +352,9 @@ pub fn follow_mon(arg: &Arg) {
     {
         let g = get_globals_mut();
         if let Some(ref c) = g.clients.get(&c_win) {
-            g.selmon = c.mon_id;
+            if let Some(mon_id) = c.mon_id {
+                g.selmon = mon_id;
+            }
         }
     }
 
@@ -526,8 +518,8 @@ pub fn update_geom() -> bool {
                                     }
 
                                     let g = get_globals_mut();
-                                    if g.selmon == Some(i) {
-                                        g.selmon = Some(0);
+                                    if g.selmon == i {
+                                        g.selmon = 0;
                                     }
 
                                     cleanup_monitor(i);
@@ -535,11 +527,11 @@ pub fn update_geom() -> bool {
 
                                 if dirty {
                                     let g = get_globals_mut();
-                                    g.selmon = Some(0);
+                                    g.selmon = 0;
 
                                     if let Some(m) = win_to_mon(x11.screen_num as u32) {
                                         let g = get_globals_mut();
-                                        g.selmon = Some(m);
+                                        g.selmon = m;
                                     }
                                 }
 
@@ -569,7 +561,7 @@ pub fn update_geom() -> bool {
             m.work_rect.h = sh;
             update_bar_pos(m);
         }
-        g.selmon = Some(0);
+        g.selmon = 0;
         dirty = true;
     } else {
         let sw = g.sw;
@@ -579,7 +571,6 @@ pub fn update_geom() -> bool {
             .first()
             .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
             .unwrap_or(false);
-        let needs_selmon = g.selmon.is_none();
 
         if needs_update {
             dirty = true;
@@ -590,13 +581,6 @@ pub fn update_geom() -> bool {
                 m.work_rect.w = sw;
                 m.work_rect.h = sh;
                 update_bar_pos(m);
-            }
-        }
-
-        if needs_selmon {
-            let g = get_globals_mut();
-            if !g.monitors.is_empty() {
-                g.selmon = Some(0);
             }
         }
     }

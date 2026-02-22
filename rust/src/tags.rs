@@ -38,8 +38,8 @@ pub fn name_tag(arg: &Arg) {
         let globals = get_globals();
         let numtags = globals.tags.count();
         let current_tag = globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id))
+            .monitors
+            .get(globals.selmon)
             .map(|m| m.tagset[m.seltags as usize]);
         (numtags, current_tag)
     };
@@ -98,11 +98,7 @@ pub fn get_tag_width() -> i32 {
 
     let globals = get_globals();
 
-    let mut current = if let Some(sel_mon_id) = globals.selmon {
-        globals.monitors.get(sel_mon_id).and_then(|m| m.clients)
-    } else {
-        None
-    };
+    let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
     while let Some(c_win) = current {
         if let Some(c) = globals.clients.get(&c_win) {
@@ -125,24 +121,15 @@ pub fn get_tag_width() -> i32 {
             continue;
         }
 
-        let showtags = if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.showtags
-            } else {
-                0
-            }
-        } else {
-            0
-        };
+        let showtags = globals
+            .monitors
+            .get(globals.selmon)
+            .map_or(0, |mon| mon.showtags);
 
-        let current_tagset = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .map(|m| m.tagset[m.seltags as usize])
-        } else {
-            None
-        };
+        let current_tagset = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| m.tagset[m.seltags as usize]);
 
         if showtags != 0 {
             let occupied = (occupied_tags & (1 << i)) != 0;
@@ -174,6 +161,7 @@ pub fn get_tag_width() -> i32 {
     x + start_menu_size
 }
 
+//TODO: document what this does (is ix a coordinate?)
 pub fn get_tag_at_x(ix: i32) -> i32 {
     let mut x;
     let mut occupied_tags: u32 = 0;
@@ -182,11 +170,7 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
     let start_menu_size = globals.startmenusize;
     x = start_menu_size;
 
-    let mut current = if let Some(sel_mon_id) = globals.selmon {
-        globals.monitors.get(sel_mon_id).and_then(|m| m.clients)
-    } else {
-        None
-    };
+    let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
     while let Some(c_win) = current {
         if let Some(c) = globals.clients.get(&c_win) {
@@ -208,24 +192,15 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
             continue;
         }
 
-        let showtags = if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.showtags
-            } else {
-                0
-            }
-        } else {
-            0
-        };
+        let showtags = globals
+            .monitors
+            .get(globals.selmon)
+            .map_or(0, |mon| mon.showtags);
 
-        let current_tagset = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .map(|m| m.tagset[m.seltags as usize])
-        } else {
-            None
-        };
+        let current_tagset = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| m.tagset[m.seltags as usize]);
 
         if showtags != 0 {
             let occupied = (occupied_tags & (1 << i)) != 0;
@@ -261,6 +236,7 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
     -1
 }
 
+//TODO: this is badly named
 pub fn tag(arg: &Arg) {
     let ui = compute_prefix(arg);
     set_client_tag_impl(ui);
@@ -270,9 +246,7 @@ fn set_client_tag_impl(tagmask_bits: u32) {
     let (sel_win, tagmask) = {
         let globals = get_globals();
         (
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel)),
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel),
             globals.tags.mask(),
         )
     };
@@ -303,24 +277,18 @@ fn set_client_tag_impl(tagmask_bits: u32) {
     set_client_tag_prop(win);
     focus(None);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 pub fn tag_all(arg: &Arg) {
     let ui = compute_prefix(arg);
     let globals = get_globals();
 
-    let current_tag = if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            mon.current_tag
-        } else {
-            return;
-        }
-    } else {
-        return;
-    };
+    let current_tag = globals
+        .monitors
+        .get(globals.selmon)
+        .map(|mon| mon.current_tag)
+        .unwrap_or(0);
 
     if current_tag == 0 {
         return;
@@ -330,11 +298,7 @@ pub fn tag_all(arg: &Arg) {
 
     let clients_to_tag: Vec<Window> = {
         let mut result = Vec::new();
-        let mut current = if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.clients)
-        } else {
-            None
-        };
+        let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
         while let Some(c_win) = current {
             if let Some(c) = globals.clients.get(&c_win) {
@@ -365,9 +329,7 @@ pub fn tag_all(arg: &Arg) {
 
     focus(None);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 pub fn follow_tag(arg: &Arg) {
@@ -375,8 +337,9 @@ pub fn follow_tag(arg: &Arg) {
     let tagprefix = get_globals().tags.prefix;
 
     if get_globals()
-        .selmon
-        .and_then(|id| get_globals().monitors.get(id).and_then(|m| m.sel))
+        .monitors
+        .get(get_globals().selmon)
+        .and_then(|m| m.sel)
         .is_none()
     {
         return;
@@ -401,9 +364,7 @@ pub fn toggle_tag(arg: &Arg) {
 
     let sel_win = {
         let globals = get_globals();
-        globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -437,9 +398,7 @@ pub fn toggle_tag(arg: &Arg) {
         set_client_tag_prop(win);
         focus(None);
 
-        if let Some(sel_mon_id) = get_globals().selmon {
-            arrange(Some(sel_mon_id));
-        }
+        arrange(Some(get_globals().selmon));
     }
 }
 
@@ -449,28 +408,22 @@ pub fn view(arg: &Arg) {
 
     let mut globals = get_globals_mut();
 
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            mon.seltags ^= 1;
-        }
+    if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+        mon.seltags ^= 1;
     }
 
     if ui & tagmask == 0 {
         return;
     }
 
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            mon.tagset[mon.seltags as usize] = ui & tagmask;
-        }
+    if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+        mon.tagset[mon.seltags as usize] = ui & tagmask;
     }
 
     if ui == !0u32 {
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                mon.prev_tag = mon.current_tag;
-                mon.current_tag = 0;
-            }
+        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+            mon.prev_tag = mon.current_tag;
+            mon.current_tag = 0;
         }
     } else {
         let mut i = 0;
@@ -478,50 +431,40 @@ pub fn view(arg: &Arg) {
             i += 1;
         }
 
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                if i + 1 == mon.current_tag {
-                    return;
-                }
-                mon.prev_tag = mon.current_tag;
-                mon.current_tag = i + 1;
+        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+            if i + 1 == mon.current_tag {
+                return;
             }
+            mon.prev_tag = mon.current_tag;
+            mon.current_tag = i + 1;
         }
     }
 
     apply_pertag_settings(&mut globals);
     focus(None);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
-    if let Some(sel_mon_id) = globals.selmon {
-        // We need to split the borrow here. We can't get a mutable reference to monitors
-        // and then access tags from globals because tags is part of globals.
-        // But MonitorInner is inside monitors vec.
-        // To satisfy borrow checker, we might need to copy values or index carefully.
-        // Actually, we can get the monitor first.
-        let (nmaster, mfact) = {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let current_tag = mon.current_tag;
-                if current_tag > 0 && current_tag <= globals.tags.tags.len() {
-                    let tag = &globals.tags.tags[current_tag - 1];
-                    (tag.nmaster, tag.mfact)
-                } else {
-                    return;
-                }
+    let sel_mon_id = globals.selmon;
+    let (nmaster, mfact) = {
+        if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            let current_tag = mon.current_tag;
+            if current_tag > 0 && current_tag <= globals.tags.tags.len() {
+                let tag = &globals.tags.tags[current_tag - 1];
+                (tag.nmaster, tag.mfact)
             } else {
                 return;
             }
-        };
-
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            mon.nmaster = nmaster;
-            mon.mfact = mfact;
+        } else {
+            return;
         }
+    };
+
+    if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
+        mon.nmaster = nmaster;
+        mon.mfact = mfact;
     }
 }
 
@@ -529,14 +472,10 @@ pub fn toggle_view(arg: &Arg) {
     let tagmask = get_globals().tags.mask();
     let new_tagset = {
         let globals = get_globals();
-        let current = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .map(|m| m.tagset[m.seltags as usize])
-        } else {
-            None
-        };
+        let current = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| m.tagset[m.seltags as usize]);
         current.unwrap_or(0) ^ (arg.ui & tagmask)
     };
 
@@ -545,18 +484,14 @@ pub fn toggle_view(arg: &Arg) {
     }
 
     let mut globals = get_globals_mut();
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            mon.tagset[mon.seltags as usize] = new_tagset;
-        }
+    if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+        mon.tagset[mon.seltags as usize] = new_tagset;
     }
 
     if new_tagset == !0u32 {
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                mon.prev_tag = mon.current_tag;
-                mon.current_tag = 0;
-            }
+        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+            mon.prev_tag = mon.current_tag;
+            mon.current_tag = 0;
         }
     } else {
         let mut i = 0;
@@ -564,13 +499,11 @@ pub fn toggle_view(arg: &Arg) {
             i += 1;
         }
 
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                let current_tag = mon.current_tag;
-                if (new_tagset & (1 << (current_tag - 1))) == 0 {
-                    mon.prev_tag = current_tag;
-                    mon.current_tag = i + 1;
-                }
+        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+            let current_tag = mon.current_tag;
+            if (new_tagset & (1 << (current_tag - 1))) == 0 {
+                mon.prev_tag = current_tag;
+                mon.current_tag = i + 1;
             }
         }
     }
@@ -578,18 +511,14 @@ pub fn toggle_view(arg: &Arg) {
     apply_pertag_settings(&mut globals);
     focus(None);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 pub fn tag_mon(arg: &Arg) {
     let (sel_win, has_multiple_mons) = {
         let globals = get_globals();
         (
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel)),
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel),
             globals.monitors.len() > 1,
         )
     };
@@ -615,11 +544,7 @@ pub fn tag_mon(arg: &Arg) {
         let (c_x, c_y, mon_mx, mon_my, mon_ww, mon_wh) = {
             let globals = get_globals();
             if let Some(c) = globals.clients.get(&win) {
-                let mon = if let Some(sel_mon_id) = globals.selmon {
-                    globals.monitors.get(sel_mon_id)
-                } else {
-                    None
-                };
+                let mon = globals.monitors.get(globals.selmon);
                 let (mx, my, ww, wh) = mon
                     .map(|m| {
                         (
@@ -708,31 +633,22 @@ pub fn tag_to_right(arg: &Arg) {
 fn shift_tag(dir: Direction, offset: i32) {
     let sel_win = {
         let globals = get_globals();
-        globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
 
     let (current_tag, overlay) = {
         let globals = get_globals();
-        let current_tag = if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.current_tag as u32
-            } else {
-                return;
-            }
-        } else {
-            return;
-        };
-        let overlay = if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.overlay)
-        } else {
-            None
-        };
+        let current_tag = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| m.current_tag as u32);
+        let overlay = globals.monitors.get(globals.selmon).and_then(|m| m.overlay);
         (current_tag, overlay)
     };
+
+    let Some(current_tag) = current_tag else { return };
 
     if Some(win) == overlay {
         let mode = match dir {
@@ -807,15 +723,10 @@ fn shift_tag(dir: Direction, offset: i32) {
 
     let (tagset, tagmask) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.tagset[mon.seltags as usize], globals.tags.mask())
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        (mon.tagset[mon.seltags as usize], globals.tags.mask())
     };
 
     let is_single_tag = (tagset & tagmask).count_ones() == 1;
@@ -847,19 +758,16 @@ fn shift_tag(dir: Direction, offset: i32) {
 fn reset_sticky_client(win: Window) {
     let target_tags = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
+        globals
+            .monitors
+            .get(globals.selmon)
+            .and_then(|mon| {
                 if mon.current_tag > 0 {
                     Some(1 << (mon.current_tag - 1))
                 } else {
                     None
                 }
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+            })
     };
 
     let globals = get_globals_mut();
@@ -884,20 +792,14 @@ pub fn view_to_right(_arg: &Arg) {
 fn view_scroll(dir: Direction) {
     let (current_tag, tagset, tagmask) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let current_tag = mon.current_tag as u32;
-                (
-                    current_tag,
-                    mon.tagset[mon.seltags as usize],
-                    globals.tags.mask(),
-                )
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        (
+            mon.current_tag as u32,
+            mon.tagset[mon.seltags as usize],
+            globals.tags.mask(),
+        )
     };
 
     if dir == Direction::Left && current_tag == 1 {
@@ -940,8 +842,7 @@ fn view_scroll(dir: Direction) {
     };
 
     let mut globals = get_globals_mut();
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
+    if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
             mon.seltags ^= 1;
             mon.tagset[mon.seltags as usize] = new_tagset;
 
@@ -981,15 +882,10 @@ pub fn shift_view_direction(forward: bool) {
 
     let (tagset, numtags) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.tagset[mon.seltags as usize], globals.tags.count())
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        (mon.tagset[mon.seltags as usize], globals.tags.count())
     };
 
     let mut next_seltags = tagset;
@@ -1051,16 +947,10 @@ pub fn swap_tags(arg: &Arg) {
 
     let (current_tag, current_tagset) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let current_tag = mon.current_tag as u32;
-                (current_tag, mon.tagset[mon.seltags as usize])
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        (mon.current_tag as u32, mon.tagset[mon.seltags as usize])
     };
 
     if newtag == current_tagset
@@ -1108,8 +998,7 @@ pub fn swap_tags(arg: &Arg) {
     }
 
     let globals = get_globals_mut();
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
+    if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
             mon.tagset[mon.seltags as usize] = newtag;
 
             if mon.prev_tag == target_idx + 1 {
@@ -1128,24 +1017,17 @@ pub fn swap_tags(arg: &Arg) {
 pub fn follow_view(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
 
     let prevtag = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.prev_tag
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        mon.prev_tag
     };
 
     let globals = get_globals_mut();
@@ -1172,11 +1054,9 @@ pub fn reset_sticky(c: &mut Client) {
     c.issticky = false;
 
     let globals = get_globals();
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if mon.current_tag > 0 {
-                c.tags = 1 << (mon.current_tag - 1);
-            }
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        if mon.current_tag > 0 {
+            c.tags = 1 << (mon.current_tag - 1);
         }
     }
 }
@@ -1184,25 +1064,13 @@ pub fn reset_sticky(c: &mut Client) {
 pub fn toggle_overview(_arg: &Arg) {
     let (has_clients, current_tag, prevtag) = {
         let globals = get_globals();
-        let has_clients = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .map(|m| m.clients.is_some())
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        let current_tag = if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
-        } else {
-            None
-        };
-        let prevtag = if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).map(|m| m.prev_tag)
-        } else {
-            None
-        };
+        let has_clients = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| m.clients.is_some())
+            .unwrap_or(false);
+        let current_tag = globals.monitors.get(globals.selmon).map(|m| m.current_tag);
+        let prevtag = globals.monitors.get(globals.selmon).map(|m| m.prev_tag);
         (has_clients, current_tag, prevtag)
     };
 
@@ -1257,15 +1125,10 @@ pub fn toggle_fullscreen_overview(_arg: &Arg) {
 pub fn last_view(_arg: &Arg) {
     let (current_tag, prevtag) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.current_tag, mon.prev_tag)
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        (mon.current_tag, mon.prev_tag)
     };
 
     if current_tag == prevtag {
@@ -1298,11 +1161,8 @@ pub fn win_view(_arg: &Arg) {
                     if globals.clients.contains_key(&win) {
                         Some(win)
                     } else {
-                        let mut current = if let Some(sel_mon_id) = globals.selmon {
-                            globals.monitors.get(sel_mon_id).and_then(|m| m.clients)
-                        } else {
-                            None
-                        };
+                        let mut current =
+                            globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
                         let mut found = None;
                         while let Some(c_win) = current {

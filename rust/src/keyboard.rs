@@ -57,8 +57,8 @@ pub fn key_press(e: &KeyPressEvent) {
             }
             if result.is_none() {
                 let has_sel = globals
-                    .selmon
-                    .and_then(|id| globals.monitors.get(id))
+                    .monitors
+                    .get(globals.selmon)
                     .and_then(|m| m.sel)
                     .is_some();
                 if !has_sel {
@@ -153,8 +153,8 @@ pub fn grab_keys() {
             }
 
             let has_sel = globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id))
+                .monitors
+                .get(globals.selmon)
                 .and_then(|m| m.sel)
                 .is_some();
             if !has_sel {
@@ -227,20 +227,15 @@ pub fn update_num_lock_mask() {
 pub fn up_press(_arg: &Arg) {
     let (sel_win, overlay_win, is_floating) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let sel = mon.sel;
-                let overlay = mon.overlay;
-                let is_floating = sel
-                    .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
-                    .unwrap_or(false);
-                (sel, overlay, is_floating)
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        let sel = mon.sel;
+        let overlay = mon.overlay;
+        let is_floating = sel
+            .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
+            .unwrap_or(false);
+        (sel, overlay, is_floating)
     };
 
     if sel_win.is_none() {
@@ -269,20 +264,15 @@ pub fn down_press(_arg: &Arg) {
 
     let (sel_win, overlay_win, snapstatus) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let sel = mon.sel;
-                let overlay = mon.overlay;
-                let snapstatus = sel
-                    .and_then(|w| globals.clients.get(&w).map(|c| c.snapstatus))
-                    .unwrap_or(SnapPosition::None);
-                (sel, overlay, snapstatus)
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        let sel = mon.sel;
+        let overlay = mon.overlay;
+        let snapstatus = sel
+            .and_then(|w| globals.clients.get(&w).map(|c| c.snapstatus))
+            .unwrap_or(SnapPosition::None);
+        (sel, overlay, snapstatus)
     };
 
     if sel_win.is_none() {
@@ -316,15 +306,11 @@ pub fn down_press(_arg: &Arg) {
 pub fn up_key(arg: &Arg) {
     let is_overview = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        globals
+            .monitors
+            .get(globals.selmon)
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .unwrap_or(false)
     };
 
     if is_overview {
@@ -337,23 +323,17 @@ pub fn up_key(arg: &Arg) {
 
     let has_tiling = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+        globals
+            .monitors
+            .get(globals.selmon)
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .unwrap_or(true)
     };
 
     if !has_tiling {
-        let sel_win = {
+        let sel_win: Option<Window> = {
             let globals = get_globals();
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
         };
 
         if let Some(win) = sel_win {
@@ -381,15 +361,11 @@ pub fn up_key(arg: &Arg) {
 pub fn down_key(arg: &Arg) {
     let is_overview = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        globals
+            .monitors
+            .get(globals.selmon)
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .unwrap_or(false)
     };
 
     if is_overview {
@@ -402,23 +378,17 @@ pub fn down_key(arg: &Arg) {
 
     let has_tiling = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+        globals
+            .monitors
+            .get(globals.selmon)
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .unwrap_or(true)
     };
 
     if !has_tiling {
-        let sel_win = {
+        let sel_win: Option<Window> = {
             let globals = get_globals();
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
         };
 
         if let Some(win) = sel_win {
@@ -433,23 +403,17 @@ pub fn down_key(arg: &Arg) {
 pub fn space_toggle(_arg: &Arg) {
     let has_tiling = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+        globals
+            .monitors
+            .get(globals.selmon)
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .unwrap_or(true)
     };
 
     if !has_tiling {
-        let sel_win = {
+        let sel_win: Option<Window> = {
             let globals = get_globals();
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
         };
 
         let Some(win) = sel_win else { return };
@@ -487,9 +451,7 @@ pub fn space_toggle(_arg: &Arg) {
                 client.snapstatus = SnapPosition::Maximized;
             }
 
-            if let Some(sel_mon_id) = get_globals().selmon {
-                arrange(Some(sel_mon_id));
-            }
+            arrange(Some(get_globals().selmon));
         }
     } else {
         toggle_floating(&Arg::default());
@@ -509,15 +471,10 @@ pub fn focus_stack(arg: &Arg) {
 
     let (sel_win, clients_head) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (mon.sel, mon.clients)
-            } else {
-                return;
-            }
-        } else {
+        let Some(mon) = globals.monitors.get(globals.selmon) else {
             return;
-        }
+        };
+        (mon.sel, mon.clients)
     };
 
     let mut next: Option<Window> = None;

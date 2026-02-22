@@ -16,17 +16,18 @@ pub const OVERLAY_LEFT: i32 = 3;
 pub fn overlay_exists() -> bool {
     let globals = get_globals();
 
-    let selmon_overlay = if let Some(selmon_id) = globals.selmon {
-        globals.monitors.get(selmon_id).and_then(|m| m.overlay)
-    } else {
+    if globals.monitors.is_empty() {
         return false;
-    };
+    }
+
+    let selmon_overlay = globals.monitors.get(globals.selmon).and_then(|m| m.overlay);
 
     let overlay_win = match selmon_overlay {
         Some(w) => w,
         None => return false,
     };
 
+    //TODO: is there an existing util to do this?
     for mon in &globals.monitors {
         let mut current = mon.clients;
         while let Some(c_win) = current {
@@ -47,12 +48,12 @@ pub fn overlay_exists() -> bool {
 pub fn create_overlay(_arg: &Arg) {
     let (sel_win, sel_overlay, sel_fullscreen) = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
 
-        let mon = match globals.monitors.get(selmon_id) {
+        if globals.monitors.is_empty() {
+            return;
+        }
+
+        let mon = match globals.monitors.get(globals.selmon) {
             Some(m) => m,
             None => return,
         };
@@ -116,8 +117,7 @@ pub fn create_overlay(_arg: &Arg) {
 
     let (overlay_mode, mon_ww, mon_wh) = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        if let Some(mon) = globals.monitors.get(selmon_id) {
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
             (mon.overlaymode, mon.work_rect.w, mon.work_rect.h)
         } else {
             (0, 0, 0)
@@ -155,8 +155,7 @@ pub fn reset_overlay() {
 
     let overlay_win = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        globals.monitors.get(selmon_id).and_then(|m| m.overlay)
+        globals.monitors.get(globals.selmon).and_then(|m| m.overlay)
     };
 
     let overlay_win = match overlay_win {
@@ -164,7 +163,7 @@ pub fn reset_overlay() {
         None => return,
     };
 
-    let mon_id = {
+    let selmon = {
         let globals = get_globals();
         globals.selmon
     };
@@ -179,9 +178,7 @@ pub fn reset_overlay() {
         }
     }
 
-    if let Some(mid) = mon_id {
-        arrange(Some(mid));
-    }
+    arrange(Some(selmon));
 
     focus(Some(overlay_win));
 }
@@ -192,10 +189,12 @@ pub fn show_overlay(_arg: &Arg) {
     }
 
     let globals = get_globals();
-    let selmon_id = match globals.selmon {
-        Some(id) => id,
-        None => return,
-    };
+
+    if globals.monitors.is_empty() {
+        return;
+    }
+
+    let selmon_id = globals.selmon;
 
     let mon = match globals.monitors.get(selmon_id) {
         Some(m) => m,
@@ -418,10 +417,12 @@ pub fn hide_overlay(_arg: &Arg) {
     }
 
     let globals = get_globals();
-    let selmon_id = match globals.selmon {
-        Some(id) => id,
-        None => return,
-    };
+
+    if globals.monitors.is_empty() {
+        return;
+    }
+
+    let selmon_id = globals.selmon;
 
     let mon = match globals.monitors.get(selmon_id) {
         Some(m) => m,
@@ -563,8 +564,7 @@ pub fn set_overlay(_arg: &Arg) {
 
     let (overlaystatus, overlay_visible, mon_tags) = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        if let Some(mon) = globals.monitors.get(selmon_id) {
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
             let overlay_win = match mon.overlay {
                 Some(w) => w,
                 None => return,
@@ -603,8 +603,7 @@ pub fn set_overlay_mode(mode: i32) {
 
     let (has_overlay, mon_wh, mon_ww, overlaystatus) = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        let mon = globals.monitors.get(selmon_id);
+        let mon = globals.monitors.get(globals.selmon);
         (
             mon.and_then(|m| m.overlay).is_some(),
             mon.map(|m| m.work_rect.h).unwrap_or(0),
@@ -619,8 +618,7 @@ pub fn set_overlay_mode(mode: i32) {
 
     {
         let globals = get_globals_mut();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        if let Some(mon) = globals.monitors.get(selmon_id) {
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
             if let Some(overlay_win) = mon.overlay {
                 if let Some(client) = globals.clients.get_mut(&overlay_win) {
                     if mode == OVERLAY_TOP || mode == OVERLAY_BOTTOM {
@@ -667,8 +665,7 @@ pub fn reset_overlay_size() {
         bh,
     ) = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        if let Some(mon) = globals.monitors.get(selmon_id) {
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
             let overlay_win = mon.overlay;
             (
                 overlay_win.is_some(),
@@ -693,8 +690,7 @@ pub fn reset_overlay_size() {
 
     let overlay_win = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
-        globals.monitors.get(selmon_id).and_then(|m| m.overlay)
+        globals.monitors.get(globals.selmon).and_then(|m| m.overlay)
     };
 
     let Some(win) = overlay_win else { return };

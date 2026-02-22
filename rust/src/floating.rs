@@ -89,8 +89,8 @@ pub fn check_floating(win: Window) -> bool {
         if client.isfloating {
             return true;
         }
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
+        if !globals.monitors.is_empty() {
+            if let Some(mon) = globals.monitors.get(globals.selmon) {
                 if !crate::monitor::is_current_layout_tiling(mon, &globals.tags) {
                     return true;
                 }
@@ -229,8 +229,8 @@ pub fn reset_snap(win: Window) {
     let (is_floating, snapstatus, has_tiling) = {
         let globals = get_globals();
         if let Some(client) = globals.clients.get(&win) {
-            let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-                if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            let has_tiling = if !globals.monitors.is_empty() {
+                if let Some(mon) = globals.monitors.get(globals.selmon) {
                     crate::monitor::is_current_layout_tiling(mon, &globals.tags)
                 } else {
                     true
@@ -421,8 +421,8 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
 
                 let is_sel = {
                     let globals = get_globals();
-                    if let Some(sel_mon_id) = globals.selmon {
-                        globals.monitors.get(sel_mon_id).and_then(|mon| mon.sel) == Some(win)
+                    if !globals.monitors.is_empty() {
+                        globals.monitors.get(globals.selmon).and_then(|mon| mon.sel) == Some(win)
                     } else {
                         false
                     }
@@ -510,11 +510,10 @@ pub fn temp_fullscreen(_arg: &Arg) {
         let globals = get_globals();
         (
             globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.fullscreen)),
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel)),
+                .monitors
+                .get(globals.selmon)
+                .and_then(|m| m.fullscreen),
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel),
             globals.animated,
         )
     };
@@ -536,19 +535,15 @@ pub fn temp_fullscreen(_arg: &Arg) {
         }
 
         let globals = get_globals_mut();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                mon.fullscreen = None;
-            }
+        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+            mon.fullscreen = None;
         }
     } else {
         let Some(win) = sel_win else { return };
 
         let globals = get_globals_mut();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-                mon.fullscreen = Some(win);
-            }
+        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+            mon.fullscreen = Some(win);
         }
 
         if check_floating(win) {
@@ -560,23 +555,20 @@ pub fn temp_fullscreen(_arg: &Arg) {
         let globals = get_globals_mut();
         globals.animated = false;
 
-        if let Some(sel_mon_id) = get_globals().selmon {
-            arrange(Some(sel_mon_id));
-        }
+        arrange(Some(get_globals().selmon));
 
         let globals = get_globals_mut();
         globals.animated = true;
     } else {
-        if let Some(sel_mon_id) = get_globals().selmon {
-            arrange(Some(sel_mon_id));
-        }
+        arrange(Some(get_globals().selmon));
     }
 
     let fullscreen = {
         let globals = get_globals();
         globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.fullscreen))
+            .monitors
+            .get(globals.selmon)
+            .and_then(|m| m.fullscreen)
     };
 
     if let Some(win) = fullscreen {
@@ -594,10 +586,8 @@ pub fn temp_fullscreen(_arg: &Arg) {
 
 fn has_tiling_layout() -> bool {
     let globals = get_globals();
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            return crate::monitor::is_current_layout_tiling(mon, &globals.tags);
-        }
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        return crate::monitor::is_current_layout_tiling(mon, &globals.tags);
     }
     true
 }
@@ -605,25 +595,21 @@ fn has_tiling_layout() -> bool {
 pub fn toggle_floating(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            let mon = match globals.monitors.get(sel_mon_id) {
-                Some(m) => m,
-                None => return,
-            };
+        let mon = match globals.monitors.get(globals.selmon) {
+            Some(m) => m,
+            None => return,
+        };
 
-            if let Some(sel) = mon.sel {
-                if Some(sel) == mon.overlay {
+        if let Some(sel) = mon.sel {
+            if Some(sel) == mon.overlay {
+                return;
+            }
+            if let Some(c) = globals.clients.get(&sel) {
+                if c.is_fullscreen && !c.isfakefullscreen {
                     return;
                 }
-                if let Some(c) = globals.clients.get(&sel) {
-                    if c.is_fullscreen && !c.isfakefullscreen {
-                        return;
-                    }
-                }
-                Some(sel)
-            } else {
-                None
             }
+            Some(sel)
         } else {
             None
         }
@@ -652,9 +638,7 @@ pub fn toggle_floating(_arg: &Arg) {
     let new_state = !is_floating || is_fixed;
     apply_float_change(win, new_state, true, true);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders: bool) {
@@ -736,9 +720,7 @@ pub fn set_floating(win: Window, should_arrange: bool) {
     apply_float_change(win, true, false, false);
 
     if should_arrange {
-        if let Some(sel_mon_id) = get_globals().selmon {
-            arrange(Some(sel_mon_id));
-        }
+        arrange(Some(get_globals().selmon));
     }
 }
 
@@ -768,9 +750,7 @@ pub fn set_tiled(win: Window, should_arrange: bool) {
     apply_float_change(win, false, false, false);
 
     if should_arrange {
-        if let Some(sel_mon_id) = get_globals().selmon {
-            arrange(Some(sel_mon_id));
-        }
+        arrange(Some(get_globals().selmon));
     }
 }
 
@@ -796,28 +776,22 @@ pub fn change_floating_win(win: Window) {
     let new_state = !is_floating || is_fixed;
     apply_float_change(win, new_state, false, false);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 pub fn center_window(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            let mon = match globals.monitors.get(sel_mon_id) {
-                Some(m) => m,
-                None => return,
-            };
+        let mon = match globals.monitors.get(globals.selmon) {
+            Some(m) => m,
+            None => return,
+        };
 
-            if let Some(sel) = mon.sel {
-                if Some(sel) == mon.overlay {
-                    return;
-                }
-                Some(sel)
-            } else {
-                None
+        if let Some(sel) = mon.sel {
+            if Some(sel) == mon.overlay {
+                return;
             }
+            Some(sel)
         } else {
             None
         }
@@ -840,18 +814,14 @@ pub fn center_window(_arg: &Arg) {
 
     let (mw, mh, showbar, mx, my) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (
-                    mon.work_rect.w,
-                    mon.work_rect.h,
-                    mon.showbar,
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                )
-            } else {
-                return;
-            }
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
+            (
+                mon.work_rect.w,
+                mon.work_rect.h,
+                mon.showbar,
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+            )
         } else {
             return;
         }
@@ -881,11 +851,7 @@ pub fn moveresize(arg: &Arg) {
 
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -924,17 +890,13 @@ pub fn moveresize(arg: &Arg) {
 
     let (mon_mx, mon_my, mon_mw, mon_mh) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                    mon.monitor_rect.w,
-                    mon.monitor_rect.h,
-                )
-            } else {
-                return;
-            }
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
+            (
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+            )
         } else {
             return;
         }
@@ -972,11 +934,7 @@ pub fn key_resize(arg: &Arg) {
 
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -1031,9 +989,7 @@ pub fn key_resize(arg: &Arg) {
 pub fn upscale_client(arg: &Arg) {
     let sel_win = if arg.v.is_none() {
         let globals = get_globals();
-        globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     } else {
         arg.v.map(|v| v as Window)
     };
@@ -1046,9 +1002,7 @@ pub fn upscale_client(arg: &Arg) {
 pub fn downscale_client(arg: &Arg) {
     let sel_win = if arg.v.is_none() {
         let globals = get_globals();
-        globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     } else {
         arg.v.map(|v| v as Window)
     };
@@ -1094,18 +1048,14 @@ pub fn scale_client_win(win: Window, scale: i32) {
 
     let (mon_mx, mon_my, mon_mw, mon_mh, bh) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                    mon.monitor_rect.w,
-                    mon.monitor_rect.h,
-                    globals.bh,
-                )
-            } else {
-                return;
-            }
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
+            (
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+                globals.bh,
+            )
         } else {
             return;
         }

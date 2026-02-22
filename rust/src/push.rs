@@ -29,12 +29,11 @@ pub fn next_c(c_win: Option<Window>, include_floating: bool) -> Option<Window> {
 pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
     let globals = get_globals();
 
-    let selmon_id = match globals.selmon {
-        Some(id) => id,
-        None => return None,
-    };
+    if globals.monitors.is_empty() {
+        return None;
+    }
 
-    let mon = match globals.monitors.get(selmon_id) {
+    let mon = match globals.monitors.get(globals.selmon) {
         Some(m) => m,
         None => return None,
     };
@@ -62,6 +61,7 @@ pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
     r
 }
 
+//TODO: do other layouts need this as well? Should this be used in more places?
 pub fn client_count_mon(mon: &MonitorInner) -> i32 {
     let globals = get_globals();
     let mut n = 0;
@@ -81,22 +81,20 @@ pub fn client_count_mon(mon: &MonitorInner) -> i32 {
 
 pub fn client_count() -> i32 {
     let globals = get_globals();
-    if let Some(selmon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(selmon_id) {
-            return client_count_mon(mon);
-        }
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        return client_count_mon(mon);
     }
     0
 }
 
 pub fn all_client_count() -> i32 {
     let globals = get_globals();
-    let selmon_id = match globals.selmon {
-        Some(id) => id,
-        None => return 0,
-    };
 
-    let mon = match globals.monitors.get(selmon_id) {
+    if globals.monitors.is_empty() {
+        return 0;
+    }
+
+    let mon = match globals.monitors.get(globals.selmon) {
         Some(m) => m,
         None => return 0,
     };
@@ -128,11 +126,10 @@ pub fn client_distance(c1: &Client, c2: &Client) -> i32 {
 pub fn push_up(arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+        if globals.monitors.is_empty() {
+            return;
+        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -156,10 +153,7 @@ pub fn push_up(arg: &Arg) {
 
     let include_floating = arg.f.is_sign_positive();
 
-    let selmon_id = {
-        let globals = get_globals();
-        globals.selmon.unwrap_or(0)
-    };
+    let selmon_id = get_globals().selmon;
 
     if let Some(prev) = prev_c(win, include_floating) {
         detach(win);
@@ -235,11 +229,10 @@ pub fn push_up(arg: &Arg) {
 pub fn push_down(arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+        if globals.monitors.is_empty() {
+            return;
+        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -263,10 +256,7 @@ pub fn push_down(arg: &Arg) {
 
     let include_floating = arg.f.is_sign_positive();
 
-    let selmon_id = {
-        let globals = get_globals();
-        globals.selmon.unwrap_or(0)
-    };
+    let selmon_id = get_globals().selmon;
 
     let next = {
         let globals = get_globals();

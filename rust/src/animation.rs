@@ -164,12 +164,8 @@ pub fn up_scale_client(arg: &Arg) {
     let scale = arg.i.max(1);
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
+        if !globals.monitors.is_empty() {
+            globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
         } else {
             None
         }
@@ -184,12 +180,8 @@ pub fn down_scale_client(arg: &Arg) {
     let scale = arg.i.max(1);
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
+        if !globals.monitors.is_empty() {
+            globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
         } else {
             None
         }
@@ -211,12 +203,12 @@ pub fn anim_right(arg: &Arg) {
 fn anim_scroll(arg: &Arg, dir: Direction) {
     let is_overview = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                false
-            }
+        if !globals.monitors.is_empty() {
+            globals
+                .monitors
+                .get(globals.selmon)
+                .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+                .unwrap_or(false)
         } else {
             false
         }
@@ -235,17 +227,19 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
 
     let (is_floating, has_tiling) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                let is_floating = mon
-                    .sel
-                    .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
-                    .unwrap_or(false);
-                let has_tiling = crate::monitor::is_current_layout_tiling(mon, &globals.tags);
-                (is_floating, has_tiling)
-            } else {
-                (false, true)
-            }
+        if !globals.monitors.is_empty() {
+            globals
+                .monitors
+                .get(globals.selmon)
+                .map(|mon| {
+                    let is_floating = mon
+                        .sel
+                        .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
+                        .unwrap_or(false);
+                    let has_tiling = crate::monitor::is_current_layout_tiling(mon, &globals.tags);
+                    (is_floating, has_tiling)
+                })
+                .unwrap_or((false, true))
         } else {
             (false, true)
         }
@@ -254,9 +248,7 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
     if !has_tiling {
         if let Some(sel_win) = {
             let globals = get_globals();
-            globals
-                .selmon
-                .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
+            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
         } {
             let snap_dir = match dir {
                 Direction::Right => SnapDirection::Right,
@@ -271,14 +263,12 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
 
     let current_tag = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.current_tag as u32
-            } else {
-                return;
-            }
-        } else {
+        if globals.monitors.is_empty() {
             return;
+        }
+        match globals.monitors.get(globals.selmon) {
+            Some(mon) => mon.current_tag as u32,
+            None => return,
         }
     };
 
@@ -309,8 +299,8 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         let target = current_tag + modifier as u32;
 
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
+        if !globals.monitors.is_empty() {
+            if let Some(mon) = globals.monitors.get(globals.selmon) {
                 let mut current = mon.clients;
                 while let Some(c_win) = current {
                     if let Some(c) = globals.clients.get(&c_win) {

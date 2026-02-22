@@ -143,10 +143,10 @@ pub fn button_press(e: &ButtonPressEvent) {
     let focusfollowsmouse = globals.focusfollowsmouse;
 
     if let Some(clicked_mon) = win_to_mon(e.event) {
-        if selmon_id != Some(clicked_mon) && (focusfollowsmouse || e.detail <= 3) {
+        if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             let globals = get_globals_mut();
-            globals.selmon = Some(clicked_mon);
-            selmon_id = Some(clicked_mon);
+            globals.selmon = clicked_mon;
+            selmon_id = clicked_mon;
             focus(None);
         }
     }
@@ -166,11 +166,11 @@ pub fn button_press(e: &ButtonPressEvent) {
                 }
             }
         }
-    } else if let Some(sel_id) = selmon_id {
+    } else {
         let globals = get_globals();
-        if let Some(mon) = globals.monitors.get(sel_id) {
+        if let Some(mon) = globals.monitors.get(selmon_id) {
             if e.event == mon.barwin {
-                (click_target, click_arg) = classify_bar_click(e, sel_id);
+                (click_target, click_arg) = classify_bar_click(e, selmon_id);
             } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
                 click_target = Click::SideBar;
             }
@@ -178,20 +178,18 @@ pub fn button_press(e: &ButtonPressEvent) {
     }
 
     if click_target == Click::RootWin {
-        if let Some(sel_id) = selmon_id {
-            if let Some(mon) = get_globals().monitors.get(sel_id) {
-                if let Some(sel_win) = mon.sel {
-                    let is_floating = get_globals()
-                        .clients
-                        .get(&sel_win)
-                        .map(|c| c.isfloating)
-                        .unwrap_or(false);
-                    let has_tiling = has_tiling_layout(sel_id);
-                    if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
-                        reset_cursor();
-                        resize_mouse(&Arg::default());
-                        return;
-                    }
+        if let Some(mon) = get_globals().monitors.get(selmon_id) {
+            if let Some(sel_win) = mon.sel {
+                let is_floating = get_globals()
+                    .clients
+                    .get(&sel_win)
+                    .map(|c| c.isfloating)
+                    .unwrap_or(false);
+                let has_tiling = has_tiling_layout(selmon_id);
+                if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
+                    reset_cursor();
+                    resize_mouse(&Arg::default());
+                    return;
                 }
             }
         }
@@ -311,11 +309,10 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
     let c = win_to_client(e.event);
     if let Some(win) = c {
         let globals = get_globals();
-        if let Some(sel_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_id) {
-                if mon.sel != Some(win) {
-                    focus(Some(win));
-                }
+        let sel_id = globals.selmon;
+        if let Some(mon) = globals.monitors.get(sel_id) {
+            if mon.sel != Some(win) {
+                focus(Some(win));
             }
         }
     }
@@ -339,11 +336,10 @@ pub fn expose(e: &ExposeEvent) {
 
 pub fn focus_in(_e: &FocusInEvent) {
     let globals = get_globals();
-    if let Some(sel_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_id) {
-            if let Some(sel_win) = mon.sel {
-                crate::client::set_focus(sel_win);
-            }
+    let sel_id = globals.selmon;
+    if let Some(mon) = globals.monitors.get(sel_id) {
+        if let Some(sel_win) = mon.sel {
+            crate::client::set_focus(sel_win);
         }
     }
 }
@@ -382,6 +378,8 @@ pub fn map_request(e: &MapRequestEvent) {
                     .and_then(|geo| geo.reply().ok())
                     .map(|geo| {
                         (
+                            //TODO: we should probably use the rectangle struct here
+                            // and make manage take a rectangle as a parameter
                             geo.x as i32,
                             geo.y as i32,
                             geo.width as u32,
@@ -396,6 +394,9 @@ pub fn map_request(e: &MapRequestEvent) {
     }
 }
 
+//TODO: why is it called _e??
+//TODO: compare with C codebase, did we port something wrong?
+//TODO: this has multiple responsibilities, refactor
 pub fn motion_notify(_e: &MotionNotifyEvent) {
     let e = _e;
     let globals = get_globals();
@@ -415,18 +416,16 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
             w: 1,
             h: 1,
         }) {
-            if Some(m) != selmon_id {
+            if m != selmon_id {
                 let globals = get_globals_mut();
-                globals.selmon = Some(m);
+                globals.selmon = m;
                 focus(None);
                 return;
             }
         }
     }
 
-    let Some(selmon_idx) = get_globals().selmon else {
-        return;
-    };
+    let selmon_idx = selmon_id;
 
     let (mx, my, bh, startmenusize, activeoffset, bar_clients_width, gesture, has_sel, x_limit) = {
         let globals = get_globals();

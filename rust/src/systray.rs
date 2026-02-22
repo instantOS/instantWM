@@ -428,13 +428,13 @@ pub fn systray_to_mon(m: Option<MonitorId>) -> MonitorId {
     if globals.systraypinning == 0 {
         return match m {
             Some(id) => {
-                if id == globals.selmon.unwrap_or(0) {
+                if id == globals.selmon {
                     id
                 } else {
-                    globals.selmon.unwrap_or(0)
+                    globals.selmon
                 }
             }
-            None => globals.selmon.unwrap_or(0),
+            None => globals.selmon,
         };
     }
 

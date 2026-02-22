@@ -43,15 +43,7 @@ pub fn moveresize(_arg: &Arg) {
 
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                return;
-            }
-        } else {
-            return;
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -74,15 +66,11 @@ pub fn moveresize(_arg: &Arg) {
 
     let has_tiling = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-            } else {
-                true
-            }
-        } else {
-            true
-        }
+        globals
+            .monitors
+            .get(globals.selmon)
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .unwrap_or(true)
     };
 
     if has_tiling && !is_floating {
@@ -91,20 +79,16 @@ pub fn moveresize(_arg: &Arg) {
 
     let (mon_mx, mon_my, mon_mw, mon_mh, mon_ww, mon_wh, bh) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                (
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                    mon.monitor_rect.w,
-                    mon.monitor_rect.h,
-                    mon.work_rect.w,
-                    mon.work_rect.h,
-                    globals.bh,
-                )
-            } else {
-                return;
-            }
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
+            (
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.monitor_rect.w,
+                mon.monitor_rect.h,
+                mon.work_rect.w,
+                mon.work_rect.h,
+                globals.bh,
+            )
         } else {
             return;
         }
@@ -196,8 +180,9 @@ fn warp_cursor_to_client_impl(win: Window) {
         let bh = globals.bh;
 
         if win == 0 {
-            if let Some(sel_mon_id) = globals.selmon {
-                if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            let globals = get_globals();
+            if !globals.monitors.is_empty() {
+                if let Some(mon) = globals.monitors.get(globals.selmon) {
                     let _ = conn.warp_pointer(
                         CURRENT_TIME,
                         root,
@@ -259,11 +244,7 @@ pub fn warp_cursor_to_client_win(c: &Client) {
 pub fn warp_to_focus(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     if let Some(win) = sel_win {
@@ -334,25 +315,21 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
 pub fn move_mouse(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                if let Some(sel) = mon.sel {
-                    if let Some(c) = globals.clients.get(&sel) {
-                        if c.is_fullscreen && !c.isfakefullscreen {
-                            return;
-                        }
-                        if Some(sel) == mon.overlay {
-                            return;
-                        }
-                        if Some(sel) == mon.fullscreen {
-                            crate::floating::temp_fullscreen(&Arg::default());
-                            return;
-                        }
+        if let Some(mon) = globals.monitors.get(globals.selmon) {
+            if let Some(sel) = mon.sel {
+                if let Some(c) = globals.clients.get(&sel) {
+                    if c.is_fullscreen && !c.isfakefullscreen {
+                        return;
                     }
-                    Some(sel)
-                } else {
-                    None
+                    if Some(sel) == mon.overlay {
+                        return;
+                    }
+                    if Some(sel) == mon.fullscreen {
+                        crate::floating::temp_fullscreen(&Arg::default());
+                        return;
+                    }
                 }
+                Some(sel)
             } else {
                 None
             }
@@ -371,15 +348,11 @@ pub fn move_mouse(_arg: &Arg) {
         };
         let snapstatus = c.snapstatus;
         let saved = (c.float_geo.x, c.float_geo.y, c.float_geo.w, c.float_geo.h);
-        let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-            globals
-                .monitors
-                .get(sel_mon_id)
-                .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
-                .unwrap_or(true)
-        } else {
-            true
-        };
+        let has_tiling = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
+            .unwrap_or(true);
         (snapstatus, saved.0, saved.1, saved.2, saved.3, has_tiling)
     };
 
@@ -392,7 +365,7 @@ pub fn move_mouse(_arg: &Arg) {
         let (c_x, c_y, c_w, c_h, mon_mw, mon_mh, mon_mx, mon_my, bh) = {
             let globals = get_globals();
             let c = globals.clients.get(&win).unwrap();
-            let mon = globals.monitors.get(globals.selmon.unwrap()).unwrap();
+            let mon = globals.monitors.get(globals.selmon).unwrap();
             let bh = globals.bh;
             if c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                 && c.geo.y >= mon.monitor_rect.y + bh - MAX_UNMAXIMIZE_OFFSET
@@ -500,38 +473,28 @@ pub fn move_mouse(_arg: &Arg) {
                             let mut adj_nx = nx;
                             let mut adj_ny = ny;
 
-                            if let Some(sel_mon_id) = globals.selmon {
-                                if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                                    if (mon.work_rect.x - nx).abs() < snap {
-                                        adj_nx = mon.work_rect.x;
-                                    } else if (mon.work_rect.x + mon.work_rect.w - (nx + width))
-                                        .abs()
-                                        < snap
-                                    {
-                                        adj_nx = mon.work_rect.x + mon.work_rect.w - width;
-                                    }
-                                    if (mon.work_rect.y - ny).abs() < snap {
-                                        adj_ny = mon.work_rect.y;
-                                    } else if (mon.work_rect.y + mon.work_rect.h - (ny + height))
-                                        .abs()
-                                        < snap
-                                    {
-                                        adj_ny = mon.work_rect.y + mon.work_rect.h - height;
-                                    }
+                            if let Some(mon) = globals.monitors.get(globals.selmon) {
+                                if (mon.work_rect.x - nx).abs() < snap {
+                                    adj_nx = mon.work_rect.x;
+                                } else if (mon.work_rect.x + mon.work_rect.w - (nx + width)).abs()
+                                    < snap
+                                {
+                                    adj_nx = mon.work_rect.x + mon.work_rect.w - width;
+                                }
+                                if (mon.work_rect.y - ny).abs() < snap {
+                                    adj_ny = mon.work_rect.y;
+                                } else if (mon.work_rect.y + mon.work_rect.h - (ny + height)).abs()
+                                    < snap
+                                {
+                                    adj_ny = mon.work_rect.y + mon.work_rect.h - height;
                                 }
                             }
 
-                            let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-                                globals
-                                    .monitors
-                                    .get(sel_mon_id)
-                                    .map(|m| {
-                                        crate::monitor::is_current_layout_tiling(m, &globals.tags)
-                                    })
-                                    .unwrap_or(true)
-                            } else {
-                                true
-                            };
+                            let has_tiling = globals
+                                .monitors
+                                .get(globals.selmon)
+                                .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
+                                .unwrap_or(true);
 
                             if !client.isfloating
                                 && has_tiling
@@ -567,19 +530,17 @@ pub fn move_mouse(_arg: &Arg) {
 
 fn check_edge_snap(x: i32, y: i32) -> i32 {
     let globals = get_globals();
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
-                return SNAP_LEFT;
-            }
-            if x > mon.monitor_rect.x + mon.monitor_rect.w - OVERLAY_ZONE_WIDTH
-                && x < mon.monitor_rect.x + mon.monitor_rect.w + 1
-            {
-                return SNAP_RIGHT;
-            }
-            if y <= mon.monitor_rect.y + if mon.showbar { globals.bh } else { 5 } {
-                return SNAP_TOP;
-            }
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
+            return SNAP_LEFT;
+        }
+        if x > mon.monitor_rect.x + mon.monitor_rect.w - OVERLAY_ZONE_WIDTH
+            && x < mon.monitor_rect.x + mon.monitor_rect.w + 1
+        {
+            return SNAP_RIGHT;
+        }
+        if y <= mon.monitor_rect.y + if mon.showbar { globals.bh } else { 5 } {
+            return SNAP_TOP;
         }
     }
     0
@@ -588,15 +549,7 @@ fn check_edge_snap(x: i32, y: i32) -> i32 {
 pub fn resize_mouse(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -670,17 +623,11 @@ pub fn resize_mouse(_arg: &Arg) {
                         let globals = get_globals();
                         let snap = globals.snap;
                         if let Some(client) = globals.clients.get(&win) {
-                            let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-                                globals
-                                    .monitors
-                                    .get(sel_mon_id)
-                                    .map(|m| {
-                                        crate::monitor::is_current_layout_tiling(m, &globals.tags)
-                                    })
-                                    .unwrap_or(true)
-                            } else {
-                                true
-                            };
+                            let has_tiling = globals
+                                .monitors
+                                .get(globals.selmon)
+                                .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
+                                .unwrap_or(true);
 
                             if !client.isfloating
                                 && has_tiling
@@ -721,15 +668,7 @@ pub fn force_resize_mouse(arg: &Arg) {
 pub fn resize_aspect_mouse(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -899,13 +838,11 @@ pub fn gesture_mouse(_arg: &Arg) {
                             last_time = m.time;
 
                             let globals = get_globals();
-                            if let Some(sel_mon_id) = globals.selmon {
-                                if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                                    let threshold = mon.monitor_rect.h / 30;
-                                    if (last_y - m.event_y as i32).abs() > threshold {
-                                        spawn(&Arg::default());
-                                        last_y = m.event_y as i32;
-                                    }
+                            if let Some(mon) = globals.monitors.get(globals.selmon) {
+                                let threshold = mon.monitor_rect.h / 30;
+                                if (last_y - m.event_y as i32).abs() > threshold {
+                                    spawn(&Arg::default());
+                                    last_y = m.event_y as i32;
                                 }
                             }
                         }
@@ -923,11 +860,7 @@ pub fn gesture_mouse(_arg: &Arg) {
 pub fn is_in_resize_border() -> bool {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return false };
@@ -935,15 +868,11 @@ pub fn is_in_resize_border() -> bool {
     let (is_floating, has_tiling, c_x, c_y, c_w, c_h) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&win) {
-            let has_tiling = if let Some(sel_mon_id) = globals.selmon {
-                globals
-                    .monitors
-                    .get(sel_mon_id)
-                    .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
-                    .unwrap_or(true)
-            } else {
-                true
-            };
+            let has_tiling = globals
+                .monitors
+                .get(globals.selmon)
+                .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
+                .unwrap_or(true);
             (c.isfloating, has_tiling, c.geo.x, c.geo.y, c.geo.w, c.geo.h)
         } else {
             return false;
@@ -960,11 +889,9 @@ pub fn is_in_resize_border() -> bool {
 
     let globals = get_globals();
     let bh = globals.bh;
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if mon.showbar && y < mon.monitor_rect.y + bh {
-                return false;
-            }
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        if mon.showbar && y < mon.monitor_rect.y + bh {
+            return false;
         }
     }
 
@@ -990,11 +917,7 @@ pub fn hover_resize_mouse(_arg: &Arg) -> i32 {
 
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            return 0;
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return 0 };
@@ -1067,10 +990,7 @@ pub fn window_title_mouse_handler(arg: &Arg) {
 
     let (was_focused, was_hidden) = {
         let globals = get_globals();
-        let was_focused = globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id).and_then(|m| m.sel))
-            == Some(win);
+        let was_focused = globals.monitors.get(globals.selmon).and_then(|m| m.sel) == Some(win);
         let was_hidden = crate::client::is_hidden(win);
         (was_focused, was_hidden)
     };
@@ -1245,11 +1165,7 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
 pub fn draw_window(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -1337,16 +1253,17 @@ pub fn handle_monitor_switch(c_win: Window, rect: &Rect) {
     let new_mon = rect_to_mon_rect(rect);
     let current_mon = get_globals().selmon;
 
-    if new_mon != current_mon {
+    if new_mon != Some(current_mon) {
         if let Some(target) = new_mon {
             send_mon(c_win, target);
-            if let Some(cur) = current_mon {
-                if let Some(cur_sel) = get_globals().monitors.get(cur).and_then(|m| m.sel) {
+            {
+                let globals = get_globals();
+                if let Some(cur_sel) = globals.monitors.get(current_mon).and_then(|m| m.sel) {
                     unfocus_win(cur_sel, false);
                 }
             }
             let globals = get_globals_mut();
-            globals.selmon = Some(target);
+            globals.selmon = target;
             focus(None);
         }
     }
@@ -1401,33 +1318,27 @@ pub fn drag_tag(arg: &Arg) {
         globals.tags.width
     };
 
-    let current_tagset = if let Some(sel_mon_id) = globals.selmon {
-        globals
-            .monitors
-            .get(sel_mon_id)
-            .map(|m| m.tagset[m.seltags as usize])
-    } else {
-        None
-    };
+    let current_tagset = globals
+        .monitors
+        .get(globals.selmon)
+        .map(|m| m.tagset[m.seltags as usize]);
 
     if (arg.ui & globals.tags.mask()) != current_tagset.unwrap_or(0) {
         view(arg);
         return;
     }
 
-    let sel_win = if let Some(sel_mon_id) = globals.selmon {
-        globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-    } else {
-        None
-    };
+    let sel_win = globals.monitors.get(globals.selmon).and_then(|m| m.sel);
 
     let Some(_win) = sel_win else { return };
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let selmon_id = globals.selmon;
-        let mon_mx = selmon_id
-            .and_then(|id| globals.monitors.get(id).map(|m| m.monitor_rect.x))
+        let mon_mx = globals
+            .monitors
+            .get(selmon_id)
+            .map(|m| m.monitor_rect.x)
             .unwrap_or(0);
         let cursor = globals.cursors[2].as_ref().map(|c| c.cursor).unwrap_or(0);
 
@@ -1447,10 +1358,10 @@ pub fn drag_tag(arg: &Arg) {
             return;
         }
 
-        if let Some(id) = selmon_id {
+        {
             let gm = get_globals_mut();
             gm.bar_dragging = true;
-            if let Some(mon) = gm.monitors.get_mut(id) {
+            if let Some(mon) = gm.monitors.get_mut(selmon_id) {
                 draw_bar(mon);
             }
         }
@@ -1478,15 +1389,11 @@ pub fn drag_tag(arg: &Arg) {
 
                             if m.event_y as i32 > {
                                 let globals = get_globals();
-                                if let Some(sel_mon_id) = globals.selmon {
-                                    globals
-                                        .monitors
-                                        .get(sel_mon_id)
-                                        .map(|m| m.by + globals.bh + 1)
-                                        .unwrap_or(9999)
-                                } else {
-                                    9999
-                                }
+                                globals
+                                    .monitors
+                                    .get(globals.selmon)
+                                    .map(|m| m.by + globals.bh + 1)
+                                    .unwrap_or(9999)
                             } {
                                 cursor_on_bar = false;
                                 break;
@@ -1500,13 +1407,11 @@ pub fn drag_tag(arg: &Arg) {
                             };
                             if last_tag != tag_x {
                                 last_tag = tag_x;
-                                if let Some(sel_mon_id) = selmon_id {
-                                    let gm = get_globals_mut();
-                                    if let Some(mon) = gm.monitors.get_mut(sel_mon_id) {
-                                        mon.gesture = Gesture::from_tag_index(tag_x as usize)
-                                            .unwrap_or(Gesture::None);
-                                        draw_bar(mon);
-                                    }
+                                let gm = get_globals_mut();
+                                if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+                                    mon.gesture = Gesture::from_tag_index(tag_x as usize)
+                                        .unwrap_or(Gesture::None);
+                                    draw_bar(mon);
                                 }
                             }
                         }
@@ -1523,8 +1428,9 @@ pub fn drag_tag(arg: &Arg) {
             if let Some((x, _, state)) = last_motion {
                 let globals = get_globals();
                 let mon_x = globals
-                    .selmon
-                    .and_then(|id| globals.monitors.get(id).map(|m| m.monitor_rect.x))
+                    .monitors
+                    .get(selmon_id)
+                    .map(|m| m.monitor_rect.x)
                     .unwrap_or(0);
                 let local_x = x - mon_x;
 
@@ -1550,11 +1456,9 @@ pub fn drag_tag(arg: &Arg) {
         {
             let gm = get_globals_mut();
             gm.bar_dragging = false;
-            if let Some(sel_mon_id) = gm.selmon {
-                if let Some(mon) = gm.monitors.get_mut(sel_mon_id) {
-                    mon.gesture = Gesture::None;
-                    draw_bar(mon);
-                }
+            if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+                mon.gesture = Gesture::None;
+                draw_bar(mon);
             }
         }
     }
@@ -1577,22 +1481,20 @@ fn snap_to_monitor_edges(c: &Client, nx: &mut i32, ny: &mut i32) {
     let globals = get_globals();
     let snap = globals.snap;
 
-    if let Some(sel_mon_id) = globals.selmon {
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            let width = c.geo.total_width(c.border_width);
-            let height = c.geo.total_height(c.border_width);
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        let width = c.geo.total_width(c.border_width);
+        let height = c.geo.total_height(c.border_width);
 
-            if (mon.work_rect.x - *nx).abs() < snap {
-                *nx = mon.work_rect.x;
-            } else if (mon.work_rect.x + mon.work_rect.w - (*nx + width)).abs() < snap {
-                *nx = mon.work_rect.x + mon.work_rect.w - width;
-            }
+        if (mon.work_rect.x - *nx).abs() < snap {
+            *nx = mon.work_rect.x;
+        } else if (mon.work_rect.x + mon.work_rect.w - (*nx + width)).abs() < snap {
+            *nx = mon.work_rect.x + mon.work_rect.w - width;
+        }
 
-            if (mon.work_rect.y - *ny).abs() < snap {
-                *ny = mon.work_rect.y;
-            } else if (mon.work_rect.y + mon.work_rect.h - (*ny + height)).abs() < snap {
-                *ny = mon.work_rect.y + mon.work_rect.h - height;
-            }
+        if (mon.work_rect.y - *ny).abs() < snap {
+            *ny = mon.work_rect.y;
+        } else if (mon.work_rect.y + mon.work_rect.h - (*ny + height)).abs() < snap {
+            *ny = mon.work_rect.y + mon.work_rect.h - height;
         }
     }
 }

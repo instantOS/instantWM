@@ -62,8 +62,8 @@ pub fn draw_bar(m: &mut MonitorInner) {
     let g = get_globals();
     let bh = g.bh;
     let is_selmon = g
-        .selmon
-        .and_then(|selmon_idx| g.monitors.get(selmon_idx))
+        .monitors
+        .get(g.selmon)
         .map_or(false, |selmon| selmon.num == m.num);
 
     let mut layout = BarLayout::default();
@@ -118,9 +118,7 @@ pub fn draw_bars() {
 
 pub fn reset_bar() {
     let g = get_globals_mut();
-    let Some(selmon_idx) = g.selmon else {
-        return;
-    };
+    let selmon_idx = g.selmon;
 
     let should_reset = g
         .monitors

@@ -11,12 +11,10 @@ const STARTMENU_ICON_INNER: i32 = 6;
 pub(crate) fn draw_startmenu_icon(bh: i32) {
     let g = get_globals();
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
-    let startmenu_invert = if let Some(selmon_idx) = g.selmon {
-        let mon = &g.monitors[selmon_idx];
-        mon.gesture == Gesture::StartMenu
-    } else {
-        false
-    };
+    let startmenu_invert = g
+        .monitors
+        .get(g.selmon)
+        .map_or(false, |mon| mon.gesture == Gesture::StartMenu);
 
     let startmenu_size = g.startmenusize;
     let scheme: Option<ColorScheme> = if g.tags.prefix {
@@ -97,20 +95,19 @@ fn get_tag_scheme(
     }
 
     if occupied_tags & (1 << i) != 0 {
-        let sel_has_tag = g.selmon.map_or(false, |selmon_idx| {
-            g.monitors
-                .get(selmon_idx)
-                .and_then(|selmon| {
-                    selmon
-                        .sel
-                        .and_then(|sel_win| g.clients.get(&sel_win).map(|c| c.tags & (1 << i) != 0))
-                })
-                .unwrap_or(false)
-        });
+        let sel_has_tag = g
+            .monitors
+            .get(g.selmon)
+            .and_then(|selmon| {
+                selmon
+                    .sel
+                    .and_then(|sel_win| g.clients.get(&sel_win).map(|c| c.tags & (1 << i) != 0))
+            })
+            .unwrap_or(false);
 
         let is_selected = g
-            .selmon
-            .and_then(|selmon_idx| g.monitors.get(selmon_idx))
+            .monitors
+            .get(g.selmon)
             .map_or(false, |selmon| selmon.num == m.num);
 
         if is_selected && sel_has_tag {
@@ -149,12 +146,10 @@ pub(crate) fn draw_tag_indicators(
             continue;
         }
 
-        let is_hover = if let Some(selmon_idx) = g.selmon {
-            let selmon = &g.monitors[selmon_idx];
-            selmon.gesture as u32 == i + 1
-        } else {
-            false
-        };
+        let is_hover = g
+            .monitors
+            .get(g.selmon)
+            .map_or(false, |selmon| selmon.gesture as u32 == i + 1);
 
         let current_tag = m.current_tag;
         let actual_i = if i == 8 && current_tag > 9 {
@@ -265,18 +260,14 @@ fn get_window_scheme(c: &Client, is_hover: bool) -> Option<ColorScheme> {
         return None;
     }
 
-    let is_selected = g.selmon.map_or(false, |selmon_idx| {
-        g.monitors.get(selmon_idx).map_or(false, |selmon| {
-            selmon.sel.map_or(false, |sel_win| sel_win == c.win)
-        })
+    let is_selected = g.monitors.get(g.selmon).map_or(false, |selmon| {
+        selmon.sel.map_or(false, |sel_win| sel_win == c.win)
     });
 
-    let is_overlay = g.selmon.map_or(false, |selmon_idx| {
-        g.monitors.get(selmon_idx).map_or(false, |selmon| {
-            selmon
-                .overlay
-                .map_or(false, |overlay_win| overlay_win == c.win)
-        })
+    let is_overlay = g.monitors.get(g.selmon).map_or(false, |selmon| {
+        selmon
+            .overlay
+            .map_or(false, |overlay_win| overlay_win == c.win)
     });
 
     if is_selected {
@@ -304,12 +295,10 @@ fn get_window_scheme(c: &Client, is_hover: bool) -> Option<ColorScheme> {
 pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
     let g = get_globals();
 
-    let close_hovered = if let Some(selmon_idx) = g.selmon {
-        let selmon = &g.monitors[selmon_idx];
-        selmon.gesture == Gesture::CloseButton
-    } else {
-        false
-    };
+    let close_hovered = g
+        .monitors
+        .get(g.selmon)
+        .map_or(false, |selmon| selmon.gesture == Gesture::CloseButton);
 
     let schemes = if close_hovered {
         &g.closebuttonschemes.hover
@@ -322,18 +311,18 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
 
         let scheme_idx = if c.islocked {
             SchemeClose::Locked as usize
-        } else if g.selmon.map_or(false, |selmon_idx| {
-            g.monitors
-                .get(selmon_idx)
-                .and_then(|selmon| {
-                    selmon.sel.and_then(|sel_win| {
-                        g.clients
-                            .get(&sel_win)
-                            .map(|sel_c| sel_c.is_fullscreen && sel_c.win == c.win)
-                    })
+        } else if g
+            .monitors
+            .get(g.selmon)
+            .and_then(|selmon| {
+                selmon.sel.and_then(|sel_win| {
+                    g.clients
+                        .get(&sel_win)
+                        .map(|sel_c| sel_c.is_fullscreen && sel_c.win == c.win)
                 })
-                .unwrap_or(false)
-        }) {
+            })
+            .unwrap_or(false)
+        {
             SchemeClose::Fullscreen as usize
         } else {
             SchemeClose::Normal as usize
@@ -388,17 +377,14 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
 fn draw_window_title(m: &mut MonitorInner, c: &Client, x: i32, width: i32, bh: i32) {
     let g = get_globals();
 
-    let is_hover = if let Some(selmon_idx) = g.selmon {
-        let selmon = &g.monitors[selmon_idx];
+    let is_hover = g.monitors.get(g.selmon).map_or(false, |selmon| {
         selmon.gesture == Gesture::None
             && selmon.sel.map_or(false, |sel_win| {
                 g.clients
                     .get(&sel_win)
                     .map_or(false, |hover_c| hover_c.win == c.win)
             })
-    } else {
-        false
-    };
+    });
 
     let client_name = c.name.as_str();
     let text_w = super::text_width(client_name);
@@ -418,10 +404,8 @@ fn draw_window_title(m: &mut MonitorInner, c: &Client, x: i32, width: i32, bh: i
         drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
     }
 
-    let is_selected = g.selmon.map_or(false, |selmon_idx| {
-        g.monitors.get(selmon_idx).map_or(false, |selmon| {
-            selmon.sel.map_or(false, |sel_win| sel_win == c.win)
-        })
+    let is_selected = g.monitors.get(g.selmon).map_or(false, |selmon| {
+        selmon.sel.map_or(false, |sel_win| sel_win == c.win)
     });
 
     if is_selected {
@@ -441,9 +425,7 @@ pub(crate) fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, b
 
         let clients: Vec<Client> = g.clients.values().cloned().collect();
         for c in clients.iter() {
-            let mon_match = c.mon_id.map_or(false, |mon_id| {
-                g.selmon.map_or(false, |selmon_idx| mon_id == selmon_idx)
-            });
+            let mon_match = c.mon_id.map_or(false, |mon_id| mon_id == g.selmon);
             if !mon_match {
                 continue;
             }
@@ -487,11 +469,10 @@ pub(crate) fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, b
             0,
         );
 
-        let has_clients = g.selmon.map_or(false, |selmon_idx| {
-            g.monitors
-                .get(selmon_idx)
-                .map_or(false, |selmon| selmon.clients.is_some())
-        });
+        let has_clients = g
+            .monitors
+            .get(g.selmon)
+            .map_or(false, |selmon| selmon.clients.is_some());
 
         if !has_clients {
             let help_text = "Press space to launch an application";

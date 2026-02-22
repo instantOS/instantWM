@@ -52,6 +52,8 @@ pub struct Globals {
     /// Pixel gap between systray icons.
     pub systrayspacing: i32,
     pub systray: Option<Systray>,
+    //TODO: why is this an option? Can the window manager ever function without
+    //this?
     pub drw: Option<Drw>,
     pub xlibdisplay: XlibDisplay,
     pub cursors: [Option<Cur>; 10],

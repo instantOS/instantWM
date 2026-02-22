@@ -1053,15 +1053,7 @@ pub fn apply_size_hints(
 pub fn kill_client(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                mon.sel
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
     };
 
     let Some(win) = sel_win else { return };
@@ -1133,8 +1125,8 @@ pub fn shut_kill(arg: &Arg) {
     let has_clients = {
         let globals = get_globals();
         globals
-            .selmon
-            .and_then(|id| globals.monitors.get(id))
+            .monitors
+            .get(globals.selmon)
             .map_or(false, |m| m.clients.is_some())
     };
 
@@ -1245,7 +1237,7 @@ pub fn manage(
                 c.tags = tc.tags;
             }
         } else {
-            c.mon_id = globals.selmon;
+            c.mon_id = Some(globals.selmon);
         }
     }
 
@@ -1447,10 +1439,7 @@ pub fn manage(
 
     let sel_win = {
         let globals = get_globals();
-        globals
-            .selmon
-            .and_then(|sel_mon_id| globals.monitors.get(sel_mon_id))
-            .and_then(|mon| mon.sel)
+        globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
     };
     if let Some(sel_win) = sel_win {
         unfocus_win(sel_win, false);
@@ -1970,15 +1959,10 @@ pub fn update_wm_hints(win: Window) {
 
                 let mut globals = get_globals_mut();
                 if let Some(client) = globals.clients.get_mut(&win) {
-                    let is_sel = if let Some(sel_mon_id) = globals.selmon {
-                        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                            mon.sel == Some(win)
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    };
+                    let is_sel = globals
+                        .monitors
+                        .get(globals.selmon)
+                        .map_or(false, |mon| mon.sel == Some(win));
 
                     if is_sel && is_urgent {
                         let new_flags = flags & !X_URGENCY_HINT;

@@ -293,19 +293,17 @@ pub fn monocle(m: &mut MonitorInner) {
     let mut n: u32 = 0;
     let g = get_globals();
 
-    if g.animated {
-        if let Some(selmon_id) = g.selmon {
-            if let Some(mon) = g.monitors.get(selmon_id) {
-                if let Some(sel_win) = mon.sel {
-                    let x11 = get_x11();
-                    if let Some(ref conn) = x11.conn {
-                        let _ = configure_window(
-                            conn,
-                            sel_win,
-                            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                        );
-                        let _ = conn.flush();
-                    }
+    if g.animated && !g.monitors.is_empty() {
+        if let Some(mon) = g.monitors.get(g.selmon) {
+            if let Some(sel_win) = mon.sel {
+                let x11 = get_x11();
+                if let Some(ref conn) = x11.conn {
+                    let _ = configure_window(
+                        conn,
+                        sel_win,
+                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                    );
+                    let _ = conn.flush();
                 }
             }
         }
@@ -326,9 +324,7 @@ pub fn monocle(m: &mut MonitorInner) {
 
     let g = get_globals();
     let animated = g.animated;
-    let sel_win = g
-        .selmon
-        .and_then(|id| g.monitors.get(id).and_then(|mon| mon.sel));
+    let sel_win = g.monitors.get(g.selmon).and_then(|mon| mon.sel);
 
     let mut c_win = next_tiled(m.clients);
     while let Some(win) = c_win {
@@ -932,19 +928,18 @@ pub fn overviewlayout(m: &mut MonitorInner) {
 
     let (selmon_mx, selmon_my, selmon_wh, selmon_ww, selmon_showbar, selmon_barwin) = {
         let g = get_globals();
-        if let Some(selmon_id) = g.selmon {
-            if let Some(mon) = g.monitors.get(selmon_id) {
-                (
-                    mon.monitor_rect.x,
-                    mon.monitor_rect.y,
-                    mon.work_rect.h,
-                    mon.work_rect.w,
-                    mon.showbar,
-                    mon.barwin,
-                )
-            } else {
-                return;
-            }
+        if g.monitors.is_empty() {
+            return;
+        }
+        if let Some(mon) = g.monitors.get(g.selmon) {
+            (
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.work_rect.h,
+                mon.work_rect.w,
+                mon.showbar,
+                mon.barwin,
+            )
         } else {
             return;
         }
@@ -1048,20 +1043,17 @@ pub fn floatl(m: &mut MonitorInner) {
         }
     }
 
-    let g = get_globals();
-    let selmon_id = g.selmon;
-
-    if let Some(id) = selmon_id {
+    if !get_globals().monitors.is_empty() {
         let g = get_globals_mut();
-        if let Some(mon) = g.monitors.get_mut(id) {
+        if let Some(mon) = g.monitors.get_mut(g.selmon) {
             restack(mon);
         }
     }
 
     {
         let g = get_globals();
-        if let Some(selmon_id) = g.selmon {
-            if let Some(mon) = g.monitors.get(selmon_id) {
+        if !g.monitors.is_empty() {
+            if let Some(mon) = g.monitors.get(g.selmon) {
                 if let Some(sel_win) = mon.sel {
                     let x11 = get_x11();
                     if let Some(ref conn) = x11.conn {
@@ -1380,8 +1372,8 @@ pub fn set_layout(arg: &Arg) {
         let layout_idx = arg.v;
         {
             let g = get_globals_mut();
-            if let Some(selmon_id) = g.selmon {
-                if let Some(m) = g.monitors.get_mut(selmon_id) {
+            if !g.monitors.is_empty() {
+                if let Some(m) = g.monitors.get_mut(g.selmon) {
                     let current_tag = m.current_tag;
 
                     if current_tag > 0 && current_tag <= g.tags.tags.len() {
@@ -1400,21 +1392,16 @@ pub fn set_layout(arg: &Arg) {
 
         let selmon_sel = {
             let g = get_globals();
-            g.selmon
-                .and_then(|id| g.monitors.get(id).and_then(|m| m.sel))
+            g.monitors.get(g.selmon).and_then(|m| m.sel)
         };
 
         if selmon_sel.is_some() {
             let g = get_globals();
-            if let Some(selmon_id) = g.selmon {
-                arrange(Some(selmon_id));
-            }
+            arrange(Some(g.selmon));
         } else {
             let g = get_globals_mut();
-            if let Some(selmon_id) = g.selmon {
-                if let Some(m) = g.monitors.get_mut(selmon_id) {
-                    draw_bar(m);
-                }
+            if let Some(m) = g.monitors.get_mut(g.selmon) {
+                draw_bar(m);
             }
         }
     }
@@ -1432,9 +1419,9 @@ pub fn set_layout(arg: &Arg) {
 
         for mon_id in monitors {
             let g = get_globals();
-            if Some(mon_id) != g.selmon {
+            if mon_id != g.selmon {
                 let g = get_globals_mut();
-                g.selmon = Some(mon_id);
+                g.selmon = mon_id;
                 set_layout(arg);
             }
         }
@@ -1458,8 +1445,8 @@ fn get_current_layout_idx(m: &MonitorInner) -> Option<usize> {
 
 fn get_current_layout_symbol() -> Option<&'static str> {
     let g = get_globals();
-    if let Some(selmon_id) = g.selmon {
-        if let Some(m) = g.monitors.get(selmon_id) {
+    if !g.monitors.is_empty() {
+        if let Some(m) = g.monitors.get(g.selmon) {
             let idx = get_current_layout_idx(m);
             if let Some(i) = idx {
                 if i < g.layouts.len() {
@@ -1478,12 +1465,10 @@ fn get_current_layout_symbol() -> Option<&'static str> {
 pub fn cycle_layout_direction(forward: bool) {
     let current_idx = {
         let g = get_globals();
-        if let Some(selmon_id) = g.selmon {
-            if let Some(m) = g.monitors.get(selmon_id) {
-                get_current_layout_idx(m)
-            } else {
-                None
-            }
+        if g.monitors.is_empty() {
+            None
+        } else if let Some(m) = g.monitors.get(g.selmon) {
+            get_current_layout_idx(m)
         } else {
             None
         }
@@ -1563,8 +1548,8 @@ pub fn inc_nmaster_by(delta: i32) {
 
     {
         let g = get_globals_mut();
-        if let Some(selmon_id) = g.selmon {
-            if let Some(m) = g.monitors.get_mut(selmon_id) {
+        if !g.monitors.is_empty() {
+            if let Some(m) = g.monitors.get_mut(g.selmon) {
                 if delta > 0 && m.nmaster >= ccount as i32 {
                     m.nmaster = ccount as i32;
                     return;
@@ -1582,8 +1567,8 @@ pub fn inc_nmaster_by(delta: i32) {
     }
 
     let g = get_globals();
-    if let Some(selmon_id) = g.selmon {
-        arrange(Some(selmon_id));
+    if !g.monitors.is_empty() {
+        arrange(Some(g.selmon));
     }
 }
 
@@ -1599,13 +1584,11 @@ pub fn set_mfact(arg: &Arg) {
 
     let has_arrange = {
         let g = get_globals();
-        if let Some(selmon_id) = g.selmon {
-            if let Some(m) = g.monitors.get(selmon_id) {
-                let idx = get_current_layout_idx(m).unwrap_or(0);
-                g.layouts.get(idx).map_or(true, |l| l.is_tiling())
-            } else {
-                false
-            }
+        if g.monitors.is_empty() {
+            false
+        } else if let Some(m) = g.monitors.get(g.selmon) {
+            let idx = get_current_layout_idx(m).unwrap_or(0);
+            g.layouts.get(idx).map_or(true, |l| l.is_tiling())
         } else {
             false
         }
@@ -1616,12 +1599,10 @@ pub fn set_mfact(arg: &Arg) {
     }
 
     let g = get_globals();
-    let current_mfact = if let Some(selmon_id) = g.selmon {
-        if let Some(m) = g.monitors.get(selmon_id) {
-            m.mfact
-        } else {
-            0.55
-        }
+    let current_mfact = if g.monitors.is_empty() {
+        0.55
+    } else if let Some(m) = g.monitors.get(g.selmon) {
+        m.mfact
     } else {
         0.55
     };
@@ -1648,8 +1629,8 @@ pub fn set_mfact(arg: &Arg) {
 
     {
         let g = get_globals_mut();
-        if let Some(selmon_id) = g.selmon {
-            if let Some(m) = g.monitors.get_mut(selmon_id) {
+        if !g.monitors.is_empty() {
+            if let Some(m) = g.monitors.get_mut(g.selmon) {
                 m.mfact = f;
                 let current_tag = m.current_tag;
                 if current_tag > 0 && current_tag <= g.tags.tags.len() {
@@ -1660,8 +1641,8 @@ pub fn set_mfact(arg: &Arg) {
     }
 
     let g = get_globals();
-    if let Some(selmon_id) = g.selmon {
-        arrange(Some(selmon_id));
+    if !g.monitors.is_empty() {
+        arrange(Some(g.selmon));
     }
 
     if animated {
@@ -1699,8 +1680,8 @@ pub fn client_count() -> i32 {
     let g = get_globals();
     let mut count = 0;
 
-    if let Some(selmon_id) = g.selmon {
-        if let Some(mon) = g.monitors.get(selmon_id) {
+    if !g.monitors.is_empty() {
+        if let Some(mon) = g.monitors.get(g.selmon) {
             let mut c_win = mon.clients;
             while let Some(win) = c_win {
                 if let Some(c) = g.clients.get(&win) {

@@ -29,11 +29,8 @@ pub(crate) fn update_status() {
         }
     }
 
-    if let Some(selmon_idx) = selmon_idx {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(selmon_idx) {
-            super::draw_bar(m);
-        }
+    if let Some(m) = get_globals_mut().monitors.get_mut(selmon_idx) {
+        super::draw_bar(m);
     }
 
     crate::systray::update_systray();
@@ -66,8 +63,8 @@ pub(crate) fn resize_bar_win(m: &MonitorInner) {
     let bh = g.bh;
     let showsystray = g.showsystray;
     let is_selmon = g
-        .selmon
-        .and_then(|selmon_idx| g.monitors.get(selmon_idx))
+        .monitors
+        .get(g.selmon)
         .map_or(false, |selmon| selmon.num == m.num);
 
     let mut w = m.work_rect.w as u32;
@@ -105,10 +102,8 @@ pub(crate) fn update_bars() {
 
             let mut w = m.work_rect.w as u32;
             if showsystray {
-                if let Some(selmon_idx) = g.selmon {
-                    if selmon_idx == i {
-                        w = w.saturating_sub(crate::systray::get_systray_width() as u32);
-                    }
+                if g.selmon == i {
+                    w = w.saturating_sub(crate::systray::get_systray_width() as u32);
                 }
             }
             bar_configs.push((i, m.work_rect.x, m.by, w, bh));
@@ -168,19 +163,18 @@ pub(crate) fn toggle_bar(_arg: &Arg) {
         tmp_no_anim = true;
     }
 
-    if let Some(selmon_idx) = g.selmon {
-        if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
-            selmon.showbar = !selmon.showbar;
+    let selmon_idx = g.selmon;
+    if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
+        selmon.showbar = !selmon.showbar;
 
-            let current_tag = selmon.current_tag;
-            if current_tag > 0 && current_tag <= g.tags.tags.len() {
-                g.tags.tags[current_tag - 1].showbar = selmon.showbar;
-            }
-
-            update_bar_pos(selmon);
-            let m = selmon.clone();
-            resize_bar_win(&m);
+        let current_tag = selmon.current_tag;
+        if current_tag > 0 && current_tag <= g.tags.tags.len() {
+            g.tags.tags[current_tag - 1].showbar = selmon.showbar;
         }
+
+        update_bar_pos(selmon);
+        let m = selmon.clone();
+        resize_bar_win(&m);
     }
 
     if tmp_no_anim {

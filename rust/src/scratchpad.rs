@@ -121,10 +121,10 @@ pub fn scratchpad_make(arg: &Arg) {
 
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        if globals.monitors.is_empty() {
+            return;
+        }
+        let selmon_id = globals.selmon;
         globals.monitors.get(selmon_id).and_then(|m| m.sel)
     };
 
@@ -168,22 +168,21 @@ pub fn scratchpad_make(arg: &Arg) {
 
     focus(None);
 
-    let mon_id = {
+    {
         let globals = get_globals();
-        globals.selmon
-    };
-    if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        if !globals.monitors.is_empty() {
+            arrange(Some(globals.selmon));
+        }
     }
 }
 
 pub fn scratchpad_unmake(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        if globals.monitors.is_empty() {
+            return;
+        }
+        let selmon_id = globals.selmon;
         globals.monitors.get(selmon_id).and_then(|m| m.sel)
     };
 
@@ -194,7 +193,7 @@ pub fn scratchpad_unmake(_arg: &Arg) {
 
     let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
+        let selmon_id = globals.selmon;
         let mon_tags = globals
             .monitors
             .get(selmon_id)
@@ -251,7 +250,11 @@ pub(crate) fn scratchpad_show_name(name: &str) {
     let (current_mon, target_mon) = {
         let globals = get_globals();
         let current_mon = globals.selmon;
-        let target_mon = globals.clients.get(&found).and_then(|c| c.mon_id);
+        let target_mon = globals
+            .clients
+            .get(&found)
+            .and_then(|c| c.mon_id)
+            .unwrap_or(current_mon);
         (current_mon, target_mon)
     };
 
@@ -270,7 +273,7 @@ pub(crate) fn scratchpad_show_name(name: &str) {
         {
             let globals = get_globals_mut();
             if let Some(client) = globals.clients.get_mut(&found) {
-                client.mon_id = current_mon;
+                client.mon_id = Some(current_mon);
             }
         }
 
@@ -280,15 +283,15 @@ pub(crate) fn scratchpad_show_name(name: &str) {
 
     focus(Some(found));
 
-    let selmon_id = {
+    {
         let globals = get_globals();
-        globals.selmon
-    };
-    if let Some(mid) = selmon_id {
-        arrange(Some(mid));
-        let globals = get_globals_mut();
-        if let Some(mon) = globals.monitors.get_mut(mid) {
-            restack(mon);
+        if !globals.monitors.is_empty() {
+            let mid = globals.selmon;
+            arrange(Some(mid));
+            let globals = get_globals_mut();
+            if let Some(mon) = globals.monitors.get_mut(mid) {
+                restack(mon);
+            }
         }
     }
 
@@ -350,7 +353,7 @@ pub fn scratchpad_toggle(arg: &Arg) {
 
     let is_overview = {
         let globals = get_globals();
-        let selmon_id = globals.selmon.unwrap_or(0);
+        let selmon_id = globals.selmon;
         if let Some(mon) = globals.monitors.get(selmon_id) {
             !crate::monitor::is_current_layout_tiling(mon, &globals.tags)
         } else {

@@ -13,11 +13,9 @@ impl ClientBarStats {
         let mut stats = Self::default();
 
         for client in globals.clients.values() {
-            let on_selected_monitor = client.mon_id.map_or(false, |mon_id| {
-                globals
-                    .selmon
-                    .map_or(false, |selmon_idx| mon_id == selmon_idx)
-            });
+            let on_selected_monitor = client
+                .mon_id
+                .map_or(false, |mon_id| mon_id == globals.selmon);
 
             if !on_selected_monitor {
                 continue;

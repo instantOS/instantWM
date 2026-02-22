@@ -16,9 +16,10 @@ pub const FOCUS_DIR_LEFT: u32 = 3;
 pub fn focus(win: Option<Window>) {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         let globals = get_globals();
-        let Some(sel_mon_id) = globals.selmon else {
+        if globals.monitors.is_empty() {
             return;
-        };
+        }
+        let sel_mon_id = globals.selmon;
         let Some(mon) = globals.monitors.get(sel_mon_id) else {
             return;
         };
@@ -119,13 +120,13 @@ pub fn set_focus_win(_win: Window) {}
 pub fn focus_direction(direction: Direction) {
     let (sel_mon_id, source_win) = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if let Some(mon) = globals.monitors.get(sel_mon_id) {
-                if let Some(sel) = mon.sel {
-                    (sel_mon_id, sel)
-                } else {
-                    return;
-                }
+        if globals.monitors.is_empty() {
+            return;
+        }
+        let sel_mon_id = globals.selmon;
+        if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            if let Some(sel) = mon.sel {
+                (sel_mon_id, sel)
             } else {
                 return;
             }
@@ -249,24 +250,19 @@ pub fn focus_last_client(_arg: &Arg) {
 
     if let Some(last_mid) = last_mon_id {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            if sel_mon_id != last_mid {
-                if let Some(sel) = globals.monitors.get(sel_mon_id).and_then(|m| m.sel) {
-                    unfocus_win(sel, false);
-                    let globals = get_globals_mut();
-                    globals.selmon = Some(last_mid);
-                }
+        let sel_mon_id = globals.selmon;
+        if !globals.monitors.is_empty() && sel_mon_id != last_mid {
+            if let Some(sel) = globals.monitors.get(sel_mon_id).and_then(|m| m.sel) {
+                unfocus_win(sel, false);
+                let globals = get_globals_mut();
+                globals.selmon = last_mid;
             }
         }
     }
 
     let current_sel = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     if let Some(cur) = current_sel {
@@ -284,9 +280,7 @@ pub fn focus_last_client(_arg: &Arg) {
         let globals = get_globals();
         globals.selmon
     };
-    if let Some(mid) = mon_id {
-        crate::monitor::arrange(Some(mid));
-    }
+    crate::monitor::arrange(Some(mon_id));
 }
 
 pub fn warp(c_win: Window) {
@@ -339,8 +333,9 @@ pub fn warp_cursor_to_client(c_win: Window) {
         let bh = globals.bh;
 
         if c_win == 0 {
-            if let Some(sel_mon_id) = globals.selmon {
-                if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            let globals = get_globals();
+            if !globals.monitors.is_empty() {
+                if let Some(mon) = globals.monitors.get(globals.selmon) {
                     let _ = conn.warp_pointer(
                         CURRENT_TIME,
                         root,
@@ -425,11 +420,7 @@ pub fn warp_into(c_win: Window) {
 pub fn warp_to_focus(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.sel)
-        } else {
-            None
-        }
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     if let Some(win) = sel_win {
@@ -457,25 +448,14 @@ fn view(_arg: &Arg) {}
 /// # Arguments
 /// * `forward` - If true, focus the next client; if false, focus the previous.
 pub fn focus_stack_direction(forward: bool) {
-    let sel_win = {
-        let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+    let globals = get_globals();
+    if globals.monitors.is_empty() {
+        return;
+    }
+    let selmon_id = globals.selmon;
 
-        let mon = match globals.monitors.get(selmon_id) {
-            Some(m) => m,
-            None => return,
-        };
-
-        mon.sel
-    };
-
-    let selmon_id = {
-        let globals = get_globals();
-        globals.selmon.unwrap_or(0)
-    };
+    let sel_win = globals.monitors.get(selmon_id).and_then(|m| m.sel);
+    drop(globals);
 
     let mut stack: Vec<Window> = Vec::new();
     {
