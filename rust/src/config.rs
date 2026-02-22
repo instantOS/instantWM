@@ -125,6 +125,7 @@ pub enum ColIndex {
 }
 
 //TODO: improve DX here, make use of how rust can offer nice DX, not vec vec vec vec
+//Also look at existing structs
 pub fn get_tagcolors() -> Vec<Vec<Vec<&'static str>>> {
     use colors::*;
     vec![

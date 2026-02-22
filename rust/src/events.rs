@@ -395,115 +395,144 @@ pub fn map_request(e: &MapRequestEvent) {
     }
 }
 
-//TODO: why is it called _e??
-//TODO: compare with C codebase, did we port something wrong?
-//TODO: this has multiple responsibilities, refactor
-pub fn motion_notify(_e: &MotionNotifyEvent) {
-    let e = _e;
+/// Handle focus-follows-mouse by switching to the monitor under the cursor.
+/// Returns true if a monitor switch occurred (caller should return early).
+fn handle_focus_follows_mouse(selmon_id: MonitorId, root_x: i32, root_y: i32) -> bool {
+    let globals = get_globals();
+    if !globals.focusfollowsmouse {
+        return false;
+    }
+
+    if let Some(new_mon) = rect_to_mon_rect(&Rect {
+        x: root_x,
+        y: root_y,
+        w: 1,
+        h: 1,
+    }) {
+        if new_mon != selmon_id {
+            let globals = get_globals_mut();
+            globals.selmon = new_mon;
+            focus(None);
+            return true;
+        }
+    }
+    false
+}
+
+/// Get bar layout information for gesture detection.
+fn get_bar_layout_info(mon_id: MonitorId, tagwidth: i32) -> Option<BarLayoutInfo> {
+    let globals = get_globals();
+    let mon = globals.monitors.get(mon_id)?;
+    Some(BarLayoutInfo {
+        monitor_x: mon.monitor_rect.x,
+        monitor_y: mon.monitor_rect.y,
+        bar_height: globals.bh,
+        start_menu_size: globals.startmenusize,
+        active_offset: mon.activeoffset as i32,
+        bar_clients_width: mon.bar_clients_width,
+        current_gesture: mon.gesture,
+        has_selection: mon.sel.is_some(),
+        tag_area_limit: mon.monitor_rect.x + tagwidth + get_layout_symbol_width(mon),
+    })
+}
+
+/// Information needed for bar gesture detection.
+struct BarLayoutInfo {
+    monitor_x: i32,
+    monitor_y: i32,
+    bar_height: i32,
+    start_menu_size: i32,
+    active_offset: i32,
+    bar_clients_width: i32,
+    current_gesture: Gesture,
+    has_selection: bool,
+    tag_area_limit: i32,
+}
+
+/// Determine the gesture based on cursor position in the tag area.
+fn detect_tag_area_gesture(root_x: i32, info: &BarLayoutInfo) -> Gesture {
+    if root_x < info.monitor_x + info.start_menu_size {
+        Gesture::StartMenu
+    } else {
+        let local_x = root_x - info.monitor_x;
+        let tag = crate::tags::get_tag_at_x(local_x);
+        if tag >= 0 {
+            Gesture::from_tag_index(tag as usize).unwrap_or(Gesture::None)
+        } else {
+            Gesture::None
+        }
+    }
+}
+
+/// Determine the gesture based on cursor position in the title area.
+fn detect_title_area_gesture(root_x: i32, info: &BarLayoutInfo) -> Gesture {
+    if root_x > info.active_offset && root_x < info.active_offset + CLOSE_BUTTON_HIT_WIDTH {
+        Gesture::CloseButton
+    } else {
+        Gesture::None
+    }
+}
+
+/// Update the gesture state and redraw the bar if it changed.
+fn update_gesture_state(mon_id: MonitorId, new_gesture: Gesture, current_gesture: Gesture) {
+    if new_gesture != current_gesture {
+        let globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(mon_id) {
+            mon.gesture = new_gesture;
+            draw_bar(mon);
+        }
+    }
+}
+
+/// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
+pub fn motion_notify(e: &MotionNotifyEvent) {
     let globals = get_globals();
     if e.event != globals.root {
         return;
     }
+
     let selmon_id = globals.selmon;
-    let focusfollowsmouse = globals.focusfollowsmouse;
     let tagwidth = get_tag_width();
-    let globals = get_globals_mut();
-    globals.tags.width = tagwidth;
 
-    if focusfollowsmouse {
-        if let Some(m) = rect_to_mon_rect(&Rect {
-            x: e.root_x as i32,
-            y: e.root_y as i32,
-            w: 1,
-            h: 1,
-        }) {
-            if m != selmon_id {
-                let globals = get_globals_mut();
-                globals.selmon = m;
-                focus(None);
-                return;
-            }
-        }
+    // Update cached tag width
+    {
+        let globals = get_globals_mut();
+        globals.tags.width = tagwidth;
     }
-
-    let selmon_idx = selmon_id;
-
-    //TODO: refactor this into a separate function?
-    let (mx, my, bh, startmenusize, activeoffset, bar_clients_width, gesture, has_sel, x_limit) = {
-        let globals = get_globals();
-        let Some(mon) = globals.monitors.get(selmon_idx) else {
-            return;
-        };
-        (
-            mon.monitor_rect.x,
-            mon.monitor_rect.y,
-            globals.bh,
-            globals.startmenusize,
-            mon.activeoffset as i32,
-            mon.bar_clients_width,
-            mon.gesture,
-            mon.sel.is_some(),
-            mon.monitor_rect.x + tagwidth + get_layout_symbol_width(mon),
-        )
-    };
 
     let root_x = e.root_x as i32;
     let root_y = e.root_y as i32;
 
-    if root_y >= my + bh - 3 {
-        reset_bar();
+    // Handle focus-follows-mouse monitor switching
+    if handle_focus_follows_mouse(selmon_id, root_x, root_y) {
         return;
     }
 
-    if root_x < x_limit {
-        let new_gesture = if root_x < mx + startmenusize {
-            Gesture::StartMenu
-        } else {
-            let local_x = root_x - mx;
-            let tag = crate::tags::get_tag_at_x(local_x);
-            if tag >= 0 {
-                Gesture::from_tag_index(tag as usize).unwrap_or(Gesture::None)
-            } else {
-                Gesture::None
-            }
-        };
-
-        if new_gesture != gesture {
-            let globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(selmon_idx) {
-                mon.gesture = new_gesture;
-                draw_bar(mon);
-            }
-        }
+    // Get bar layout info for gesture detection
+    let Some(layout_info) = get_bar_layout_info(selmon_id, tagwidth) else {
         return;
-    }
-
-    let title_limit = {
-        let globals = get_globals();
-        let Some(mon) = globals.monitors.get(selmon_idx) else {
-            return;
-        };
-        mon.monitor_rect.x + get_layout_symbol_width(mon) + tagwidth + bar_clients_width
     };
 
-    if has_sel && root_x < title_limit {
-        let new_gesture = if root_x > activeoffset && root_x < activeoffset + CLOSE_BUTTON_HIT_WIDTH
-        {
-            Gesture::CloseButton
-        } else {
-            Gesture::None
-        };
-
-        if new_gesture != gesture {
-            let globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(selmon_idx) {
-                mon.gesture = new_gesture;
-                draw_bar(mon);
-            }
-        }
-    } else {
+    // Reset bar if cursor is below the bar area
+    if root_y >= layout_info.monitor_y + layout_info.bar_height - 3 {
         reset_bar();
+        return;
     }
+
+    // Determine gesture based on cursor position
+    let new_gesture = if root_x < layout_info.tag_area_limit {
+        detect_tag_area_gesture(root_x, &layout_info)
+    } else {
+        let title_limit = layout_info.tag_area_limit + layout_info.bar_clients_width;
+        if layout_info.has_selection && root_x < title_limit {
+            detect_title_area_gesture(root_x, &layout_info)
+        } else {
+            reset_bar();
+            return;
+        }
+    };
+
+    update_gesture_state(selmon_id, new_gesture, layout_info.current_gesture);
 }
 
 pub fn property_notify(e: &PropertyNotifyEvent) {
