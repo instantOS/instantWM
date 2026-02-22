@@ -152,6 +152,16 @@ pub fn detach_stack(win: Window) {
     }
 }
 
+/// Calculate the total width of a client including borders.
+pub fn client_width(c: &Client) -> i32 {
+    c.geo.w + 2 * c.border_width
+}
+
+/// Calculate the total height of a client including borders.
+pub fn client_height(c: &Client) -> i32 {
+    c.geo.h + 2 * c.border_width
+}
+
 //TODO: should this return an enum or type alias?
 pub fn get_state(win: Window) -> i32 {
     let x11 = get_x11();

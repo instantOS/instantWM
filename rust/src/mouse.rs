@@ -741,10 +741,10 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
                         let globals = get_globals();
                         if let Some(client) = globals.clients.get(&win) {
                             let (minw, minh, maxw, maxh, mina, maxa) = (
-                                client.minw,
-                                client.minh,
-                                client.maxw,
-                                client.maxh,
+                                client.size_hints.minw,
+                                client.size_hints.minh,
+                                client.size_hints.maxw,
+                                client.size_hints.maxh,
                                 client.mina,
                                 client.maxa,
                             );

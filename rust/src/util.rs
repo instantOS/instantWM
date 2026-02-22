@@ -261,17 +261,19 @@ pub fn get_x11_fd(conn: &x11rb::rust_connection::RustConnection) -> Option<i32> 
 #[inline]
 pub fn get_sel_win() -> Option<Window> {
     let globals = get_globals();
-    globals
-        .selmon
-        .and_then(|sel_mon_id| globals.monitors.get(sel_mon_id))
-        .and_then(|mon| mon.sel)
+    globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
 }
 
 /// Get the currently selected monitor ID.
-/// Returns `None` if no monitor is selected.
+/// Returns `None` if no monitor is selected (monitors list is empty).
 #[inline]
 pub fn get_sel_mon() -> Option<MonitorId> {
-    get_globals().selmon
+    let globals = get_globals();
+    if globals.monitors.is_empty() {
+        None
+    } else {
+        Some(globals.selmon)
+    }
 }
 
 #[cfg(test)]

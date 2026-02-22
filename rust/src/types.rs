@@ -656,6 +656,8 @@ impl Rect {
 #[derive(Debug, Clone, Default)]
 pub struct Client {
     pub name: String,
+    //TODO: what does this do/mean?
+    // document or rename or both
     pub mina: f32,
     pub maxa: f32,
     pub geo: Rect,
@@ -721,6 +723,7 @@ pub struct MonitorInner {
     pub num: i32,
     pub by: i32,
     pub bar_clients_width: i32,
+    //TODO: this is a bad name, document or rename or both
     pub bt: i32,
     pub monitor_rect: Rect,
     pub work_rect: Rect,

@@ -58,10 +58,7 @@ pub fn alt_tab_free(arg: &Arg) {
 pub fn toggle_sticky(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        let selmon_id = globals.selmon;
         globals.monitors.get(selmon_id).and_then(|m| m.sel)
     };
 
@@ -86,12 +83,10 @@ pub fn toggle_prefix(arg: &Arg) {
     let globals = get_globals_mut();
     globals.tags.prefix = !globals.tags.prefix;
 
-    if let Some(selmon_id) = globals.selmon {
-        let selmon_id = selmon_id;
-        let globals = get_globals_mut();
-        if let Some(mon) = globals.monitors.get_mut(selmon_id) {
-            draw_bar(mon);
-        }
+    let selmon_id = get_globals().selmon;
+    let globals = get_globals_mut();
+    if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+        draw_bar(mon);
     }
 }
 
@@ -103,10 +98,7 @@ pub fn toggle_animated(arg: &Arg) {
 pub fn set_border_width(arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        let selmon_id = globals.selmon;
         globals.monitors.get(selmon_id).and_then(|m| m.sel)
     };
 
@@ -159,10 +151,7 @@ pub fn toggle_double_draw(_arg: &Arg) {
 pub fn toggle_locked(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        let selmon_id = globals.selmon;
         globals.monitors.get(selmon_id).and_then(|m| m.sel)
     };
 
@@ -179,12 +168,10 @@ pub fn toggle_locked(_arg: &Arg) {
     };
 
     {
-        let globals = get_globals();
-        if let Some(selmon_id) = globals.selmon {
-            let globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(selmon_id) {
-                draw_bar(mon);
-            }
+        let selmon_id = get_globals().selmon;
+        let globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+            draw_bar(mon);
         }
     }
 }
@@ -192,10 +179,7 @@ pub fn toggle_locked(_arg: &Arg) {
 pub fn toggle_show_tags(arg: &Arg) {
     let (selmon_id, new_showtags) = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        let selmon_id = globals.selmon;
 
         let mut showtags = if let Some(mon) = globals.monitors.get(selmon_id) {
             mon.showtags
@@ -229,11 +213,7 @@ pub fn toggle_show_tags(arg: &Arg) {
 pub fn hide_window(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
+        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
     };
 
     let Some(win) = sel_win else { return };

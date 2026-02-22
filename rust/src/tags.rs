@@ -986,9 +986,8 @@ pub fn swap_tags(arg: &Arg) {
     }
     focus(None);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    let sel_mon_id = get_globals().selmon;
+    arrange(Some(sel_mon_id));
 }
 
 pub fn follow_view(_arg: &Arg) {
@@ -1019,9 +1018,8 @@ pub fn follow_view(_arg: &Arg) {
     view(&a);
     focus(Some(win));
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    let sel_mon_id = get_globals().selmon;
+    arrange(Some(sel_mon_id));
 }
 
 pub fn reset_sticky(c: &mut Client) {
@@ -1061,14 +1059,12 @@ pub fn toggle_overview(_arg: &Arg) {
     if let Some(current) = current_tag {
         if current == 0 {
             let pt = prevtag.unwrap_or(1);
-            if let Some(sel_mon_id) = get_globals().selmon {
-                restore_all_floating(Some(sel_mon_id));
-            }
+            let sel_mon_id = get_globals().selmon;
+            restore_all_floating(Some(sel_mon_id));
             win_view(&Arg::default());
         } else {
-            if let Some(sel_mon_id) = get_globals().selmon {
-                save_all_floating(Some(sel_mon_id));
-            }
+            let sel_mon_id = get_globals().selmon;
+            save_all_floating(Some(sel_mon_id));
             view(&Arg {
                 ui: !0,
                 ..Default::default()
@@ -1080,11 +1076,8 @@ pub fn toggle_overview(_arg: &Arg) {
 pub fn toggle_fullscreen_overview(_arg: &Arg) {
     let current_tag = {
         let globals = get_globals();
-        if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
-        } else {
-            None
-        }
+        let sel_mon_id = globals.selmon;
+        globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
     };
 
     if let Some(current) = current_tag {
@@ -1166,11 +1159,8 @@ pub fn win_view(_arg: &Arg) {
                     if tags == SCRATCHPAD_MASK {
                         let current_tag = {
                             let globals = get_globals();
-                            if let Some(sel_mon_id) = globals.selmon {
-                                globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
-                            } else {
-                                None
-                            }
+                            let sel_mon_id = globals.selmon;
+                            globals.monitors.get(sel_mon_id).map(|m| m.current_tag)
                         };
                         view(&Arg {
                             ui: 1 << (current_tag.unwrap_or(1) - 1),
