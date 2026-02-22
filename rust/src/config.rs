@@ -13,8 +13,9 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::commands::{command_prefix, set_special_next};
 use crate::floating::{
     center_window, distribute_clients, temp_fullscreen, toggle_floating,
-    toggle_fullscreen_overview, toggle_overview,
+    toggle_fullscreen_overview,
 };
+use crate::tags::toggle_overview;
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{
     down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press,

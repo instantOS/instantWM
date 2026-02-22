@@ -1,5 +1,5 @@
 use crate::bar::draw_bars;
-use crate::client::{set_focus, unfocus_win};
+use crate::client::{set_focus, unfocus_win, set_urgent};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use std::sync::atomic::Ordering;
@@ -97,6 +97,14 @@ pub fn focus(win: Option<Window>) {
     draw_bars();
 
     if let Some(w) = target.take() {
+        // Clear urgent flag when focusing a window (matches C behavior)
+        let is_urgent = {
+            let globals = get_globals();
+            globals.clients.get(&w).map(|c| c.isurgent).unwrap_or(false)
+        };
+        if is_urgent {
+            set_urgent(w, false);
+        }
         set_focus(w);
     } else {
         let x11 = get_x11();

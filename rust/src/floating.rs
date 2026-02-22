@@ -115,8 +115,8 @@ pub fn visible_client(win: Window) -> bool {
     false
 }
 
-//TODO: why is this here? Has something not been ported properly from the C codebase?
-//This looks like something important from the C codebase
+/// Save floating window positions for all floating clients on a monitor.
+/// This is used when entering overview mode to preserve window positions.
 pub fn save_all_floating(mon_id: Option<usize>) {
     let (numtags, _tagmask) = {
         let globals = get_globals();
@@ -170,8 +170,8 @@ pub fn save_all_floating(mon_id: Option<usize>) {
     }
 }
 
-//TODO: why is this here? Has something not been ported properly from the C codebase?
-//This looks like something important from the C codebase
+/// Restore floating window positions for all floating clients on a monitor.
+/// This is used when exiting overview mode to restore window positions.
 pub fn restore_all_floating(mon_id: Option<usize>) {
     let numtags = {
         let globals = get_globals();
@@ -1104,8 +1104,6 @@ pub fn set_border_width(_arg: &Arg) {}
 pub fn distribute_clients(_arg: &Arg) {}
 
 pub fn toggle_fullscreen_overview(_arg: &Arg) {}
-
-pub fn toggle_overview(_arg: &Arg) {}
 
 pub fn up_press(_arg: &Arg) {}
 
