@@ -32,7 +32,7 @@ pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &str) -> i32
 
     {
         let g = get_globals_mut();
-        g.statuswidth = layout.total_width;
+        g.status_text_width = layout.total_width;
     }
 
     if let Some(ref drw) = get_globals().drw {

@@ -246,10 +246,10 @@ pub fn get_tag_at_x(click_x: i32) -> i32 {
 }
 
 /// Set the tag(s) for the currently selected client.
-/// 
+///
 /// This function assigns the specified tag(s) to the selected window,
 /// replacing any existing tags. Use `toggle_tag` to add/remove tags.
-/// 
+///
 /// # Arguments
 /// * `arg` - Argument containing the tag bitmask in `ui`
 pub fn set_client_tag(arg: &Arg) {
@@ -1096,6 +1096,8 @@ pub fn toggle_overview(_arg: &Arg) {
     }
 }
 
+//TODO: according to cargo check this is unused. what is up with that?
+//also compare to C codebase
 pub fn toggle_fullscreen_overview(_arg: &Arg) {
     let current_tag = {
         let globals = get_globals();
@@ -1142,6 +1144,7 @@ pub fn focus_last_client(_arg: &Arg) {
 }
 
 pub fn win_view(_arg: &Arg) {
+    //TODO: this is very nested, search for architectural issues or how to do this cleaner
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let focus_win = conn.get_input_focus();
@@ -1210,6 +1213,7 @@ pub fn toggle_alt_tag(_arg: &Arg) {}
 
 pub fn alt_tab_free(_arg: &Arg) {}
 
+//TODO: this is unused according to cargo check. what is up with that?
 pub fn zoom(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();

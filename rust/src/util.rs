@@ -43,24 +43,24 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
     exit(1);
 }
 
-//TODO: are these relics from this being a C port which are not needed at all in Rust?
+/// Allocate a vector with default values - idiomatic Rust replacement for C's ecalloc.
+/// Use `vec![T::default(); nmemb]` directly in new code.
 pub fn ecalloc<T: Default + Clone>(nmemb: usize) -> Vec<T> {
     vec![T::default(); nmemb]
 }
 
+/// Allocate a boxed slice with default values.
+/// Prefer using `vec![T::default(); nmemb].into_boxed_slice()` directly in new code.
 pub fn ecalloc_box<T: Default>(nmemb: usize) -> Box<[T]> {
-    let mut v: Vec<T> = Vec::with_capacity(nmemb);
-    for _ in 0..nmemb {
-        v.push(T::default());
-    }
-    v.into_boxed_slice()
+    vec![T::default(); nmemb].into_boxed_slice()
 }
 
 pub fn startswith(a: &str, b: &str) -> bool {
     a.starts_with(b)
 }
 
-//TODO: is this needed? Couldn't callsites execute starts_with directly?
+/// Check if byte slice starts with another byte slice.
+/// This is a wrapper around the standard library's starts_with for byte slices.
 pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
     a.starts_with(b)
 }
@@ -210,25 +210,28 @@ pub fn spawn_vec(cmd: &[CString]) {
     }
 }
 
-//TODO: are these mostly just reinventing the standard library?
+/// Return the minimum of two values. Alias for `std::cmp::min`.
 #[inline]
 pub fn min<T: Ord>(a: T, b: T) -> T {
     a.min(b)
 }
 
+/// Return the maximum of two values. Alias for `std::cmp::max`.
 #[inline]
 pub fn max<T: Ord>(a: T, b: T) -> T {
     a.max(b)
 }
 
+/// Check if a value is between two bounds (inclusive).
 #[inline]
 pub fn between<T: Ord>(x: T, a: T, b: T) -> bool {
     a <= x && x <= b
 }
 
+/// Clamp a value between min and max bounds.
 #[inline]
 pub fn clamp<T: Ord>(val: T, min_val: T, max_val: T) -> T {
-    max(min_val, min(max_val, val))
+    val.clamp(min_val, max_val)
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {

@@ -32,12 +32,6 @@ const RESIZE_DIR_BOTTOM: i32 = 5;
 const RESIZE_DIR_BOTTOM_LEFT: i32 = 6;
 const RESIZE_DIR_LEFT: i32 = 7;
 
-pub fn motion_notify(_e: &MotionNotifyEvent) {}
-
-pub fn button_press(_e: &ButtonPressEvent) {}
-
-pub fn move_resize(_arg: &Arg) {}
-
 pub fn moveresize(_arg: &Arg) {
     let direction = _arg.i;
 

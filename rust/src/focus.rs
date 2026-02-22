@@ -1,6 +1,7 @@
 use crate::bar::draw_bars;
 use crate::client::{set_focus, unfocus_win, set_urgent};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::tags::view;
 use crate::types::*;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
@@ -466,8 +467,6 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     }
     None
 }
-
-fn view(_arg: &Arg) {}
 
 /// Focus the next/previous client in the stack.
 ///

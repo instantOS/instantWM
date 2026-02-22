@@ -21,10 +21,10 @@ pub(crate) fn update_status() {
                 if t.starts_with("ipc:") {
                     return;
                 }
-                g.stext = t;
+                g.status_text = t;
             }
             None => {
-                g.stext = format!("instantwm-{}", VERSION);
+                g.status_text = format!("instantwm-{}", VERSION);
             }
         }
     }

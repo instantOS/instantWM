@@ -72,7 +72,7 @@ pub fn draw_bar(m: &mut MonitorInner) {
     }
 
     if is_selmon {
-        layout.status_start_x = status::draw_status_bar(m, bh, &g.stext);
+        layout.status_start_x = status::draw_status_bar(m, bh, &g.status_text);
     }
 
     widgets::draw_startmenu_icon(bh);

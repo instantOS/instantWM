@@ -24,9 +24,8 @@ pub struct Globals {
     pub selmon: MonitorId,
     pub clients: HashMap<Window, Client>,
     pub client_list: Vec<ClientId>,
-    //TODO: rename to something more descriptive
-    // why do both this and bar_height exist??
-    // investigate
+    /// Bar height in pixels (calculated from font metrics).
+    /// This is the actual rendered height of the bar window.
     pub bh: i32,
     pub lrpad: i32,
     pub animated: bool,
@@ -37,9 +36,10 @@ pub struct Globals {
     pub specialnext: SpecialNext,
     pub bar_dragging: bool,
     pub tags: TagSet,
-    pub statuswidth: i32,
-    //TODO: stext is not a good name, rename to something more descriptive
-    pub stext: String,
+    /// Width of the status text area in pixels (cached for layout calculations).
+    pub status_text_width: i32,
+    /// Status text displayed in the bar (right side, shows system info).
+    pub status_text: String,
     pub wmatom: WmAtoms,
     pub netatom: NetAtoms,
     pub xatom: XAtoms,
@@ -114,8 +114,8 @@ impl Default for Globals {
             specialnext: SpecialNext::None,
             bar_dragging: false,
             tags: TagSet::default(),
-            statuswidth: 0,
-            stext: String::new(),
+            status_text_width: 0,
+            status_text: String::new(),
             wmatom: WmAtoms::default(),
             netatom: NetAtoms::default(),
             xatom: XAtoms::default(),

@@ -51,7 +51,7 @@ fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
     let tag_end = get_tag_width();
     let blw = get_layout_symbol_width(&mon);
 
-    let status_hit_x = mon.work_rect.w - get_systray_width() as i32 - g.statuswidth + g.lrpad - 2;
+    let status_hit_x = mon.work_rect.w - get_systray_width() as i32 - g.status_text_width + g.lrpad - 2;
     let bh = g.bh;
 
     if ev_x < start_menu_size {
