@@ -504,7 +504,16 @@ pub fn change_snap(win: Window, snap_mode: i32) {
     crate::focus::focus(Some(win));
 }
 
-//TODO: document what temp fullscreen does, why it exists and what makes it temp
+/// Toggle temporary fullscreen mode for the selected window.
+///
+/// "Temporary" fullscreen differs from regular fullscreen in that:
+/// - It tracks the fullscreen state separately in `mon.fullscreen`
+/// - When toggled off, it restores the window to its previous floating state
+/// - It disables animations during the transition for instant feedback
+/// - The window is raised above all others when entering fullscreen
+///
+/// This is used for quick fullscreen toggling without going through
+/// the EWMH fullscreen protocol (e.g., for key bindings).
 pub fn temp_fullscreen(_arg: &Arg) {
     let (fullscreen_win, sel_win, animated) = {
         let globals = get_globals();
@@ -1097,14 +1106,3 @@ pub fn apply_snap_mut(c: &mut Client, m: &MonitorInner) {
     }
 }
 
-pub fn reset_sticky(_c: &mut Client) {}
-
-pub fn set_border_width(_arg: &Arg) {}
-
-pub fn distribute_clients(_arg: &Arg) {}
-
-pub fn toggle_fullscreen_overview(_arg: &Arg) {}
-
-pub fn up_press(_arg: &Arg) {}
-
-pub fn down_press(_arg: &Arg) {}

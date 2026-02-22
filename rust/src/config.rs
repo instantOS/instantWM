@@ -11,24 +11,22 @@ use crate::animation::{anim_left, anim_right, down_scale_client, up_scale_client
 use crate::bar::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::commands::{command_prefix, set_special_next};
-use crate::floating::{
-    center_window, distribute_clients, temp_fullscreen, toggle_floating,
-    toggle_fullscreen_overview,
-};
-use crate::tags::toggle_overview;
+use crate::floating::{center_window, temp_fullscreen, toggle_floating};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{
     down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press,
 };
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, follow_mon};
-use crate::mouse::{drag_tag, draw_window, move_resize};
+use crate::mouse::{drag_tag, draw_window, moveresize};
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{
     scratchpad_hide, scratchpad_make, scratchpad_show, scratchpad_status, scratchpad_toggle,
     scratchpad_unmake,
 };
+use crate::tags::toggle_fullscreen_overview;
+use crate::tags::toggle_overview;
 use crate::tags::{
     desktop_set, follow_tag, follow_view, last_view, move_left, move_right, name_tag, quit,
     reset_name_tag, shift_view, swap_tags, tag, tag_mon, tag_to_left, tag_to_right, toggle_tag,
@@ -126,6 +124,7 @@ pub enum ColIndex {
     Detail = 2,
 }
 
+//TODO: improve DX here, make use of how rust can offer nice DX, not vec vec vec vec
 pub fn get_tagcolors() -> Vec<Vec<Vec<&'static str>>> {
     use colors::*;
     vec![
@@ -1453,7 +1452,7 @@ pub fn get_keys() -> Vec<Key> {
         Key {
             mod_mask: MODKEY | SHIFT,
             keysym: XK_j,
-            func: Some(move_resize),
+            func: Some(moveresize),
             arg: Arg {
                 i: 0,
                 ..Default::default()
@@ -1462,7 +1461,7 @@ pub fn get_keys() -> Vec<Key> {
         Key {
             mod_mask: MODKEY | SHIFT,
             keysym: XK_k,
-            func: Some(move_resize),
+            func: Some(moveresize),
             arg: Arg {
                 i: 1,
                 ..Default::default()
@@ -1471,7 +1470,7 @@ pub fn get_keys() -> Vec<Key> {
         Key {
             mod_mask: MODKEY | SHIFT,
             keysym: XK_l,
-            func: Some(move_resize),
+            func: Some(moveresize),
             arg: Arg {
                 i: 2,
                 ..Default::default()
@@ -1480,7 +1479,7 @@ pub fn get_keys() -> Vec<Key> {
         Key {
             mod_mask: MODKEY | SHIFT,
             keysym: XK_h,
-            func: Some(move_resize),
+            func: Some(moveresize),
             arg: Arg {
                 i: 3,
                 ..Default::default()
@@ -2904,8 +2903,6 @@ pub struct Config {
     pub external_commands: ExternalCommands,
     pub num_tags: usize,
 }
-
-pub fn run_autostart() {}
 
 pub fn get_tag_color(hover: SchemeHover, tag_scheme: SchemeTag, col: ColIndex) -> &'static str {
     use colors::*;

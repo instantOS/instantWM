@@ -51,7 +51,7 @@ pub fn ecalloc<T: Default + Clone>(nmemb: usize) -> Vec<T> {
 
 /// Allocate a boxed slice with default values.
 /// Prefer using `vec![T::default(); nmemb].into_boxed_slice()` directly in new code.
-pub fn ecalloc_box<T: Default>(nmemb: usize) -> Box<[T]> {
+pub fn ecalloc_box<T: Default + Clone>(nmemb: usize) -> Box<[T]> {
     vec![T::default(); nmemb].into_boxed_slice()
 }
 

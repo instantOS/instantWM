@@ -134,19 +134,23 @@ pub fn reset_bar() {
     }
 }
 
-//TODO: there are lots of one-line wrappers here, are they needed?
+/// Update the status text from the X root window name.
+/// Delegates to the X11 implementation.
 pub fn update_status() {
     x11::update_status();
 }
 
+/// Update the bar position for a monitor based on its showbar/topbar settings.
 pub fn update_bar_pos(m: &mut MonitorInner) {
     x11::update_bar_pos(m);
 }
 
+/// Create and map bar windows for all monitors that don't have one.
 pub fn update_bars() {
     x11::update_bars();
 }
 
+/// Toggle the visibility of the status bar on the selected monitor.
 pub fn toggle_bar(arg: &Arg) {
     x11::toggle_bar(arg);
 }

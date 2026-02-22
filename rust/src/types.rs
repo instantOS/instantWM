@@ -412,7 +412,10 @@ pub enum SnapPosition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-// TODO: is this unused? Should it be used? Are other enums used instead?
+/// Direction for overlay window positioning.
+/// Note: This enum is currently unused but kept for potential future use
+/// when implementing directional overlay/sidebar functionality from the C codebase.
+#[allow(dead_code)]
 pub enum OverlayDirection {
     Top,
     Right,

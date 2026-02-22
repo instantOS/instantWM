@@ -1671,7 +1671,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
                 c.is_fullscreen = true;
                 c.oldstate = c.isfloating as i32;
             }
-            save_bw(win);
+            save_border_width(win);
 
             if !is_fake_fs {
                 if let Some(c) = globals.clients.get_mut(&win) {
@@ -2090,7 +2090,8 @@ pub fn update_motif_hints(win: Window) {
     }
 }
 
-//TODO: this should probably be a method?
+/// Check if a window is in iconic (minimized/hidden) state.
+/// Queries the WM_STATE property from the X server.
 pub fn is_hidden(win: Window) -> bool {
     get_state(win) == WM_STATE_ICONIC
 }
@@ -2137,8 +2138,9 @@ fn grab_buttons(win: Window, focused: bool) {
     }
 }
 
-//TODO: rename to be easier to understand
-pub fn save_bw(win: Window) {
+/// Save the current border width of a client to `old_border_width`.
+/// This is used before entering fullscreen mode to restore the border later.
+pub fn save_border_width(win: Window) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         client.old_border_width = client.border_width;
@@ -2248,8 +2250,9 @@ pub fn zoom(_arg: &Arg) {
     pop(win);
 }
 
-//TODO: why is this unused? Are there features yet to be ported over from the C
-//codebase?
+/// Set the urgent state of a client window.
+/// Updates both the client state and the WM_HINTS property on the X server.
+/// Note: This function is currently unused but kept for future EWMH compliance.
 pub fn set_urgent(win: Window, urg: bool) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {

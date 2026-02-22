@@ -4,6 +4,7 @@ use crate::floating::{restore_all_floating, save_all_floating};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::{arrange, dir_to_mon, send_mon};
+use crate::toggles::{alt_tab_free, toggle_alt_tag, toggle_show_tags};
 use crate::types::*;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
@@ -1206,12 +1207,6 @@ pub fn win_view(_arg: &Arg) {
 }
 
 pub fn desktop_set(_arg: &Arg) {}
-
-pub fn toggle_show_tags(_arg: &Arg) {}
-
-pub fn toggle_alt_tag(_arg: &Arg) {}
-
-pub fn alt_tab_free(_arg: &Arg) {}
 
 //TODO: this is unused according to cargo check. what is up with that?
 pub fn zoom(_arg: &Arg) {
