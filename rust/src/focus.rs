@@ -1,5 +1,5 @@
 use crate::bar::draw_bars;
-use crate::client::{set_focus, unfocus_win, set_urgent};
+use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::tags::view;
 use crate::types::*;

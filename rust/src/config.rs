@@ -11,7 +11,7 @@ use crate::animation::{anim_left, anim_right, down_scale_client, up_scale_client
 use crate::bar::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::commands::{command_prefix, set_special_next};
-use crate::floating::{center_window, temp_fullscreen, toggle_floating};
+use crate::floating::{center_window, distribute_clients, temp_fullscreen, toggle_floating};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{
     down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press,

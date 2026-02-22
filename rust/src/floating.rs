@@ -1106,3 +1106,83 @@ pub fn apply_snap_mut(c: &mut Client, m: &MonitorInner) {
     }
 }
 
+/// Distributes floating clients evenly across the monitor.
+///
+/// Arranges all visible floating windows in a grid pattern.
+pub fn distribute_clients(_arg: &Arg) {
+    let sel_mon_id = get_globals().selmon;
+
+    // Collect all visible floating windows
+    let floating_wins: Vec<Window> = {
+        let globals = get_globals();
+        let mut wins = Vec::new();
+
+        if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            let tagset = mon.tagset[mon.seltags as usize];
+            let mut current = mon.clients;
+
+            while let Some(c_win) = current {
+                if let Some(c) = globals.clients.get(&c_win) {
+                    if c.isfloating
+                        && !c.isfixed
+                        && (c.tags & tagset) != 0
+                        && c.snapstatus == SnapPosition::None
+                    {
+                        wins.push(c_win);
+                    }
+                    current = c.next;
+                } else {
+                    break;
+                }
+            }
+        }
+        wins
+    };
+
+    if floating_wins.is_empty() {
+        return;
+    }
+
+    let (mon_x, mon_y, mon_w, mon_h, showbar) = {
+        let globals = get_globals();
+        if let Some(mon) = globals.monitors.get(sel_mon_id) {
+            (
+                mon.monitor_rect.x,
+                mon.monitor_rect.y,
+                mon.work_rect.w,
+                mon.work_rect.h,
+                mon.showbar,
+            )
+        } else {
+            return;
+        }
+    };
+
+    let num_windows = floating_wins.len();
+    let cols = (num_windows as f32).sqrt().ceil() as i32;
+    let rows = (num_windows as f32 / cols as f32).ceil() as i32;
+
+    let win_w = mon_w / cols;
+    let win_h = mon_h / rows;
+    let bh = get_globals().bh;
+    let y_offset = if showbar { bh } else { 0 };
+
+    for (i, win) in floating_wins.iter().enumerate() {
+        let col = (i as i32) % cols;
+        let row = (i as i32) / cols;
+
+        let nx = mon_x + col * win_w;
+        let ny = mon_y + row * win_h + y_offset;
+
+        resize(
+            *win,
+            &Rect {
+                x: nx,
+                y: ny,
+                w: win_w,
+                h: win_h,
+            },
+            true,
+        );
+    }
+}
