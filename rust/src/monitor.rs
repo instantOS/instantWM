@@ -11,6 +11,7 @@ use x11rb::protocol::xproto::Window;
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
+//TODO: this is a bad name. Document function, rename to something more descriptive
 fn tagmon(arg: &Arg) {
     if let Some(target) = dir_to_mon(arg.i) {
         let g = get_globals();
@@ -89,12 +90,10 @@ pub fn cleanup_monitor(mon_id: MonitorId) {
 
     g.monitors.remove(mon_id);
 
-    if g.selmon == Some(mon_id) {
-        g.selmon = if g.monitors.is_empty() { None } else { Some(0) };
-    } else if let Some(sel) = g.selmon {
-        if sel > mon_id {
-            g.selmon = Some(sel - 1);
-        }
+    if g.selmon == mon_id {
+        g.selmon = 0;
+    } else if g.selmon > mon_id {
+        g.selmon -= 1;
     }
 
     if barwin != 0 {
@@ -108,7 +107,10 @@ pub fn cleanup_monitor(mon_id: MonitorId) {
 
 pub fn dir_to_mon(dir: i32) -> Option<MonitorId> {
     let g = get_globals();
-    let selmon = g.selmon?;
+    if g.monitors.is_empty() {
+        return None;
+    }
+    let selmon = g.selmon;
 
     if g.monitors.len() <= 1 {
         return Some(selmon);
@@ -129,8 +131,10 @@ pub fn dir_to_mon(dir: i32) -> Option<MonitorId> {
 
 pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
     let g = get_globals();
-
-    let selmon = g.selmon?;
+    if g.monitors.is_empty() {
+        return None;
+    }
+    let selmon = g.selmon;
     let mut result = selmon;
     let mut max_area = 0;
 
@@ -157,7 +161,11 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
         if let Some((x, y)) = get_root_ptr() {
             return rect_to_mon_rect(&Rect { x, y, w: 1, h: 1 });
         }
-        return g.selmon;
+        return if g.monitors.is_empty() {
+            None
+        } else {
+            Some(g.selmon)
+        };
     }
 
     for (i, m) in g.monitors.iter().enumerate() {
@@ -171,16 +179,17 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
         return g.clients.get(&win).and_then(|c| c.mon_id);
     }
 
-    g.selmon
+    if g.monitors.is_empty() {
+        None
+    } else {
+        Some(g.selmon)
+    }
 }
 
 pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
     let g = get_globals_mut();
 
-    let current_mon_id = match g.selmon {
-        Some(id) => id,
-        None => return,
-    };
+    let current_mon_id = g.selmon;
 
     if current_mon_id == target_mon_id {
         return;
@@ -241,13 +250,14 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         let g = get_globals();
         if let Some(ref c) = g.clients.get(&c_win) {
             if c.is_scratchpad() && !c.issticky {
-                let g = get_globals_mut();
-                if let Some(ref mut sel) = g.selmon {
-                    if let Some(win) = get_selected_client_win(*sel) {
+                {
+                    let g = get_globals_mut();
+                    let sel = g.selmon;
+                    if let Some(win) = get_selected_client_win(sel) {
                         unfocus_win(win, false);
                     }
+                    g.selmon = target_mon_id;
                 }
-                g.selmon = Some(target_mon_id);
 
                 let sp_name = {
                     let g = get_globals();
@@ -258,13 +268,14 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                     crate::scratchpad::scratchpad_show_name(&name);
                 }
 
-                let g = get_globals_mut();
-                if let Some(ref mut sel) = g.selmon {
-                    if let Some(win) = get_selected_client_win(*sel) {
+                {
+                    let g = get_globals_mut();
+                    let sel = g.selmon;
+                    if let Some(win) = get_selected_client_win(sel) {
                         unfocus_win(win, false);
                     }
+                    g.selmon = current_mon_id;
                 }
-                g.selmon = Some(current_mon_id);
 
                 focus(None);
             }

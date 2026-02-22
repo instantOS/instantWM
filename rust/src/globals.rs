@@ -18,10 +18,15 @@ pub struct Globals {
     pub root: Window,
     pub sw: i32,
     pub sh: i32,
+    //TODO: why do both MonitorInner and MonitorId exist? Does Monitor without
+    //Inner also exist? Should both exist?
     pub monitors: Vec<MonitorInner>,
-    pub selmon: Option<MonitorId>,
+    pub selmon: MonitorId,
     pub clients: HashMap<Window, Client>,
     pub client_list: Vec<ClientId>,
+    //TODO: rename to something more descriptive
+    // why do both this and bar_height exist??
+    // investigate
     pub bh: i32,
     pub lrpad: i32,
     pub animated: bool,
@@ -33,6 +38,7 @@ pub struct Globals {
     pub bar_dragging: bool,
     pub tags: TagSet,
     pub statuswidth: i32,
+    //TODO: stext is not a good name, rename to something more descriptive
     pub stext: String,
     pub wmatom: WmAtoms,
     pub netatom: NetAtoms,
@@ -93,7 +99,7 @@ impl Default for Globals {
             sw: 0,
             sh: 0,
             monitors: Vec::new(),
-            selmon: None,
+            selmon: 0,
             clients: HashMap::new(),
             client_list: Vec::new(),
             bh: 0,

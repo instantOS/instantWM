@@ -18,6 +18,7 @@ pub const SNAP_LEFT: i32 = 7;
 pub const SNAP_TOP_LEFT: i32 = 8;
 pub const SNAP_MAXIMIZED: i32 = 9;
 
+//TODO: this should probably use existing or new enums isntead of consts
 static SNAP_MATRIX: [[i32; 4]; 10] = [
     [SNAP_MAXIMIZED, SNAP_RIGHT, SNAP_BOTTOM, SNAP_LEFT],
     [SNAP_MAXIMIZED, SNAP_TOP_RIGHT, SNAP_NONE, SNAP_TOP_LEFT],
@@ -99,6 +100,7 @@ pub fn check_floating(win: Window) -> bool {
     false
 }
 
+//TODO: is this a duplicate of is_visible? Can it be removed?
 pub fn visible_client(win: Window) -> bool {
     let globals = get_globals();
     if let Some(client) = globals.clients.get(&win) {
@@ -113,6 +115,8 @@ pub fn visible_client(win: Window) -> bool {
     false
 }
 
+//TODO: why is this here? Has something not been ported properly from the C codebase?
+//This looks like something important from the C codebase
 pub fn save_all_floating(mon_id: Option<usize>) {
     let (numtags, _tagmask) = {
         let globals = get_globals();
@@ -166,6 +170,8 @@ pub fn save_all_floating(mon_id: Option<usize>) {
     }
 }
 
+//TODO: why is this here? Has something not been ported properly from the C codebase?
+//This looks like something important from the C codebase
 pub fn restore_all_floating(mon_id: Option<usize>) {
     let numtags = {
         let globals = get_globals();
@@ -253,6 +259,7 @@ pub fn reset_snap(win: Window) {
     }
 }
 
+//TODO: this has multiple responsibilities, refactor
 pub fn apply_snap(win: Window, mon_id: Option<usize>) {
     let (snapstatus, saved_geo, border_width) = {
         let globals = get_globals();
@@ -264,6 +271,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
     };
 
     if let Some(mid) = mon_id {
+        //TODO: this should probably use existin rectangle struct
         let (m_mx, _m_my, m_mw, m_mh, m_wh, mony) = {
             let globals = get_globals();
             if let Some(m) = globals.monitors.get(mid) {
@@ -447,6 +455,7 @@ pub fn change_snap(win: Window, snap_mode: i32) {
         }
     };
 
+    //TODO: this probably does not need manual integers
     let tempsnap = match snapstatus {
         SnapPosition::None => 0,
         SnapPosition::Top => 1,
@@ -495,6 +504,7 @@ pub fn change_snap(win: Window, snap_mode: i32) {
     crate::focus::focus(Some(win));
 }
 
+//TODO: document what temp fullscreen does, why it exists and what makes it temp
 pub fn temp_fullscreen(_arg: &Arg) {
     let (fullscreen_win, sel_win, animated) = {
         let globals = get_globals();
