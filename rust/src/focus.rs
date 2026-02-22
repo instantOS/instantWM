@@ -107,10 +107,6 @@ pub fn focus(win: Option<Window>) {
     }
 }
 
-//TODO: why is this empty function here? Has something not been ported properly
-//from the C codebase?
-pub fn unfocus(_win: Window, _set_focus: bool) {}
-
 pub fn set_focus_win(_win: Window) {}
 
 /// Focus the client in the given direction.

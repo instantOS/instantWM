@@ -586,9 +586,7 @@ pub fn tag_mon(arg: &Arg) {
             client.geo.y = target_my + (target_wh as f32 * yfact) as i32;
         }
 
-        if let Some(sel_mon_id) = globals.selmon {
-            arrange(Some(sel_mon_id));
-        }
+        arrange(Some(globals.selmon));
 
         let x11 = get_x11();
         if let Some(ref conn) = x11.conn {
@@ -648,7 +646,9 @@ fn shift_tag(dir: Direction, offset: i32) {
         (current_tag, overlay)
     };
 
-    let Some(current_tag) = current_tag else { return };
+    let Some(current_tag) = current_tag else {
+        return;
+    };
 
     if Some(win) == overlay {
         let mode = match dir {
@@ -684,15 +684,11 @@ fn shift_tag(dir: Direction, offset: i32) {
 
         let (mon_mw, c_x, c_y) = {
             let globals = get_globals();
-            let mon_mw = if let Some(sel_mon_id) = globals.selmon {
-                globals
-                    .monitors
-                    .get(sel_mon_id)
-                    .map(|m| m.monitor_rect.w)
-                    .unwrap_or(0)
-            } else {
-                0
-            };
+            let mon_mw = globals
+                .monitors
+                .get(globals.selmon)
+                .map(|m| m.monitor_rect.w)
+                .unwrap_or(0);
             let (c_x, c_y) = globals
                 .clients
                 .get(&win)
@@ -738,16 +734,12 @@ fn shift_tag(dir: Direction, offset: i32) {
                 Direction::Left if tagset > 1 => {
                     client.tags >>= offset;
                     focus(None);
-                    if let Some(sel_mon_id) = get_globals().selmon {
-                        arrange(Some(sel_mon_id));
-                    }
+                    arrange(Some(get_globals().selmon));
                 }
                 Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
                     client.tags <<= offset;
                     focus(None);
-                    if let Some(sel_mon_id) = get_globals().selmon {
-                        arrange(Some(sel_mon_id));
-                    }
+                    arrange(Some(get_globals().selmon));
                 }
                 _ => {}
             }
@@ -758,16 +750,13 @@ fn shift_tag(dir: Direction, offset: i32) {
 fn reset_sticky_client(win: Window) {
     let target_tags = {
         let globals = get_globals();
-        globals
-            .monitors
-            .get(globals.selmon)
-            .and_then(|mon| {
-                if mon.current_tag > 0 {
-                    Some(1 << (mon.current_tag - 1))
-                } else {
-                    None
-                }
-            })
+        globals.monitors.get(globals.selmon).and_then(|mon| {
+            if mon.current_tag > 0 {
+                Some(1 << (mon.current_tag - 1))
+            } else {
+                None
+            }
+        })
     };
 
     let globals = get_globals_mut();
@@ -843,24 +832,21 @@ fn view_scroll(dir: Direction) {
 
     let mut globals = get_globals_mut();
     if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
-            mon.seltags ^= 1;
-            mon.tagset[mon.seltags as usize] = new_tagset;
+        mon.seltags ^= 1;
+        mon.tagset[mon.seltags as usize] = new_tagset;
 
-            mon.prev_tag = mon.current_tag;
-            let mut i = 0;
-            while (new_tagset & (1 << i)) == 0 {
-                i += 1;
-            }
-            mon.current_tag = i + 1;
+        mon.prev_tag = mon.current_tag;
+        let mut i = 0;
+        while (new_tagset & (1 << i)) == 0 {
+            i += 1;
         }
+        mon.current_tag = i + 1;
     }
 
     apply_pertag_settings(&mut globals);
     focus(None);
 
-    if let Some(sel_mon_id) = get_globals().selmon {
-        arrange(Some(sel_mon_id));
-    }
+    arrange(Some(get_globals().selmon));
 }
 
 pub fn move_left(arg: &Arg) {
@@ -878,7 +864,7 @@ pub fn move_right(arg: &Arg) {
 /// # Arguments
 /// * `forward` - If true, shift to higher-numbered tags; if false, shift to lower.
 pub fn shift_view_direction(forward: bool) {
-    let direction = if forward { 1 } else { -1 };
+    let direction: i32 = if forward { 1 } else { -1 };
 
     let (tagset, numtags) = {
         let globals = get_globals();
@@ -902,11 +888,7 @@ pub fn shift_view_direction(forward: bool) {
         }
 
         let globals = get_globals();
-        let mut current = if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.clients)
-        } else {
-            None
-        };
+        let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
         while let Some(c_win) = current {
             if let Some(c) = globals.clients.get(&c_win) {
@@ -968,11 +950,7 @@ pub fn swap_tags(arg: &Arg) {
     let clients_to_swap: Vec<Window> = {
         let globals = get_globals();
         let mut result = Vec::new();
-        let mut current = if let Some(sel_mon_id) = globals.selmon {
-            globals.monitors.get(sel_mon_id).and_then(|m| m.clients)
-        } else {
-            None
-        };
+        let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
         while let Some(c_win) = current {
             if let Some(c) = globals.clients.get(&c_win) {
@@ -999,13 +977,12 @@ pub fn swap_tags(arg: &Arg) {
 
     let globals = get_globals_mut();
     if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
-            mon.tagset[mon.seltags as usize] = newtag;
+        mon.tagset[mon.seltags as usize] = newtag;
 
-            if mon.prev_tag == target_idx + 1 {
-                mon.prev_tag = current_tag as usize;
-            }
-            mon.current_tag = target_idx + 1;
+        if mon.prev_tag == target_idx + 1 {
+            mon.prev_tag = current_tag as usize;
         }
+        mon.current_tag = target_idx + 1;
     }
     focus(None);
 
@@ -1223,10 +1200,7 @@ pub fn alt_tab_free(_arg: &Arg) {}
 pub fn zoom(_arg: &Arg) {
     let sel_win = {
         let globals = get_globals();
-        let selmon_id = match globals.selmon {
-            Some(id) => id,
-            None => return,
-        };
+        let selmon_id = globals.selmon;
         globals.monitors.get(selmon_id).and_then(|m| m.sel)
     };
 

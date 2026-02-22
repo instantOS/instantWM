@@ -540,6 +540,19 @@ pub trait Layout: std::fmt::Debug {
 pub type ClientId = usize;
 pub type MonitorId = usize;
 
+/// Size hints for a client window (from WM_NORMAL_HINTS).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SizeHints {
+    pub basew: i32,
+    pub baseh: i32,
+    pub incw: i32,
+    pub inch: i32,
+    pub maxw: i32,
+    pub maxh: i32,
+    pub minw: i32,
+    pub minh: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rect {
     pub x: i32,
@@ -648,15 +661,8 @@ pub struct Client {
     pub geo: Rect,
     pub float_geo: Rect,
     pub old_geo: Rect,
-    //TODO: should probably come up with a struct for these
-    pub basew: i32,
-    pub baseh: i32,
-    pub incw: i32,
-    pub inch: i32,
-    pub maxw: i32,
-    pub maxh: i32,
-    pub minw: i32,
-    pub minh: i32,
+    /// Size hints from WM_NORMAL_HINTS property
+    pub size_hints: SizeHints,
 
     pub hintsvalid: i32,
     pub border_width: i32,

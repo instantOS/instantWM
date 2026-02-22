@@ -170,15 +170,6 @@ pub fn get_state(win: Window) -> i32 {
     WM_STATE_NORMAL
 }
 
-//TODO: these next two should probably be methods on Client
-pub fn client_width(c: &Client) -> i32 {
-    c.geo.w + 2 * c.border_width
-}
-
-pub fn client_height(c: &Client) -> i32 {
-    c.geo.h + 2 * c.border_width
-}
-
 pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;
     let globals = get_globals();
@@ -213,15 +204,19 @@ pub fn pop(win: Window) {
     }
 }
 
-//TODO: what does this do? Why does it return a window not a client?
+/// Check if a window is a managed client window.
+///
+/// Returns the window ID if it is a client, None otherwise.
+/// Note: This returns the Window ID (same as input) rather than the Client struct
+/// because the callers typically need the Window ID for further operations, and
+/// the Client can be looked up via globals.clients when needed.
 pub fn win_to_client(w: Window) -> Option<Window> {
     let globals = get_globals();
-    for (&win, _c) in globals.clients.iter() {
-        if win == w {
-            return Some(win);
-        }
+    if globals.clients.contains_key(&w) {
+        Some(w)
+    } else {
+        None
     }
-    None
 }
 
 pub fn set_client_state(win: Window, state: i32) {
@@ -1009,11 +1004,12 @@ pub fn apply_size_hints(
             update_size_hints(c);
         }
 
-        let base_is_min = c.basew == c.minw && c.baseh == c.minh;
+        let base_is_min =
+            c.size_hints.basew == c.size_hints.minw && c.size_hints.baseh == c.size_hints.minh;
 
         if !base_is_min {
-            *w -= c.basew;
-            *h -= c.baseh;
+            *w -= c.size_hints.basew;
+            *h -= c.size_hints.baseh;
         }
 
         if c.mina > 0.0 && c.maxa > 0.0 {
@@ -1025,25 +1021,25 @@ pub fn apply_size_hints(
         }
 
         if base_is_min {
-            *w -= c.basew;
-            *h -= c.baseh;
+            *w -= c.size_hints.basew;
+            *h -= c.size_hints.baseh;
         }
 
-        if c.incw != 0 {
-            *w -= *w % c.incw;
+        if c.size_hints.incw != 0 {
+            *w -= *w % c.size_hints.incw;
         }
-        if c.inch != 0 {
-            *h -= *h % c.inch;
+        if c.size_hints.inch != 0 {
+            *h -= *h % c.size_hints.inch;
         }
 
-        *w = max(*w + c.basew, c.minw);
-        *h = max(*h + c.baseh, c.minh);
+        *w = max(*w + c.size_hints.basew, c.size_hints.minw);
+        *h = max(*h + c.size_hints.baseh, c.size_hints.minh);
 
-        if c.maxw != 0 {
-            *w = min(*w, c.maxw);
+        if c.size_hints.maxw != 0 {
+            *w = min(*w, c.size_hints.maxw);
         }
-        if c.maxh != 0 {
-            *h = min(*h, c.maxh);
+        if c.size_hints.maxh != 0 {
+            *h = min(*h, c.size_hints.maxh);
         }
     }
 
@@ -1819,41 +1815,50 @@ pub fn update_size_hints(c: &mut Client) {
                 const P_ASPECT: u32 = 128;
 
                 if flags & P_BASE_SIZE != 0 && data.len() >= 28 {
-                    c.basew = i32::from_ne_bytes([data[8], data[9], data[10], data[11]]);
-                    c.baseh = i32::from_ne_bytes([data[12], data[13], data[14], data[15]]);
+                    c.size_hints.basew = i32::from_ne_bytes([data[8], data[9], data[10], data[11]]);
+                    c.size_hints.baseh =
+                        i32::from_ne_bytes([data[12], data[13], data[14], data[15]]);
                 } else if flags & P_MIN_SIZE != 0 && data.len() >= 28 {
-                    c.basew = i32::from_ne_bytes([data[16], data[17], data[18], data[19]]);
-                    c.baseh = i32::from_ne_bytes([data[20], data[21], data[22], data[23]]);
+                    c.size_hints.basew =
+                        i32::from_ne_bytes([data[16], data[17], data[18], data[19]]);
+                    c.size_hints.baseh =
+                        i32::from_ne_bytes([data[20], data[21], data[22], data[23]]);
                 } else {
-                    c.basew = 0;
-                    c.baseh = 0;
+                    c.size_hints.basew = 0;
+                    c.size_hints.baseh = 0;
                 }
 
                 if flags & P_RESIZE_INC != 0 && data.len() >= 36 {
-                    c.incw = i32::from_ne_bytes([data[24], data[25], data[26], data[27]]);
-                    c.inch = i32::from_ne_bytes([data[28], data[29], data[30], data[31]]);
+                    c.size_hints.incw =
+                        i32::from_ne_bytes([data[24], data[25], data[26], data[27]]);
+                    c.size_hints.inch =
+                        i32::from_ne_bytes([data[28], data[29], data[30], data[31]]);
                 } else {
-                    c.incw = 0;
-                    c.inch = 0;
+                    c.size_hints.incw = 0;
+                    c.size_hints.inch = 0;
                 }
 
                 if flags & P_MAX_SIZE != 0 && data.len() >= 44 {
-                    c.maxw = i32::from_ne_bytes([data[32], data[33], data[34], data[35]]);
-                    c.maxh = i32::from_ne_bytes([data[36], data[37], data[38], data[39]]);
+                    c.size_hints.maxw =
+                        i32::from_ne_bytes([data[32], data[33], data[34], data[35]]);
+                    c.size_hints.maxh =
+                        i32::from_ne_bytes([data[36], data[37], data[38], data[39]]);
                 } else {
-                    c.maxw = 0;
-                    c.maxh = 0;
+                    c.size_hints.maxw = 0;
+                    c.size_hints.maxh = 0;
                 }
 
                 if flags & P_MIN_SIZE != 0 && data.len() >= 52 {
-                    c.minw = i32::from_ne_bytes([data[16], data[17], data[18], data[19]]);
-                    c.minh = i32::from_ne_bytes([data[20], data[21], data[22], data[23]]);
+                    c.size_hints.minw =
+                        i32::from_ne_bytes([data[16], data[17], data[18], data[19]]);
+                    c.size_hints.minh =
+                        i32::from_ne_bytes([data[20], data[21], data[22], data[23]]);
                 } else if flags & P_BASE_SIZE != 0 && data.len() >= 28 {
-                    c.minw = c.basew;
-                    c.minh = c.baseh;
+                    c.size_hints.minw = c.size_hints.basew;
+                    c.size_hints.minh = c.size_hints.baseh;
                 } else {
-                    c.minw = 0;
-                    c.minh = 0;
+                    c.size_hints.minw = 0;
+                    c.size_hints.minh = 0;
                 }
 
                 if flags & P_ASPECT != 0 && data.len() >= 72 {
@@ -1877,7 +1882,10 @@ pub fn update_size_hints(c: &mut Client) {
                     c.mina = 0.0;
                 }
 
-                c.isfixed = c.maxw != 0 && c.maxh != 0 && c.maxw == c.minw && c.maxh == c.minh;
+                c.isfixed = c.size_hints.maxw != 0
+                    && c.size_hints.maxh != 0
+                    && c.size_hints.maxw == c.size_hints.minw
+                    && c.size_hints.maxh == c.size_hints.minh;
                 c.hintsvalid = 1;
             }
         }
