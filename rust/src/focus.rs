@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
+use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
 pub const FOCUS_DIR_UP: u32 = 0;
@@ -107,7 +108,28 @@ pub fn focus(win: Option<Window>) {
     }
 }
 
-pub fn set_focus_win(_win: Window) {}
+/// Set focus to a specific window.
+/// This is a low-level focus operation that sets the X input focus
+/// and updates the active window property.
+pub fn set_focus_win(win: Window) {
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let globals = get_globals();
+        if let Some(c) = globals.clients.get(&win) {
+            if !c.neverfocus {
+                let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
+                let _ = conn.change_property32(
+                    PropMode::REPLACE,
+                    globals.root,
+                    globals.netatom.active_window,
+                    AtomEnum::WINDOW,
+                    &[win],
+                );
+            }
+            let _ = conn.flush();
+        }
+    }
+}
 
 /// Focus the client in the given direction.
 ///

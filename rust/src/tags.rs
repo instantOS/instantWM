@@ -161,14 +161,23 @@ pub fn get_tag_width() -> i32 {
     x + start_menu_size
 }
 
-//TODO: document what this does (is ix a coordinate?)
-pub fn get_tag_at_x(ix: i32) -> i32 {
-    let mut x;
+/// Get the tag index at a given X coordinate in the bar.
+///
+/// This function is used to determine which tag was clicked based on
+/// the X position of the mouse cursor relative to the bar.
+///
+/// # Arguments
+/// * `click_x` - The X coordinate (horizontal position) to check
+///
+/// # Returns
+/// The tag index (0-based) if a tag is at that position, or -1 if not
+pub fn get_tag_at_x(click_x: i32) -> i32 {
+    let mut accumulated_width: i32;
     let mut occupied_tags: u32 = 0;
 
     let globals = get_globals();
     let start_menu_size = globals.startmenusize;
-    x = start_menu_size;
+    accumulated_width = start_menu_size;
 
     let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
 
@@ -226,9 +235,9 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
         } else {
             tag_name
         };
-        x += text_width(display_name) + lrpad;
+        accumulated_width += text_width(display_name) + lrpad;
 
-        if x >= ix {
+        if accumulated_width >= click_x {
             return i as i32;
         }
     }
@@ -236,10 +245,22 @@ pub fn get_tag_at_x(ix: i32) -> i32 {
     -1
 }
 
-//TODO: this is badly named
-pub fn tag(arg: &Arg) {
+/// Set the tag(s) for the currently selected client.
+/// 
+/// This function assigns the specified tag(s) to the selected window,
+/// replacing any existing tags. Use `toggle_tag` to add/remove tags.
+/// 
+/// # Arguments
+/// * `arg` - Argument containing the tag bitmask in `ui`
+pub fn set_client_tag(arg: &Arg) {
     let ui = compute_prefix(arg);
     set_client_tag_impl(ui);
+}
+
+/// Legacy alias for `set_client_tag`. Use `set_client_tag` for new code.
+#[deprecated(since = "0.1.0", note = "Use set_client_tag instead")]
+pub fn tag(arg: &Arg) {
+    set_client_tag(arg);
 }
 
 fn set_client_tag_impl(tagmask_bits: u32) {
@@ -420,6 +441,7 @@ pub fn view(arg: &Arg) {
         mon.tagset[mon.seltags as usize] = ui & tagmask;
     }
 
+    //TOD: this is a magic number
     if ui == !0u32 {
         if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
             mon.prev_tag = mon.current_tag;
@@ -624,6 +646,7 @@ pub fn tag_to_left(arg: &Arg) {
 }
 
 /// Legacy wrapper for key bindings. Use `tag_to_right_by` for new code.
+/// TODO: remove all legacy wrappers
 pub fn tag_to_right(arg: &Arg) {
     tag_to_right_by(arg.i);
 }

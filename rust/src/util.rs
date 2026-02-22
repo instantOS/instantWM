@@ -43,6 +43,7 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
     exit(1);
 }
 
+//TODO: are these relics from this being a C port which are not needed at all in Rust?
 pub fn ecalloc<T: Default + Clone>(nmemb: usize) -> Vec<T> {
     vec![T::default(); nmemb]
 }
@@ -59,6 +60,7 @@ pub fn startswith(a: &str, b: &str) -> bool {
     a.starts_with(b)
 }
 
+//TODO: is this needed? Couldn't callsites execute starts_with directly?
 pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
     a.starts_with(b)
 }
@@ -208,6 +210,7 @@ pub fn spawn_vec(cmd: &[CString]) {
     }
 }
 
+//TODO: are these mostly just reinventing the standard library?
 #[inline]
 pub fn min<T: Ord>(a: T, b: T) -> T {
     a.min(b)

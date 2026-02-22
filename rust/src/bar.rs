@@ -134,6 +134,7 @@ pub fn reset_bar() {
     }
 }
 
+//TODO: there are lots of one-line wrappers here, are they needed?
 pub fn update_status() {
     x11::update_status();
 }

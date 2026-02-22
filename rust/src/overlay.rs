@@ -13,6 +13,9 @@ pub const OVERLAY_RIGHT: i32 = 1;
 pub const OVERLAY_BOTTOM: i32 = 2;
 pub const OVERLAY_LEFT: i32 = 3;
 
+//TODO: maybe overlay should be a struct with the overlay relevant state kept
+//there
+
 pub fn overlay_exists() -> bool {
     let globals = get_globals();
 
@@ -46,6 +49,7 @@ pub fn overlay_exists() -> bool {
 }
 
 pub fn create_overlay(_arg: &Arg) {
+    //TODO: are there utils to do this?
     let (sel_win, sel_overlay, sel_fullscreen) = {
         let globals = get_globals();
 

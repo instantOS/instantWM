@@ -19,6 +19,29 @@ pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> 
     0
 }
 
+/// Overlay position modes for the overlay window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayMode {
+    Top = 0,
+    Right = 1,
+    Bottom = 2,
+    Left = 3,
+}
+
+impl OverlayMode {
+    /// Convert from i32 to OverlayMode.
+    pub fn from_i32(mode: i32) -> Option<Self> {
+        match mode {
+            0 => Some(Self::Top),
+            1 => Some(Self::Right),
+            2 => Some(Self::Bottom),
+            3 => Some(Self::Left),
+            _ => None,
+        }
+    }
+}
+
+// Legacy constants for backward compatibility
 pub const OVERLAY_BOTTOM: i32 = 2;
 pub const OVERLAY_RIGHT: i32 = 1;
 

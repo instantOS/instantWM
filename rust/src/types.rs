@@ -392,6 +392,7 @@ pub enum AltCursor {
     #[default]
     None,
     Resize,
+    //TODO: Port over sidebar from C codebase
     Sidebar,
 }
 
@@ -411,6 +412,7 @@ pub enum SnapPosition {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// TODO: is this unused? Should it be used? Are other enums used instead?
 pub enum OverlayDirection {
     Top,
     Right,
@@ -653,12 +655,19 @@ impl Rect {
     }
 }
 
+/// Represents a managed client window in the window manager.
+///
+/// This struct contains all state for a window managed by instantWM,
+/// including geometry, tags, flags, and relationships to other clients.
 #[derive(Debug, Clone, Default)]
 pub struct Client {
+    /// Window title/name displayed in the bar.
     pub name: String,
-    //TODO: what does this do/mean?
-    // document or rename or both
+    /// Minimum aspect ratio constraint from WM_NORMAL_HINTS.
+    /// Used for size hint calculations when resizing.
     pub mina: f32,
+    /// Maximum aspect ratio constraint from WM_NORMAL_HINTS.
+    /// Used for size hint calculations when resizing.
     pub maxa: f32,
     pub geo: Rect,
     pub float_geo: Rect,
@@ -716,14 +725,25 @@ impl Client {
     }
 }
 
+/// Internal state of a monitor (screen) in the window manager.
+///
+/// This struct holds all runtime state for a monitor, including
+/// geometry, tag state, client lists, and UI configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MonitorInner {
+    /// Master factor for tiling layouts (0.0 to 1.0).
+    /// Controls the proportion of screen given to the master area.
     pub mfact: f32,
+    /// Number of clients in the master area for tiling layouts.
     pub nmaster: i32,
+    /// Monitor index number (0-based).
     pub num: i32,
+    /// Bar Y position (vertical position of the status bar).
     pub by: i32,
+    /// Width reserved for client title display in the bar.
     pub bar_clients_width: i32,
-    //TODO: this is a bad name, document or rename or both
+    /// Bar thickness/height in pixels.
+    /// This is the actual rendered height of the bar window.
     pub bt: i32,
     pub monitor_rect: Rect,
     pub work_rect: Rect,

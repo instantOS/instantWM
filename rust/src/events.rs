@@ -427,6 +427,7 @@ pub fn motion_notify(_e: &MotionNotifyEvent) {
 
     let selmon_idx = selmon_id;
 
+    //TODO: refactor this into a separate function?
     let (mx, my, bh, startmenusize, activeoffset, bar_clients_width, gesture, has_sel, x_limit) = {
         let globals = get_globals();
         let Some(mon) = globals.monitors.get(selmon_idx) else {
