@@ -427,9 +427,25 @@ pub fn resize_request(e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(e: &UnmapNotifyEvent) {
     if let Some(win) = win_to_client(e.window) {
-        set_client_state(win, WM_STATE_WITHDRAWN);
-        unmanage(win, false);
+        // Bit 7 of response_type is the X11 "send_event" flag.  When set the
+        // UnmapNotify was generated synthetically (e.g. a client withdrawing
+        // itself) rather than by a real XUnmapWindow call.  In that case we
+        // only update WM_STATE to WithdrawnState and leave the client managed,
+        // exactly as the original C code does:
+        //
+        //   if (ev->send_event) setclientstate(c, WithdrawnState);
+        //   else                unmanage(c, 0);
+        if e.response_type & 0x80 != 0 {
+            // Synthetic unmap — client is withdrawing; just record state.
+            set_client_state(win, WM_STATE_WITHDRAWN);
+        } else {
+            // Real unmap — window is going away; remove from management.
+            // unmanage(win, false) already calls set_client_state(WITHDRAWN)
+            // internally, so we must not call it here first.
+            unmanage(win, false);
+        }
     } else if let Some(_icon) = win_to_systray_icon(e.window) {
+        // Systray icons sometimes unmap without destroying; re-map them.
         update_systray();
     }
 }
@@ -509,6 +525,8 @@ fn dispatch_event(event: x11rb::protocol::Event) {
     }
 }
 
+//TODO: this function is too long, refactor
+// also check if existing utils can be used or shared
 pub fn scan() {
     let (root, wm_state_atom) = {
         let globals = get_globals();
