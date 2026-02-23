@@ -17,7 +17,7 @@ impl Layout for TileLayout {
     fn symbol(&self) -> &'static str {
         "+"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         tile(m);
     }
     fn is_tiling(&self) -> bool {
@@ -32,7 +32,7 @@ impl Layout for GridLayout {
     fn symbol(&self) -> &'static str {
         "#"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         grid(m);
     }
     fn is_tiling(&self) -> bool {
@@ -47,7 +47,7 @@ impl Layout for FloatingLayout {
     fn symbol(&self) -> &'static str {
         "-"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         floatl(m);
     }
     fn is_tiling(&self) -> bool {
@@ -62,7 +62,7 @@ impl Layout for MonocleLayout {
     fn symbol(&self) -> &'static str {
         "[M]"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         monocle(m);
     }
     fn is_tiling(&self) -> bool {
@@ -80,7 +80,7 @@ impl Layout for VertLayout {
     fn symbol(&self) -> &'static str {
         "|||"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         floatl(m);
     }
     fn is_tiling(&self) -> bool {
@@ -95,7 +95,7 @@ impl Layout for DeckLayout {
     fn symbol(&self) -> &'static str {
         "H[]"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         deck(m);
     }
     fn is_tiling(&self) -> bool {
@@ -110,7 +110,7 @@ impl Layout for OverviewLayout {
     fn symbol(&self) -> &'static str {
         "O"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         floatl(m);
     }
     fn is_tiling(&self) -> bool {
@@ -128,7 +128,7 @@ impl Layout for BstackLayout {
     fn symbol(&self) -> &'static str {
         "TTT"
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         bstack(m);
     }
     fn is_tiling(&self) -> bool {
@@ -143,7 +143,7 @@ impl Layout for HorizLayout {
     fn symbol(&self) -> &'static str {
         "==="
     }
-    fn arrange(&self, m: &mut MonitorInner) {
+    fn arrange(&self, m: &mut Monitor) {
         floatl(m);
     }
     fn is_tiling(&self) -> bool {
@@ -152,7 +152,7 @@ impl Layout for HorizLayout {
 }
 
 /// Returns the currently active layout for the given monitor.
-pub fn get_current_layout(m: &MonitorInner) -> &'static dyn Layout {
+pub fn get_current_layout(m: &Monitor) -> &'static dyn Layout {
     let g = get_globals();
     let idx = get_current_layout_idx(m).unwrap_or(0);
     g.layouts.get(idx).copied().unwrap_or(&TILE_LAYOUT)
@@ -160,7 +160,7 @@ pub fn get_current_layout(m: &MonitorInner) -> &'static dyn Layout {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn tile(m: &mut MonitorInner) {
+pub fn tile(m: &mut Monitor) {
     let framecount = {
         let g = get_globals();
         if g.animated && client_count() > 5 {
@@ -289,7 +289,7 @@ pub fn tile(m: &mut MonitorInner) {
     }
 }
 
-pub fn monocle(m: &mut MonitorInner) {
+pub fn monocle(m: &mut Monitor) {
     let mut n: u32 = 0;
     let g = get_globals();
 
@@ -358,7 +358,7 @@ pub fn monocle(m: &mut MonitorInner) {
     }
 }
 
-pub fn grid(m: &mut MonitorInner) {
+pub fn grid(m: &mut Monitor) {
     let g = get_globals();
     if m.clientcount <= 2 && m.monitor_rect.w > m.monitor_rect.h {
         tile(m);
@@ -451,7 +451,7 @@ pub fn grid(m: &mut MonitorInner) {
     }
 }
 
-pub fn deck(m: &mut MonitorInner) {
+pub fn deck(m: &mut Monitor) {
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
@@ -531,7 +531,7 @@ pub fn deck(m: &mut MonitorInner) {
     }
 }
 
-pub fn bstack(m: &mut MonitorInner) {
+pub fn bstack(m: &mut Monitor) {
     let framecount = {
         let g = get_globals();
         if g.animated && client_count() > 4 {
@@ -639,7 +639,7 @@ pub fn bstack(m: &mut MonitorInner) {
     }
 }
 
-pub fn bstackhoriz(m: &mut MonitorInner) {
+pub fn bstackhoriz(m: &mut Monitor) {
     let framecount = {
         let g = get_globals();
         if g.animated && client_count() > 4 {
@@ -743,7 +743,7 @@ pub fn bstackhoriz(m: &mut MonitorInner) {
     }
 }
 
-pub fn tcl(m: &mut MonitorInner) {
+pub fn tcl(m: &mut Monitor) {
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
@@ -915,7 +915,7 @@ pub fn tcl(m: &mut MonitorInner) {
     }
 }
 
-pub fn overviewlayout(m: &mut MonitorInner) {
+pub fn overviewlayout(m: &mut Monitor) {
     let n = all_client_count();
     if n == 0 {
         return;
@@ -1012,7 +1012,7 @@ pub fn overviewlayout(m: &mut MonitorInner) {
     }
 }
 
-pub fn floatl(m: &mut MonitorInner) {
+pub fn floatl(m: &mut Monitor) {
     let g = get_globals();
     let animated_store = g.animated;
 
@@ -1075,7 +1075,7 @@ pub fn floatl(m: &mut MonitorInner) {
     }
 }
 
-fn apply_snap_for_window(win: Window, m: &MonitorInner) {
+fn apply_snap_for_window(win: Window, m: &Monitor) {
     let g = get_globals();
     if let Some(c) = g.clients.get(&win) {
         let snapstatus = c.snapstatus;
@@ -1181,7 +1181,7 @@ pub fn arrange(mon_id: Option<MonitorId>) {
     }
 }
 
-pub fn arrange_monitor(m: &mut MonitorInner) {
+pub fn arrange_monitor(m: &mut Monitor) {
     m.clientcount = client_count_mon(m) as u32;
 
     let mut c_win = next_tiled(m.clients);
@@ -1273,7 +1273,7 @@ pub fn arrange_monitor(m: &mut MonitorInner) {
     }
 }
 
-pub fn restack(m: &mut MonitorInner) {
+pub fn restack(m: &mut Monitor) {
     let is_overview = is_overview_layout(m);
     if is_overview {
         return;
@@ -1336,7 +1336,7 @@ pub fn restack(m: &mut MonitorInner) {
     }
 }
 
-fn is_overview_layout(m: &MonitorInner) -> bool {
+fn is_overview_layout(m: &Monitor) -> bool {
     get_current_layout(m).is_overview()
 }
 
@@ -1432,7 +1432,7 @@ pub fn set_layout(arg: &Arg) {
     }
 }
 
-fn get_current_layout_idx(m: &MonitorInner) -> Option<usize> {
+fn get_current_layout_idx(m: &Monitor) -> Option<usize> {
     let g = get_globals();
     let current_tag = m.current_tag;
     if current_tag > 0 && current_tag <= g.tags.tags.len() {
@@ -1699,7 +1699,7 @@ pub fn client_count() -> i32 {
     count
 }
 
-pub fn client_count_mon(m: &MonitorInner) -> i32 {
+pub fn client_count_mon(m: &Monitor) -> i32 {
     let g = get_globals();
     let mut count = 0;
 
@@ -1741,7 +1741,7 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
     None
 }
 
-pub fn fibonacci(m: &mut MonitorInner, spiral: bool) {
+pub fn fibonacci(m: &mut Monitor, spiral: bool) {
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
@@ -1820,15 +1820,15 @@ pub fn fibonacci(m: &mut MonitorInner, spiral: bool) {
     }
 }
 
-pub fn spiral(m: &mut MonitorInner) {
+pub fn spiral(m: &mut Monitor) {
     fibonacci(m, true);
 }
 
-pub fn dwindle(m: &mut MonitorInner) {
+pub fn dwindle(m: &mut Monitor) {
     fibonacci(m, false);
 }
 
-pub fn horizgrid(m: &mut MonitorInner) {
+pub fn horizgrid(m: &mut Monitor) {
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
@@ -1923,6 +1923,6 @@ pub fn horizgrid(m: &mut MonitorInner) {
     }
 }
 
-pub fn gaplessgrid(m: &mut MonitorInner) {
+pub fn gaplessgrid(m: &mut Monitor) {
     grid(m);
 }

@@ -27,14 +27,14 @@ fn tagmon(arg: &Arg) {
     }
 }
 
-pub fn create_monitor() -> MonitorInner {
+pub fn create_monitor() -> Monitor {
     eprintln!(
         "TRACE: create_monitor - start (WARNING: this version calls get_globals, may deadlock)"
     );
     let g = get_globals();
     eprintln!("TRACE: create_monitor - after get_globals");
 
-    let mut m = MonitorInner {
+    let mut m = Monitor {
         tagset: [1, 1],
         mfact: g.mfact,
         nmaster: g.nmaster,
@@ -46,7 +46,7 @@ pub fn create_monitor() -> MonitorInner {
         prev_tag: 1,
         ..Default::default()
     };
-    eprintln!("TRACE: create_monitor - after creating MonitorInner");
+    eprintln!("TRACE: create_monitor - after creating Monitor");
 
     eprintln!("TRACE: create_monitor - returning");
     m
@@ -57,10 +57,10 @@ pub fn create_monitor_with_values(
     nmaster: i32,
     showbar: bool,
     topbar: bool,
-) -> MonitorInner {
+) -> Monitor {
     eprintln!("TRACE: create_monitor_with_values - start");
 
-    let mut m = MonitorInner {
+    let mut m = Monitor {
         tagset: [1, 1],
         mfact,
         nmaster,
@@ -72,7 +72,7 @@ pub fn create_monitor_with_values(
         prev_tag: 1,
         ..Default::default()
     };
-    eprintln!("TRACE: create_monitor_with_values - after creating MonitorInner");
+    eprintln!("TRACE: create_monitor_with_values - after creating Monitor");
 
     eprintln!("TRACE: create_monitor_with_values - returning");
     m
@@ -592,11 +592,11 @@ pub fn arrange(m: Option<MonitorId>) {
     crate::layouts::arrange(m);
 }
 
-pub fn arrange_mon(m: &mut MonitorInner) {
+pub fn arrange_mon(m: &mut Monitor) {
     crate::layouts::arrange_monitor(m);
 }
 
-pub fn restack(m: &mut MonitorInner) {
+pub fn restack(m: &mut Monitor) {
     crate::layouts::restack(m);
 }
 
@@ -634,7 +634,7 @@ fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
 
 /// Get the current tag for a monitor.
 /// Returns None if the monitor's current_tag is invalid.
-pub fn get_current_tag<'a>(mon: &MonitorInner, tags: &'a TagSet) -> Option<&'a Tag> {
+pub fn get_current_tag<'a>(mon: &Monitor, tags: &'a TagSet) -> Option<&'a Tag> {
     if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
         Some(&tags.tags[mon.current_tag - 1])
     } else {
@@ -643,7 +643,7 @@ pub fn get_current_tag<'a>(mon: &MonitorInner, tags: &'a TagSet) -> Option<&'a T
 }
 
 /// Get the current tag mutably.
-pub fn get_current_tag_mut<'a>(mon: &MonitorInner, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
+pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
     if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
         Some(&mut tags.tags[mon.current_tag - 1])
     } else {
@@ -652,7 +652,7 @@ pub fn get_current_tag_mut<'a>(mon: &MonitorInner, tags: &'a mut TagSet) -> Opti
 }
 
 /// Get the current layout symbol for a monitor.
-pub fn get_current_ltsymbol(mon: &MonitorInner, tags: &TagSet, layouts: &[&dyn Layout]) -> String {
+pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet, layouts: &[&dyn Layout]) -> String {
     if let Some(tag) = get_current_tag(mon, tags) {
         if let Some(lt_idx) = tag.ltidxs[tag.sellt as usize] {
             layouts
@@ -668,14 +668,14 @@ pub fn get_current_ltsymbol(mon: &MonitorInner, tags: &TagSet, layouts: &[&dyn L
 }
 
 /// Check if the current tag's showbar is enabled.
-pub fn get_current_showbar(mon: &MonitorInner, tags: &TagSet) -> bool {
+pub fn get_current_showbar(mon: &Monitor, tags: &TagSet) -> bool {
     get_current_tag(mon, tags)
         .map(|t| t.showbar)
         .unwrap_or(true)
 }
 
 /// Check if the current layout is tiling (sellt == 0).
-pub fn is_current_layout_tiling(mon: &MonitorInner, tags: &TagSet) -> bool {
+pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
     get_current_tag(mon, tags)
         .map(|t| t.sellt == 0)
         .unwrap_or(true)

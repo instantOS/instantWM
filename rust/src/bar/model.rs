@@ -1,5 +1,5 @@
 use crate::globals::Globals;
-use crate::types::MonitorInner;
+use crate::types::Monitor;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientBarStats {
@@ -9,7 +9,7 @@ pub(crate) struct ClientBarStats {
 }
 
 impl ClientBarStats {
-    pub(crate) fn collect(monitor: &MonitorInner, globals: &Globals) -> Self {
+    pub(crate) fn collect(monitor: &Monitor, globals: &Globals) -> Self {
         let mut stats = Self::default();
 
         for client in globals.clients.values() {

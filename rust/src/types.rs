@@ -532,7 +532,7 @@ pub struct Arg {
 
 pub trait Layout: std::fmt::Debug {
     fn symbol(&self) -> &'static str;
-    fn arrange(&self, m: &mut MonitorInner);
+    fn arrange(&self, m: &mut Monitor);
     fn is_tiling(&self) -> bool;
     fn is_monocle(&self) -> bool {
         false
@@ -733,7 +733,7 @@ impl Client {
 /// This struct holds all runtime state for a monitor, including
 /// geometry, tag state, client lists, and UI configuration.
 #[derive(Debug, Clone, PartialEq)]
-pub struct MonitorInner {
+pub struct Monitor {
     /// Master factor for tiling layouts (0.0 to 1.0).
     /// Controls the proportion of screen given to the master area.
     pub mfact: f32,
@@ -771,7 +771,7 @@ pub struct MonitorInner {
     pub fullscreen: Option<Window>,
 }
 
-impl Default for MonitorInner {
+impl Default for Monitor {
     fn default() -> Self {
         Self {
             mfact: 0.55,
@@ -888,7 +888,7 @@ pub struct XCommand {
     pub cmd_type: u32,
 }
 
-pub fn intersect(r: &Rect, m: &MonitorInner) -> i32 {
+pub fn intersect(r: &Rect, m: &Monitor) -> i32 {
     let x1 = r.x.max(m.work_rect.x);
     let y1 = r.y.max(m.work_rect.y);
     let x2 = (r.x + r.w).min(m.work_rect.x + m.work_rect.w);

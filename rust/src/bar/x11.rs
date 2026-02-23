@@ -1,6 +1,6 @@
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::systray::get_systray_width;
-use crate::types::{Arg, MonitorInner};
+use crate::types::{Arg, Monitor};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
@@ -36,12 +36,12 @@ pub(crate) fn update_status() {
     crate::systray::update_systray();
 }
 
-pub(crate) fn update_bar_pos(m: &mut MonitorInner) {
+pub(crate) fn update_bar_pos(m: &mut Monitor) {
     let bh = get_globals().bh;
     update_bar_pos_with_bh(m, bh);
 }
 
-pub(crate) fn update_bar_pos_with_bh(m: &mut MonitorInner, bh: i32) {
+pub(crate) fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
     m.work_rect.y = m.monitor_rect.y;
     m.work_rect.h = m.monitor_rect.h;
 
@@ -58,7 +58,7 @@ pub(crate) fn update_bar_pos_with_bh(m: &mut MonitorInner, bh: i32) {
     }
 }
 
-pub(crate) fn resize_bar_win(m: &MonitorInner) {
+pub(crate) fn resize_bar_win(m: &Monitor) {
     let g = get_globals();
     let bh = g.bh;
     let showsystray = g.showsystray;

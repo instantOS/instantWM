@@ -394,7 +394,7 @@ pub fn reset_snap(win: Window) {
 /// Unlike [`apply_snap`] this does **not** animate; it only updates in-memory
 /// fields on the [`Client`] struct (e.g. zeroing `border_width` for maximized
 /// windows) so the layout engine sees consistent state during arrange.
-pub fn apply_snap_mut(c: &mut Client, _m: &MonitorInner) {
+pub fn apply_snap_mut(c: &mut Client, _m: &Monitor) {
     match c.snapstatus {
         SnapPosition::Maximized => {
             c.border_width = 0;

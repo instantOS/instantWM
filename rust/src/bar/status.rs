@@ -1,6 +1,6 @@
 use crate::globals::{get_globals, get_globals_mut};
 use crate::systray::get_systray_width;
-use crate::types::{MonitorInner, Rect};
+use crate::types::{Monitor, Rect};
 use std::sync::atomic::Ordering;
 
 const MAX_COMMAND_OFFSETS: usize = 20;
@@ -22,7 +22,7 @@ struct StatusLayout {
     total_width: i32,
 }
 
-pub(crate) fn draw_status_bar(m: &mut MonitorInner, bh: i32, stext: &str) -> i32 {
+pub(crate) fn draw_status_bar(m: &mut Monitor, bh: i32, stext: &str) -> i32 {
     if stext.is_empty() {
         return 0;
     }
@@ -146,7 +146,7 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
     }
 }
 
-fn measure_layout(m: &MonitorInner, items: &[StatusItem]) -> StatusLayout {
+fn measure_layout(m: &Monitor, items: &[StatusItem]) -> StatusLayout {
     let mut width = 0i32;
     let lrpad = super::get_lrpad();
 
@@ -170,7 +170,7 @@ fn measure_layout(m: &MonitorInner, items: &[StatusItem]) -> StatusLayout {
 
 fn draw_items(
     drw: &mut crate::drw::Drw,
-    m: &MonitorInner,
+    m: &Monitor,
     bh: i32,
     items: &[StatusItem],
     layout: StatusLayout,

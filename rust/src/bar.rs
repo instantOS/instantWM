@@ -27,16 +27,16 @@ pub fn text_width(text: &str) -> i32 {
     }
 }
 
-pub(crate) fn layout_symbol(m: &MonitorInner) -> String {
+pub(crate) fn layout_symbol(m: &Monitor) -> String {
     let g = get_globals();
     crate::monitor::get_current_ltsymbol(m, &g.tags, &g.layouts)
 }
 
-pub fn get_layout_symbol_width(m: &MonitorInner) -> i32 {
+pub fn get_layout_symbol_width(m: &Monitor) -> i32 {
     text_width(&layout_symbol(m)) + get_lrpad()
 }
 
-pub fn draw_bar(m: &mut MonitorInner) {
+pub fn draw_bar(m: &mut Monitor) {
     let count = DRAW_BAR_RECURSION.fetch_add(1, Ordering::SeqCst);
     if count > MAX_BAR_RECURSION {
         std::process::abort();
@@ -141,7 +141,7 @@ pub fn update_status() {
 }
 
 /// Update the bar position for a monitor based on its showbar/topbar settings.
-pub fn update_bar_pos(m: &mut MonitorInner) {
+pub fn update_bar_pos(m: &mut Monitor) {
     x11::update_bar_pos(m);
 }
 

@@ -66,7 +66,7 @@ fn scratchpad_find(name: &str) -> Option<Window> {
     None
 }
 
-pub fn scratchpad_any_visible(mon: &MonitorInner) -> bool {
+pub fn scratchpad_any_visible(mon: &Monitor) -> bool {
     let globals = get_globals();
     let mut current = mon.clients;
     while let Some(c_win) = current {

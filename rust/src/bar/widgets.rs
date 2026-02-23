@@ -77,12 +77,7 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
     }
 }
 
-fn get_tag_scheme(
-    m: &MonitorInner,
-    i: u32,
-    occupied_tags: u32,
-    is_hover: bool,
-) -> Option<ColorScheme> {
+fn get_tag_scheme(m: &Monitor, i: u32, occupied_tags: u32, is_hover: bool) -> Option<ColorScheme> {
     let g = get_globals();
     let schemes = if is_hover {
         &g.tags.schemes.hover
@@ -129,7 +124,7 @@ fn get_tag_scheme(
 }
 
 pub(crate) fn draw_tag_indicators(
-    m: &mut MonitorInner,
+    m: &mut Monitor,
     mut x: i32,
     occupied_tags: u32,
     urg: u32,
@@ -224,7 +219,7 @@ pub(crate) fn draw_tag_indicators(
     x
 }
 
-pub(crate) fn draw_layout_indicator(m: &MonitorInner, mut x: i32, bh: i32) -> i32 {
+pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
     let g = get_globals();
     let lrpad = g.lrpad;
     let ltsymbol = super::layout_symbol(m);
@@ -374,7 +369,7 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
     0
 }
 
-fn draw_window_title(m: &mut MonitorInner, c: &Client, x: i32, width: i32, bh: i32) {
+fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
     let g = get_globals();
 
     let is_hover = g.monitors.get(g.selmon).map_or(false, |selmon| {
@@ -414,7 +409,7 @@ fn draw_window_title(m: &mut MonitorInner, c: &Client, x: i32, width: i32, bh: i
     }
 }
 
-pub(crate) fn draw_window_titles(m: &mut MonitorInner, x: i32, w: i32, n: i32, bh: i32) {
+pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i32) {
     let g = get_globals();
 
     if n > 0 {

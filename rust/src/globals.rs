@@ -18,9 +18,11 @@ pub struct Globals {
     pub root: Window,
     pub sw: i32,
     pub sh: i32,
-    //TODO: why do both MonitorInner and MonitorId exist? Does Monitor without
-    //Inner also exist? Should both exist?
-    pub monitors: Vec<MonitorInner>,
+    /// All monitors attached to this display, indexed by `MonitorId`.
+    /// `MonitorId` is a `usize` index into this `Vec`. This index-based
+    /// approach is used throughout (e.g. `selmon`, `Client::mon_id`) to
+    /// avoid self-referential structs and borrow checker conflicts.
+    pub monitors: Vec<Monitor>,
     pub selmon: MonitorId,
     pub clients: HashMap<Window, Client>,
     pub client_list: Vec<ClientId>,
