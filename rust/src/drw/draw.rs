@@ -263,19 +263,6 @@ impl Drw {
         }
     }
 
-    /// Retarget drawing to `drawable` (e.g. a bar window) and recreate the GC.
-    ///
-    /// The GC must be recreated because it is tied to the drawable's depth and
-    /// visual at creation time.
-    pub fn set_drawable(&mut self, drawable: Drawable) {
-        self.drawable = drawable;
-        unsafe {
-            XFreeGC(self.display, self.gc);
-            self.gc = XCreateGC(self.display, drawable, 0, ptr::null_mut());
-            XSetLineAttributes(self.display, self.gc, 1, 0, 0, 0);
-        }
-    }
-
     /// Blit the off-screen pixmap to `win` at position `(x, y)` with size `w × h`.
     pub fn map(&self, win: Window, x: i16, y: i16, w: u16, h: u16) {
         unsafe {

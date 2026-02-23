@@ -53,9 +53,7 @@ pub fn draw_bar(m: &mut Monitor) {
         let g = get_globals_mut();
         let bh = g.bh;
         if let Some(ref mut drw) = g.drw {
-            drw.set_drawable(m.barwin);
-            drw.w = m.work_rect.w as u32;
-            drw.h = bh as u32;
+            drw.resize(m.work_rect.w as u32, bh as u32);
         }
     }
 
@@ -98,9 +96,7 @@ pub fn draw_bar(m: &mut Monitor) {
     m.bar_clients_width = layout.title_width;
 
     if let Some(ref drw) = g.drw {
-        unsafe {
-            crate::drw::XFlush(drw.display());
-        }
+        drw.map(m.barwin, 0, 0, m.work_rect.w as u16, bh as u16);
     }
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
