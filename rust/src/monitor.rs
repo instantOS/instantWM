@@ -5,6 +5,7 @@ use crate::client::{
 };
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::tags::reset_sticky;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
 
@@ -225,7 +226,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
             if !is_scratchpad {
                 client.tags = target_tags;
-                reset_sticky(&mut client.clone());
+                reset_sticky(client);
             }
         }
     }
@@ -680,7 +681,5 @@ pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
         .map(|t| t.sellt == 0)
         .unwrap_or(true)
 }
-
-fn reset_sticky(_c: &mut Client) {}
 
 fn warp_cursor_to_client(_win: Window) {}
