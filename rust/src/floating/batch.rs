@@ -162,6 +162,7 @@ fn collect_distribute_targets(sel_mon_id: usize) -> (Vec<Window>, i32, i32, i32,
     };
 
     let tagset = mon.tagset[mon.seltags as usize];
+    //TODO: this should probably use the rect struct
     let mon_x = mon.monitor_rect.x;
     let mon_y = mon.monitor_rect.y;
     let mon_w = mon.work_rect.w;

@@ -231,6 +231,7 @@ pub fn push_down(arg: &Arg) {
     arrange(Some(selmon_id));
 }
 
+//TODO: is this function duplicated?
 fn attach(win: Window) {
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     let Some(mon_id) = mon_id else { return };
