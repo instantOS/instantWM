@@ -477,10 +477,13 @@ pub fn focus_stack_direction(forward: bool) {
     if globals.monitors.is_empty() {
         return;
     }
-    let selmon_id = globals.selmon;
 
-    let sel_win = globals.monitors.get(selmon_id).and_then(|m| m.sel);
-    drop(globals);
+    let (selmon_id, sel_win) = {
+        let globals = get_globals();
+        let selmon_id = globals.selmon;
+        let sel_win = globals.monitors.get(selmon_id).and_then(|m| m.sel);
+        (selmon_id, sel_win)
+    };
 
     let mut stack: Vec<Window> = Vec::new();
     {

@@ -352,26 +352,29 @@ pub fn is_in_resize_border() -> bool {
     use super::warp::get_root_ptr;
 
     let globals = get_globals();
-    let Some(win) = globals.monitors.get(globals.selmon).and_then(|m| m.sel) else {
-        return false;
+    let (isfloating, geo) = {
+        let Some(win) = globals.monitors.get(globals.selmon).and_then(|m| m.sel) else {
+            return false;
+        };
+
+        let Some(c) = globals.clients.get(&win) else {
+            return false;
+        };
+
+        let has_tiling = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| is_current_layout_tiling(m, &globals.tags))
+            .unwrap_or(true);
+
+        if !c.isfloating && has_tiling {
+            return false;
+        }
+
+        (c.isfloating, c.geo)
     };
 
-    let Some(c) = globals.clients.get(&win) else {
-        return false;
-    };
-
-    let has_tiling = globals
-        .monitors
-        .get(globals.selmon)
-        .map(|m| is_current_layout_tiling(m, &globals.tags))
-        .unwrap_or(true);
-
-    if !c.isfloating && has_tiling {
-        return false;
-    }
-
-    let geo = c.geo;
-    drop(globals); // release borrow before get_root_ptr
+    // globals is dropped here
 
     let Some((px, py)) = get_root_ptr() else {
         return false;

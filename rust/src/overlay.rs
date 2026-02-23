@@ -28,22 +28,24 @@ pub fn overlay_exists() -> bool {
 }
 
 pub fn create_overlay(_arg: &Arg) {
-    let globals = get_globals();
-    let mon = match globals.monitors.get(globals.selmon) {
-        Some(m) => m,
-        None => return,
+    let (sel_win, sel_overlay, sel_fullscreen) = {
+        let globals = get_globals();
+        let mon = match globals.monitors.get(globals.selmon) {
+            Some(m) => m,
+            None => return,
+        };
+        let sel_win = match mon.sel {
+            Some(w) => w,
+            None => return,
+        };
+        let sel_overlay = mon.overlay;
+        let sel_fullscreen = globals
+            .clients
+            .get(&sel_win)
+            .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+            .unwrap_or(false);
+        (sel_win, sel_overlay, sel_fullscreen)
     };
-    let sel_win = match mon.sel {
-        Some(w) => w,
-        None => return,
-    };
-    let sel_overlay = mon.overlay;
-    let sel_fullscreen = globals
-        .clients
-        .get(&sel_win)
-        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
-        .unwrap_or(false);
-    drop(globals);
 
     if sel_fullscreen {
         crate::floating::temp_fullscreen(&Arg::default());

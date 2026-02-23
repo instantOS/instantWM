@@ -678,25 +678,33 @@ impl Drw {
             return 0;
         }
 
-        let Some(ref scheme) = self.scheme else {
-            return 0;
-        };
-
-        let (fg_pixel, bg_pixel, detail_pixel) = (
-            scheme[COL_FG].pixel(),
-            scheme[COL_BG].pixel(),
-            scheme[COL_DETAIL].pixel(),
-        );
-        let fg_color = scheme[COL_FG].color.clone();
-        let bg_color = scheme[COL_BG].color.clone();
-
         let mut x = x;
         let mut w = w;
 
         // ── Measure-only mode ────────────────────────────────────────────────
+        // Measuring text width requires only the fontset, not a color scheme.
         let mut render = x != 0 || y != 0 || w != 0 || h != 0;
         if !render {
             w = u32::MAX;
+        }
+
+        // ── Extract scheme colors (render path only) ─────────────────────────
+        let (fg_pixel, bg_pixel, detail_pixel, fg_color, bg_color);
+        if render {
+            let Some(ref scheme) = self.scheme else {
+                return 0;
+            };
+            fg_pixel = scheme[COL_FG].pixel();
+            bg_pixel = scheme[COL_BG].pixel();
+            detail_pixel = scheme[COL_DETAIL].pixel();
+            fg_color = scheme[COL_FG].color.clone();
+            bg_color = scheme[COL_BG].color.clone();
+        } else {
+            fg_pixel = 0;
+            bg_pixel = 0;
+            detail_pixel = 0;
+            fg_color = unsafe { std::mem::zeroed() };
+            bg_color = unsafe { std::mem::zeroed() };
         }
 
         // ── Lazy-initialise ellipsis width ───────────────────────────────────

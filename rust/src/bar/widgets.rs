@@ -421,16 +421,6 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
             drw.set_scheme(scheme);
         }
         drw.rect(x, 0, w as u32, bh as u32, true, true);
-        drw.text(
-            x,
-            0,
-            bh as u32,
-            bh as u32,
-            (g.lrpad / 2) as u32,
-            "",
-            false,
-            0,
-        );
 
         let has_clients = g
             .monitors
@@ -439,15 +429,11 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
 
         if !has_clients {
             let help_text = "Press space to launch an application";
-            let title_width = super::text_width(help_text);
-            let bar_clients_width = m.bar_clients_width;
-            let title_width = if title_width < bar_clients_width - bh {
-                title_width
-            } else {
-                bar_clients_width - bh
-            };
+            let text_w = super::text_width(help_text);
+            let avail = w - bh;
+            let title_width = text_w.min(avail);
             drw.text(
-                x + bh + ((bar_clients_width - bh - title_width + 1) / 2),
+                x + bh + ((avail - title_width + 1) / 2),
                 0,
                 title_width as u32,
                 bh as u32,

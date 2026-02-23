@@ -56,7 +56,12 @@ pub(crate) fn visible_tags<'a>(
         let label = display_name(tag, show_alt);
         let width = text_width(label) + lrpad;
 
-        out.push(VisibleTag { slot, tag_index, label, width });
+        out.push(VisibleTag {
+            slot,
+            tag_index,
+            label,
+            width,
+        });
     }
 
     out

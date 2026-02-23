@@ -148,11 +148,10 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
 
 fn measure_layout(m: &Monitor, items: &[StatusItem]) -> StatusLayout {
     let mut width = 0i32;
-    let lrpad = super::get_lrpad();
 
     for item in items {
         match item {
-            StatusItem::Text(text) => width += (super::text_width(text) - lrpad).max(0),
+            StatusItem::Text(text) => width += super::text_width(text),
             StatusItem::Offset(offset) => width += *offset,
             _ => {}
         }
@@ -199,12 +198,11 @@ fn draw_items(
 
     let mut x = layout.draw_start_x + 1;
     let mut marker_idx = 0usize;
-    let lrpad = super::get_lrpad();
 
     for item in items {
         match item {
             StatusItem::Text(text) => {
-                let seg_w = (super::text_width(text) - lrpad).max(0);
+                let seg_w = super::text_width(text);
                 if seg_w > 0 {
                     drw.text(x, 0, seg_w as u32, bh as u32, 0, text, false, 0);
                 }

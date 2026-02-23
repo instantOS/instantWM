@@ -83,12 +83,12 @@ pub fn draw_bar(m: &mut Monitor) {
     x = widgets::draw_tag_indicators(m, x, stats.occupied_tags, stats.urgent_tags, bh);
     x = widgets::draw_layout_indicator(m, x, bh);
 
-    let status_offset = if is_selmon {
+    let title_end_x = if is_selmon {
         layout.status_start_x
     } else {
-        m.work_rect.w
+        m.work_rect.w - layout.systray_width
     };
-    layout.title_width = (m.work_rect.w - status_offset - x - layout.systray_width).max(0);
+    layout.title_width = (title_end_x - x).max(0);
 
     if layout.title_width > bh {
         widgets::draw_window_titles(m, x, layout.title_width, stats.visible_clients, bh);
