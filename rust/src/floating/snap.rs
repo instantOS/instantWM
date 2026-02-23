@@ -21,6 +21,7 @@ use crate::animation::check_animate_rect;
 use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -337,10 +338,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
 
             // Raise the window if it is the focused one.
-            let is_sel = {
-                let globals = get_globals();
-                globals.monitors.get(globals.selmon).and_then(|m| m.sel) == Some(win)
-            };
+            let is_sel = get_sel_win() == Some(win);
             if is_sel {
                 let x11 = get_x11();
                 if let Some(ref conn) = x11.conn {

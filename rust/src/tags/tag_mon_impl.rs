@@ -14,6 +14,7 @@
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::{arrange, dir_to_mon, send_mon};
 use crate::types::Arg;
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -47,10 +48,7 @@ pub fn tag_mon(arg: &Arg) {
     // -----------------------------------------------------------------------
     let (sel_win, has_multiple_mons) = {
         let globals = get_globals();
-        (
-            globals.monitors.get(globals.selmon).and_then(|m| m.sel),
-            globals.monitors.len() > 1,
-        )
+        (get_sel_win(), globals.monitors.len() > 1)
     };
 
     let Some(win) = sel_win else { return };

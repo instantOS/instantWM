@@ -4,6 +4,7 @@ use crate::globals::{get_globals, get_globals_mut};
 use crate::keyboard::grab_keys;
 use crate::tags::get_tag_width;
 use crate::types::*;
+use crate::util::get_sel_win;
 
 pub fn ctrl_toggle(value: &mut bool, arg: u32) {
     if arg == 0 || arg == 2 {
@@ -54,11 +55,7 @@ pub fn alt_tab_free(arg: &Arg) {
 }
 
 pub fn toggle_sticky(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 
@@ -94,11 +91,7 @@ pub fn toggle_animated(arg: &Arg) {
 }
 
 pub fn set_border_width(arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 
@@ -152,11 +145,7 @@ pub fn toggle_double_draw(_arg: &Arg) {
 }
 
 pub fn toggle_locked(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 
@@ -214,10 +203,7 @@ pub fn toggle_show_tags(arg: &Arg) {
 }
 
 pub fn hide_window(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 

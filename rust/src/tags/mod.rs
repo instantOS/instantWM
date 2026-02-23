@@ -35,6 +35,7 @@ mod tag_mon_impl;
 
 use crate::globals::{get_globals, get_globals_mut};
 use crate::types::Arg;
+use crate::util::get_sel_win;
 
 // ---------------------------------------------------------------------------
 // Re-exports — bar helpers
@@ -148,9 +149,7 @@ pub fn desktop_set(_arg: &Arg) {}
 /// Delegates to [`crate::client::pop`].  Lives here only because the original
 /// C `tag.c` file contained it; new code should call `client::pop` directly.
 pub fn zoom(_arg: &Arg) {
-    let globals = get_globals();
-    let sel_win = globals.monitors.get(globals.selmon).and_then(|m| m.sel);
-    if let Some(win) = sel_win {
+    if let Some(win) = get_sel_win() {
         crate::client::pop(win);
     }
 }

@@ -20,6 +20,7 @@ use crate::client::resize;
 use crate::focus::warp_cursor_to_client;
 use crate::globals::get_globals;
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::protocol::xproto::Window;
 
 // ── Move ──────────────────────────────────────────────────────────────────────
@@ -38,10 +39,7 @@ use x11rb::protocol::xproto::Window;
 /// The window is clamped to the monitor bounds after the move.
 /// Movement is animated with a short 5-step animation.
 pub fn moveresize(arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
 
     let (is_floating, geo, border_width) = {
@@ -117,10 +115,7 @@ pub fn moveresize(arg: &Arg) {
 /// Any active snap is cancelled before resizing so the window reverts to free
 /// floating, then the new size is applied immediately (no animation).
 pub fn key_resize(arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
 
     let (is_floating, geo) = {
@@ -174,8 +169,7 @@ pub fn key_resize(arg: &Arg) {
 /// - the window is larger than the work area (centering would clip it)
 pub fn center_window(_arg: &Arg) {
     let sel_win = {
-        let globals = get_globals();
-        let mon = match globals.monitors.get(globals.selmon) {
+        let mon = match get_globals().monitors.get(get_globals().selmon) {
             Some(m) => m,
             None => return,
         };

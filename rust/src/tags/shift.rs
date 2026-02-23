@@ -25,6 +25,7 @@ use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::{Arg, Direction, OverlayMode, Rect};
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -91,10 +92,7 @@ pub fn move_right(arg: &Arg) {
 ///   shift to).
 /// - The client is already at the boundary in the requested direction.
 fn shift_tag(dir: Direction, offset: i32) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
 
     let (current_tag, overlay_win) = {

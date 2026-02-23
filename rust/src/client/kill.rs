@@ -27,6 +27,7 @@ use crate::animation::animate_client_rect;
 use crate::client::focus::{send_event, ANIM_CLIENT};
 use crate::globals::{get_globals, get_x11};
 use crate::types::{Arg, Rect};
+use crate::util::get_sel_win;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -44,11 +45,11 @@ use x11rb::CURRENT_TIME;
 ///    the window is fullscreen).
 /// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
 pub fn kill_client(_arg: &Arg) {
-    let globals = get_globals();
-    let Some(win) = globals.monitors.get(globals.selmon).and_then(|m| m.sel) else {
+    let Some(win) = get_sel_win() else {
         return;
     };
 
+    let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;
     };

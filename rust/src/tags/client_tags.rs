@@ -19,6 +19,7 @@ use crate::globals::{get_globals, get_globals_mut};
 use crate::monitor::arrange;
 use crate::tags::view::view;
 use crate::types::{Arg, SCRATCHPAD_MASK};
+use crate::util::get_sel_win;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -103,10 +104,7 @@ pub fn tag_all(arg: &Arg) {
 pub fn toggle_tag(arg: &Arg) {
     let bits = crate::tags::compute_prefix(arg);
 
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 
@@ -196,7 +194,7 @@ pub fn follow_tag(arg: &Arg) {
 pub(super) fn set_client_tag_impl(tagmask_bits: u32) {
     let globals = get_globals();
     let tagmask = globals.tags.mask();
-    let sel_win = globals.monitors.get(globals.selmon).and_then(|m| m.sel);
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 

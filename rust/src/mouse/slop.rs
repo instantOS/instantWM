@@ -23,6 +23,7 @@ use crate::floating::toggle_floating;
 use crate::globals::get_globals;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{MIN_WINDOW_SIZE, SLOP_MARGIN};
@@ -134,10 +135,7 @@ pub fn apply_window_resize_rect(c_win: Window, rect: &Rect) {
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
 pub fn draw_window(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
 
     let output = std::process::Command::new("instantslop")

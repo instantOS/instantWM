@@ -4,6 +4,7 @@ use crate::globals::{get_globals, get_globals_mut};
 pub use crate::layouts::query::{client_count, client_count_mon};
 use crate::monitor::arrange;
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::protocol::xproto::Window;
 
 pub fn next_c(c_win: Option<Window>, include_floating: bool) -> Option<Window> {
@@ -67,13 +68,7 @@ pub fn client_distance(c1: &Client, c2: &Client) -> i32 {
 }
 
 pub fn push_up(arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
-            return;
-        }
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 
@@ -170,13 +165,7 @@ pub fn push_up(arg: &Arg) {
 }
 
 pub fn push_down(arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
-            return;
-        }
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
 

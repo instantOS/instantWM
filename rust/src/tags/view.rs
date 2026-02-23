@@ -34,6 +34,7 @@ use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::{Arg, Direction, SCRATCHPAD_MASK};
+use crate::util::get_sel_win;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
 
@@ -416,10 +417,7 @@ pub fn swap_tags(arg: &Arg) {
 /// This lets the user "throw" a window back to where they came from without
 /// manually re-selecting a tag.
 pub fn follow_view(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
 
     let prev_tag = {

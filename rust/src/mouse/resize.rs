@@ -24,6 +24,7 @@ use crate::floating::toggle_floating;
 use crate::globals::get_globals;
 use crate::monitor::is_current_layout_tiling;
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -38,9 +39,9 @@ use super::monitor::handle_client_monitor_switch;
 ///
 /// Returns `None` to signal "do nothing".
 fn selected_resizable_window() -> Option<Window> {
-    let globals = get_globals();
-    let win = globals.monitors.get(globals.selmon)?.sel?;
+    let win = get_sel_win()?;
 
+    let globals = get_globals();
     let c = globals.clients.get(&win)?;
     if c.is_fullscreen && !c.isfakefullscreen {
         return None;
@@ -168,20 +169,14 @@ pub fn force_resize_mouse(arg: &Arg) {
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
 pub fn resize_aspect_mouse(_arg: &Arg) {
-    let win = {
-        let globals = get_globals();
-        globals
-            .monitors
-            .get(globals.selmon)
-            .and_then(|m| m.sel)
-            .filter(|&w| {
-                !globals
-                    .clients
-                    .get(&w)
-                    .map(|c| c.is_fullscreen)
-                    .unwrap_or(false)
-            })
-    };
+    let globals = get_globals();
+    let win = get_sel_win().filter(|&w| {
+        !globals
+            .clients
+            .get(&w)
+            .map(|c| c.is_fullscreen)
+            .unwrap_or(false)
+    });
     let Some(win) = win else {
         return;
     };
@@ -353,7 +348,7 @@ pub fn is_in_resize_border() -> bool {
 
     let globals = get_globals();
     let (isfloating, geo) = {
-        let Some(win) = globals.monitors.get(globals.selmon).and_then(|m| m.sel) else {
+        let Some(win) = get_sel_win() else {
             return false;
         };
 

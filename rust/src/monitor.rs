@@ -662,4 +662,5 @@ pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
         .unwrap_or(true)
 }
 
+//TODO: was this not properly ported from the C codebase? Investigate
 fn warp_cursor_to_client(_win: Window) {}

@@ -2,6 +2,7 @@ use crate::client::resize_client_rect;
 use crate::globals::{get_globals, get_x11};
 use crate::tags::{view_to_left, view_to_right};
 use crate::types::*;
+use crate::util::get_sel_win;
 use std::thread;
 use std::time::Duration;
 use x11rb::connection::Connection;
@@ -233,14 +234,7 @@ pub fn check_animate_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32)
 
 pub fn up_scale_client(arg: &Arg) {
     let scale = arg.i.max(1);
-    let sel_win = {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
-        } else {
-            None
-        }
-    };
+    let sel_win = get_sel_win();
 
     if let Some(win) = sel_win {
         crate::client::scale_client(win, scale);
@@ -249,14 +243,7 @@ pub fn up_scale_client(arg: &Arg) {
 
 pub fn down_scale_client(arg: &Arg) {
     let scale = arg.i.max(1);
-    let sel_win = {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
-        } else {
-            None
-        }
-    };
+    let sel_win = get_sel_win();
 
     if let Some(win) = sel_win {
         crate::client::scale_client(win, 100 / scale);
@@ -271,6 +258,7 @@ pub fn anim_right(arg: &Arg) {
     anim_scroll(arg, Direction::Right);
 }
 
+//TODO: this is too long and should be refactored, it should also use existing utils where appropriate
 fn anim_scroll(arg: &Arg, dir: Direction) {
     let is_overview = {
         let globals = get_globals();
@@ -321,6 +309,7 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
             let globals = get_globals();
             globals.monitors.get(globals.selmon).and_then(|m| m.sel)
         } {
+            //TODO: what are we doing here? If its redundant, change it
             let snap_dir = match dir {
                 Direction::Right => SnapDirection::Right,
                 Direction::Left => SnapDirection::Left,

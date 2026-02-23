@@ -4,6 +4,7 @@ use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
 use crate::monitor::restack;
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -119,14 +120,7 @@ pub fn scratchpad_make(arg: &Arg) {
         None => return,
     };
 
-    let sel_win = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
-            return;
-        }
-        let selmon_id = globals.selmon;
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let sel_win = match sel_win {
         Some(w) => w,
@@ -177,14 +171,7 @@ pub fn scratchpad_make(arg: &Arg) {
 }
 
 pub fn scratchpad_unmake(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
-            return;
-        }
-        let selmon_id = globals.selmon;
-        globals.monitors.get(selmon_id).and_then(|m| m.sel)
-    };
+    let sel_win = get_sel_win();
 
     let sel_win = match sel_win {
         Some(w) => w,

@@ -5,6 +5,7 @@ use crate::monitor::arrange;
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::{hide_window, unhide_one};
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -53,12 +54,7 @@ pub fn key_press(e: &KeyPressEvent) {
                 }
             }
             if result.is_none() {
-                let has_sel = globals
-                    .monitors
-                    .get(globals.selmon)
-                    .and_then(|m| m.sel)
-                    .is_some();
-                if !has_sel {
+                if get_sel_win().is_none() {
                     for key in &globals.dkeys {
                         if keysym == key.keysym
                             && clean_mask(key.mod_mask as u16, numlockmask)
@@ -147,12 +143,7 @@ pub fn grab_keys() {
                 }
             }
 
-            let has_sel = globals
-                .monitors
-                .get(globals.selmon)
-                .and_then(|m| m.sel)
-                .is_some();
-            if !has_sel {
+            if get_sel_win().is_none() {
                 for key in &dkeys {
                     let keysym = get_keysym(keycode);
                     if keysym == key.keysym {
@@ -324,12 +315,7 @@ pub fn up_key(arg: &Arg) {
     };
 
     if !has_tiling {
-        let sel_win: Option<Window> = {
-            let globals = get_globals();
-            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-        };
-
-        if let Some(win) = sel_win {
+        if let Some(win) = get_sel_win() {
             let x11 = get_x11();
             if let Some(ref conn) = x11.conn {
                 let globals = get_globals();
@@ -379,12 +365,7 @@ pub fn down_key(arg: &Arg) {
     };
 
     if !has_tiling {
-        let sel_win: Option<Window> = {
-            let globals = get_globals();
-            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-        };
-
-        if let Some(win) = sel_win {
+        if let Some(win) = get_sel_win() {
             change_snap(win, SnapDir::Down);
         }
         return;
@@ -404,12 +385,7 @@ pub fn space_toggle(_arg: &Arg) {
     };
 
     if !has_tiling {
-        let sel_win: Option<Window> = {
-            let globals = get_globals();
-            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-        };
-
-        let Some(win) = sel_win else { return };
+        let Some(win) = get_sel_win() else { return };
 
         let snapstatus = {
             let globals = get_globals();

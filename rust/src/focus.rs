@@ -3,6 +3,7 @@ use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::tags::view;
 use crate::types::*;
+use crate::util::get_sel_win;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -146,12 +147,8 @@ pub fn focus_direction(direction: Direction) {
             return;
         }
         let sel_mon_id = globals.selmon;
-        if let Some(mon) = globals.monitors.get(sel_mon_id) {
-            if let Some(sel) = mon.sel {
-                (sel_mon_id, sel)
-            } else {
-                return;
-            }
+        if let Some(sel) = get_sel_win() {
+            (sel_mon_id, sel)
         } else {
             return;
         }
@@ -282,12 +279,7 @@ pub fn focus_last_client(_arg: &Arg) {
         }
     }
 
-    let current_sel = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
-
-    if let Some(cur) = current_sel {
+    if let Some(cur) = get_sel_win() {
         crate::client::LAST_CLIENT.store(cur, Ordering::Relaxed);
     }
 
@@ -440,12 +432,7 @@ pub fn warp_into(c_win: Window) {
 }
 
 pub fn warp_to_focus(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
-
-    if let Some(win) = sel_win {
+    if let Some(win) = get_sel_win() {
         warp_cursor_to_client(win);
     }
 }
@@ -476,7 +463,7 @@ pub fn focus_stack_direction(forward: bool) {
     let (selmon_id, sel_win) = {
         let globals = get_globals();
         let selmon_id = globals.selmon;
-        let sel_win = globals.monitors.get(selmon_id).and_then(|m| m.sel);
+        let sel_win = get_sel_win();
         (selmon_id, sel_win)
     };
 

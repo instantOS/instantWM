@@ -16,6 +16,7 @@
 
 use crate::globals::{get_globals, get_x11};
 use crate::types::*;
+use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -152,12 +153,7 @@ pub fn force_warp(c: &Client) {
 /// Reads `selmon → sel` and delegates to [`warp_impl`].  Does nothing when no
 /// window is selected.
 pub fn warp_to_focus(_arg: &Arg) {
-    let sel_win = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-    };
-
-    if let Some(win) = sel_win {
+    if let Some(win) = get_sel_win() {
         warp_impl(win);
     }
 }
