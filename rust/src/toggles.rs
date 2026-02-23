@@ -8,10 +8,8 @@ use crate::types::*;
 pub fn ctrl_toggle(value: &mut bool, arg: u32) {
     if arg == 0 || arg == 2 {
         *value = !*value;
-    } else if arg == 1 {
-        *value = false;
     } else {
-        *value = true;
+        *value = arg != 1;
     }
 }
 
@@ -79,7 +77,7 @@ pub fn toggle_sticky(_arg: &Arg) {
     }
 }
 
-pub fn toggle_prefix(arg: &Arg) {
+pub fn toggle_prefix(_arg: &Arg) {
     let globals = get_globals_mut();
     globals.tags.prefix = !globals.tags.prefix;
 
@@ -104,7 +102,7 @@ pub fn set_border_width(arg: &Arg) {
 
     let Some(win) = sel_win else { return };
 
-    let (old_bw, mon_id) = {
+    let (old_bw, _mon_id) = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&win) {
             (c.border_width, c.mon_id)
@@ -157,7 +155,7 @@ pub fn toggle_locked(_arg: &Arg) {
 
     let Some(win) = sel_win else { return };
 
-    let mon_id = {
+    let _mon_id = {
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
             client.islocked = !client.islocked;

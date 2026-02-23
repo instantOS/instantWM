@@ -9,13 +9,11 @@ pub(crate) struct ClientBarStats {
 }
 
 impl ClientBarStats {
-    pub(crate) fn collect(monitor: &Monitor, globals: &Globals) -> Self {
+    pub(crate) fn collect(_monitor: &Monitor, globals: &Globals) -> Self {
         let mut stats = Self::default();
 
         for client in globals.clients.values() {
-            let on_selected_monitor = client
-                .mon_id
-                .map_or(false, |mon_id| mon_id == globals.selmon);
+            let on_selected_monitor = client.mon_id == Some(globals.selmon);
 
             if !on_selected_monitor {
                 continue;

@@ -33,10 +33,7 @@ pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
         return None;
     }
 
-    let mon = match globals.monitors.get(globals.selmon) {
-        Some(m) => m,
-        None => return None,
-    };
+    let mon = globals.monitors.get(globals.selmon)?;
 
     let mut p: Option<Window> = None;
     let mut r: Option<Window> = None;

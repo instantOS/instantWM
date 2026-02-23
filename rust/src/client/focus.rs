@@ -65,7 +65,7 @@ pub fn configure(win: Window) {
         override_redirect: false,
     };
 
-    let _ = conn.send_event(false, win, EventMask::STRUCTURE_NOTIFY, &event);
+    let _ = conn.send_event(false, win, EventMask::STRUCTURE_NOTIFY, event);
     let _ = conn.flush();
 }
 
@@ -120,7 +120,7 @@ pub fn send_event(
             type_: message_type,
             data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
         };
-        let _ = conn.send_event(false, win, EventMask::from(mask), &event);
+        let _ = conn.send_event(false, win, EventMask::from(mask), event);
         let _ = conn.flush();
     }
 

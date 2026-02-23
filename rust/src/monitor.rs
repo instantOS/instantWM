@@ -35,7 +35,7 @@ pub fn create_monitor() -> Monitor {
     let g = get_globals();
     eprintln!("TRACE: create_monitor - after get_globals");
 
-    let mut m = Monitor {
+    let m = Monitor {
         tagset: [1, 1],
         mfact: g.mfact,
         nmaster: g.nmaster,
@@ -61,7 +61,7 @@ pub fn create_monitor_with_values(
 ) -> Monitor {
     eprintln!("TRACE: create_monitor_with_values - start");
 
-    let mut m = Monitor {
+    let m = Monitor {
         tagset: [1, 1],
         mfact,
         nmaster,
@@ -239,7 +239,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
     {
         let g = get_globals();
-        if let Some(ref c) = g.clients.get(&c_win) {
+        if let Some(c) = g.clients.get(&c_win) {
             if !c.isfloating {
                 arrange(None);
             }
@@ -248,7 +248,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
     if is_scratchpad {
         let g = get_globals();
-        if let Some(ref c) = g.clients.get(&c_win) {
+        if let Some(c) = g.clients.get(&c_win) {
             if c.is_scratchpad() && !c.issticky {
                 {
                     let g = get_globals_mut();
@@ -352,7 +352,7 @@ pub fn follow_mon(arg: &Arg) {
 
     {
         let g = get_globals_mut();
-        if let Some(ref c) = g.clients.get(&c_win) {
+        if let Some(c) = g.clients.get(&c_win) {
             if let Some(mon_id) = c.mon_id {
                 g.selmon = mon_id;
             }

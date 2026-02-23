@@ -64,7 +64,7 @@ pub fn draw_bar(m: &mut Monitor) {
     let is_selmon = g
         .monitors
         .get(g.selmon)
-        .map_or(false, |selmon| selmon.num == m.num);
+        .is_some_and(|selmon| selmon.num == m.num);
 
     let mut layout = BarLayout::default();
     if g.showsystray && is_selmon {
@@ -78,7 +78,7 @@ pub fn draw_bar(m: &mut Monitor) {
     widgets::draw_startmenu_icon(bh);
     x11::resize_bar_win(m);
 
-    let stats = ClientBarStats::collect(m, &g);
+    let stats = ClientBarStats::collect(m, g);
     let mut x = g.startmenusize;
     x = widgets::draw_tag_indicators(m, x, stats.occupied_tags, stats.urgent_tags, bh);
     x = widgets::draw_layout_indicator(m, x, bh);
@@ -123,7 +123,7 @@ pub fn reset_bar() {
     let should_reset = g
         .monitors
         .get(selmon_idx)
-        .map_or(false, |selmon| selmon.gesture != Gesture::None);
+        .is_some_and(|selmon| selmon.gesture != Gesture::None);
     if !should_reset {
         return;
     }

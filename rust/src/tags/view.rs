@@ -98,7 +98,7 @@ pub fn view(arg: &Arg) {
     }
 
     let mut globals = get_globals_mut();
-    apply_pertag_settings(&mut globals);
+    apply_pertag_settings(globals);
     focus(None);
     arrange(Some(get_globals().selmon));
 }
@@ -150,7 +150,7 @@ pub fn toggle_view(arg: &Arg) {
             }
         }
 
-        apply_pertag_settings(&mut globals);
+        apply_pertag_settings(globals);
     }
 
     focus(None);
@@ -625,7 +625,7 @@ fn scroll_view(dir: Direction) {
             mon.prev_tag = mon.current_tag;
             mon.current_tag = new_tag;
         }
-        apply_pertag_settings(&mut globals);
+        apply_pertag_settings(globals);
     }
 
     focus(None);

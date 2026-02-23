@@ -134,8 +134,8 @@ pub fn arrange_monitor(m: &mut Monitor) {
                                 let layout = g.layouts.get(idx);
                                 (
                                     mon.clientcount,
-                                    layout.map_or(true, |l| l.is_tiling()),
-                                    layout.map_or(false, |l| l.is_monocle()),
+                                    layout.is_none_or(|l| l.is_tiling()),
+                                    layout.is_some_and(|l| l.is_monocle()),
                                 )
                             }
                             None => (0, true, false),
@@ -381,10 +381,7 @@ pub fn set_layout_by_index(layout_idx: usize) {
 pub fn cycle_layout_direction(forward: bool) {
     let (current_idx, layouts_len) = {
         let g = get_globals();
-        let idx = g
-            .monitors
-            .get(g.selmon)
-            .and_then(|m| get_current_layout_idx(m));
+        let idx = g.monitors.get(g.selmon).and_then(get_current_layout_idx);
         (idx, g.layouts.len())
     };
 
@@ -406,7 +403,7 @@ pub fn cycle_layout_direction(forward: bool) {
     // Skip over the overview layout — one extra step in the same direction.
     let skip = {
         let g = get_globals();
-        g.layouts.get(candidate).map_or(false, |l| l.is_overview())
+        g.layouts.get(candidate).is_some_and(|l| l.is_overview())
     };
 
     let final_idx = if skip {
@@ -450,8 +447,8 @@ pub fn inc_nmaster_by(delta: i32) {
         let g = get_globals_mut();
         if let Some(m) = g.monitors.get_mut(g.selmon) {
             // Guard against increasing beyond the number of visible clients.
-            if delta > 0 && m.nmaster >= ccount as i32 {
-                m.nmaster = ccount as i32;
+            if delta > 0 && m.nmaster >= ccount {
+                m.nmaster = ccount;
                 return;
             }
 
@@ -519,7 +516,7 @@ pub fn set_mfact(arg: &Arg) {
         arg.f - 1.0
     };
 
-    if new_mfact < 0.05 || new_mfact > 0.95 {
+    if !(0.05..=0.95).contains(&new_mfact) {
         return;
     }
 

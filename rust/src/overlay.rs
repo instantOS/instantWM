@@ -73,7 +73,7 @@ pub fn create_overlay(_arg: &Arg) {
             .map(|c| c.is_fullscreen && !c.isfakefullscreen)
             .unwrap_or(false);
 
-        let is_overlay = mon.overlay == Some(sel);
+        let _is_overlay = mon.overlay == Some(sel);
 
         (sel, mon.overlay, is_fullscreen)
     };
@@ -141,7 +141,7 @@ pub fn create_overlay(_arg: &Arg) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
+        let _globals = get_globals();
         let _ = conn.configure_window(
             temp_client,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
@@ -334,7 +334,7 @@ pub fn show_overlay(_arg: &Arg) {
     {
         let globals = get_globals();
         if let Some(mon) = globals.monitors.get(selmon_id) {
-            if let Some(client) = globals.clients.get(&overlay_win) {
+            if let Some(_client) = globals.clients.get(&overlay_win) {
                 let tags = mon.tagset[mon.seltags as usize];
                 let globals = get_globals_mut();
                 if let Some(c) = globals.clients.get_mut(&overlay_win) {
@@ -566,7 +566,7 @@ pub fn set_overlay(_arg: &Arg) {
         return;
     }
 
-    let (overlaystatus, overlay_visible, mon_tags) = {
+    let (overlaystatus, overlay_visible, _mon_tags) = {
         let globals = get_globals();
         if let Some(mon) = globals.monitors.get(globals.selmon) {
             let overlay_win = match mon.overlay {
@@ -588,12 +588,10 @@ pub fn set_overlay(_arg: &Arg) {
 
     if overlaystatus == 0 {
         show_overlay(&Arg::default());
+    } else if overlay_visible {
+        hide_overlay(&Arg::default());
     } else {
-        if overlay_visible {
-            hide_overlay(&Arg::default());
-        } else {
-            show_overlay(&Arg::default());
-        }
+        show_overlay(&Arg::default());
     }
 }
 

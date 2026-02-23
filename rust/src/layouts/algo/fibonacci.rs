@@ -88,7 +88,7 @@ pub fn fibonacci(m: &mut Monitor, spiral: bool) {
     while c_win.is_some() {
         n += 1;
         let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next.into());
+        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -117,7 +117,7 @@ pub fn fibonacci(m: &mut Monitor, spiral: bool) {
 
         // Split the remaining rect starting from the second client.
         if i > 0 {
-            if i % 2 == 0 {
+            if i.is_multiple_of(2) {
                 // Horizontal split — top half goes to the current client.
                 h /= 2;
                 // In spiral mode the remainder moves downward (toward centre);
@@ -148,7 +148,7 @@ pub fn fibonacci(m: &mut Monitor, spiral: bool) {
         );
 
         // After placing the client, advance the remainder pointer.
-        if i % 2 == 0 {
+        if i.is_multiple_of(2) {
             if !spiral {
                 y += h;
             }

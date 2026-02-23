@@ -451,7 +451,7 @@ pub fn update_wm_hints(win: Window) {
     let is_selected = globals
         .monitors
         .get(globals.selmon)
-        .map_or(false, |mon| mon.sel == Some(win));
+        .is_some_and(|mon| mon.sel == Some(win));
 
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.

@@ -100,7 +100,7 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
         return;
     }
 
-    let (current_tags, has_systray) = {
+    let (current_tags, _has_systray) = {
         if let Some(client) = globals.clients.get(&icon_win) {
             (client.tags, globals.systray.is_some())
         } else {
@@ -170,7 +170,7 @@ pub fn update_systray() {
     }
 
     eprintln!("TRACE: update_systray - before systray_to_mon");
-    let (x, by, showbar, barwin) = {
+    let (x, by, _showbar, barwin) = {
         let m = systray_to_mon(None);
         eprintln!("TRACE: update_systray - systray_to_mon returned {}", m);
         let mon = match globals.monitors.get(m) {
@@ -245,7 +245,7 @@ pub fn update_systray() {
             bh as u16,
             0,
             WindowClass::INPUT_OUTPUT,
-            x11rb::COPY_FROM_PARENT as u32,
+            x11rb::COPY_FROM_PARENT,
             &CreateWindowAux::new()
                 .event_mask(EventMask::BUTTON_PRESS | EventMask::EXPOSURE)
                 .override_redirect(1)
@@ -325,14 +325,14 @@ pub fn update_systray() {
                 window: root,
                 type_: manager_atom,
                 data: ClientMessageData::from([
-                    CURRENT_TIME as u32,
+                    CURRENT_TIME,
                     net_system_tray as u32,
-                    systray_win as u32,
+                    systray_win,
                     0,
                     0,
                 ]),
             };
-            let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, &event);
+            let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
             // Don't flush here - let main event loop handle it
         }
 
@@ -473,7 +473,7 @@ fn send_event(win: Window, proto: u32, mask: u32, d0: i64, d1: i64, d2: i64, d3:
             type_: proto,
             data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
         };
-        let _ = conn.send_event(false, win, EventMask::from(mask), &event);
+        let _ = conn.send_event(false, win, EventMask::from(mask), event);
         // Don't flush here - let the main event loop handle it
         // let _ = conn.flush();
     }

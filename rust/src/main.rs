@@ -79,7 +79,7 @@ fn main() {
     }
 
     eprintln!("TRACE: main - before set_locale");
-    if let Err(_) = set_locale() {
+    if set_locale().is_err() {
         eprintln!("warning: no locale support");
     }
     eprintln!("TRACE: main - after set_locale");
@@ -100,7 +100,7 @@ fn main() {
     );
 
     {
-        let mut x11 = get_x11_mut();
+        let x11 = get_x11_mut();
         x11.conn = Some(conn);
         x11.screen_num = screen_num;
         eprintln!("TRACE: main - x11.conn and x11.screen_num set");
@@ -147,7 +147,7 @@ fn main() {
     eprintln!("TRACE: main - after cleanup");
 
     {
-        let mut x11 = get_x11_mut();
+        let x11 = get_x11_mut();
         x11.conn = None;
         eprintln!("TRACE: main - x11.conn set to None");
     }
@@ -181,7 +181,7 @@ fn check_other_wm_init(root: Window) {
 }
 
 fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     let cfg = init_config();
 
     globals.screen = screen_num as i32;
@@ -245,7 +245,7 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.external_commands = cfg.external_commands;
 }
 
-fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
+fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Screen) {
     eprintln!("TRACE: setup - START");
     eprintln!("TRACE: setup - before setup_signal_handlers");
     setup_signal_handlers();
@@ -307,7 +307,7 @@ fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Scre
     eprintln!("TRACE: setup - after init_schemes");
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         globals.xlibdisplay = crate::globals::XlibDisplay(drw.display());
         globals.drw = Some(drw);
         globals.bh = bh as i32;
@@ -401,7 +401,7 @@ fn setup_signal_handlers() {
 }
 
 fn init_atoms<C: Connection>(conn: &C) {
-    let utf8string = intern_atom(conn, "UTF8_STRING", false);
+    let _utf8string = intern_atom(conn, "UTF8_STRING", false);
 
     let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
     let wm_delete = intern_atom(conn, "WM_DELETE_WINDOW", false);
@@ -430,7 +430,7 @@ fn init_atoms<C: Connection>(conn: &C) {
     let xembed = intern_atom(conn, "_XEMBED", false);
     let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.wmatom = crate::types::WmAtoms {
         protocols: wm_protocols,
         delete: wm_delete,
@@ -485,7 +485,7 @@ fn init_cursors(drw: &Drw) {
         drw.cur_create(XC_TOP_RIGHT_CORNER),
     ];
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     for (i, cursor) in cursors.into_iter().enumerate() {
         if i < globals.cursors.len() {
             globals.cursors[i] = Some(cursor);
@@ -617,7 +617,7 @@ fn init_schemes(drw: &Drw) {
         hover: closebuttonschemes_hover,
     };
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     globals.borderscheme = borderscheme;
     globals.statusscheme = statusscheme;
     globals.tags.schemes = tagschemes;
@@ -642,7 +642,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
         1,
         0,
         WindowClass::INPUT_OUTPUT,
-        x11rb::COPY_FROM_PARENT.into(),
+        x11rb::COPY_FROM_PARENT,
         &CreateWindowAux::new(),
     );
 

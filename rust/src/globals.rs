@@ -181,18 +181,10 @@ pub fn get_globals_mut() -> &'static mut Globals {
     unsafe { &mut *GLOBALS.0.get() }
 }
 
+#[derive(Default)]
 pub struct X11Connection {
     pub conn: Option<x11rb::rust_connection::RustConnection>,
     pub screen_num: usize,
-}
-
-impl Default for X11Connection {
-    fn default() -> Self {
-        Self {
-            conn: None,
-            screen_num: 0,
-        }
-    }
 }
 
 pub static X11: Lazy<MainThreadCell<X11Connection>> =

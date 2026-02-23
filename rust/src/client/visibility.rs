@@ -143,11 +143,7 @@ pub fn show_hide(win: Option<Window>) {
 
         let w_val = {
             let globals = get_globals();
-            globals
-                .clients
-                .get(&current)
-                .map(|c| client_width(c))
-                .unwrap_or(0)
+            globals.clients.get(&current).map(client_width).unwrap_or(0)
         };
         let y = {
             let globals = get_globals();

@@ -43,7 +43,7 @@ pub fn tcl(m: &mut Monitor) {
     while c_win.is_some() {
         n += 1;
         let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next.into());
+        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -110,7 +110,7 @@ pub fn tcl(m: &mut Monitor) {
 
     // Right column  — stack clients at positions 0, 2, 4 … (even indices)
     // Left  column  — stack clients at positions 1, 3, 5 … (odd  indices)
-    let right_n = (stack_n + 1) / 2; // ceil(stack_n / 2)
+    let right_n = stack_n.div_ceil(2); // ceil(stack_n / 2)
     let left_n = stack_n / 2; // floor(stack_n / 2)
 
     let bh = {

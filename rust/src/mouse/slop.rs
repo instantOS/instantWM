@@ -159,7 +159,7 @@ pub fn draw_window(_arg: &Arg) {
     // Check the rect is meaningfully different from the current geometry.
     let is_different = {
         let globals = get_globals();
-        globals.clients.get(&win).map_or(false, |c| {
+        globals.clients.get(&win).is_some_and(|c| {
             (c.geo.w - rect.w).abs() > 20
                 || (c.geo.h - rect.h).abs() > 20
                 || (c.geo.x - rect.x).abs() > 20

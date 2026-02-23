@@ -123,18 +123,16 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                     },
                 );
             }
-        } else {
-            if actual_w > 0 && actual_h > 0 {
-                resize_client_rect(
-                    win,
-                    &Rect {
-                        x,
-                        y,
-                        w: actual_w,
-                        h: actual_h,
-                    },
-                );
-            }
+        } else if actual_w > 0 && actual_h > 0 {
+            resize_client_rect(
+                win,
+                &Rect {
+                    x,
+                    y,
+                    w: actual_w,
+                    h: actual_h,
+                },
+            );
         }
     }
 }
@@ -225,7 +223,7 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    let (is_floating, has_tiling) = {
+    let (_is_floating, has_tiling) = {
         let globals = get_globals();
         if !globals.monitors.is_empty() {
             globals

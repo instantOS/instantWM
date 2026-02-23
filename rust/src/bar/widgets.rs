@@ -14,7 +14,7 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
     let startmenu_invert = g
         .monitors
         .get(g.selmon)
-        .map_or(false, |mon| mon.gesture == Gesture::StartMenu);
+        .is_some_and(|mon| mon.gesture == Gesture::StartMenu);
 
     let startmenu_size = g.startmenusize;
     let scheme: Option<ColorScheme> = if g.tags.prefix {
@@ -103,7 +103,7 @@ fn get_tag_scheme(m: &Monitor, i: u32, occupied_tags: u32, is_hover: bool) -> Op
         let is_selected = g
             .monitors
             .get(g.selmon)
-            .map_or(false, |selmon| selmon.num == m.num);
+            .is_some_and(|selmon| selmon.num == m.num);
 
         if is_selected && sel_has_tag {
             return schemes.get(SchemeTag::Focus as usize).cloned();
@@ -144,7 +144,7 @@ pub(crate) fn draw_tag_indicators(
         let is_hover = g
             .monitors
             .get(g.selmon)
-            .map_or(false, |selmon| selmon.gesture as u32 == i + 1);
+            .is_some_and(|selmon| selmon.gesture as u32 == i + 1);
 
         let current_tag = m.current_tag;
         let actual_i = if i == 8 && current_tag > 9 {
@@ -255,15 +255,15 @@ fn get_window_scheme(c: &Client, is_hover: bool) -> Option<ColorScheme> {
         return None;
     }
 
-    let is_selected = g.monitors.get(g.selmon).map_or(false, |selmon| {
-        selmon.sel.map_or(false, |sel_win| sel_win == c.win)
-    });
+    let is_selected = g
+        .monitors
+        .get(g.selmon)
+        .is_some_and(|selmon| selmon.sel == Some(c.win));
 
-    let is_overlay = g.monitors.get(g.selmon).map_or(false, |selmon| {
-        selmon
-            .overlay
-            .map_or(false, |overlay_win| overlay_win == c.win)
-    });
+    let is_overlay = g
+        .monitors
+        .get(g.selmon)
+        .is_some_and(|selmon| selmon.overlay == Some(c.win));
 
     if is_selected {
         if is_overlay {
@@ -293,7 +293,7 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
     let close_hovered = g
         .monitors
         .get(g.selmon)
-        .map_or(false, |selmon| selmon.gesture == Gesture::CloseButton);
+        .is_some_and(|selmon| selmon.gesture == Gesture::CloseButton);
 
     let schemes = if close_hovered {
         &g.closebuttonschemes.hover
@@ -372,12 +372,12 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
 fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
     let g = get_globals();
 
-    let is_hover = g.monitors.get(g.selmon).map_or(false, |selmon| {
+    let is_hover = g.monitors.get(g.selmon).is_some_and(|selmon| {
         selmon.gesture == Gesture::None
-            && selmon.sel.map_or(false, |sel_win| {
+            && selmon.sel.is_some_and(|sel_win| {
                 g.clients
                     .get(&sel_win)
-                    .map_or(false, |hover_c| hover_c.win == c.win)
+                    .is_some_and(|hover_c| hover_c.win == c.win)
             })
     });
 
@@ -399,9 +399,10 @@ fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
         drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
     }
 
-    let is_selected = g.monitors.get(g.selmon).map_or(false, |selmon| {
-        selmon.sel.map_or(false, |sel_win| sel_win == c.win)
-    });
+    let is_selected = g
+        .monitors
+        .get(g.selmon)
+        .is_some_and(|selmon| selmon.sel == Some(c.win));
 
     if is_selected {
         draw_close_button(c, x, bh);
@@ -420,7 +421,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
 
         let clients: Vec<Client> = g.clients.values().cloned().collect();
         for c in clients.iter() {
-            let mon_match = c.mon_id.map_or(false, |mon_id| mon_id == g.selmon);
+            let mon_match = c.mon_id == Some(g.selmon);
             if !mon_match {
                 continue;
             }
@@ -467,7 +468,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
         let has_clients = g
             .monitors
             .get(g.selmon)
-            .map_or(false, |selmon| selmon.clients.is_some());
+            .is_some_and(|selmon| selmon.clients.is_some());
 
         if !has_clients {
             let help_text = "Press space to launch an application";

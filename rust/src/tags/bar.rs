@@ -129,7 +129,7 @@ fn should_skip_tag(globals: &crate::globals::Globals, i: usize, occupied: u32) -
 }
 
 /// Choose between the regular name and the alt-name for display.
-fn display_name<'a>(tag: &'a crate::types::Tag, show_alt: bool) -> &'a str {
+fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
     if show_alt && !tag.alt_name.is_empty() {
         tag.alt_name
     } else {

@@ -89,9 +89,7 @@ pub(super) fn warp_impl(win: Window) {
     let on_bar = c
         .mon_id
         .and_then(|mid| globals.monitors.get(mid))
-        .map_or(false, |mon| {
-            (ptr_y > mon.by && ptr_y < mon.by + bh) || (mon.topbar && ptr_y == 0)
-        });
+        .is_some_and(|mon| (ptr_y > mon.by && ptr_y < mon.by + bh) || (mon.topbar && ptr_y == 0));
 
     if in_window || on_bar {
         return;

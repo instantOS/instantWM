@@ -70,11 +70,11 @@ pub fn key_press(e: &KeyPressEvent) {
             let numlockmask = globals.numlockmask;
             let mut result = None;
             for key in &globals.keys {
-                if keysym == key.keysym as u32
+                if keysym == key.keysym
                     && clean_mask(key.mod_mask as u16, numlockmask)
-                        == clean_mask(state.bits() as u16, numlockmask)
+                        == clean_mask(state.bits(), numlockmask)
                 {
-                    result = Some((key.func, key.arg.clone()));
+                    result = Some((key.func, key.arg));
                     break;
                 }
             }
@@ -86,11 +86,11 @@ pub fn key_press(e: &KeyPressEvent) {
                     .is_some();
                 if !has_sel {
                     for key in &globals.dkeys {
-                        if keysym == key.keysym as u32
+                        if keysym == key.keysym
                             && clean_mask(key.mod_mask as u16, numlockmask)
-                                == clean_mask(state.bits() as u16, numlockmask)
+                                == clean_mask(state.bits(), numlockmask)
                         {
-                            result = Some((key.func, key.arg.clone()));
+                            result = Some((key.func, key.arg));
                             break;
                         }
                     }
@@ -121,12 +121,10 @@ pub fn grab_keys() {
         let dkeys = globals.dkeys.clone();
         let free_alt_tab = true;
 
-        let _ = ungrab_key(conn, 0, root, ModMask::ANY.into());
+        let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
-        let (keycode_min, keycode_max): (u8, u8) = (
-            conn.setup().min_keycode as u8,
-            conn.setup().max_keycode as u8,
-        );
+        let (keycode_min, keycode_max): (u8, u8) =
+            (conn.setup().min_keycode, conn.setup().max_keycode);
 
         let modifiers: [u16; 4] = [
             0,
@@ -157,7 +155,7 @@ pub fn grab_keys() {
 
             for key in &keys {
                 let keysym = get_keysym(keycode);
-                if keysym == key.keysym as u32 {
+                if keysym == key.keysym {
                     for &modif in &modifiers {
                         if free_alt_tab && key.mod_mask == ModMask::M1.bits() as u32 {
                             continue;
@@ -183,7 +181,7 @@ pub fn grab_keys() {
             if !has_sel {
                 for key in &dkeys {
                     let keysym = get_keysym(keycode);
-                    if keysym == key.keysym as u32 {
+                    if keysym == key.keysym {
                         for &modif in &modifiers {
                             let _ = grab_key(
                                 conn,
@@ -212,10 +210,8 @@ pub fn update_num_lock_mask() {
             if let Ok(reply) = cookie.reply() {
                 let mut new_numlockmask: u32 = 0;
 
-                let (keycode_min, keycode_max) = (
-                    conn.setup().min_keycode as u8,
-                    conn.setup().max_keycode as u8,
-                );
+                let (keycode_min, keycode_max) =
+                    (conn.setup().min_keycode, conn.setup().max_keycode);
                 let mapping = conn
                     .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
                     .unwrap()
@@ -368,7 +364,7 @@ pub fn up_key(arg: &Arg) {
                         conn,
                         win,
                         &ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(scheme.normal.bg.pixel() as u32)),
+                            .border_pixel(Some(scheme.normal.bg.pixel())),
                     );
                     let _ = conn.flush();
                 }
@@ -461,7 +457,7 @@ pub fn space_toggle(_arg: &Arg) {
                         conn,
                         win,
                         &ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(scheme.normal.bg.pixel() as u32)),
+                            .border_pixel(Some(scheme.normal.bg.pixel())),
                     );
                     let _ = conn.flush();
                 }

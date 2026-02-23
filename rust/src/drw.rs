@@ -103,8 +103,8 @@ pub type XlibGc = *mut libc::c_void;
 pub const FC_CHARSET: &[u8] = b"charset\0";
 pub const FC_SCALABLE: &[u8] = b"scalable\0";
 
-pub const FcMatchPattern: c_int = 1;
-pub const FcTrue: FcBool = 1;
+pub const FC_MATCH_PATTERN: c_int = 1;
+pub const FC_TRUE: FcBool = 1;
 
 #[repr(C)]
 pub struct XWindowAttributes {
@@ -1153,9 +1153,9 @@ impl Drw {
 
                         let fcpattern = FcPatternDuplicate(fonts_ref.pattern);
                         FcPatternAddCharSet(fcpattern, FC_CHARSET.as_ptr(), fccharset);
-                        FcPatternAddBool(fcpattern, FC_SCALABLE.as_ptr(), FcTrue);
+                        FcPatternAddBool(fcpattern, FC_SCALABLE.as_ptr(), FC_TRUE);
 
-                        FcConfigSubstitute(ptr::null_mut(), fcpattern, FcMatchPattern);
+                        FcConfigSubstitute(ptr::null_mut(), fcpattern, FC_MATCH_PATTERN);
                         FcDefaultSubstitute(fcpattern);
 
                         let mut result: XftResult = 0;

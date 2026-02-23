@@ -345,7 +345,7 @@ pub fn force_warp(c_win: Window) {
                 0,
                 0,
                 (c.geo.w / 2) as i16,
-                10 as i16,
+                10_i16,
             );
             let _ = conn.flush();
         }
@@ -511,12 +511,10 @@ pub fn focus_stack_direction(forward: bool) {
 
     let next_idx = if forward {
         (current_idx + 1) % stack.len()
+    } else if current_idx == 0 {
+        stack.len() - 1
     } else {
-        if current_idx == 0 {
-            stack.len() - 1
-        } else {
-            current_idx - 1
-        }
+        current_idx - 1
     };
 
     focus(Some(stack[next_idx]));

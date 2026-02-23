@@ -199,7 +199,7 @@ pub fn manage(
 
         let globals = get_globals();
         if let Some(ref scheme) = globals.borderscheme {
-            let pixel = scheme.normal.bg.pixel() as u32;
+            let pixel = scheme.normal.bg.pixel();
             let _ = conn.change_window_attributes(
                 w,
                 &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),

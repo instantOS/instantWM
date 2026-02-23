@@ -24,7 +24,7 @@ pub const OVERLAY_ACTIVATION_ZONE: i32 = 20;
 pub const OVERLAY_KEEP_ZONE_X: i32 = 40;
 pub const OVERLAY_KEEP_ZONE_Y: i32 = 30;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ColorScheme {
     pub fg: Clr,
     pub bg: Clr,
@@ -53,17 +53,7 @@ impl ColorScheme {
     }
 }
 
-impl Default for ColorScheme {
-    fn default() -> Self {
-        Self {
-            fg: Clr::default(),
-            bg: Clr::default(),
-            detail: Clr::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct BorderScheme {
     pub normal: ColorScheme,
     pub tile_focus: ColorScheme,
@@ -71,18 +61,7 @@ pub struct BorderScheme {
     pub snap: ColorScheme,
 }
 
-impl Default for BorderScheme {
-    fn default() -> Self {
-        Self {
-            normal: ColorScheme::default(),
-            tile_focus: ColorScheme::default(),
-            float_focus: ColorScheme::default(),
-            snap: ColorScheme::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StatusScheme {
     pub fg: Clr,
     pub bg: Clr,
@@ -103,59 +82,22 @@ impl StatusScheme {
     }
 }
 
-impl Default for StatusScheme {
-    fn default() -> Self {
-        Self {
-            fg: Clr::default(),
-            bg: Clr::default(),
-            detail: Clr::default(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TagSchemes {
     pub no_hover: Vec<ColorScheme>,
     pub hover: Vec<ColorScheme>,
 }
 
-impl Default for TagSchemes {
-    fn default() -> Self {
-        Self {
-            no_hover: Vec::new(),
-            hover: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowSchemes {
     pub no_hover: Vec<ColorScheme>,
     pub hover: Vec<ColorScheme>,
 }
 
-impl Default for WindowSchemes {
-    fn default() -> Self {
-        Self {
-            no_hover: Vec::new(),
-            hover: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CloseButtonSchemes {
     pub no_hover: Vec<ColorScheme>,
     pub hover: Vec<ColorScheme>,
-}
-
-impl Default for CloseButtonSchemes {
-    fn default() -> Self {
-        Self {
-            no_hover: Vec::new(),
-            hover: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -175,49 +117,22 @@ impl ColorSchemeStrings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TagColorConfigs {
     pub no_hover: Vec<ColorSchemeStrings>,
     pub hover: Vec<ColorSchemeStrings>,
 }
 
-impl Default for TagColorConfigs {
-    fn default() -> Self {
-        Self {
-            no_hover: Vec::new(),
-            hover: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowColorConfigs {
     pub no_hover: Vec<ColorSchemeStrings>,
     pub hover: Vec<ColorSchemeStrings>,
 }
 
-impl Default for WindowColorConfigs {
-    fn default() -> Self {
-        Self {
-            no_hover: Vec::new(),
-            hover: Vec::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CloseButtonColorConfigs {
     pub no_hover: Vec<ColorSchemeStrings>,
     pub hover: Vec<ColorSchemeStrings>,
-}
-
-impl Default for CloseButtonColorConfigs {
-    fn default() -> Self {
-        Self {
-            no_hover: Vec::new(),
-            hover: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -303,7 +218,7 @@ pub struct XAtoms {
 }
 
 /// All tag-related configuration and runtime state, grouped in one place.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TagSet {
     /// List of tags with their properties.
     pub tags: Vec<Tag>,
@@ -330,19 +245,6 @@ impl TagSet {
     #[inline]
     pub fn count(&self) -> usize {
         self.tags.len()
-    }
-}
-
-impl Default for TagSet {
-    fn default() -> Self {
-        Self {
-            tags: Vec::new(),
-            colors: Vec::new(),
-            schemes: TagSchemes::default(),
-            show_alt: false,
-            prefix: false,
-            width: 0,
-        }
     }
 }
 
@@ -836,9 +738,10 @@ pub struct Systray {
 
 /// Action that can be bound to a key or button.
 /// This enum allows different function signatures to be used in bindings.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum Action {
     /// No action
+    #[default]
     None,
     /// Function taking an Arg pointer (legacy)
     WithArg(fn(&Arg)),
@@ -855,12 +758,6 @@ pub enum Action {
     /// Tag to left/right by offset
     TagToLeft(i32),
     TagToRight(i32),
-}
-
-impl Default for Action {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 #[derive(Debug, Clone)]

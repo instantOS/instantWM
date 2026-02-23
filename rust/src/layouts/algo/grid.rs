@@ -65,7 +65,7 @@ pub fn grid(m: &mut Monitor) {
     while c_win.is_some() {
         n += 1;
         let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next.into());
+        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -150,7 +150,7 @@ pub fn horizgrid(m: &mut Monitor) {
     while c_win.is_some() {
         n += 1;
         let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next.into());
+        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
     }
 
     if n == 0 {
