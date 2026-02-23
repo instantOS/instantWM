@@ -1,4 +1,4 @@
-use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating};
+use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::direction_focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
@@ -373,7 +373,7 @@ pub fn up_key(arg: &Arg) {
                     let _ = conn.flush();
                 }
             }
-            change_snap(win, 0);
+            change_snap(win, SnapDir::Up);
         }
         return;
     }
@@ -415,7 +415,7 @@ pub fn down_key(arg: &Arg) {
         };
 
         if let Some(win) = sel_win {
-            change_snap(win, 2);
+            change_snap(win, SnapDir::Down);
         }
         return;
     }
