@@ -26,7 +26,7 @@ pub fn create_monitor() -> Monitor {
         showbar: g.showbar,
         topbar: g.topbar,
         clientcount: 0,
-        overlaymode: 0,
+        overlaymode: OverlayMode::Top,
         current_tag: 1,
         prev_tag: 1,
         ..Default::default()
@@ -52,7 +52,7 @@ pub fn create_monitor_with_values(
         showbar,
         topbar,
         clientcount: 0,
-        overlaymode: 0,
+        overlaymode: OverlayMode::Top,
         current_tag: 1,
         prev_tag: 1,
         ..Default::default()

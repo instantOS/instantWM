@@ -313,16 +313,55 @@ pub enum SnapPosition {
     Maximized,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Direction for overlay window positioning.
-/// Note: This enum is currently unused but kept for potential future use
-/// when implementing directional overlay/sidebar functionality from the C codebase.
-#[allow(dead_code)]
-pub enum OverlayDirection {
+/// The side of the screen from which the overlay window slides in/out.
+///
+/// Mirrors the `OverlayTop` / `OverlayRight` / `OverlayBottom` / `OverlayLeft`
+/// constants from the C codebase and is stored on [`Monitor::overlaymode`].
+/// The numeric values are preserved so that external commands (e.g.
+/// `setoverlaymode`) that pass a raw integer continue to work via
+/// [`OverlayMode::from_i32`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OverlayMode {
+    /// Overlay slides down from the top edge (default).
+    #[default]
     Top,
+    /// Overlay slides in from the right edge.
     Right,
+    /// Overlay slides up from the bottom edge.
     Bottom,
+    /// Overlay slides in from the left edge.
     Left,
+}
+
+impl OverlayMode {
+    /// Convert a raw `i32` (as used by `Arg::i` and the legacy C interface) to
+    /// an [`OverlayMode`].  Returns `None` for any value outside `0..=3`.
+    pub fn from_i32(v: i32) -> Option<Self> {
+        match v {
+            0 => Some(Self::Top),
+            1 => Some(Self::Right),
+            2 => Some(Self::Bottom),
+            3 => Some(Self::Left),
+            _ => None,
+        }
+    }
+
+    /// Return the canonical `i32` representation of this mode (matches the C
+    /// `OverlayTop` … `OverlayLeft` enum values).
+    pub fn to_i32(self) -> i32 {
+        match self {
+            Self::Top => 0,
+            Self::Right => 1,
+            Self::Bottom => 2,
+            Self::Left => 3,
+        }
+    }
+
+    /// Returns `true` for the two modes where the overlay is sized/animated
+    /// along the vertical axis (top / bottom).
+    pub fn is_vertical(self) -> bool {
+        matches!(self, Self::Top | Self::Bottom)
+    }
 }
 
 /// Describes which interactive bar region the cursor is currently hovering over.
@@ -651,7 +690,7 @@ pub struct Monitor {
     pub showbar: bool,
     pub topbar: bool,
     pub overlaystatus: i32,
-    pub overlaymode: i32,
+    pub overlaymode: OverlayMode,
     pub gesture: Gesture,
     pub barwin: Window,
     pub showtags: u32,
@@ -683,7 +722,7 @@ impl Default for Monitor {
             showbar: true,
             topbar: true,
             overlaystatus: 0,
-            overlaymode: 0,
+            overlaymode: OverlayMode::default(),
             gesture: Gesture::default(),
             barwin: 0,
             showtags: 0,

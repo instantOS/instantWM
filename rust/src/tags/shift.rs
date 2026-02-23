@@ -24,7 +24,7 @@
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
-use crate::types::{Arg, Direction, Rect};
+use crate::types::{Arg, Direction, OverlayMode, Rect};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -116,10 +116,10 @@ fn shift_tag(dir: Direction, offset: i32) {
     // -----------------------------------------------------------------------
     if Some(win) == overlay_win {
         let mode = match dir {
-            Direction::Left => 3,
-            Direction::Right => 1,
-            Direction::Up => 0,
-            Direction::Down => 2,
+            Direction::Left => OverlayMode::Left,
+            Direction::Right => OverlayMode::Right,
+            Direction::Up => OverlayMode::Top,
+            Direction::Down => OverlayMode::Bottom,
         };
         crate::overlay::set_overlay_mode(mode);
         return;

@@ -8,12 +8,6 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-//TODO: this should be a rust enum
-pub const OVERLAY_TOP: i32 = 0;
-pub const OVERLAY_RIGHT: i32 = 1;
-pub const OVERLAY_BOTTOM: i32 = 2;
-pub const OVERLAY_LEFT: i32 = 3;
-
 //TODO: maybe overlay should be a struct with the overlay relevant state kept
 //there
 
@@ -94,14 +88,14 @@ pub fn create_overlay(_arg: &Arg) {
         if let Some(mon) = globals.monitors.get(globals.selmon) {
             (mon.overlaymode, mon.work_rect.w, mon.work_rect.h)
         } else {
-            (0, 0, 0)
+            (OverlayMode::default(), 0, 0)
         }
     };
 
     {
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&temp_client) {
-            if overlay_mode == OVERLAY_TOP || overlay_mode == OVERLAY_BOTTOM {
+            if overlay_mode.is_vertical() {
                 client.geo.h = mon_wh / 3;
             } else {
                 client.geo.w = mon_ww / 3;
@@ -249,7 +243,7 @@ pub fn show_overlay(_arg: &Arg) {
 
     if is_locked {
         match overlay_mode {
-            OVERLAY_TOP => {
+            OverlayMode::Top => {
                 resize(
                     overlay_win,
                     &Rect {
@@ -261,7 +255,7 @@ pub fn show_overlay(_arg: &Arg) {
                     true,
                 );
             }
-            OVERLAY_RIGHT => {
+            OverlayMode::Right => {
                 resize(
                     overlay_win,
                     &Rect {
@@ -273,7 +267,7 @@ pub fn show_overlay(_arg: &Arg) {
                     true,
                 );
             }
-            OVERLAY_BOTTOM => {
+            OverlayMode::Bottom => {
                 resize(
                     overlay_win,
                     &Rect {
@@ -285,7 +279,7 @@ pub fn show_overlay(_arg: &Arg) {
                     true,
                 );
             }
-            OVERLAY_LEFT => {
+            OverlayMode::Left => {
                 resize(
                     overlay_win,
                     &Rect {
@@ -297,7 +291,6 @@ pub fn show_overlay(_arg: &Arg) {
                     true,
                 );
             }
-            _ => {}
         }
     }
 
@@ -338,17 +331,16 @@ pub fn show_overlay(_arg: &Arg) {
             let globals = get_globals();
             if let Some(mon) = globals.monitors.get(selmon_id) {
                 match overlay_mode {
-                    OVERLAY_TOP => (overlay_win as i32, mon.monitor_rect.y + yoffset),
-                    OVERLAY_RIGHT => (
+                    OverlayMode::Top => (overlay_win as i32, mon.monitor_rect.y + yoffset),
+                    OverlayMode::Right => (
                         mon.monitor_rect.x + mon.monitor_rect.w - client_w,
                         mon.monitor_rect.y + 40,
                     ),
-                    OVERLAY_BOTTOM => (
+                    OverlayMode::Bottom => (
                         mon.monitor_rect.x + 20,
                         mon.monitor_rect.y + mon.monitor_rect.h - client_h,
                     ),
-                    OVERLAY_LEFT => (mon.monitor_rect.x, mon.monitor_rect.y + 40),
-                    _ => (0, 0),
+                    OverlayMode::Left => (mon.monitor_rect.x, mon.monitor_rect.y + 40),
                 }
             } else {
                 (0, 0)
@@ -460,7 +452,7 @@ pub fn hide_overlay(_arg: &Arg) {
 
     if is_locked {
         match overlay_mode {
-            OVERLAY_TOP => {
+            OverlayMode::Top => {
                 animate_client_rect(
                     overlay_win,
                     &Rect {
@@ -473,7 +465,7 @@ pub fn hide_overlay(_arg: &Arg) {
                     0,
                 );
             }
-            OVERLAY_RIGHT => {
+            OverlayMode::Right => {
                 animate_client_rect(
                     overlay_win,
                     &Rect {
@@ -486,7 +478,7 @@ pub fn hide_overlay(_arg: &Arg) {
                     0,
                 );
             }
-            OVERLAY_BOTTOM => {
+            OverlayMode::Bottom => {
                 animate_client_rect(
                     overlay_win,
                     &Rect {
@@ -499,7 +491,7 @@ pub fn hide_overlay(_arg: &Arg) {
                     0,
                 );
             }
-            OVERLAY_LEFT => {
+            OverlayMode::Left => {
                 animate_client_rect(
                     overlay_win,
                     &Rect {
@@ -512,7 +504,6 @@ pub fn hide_overlay(_arg: &Arg) {
                     0,
                 );
             }
-            _ => {}
         }
     }
 
@@ -565,7 +556,7 @@ pub fn set_overlay(_arg: &Arg) {
     }
 }
 
-pub fn set_overlay_mode(mode: i32) {
+pub fn set_overlay_mode(mode: OverlayMode) {
     {
         let globals = get_globals_mut();
         for mon in &mut globals.monitors {
@@ -593,7 +584,7 @@ pub fn set_overlay_mode(mode: i32) {
         if let Some(mon) = globals.monitors.get(globals.selmon) {
             if let Some(overlay_win) = mon.overlay {
                 if let Some(client) = globals.clients.get_mut(&overlay_win) {
-                    if mode == OVERLAY_TOP || mode == OVERLAY_BOTTOM {
+                    if mode.is_vertical() {
                         client.geo.h = mon_wh / 3;
                     } else {
                         client.geo.w = mon_ww / 3;
@@ -620,7 +611,8 @@ pub fn is_overlay_window(win: Window) -> bool {
 }
 
 pub fn set_overlay_mode_cmd(arg: &Arg) {
-    set_overlay_mode(arg.i);
+    let mode = OverlayMode::from_i32(arg.i).unwrap_or_default();
+    set_overlay_mode(mode);
 }
 
 pub fn reset_overlay_size() {
@@ -677,7 +669,7 @@ pub fn reset_overlay_size() {
     let yoffset = if mon_showbar { bh } else { 0 };
 
     match overlay_mode {
-        OVERLAY_TOP => {
+        OverlayMode::Top => {
             resize(
                 win,
                 &Rect {
@@ -689,7 +681,7 @@ pub fn reset_overlay_size() {
                 true,
             );
         }
-        OVERLAY_RIGHT => {
+        OverlayMode::Right => {
             let client_w = {
                 let globals = get_globals();
                 globals
@@ -709,7 +701,7 @@ pub fn reset_overlay_size() {
                 true,
             );
         }
-        OVERLAY_BOTTOM => {
+        OverlayMode::Bottom => {
             let client_h = {
                 let globals = get_globals();
                 globals
@@ -729,7 +721,7 @@ pub fn reset_overlay_size() {
                 true,
             );
         }
-        OVERLAY_LEFT => {
+        OverlayMode::Left => {
             resize(
                 win,
                 &Rect {
@@ -741,6 +733,5 @@ pub fn reset_overlay_size() {
                 true,
             );
         }
-        _ => {}
     }
 }
