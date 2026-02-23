@@ -8,7 +8,7 @@ use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
-use crate::monitor::{arrange, rect_to_mon_rect, restack, update_geom, win_to_mon};
+use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
 use crate::systray::{get_systray_width, update_systray, win_to_systray_icon};
 use crate::tags::{get_tag_at_x, get_tag_width};
@@ -373,23 +373,31 @@ pub fn map_request(e: &MapRequestEvent) {
                 .map(|wa| wa.override_redirect)
                 .unwrap_or(false);
             if !override_redirect {
-                let (x, y, width, height, border_width) = conn
+                let (geo, border_width) = conn
                     .get_geometry(e.window)
                     .ok()
                     .and_then(|geo| geo.reply().ok())
                     .map(|geo| {
                         (
-                            //TODO: we should probably use the rectangle struct here
-                            // and make manage take a rectangle as a parameter
-                            geo.x as i32,
-                            geo.y as i32,
-                            geo.width as u32,
-                            geo.height as u32,
+                            Rect {
+                                x: geo.x as i32,
+                                y: geo.y as i32,
+                                w: geo.width as i32,
+                                h: geo.height as i32,
+                            },
                             geo.border_width as u32,
                         )
                     })
-                    .unwrap_or((0, 0, 800, 600, 1));
-                crate::client::manage(e.window, x, y, width, height, border_width);
+                    .unwrap_or((
+                        Rect {
+                            x: 0,
+                            y: 0,
+                            w: 800,
+                            h: 600,
+                        },
+                        1,
+                    ));
+                crate::client::manage(e.window, geo, border_width);
             }
         }
     }
@@ -403,7 +411,7 @@ fn handle_focus_follows_mouse(selmon_id: MonitorId, root_x: i32, root_y: i32) ->
         return false;
     }
 
-    if let Some(new_mon) = rect_to_mon_rect(&Rect {
+    if let Some(new_mon) = rect_to_mon(&Rect {
         x: root_x,
         y: root_y,
         w: 1,
@@ -728,21 +736,31 @@ pub fn scan() {
                 continue;
             }
 
-            let (x, y, width, height, border_width) = conn
+            let (geo, border_width) = conn
                 .get_geometry(win)
                 .ok()
                 .and_then(|geo| geo.reply().ok())
                 .map(|geo| {
                     (
-                        geo.x as i32,
-                        geo.y as i32,
-                        geo.width as u32,
-                        geo.height as u32,
+                        Rect {
+                            x: geo.x as i32,
+                            y: geo.y as i32,
+                            w: geo.width as i32,
+                            h: geo.height as i32,
+                        },
                         geo.border_width as u32,
                     )
                 })
-                .unwrap_or((0, 0, 800, 600, 1));
-            let attrs = (win, x, y, width, height, border_width);
+                .unwrap_or((
+                    Rect {
+                        x: 0,
+                        y: 0,
+                        w: 800,
+                        h: 600,
+                    },
+                    1,
+                ));
+            let attrs = (win, geo, border_width);
             if is_transient {
                 transients.push(attrs);
             } else {
@@ -752,11 +770,11 @@ pub fn scan() {
         (managed, transients)
     };
 
-    for (win, x, y, width, height, border_width) in managed {
-        crate::client::manage(win, x, y, width, height, border_width);
+    for (win, geo, border_width) in managed {
+        crate::client::manage(win, geo, border_width);
     }
-    for (win, x, y, width, height, border_width) in transients {
-        crate::client::manage(win, x, y, width, height, border_width);
+    for (win, geo, border_width) in transients {
+        crate::client::manage(win, geo, border_width);
     }
 }
 

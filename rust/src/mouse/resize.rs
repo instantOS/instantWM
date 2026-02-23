@@ -370,7 +370,7 @@ pub fn is_in_resize_border() -> bool {
         return false;
     }
 
-    let (c_x, c_y, c_w, c_h) = (c.geo.x, c.geo.y, c.geo.w, c.geo.h);
+    let geo = c.geo;
     drop(globals); // release borrow before get_root_ptr
 
     let Some((px, py)) = get_root_ptr() else {
@@ -387,15 +387,15 @@ pub fn is_in_resize_border() -> bool {
     }
 
     // Cursor is inside the window content – not a resize border.
-    if py > c_y && py < c_y + c_h && px > c_x && px < c_x + c_w {
+    if py > geo.y && py < geo.y + geo.h && px > geo.x && px < geo.x + geo.w {
         return false;
     }
 
     // Cursor is too far away to be considered near the border.
-    if py < c_y - RESIZE_BORDER_ZONE
-        || px < c_x - RESIZE_BORDER_ZONE
-        || py > c_y + c_h + RESIZE_BORDER_ZONE
-        || px > c_x + c_w + RESIZE_BORDER_ZONE
+    if py < geo.y - RESIZE_BORDER_ZONE
+        || px < geo.x - RESIZE_BORDER_ZONE
+        || py > geo.y + geo.h + RESIZE_BORDER_ZONE
+        || px > geo.x + geo.w + RESIZE_BORDER_ZONE
     {
         return false;
     }

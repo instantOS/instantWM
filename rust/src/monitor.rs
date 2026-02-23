@@ -129,7 +129,8 @@ pub fn dir_to_mon(dir: i32) -> Option<MonitorId> {
     }
 }
 
-pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
+/// Find the monitor that a [`Rect`] intersects with most.
+pub fn rect_to_mon(rect: &Rect) -> Option<MonitorId> {
     let g = get_globals();
     if g.monitors.is_empty() {
         return None;
@@ -139,7 +140,7 @@ pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
     let mut max_area = 0;
 
     for (i, m) in g.monitors.iter().enumerate() {
-        let area = intersect(&Rect { x, y, w, h }, m);
+        let area = intersect(rect, m);
         if area > max_area {
             max_area = area;
             result = i;
@@ -149,17 +150,12 @@ pub fn rect_to_mon(x: i32, y: i32, w: i32, h: i32) -> Option<MonitorId> {
     Some(result)
 }
 
-/// Find the monitor that a Rect intersects with most.
-pub fn rect_to_mon_rect(rect: &Rect) -> Option<MonitorId> {
-    rect_to_mon(rect.x, rect.y, rect.w, rect.h)
-}
-
 pub fn win_to_mon(w: Window) -> Option<MonitorId> {
     let g = get_globals();
 
     if w == g.root {
         if let Some((x, y)) = get_root_ptr() {
-            return rect_to_mon_rect(&Rect { x, y, w: 1, h: 1 });
+            return rect_to_mon(&Rect { x, y, w: 1, h: 1 });
         }
         return if g.monitors.is_empty() {
             None

@@ -121,16 +121,21 @@ pub fn set_border_width(arg: &Arg) {
         }
     }
 
-    let (x, y, w, h) = {
+    let geo = {
         let globals = get_globals();
         if let Some(c) = globals.clients.get(&win) {
-            (c.geo.x, c.geo.y, c.geo.w + 2 * d, c.geo.h + 2 * d)
+            Rect {
+                x: c.geo.x,
+                y: c.geo.y,
+                w: c.geo.w + 2 * d,
+                h: c.geo.h + 2 * d,
+            }
         } else {
             return;
         }
     };
 
-    resize(win, &Rect { x, y, w, h }, false);
+    resize(win, &geo, false);
 }
 
 pub fn toggle_focus_follows_mouse(arg: &Arg) {

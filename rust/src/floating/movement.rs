@@ -44,17 +44,10 @@ pub fn moveresize(arg: &Arg) {
     };
     let Some(win) = sel_win else { return };
 
-    let (is_floating, c_x, c_y, c_w, c_h, border_width) = {
+    let (is_floating, geo, border_width) = {
         let globals = get_globals();
         match globals.clients.get(&win) {
-            Some(c) => (
-                c.isfloating,
-                c.geo.x,
-                c.geo.y,
-                c.geo.w,
-                c.geo.h,
-                c.border_width,
-            ),
+            Some(c) => (c.isfloating, c.geo, c.border_width),
             None => return,
         }
     };
@@ -73,30 +66,25 @@ pub fn moveresize(arg: &Arg) {
     ];
 
     let dir = arg.i.max(0).min(3) as usize;
-    let mut nx = c_x + DELTAS[dir][0];
-    let mut ny = c_y + DELTAS[dir][1];
+    let mut nx = geo.x + DELTAS[dir][0];
+    let mut ny = geo.y + DELTAS[dir][1];
 
-    let (mon_mx, mon_my, mon_mw, mon_mh) = {
+    let mon_rect = {
         let globals = get_globals();
         match globals.monitors.get(globals.selmon) {
-            Some(m) => (
-                m.monitor_rect.x,
-                m.monitor_rect.y,
-                m.monitor_rect.w,
-                m.monitor_rect.h,
-            ),
+            Some(m) => m.monitor_rect,
             None => return,
         }
     };
 
     // Clamp to monitor bounds.
-    nx = nx.max(mon_mx);
-    ny = ny.max(mon_my);
-    if ny + c_h > mon_my + mon_mh {
-        ny = (mon_mh + mon_my) - c_h - border_width * 2;
+    nx = nx.max(mon_rect.x);
+    ny = ny.max(mon_rect.y);
+    if ny + geo.h > mon_rect.y + mon_rect.h {
+        ny = (mon_rect.h + mon_rect.y) - geo.h - border_width * 2;
     }
-    if nx + c_w > mon_mx + mon_mw {
-        nx = (mon_mw + mon_mx) - c_w - border_width * 2;
+    if nx + geo.w > mon_rect.x + mon_rect.w {
+        nx = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
     animate_client_rect(
@@ -104,8 +92,8 @@ pub fn moveresize(arg: &Arg) {
         &Rect {
             x: nx,
             y: ny,
-            w: c_w,
-            h: c_h,
+            w: geo.w,
+            h: geo.h,
         },
         5,
         0,
@@ -135,10 +123,10 @@ pub fn key_resize(arg: &Arg) {
     };
     let Some(win) = sel_win else { return };
 
-    let (is_floating, c_x, c_y, c_w, c_h) = {
+    let (is_floating, geo) = {
         let globals = get_globals();
         match globals.clients.get(&win) {
-            Some(c) => (c.isfloating, c.geo.x, c.geo.y, c.geo.w, c.geo.h),
+            Some(c) => (c.isfloating, c.geo),
             None => return,
         }
     };
@@ -160,15 +148,15 @@ pub fn key_resize(arg: &Arg) {
     ];
 
     let dir = arg.i.max(0).min(3) as usize;
-    let nw = c_w + DELTAS[dir][0];
-    let nh = c_h + DELTAS[dir][1];
+    let nw = geo.w + DELTAS[dir][0];
+    let nh = geo.h + DELTAS[dir][1];
 
     warp_cursor_to_client(win);
     resize(
         win,
         &Rect {
-            x: c_x,
-            y: c_y,
+            x: geo.x,
+            y: geo.y,
             w: nw,
             h: nh,
         },
@@ -198,10 +186,10 @@ pub fn center_window(_arg: &Arg) {
     };
     let Some(win) = sel_win else { return };
 
-    let (w, h, is_floating) = {
+    let (geo, is_floating) = {
         let globals = get_globals();
         match globals.clients.get(&win) {
-            Some(c) => (c.geo.w, c.geo.h, c.isfloating),
+            Some(c) => (c.geo, c.isfloating),
             None => return,
         }
     };
@@ -210,23 +198,16 @@ pub fn center_window(_arg: &Arg) {
         return;
     }
 
-    let (mw, mh, showbar, mx, my, bh) = {
+    let (work_rect, mon_rect, showbar, bh) = {
         let globals = get_globals();
         let mon = match globals.monitors.get(globals.selmon) {
             Some(m) => m,
             None => return,
         };
-        (
-            mon.work_rect.w,
-            mon.work_rect.h,
-            mon.showbar,
-            mon.monitor_rect.x,
-            mon.monitor_rect.y,
-            globals.bh,
-        )
+        (mon.work_rect, mon.monitor_rect, mon.showbar, globals.bh)
     };
 
-    if w > mw || h > mh {
+    if geo.w > work_rect.w || geo.h > work_rect.h {
         return; // window larger than work area — centering would clip it
     }
 
@@ -236,10 +217,10 @@ pub fn center_window(_arg: &Arg) {
     resize(
         win,
         &Rect {
-            x: mx + (mw / 2) - (w / 2),
-            y: my + (mh / 2) - (h / 2) + y_offset,
-            w,
-            h,
+            x: mon_rect.x + (work_rect.w / 2) - (geo.w / 2),
+            y: mon_rect.y + (work_rect.h / 2) - (geo.h / 2) + y_offset,
+            w: geo.w,
+            h: geo.h,
         },
         true,
     );
@@ -298,10 +279,10 @@ pub fn downscale_client(arg: &Arg) {
 ///
 /// Does nothing if the window is not floating.
 pub fn scale_client_win(win: Window, scale: i32) {
-    let (is_floating, c_x, c_y, c_w, c_h) = {
+    let (is_floating, geo) = {
         let globals = get_globals();
         match globals.clients.get(&win) {
-            Some(c) => (c.isfloating, c.geo.x, c.geo.y, c.geo.w, c.geo.h),
+            Some(c) => (c.isfloating, c.geo),
             None => return,
         }
     };
@@ -310,31 +291,25 @@ pub fn scale_client_win(win: Window, scale: i32) {
         return;
     }
 
-    let (mon_mx, mon_my, mon_mw, mon_mh, bh) = {
+    let (mon_rect, bh) = {
         let globals = get_globals();
         match globals.monitors.get(globals.selmon) {
-            Some(m) => (
-                m.monitor_rect.x,
-                m.monitor_rect.y,
-                m.monitor_rect.w,
-                m.monitor_rect.h,
-                globals.bh,
-            ),
+            Some(m) => (m.monitor_rect, globals.bh),
             None => return,
         }
     };
 
-    let mut w = c_w + scale;
-    let mut h = c_h + scale;
-    let mut x = c_x - scale / 2;
-    let mut y = c_y - scale / 2;
+    let mut w = geo.w + scale;
+    let mut h = geo.h + scale;
+    let mut x = geo.x - scale / 2;
+    let mut y = geo.y - scale / 2;
 
     // Clamp position and size to monitor area.
-    x = x.max(mon_mx);
-    w = w.min(mon_mw);
-    h = h.min(mon_mh);
-    if h + y > mon_my + mon_mh {
-        y = mon_mh - h;
+    x = x.max(mon_rect.x);
+    w = w.min(mon_rect.w);
+    h = h.min(mon_rect.h);
+    if h + y > mon_rect.y + mon_rect.h {
+        y = mon_rect.h - h;
     }
     y = y.max(bh); // don't overlap the bar
 

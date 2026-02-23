@@ -11,7 +11,7 @@
 //!   └─► handle_client_monitor_switch(win)
 //!             └─► reads client.geo
 //!                   └─► handle_monitor_switch(win, &rect)
-//!                             ├─► rect_to_mon_rect  → target monitor index
+//!                             ├─► rect_to_mon  → target monitor index
 //!                             ├─► send_mon          → reassigns client
 //!                             └─► focus(None)       → re-focus on new monitor
 //! ```
@@ -19,7 +19,7 @@
 use crate::client::unfocus_win;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
-use crate::monitor::rect_to_mon_rect;
+use crate::monitor::rect_to_mon;
 use crate::monitor::send_mon;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
@@ -30,7 +30,7 @@ use x11rb::protocol::xproto::*;
 /// This is the low-level primitive.  Most call-sites should use
 /// [`handle_client_monitor_switch`] which reads the rect from the client.
 pub fn handle_monitor_switch(c_win: Window, rect: &Rect) {
-    let new_mon = rect_to_mon_rect(rect);
+    let new_mon = rect_to_mon(rect);
     let current_mon = get_globals().selmon;
 
     let Some(target) = new_mon else { return };

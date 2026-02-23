@@ -60,25 +60,13 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 ///
 /// `wa_*` arguments come directly from the `GetWindowAttributesReply` /
 /// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
-pub fn manage(
-    w: Window,
-    wa_x: i32,
-    wa_y: i32,
-    wa_width: u32,
-    wa_height: u32,
-    wa_border_width: u32,
-) {
+pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
     let mut c = Client::default();
     c.win = w;
-    c.geo = Rect {
-        x: wa_x,
-        y: wa_y,
-        w: wa_width as i32,
-        h: wa_height as i32,
-    };
+    c.geo = wa_geo;
     c.old_geo = c.geo;
     c.old_border_width = wa_border_width as i32;
     // Read the window title before insertion so that apply_rules can match on
@@ -199,7 +187,7 @@ pub fn manage(
 
         let globals = get_globals();
         if let Some(ref scheme) = globals.borderscheme {
-            let pixel = scheme.normal.bg.pixel();
+            let pixel = scheme.normal.bg.pixel() as u32;
             let _ = conn.change_window_attributes(
                 w,
                 &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
