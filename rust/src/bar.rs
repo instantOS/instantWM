@@ -7,7 +7,7 @@ pub use model::{bar_position_at_x, BarPosition};
 
 use crate::globals::{get_globals, get_globals_mut};
 use crate::types::*;
-use model::{BarLayout, ClientBarStats};
+use model::ClientBarStats;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 
 static DRAW_BAR_RECURSION: AtomicUsize = AtomicUsize::new(0);
@@ -66,14 +66,17 @@ pub fn draw_bar(m: &mut Monitor) {
         .get(g.selmon)
         .is_some_and(|selmon| selmon.num == m.num);
 
-    let mut layout = BarLayout::default();
-    if g.showsystray && is_selmon {
-        layout.systray_width = crate::systray::get_systray_width() as i32;
-    }
+    let systray_width = if g.showsystray && is_selmon {
+        crate::systray::get_systray_width() as i32
+    } else {
+        0
+    };
 
-    if is_selmon {
-        layout.status_start_x = status::draw_status_bar(m, bh, &g.status_text);
-    }
+    let status_start_x = if is_selmon {
+        status::draw_status_bar(m, bh, &g.status_text)
+    } else {
+        0
+    };
 
     widgets::draw_startmenu_icon(bh);
     x11::resize_bar_win(m);
@@ -84,18 +87,18 @@ pub fn draw_bar(m: &mut Monitor) {
     x = widgets::draw_layout_indicator(m, x, bh);
 
     let title_end_x = if is_selmon {
-        layout.status_start_x
+        status_start_x
     } else {
-        m.work_rect.w - layout.systray_width
+        m.work_rect.w - systray_width
     };
-    layout.title_width = (title_end_x - x).max(0);
+    let title_width = (title_end_x - x).max(0);
 
-    if layout.title_width > bh {
-        widgets::draw_window_titles(m, x, layout.title_width, stats.visible_clients, bh);
+    if title_width > bh {
+        widgets::draw_window_titles(m, x, title_width, stats.visible_clients, bh);
     }
 
     m.bt = stats.visible_clients;
-    m.bar_clients_width = layout.title_width;
+    m.bar_clients_width = title_width;
 
     if let Some(ref drw) = g.drw {
         drw.map(m.barwin, 0, 0, m.work_rect.w as u16, bh as u16);

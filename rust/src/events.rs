@@ -15,7 +15,7 @@ use crate::systray::{update_systray, win_to_systray_icon};
 use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::clean_mask;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -27,35 +27,6 @@ pub const XEMBED_FOCUS_IN: u32 = 4;
 pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
 pub const XEMBED_MODALITY_ON: u32 = 10;
 pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
-
-/// Non-zero when the cursor left the bar and a reset is pending.
-static BAR_LEAVE_STATUS: AtomicI32 = AtomicI32::new(0);
-
-fn has_tiling_layout(mon_id: MonitorId) -> bool {
-    let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(mon_id) {
-        crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-    } else {
-        false
-    }
-}
-
-fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
-    let g = get_globals();
-    let Some(mon) = g.monitors.get(mon_id) else {
-        return (Click::RootWin, Arg::default());
-    };
-
-    let local_x = e.event_x as i32;
-    let position = bar_position_at_x(mon, g, local_x);
-
-    // The start-menu click resets bar hover state before dispatching.
-    if position == BarPosition::StartMenu {
-        reset_bar();
-    }
-
-    position.to_click()
-}
 
 pub fn button_press(e: &ButtonPressEvent) {
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
@@ -100,7 +71,11 @@ pub fn button_press(e: &ButtonPressEvent) {
         let globals = get_globals();
         if let Some(mon) = globals.monitors.get(selmon_id) {
             if e.event == mon.barwin {
-                (click_target, click_arg) = classify_bar_click(e, selmon_id);
+                let position = bar_position_at_x(mon, globals, e.event_x as i32);
+                if position == BarPosition::StartMenu {
+                    reset_bar();
+                }
+                (click_target, click_arg) = position.to_click();
             } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
                 click_target = Click::SideBar;
             }
@@ -108,14 +83,15 @@ pub fn button_press(e: &ButtonPressEvent) {
     }
 
     if click_target == Click::RootWin {
-        if let Some(mon) = get_globals().monitors.get(selmon_id) {
+        let globals = get_globals();
+        if let Some(mon) = globals.monitors.get(selmon_id) {
             if let Some(sel_win) = mon.sel {
-                let is_floating = get_globals()
+                let is_floating = globals
                     .clients
                     .get(&sel_win)
                     .map(|c| c.isfloating)
                     .unwrap_or(false);
-                let has_tiling = has_tiling_layout(selmon_id);
+                let has_tiling = crate::monitor::is_current_layout_tiling(mon, &globals.tags);
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     reset_cursor();
                     resize_mouse(&Arg::default());
@@ -229,8 +205,6 @@ pub fn destroy_notify(e: &DestroyNotifyEvent) {
 }
 
 pub fn enter_notify(e: &EnterNotifyEvent) {
-    handle_bar_leave_reset(e);
-
     let globals = get_globals();
     if !globals.focusfollowsmouse {
         return;
@@ -332,41 +306,6 @@ pub fn map_request(e: &MapRequestEvent) {
     }
 }
 
-/// Handle focus-follows-mouse by switching to the monitor under the cursor.
-/// Returns true if a monitor switch occurred (caller should return early).
-fn handle_focus_follows_mouse(selmon_id: MonitorId, root_x: i32, root_y: i32) -> bool {
-    let globals = get_globals();
-    if !globals.focusfollowsmouse {
-        return false;
-    }
-
-    if let Some(new_mon) = rect_to_mon(&Rect {
-        x: root_x,
-        y: root_y,
-        w: 1,
-        h: 1,
-    }) {
-        if new_mon != selmon_id {
-            let globals = get_globals_mut();
-            globals.selmon = new_mon;
-            focus(None);
-            return true;
-        }
-    }
-    false
-}
-
-/// Update the gesture state and redraw the bar if it changed.
-fn update_gesture_state(mon_id: MonitorId, new_gesture: Gesture, current_gesture: Gesture) {
-    if new_gesture != current_gesture {
-        let globals = get_globals_mut();
-        if let Some(mon) = globals.monitors.get_mut(mon_id) {
-            mon.gesture = new_gesture;
-            draw_bar(mon);
-        }
-    }
-}
-
 /// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
 pub fn motion_notify(e: &MotionNotifyEvent) {
     let globals = get_globals();
@@ -387,8 +326,20 @@ pub fn motion_notify(e: &MotionNotifyEvent) {
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if handle_focus_follows_mouse(selmon_id, root_x, root_y) {
-        return;
+    if get_globals().focusfollowsmouse {
+        if let Some(new_mon) = rect_to_mon(&Rect {
+            x: root_x,
+            y: root_y,
+            w: 1,
+            h: 1,
+        }) {
+            if new_mon != selmon_id {
+                let globals = get_globals_mut();
+                globals.selmon = new_mon;
+                focus(None);
+                return;
+            }
+        }
     }
 
     // Early-out: cursor is below the bar area.
@@ -425,7 +376,13 @@ pub fn motion_notify(e: &MotionNotifyEvent) {
         }
     };
 
-    update_gesture_state(selmon_id, new_gesture, current_gesture);
+    if new_gesture != current_gesture {
+        let globals = get_globals_mut();
+        if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+            mon.gesture = new_gesture;
+            draw_bar(mon);
+        }
+    }
 }
 
 pub fn property_notify(e: &PropertyNotifyEvent) {
@@ -509,13 +466,6 @@ fn handle_active_window(win: Window) {
                 restack(mon);
             }
         }
-    }
-}
-
-fn handle_bar_leave_reset(_e: &EnterNotifyEvent) {
-    if BAR_LEAVE_STATUS.load(Ordering::Relaxed) != 0 {
-        reset_bar();
-        BAR_LEAVE_STATUS.store(0, Ordering::Relaxed);
     }
 }
 

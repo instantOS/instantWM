@@ -82,14 +82,9 @@ pub fn focus(win: Option<Window>) {
         let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
             mon.sel = target;
-            // Reset gesture on focus change, matching C behavior
-            if mon.gesture != Gesture::Overlay && mon.gesture != Gesture::None {
-                mon.gesture = Gesture::None;
-            }
-            if mon.gesture != Gesture::Overlay
-                && mon.gesture != Gesture::CloseButton
-                && mon.gesture != Gesture::StartMenu
-            {
+            // Reset transient hover gestures on focus change (matching C behavior).
+            // Overlay is persistent state, not a hover; leave it alone.
+            if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
                 mon.gesture = Gesture::None;
             }
         }

@@ -59,13 +59,6 @@ impl ClientBarStats {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct BarLayout {
-    pub systray_width: i32,
-    pub status_start_x: i32,
-    pub title_width: i32,
-}
-
 /// Describes precisely what the mouse cursor is positioned over in the bar.
 ///
 /// This enum is the single source of truth for bar hit-testing. All three

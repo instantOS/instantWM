@@ -8,6 +8,7 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
+//TODO: this should be a rust enum
 pub const OVERLAY_TOP: i32 = 0;
 pub const OVERLAY_RIGHT: i32 = 1;
 pub const OVERLAY_BOTTOM: i32 = 2;
