@@ -156,11 +156,9 @@ pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
 }
 
 pub fn update_systray() {
-    eprintln!("TRACE: update_systray - start");
     let globals = get_globals();
 
     if !globals.showsystray {
-        eprintln!("TRACE: update_systray - showsystray=false, returning");
         return;
     }
 
@@ -169,16 +167,11 @@ pub fn update_systray() {
         crate::drw::XFlush(globals.xlibdisplay.0);
     }
 
-    eprintln!("TRACE: update_systray - before systray_to_mon");
     let (x, by, _showbar, barwin) = {
         let m = systray_to_mon(None);
-        eprintln!("TRACE: update_systray - systray_to_mon returned {}", m);
         let mon = match globals.monitors.get(m) {
             Some(mon) => mon,
-            None => {
-                eprintln!("TRACE: update_systray - no monitor at {}", m);
-                return;
-            }
+            None => return,
         };
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
@@ -187,28 +180,20 @@ pub fn update_systray() {
             mon.barwin,
         )
     };
-    eprintln!("TRACE: update_systray - got coords: x={}, by={}", x, by);
 
     let mut w: u32 = 1;
 
-    eprintln!("TRACE: update_systray - before systray_exists check");
     let systray_exists = {
         let globals = get_globals();
         globals.systray.is_some()
     };
-    eprintln!(
-        "TRACE: update_systray - systray_exists = {}",
-        systray_exists
-    );
 
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
-        eprintln!("TRACE: update_systray - no conn");
         return;
     };
 
     if !systray_exists {
-        eprintln!("TRACE: update_systray - before get_globals for window creation");
         let globals = get_globals();
         let root = globals.root;
         let bh = globals.bh;
@@ -222,19 +207,11 @@ pub fn update_systray() {
             0
         };
 
-        eprintln!("TRACE: update_systray - before generate_id");
-
         let systray_win = conn.generate_id().ok();
         let Some(systray_win) = systray_win else {
-            eprintln!("TRACE: update_systray - generate_id failed");
             return;
         };
-        eprintln!(
-            "TRACE: update_systray - generated systray_win = {}",
-            systray_win
-        );
 
-        eprintln!("TRACE: update_systray - before create_window");
         let result = conn.create_window(
             x11rb::COPY_FROM_PARENT as u8,
             systray_win,
@@ -251,26 +228,17 @@ pub fn update_systray() {
                 .override_redirect(1)
                 .background_pixel(bg_pixel),
         );
-        eprintln!("TRACE: update_systray - after create_window, before check");
 
         if result.is_err() {
-            eprintln!("TRACE: update_systray - create_window error");
             return;
         }
-        eprintln!("TRACE: update_systray - create_window OK, before reply");
 
         let _ = result.and_then(|cookie| {
-            eprintln!("TRACE: update_systray - before cookie.check");
-            let r = cookie.check();
-            eprintln!(
-                "TRACE: update_systray - cookie.check result: {:?}",
-                r.is_ok()
-            );
-            r.map_err(|_| x11rb::errors::ConnectionError::UnknownError)
+            cookie
+                .check()
+                .map_err(|_| x11rb::errors::ConnectionError::UnknownError)
         });
-        eprintln!("TRACE: update_systray - after create_window reply");
 
-        eprintln!("TRACE: update_systray - before change_property32");
         let _ = conn.change_property32(
             PropMode::REPLACE,
             systray_win,
@@ -278,40 +246,29 @@ pub fn update_systray() {
             AtomEnum::CARDINAL,
             &[net_system_tray_horz],
         );
-        eprintln!("TRACE: update_systray - after change_property32");
 
-        eprintln!("TRACE: update_systray - before change_window_attributes");
         let _ = conn.change_window_attributes(
             systray_win,
             &ChangeWindowAttributesAux::new().event_mask(EventMask::SUBSTRUCTURE_NOTIFY),
         );
-        eprintln!("TRACE: update_systray - after change_window_attributes");
 
-        eprintln!("TRACE: update_systray - before map_window");
         let _ = conn.map_window(systray_win);
-        eprintln!("TRACE: update_systray - after map_window");
 
         let _ = conn.change_window_attributes(
             systray_win,
             &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
         );
 
-        eprintln!("TRACE: update_systray - before set_selection_owner");
         let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
-        eprintln!("TRACE: update_systray - after set_selection_owner");
 
         {
-            eprintln!("TRACE: update_systray - before get_globals_mut for systray");
             let globals = get_globals_mut();
-            eprintln!("TRACE: update_systray - after get_globals_mut for systray");
             globals.systray = Some(Systray {
                 win: systray_win,
                 icons: Vec::new(),
             });
-            eprintln!("TRACE: update_systray - systray created");
         }
 
-        eprintln!("TRACE: update_systray - before get_globals for manager_atom");
         let globals = get_globals();
         let manager_atom = globals.xatom.manager;
 
@@ -333,10 +290,7 @@ pub fn update_systray() {
                 ]),
             };
             let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
-            // Don't flush here - let main event loop handle it
         }
-
-        eprintln!("TRACE: update_systray - MANAGER event sent");
     }
 
     let globals = get_globals();

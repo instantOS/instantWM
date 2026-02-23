@@ -58,7 +58,7 @@ pub(crate) fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
     }
 }
 
-pub(crate) fn resize_bar_win(m: &Monitor) {
+pub fn resize_bar_win(m: &Monitor) {
     let g = get_globals();
     let bh = g.bh;
     let showsystray = g.showsystray;

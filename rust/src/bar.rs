@@ -4,6 +4,7 @@ mod widgets;
 mod x11;
 
 pub use model::{bar_position_at_x, BarPosition};
+pub use x11::resize_bar_win;
 
 use crate::globals::{get_globals, get_globals_mut};
 use crate::types::*;

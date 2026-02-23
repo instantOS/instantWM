@@ -199,7 +199,18 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 pub fn destroy_notify(e: &DestroyNotifyEvent) {
     if let Some(win) = win_to_client(e.window) {
         unmanage(win, true);
-    } else if let Some(_icon) = win_to_systray_icon(e.window) {
+    } else if let Some(icon) = win_to_systray_icon(e.window) {
+        // Remove the icon from the systray list and client map, then resize
+        // the bar and redraw the systray — matching the C code's sequence of
+        // removesystrayicon(c) → resizebarwin(selmon) → updatesystray().
+        crate::systray::remove_systray_icon(icon);
+        {
+            let globals = get_globals();
+            let selmon_idx = globals.selmon;
+            if let Some(mon) = globals.monitors.get(selmon_idx) {
+                crate::bar::resize_bar_win(mon);
+            }
+        }
         update_systray();
     }
 }

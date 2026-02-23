@@ -423,12 +423,16 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
 pub fn unmanage(win: Window, destroyed: bool) {
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
 
-    // Clear overlay references so the overlay code doesn't hold a dangling ID.
+    // Clear overlay and fullscreen references so those code paths don't hold
+    // dangling window IDs after the client is gone.
     {
         let globals = get_globals_mut();
         for mon in &mut globals.monitors {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
+            }
+            if mon.fullscreen == Some(win) {
+                mon.fullscreen = None;
             }
         }
     }
