@@ -37,45 +37,35 @@ pub mod state;
 pub mod visibility;
 
 // ---------------------------------------------------------------------------
-// Flat re-exports – the public API of `crate::client`
+// Flat re-exports
+//
+// Only items actually imported from outside the `client` module are listed
+// here.  Internal cross-module references use their direct paths
+// (e.g. `crate::client::geometry::resize`) so they don't need to appear here.
 // ---------------------------------------------------------------------------
 
 // -- Constants ---------------------------------------------------------------
-pub use constants::{
-    BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
-    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, SIZE_HINTS_P_ASPECT,
-    SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE, SIZE_HINTS_P_RESIZE_INC,
-    WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT, WM_STATE_ICONIC, WM_STATE_NORMAL,
-    WM_STATE_WITHDRAWN,
-};
+pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 
 // -- Linked-list management --------------------------------------------------
 pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop, win_to_client};
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
-    apply_size_hints, client_height, client_width, resize, resize_client, resize_client_rect,
-    scale_client, update_size_hints, update_size_hints_win,
+    apply_size_hints, client_height, client_width, resize, resize_client_rect, scale_client,
 };
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{get_state, hide, is_hidden, show, show_hide};
+pub use visibility::{hide, is_hidden, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{
-    configure, grab_buttons, send_event, set_focus, unfocus_win, ANIM_CLIENT, LAST_CLIENT,
-};
+pub use focus::{configure, set_focus, unfocus_win, LAST_CLIENT};
 
 // -- Fullscreen --------------------------------------------------------------
-pub use fullscreen::{
-    restore_border_width, save_border_width, set_fullscreen, toggle_fake_fullscreen,
-};
+pub use fullscreen::{save_border_width, set_fullscreen, toggle_fake_fullscreen};
 
 // -- X11 state / properties --------------------------------------------------
-pub use state::{
-    apply_rules, get_atom_prop, set_client_state, set_client_tag_prop, set_urgent,
-    update_client_list, update_motif_hints, update_title, update_window_type, update_wm_hints,
-};
+pub use state::{set_client_state, set_client_tag_prop, set_urgent, update_title, update_wm_hints};
 
 // -- Kill --------------------------------------------------------------------
 pub use kill::{close_win, kill_client, shut_kill};
@@ -84,4 +74,4 @@ pub use kill::{close_win, kill_client, shut_kill};
 pub use lifecycle::{manage, unmanage};
 
 // -- Layout operations -------------------------------------------------------
-pub use layout_ops::{change_floating, zoom};
+pub use layout_ops::zoom;
