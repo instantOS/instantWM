@@ -3,6 +3,8 @@ mod status;
 mod widgets;
 mod x11;
 
+pub use model::{bar_position_at_x, BarPosition};
+
 use crate::globals::{get_globals, get_globals_mut};
 use crate::types::*;
 use model::{BarLayout, ClientBarStats};

@@ -325,63 +325,54 @@ pub enum OverlayDirection {
     Left,
 }
 
-//simplify
-//probably could also be an enum with None, Tag(u32), Overlay, CloseButton, StartMenu variants
+/// Describes which interactive bar region the cursor is currently hovering over.
+///
+/// Used to drive hover highlighting and drag-gesture detection without scattering
+/// raw integer comparisons throughout the codebase.
+///
+/// The canonical way to produce a `Gesture` from a cursor position is via
+/// `crate::bar::model::bar_position_at_x(...).to_gesture()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Gesture {
+    /// No actionable hover target (cursor is over a neutral area or outside the bar).
     #[default]
     None,
-    Tag1,
-    Tag2,
-    Tag3,
-    Tag4,
-    Tag5,
-    Tag6,
-    Tag7,
-    Tag8,
-    Tag9,
-    Tag10,
-    Tag11,
-    Tag12,
-    Tag13,
-    Tag14,
-    Tag15,
-    Tag16,
-    Tag17,
-    Tag18,
-    Tag19,
-    Tag20,
-    Tag21,
+    /// Cursor is over a tag button.  The inner value is the **0-based** tag index.
+    Tag(usize),
+    /// Cursor is over the overlay activation zone.
     Overlay,
+    /// Cursor is over the close button of the selected client.
     CloseButton,
+    /// Cursor is over the start-menu icon.
     StartMenu,
 }
 
 impl Gesture {
+    /// Construct a `Tag` gesture from a 0-based tag index.
+    ///
+    /// Returns `None` only if the index is unreasonably large (> 63), which
+    /// should never occur in practice given the `MAX_TAGS` constant.
     pub fn from_tag_index(tag_index: usize) -> Option<Self> {
-        match tag_index {
-            0 => Some(Self::Tag1),
-            1 => Some(Self::Tag2),
-            2 => Some(Self::Tag3),
-            3 => Some(Self::Tag4),
-            4 => Some(Self::Tag5),
-            5 => Some(Self::Tag6),
-            6 => Some(Self::Tag7),
-            7 => Some(Self::Tag8),
-            8 => Some(Self::Tag9),
-            9 => Some(Self::Tag10),
-            10 => Some(Self::Tag11),
-            11 => Some(Self::Tag12),
-            12 => Some(Self::Tag13),
-            13 => Some(Self::Tag14),
-            14 => Some(Self::Tag15),
-            15 => Some(Self::Tag16),
-            16 => Some(Self::Tag17),
-            17 => Some(Self::Tag18),
-            18 => Some(Self::Tag19),
-            19 => Some(Self::Tag20),
-            20 => Some(Self::Tag21),
-            _ => None,
+        if tag_index < 64 {
+            Some(Self::Tag(tag_index))
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if this gesture represents a tag hover.
+    #[allow(dead_code)]
+    pub fn is_tag(self) -> bool {
+        matches!(self, Self::Tag(_))
+    }
+
+    /// Returns the tag index if this is a `Tag` gesture, otherwise `None`.
+    #[allow(dead_code)]
+    pub fn tag_index(self) -> Option<usize> {
+        if let Self::Tag(idx) = self {
+            Some(idx)
+        } else {
+            None
         }
     }
 }

@@ -21,7 +21,9 @@
 //! post-loop cleanup (bar drop, monitor switch, bar redraw, …)
 //! ```
 
+use crate::bar::bar_position_at_x;
 use crate::bar::draw_bar;
+use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::floating::{
     change_snap, reset_snap, set_tiled, toggle_floating, SnapDir, SNAP_LEFT, SNAP_RIGHT, SNAP_TOP,
@@ -31,8 +33,7 @@ use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::restack;
 use crate::monitor::{arrange, is_current_layout_tiling};
 use crate::tags::{
-    follow_tag, get_tag_at_x, get_tag_width, move_left, move_right, tag, tag_all, tag_to_left,
-    tag_to_right, view,
+    follow_tag, move_left, move_right, tag, tag_all, tag_to_left, tag_to_right, view,
 };
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -214,26 +215,22 @@ fn update_bar_hover(ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ptr_x, ptr_y);
 
     if on_bar {
-        let (selmon_id, mon_x, tagwidth) = {
+        // Use the canonical bar hit-test so that tag hover highlighting during
+        // a window-drag uses exactly the same geometry as click dispatch and
+        // motion_notify gesture detection.
+        let (selmon_id, new_gesture) = {
             let globals = get_globals();
             let selmon_id = globals.selmon;
-            let mon_x = globals
+            let new_gesture = globals
                 .monitors
                 .get(selmon_id)
-                .map(|m| m.monitor_rect.x)
-                .unwrap_or(0);
-            let cached = globals.tags.width;
-            let tagwidth = if cached == 0 { get_tag_width() } else { cached };
-            (selmon_id, mon_x, tagwidth)
+                .map(|mon| {
+                    let local_x = ptr_x - mon.monitor_rect.x;
+                    bar_position_at_x(mon, globals, local_x).to_gesture()
+                })
+                .unwrap_or(Gesture::None);
+            (selmon_id, new_gesture)
         };
-
-        let local_x = ptr_x - mon_x;
-        let tag_idx = if local_x >= 0 && local_x < tagwidth {
-            get_tag_at_x(local_x)
-        } else {
-            -1
-        };
-        let new_gesture = Gesture::from_tag_index(tag_idx as usize).unwrap_or(Gesture::None);
 
         let gm = get_globals_mut();
         let gesture_changed = gm
@@ -360,22 +357,20 @@ fn handle_bar_drop(win: Window) {
         return;
     }
 
-    let (mon_x, tagwidth) = {
+    let position = {
         let globals = get_globals();
-        let mon_x = globals
+        let selmon_id = globals.selmon;
+        globals
             .monitors
-            .get(globals.selmon)
-            .map(|m| m.monitor_rect.x)
-            .unwrap_or(0);
-        let cached = globals.tags.width;
-        let tagwidth = if cached == 0 { get_tag_width() } else { cached };
-        (mon_x, tagwidth)
+            .get(selmon_id)
+            .map(|mon| {
+                let local_x = ptr_x - mon.monitor_rect.x;
+                bar_position_at_x(mon, globals, local_x)
+            })
+            .unwrap_or(BarPosition::Root)
     };
 
-    let local_x = ptr_x - mon_x;
-    let tag_idx = get_tag_at_x(local_x);
-
-    if tag_idx >= 0 && local_x < tagwidth {
+    if let BarPosition::Tag(tag_idx) = position {
         // tag() changes selmon->sel via focus(None), so we address the window
         // by its id with set_tiled rather than using toggle_floating.
         tag(&Arg {
@@ -593,10 +588,8 @@ pub fn gesture_mouse(_arg: &Arg) {
 ///
 /// If the pointer leaves the bar during the drag the loop exits without action.
 pub fn drag_tag(arg: &Arg) {
-    let (is_current_tag, has_sel, selmon_id, mon_mx, tagwidth) = {
+    let (is_current_tag, has_sel, selmon_id, mon_mx) = {
         let globals = get_globals();
-        let cached = globals.tags.width;
-        let tagwidth = if cached == 0 { get_tag_width() } else { cached };
         let current_tagset = globals
             .monitors
             .get(globals.selmon)
@@ -613,7 +606,7 @@ pub fn drag_tag(arg: &Arg) {
             .get(selmon_id)
             .map(|m| m.monitor_rect.x)
             .unwrap_or(0);
-        (is_current_tag, has_sel, selmon_id, mon_mx, tagwidth)
+        (is_current_tag, has_sel, selmon_id, mon_mx)
     };
 
     if !is_current_tag {
@@ -667,18 +660,27 @@ pub fn drag_tag(arg: &Arg) {
                 }
 
                 let local_x = m.event_x as i32 - mon_mx;
-                let tag_x = if local_x >= 0 {
-                    get_tag_at_x(local_x)
-                } else {
-                    -1
+                // Use the canonical hit-test to get the hovered bar position,
+                // then convert to a gesture for tag hover highlighting.
+                let new_gesture = {
+                    let globals = get_globals();
+                    globals
+                        .monitors
+                        .get(selmon_id)
+                        .map(|mon| bar_position_at_x(mon, globals, local_x).to_gesture())
+                        .unwrap_or(Gesture::None)
+                };
+                // Encode gesture as i32 for change-detection (reuse last_tag slot).
+                let gesture_key = match new_gesture {
+                    Gesture::Tag(idx) => idx as i32,
+                    _ => -1,
                 };
 
-                if last_tag != tag_x {
-                    last_tag = tag_x;
+                if last_tag != gesture_key {
+                    last_tag = gesture_key;
                     let gm = get_globals_mut();
                     if let Some(mon) = gm.monitors.get_mut(selmon_id) {
-                        mon.gesture =
-                            Gesture::from_tag_index(tag_x as usize).unwrap_or(Gesture::None);
+                        mon.gesture = new_gesture;
                         draw_bar(mon);
                     }
                 }
@@ -691,28 +693,31 @@ pub fn drag_tag(arg: &Arg) {
 
     if cursor_on_bar {
         if let Some((x, _, state)) = last_motion {
-            let mon_x = get_globals()
-                .monitors
-                .get(selmon_id)
-                .map(|m| m.monitor_rect.x)
-                .unwrap_or(0);
-            let local_x = x - mon_x;
+            let position = {
+                let globals = get_globals();
+                let selmon_id = globals.selmon;
+                globals
+                    .monitors
+                    .get(selmon_id)
+                    .map(|mon| {
+                        let local_x = x - mon.monitor_rect.x;
+                        bar_position_at_x(mon, globals, local_x)
+                    })
+                    .unwrap_or(BarPosition::Root)
+            };
 
-            if local_x >= 0 && local_x < tagwidth {
-                let tag_idx = get_tag_at_x(local_x);
-                if tag_idx >= 0 {
-                    let tag_arg = Arg {
-                        ui: 1u32 << (tag_idx as u32),
-                        ..Default::default()
-                    };
-                    let state = state as u32;
-                    if (state & ModMask::SHIFT.bits() as u32) != 0 {
-                        tag(&tag_arg);
-                    } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
-                        tag_all(&tag_arg);
-                    } else {
-                        follow_tag(&tag_arg);
-                    }
+            if let BarPosition::Tag(tag_idx) = position {
+                let tag_arg = Arg {
+                    ui: 1u32 << (tag_idx as u32),
+                    ..Default::default()
+                };
+                let state = state as u32;
+                if (state & ModMask::SHIFT.bits() as u32) != 0 {
+                    tag(&tag_arg);
+                } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
+                    tag_all(&tag_arg);
+                } else {
+                    follow_tag(&tag_arg);
                 }
             }
         }

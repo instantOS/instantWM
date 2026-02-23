@@ -150,8 +150,8 @@ pub(crate) fn draw_tag_indicators(
         .unwrap_or_default();
 
     for t in &tags {
-        let hover_gesture = Gesture::from_tag_index(t.slot);
-        let is_hover = hover_gesture.is_some_and(|hg| selmon_gesture == hg);
+        // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
+        let is_hover = selmon_gesture == Gesture::Tag(t.slot);
 
         let Some(scheme) = get_tag_scheme(m, t.tag_index as u32, occupied_tags, is_hover) else {
             x += t.width;
@@ -388,7 +388,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
         let mut x = x;
 
         // Walk the intrusive linked list so the draw order matches the order
-        // used by classify_bar_click — HashMap iteration order is non-deterministic
+        // used by bar_position_at_x — HashMap iteration order is non-deterministic
         // and would cause click regions to map to the wrong window titles.
         // Use the passed monitor `m` (not selmon) so that secondary monitors
         // draw their own clients, not the selected monitor's clients.

@@ -1,4 +1,5 @@
-use crate::bar::{draw_bar, draw_bars, get_layout_symbol_width, reset_bar};
+use crate::bar::{bar_position_at_x, BarPosition};
+use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
     configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
     update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
@@ -10,8 +11,8 @@ use crate::keyboard::{
 };
 use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
 use crate::mouse::{reset_cursor, resize_mouse};
-use crate::systray::{get_systray_width, update_systray, win_to_systray_icon};
-use crate::tags::{get_tag_at_x, get_tag_width};
+use crate::systray::{update_systray, win_to_systray_icon};
+use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::clean_mask;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -40,92 +41,20 @@ fn has_tiling_layout(mon_id: MonitorId) -> bool {
 }
 
 fn classify_bar_click(e: &ButtonPressEvent, mon_id: MonitorId) -> (Click, Arg) {
-    let mut arg = Arg::default();
     let g = get_globals();
-    let Some(mon) = g.monitors.get(mon_id).cloned() else {
-        return (Click::RootWin, arg);
+    let Some(mon) = g.monitors.get(mon_id) else {
+        return (Click::RootWin, Arg::default());
     };
 
-    let ev_x = e.event_x as i32;
-    let start_menu_size = g.startmenusize;
-    let tag_end = get_tag_width();
-    let blw = get_layout_symbol_width(&mon);
+    let local_x = e.event_x as i32;
+    let position = bar_position_at_x(mon, g, local_x);
 
-    let status_hit_x =
-        mon.work_rect.w - get_systray_width() as i32 - g.status_text_width + g.lrpad - 2;
-    let bh = g.bh;
-
-    if ev_x < start_menu_size {
+    // The start-menu click resets bar hover state before dispatching.
+    if position == BarPosition::StartMenu {
         reset_bar();
-        return (Click::StartMenu, arg);
     }
 
-    let tag_idx = get_tag_at_x(ev_x);
-    if tag_idx >= 0 {
-        arg.ui = 1u32 << (tag_idx as u32);
-        return (Click::TagBar, arg);
-    }
-
-    if ev_x < tag_end + blw {
-        return (Click::LtSymbol, arg);
-    }
-
-    if mon.sel.is_none() && ev_x > tag_end + blw && ev_x < tag_end + blw + bh {
-        return (Click::ShutDown, arg);
-    }
-
-    if ev_x > status_hit_x {
-        return (Click::StatusText, arg);
-    }
-
-    let g = get_globals();
-    let mut visible_clients: Vec<Window> = Vec::new();
-    let mut current = mon.clients;
-    while let Some(c_win) = current {
-        let Some(c) = g.clients.get(&c_win) else {
-            break;
-        };
-        current = c.next;
-        if c.is_visible() {
-            visible_clients.push(c_win);
-        }
-    }
-
-    if !visible_clients.is_empty() {
-        let mut title_end = tag_end + blw;
-        let total_width = if mon.bar_clients_width > 0 {
-            mon.bar_clients_width + 1
-        } else {
-            (mon.work_rect.w - title_end).max(0)
-        };
-        let each_width = total_width / visible_clients.len() as i32;
-        let mut remainder = total_width % visible_clients.len() as i32;
-
-        for c_win in visible_clients {
-            let mut this_width = each_width;
-            if remainder > 0 {
-                this_width += 1;
-                remainder -= 1;
-            }
-            title_end += this_width;
-            if ev_x > title_end {
-                continue;
-            }
-
-            arg.v = Some(c_win as usize);
-            let title_start = title_end - this_width;
-            let resize_start = title_start + this_width - RESIZE_WIDGET_WIDTH;
-            if mon.sel == Some(c_win) && ev_x < title_start + CLOSE_BUTTON_HIT_WIDTH {
-                return (Click::CloseButton, arg);
-            }
-            if mon.sel == Some(c_win) && ev_x > resize_start {
-                return (Click::ResizeWidget, arg);
-            }
-            return (Click::WinTitle, arg);
-        }
-    }
-
-    (Click::RootWin, arg)
+    position.to_click()
 }
 
 pub fn button_press(e: &ButtonPressEvent) {
@@ -427,60 +356,6 @@ fn handle_focus_follows_mouse(selmon_id: MonitorId, root_x: i32, root_y: i32) ->
     false
 }
 
-/// Get bar layout information for gesture detection.
-fn get_bar_layout_info(mon_id: MonitorId, tagwidth: i32) -> Option<BarLayoutInfo> {
-    let globals = get_globals();
-    let mon = globals.monitors.get(mon_id)?;
-    Some(BarLayoutInfo {
-        monitor_x: mon.monitor_rect.x,
-        monitor_y: mon.monitor_rect.y,
-        bar_height: globals.bh,
-        start_menu_size: globals.startmenusize,
-        active_offset: mon.activeoffset as i32,
-        bar_clients_width: mon.bar_clients_width,
-        current_gesture: mon.gesture,
-        has_selection: mon.sel.is_some(),
-        tag_area_limit: mon.monitor_rect.x + tagwidth + get_layout_symbol_width(mon),
-    })
-}
-
-/// Information needed for bar gesture detection.
-struct BarLayoutInfo {
-    monitor_x: i32,
-    monitor_y: i32,
-    bar_height: i32,
-    start_menu_size: i32,
-    active_offset: i32,
-    bar_clients_width: i32,
-    current_gesture: Gesture,
-    has_selection: bool,
-    tag_area_limit: i32,
-}
-
-/// Determine the gesture based on cursor position in the tag area.
-fn detect_tag_area_gesture(root_x: i32, info: &BarLayoutInfo) -> Gesture {
-    if root_x < info.monitor_x + info.start_menu_size {
-        Gesture::StartMenu
-    } else {
-        let local_x = root_x - info.monitor_x;
-        let tag = crate::tags::get_tag_at_x(local_x);
-        if tag >= 0 {
-            Gesture::from_tag_index(tag as usize).unwrap_or(Gesture::None)
-        } else {
-            Gesture::None
-        }
-    }
-}
-
-/// Determine the gesture based on cursor position in the title area.
-fn detect_title_area_gesture(root_x: i32, info: &BarLayoutInfo) -> Gesture {
-    if root_x > info.active_offset && root_x < info.active_offset + CLOSE_BUTTON_HIT_WIDTH {
-        Gesture::CloseButton
-    } else {
-        Gesture::None
-    }
-}
-
 /// Update the gesture state and redraw the bar if it changed.
 fn update_gesture_state(mon_id: MonitorId, new_gesture: Gesture, current_gesture: Gesture) {
     if new_gesture != current_gesture {
@@ -516,31 +391,41 @@ pub fn motion_notify(e: &MotionNotifyEvent) {
         return;
     }
 
-    // Get bar layout info for gesture detection
-    let Some(layout_info) = get_bar_layout_info(selmon_id, tagwidth) else {
-        return;
+    // Early-out: cursor is below the bar area.
+    let (monitor_y, bar_height, current_gesture) = {
+        let globals = get_globals();
+        let Some(mon) = globals.monitors.get(selmon_id) else {
+            return;
+        };
+        (mon.monitor_rect.y, globals.bh, mon.gesture)
     };
 
-    // Reset bar if cursor is below the bar area
-    if root_y >= layout_info.monitor_y + layout_info.bar_height - 3 {
+    if root_y >= monitor_y + bar_height - 3 {
         reset_bar();
         return;
     }
 
-    // Determine gesture based on cursor position
-    let new_gesture = if root_x < layout_info.tag_area_limit {
-        detect_tag_area_gesture(root_x, &layout_info)
-    } else {
-        let title_limit = layout_info.tag_area_limit + layout_info.bar_clients_width;
-        if layout_info.has_selection && root_x < title_limit {
-            detect_title_area_gesture(root_x, &layout_info)
-        } else {
-            reset_bar();
+    // Compute the bar position from the cursor's monitor-local x coordinate,
+    // then convert to a gesture for hover highlighting.
+    let new_gesture = {
+        let globals = get_globals();
+        let Some(mon) = globals.monitors.get(selmon_id) else {
             return;
+        };
+        let local_x = root_x - mon.monitor_rect.x;
+        let position = bar_position_at_x(mon, globals, local_x);
+        match position {
+            // The status-text and root areas don't produce a hover gesture —
+            // reset the bar and bail out so we don't light up anything.
+            BarPosition::StatusText | BarPosition::Root => {
+                reset_bar();
+                return;
+            }
+            other => other.to_gesture(),
         }
     };
 
-    update_gesture_state(selmon_id, new_gesture, layout_info.current_gesture);
+    update_gesture_state(selmon_id, new_gesture, current_gesture);
 }
 
 pub fn property_notify(e: &PropertyNotifyEvent) {
