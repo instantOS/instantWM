@@ -1,4 +1,3 @@
-use crate::client::is_hidden;
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
 use crate::globals::{get_drw, get_globals};
@@ -246,7 +245,7 @@ fn get_window_scheme(c: &Client, is_hover: bool) -> Option<ColorScheme> {
     if c.issticky {
         return schemes.get(SchemeWin::Sticky as usize).cloned();
     }
-    if is_hidden(c.win) {
+    if c.is_hidden {
         return schemes.get(SchemeWin::Minimized as usize).cloned();
     }
     schemes.get(SchemeWin::Normal as usize).cloned()

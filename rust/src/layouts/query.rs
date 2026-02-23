@@ -52,7 +52,7 @@ pub fn client_count() -> i32 {
     while let Some(win) = c_win {
         match g.clients.get(&win) {
             Some(c) => {
-                if c.is_visible() && !c.isfloating && !crate::client::is_hidden(win) {
+                if c.is_visible() && !c.isfloating && !c.is_hidden {
                     count += 1;
                 }
                 c_win = c.next;
@@ -82,7 +82,7 @@ pub fn client_count_mon(m: &Monitor) -> i32 {
     while let Some(win) = c_win {
         match g.clients.get(&win) {
             Some(c) => {
-                if c.is_visible() && !c.isfloating && !crate::client::is_hidden(win) {
+                if c.is_visible() && !c.isfloating && !c.is_hidden {
                     count += 1;
                 }
                 c_win = c.next;

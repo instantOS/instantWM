@@ -623,6 +623,16 @@ pub struct Client {
     pub isfakefullscreen: bool,
     pub islocked: bool,
     pub issticky: bool,
+    /// Cached minimized/iconic state.
+    ///
+    /// Set to `true` by [`crate::client::hide`] and back to `false` by
+    /// [`crate::client::show`].  Initialised from the live `WM_STATE`
+    /// property during [`crate::client::manage`] so that windows that were
+    /// already iconic before the WM started are handled correctly.
+    ///
+    /// Using a cached field avoids an X11 roundtrip on every bar redraw
+    /// (the previous `is_hidden(win)` call queried `WM_STATE` each time).
+    pub is_hidden: bool,
     pub snapstatus: SnapPosition,
     pub scratchpad_name: String,
     pub scratchpad_restore_tags: u32,

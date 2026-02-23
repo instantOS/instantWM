@@ -41,7 +41,7 @@ use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
     update_wm_hints,
 };
-use crate::client::visibility::is_hidden;
+
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
@@ -95,6 +95,13 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     // 3. Insert into the global client map and run rule matching.
     // -------------------------------------------------------------------------
+
+    // Seed the cached is_hidden flag from the live WM_STATE property.
+    // This handles windows that were already in the iconic state before
+    // the WM started (e.g. restored from a previous session).
+    c.is_hidden =
+        crate::client::visibility::get_state(w) == crate::client::constants::WM_STATE_ICONIC;
+
     {
         let globals = get_globals_mut();
         globals.clients.insert(w, c.clone());
@@ -323,7 +330,13 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
         let _ = conn.flush();
     }
 
-    if !is_hidden(w) {
+    let initially_hidden = get_globals()
+        .clients
+        .get(&w)
+        .map(|c| c.is_hidden)
+        .unwrap_or(false);
+
+    if !initially_hidden {
         set_client_state(w, WM_STATE_NORMAL);
     }
 
@@ -354,7 +367,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
         arrange(Some(mon_id));
     }
 
-    if !is_hidden(w) {
+    if !initially_hidden {
         if let Some(ref conn) = x11.conn {
             let _ = conn.map_window(w);
             let _ = conn.flush();

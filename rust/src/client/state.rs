@@ -44,17 +44,16 @@ pub fn set_client_state(win: Window, state: i32) {
     let Some(ref conn) = x11.conn else { return };
 
     let globals = get_globals();
-    // WM_STATE is a pair of 32-bit values: [state, icon_pixmap].
-    // We pack them as raw bytes because x11rb's change_property32 wants u32 slices
-    // and transmuting here is safe (same representation).
-    let data: [u8; 8] = unsafe { std::mem::transmute([state as u32, 0u32]) };
-    let _ = conn.change_property(
+    // WM_STATE is a pair of CARD32 values: [state, icon_pixmap].
+    // ICCCM §4.1.3.1 requires format=32 and a count of 2 items.
+    // Using format=8 (the previous code) caused get_property's value32()
+    // iterator to return None, making is_hidden() always return false.
+    let data: [u32; 2] = [state as u32, 0u32];
+    let _ = conn.change_property32(
         PropMode::REPLACE,
         win,
         globals.wmatom.state,
         globals.wmatom.state,
-        8u8,
-        data.len() as u32,
         &data,
     );
     let _ = conn.flush();

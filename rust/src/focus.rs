@@ -30,7 +30,7 @@ pub fn focus(win: Option<Window>) {
             globals
                 .clients
                 .get(w)
-                .map(|c| c.is_visible() && !crate::client::is_hidden(*w))
+                .map(|c| c.is_visible() && !c.is_hidden)
                 .unwrap_or(false)
         });
 
@@ -40,7 +40,7 @@ pub fn focus(win: Option<Window>) {
                 let Some(c) = globals.clients.get(&c_win) else {
                     break;
                 };
-                if c.is_visible() && !crate::client::is_hidden(c_win) {
+                if c.is_visible() && !c.is_hidden {
                     target = Some(c_win);
                     break;
                 }

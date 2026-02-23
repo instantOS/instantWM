@@ -1,13 +1,14 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 //!
-//! Also re-exports [`set_client_state_wrapper`] as a thin adapter so that
-//! [`crate::client::lifecycle`] can call [`crate::client::state::set_client_state`]
-//! without creating a circular dependency between the two modules.
-//!
 //! # Responsibilities
 //!
 //! * [`get_state`]   – read the current `WM_STATE` property from the X server.
-//! * [`is_hidden`]   – check whether a window is in iconic (minimized) state.
+//!                     Used once during [`crate::client::manage`] to seed
+//!                     [`crate::types::Client::is_hidden`].
+//! * [`is_hidden`]   – check whether a window is minimized by reading the
+//!                     cached [`crate::types::Client::is_hidden`] field.
+//!                     No X11 roundtrip; call `get_state` directly if you need
+//!                     the live property value.
 //! * [`show_hide`]   – recursively walk the stack list, positioning visible
 //!                     clients on-screen and off-screen clients off to the left.
 //! * [`show`]        – unmap → animate → arrange a previously hidden client.
@@ -18,7 +19,7 @@ use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
 use crate::focus::focus;
-use crate::globals::{get_globals, get_x11};
+use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::Rect;
 use x11rb::connection::Connection;
@@ -57,12 +58,21 @@ pub fn get_state(win: Window) -> i32 {
         .unwrap_or(WM_STATE_NORMAL)
 }
 
-/// Returns `true` when `win` is in the iconic (minimized / hidden) state.
+/// Returns `true` when `win` is in the minimized (iconic) state.
 ///
-/// This queries the live `WM_STATE` property so the result is always current.
+/// Reads the cached [`crate::types::Client::is_hidden`] field — no X11
+/// roundtrip.  The field is seeded from the live `WM_STATE` property during
+/// [`crate::client::manage`] and kept in sync by [`hide`] and [`show`].
+///
+/// If you need the live X11 value (e.g. before the client is fully managed),
+/// call [`get_state`] directly.
 #[inline]
 pub fn is_hidden(win: Window) -> bool {
-    get_state(win) == WM_STATE_ICONIC
+    get_globals()
+        .clients
+        .get(&win)
+        .map(|c| c.is_hidden)
+        .unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +178,16 @@ pub fn show(win: Window) {
         return;
     };
 
-    if !is_hidden(win) {
+    if !client.is_hidden {
         return;
     }
 
     let Rect { x, y, w, h } = client.geo;
+
+    // Clear the cached flag before any redraws that might be triggered below.
+    if let Some(c) = get_globals_mut().clients.get_mut(&win) {
+        c.is_hidden = false;
+    }
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -214,7 +229,7 @@ pub fn hide(win: Window) {
         return;
     };
 
-    if is_hidden(win) {
+    if client.is_hidden {
         return;
     }
 
@@ -253,6 +268,11 @@ pub fn hide(win: Window) {
     let _ = conn.flush();
 
     set_client_state(win, WM_STATE_ICONIC);
+
+    // Set the cached flag now that WM_STATE is committed.
+    if let Some(c) = get_globals_mut().clients.get_mut(&win) {
+        c.is_hidden = true;
+    }
 
     // Restore event masks.
     restore_event_masks(conn, root, win);

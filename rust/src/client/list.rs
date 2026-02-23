@@ -9,7 +9,6 @@
 //! and terminated by `None`.  All mutation goes through the helpers here so that
 //! the invariants of both lists are maintained in one place.
 
-use crate::client::visibility::is_hidden;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::monitor::arrange;
@@ -148,7 +147,12 @@ pub fn detach_stack(win: Window) {
                         .map(|tc| tc.is_visible())
                         .unwrap_or(false);
 
-                    if is_vis && !is_hidden(t_win) {
+                    let is_not_hidden = globals
+                        .clients
+                        .get(&t_win)
+                        .map(|tc| !tc.is_hidden)
+                        .unwrap_or(true);
+                    if is_vis && is_not_hidden {
                         globals.monitors[mon_id].sel = Some(t_win);
                         return;
                     }
@@ -173,7 +177,7 @@ pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
 
     while let Some(win) = current {
         if let Some(c) = globals.clients.get(&win) {
-            if !c.isfloating && c.is_visible() && !is_hidden(win) {
+            if !c.isfloating && c.is_visible() && !c.is_hidden {
                 return Some(win);
             }
             current = c.next;
