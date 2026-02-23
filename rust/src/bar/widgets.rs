@@ -132,90 +132,57 @@ pub(crate) fn draw_tag_indicators(
 ) -> i32 {
     let g = get_globals();
     let lrpad = g.lrpad;
-    let show_alt_tag = g.tags.show_alt;
+    let lpad = (lrpad / 2) as u32;
     let bar_dragging = g.bar_dragging;
-    let num_tags = g.tags.count();
 
-    for i in 0..num_tags as u32 {
-        if i >= 9 {
+    let tags = crate::tags::bar::visible_tags(g, m, occupied_tags);
+
+    let Some(ref drw) = g.drw else {
+        return x + tags.iter().map(|t| t.width).sum::<i32>();
+    };
+    let mut drw = drw.clone();
+
+    let selmon_gesture = g
+        .monitors
+        .get(g.selmon)
+        .map(|s| s.gesture)
+        .unwrap_or_default();
+
+    for t in &tags {
+        let hover_gesture = Gesture::from_tag_index(t.slot);
+        let is_hover = hover_gesture.is_some_and(|hg| selmon_gesture == hg);
+
+        let Some(scheme) = get_tag_scheme(m, t.tag_index as u32, occupied_tags, is_hover) else {
+            x += t.width;
             continue;
-        }
-
-        let is_hover = g
-            .monitors
-            .get(g.selmon)
-            .is_some_and(|selmon| selmon.gesture as u32 == i + 1);
-
-        let current_tag = m.current_tag;
-        let actual_i = if i == 8 && current_tag > 9 {
-            (current_tag - 1) as u32
-        } else {
-            i
         };
 
-        if m.showtags != 0
-            && occupied_tags & (1 << actual_i) == 0
-            && m.tagset[m.seltags as usize] & (1 << actual_i) == 0
-        {
-            continue;
-        }
-
-        let tag = g.tags.tags.get(actual_i as usize);
-        let tag_name = tag.map(|t| t.name.as_str()).unwrap_or("");
-
-        let display_name = if show_alt_tag {
-            tag.map(|t| {
-                if !t.alt_name.is_empty() {
-                    t.alt_name
-                } else {
-                    tag_name
-                }
-            })
-            .unwrap_or(tag_name)
-        } else {
-            tag_name
-        };
-
-        let text_w = super::text_width(display_name);
-        let w = text_w + lrpad;
-        let lpad = ((w - text_w) / 2).max(0) as u32;
-
-        if let Some(scheme) = get_tag_scheme(m, actual_i, occupied_tags, is_hover) {
-            if let Some(ref drw) = g.drw {
-                let mut drw = drw.clone();
-                let detail_height = if is_hover {
-                    DETAIL_BAR_HEIGHT_HOVER
-                } else {
-                    DETAIL_BAR_HEIGHT_NORMAL
-                };
-
-                let mut draw_scheme = scheme.clone();
-                if is_hover && bar_dragging {
-                    let schemes = &g.tags.schemes.hover;
-                    if !schemes.is_empty() {
-                        if let Some(s) = schemes.get(SchemeTag::Filled as usize) {
-                            draw_scheme = s.clone();
-                        }
-                    }
-                }
-                drw.set_scheme(draw_scheme);
-
-                let is_urgent = urg & (1 << actual_i) != 0;
-                x = drw.text(
-                    x,
-                    0,
-                    w as u32,
-                    bh as u32,
-                    lpad,
-                    display_name,
-                    is_urgent,
-                    detail_height,
-                );
+        let mut draw_scheme = scheme;
+        if is_hover && bar_dragging {
+            if let Some(s) = g.tags.schemes.hover.get(SchemeTag::Filled as usize) {
+                draw_scheme = s.clone();
             }
-        } else {
-            x += w;
         }
+        drw.set_scheme(draw_scheme);
+
+        let detail_height = if is_hover {
+            DETAIL_BAR_HEIGHT_HOVER
+        } else {
+            DETAIL_BAR_HEIGHT_NORMAL
+        };
+
+        x = drw.text(
+            x,
+            0,
+            t.width as u32,
+            bh as u32,
+            lpad,
+            t.label,
+            urg & (1 << t.tag_index) != 0,
+            detail_height,
+        );
     }
+
     x
 }
 

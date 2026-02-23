@@ -1,16 +1,66 @@
 //! Tag bar rendering helpers.
 //!
-//! These functions answer two questions the bar needs answered on every redraw:
+//! These functions answer three questions the bar needs on every redraw:
 //!
-//! * [`get_tag_width`] – how many pixels wide should the entire tag strip be?
+//! * [`visible_tags`] – which tags should be drawn, and with what label/width?
+//! * [`get_tag_width`] – how many pixels wide is the entire tag strip?
 //! * [`get_tag_at_x`] – which tag (if any) lives at a given X coordinate?
 //!
-//! Both functions share the same iteration logic: walk the monitor's client
-//! list to find which tags are *occupied*, then iterate over every tag and
-//! skip hidden ones when `showtags` is active.
+//! All three share a single iteration through [`visible_tags`], which resolves
+//! tag-index remapping, skip logic, display names, and widths in one place.
 
 use crate::bar::text_width;
-use crate::globals::get_globals;
+use crate::globals::{get_globals, Globals};
+use crate::types::Monitor;
+
+/// Maximum number of tag slots rendered in the bar.
+const MAX_BAR_SLOTS: usize = 9;
+
+/// A tag that should be drawn in the bar, with all derived data pre-computed.
+pub(crate) struct VisibleTag<'a> {
+    /// Slot index (0..MAX_BAR_SLOTS-1). Used for hover/gesture matching.
+    pub slot: usize,
+    /// Actual tag index into `globals.tags.tags` / bitmask space.
+    pub tag_index: usize,
+    /// Display label (regular or alt name).
+    pub label: &'a str,
+    /// Total pixel width of this tag cell (text width + lrpad).
+    pub width: i32,
+}
+
+/// Build the list of tags that should be visible in the bar for `monitor`.
+///
+/// Handles the slot-8-remaps-to-current_tag logic, skip-vacant-tags filtering,
+/// and alt-name selection. Both rendering and hit-testing consume this.
+pub(crate) fn visible_tags<'a>(
+    globals: &'a Globals,
+    monitor: &Monitor,
+    occupied: u32,
+) -> Vec<VisibleTag<'a>> {
+    let lrpad = globals.lrpad;
+    let show_alt = globals.tags.show_alt;
+    let slot_count = globals.tags.count().min(MAX_BAR_SLOTS);
+
+    let mut out = Vec::with_capacity(slot_count);
+
+    for slot in 0..slot_count {
+        let tag_index = tag_index_for_slot(monitor, slot);
+        if tag_index >= globals.tags.count() {
+            continue;
+        }
+        if should_skip(monitor, tag_index, occupied) {
+            continue;
+        }
+
+        let tag = &globals.tags.tags[tag_index];
+        let label = display_name(tag, show_alt);
+        let width = text_width(label) + lrpad;
+
+        out.push(VisibleTag { slot, tag_index, label, width });
+    }
+
+    out
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -18,64 +68,34 @@ use crate::globals::get_globals;
 
 /// Return the total pixel width of the tag strip (including the start-menu
 /// button at the left edge).
-///
-/// Tags that are neither occupied nor selected are omitted when the monitor's
-/// `showtags` flag is set, so the width can shrink dynamically.
 pub fn get_tag_width() -> i32 {
-    let globals = get_globals();
+    let g = get_globals();
+    let occupied = occupied_tags_on_selmon(g);
 
-    let occupied = occupied_tags_on_selmon(globals);
-    let lrpad = globals.lrpad;
-    let show_alt = globals.tags.show_alt;
-    let start_menu_size = globals.startmenusize;
+    let Some(m) = g.monitors.get(g.selmon) else {
+        return g.startmenusize;
+    };
 
-    let mut x = 0i32;
-
-    for (i, tag) in globals.tags.tags.iter().enumerate() {
-        if i >= 9 {
-            break;
-        }
-
-        if should_skip_tag(globals, i, occupied) {
-            continue;
-        }
-
-        let name = display_name(tag, show_alt);
-        x += text_width(name) + lrpad;
-    }
-
-    x + start_menu_size
+    let tags_width: i32 = visible_tags(g, m, occupied).iter().map(|t| t.width).sum();
+    g.startmenusize + tags_width
 }
 
-/// Return the 0-based index of the tag whose button contains `click_x`, or
-/// `-1` if `click_x` falls outside all tag buttons.
+/// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
 ///
-/// `click_x` is relative to the left edge of the bar window (i.e. it already
-/// includes the monitor's X offset).
+/// `click_x` is relative to the left edge of the bar window.
 pub fn get_tag_at_x(click_x: i32) -> i32 {
-    let globals = get_globals();
+    let g = get_globals();
+    let occupied = occupied_tags_on_selmon(g);
 
-    let occupied = occupied_tags_on_selmon(globals);
-    let lrpad = globals.lrpad;
-    let show_alt = globals.tags.show_alt;
+    let Some(m) = g.monitors.get(g.selmon) else {
+        return -1;
+    };
 
-    // The tag strip starts immediately after the start-menu button.
-    let mut accumulated = globals.startmenusize;
-
-    for (i, tag) in globals.tags.tags.iter().enumerate() {
-        if i >= 9 {
-            break;
-        }
-
-        if should_skip_tag(globals, i, occupied) {
-            continue;
-        }
-
-        let name = display_name(tag, show_alt);
-        accumulated += text_width(name) + lrpad;
-
-        if accumulated >= click_x {
-            return i as i32;
+    let mut acc = g.startmenusize;
+    for t in visible_tags(g, m, occupied) {
+        acc += t.width;
+        if acc >= click_x {
+            return t.tag_index as i32;
         }
     }
 
@@ -86,9 +106,41 @@ pub fn get_tag_at_x(click_x: i32) -> i32 {
 // Private helpers
 // ---------------------------------------------------------------------------
 
-/// Compute a bitmask of tags that have at least one visible client on the
-/// selected monitor (excluding the special scratchpad tag `255`).
-fn occupied_tags_on_selmon(globals: &crate::globals::Globals) -> u32 {
+/// Map a bar slot (0..8) to the actual tag index.
+///
+/// Slot 8 is remapped to `current_tag - 1` when the monitor has more than 9
+/// tags active (the "overflow" slot).
+fn tag_index_for_slot(monitor: &Monitor, slot: usize) -> usize {
+    if slot == MAX_BAR_SLOTS - 1 && monitor.current_tag > MAX_BAR_SLOTS {
+        monitor.current_tag - 1
+    } else {
+        slot
+    }
+}
+
+/// Return `true` if the tag at `tag_index` should be hidden.
+///
+/// A tag is hidden when `showtags != 0` and it is neither occupied nor selected.
+fn should_skip(monitor: &Monitor, tag_index: usize, occupied: u32) -> bool {
+    if monitor.showtags == 0 {
+        return false;
+    }
+    let bit = 1u32 << tag_index;
+    (occupied & bit) == 0 && (monitor.tagset[monitor.seltags as usize] & bit) == 0
+}
+
+/// Choose between the regular name and the alt-name for display.
+fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
+    if show_alt && !tag.alt_name.is_empty() {
+        tag.alt_name
+    } else {
+        tag.name.as_str()
+    }
+}
+
+/// Compute a bitmask of tags that have at least one client on the selected
+/// monitor (excluding the special scratchpad tag `255`).
+fn occupied_tags_on_selmon(globals: &Globals) -> u32 {
     let mut occupied: u32 = 0;
 
     let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
@@ -106,33 +158,4 @@ fn occupied_tags_on_selmon(globals: &crate::globals::Globals) -> u32 {
     }
 
     occupied
-}
-
-/// Return `true` if tag `i` should be hidden from the bar.
-///
-/// A tag is hidden when `showtags != 0` *and* it has neither any occupied
-/// clients nor is currently selected.
-fn should_skip_tag(globals: &crate::globals::Globals, i: usize, occupied: u32) -> bool {
-    let Some(mon) = globals.monitors.get(globals.selmon) else {
-        return false;
-    };
-
-    if mon.showtags == 0 {
-        return false;
-    }
-
-    let bit = 1u32 << i;
-    let is_occupied = (occupied & bit) != 0;
-    let is_selected = (mon.tagset[mon.seltags as usize] & bit) != 0;
-
-    !is_occupied && !is_selected
-}
-
-/// Choose between the regular name and the alt-name for display.
-fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
-    if show_alt && !tag.alt_name.is_empty() {
-        tag.alt_name
-    } else {
-        tag.name.as_str()
-    }
 }
