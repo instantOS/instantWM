@@ -1,0 +1,109 @@
+//! Layout-driven client operations.
+//!
+//! These are small operations that sit at the boundary between the client and
+//! the layout engine.  They are collected here so that neither `geometry.rs`
+//! nor the layout algorithms need to know about each other's internals.
+//!
+//! # Contents
+//!
+//! * [`zoom`]             – promote the selected window to the master slot (or,
+//!                          if it already is master, promote the next tiled
+//!                          window instead).
+//! * [`change_floating`]  – clear the snap position when a floating window is
+//!                          moved/resized manually.
+
+use crate::client::list::{next_tiled, pop};
+use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::types::{Arg, SnapPosition};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::protocol::xproto::*;
+
+// ---------------------------------------------------------------------------
+// zoom
+// ---------------------------------------------------------------------------
+
+/// Promote the selected window to the master position.
+///
+/// In a tiling layout the "master" is the first client in the focus-order
+/// list (the leftmost / largest slot, depending on the layout algorithm).
+/// [`zoom`] moves the selected window there via [`pop`].
+///
+/// # Edge cases
+///
+/// * Does nothing when the current layout is not a tiling layout, or when the
+///   selected client is floating.
+/// * When the selected window **is already** the master, the *next* tiled
+///   window is promoted instead (if one exists).  If there is no next tiled
+///   window the function returns early.
+pub fn zoom(_arg: &Arg) {
+    let Some(win) = crate::util::get_sel_win() else {
+        return;
+    };
+
+    // Raise the window immediately so it appears on top while the layout
+    // catches up on the next arrange pass.
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        let _ = conn.flush();
+    }
+
+    let (is_floating, mon_id) = {
+        let globals = get_globals();
+        globals
+            .clients
+            .get(&win)
+            .map(|c| (c.isfloating, c.mon_id))
+            .unwrap_or((true, None))
+    };
+
+    // Only meaningful in a tiling layout with a non-floating window.
+    let is_tiling = mon_id
+        .and_then(|mid| get_globals().monitors.get(mid))
+        .map(|mon| crate::monitor::is_current_layout_tiling(mon, &get_globals().tags))
+        .unwrap_or(false);
+
+    if !is_tiling || is_floating {
+        return;
+    }
+
+    // Find the current master (first tiled client on the monitor).
+    let first_tiled = mon_id
+        .and_then(|mid| get_globals().monitors.get(mid))
+        .and_then(|mon| next_tiled(mon.clients));
+
+    if first_tiled == Some(win) {
+        // The selected window is already master – promote the next one.
+        let after_first =
+            first_tiled.and_then(|f| get_globals().clients.get(&f).and_then(|c| c.next));
+        let next = next_tiled(after_first);
+
+        // Nothing to promote if there is only one tiled window.
+        if next.is_none() {
+            return;
+        }
+    }
+
+    pop(win);
+}
+
+// ---------------------------------------------------------------------------
+// change_floating
+// ---------------------------------------------------------------------------
+
+/// Clear the snap position of `win` when it is moved or resized manually.
+///
+/// When a floating window is snapped to a screen edge or corner, its
+/// [`SnapPosition`] records which edge it is snapped to.  As soon as the user
+/// drags or resizes the window we clear that flag so the snap decoration is no
+/// longer drawn and the window is no longer treated as snapped by the floating
+/// helpers.
+pub fn change_floating(win: Window) {
+    let globals = get_globals_mut();
+    if let Some(client) = globals.clients.get_mut(&win) {
+        if client.snapstatus != SnapPosition::None {
+            client.snapstatus = SnapPosition::None;
+        }
+    }
+}
