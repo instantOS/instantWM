@@ -53,9 +53,13 @@ pub use warp::reset_cursor;
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    drag_tag, gesture_mouse, move_mouse, moveresize, window_title_mouse_handler,
+    drag_tag, gesture_mouse, move_mouse, window_title_mouse_handler,
     window_title_mouse_handler_right,
 };
+
+// moveresize lives in floating::movement; re-exported here so keybindings.rs
+// can use the single import path `crate::mouse::moveresize`.
+pub use crate::floating::moveresize;
 
 // ── resize ────────────────────────────────────────────────────────────────────
 

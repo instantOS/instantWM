@@ -35,7 +35,7 @@ pub use state::{
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{center_window, key_resize};
+pub use movement::{center_window, key_resize, moveresize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
