@@ -541,7 +541,7 @@ fn read_title_from_x(win: Window) -> String {
 ///
 /// Returns the parent window ID, or `None` when the property is absent or
 /// the window is not a transient.
-fn get_transient_for_hint(w: Window) -> Option<Window> {
+pub fn get_transient_for_hint(w: Window) -> Option<Window> {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
         return None;

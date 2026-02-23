@@ -71,7 +71,7 @@ pub use state::{set_client_state, set_client_tag_prop, set_urgent, update_title,
 pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
-pub use lifecycle::{manage, unmanage};
+pub use lifecycle::{get_transient_for_hint, manage, unmanage};
 
 // -- Layout operations -------------------------------------------------------
 pub use layout_ops::zoom;

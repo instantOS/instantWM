@@ -1,8 +1,9 @@
 use crate::bar::{bar_position_at_x, BarPosition};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
+use crate::client::visibility::get_state;
 use crate::client::{
-    configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
-    update_wm_hints, win_to_client, WM_STATE_WITHDRAWN,
+    configure, get_transient_for_hint, is_hidden, set_client_state, set_fullscreen, unmanage,
+    update_title, update_wm_hints, win_to_client, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
@@ -278,41 +279,9 @@ pub fn map_request(e: &MapRequestEvent) {
     }
 
     if win_to_client(e.window).is_none() {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
-            let override_redirect = conn
-                .get_window_attributes(e.window)
-                .ok()
-                .and_then(|cookie| cookie.reply().ok())
-                .map(|wa| wa.override_redirect)
-                .unwrap_or(false);
-            if !override_redirect {
-                let (geo, border_width) = conn
-                    .get_geometry(e.window)
-                    .ok()
-                    .and_then(|geo| geo.reply().ok())
-                    .map(|geo| {
-                        (
-                            Rect {
-                                x: geo.x as i32,
-                                y: geo.y as i32,
-                                w: geo.width as i32,
-                                h: geo.height as i32,
-                            },
-                            geo.border_width as u32,
-                        )
-                    })
-                    .unwrap_or((
-                        Rect {
-                            x: 0,
-                            y: 0,
-                            w: 800,
-                            h: 600,
-                        },
-                        1,
-                    ));
-                crate::client::manage(e.window, geo, border_width);
-            }
+        if !is_override_redirect(e.window) {
+            let (geo, border_width) = get_win_geometry(e.window);
+            crate::client::manage(e.window, geo, border_width);
         }
     }
 }
@@ -536,108 +505,144 @@ fn dispatch_event(event: x11rb::protocol::Event) {
     }
 }
 
-//TODO: this function is too long, refactor
-// also check if existing utils can be used or shared
-pub fn scan() {
-    let (root, wm_state_atom) = {
-        let globals = get_globals();
-        (globals.root, globals.wmatom.state)
+// ---------------------------------------------------------------------------
+// scan helpers
+// ---------------------------------------------------------------------------
+
+/// Fetch the geometry and border width for `win`.
+///
+/// Returns a sensible fallback (`800×600`, border `1`) when the request fails,
+/// so callers never have to handle `None`.
+fn get_win_geometry(win: Window) -> (Rect, u32) {
+    let x11 = get_x11();
+    let Some(ref conn) = x11.conn else {
+        return (
+            Rect {
+                x: 0,
+                y: 0,
+                w: 800,
+                h: 600,
+            },
+            1,
+        );
     };
+    conn.get_geometry(win)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(|geo| {
+            (
+                Rect {
+                    x: geo.x as i32,
+                    y: geo.y as i32,
+                    w: geo.width as i32,
+                    h: geo.height as i32,
+                },
+                geo.border_width as u32,
+            )
+        })
+        .unwrap_or((
+            Rect {
+                x: 0,
+                y: 0,
+                w: 800,
+                h: 600,
+            },
+            1,
+        ))
+}
 
-    let (managed, transients) = {
-        let x11 = get_x11();
-        let Some(ref conn) = x11.conn else {
-            return;
+/// Returns `true` when the `override_redirect` attribute is set on `win`.
+///
+/// Such windows manage themselves (e.g. tooltips, menus) and must be ignored
+/// by the WM.
+fn is_override_redirect(win: Window) -> bool {
+    let x11 = get_x11();
+    let Some(ref conn) = x11.conn else {
+        return false;
+    };
+    conn.get_window_attributes(win)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(|wa| wa.override_redirect)
+        .unwrap_or(false)
+}
+
+/// Partition `children` into `(managed, transients)`.
+///
+/// A window is eligible for management when **all** of the following hold:
+///
+/// 1. Its `override_redirect` flag is **not** set.
+/// 2. It is either viewable (`MapState::VIEWABLE`) or iconic (`WM_STATE_ICONIC`).
+/// 3. It is not already tracked as a client.
+///
+/// Eligible windows whose `WM_TRANSIENT_FOR` hint names an owner go into
+/// `transients`; all others go into `managed`.  The caller should manage the
+/// `managed` slice first so that owner windows exist before their transients.
+fn classify_windows(children: Vec<Window>) -> (Vec<Window>, Vec<Window>) {
+    let mut managed = Vec::new();
+    let mut transients = Vec::new();
+
+    for win in children {
+        // Skip self-managing windows.
+        if is_override_redirect(win) {
+            continue;
+        }
+
+        // Skip windows that are neither visible nor iconic.
+        let is_viewable = {
+            let x11 = get_x11();
+            x11.conn
+                .as_ref()
+                .and_then(|conn| conn.get_window_attributes(win).ok())
+                .and_then(|cookie| cookie.reply().ok())
+                .map(|wa| wa.map_state == MapState::VIEWABLE)
+                .unwrap_or(false)
         };
+        let is_iconic = get_state(win) == WM_STATE_ICONIC;
 
+        if !is_viewable && !is_iconic {
+            continue;
+        }
+
+        // Skip already-managed windows.
+        if win_to_client(win).is_some() {
+            continue;
+        }
+
+        if get_transient_for_hint(win).is_some() {
+            transients.push(win);
+        } else {
+            managed.push(win);
+        }
+    }
+
+    (managed, transients)
+}
+
+/// Adopt all pre-existing X11 windows at WM startup.
+///
+/// Regular windows are managed first; transients second — matching the order
+/// the original C dwm uses so that transient windows end up above their owners
+/// in the client list.
+pub fn scan() {
+    let root = get_globals().root;
+
+    let children = {
+        let x11 = get_x11();
+        let Some(ref conn) = x11.conn else { return };
         let Ok(tree_cookie) = conn.query_tree(root) else {
             return;
         };
         let Ok(tree_reply) = tree_cookie.reply() else {
             return;
         };
-
-        let mut managed = Vec::new();
-        let mut transients = Vec::new();
-        for win in tree_reply.children {
-            let Ok(wa_cookie) = conn.get_window_attributes(win) else {
-                continue;
-            };
-            let Ok(wa) = wa_cookie.reply() else {
-                continue;
-            };
-            if wa.override_redirect {
-                continue;
-            }
-
-            let is_transient = conn
-                .get_property(
-                    false,
-                    win,
-                    AtomEnum::WM_TRANSIENT_FOR,
-                    AtomEnum::WINDOW,
-                    0,
-                    1,
-                )
-                .ok()
-                .and_then(|cookie| cookie.reply().ok())
-                .and_then(|reply| reply.value32().and_then(|mut values| values.next()))
-                .is_some();
-
-            let is_viewable = wa.map_state == MapState::VIEWABLE;
-            let is_iconic = conn
-                .get_property(false, win, wm_state_atom, wm_state_atom, 0, 2)
-                .ok()
-                .and_then(|cookie| cookie.reply().ok())
-                .and_then(|reply| reply.value32().and_then(|mut values| values.next()))
-                .map(|state| state == crate::client::WM_STATE_ICONIC as u32)
-                .unwrap_or(false);
-
-            if !is_viewable && !is_iconic {
-                continue;
-            }
-            if win_to_client(win).is_some() {
-                continue;
-            }
-
-            let (geo, border_width) = conn
-                .get_geometry(win)
-                .ok()
-                .and_then(|geo| geo.reply().ok())
-                .map(|geo| {
-                    (
-                        Rect {
-                            x: geo.x as i32,
-                            y: geo.y as i32,
-                            w: geo.width as i32,
-                            h: geo.height as i32,
-                        },
-                        geo.border_width as u32,
-                    )
-                })
-                .unwrap_or((
-                    Rect {
-                        x: 0,
-                        y: 0,
-                        w: 800,
-                        h: 600,
-                    },
-                    1,
-                ));
-            let attrs = (win, geo, border_width);
-            if is_transient {
-                transients.push(attrs);
-            } else {
-                managed.push(attrs);
-            }
-        }
-        (managed, transients)
+        tree_reply.children
     };
 
-    for (win, geo, border_width) in managed {
-        crate::client::manage(win, geo, border_width);
-    }
-    for (win, geo, border_width) in transients {
+    let (managed, transients) = classify_windows(children);
+
+    for win in managed.into_iter().chain(transients) {
+        let (geo, border_width) = get_win_geometry(win);
         crate::client::manage(win, geo, border_width);
     }
 }
