@@ -242,6 +242,7 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.commands = cfg.commands;
     globals.resources = cfg.resources;
     globals.fonts = cfg.fonts;
+    globals.external_commands = cfg.external_commands;
 }
 
 fn setup(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {

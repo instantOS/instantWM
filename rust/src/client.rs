@@ -1138,7 +1138,7 @@ pub fn shut_kill(arg: &Arg) {
 
     if !has_clients {
         let shut_arg = Arg {
-            v: Some(crate::config::CMD_INSTANTSHUTDOWN),
+            v: Some(crate::config::commands::Cmd::InstantShutdown as usize),
             ..Default::default()
         };
         crate::util::spawn(&shut_arg);

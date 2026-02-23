@@ -1,3 +1,4 @@
+use crate::config::commands::ExternalCommands;
 use crate::drw::{Cur, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
@@ -90,9 +91,8 @@ pub struct Globals {
     pub barheight: i32,
     pub xresourcesfont: String,
     pub instantmenumon: String,
-    pub instantmenucmd: Vec<&'static str>,
-    pub instantshutdowncmd: Vec<&'static str>,
-    pub startmenucmd: Vec<&'static str>,
+    /// All external commands resolved at startup from [`crate::config::commands`].
+    pub external_commands: ExternalCommands,
 }
 
 impl Default for Globals {
@@ -158,9 +158,7 @@ impl Default for Globals {
             barheight: 0,
             xresourcesfont: String::new(),
             instantmenumon: String::new(),
-            instantmenucmd: Vec::new(),
-            instantshutdowncmd: Vec::new(),
-            startmenucmd: Vec::new(),
+            external_commands: crate::config::commands::default_commands(),
         }
     }
 }

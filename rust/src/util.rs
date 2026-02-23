@@ -6,6 +6,7 @@ use std::ptr;
 
 use x11rb::protocol::xproto::Window;
 
+use crate::config::commands::Cmd;
 use crate::globals::get_globals;
 use crate::types::*;
 
@@ -65,70 +66,85 @@ pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
     a.starts_with(b)
 }
 
+/// Spawn a command identified by a [`Cmd`] variant stored in `arg.v`.
+///
+/// The [`Cmd`] variant is cast to `usize` when building keybindings/buttons
+/// (via `Cmd::Foo as usize`), then reconstructed here via
+/// [`cmd_from_usize`] and resolved against the globals' [`ExternalCommands`].
 pub fn spawn(arg: &Arg) {
     let id = match arg.v {
         Some(v) => v,
         None => return,
     };
 
-    if let Some(cmd) = get_command_by_id(id) {
-        spawn_with_args(cmd, None);
+    let cmd_variant = cmd_from_usize(id);
+    let globals = get_globals();
+    let argv = globals.external_commands.get(cmd_variant);
+    if !argv.is_empty() {
+        spawn_with_args(argv, None);
     }
 }
 
-pub fn get_command_by_id(id: usize) -> Option<&'static [&'static str]> {
+/// Reconstruct a [`Cmd`] from its `usize` discriminant.
+///
+/// Unknown values map to [`Cmd::Default`] (a no-op) so stale bindings fail
+/// gracefully instead of panicking.
+pub fn cmd_from_usize(id: usize) -> Cmd {
+    // Keep in sync with the `Cmd` enum discriminants in config/commands.rs.
     match id {
-        crate::config::CMD_TERM => Some(crate::config::commands::TERM_CMD),
-        crate::config::CMD_INSTANTMENU => Some(crate::config::commands::INSTANTMENU_CMD),
-        crate::config::CMD_CLIPMENU => Some(crate::config::commands::CLIPMENU_CMD),
-        crate::config::CMD_SMART => Some(crate::config::commands::SMART_CMD),
-        crate::config::CMD_INSTANTMENU_ST => Some(crate::config::commands::INSTANTMENU_ST_CMD),
-        crate::config::CMD_QUICKMENU => Some(crate::config::commands::QUICKMENU_CMD),
-        crate::config::CMD_INSTANTASSIST => Some(crate::config::commands::INSTANTASSIST_CMD),
-        crate::config::CMD_INSTANTREPEAT => Some(crate::config::commands::INSTANTREPEAT_CMD),
-        crate::config::CMD_INSTANTPACMAN => Some(crate::config::commands::INSTANTPACMAN_CMD),
-        crate::config::CMD_INSTANTSHARE => Some(crate::config::commands::INSTANTSHARE_CMD),
-        crate::config::CMD_NAUTILUS => Some(crate::config::commands::NAUTILUS_CMD),
-        crate::config::CMD_SLOCK => Some(crate::config::commands::SLOCK_CMD),
-        crate::config::CMD_ONEKEYLOCK => Some(crate::config::commands::ONEKEYLOCK_CMD),
-        crate::config::CMD_LANGSWITCH => Some(crate::config::commands::LANGSWITCH_CMD),
-        crate::config::CMD_OSLOCK => Some(crate::config::commands::OSLOCK_CMD),
-        crate::config::CMD_HELP => Some(crate::config::commands::HELP_CMD),
-        crate::config::CMD_SEARCH => Some(crate::config::commands::SEARCH_CMD),
-        crate::config::CMD_KEYLAYOUTSWITCH => Some(crate::config::commands::KEYLAYOUTSWITCH_CMD),
-        crate::config::CMD_ISWITCH => Some(crate::config::commands::ISWITCH_CMD),
-        crate::config::CMD_INSTANTSWITCH => Some(crate::config::commands::INSTANTSWITCH_CMD),
-        crate::config::CMD_CARETINSTANTSWITCH => {
-            Some(crate::config::commands::CARETINSTANTSWITCH_CMD)
-        }
-        crate::config::CMD_INSTANTSKIPPY => Some(crate::config::commands::INSTANTSKIPPY_CMD),
-        crate::config::CMD_INSTANTSHUTDOWN => Some(crate::config::commands::INSTANTSHUTDOWN_CMD),
-        crate::config::CMD_SYSTEMMONITOR => Some(crate::config::commands::SYSTEMMONITOR_CMD),
-        crate::config::CMD_NOTIFY => Some(crate::config::commands::NOTIFY_CMD),
-        crate::config::CMD_YAZI => Some(crate::config::commands::YAZI_CMD),
-        crate::config::CMD_PANTHER => Some(crate::config::commands::PANTHER_CMD),
-        crate::config::CMD_CONTROLCENTER => Some(crate::config::commands::CONTROLCENTER_CMD),
-        crate::config::CMD_DISPLAY => Some(crate::config::commands::DISPLAY_CMD),
-        crate::config::CMD_PAVUCONTROL => Some(crate::config::commands::PAVUCONTROL_CMD),
-        crate::config::CMD_INSTANTSETTINGS => Some(crate::config::commands::INSTANTSETTINGS_CMD),
-        crate::config::CMD_CODE => Some(crate::config::commands::CODE_CMD),
-        crate::config::CMD_STARTMENU => Some(crate::config::commands::STARTMENU_CMD),
-        crate::config::CMD_SCROT => Some(crate::config::commands::SCROT_CMD),
-        crate::config::CMD_FSCROT => Some(crate::config::commands::FSCROT_CMD),
-        crate::config::CMD_CLIPSCROT => Some(crate::config::commands::CLIPSCROT_CMD),
-        crate::config::CMD_FCLIPSCROT => Some(crate::config::commands::FCLIPSCROT_CMD),
-        crate::config::CMD_FIREFOX => Some(crate::config::commands::FIREFOX_CMD),
-        crate::config::CMD_EDITOR => Some(crate::config::commands::EDITOR_CMD),
-        crate::config::CMD_PLAYERNEXT => Some(crate::config::commands::PLAYER_NEXT_CMD),
-        crate::config::CMD_PLAYERPREVIOUS => Some(crate::config::commands::PLAYER_PREVIOUS_CMD),
-        crate::config::CMD_PLAYERPAUSE => Some(crate::config::commands::PLAYER_PAUSE_CMD),
-        crate::config::CMD_SPOTICLI => Some(crate::config::commands::SPOTICLI_CMD),
-        crate::config::CMD_UPVOL => Some(crate::config::commands::UPVOL_CMD),
-        crate::config::CMD_DOWNVOL => Some(crate::config::commands::DOWNVOL_CMD),
-        crate::config::CMD_MUTEVOL => Some(crate::config::commands::MUTEVOL_CMD),
-        crate::config::CMD_UPBRIGHT => Some(crate::config::commands::UPBRIGHT_CMD),
-        crate::config::CMD_DOWNBRIGHT => Some(crate::config::commands::DOWNBRIGHT_CMD),
-        _ => None,
+        x if x == Cmd::Default as usize => Cmd::Default,
+        x if x == Cmd::Term as usize => Cmd::Term,
+        x if x == Cmd::TermScratch as usize => Cmd::TermScratch,
+        x if x == Cmd::InstantMenu as usize => Cmd::InstantMenu,
+        x if x == Cmd::ClipMenu as usize => Cmd::ClipMenu,
+        x if x == Cmd::Smart as usize => Cmd::Smart,
+        x if x == Cmd::InstantMenuSt as usize => Cmd::InstantMenuSt,
+        x if x == Cmd::QuickMenu as usize => Cmd::QuickMenu,
+        x if x == Cmd::InstantAssist as usize => Cmd::InstantAssist,
+        x if x == Cmd::InstantRepeat as usize => Cmd::InstantRepeat,
+        x if x == Cmd::InstantPacman as usize => Cmd::InstantPacman,
+        x if x == Cmd::InstantShare as usize => Cmd::InstantShare,
+        x if x == Cmd::Nautilus as usize => Cmd::Nautilus,
+        x if x == Cmd::Slock as usize => Cmd::Slock,
+        x if x == Cmd::OneKeyLock as usize => Cmd::OneKeyLock,
+        x if x == Cmd::LangSwitch as usize => Cmd::LangSwitch,
+        x if x == Cmd::OsLock as usize => Cmd::OsLock,
+        x if x == Cmd::Help as usize => Cmd::Help,
+        x if x == Cmd::Search as usize => Cmd::Search,
+        x if x == Cmd::KeyLayoutSwitch as usize => Cmd::KeyLayoutSwitch,
+        x if x == Cmd::ISwitch as usize => Cmd::ISwitch,
+        x if x == Cmd::InstantSwitch as usize => Cmd::InstantSwitch,
+        x if x == Cmd::CaretInstantSwitch as usize => Cmd::CaretInstantSwitch,
+        x if x == Cmd::InstantSkippy as usize => Cmd::InstantSkippy,
+        x if x == Cmd::Onboard as usize => Cmd::Onboard,
+        x if x == Cmd::InstantShutdown as usize => Cmd::InstantShutdown,
+        x if x == Cmd::SystemMonitor as usize => Cmd::SystemMonitor,
+        x if x == Cmd::Notify as usize => Cmd::Notify,
+        x if x == Cmd::Yazi as usize => Cmd::Yazi,
+        x if x == Cmd::Panther as usize => Cmd::Panther,
+        x if x == Cmd::ControlCenter as usize => Cmd::ControlCenter,
+        x if x == Cmd::Display as usize => Cmd::Display,
+        x if x == Cmd::PavuControl as usize => Cmd::PavuControl,
+        x if x == Cmd::InstantSettings as usize => Cmd::InstantSettings,
+        x if x == Cmd::Code as usize => Cmd::Code,
+        x if x == Cmd::StartMenu as usize => Cmd::StartMenu,
+        x if x == Cmd::Scrot as usize => Cmd::Scrot,
+        x if x == Cmd::FScrot as usize => Cmd::FScrot,
+        x if x == Cmd::ClipScrot as usize => Cmd::ClipScrot,
+        x if x == Cmd::FClipScrot as usize => Cmd::FClipScrot,
+        x if x == Cmd::Firefox as usize => Cmd::Firefox,
+        x if x == Cmd::Editor as usize => Cmd::Editor,
+        x if x == Cmd::PlayerNext as usize => Cmd::PlayerNext,
+        x if x == Cmd::PlayerPrevious as usize => Cmd::PlayerPrevious,
+        x if x == Cmd::PlayerPause as usize => Cmd::PlayerPause,
+        x if x == Cmd::Spoticli as usize => Cmd::Spoticli,
+        x if x == Cmd::UpVol as usize => Cmd::UpVol,
+        x if x == Cmd::DownVol as usize => Cmd::DownVol,
+        x if x == Cmd::MuteVol as usize => Cmd::MuteVol,
+        x if x == Cmd::UpBright as usize => Cmd::UpBright,
+        x if x == Cmd::DownBright as usize => Cmd::DownBright,
+        x if x == Cmd::Tag as usize => Cmd::Tag,
+        _ => Cmd::Default,
     }
 }
 
