@@ -1,7 +1,7 @@
 use crate::client::is_hidden;
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
-use crate::globals::get_globals;
+use crate::globals::{get_drw, get_globals};
 use crate::types::*;
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
@@ -39,8 +39,8 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
 
     let Some(ref scheme) = scheme else { return };
 
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
+    {
+        let mut drw = get_drw().clone();
         drw.set_scheme(scheme.clone());
 
         drw.rect(
@@ -138,10 +138,7 @@ pub(crate) fn draw_tag_indicators(
 
     let tags = crate::tags::bar::visible_tags(g, m, occupied_tags);
 
-    let Some(ref drw) = g.drw else {
-        return x + tags.iter().map(|t| t.width).sum::<i32>();
-    };
-    let mut drw = drw.clone();
+    let mut drw = get_drw().clone();
 
     let selmon_gesture = g
         .monitors
@@ -195,8 +192,8 @@ pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
     let w = (text_w + lrpad).max(lrpad);
     let lpad = ((w - text_w) / 2).max(0) as u32;
 
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
+    {
+        let mut drw = get_drw().clone();
         if let Some(ref ss) = g.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),
@@ -269,8 +266,8 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
         &g.closebuttonschemes.no_hover
     };
 
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
+    {
+        let mut drw = get_drw().clone();
 
         let scheme_idx = if c.islocked {
             SchemeClose::Locked as usize
@@ -352,8 +349,8 @@ fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
     let client_name = c.name.as_str();
     let text_w = super::text_width(client_name);
 
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
+    {
+        let mut drw = get_drw().clone();
         if let Some(scheme) = get_window_scheme(c, is_hover) {
             drw.set_scheme(scheme);
         }
@@ -417,8 +414,8 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
         return;
     }
 
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
+    {
+        let mut drw = get_drw().clone();
         if let Some(ref ss) = g.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),

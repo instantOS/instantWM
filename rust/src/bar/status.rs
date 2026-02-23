@@ -1,4 +1,4 @@
-use crate::globals::{get_globals, get_globals_mut};
+use crate::globals::{get_drw, get_globals, get_globals_mut};
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 use std::sync::atomic::Ordering;
@@ -35,10 +35,8 @@ pub(crate) fn draw_status_bar(m: &mut Monitor, bh: i32, stext: &str) -> i32 {
         g.status_text_width = layout.total_width;
     }
 
-    if let Some(ref drw) = get_globals().drw {
-        let mut drw = drw.clone();
-        draw_items(&mut drw, m, bh, &items, layout);
-    }
+    let mut drw = get_drw().clone();
+    draw_items(&mut drw, m, bh, &items, layout);
 
     layout.draw_start_x
 }

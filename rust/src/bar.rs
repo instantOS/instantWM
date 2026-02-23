@@ -6,7 +6,7 @@ mod x11;
 pub use model::{bar_position_at_x, BarPosition};
 pub use x11::resize_bar_win;
 
-use crate::globals::{get_globals, get_globals_mut};
+use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut};
 use crate::types::*;
 use model::ClientBarStats;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
@@ -21,13 +21,8 @@ const INIT_COMMAND_OFFSET: AtomicI32 = AtomicI32::new(-1);
 pub static COMMANDOFFSETS: [AtomicI32; 20] = [INIT_COMMAND_OFFSET; 20];
 
 pub fn text_width(text: &str) -> i32 {
-    let g = get_globals();
-    if let Some(ref drw) = g.drw {
-        let mut drw = drw.clone();
-        drw.fontset_getwidth(text) as i32
-    } else {
-        0
-    }
+    let mut drw = get_drw().clone();
+    drw.fontset_getwidth(text) as i32
 }
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
@@ -55,9 +50,7 @@ pub fn draw_bar(m: &mut Monitor) {
     {
         let g = get_globals_mut();
         let bh = g.bh;
-        if let Some(ref mut drw) = g.drw {
-            drw.resize(m.work_rect.w as u32, bh as u32);
-        }
+        get_drw_mut().resize(m.work_rect.w as u32, bh as u32);
     }
 
     let g = get_globals();
@@ -101,9 +94,7 @@ pub fn draw_bar(m: &mut Monitor) {
     m.bt = stats.visible_clients;
     m.bar_clients_width = title_width;
 
-    if let Some(ref drw) = g.drw {
-        drw.map(m.barwin, 0, 0, m.work_rect.w as u16, bh as u16);
-    }
+    get_drw().map(m.barwin, 0, 0, m.work_rect.w as u16, bh as u16);
 
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
 }

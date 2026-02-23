@@ -55,8 +55,20 @@ pub struct Globals {
     /// Pixel gap between systray icons.
     pub systrayspacing: i32,
     pub systray: Option<Systray>,
-    //TODO: why is this an option? Can the window manager ever function without
-    //this?
+    /// The drawing context used for all bar rendering.
+    ///
+    /// # Invariant
+    ///
+    /// This is `None` only during the brief window between `Globals::default()`
+    /// and the end of `setup()`.  `setup()` calls `die()` (which terminates the
+    /// process) if `Drw::new()` fails, so **after `setup()` returns this is
+    /// always `Some`**.  The window manager cannot function without a drawing
+    /// context — the C codebase models this as a plain pointer that is set once
+    /// and never NULL.
+    ///
+    /// Prefer the [`get_drw`] / [`get_drw_mut`] free functions over
+    /// `.drw.as_ref().unwrap()` at call sites; they produce a clear panic
+    /// message if the invariant is ever violated during development.
     pub drw: Option<Drw>,
     pub xlibdisplay: XlibDisplay,
     pub cursors: [Option<Cur>; 10],
@@ -171,6 +183,34 @@ unsafe impl<T> Send for MainThreadCell<T> {}
 
 pub static GLOBALS: Lazy<MainThreadCell<Globals>> =
     Lazy::new(|| MainThreadCell(UnsafeCell::new(Globals::default())));
+
+/// Return a reference to the drawing context.
+///
+/// # Panics
+///
+/// Panics if called before `setup()` has stored the `Drw` instance.  This
+/// should never happen in normal operation — the panic exists to catch
+/// programming errors during development rather than silently skipping drawing.
+#[inline]
+pub fn get_drw() -> &'static Drw {
+    get_globals()
+        .drw
+        .as_ref()
+        .expect("get_drw() called before setup() initialised the drawing context")
+}
+
+/// Return a mutable reference to the drawing context.
+///
+/// # Panics
+///
+/// Panics if called before `setup()` has stored the `Drw` instance.
+#[inline]
+pub fn get_drw_mut() -> &'static mut Drw {
+    get_globals_mut()
+        .drw
+        .as_mut()
+        .expect("get_drw_mut() called before setup() initialised the drawing context")
+}
 pub static RUNNING: AtomicBool = AtomicBool::new(true);
 
 pub fn get_globals() -> &'static Globals {
