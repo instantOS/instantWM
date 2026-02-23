@@ -737,6 +737,8 @@ fn run_autostart() {
     }
 }
 
+//TODO: is this a stub? Is this incorrectly ported? Investigate and do what's appropriate
+// same for xerrordummy
 pub fn xerror(_display: *mut libc::c_void, _ee: *mut libc::c_void) -> i32 {
     0
 }

@@ -114,8 +114,7 @@ pub fn distribute_clients(_arg: &Arg) {
     let globals = get_globals();
     let sel_mon_id = globals.selmon;
 
-    let (floating_wins, mon_x, mon_y, mon_w, mon_h, showbar, bh) =
-        collect_distribute_targets(sel_mon_id);
+    let (floating_wins, work_rect) = collect_distribute_targets(sel_mon_id);
 
     if floating_wins.is_empty() {
         return;
@@ -127,9 +126,8 @@ pub fn distribute_clients(_arg: &Arg) {
     let cols = (n as f32).sqrt().ceil() as i32;
     let rows = ((n as f32) / (cols as f32)).ceil() as i32;
 
-    let cell_w = mon_w / cols;
-    let cell_h = mon_h / rows;
-    let y_offset = if showbar { bh } else { 0 };
+    let cell_w = work_rect.w / cols;
+    let cell_h = work_rect.h / rows;
 
     for (i, win) in floating_wins.into_iter().enumerate() {
         let col = (i as i32) % cols;
@@ -138,8 +136,8 @@ pub fn distribute_clients(_arg: &Arg) {
         resize(
             win,
             &Rect {
-                x: mon_x + col * cell_w,
-                y: mon_y + row * cell_h + y_offset,
+                x: work_rect.x + col * cell_w,
+                y: work_rect.y + row * cell_h,
                 w: cell_w,
                 h: cell_h,
             },
@@ -149,26 +147,26 @@ pub fn distribute_clients(_arg: &Arg) {
 }
 
 /// Collect all windows eligible for [`distribute_clients`] together with the
-/// monitor geometry needed to lay them out.
+/// monitor work area needed to lay them out.
 ///
-/// Returns `(windows, mon_x, mon_y, work_w, work_h, showbar, bar_height)`.
-fn collect_distribute_targets(sel_mon_id: usize) -> (Vec<Window>, i32, i32, i32, i32, bool, i32) {
+/// Returns `(windows, work_rect)` where `work_rect` is the drawable area of
+/// the monitor after subtracting the bar (i.e. `Monitor::work_rect`).  Using
+/// `work_rect` directly means the bar offset is already baked in for both
+/// top-bar and bottom-bar configurations, and no manual `y_offset` correction
+/// is needed in the caller.
+fn collect_distribute_targets(sel_mon_id: usize) -> (Vec<Window>, Rect) {
     let globals = get_globals();
 
-    let empty = (Vec::new(), 0, 0, 0, 0, false, 0);
+    let empty = (Vec::new(), Rect::default());
 
     let Some(mon) = globals.monitors.get(sel_mon_id) else {
         return empty;
     };
 
     let tagset = mon.tagset[mon.seltags as usize];
-    //TODO: this should probably use the rect struct
-    let mon_x = mon.monitor_rect.x;
-    let mon_y = mon.monitor_rect.y;
-    let mon_w = mon.work_rect.w;
-    let mon_h = mon.work_rect.h;
-    let showbar = mon.showbar;
-    let bh = globals.bh;
+    // work_rect already accounts for bar height and position (top or bottom),
+    // so it is the correct region to fill with the grid.
+    let work_rect = mon.work_rect;
 
     let mut wins = Vec::new();
     let mut current = mon.clients;
@@ -189,5 +187,5 @@ fn collect_distribute_targets(sel_mon_id: usize) -> (Vec<Window>, i32, i32, i32,
         }
     }
 
-    (wins, mon_x, mon_y, mon_w, mon_h, showbar, bh)
+    (wins, work_rect)
 }
