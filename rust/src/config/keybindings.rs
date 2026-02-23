@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_dkeys`).
 //!
 //! # Macro syntax
@@ -26,31 +27,26 @@
 //! ```
 
 use super::commands::Cmd;
-use crate::animation::{anim_left, anim_right, down_scale_client, up_scale_client};
+use crate::animation::{anim_left, anim_right};
 use crate::bar::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
-use crate::commands::{command_prefix, set_special_next};
-use crate::floating::{center_window, distribute_clients, temp_fullscreen, toggle_floating};
+use crate::floating::{center_window, distribute_clients, temp_fullscreen};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
-use crate::keyboard::{
-    down_key, down_press, focus_nmon, key_resize, space_toggle, up_key, up_press,
-};
-use crate::layouts::{command_layout, cycle_layout, inc_nmaster, set_layout, set_mfact};
+use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up_press};
+use crate::layouts::{cycle_layout, inc_nmaster, set_layout, set_mfact};
 use crate::monitor::{focus_mon, follow_mon};
-use crate::mouse::{drag_tag, draw_window, move_mouse, moveresize, resize_mouse};
-use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
+use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse};
+use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    desktop_set, follow_tag, follow_view, last_view, move_left, move_right, name_tag, quit,
-    reset_name_tag, shift_view, swap_tags, tag, tag_mon, tag_to_left, tag_to_right,
-    toggle_fullscreen_overview, toggle_overview, toggle_tag, toggle_view, view, view_to_left,
-    view_to_right, win_view,
+    desktop_set, follow_tag, follow_view, last_view, move_left, move_right, quit, shift_view,
+    swap_tags, tag, tag_mon, tag_to_left, tag_to_right, toggle_fullscreen_overview,
+    toggle_overview, toggle_tag, toggle_view, view, view_to_left, view_to_right, win_view,
 };
 use crate::toggles::{
-    alt_tab_free, hide_window, redraw_win, set_border_width, toggle_alt_tag, toggle_animated,
-    toggle_double_draw, toggle_focus_follows_float_mouse, toggle_focus_follows_mouse,
-    toggle_locked, toggle_prefix, toggle_show_tags, toggle_sticky, unhide_all,
+    alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
+    toggle_prefix, toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{Arg, Key};
 use crate::util::spawn;
@@ -190,147 +186,147 @@ const MSCA: u32 = MODKEY | SHIFT | CONTROL | MOD1;
 pub fn get_keys() -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         // --- Resize focused tiled window with keyboard ---
-        key!(MA, XK_j => key_resize, i:0),
-        key!(MA, XK_k => key_resize, i:1),
-        key!(MA, XK_l => key_resize, i:2),
-        key!(MA, XK_h => key_resize, i:3),
+        key!(MA, XK_J => key_resize, i:0),
+        key!(MA, XK_K => key_resize, i:1),
+        key!(MA, XK_L => key_resize, i:2),
+        key!(MA, XK_H => key_resize, i:3),
         // --- Layout / master factor ---
-        key!(MODKEY, XK_i => inc_nmaster, i:1),
-        key!(MODKEY, XK_d => inc_nmaster, i:-1),
-        key!(MODKEY, XK_h => set_mfact,   f:-0.05),
-        key!(MODKEY, XK_l => set_mfact,   f:0.05),
+        key!(MODKEY, XK_I => inc_nmaster, i:1),
+        key!(MODKEY, XK_D => inc_nmaster, i:-1),
+        key!(MODKEY, XK_H => set_mfact,   f:-0.05),
+        key!(MODKEY, XK_L => set_mfact,   f:0.05),
         // --- Layout selection ---
-        key!(MODKEY,    XK_t => set_layout, v:0), // tile
-        key!(MODKEY,    XK_c => set_layout, v:1), // grid
-        key!(MODKEY,    XK_f => set_layout, v:2), // float
-        key!(MODKEY,    XK_m => set_layout, v:3), // monocle
-        key!(MODKEY,    XK_p => set_layout),
-        key!(MC,        XK_comma  => cycle_layout, i:-1),
-        key!(MC,        XK_period => cycle_layout, i:1),
+        key!(MODKEY,    XK_T => set_layout, v:0), // tile
+        key!(MODKEY,    XK_C => set_layout, v:1), // grid
+        key!(MODKEY,    XK_F => set_layout, v:2), // float
+        key!(MODKEY,    XK_M => set_layout, v:3), // monocle
+        key!(MODKEY,    XK_P => set_layout),
+        key!(MC,        XK_COMMA  => cycle_layout, i:-1),
+        key!(MC,        XK_PERIOD => cycle_layout, i:1),
         // --- Focus movement ---
-        key!(MODKEY, XK_j    => focus_stack, i:1),
-        key!(MODKEY, XK_k    => focus_stack, i:-1),
-        key!(MODKEY, XK_Down => down_key,    i:1),
-        key!(MODKEY, XK_Up   => up_key,      i:-1),
-        key!(MS,     XK_Down => down_press),
-        key!(MS,     XK_Up   => up_press),
+        key!(MODKEY, XK_J    => focus_stack, i:1),
+        key!(MODKEY, XK_K    => focus_stack, i:-1),
+        key!(MODKEY, XK_DOWN => down_key,    i:1),
+        key!(MODKEY, XK_UP   => up_key,      i:-1),
+        key!(MS,     XK_DOWN => down_press),
+        key!(MS,     XK_UP   => up_press),
         // --- Stack order ---
-        key!(MC, XK_j => push_down),
-        key!(MC, XK_k => push_up),
+        key!(MC, XK_J => push_down),
+        key!(MC, XK_K => push_up),
         // --- Directional focus ---
-        key!(MC, XK_Left  => direction_focus, ui:3),
-        key!(MC, XK_Right => direction_focus, ui:1),
-        key!(MC, XK_Up    => direction_focus, ui:0),
-        key!(MC, XK_Down  => direction_focus, ui:2),
+        key!(MC, XK_LEFT  => direction_focus, ui:3),
+        key!(MC, XK_RIGHT => direction_focus, ui:1),
+        key!(MC, XK_UP    => direction_focus, ui:0),
+        key!(MC, XK_DOWN  => direction_focus, ui:2),
         // --- Tag navigation ---
-        key!(MODKEY,  XK_Tab     => last_view),
-        key!(MS,      XK_Tab     => focus_last_client),
-        key!(MA,      XK_Tab     => follow_view),
-        key!(MODKEY,  XK_Left    => anim_left),
-        key!(MODKEY,  XK_Right   => anim_right),
-        key!(MA,      XK_Left    => move_left),
-        key!(MA,      XK_Right   => move_right),
-        key!(MS,      XK_Left    => tag_to_left),
-        key!(MS,      XK_Right   => tag_to_right),
-        key!(MSC,     XK_Right   => shift_view, i:1),
-        key!(MSC,     XK_Left    => shift_view, i:-1),
+        key!(MODKEY,  XK_TAB     => last_view),
+        key!(MS,      XK_TAB     => focus_last_client),
+        key!(MA,      XK_TAB     => follow_view),
+        key!(MODKEY,  XK_LEFT    => anim_left),
+        key!(MODKEY,  XK_RIGHT   => anim_right),
+        key!(MA,      XK_LEFT    => move_left),
+        key!(MA,      XK_RIGHT   => move_right),
+        key!(MS,      XK_LEFT    => tag_to_left),
+        key!(MS,      XK_RIGHT   => tag_to_right),
+        key!(MSC,     XK_RIGHT   => shift_view, i:1),
+        key!(MSC,     XK_LEFT    => shift_view, i:-1),
         key!(MODKEY,  XK_0       => view,  ui:!0),
         key!(MS,      XK_0       => tag,   ui:!0),
-        key!(MODKEY,  XK_o       => win_view),
+        key!(MODKEY,  XK_O       => win_view),
         // --- Monitor focus ---
-        key!(MODKEY, XK_comma  => focus_mon,  i:-1),
-        key!(MODKEY, XK_period => focus_mon,  i:1),
-        key!(MS,     XK_comma  => tag_mon,    i:-1),
-        key!(MS,     XK_period => tag_mon,    i:1),
-        key!(MA,     XK_comma  => follow_mon, i:-1),
-        key!(MA,     XK_period => follow_mon, i:1),
-        key!(MSCA,   XK_period => desktop_set),
+        key!(MODKEY, XK_COMMA  => focus_mon,  i:-1),
+        key!(MODKEY, XK_PERIOD => focus_mon,  i:1),
+        key!(MS,     XK_COMMA  => tag_mon,    i:-1),
+        key!(MS,     XK_PERIOD => tag_mon,    i:1),
+        key!(MA,     XK_COMMA  => follow_mon, i:-1),
+        key!(MA,     XK_PERIOD => follow_mon, i:1),
+        key!(MSCA,   XK_PERIOD => desktop_set),
         // --- Float / window management ---
-        key!(MS,   XK_Return => zoom),
-        key!(MC,   XK_d      => distribute_clients),
-        key!(MS,   XK_d      => draw_window),
-        key!(MA,   XK_w      => center_window),
-        key!(MS,   XK_w      => warp_to_focus),
-        key!(MS,   XK_j      => moveresize, i:0),
-        key!(MS,   XK_k      => moveresize, i:1),
-        key!(MS,   XK_l      => moveresize, i:2),
-        key!(MS,   XK_h      => moveresize, i:3),
-        key!(MS,   XK_m      => move_mouse),
-        key!(MA,   XK_m      => resize_mouse),
+        key!(MS,   XK_RETURN => zoom),
+        key!(MC,   XK_D      => distribute_clients),
+        key!(MS,   XK_D      => draw_window),
+        key!(MA,   XK_W      => center_window),
+        key!(MS,   XK_W      => warp_to_focus),
+        key!(MS,   XK_J      => moveresize, i:0),
+        key!(MS,   XK_K      => moveresize, i:1),
+        key!(MS,   XK_L      => moveresize, i:2),
+        key!(MS,   XK_H      => moveresize, i:3),
+        key!(MS,   XK_M      => move_mouse),
+        key!(MA,   XK_M      => resize_mouse),
         // --- Overview / skippy ---
-        key!(MODKEY, XK_e  => toggle_overview,           ui:!0),
-        key!(MS,     XK_e  => toggle_fullscreen_overview, ui:!0),
-        key!(MC,     XK_e  => spawn Cmd::InstantSkippy),
+        key!(MODKEY, XK_E  => toggle_overview,            ui:!0),
+        key!(MS,     XK_E  => toggle_fullscreen_overview, ui:!0),
+        key!(MC,     XK_E  => spawn Cmd::InstantSkippy),
         // --- Overlays ---
-        key!(MODKEY, XK_w  => set_overlay),
-        key!(MC,     XK_w  => create_overlay),
+        key!(MODKEY, XK_W  => set_overlay),
+        key!(MC,     XK_W  => create_overlay),
         // --- Scratchpad ---
-        key!(MODKEY, XK_s  => scratchpad_toggle, v:Cmd::Default as usize),
-        key!(MS,     XK_s  => scratchpad_make,   v:Cmd::Default as usize),
+        key!(MODKEY, XK_S  => scratchpad_toggle, v:Cmd::Default as usize),
+        key!(MS,     XK_S  => scratchpad_make,   v:Cmd::Default as usize),
         // --- Toggles ---
-        key!(MODKEY, XK_b  => toggle_bar),
-        key!(MS,     XK_f  => toggle_fake_fullscreen),
-        key!(MC,     XK_f  => temp_fullscreen),
-        key!(MC,     XK_s  => toggle_sticky),
-        key!(MA,     XK_s  => toggle_alt_tag,  ui:2),
-        key!(MSA,    XK_s  => toggle_animated, ui:2),
-        key!(MSC,    XK_s  => toggle_show_tags, ui:2),
-        key!(MSA,    XK_d  => toggle_double_draw),
-        key!(MS,     XK_space => space_toggle),
-        key!(MSCA,   XK_Tab   => alt_tab_free),
-        key!(MC,     XK_r     => redraw_win),
+        key!(MODKEY, XK_B  => toggle_bar),
+        key!(MS,     XK_F  => toggle_fake_fullscreen),
+        key!(MC,     XK_F  => temp_fullscreen),
+        key!(MC,     XK_S  => toggle_sticky),
+        key!(MA,     XK_S  => toggle_alt_tag,   ui:2),
+        key!(MSA,    XK_S  => toggle_animated,  ui:2),
+        key!(MSC,    XK_S  => toggle_show_tags, ui:2),
+        key!(MSA,    XK_D  => toggle_double_draw),
+        key!(MS,     XK_SPACE => space_toggle),
+        key!(MSCA,   XK_TAB   => alt_tab_free),
+        key!(MC,     XK_R     => redraw_win),
         // --- Hiding ---
-        key!(MC,  XK_h => hide_window),
-        key!(MCA, XK_h => unhide_all),
+        key!(MC,  XK_H => hide_window),
+        key!(MCA, XK_H => unhide_all),
         // --- Close / quit ---
-        key!(MODKEY, XK_q   => shut_kill),
+        key!(MODKEY, XK_Q   => shut_kill),
         key!(MOD1,   XK_F4  => kill_client),
-        key!(MSC,    XK_q   => quit),
-        // --- Misc keys ---
+        key!(MSC,    XK_Q   => quit),
+        // --- Misc ---
         key!(MODKEY,  XK_F1 => spawn Cmd::Help),
         key!(MODKEY,  XK_F2 => toggle_prefix),
         // --- Launchers ---
-        key!(MODKEY,      XK_Return         => spawn Cmd::Term),
-        key!(MODKEY,      XK_space          => spawn Cmd::Smart),
-        key!(MC,          XK_space          => spawn Cmd::InstantMenu),
-        key!(MS,          XK_v              => spawn Cmd::ClipMenu),
-        key!(MODKEY,      XK_minus          => spawn Cmd::InstantMenuSt),
-        key!(MODKEY,      XK_v              => spawn Cmd::QuickMenu),
-        key!(MODKEY,      XK_a              => spawn Cmd::InstantAssist),
-        key!(MS,          XK_a              => spawn Cmd::InstantRepeat),
-        key!(MC,          XK_i              => spawn Cmd::InstantPacman),
-        key!(MS,          XK_i              => spawn Cmd::InstantShare),
-        key!(MODKEY,      XK_n              => spawn Cmd::Nautilus),
-        key!(MODKEY,      XK_r              => spawn Cmd::Yazi),
-        key!(MODKEY,      XK_y              => spawn Cmd::Panther),
-        key!(MODKEY,      XK_g              => spawn Cmd::Notify),
-        key!(MODKEY,      XK_x              => spawn Cmd::InstantSwitch),
-        key!(MOD1,        XK_Tab            => spawn Cmd::ISwitch),
-        key!(MODKEY,      XK_dead_circumflex => spawn Cmd::CaretInstantSwitch),
-        key!(MA,          XK_f              => spawn Cmd::Search),
-        key!(MA,          XK_space          => spawn Cmd::KeyLayoutSwitch),
-        key!(MCA,         XK_l              => spawn Cmd::LangSwitch),
-        key!(MC,          XK_l              => spawn Cmd::Slock),
-        key!(MSC,         XK_l              => spawn Cmd::OneKeyLock),
-        key!(MC,          XK_q              => spawn Cmd::InstantShutdown),
-        key!(MS,          XK_Escape         => spawn Cmd::SystemMonitor),
-        key!(MC,          XK_c              => spawn Cmd::ControlCenter),
-        key!(MS,          XK_p              => spawn Cmd::Display),
+        key!(MODKEY, XK_RETURN          => spawn Cmd::Term),
+        key!(MODKEY, XK_SPACE           => spawn Cmd::Smart),
+        key!(MC,     XK_SPACE           => spawn Cmd::InstantMenu),
+        key!(MS,     XK_V               => spawn Cmd::ClipMenu),
+        key!(MODKEY, XK_MINUS           => spawn Cmd::InstantMenuSt),
+        key!(MODKEY, XK_V               => spawn Cmd::QuickMenu),
+        key!(MODKEY, XK_A               => spawn Cmd::InstantAssist),
+        key!(MS,     XK_A               => spawn Cmd::InstantRepeat),
+        key!(MC,     XK_I               => spawn Cmd::InstantPacman),
+        key!(MS,     XK_I               => spawn Cmd::InstantShare),
+        key!(MODKEY, XK_N               => spawn Cmd::Nautilus),
+        key!(MODKEY, XK_R               => spawn Cmd::Yazi),
+        key!(MODKEY, XK_Y               => spawn Cmd::Panther),
+        key!(MODKEY, XK_G               => spawn Cmd::Notify),
+        key!(MODKEY, XK_X               => spawn Cmd::InstantSwitch),
+        key!(MOD1,   XK_TAB             => spawn Cmd::ISwitch),
+        key!(MODKEY, XK_DEAD_CIRCUMFLEX => spawn Cmd::CaretInstantSwitch),
+        key!(MA,     XK_F               => spawn Cmd::Search),
+        key!(MA,     XK_SPACE           => spawn Cmd::KeyLayoutSwitch),
+        key!(MCA,    XK_L               => spawn Cmd::LangSwitch),
+        key!(MC,     XK_L               => spawn Cmd::Slock),
+        key!(MSC,    XK_L               => spawn Cmd::OneKeyLock),
+        key!(MC,     XK_Q               => spawn Cmd::InstantShutdown),
+        key!(MS,     XK_ESCAPE          => spawn Cmd::SystemMonitor),
+        key!(MC,     XK_C               => spawn Cmd::ControlCenter),
+        key!(MS,     XK_P               => spawn Cmd::Display),
         // --- Screenshot ---
-        key!(MODKEY, XK_Print  => spawn Cmd::Scrot),
-        key!(MS,     XK_Print  => spawn Cmd::FScrot),
-        key!(MC,     XK_Print  => spawn Cmd::ClipScrot),
-        key!(MA,     XK_Print  => spawn Cmd::FClipScrot),
+        key!(MODKEY, XK_PRINT => spawn Cmd::Scrot),
+        key!(MS,     XK_PRINT => spawn Cmd::FScrot),
+        key!(MC,     XK_PRINT => spawn Cmd::ClipScrot),
+        key!(MA,     XK_PRINT => spawn Cmd::FClipScrot),
         // --- Media / hardware keys (no modifier) ---
-        key!(0, XF86XK_MonBrightnessUp    => spawn Cmd::UpBright),
-        key!(0, XF86XK_MonBrightnessDown  => spawn Cmd::DownBright),
-        key!(0, XF86XK_AudioLowerVolume   => spawn Cmd::DownVol),
-        key!(0, XF86XK_AudioMute          => spawn Cmd::MuteVol),
-        key!(0, XF86XK_AudioRaiseVolume   => spawn Cmd::UpVol),
-        key!(0, XF86XK_AudioPlay          => spawn Cmd::PlayerPause),
-        key!(0, XF86XK_AudioPause         => spawn Cmd::PlayerPause),
-        key!(0, XF86XK_AudioNext          => spawn Cmd::PlayerNext),
-        key!(0, XF86XK_AudioPrev          => spawn Cmd::PlayerPrevious),
+        key!(0, XF86XK_MON_BRIGHTNESS_UP   => spawn Cmd::UpBright),
+        key!(0, XF86XK_MON_BRIGHTNESS_DOWN => spawn Cmd::DownBright),
+        key!(0, XF86XK_AUDIO_LOWER_VOLUME  => spawn Cmd::DownVol),
+        key!(0, XF86XK_AUDIO_MUTE          => spawn Cmd::MuteVol),
+        key!(0, XF86XK_AUDIO_RAISE_VOLUME  => spawn Cmd::UpVol),
+        key!(0, XF86XK_AUDIO_PLAY          => spawn Cmd::PlayerPause),
+        key!(0, XF86XK_AUDIO_PAUSE         => spawn Cmd::PlayerPause),
+        key!(0, XF86XK_AUDIO_NEXT          => spawn Cmd::PlayerNext),
+        key!(0, XF86XK_AUDIO_PREV          => spawn Cmd::PlayerPrevious),
     ];
 
     // Tag keys 1–9
@@ -351,30 +347,30 @@ pub fn get_keys() -> Vec<Key> {
 pub fn get_dkeys() -> Vec<Key> {
     vec![
         // --- Launchers ---
-        key!(0, XK_Return => spawn Cmd::Term),
-        key!(0, XK_r      => spawn Cmd::Yazi),
-        key!(0, XK_e      => spawn Cmd::Editor),
-        key!(0, XK_n      => spawn Cmd::Nautilus),
-        key!(0, XK_space  => spawn Cmd::Panther),
-        key!(0, XK_f      => spawn Cmd::Firefox),
-        key!(0, XK_a      => spawn Cmd::InstantAssist),
+        key!(0, XK_RETURN => spawn Cmd::Term),
+        key!(0, XK_R      => spawn Cmd::Yazi),
+        key!(0, XK_E      => spawn Cmd::Editor),
+        key!(0, XK_N      => spawn Cmd::Nautilus),
+        key!(0, XK_SPACE  => spawn Cmd::Panther),
+        key!(0, XK_F      => spawn Cmd::Firefox),
+        key!(0, XK_A      => spawn Cmd::InstantAssist),
         key!(0, XK_F1     => spawn Cmd::Help),
-        key!(0, XK_m      => spawn Cmd::Spoticli),
-        key!(0, XK_c      => spawn Cmd::Code),
-        key!(0, XK_y      => spawn Cmd::Smart),
-        key!(0, XK_v      => spawn Cmd::QuickMenu),
-        key!(0, XK_Tab    => spawn Cmd::CaretInstantSwitch),
-        key!(0, XK_plus   => spawn Cmd::UpVol),
-        key!(0, XK_minus  => spawn Cmd::DownVol),
+        key!(0, XK_M      => spawn Cmd::Spoticli),
+        key!(0, XK_C      => spawn Cmd::Code),
+        key!(0, XK_Y      => spawn Cmd::Smart),
+        key!(0, XK_V      => spawn Cmd::QuickMenu),
+        key!(0, XK_TAB    => spawn Cmd::CaretInstantSwitch),
+        key!(0, XK_PLUS   => spawn Cmd::UpVol),
+        key!(0, XK_MINUS  => spawn Cmd::DownVol),
         // --- Tag navigation ---
-        key!(0, XK_h     => view_to_left),
-        key!(0, XK_l     => view_to_right),
-        key!(0, XK_Left  => view_to_left),
-        key!(0, XK_Right => view_to_right),
-        key!(0, XK_k     => shift_view, i:1),
-        key!(0, XK_j     => shift_view, i:-1),
-        key!(0, XK_Up    => shift_view, i:1),
-        key!(0, XK_Down  => shift_view, i:-1),
+        key!(0, XK_H     => view_to_left),
+        key!(0, XK_L     => view_to_right),
+        key!(0, XK_LEFT  => view_to_left),
+        key!(0, XK_RIGHT => view_to_right),
+        key!(0, XK_K     => shift_view, i:1),
+        key!(0, XK_J     => shift_view, i:-1),
+        key!(0, XK_UP    => shift_view, i:1),
+        key!(0, XK_DOWN  => shift_view, i:-1),
         // --- Direct tag jump (1-9) ---
         key!(0, XK_1 => view, ui:1 << 0),
         key!(0, XK_2 => view, ui:1 << 1),

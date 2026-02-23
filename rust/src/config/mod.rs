@@ -32,12 +32,18 @@ pub mod xcommands;
 
 // Re-export the most commonly referenced items at the crate::config level
 // so callers don't need to dig into sub-modules unless they want to.
+// `unused_imports` is suppressed because these are *public API re-exports* —
+// not all of them are referenced inside this crate, but they are part of the
+// intended surface area for anyone reading or extending the config.
+#[allow(unused_imports)]
 pub use appearance::{
     border_color, close_button_color, get_border_colors, get_close_button_colors,
     get_status_bar_colors, get_tag_colors, get_window_colors, tag_color, window_color, ColIndex,
     SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin,
 };
+#[allow(unused_imports)]
 pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};
+#[allow(unused_imports)]
 pub use keybindings::{get_dkeys, get_keys, CONTROL, MOD1, MODKEY, SHIFT};
 
 // ---------------------------------------------------------------------------
@@ -45,7 +51,8 @@ pub use keybindings::{get_dkeys, get_keys, CONTROL, MOD1, MODKEY, SHIFT};
 // ---------------------------------------------------------------------------
 
 /// Shared constants referenced by multiple sub-modules.
-pub(super) mod mod_consts {
+#[allow(dead_code)]
+pub mod mod_consts {
     use crate::types::MAX_TAGS;
 
     /// Default border width in pixels.
@@ -58,6 +65,7 @@ pub(super) mod mod_consts {
     pub const TAGMASK: u32 = (1 << MAX_TAGS) - 1;
 }
 
+#[allow(unused_imports)]
 pub use mod_consts::{BORDERPX, MAX_TAGLEN, TAGMASK};
 
 // ---------------------------------------------------------------------------

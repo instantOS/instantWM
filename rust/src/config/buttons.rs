@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Mouse button bindings.
 //!
 //! # Macro syntax

@@ -21,24 +21,20 @@ mod state;
 /// integer constants by name.
 pub use snap::{SNAP_LEFT, SNAP_RIGHT, SNAP_TOP};
 
-/// `SnapDir` is the typed direction enum; `change_snap` / `reset_snap` / `apply_snap`
-/// / `apply_snap_mut` are used internally and by keyboard.rs.
-pub use snap::{apply_snap, apply_snap_mut, change_snap, reset_snap, SnapDir};
+/// `SnapDir` is the typed direction enum; `change_snap` / `reset_snap` are used by keyboard.rs.
+pub use snap::{change_snap, reset_snap, SnapDir};
 
 // ── state ────────────────────────────────────────────────────────────────────
 
 /// Geometry / border-width persistence, and floating-state transitions.
 pub use state::{
-    change_floating_win, restore_border_width_win, restore_floating_win, save_bw_win,
-    save_floating_win, set_floating, set_tiled, temp_fullscreen, toggle_floating,
+    restore_border_width_win, save_bw_win, save_floating_win, temp_fullscreen, toggle_floating,
 };
 
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{
-    center_window, downscale_client, key_resize, moveresize, scale_client_win, upscale_client,
-};
+pub use movement::{center_window, key_resize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
@@ -46,7 +42,3 @@ pub use movement::{
 pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
-/// Stateless query helpers used throughout the module (and occasionally
-/// by external callers).
-pub use helpers::{apply_size, check_floating, has_tiling_layout, visible_client};

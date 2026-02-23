@@ -46,11 +46,9 @@ pub mod warp;
 
 // ── warp ──────────────────────────────────────────────────────────────────────
 
-pub use warp::{force_warp, reset_cursor, warp, warp_cursor_to_client_win, warp_to_focus};
+pub use warp::reset_cursor;
 
 // ── grab ──────────────────────────────────────────────────────────────────────
-
-pub use grab::grab_buttons;
 
 // ── drag ──────────────────────────────────────────────────────────────────────
 
@@ -61,20 +59,13 @@ pub use drag::{
 
 // ── resize ────────────────────────────────────────────────────────────────────
 
-pub use resize::{
-    force_resize_mouse, hover_resize_mouse, is_in_resize_border, resize_aspect_mouse, resize_mouse,
-};
+pub use resize::{force_resize_mouse, resize_aspect_mouse, resize_mouse};
 
 // ── slop ─────────────────────────────────────────────────────────────────────
 
-pub use slop::{
-    apply_window_resize, apply_window_resize_rect, draw_window, is_valid_window_size,
-    is_valid_window_size_rect, parse_slop_output,
-};
+pub use slop::draw_window;
 
 // ── monitor ───────────────────────────────────────────────────────────────────
-
-pub use monitor::{handle_client_monitor_switch, handle_monitor_switch};
 
 // ── get_cursor_client ─────────────────────────────────────────────────────────
 

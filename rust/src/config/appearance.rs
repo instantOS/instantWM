@@ -1,5 +1,9 @@
 //! Visual appearance: color palette, color schemes, and font configuration.
 //!
+//! Many items here are public API for user customization and are not all
+//! referenced within the crate itself — dead_code is suppressed intentionally.
+#![allow(dead_code)]
+//!
 //! # Color system
 //!
 //! Each UI element has a "scheme" — a triplet of (foreground, background, detail/accent).
