@@ -1,6 +1,6 @@
 *.o
 instantwm
-tags
+./tags
 .envrc
 shell.nix
 .nvimlog
@@ -9,3 +9,4 @@ cscope.out
 compile_commands.json
 .cache/clangd/index
 /rust/target
+/tags

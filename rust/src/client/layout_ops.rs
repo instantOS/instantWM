@@ -6,15 +6,12 @@
 //!
 //! # Contents
 //!
-//! * [`zoom`]             – promote the selected window to the master slot (or,
-//!                          if it already is master, promote the next tiled
-//!                          window instead).
-//! * [`change_floating`]  – clear the snap position when a floating window is
-//!                          moved/resized manually.
+//! * [`zoom`] – promote the selected window to the master slot (or, if it
+//!              already is master, promote the next tiled window instead).
 
 use crate::client::list::{next_tiled, pop};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::types::{Arg, SnapPosition};
+use crate::globals::{get_globals, get_x11};
+use crate::types::Arg;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -86,24 +83,4 @@ pub fn zoom(_arg: &Arg) {
     }
 
     pop(win);
-}
-
-// ---------------------------------------------------------------------------
-// change_floating
-// ---------------------------------------------------------------------------
-
-/// Clear the snap position of `win` when it is moved or resized manually.
-///
-/// When a floating window is snapped to a screen edge or corner, its
-/// [`SnapPosition`] records which edge it is snapped to.  As soon as the user
-/// drags or resizes the window we clear that flag so the snap decoration is no
-/// longer drawn and the window is no longer treated as snapped by the floating
-/// helpers.
-pub fn change_floating(win: Window) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        if client.snapstatus != SnapPosition::None {
-            client.snapstatus = SnapPosition::None;
-        }
-    }
 }

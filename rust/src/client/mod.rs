@@ -19,7 +19,7 @@
 //! | `state`         | X11 property read/write (titles, rules, hints, lists)       |
 //! | `kill`          | Graceful and forceful window termination                    |
 //! | `lifecycle`     | manage() / unmanage() – adopting and releasing windows      |
-//! | `layout_ops`    | zoom (promote to master), change_floating (clear snap)      |
+//! | `layout_ops`    | zoom (promote to master)                                    |
 
 // ---------------------------------------------------------------------------
 // Sub-modules
