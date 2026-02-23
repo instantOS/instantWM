@@ -100,6 +100,7 @@ pub use ffi::{
     XDefaultVisual,
     XDrawArc,
     XDrawRectangle,
+    XEventsQueued,
     XFillArc,
     XFillPolygon,
     XFillRectangle,

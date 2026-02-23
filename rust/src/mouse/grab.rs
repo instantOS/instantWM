@@ -70,7 +70,10 @@ pub fn grab_pointer(
         cursor,
         CURRENT_TIME,
     )
-    .ok()?;
+    .ok()?
+    .reply()
+    .ok()
+    .filter(|r| r.status == GrabStatus::SUCCESS)?;
 
     Some(conn)
 }
@@ -107,7 +110,10 @@ pub fn grab_pointer_with_keys(
         cursor,
         CURRENT_TIME,
     )
-    .ok()?;
+    .ok()?
+    .reply()
+    .ok()
+    .filter(|r| r.status == GrabStatus::SUCCESS)?;
 
     Some(conn)
 }

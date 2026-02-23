@@ -1,3 +1,4 @@
+use crate::client::is_hidden;
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
 use crate::globals::get_globals;
@@ -248,7 +249,7 @@ fn get_window_scheme(c: &Client, is_hover: bool) -> Option<ColorScheme> {
     if c.issticky {
         return schemes.get(SchemeWin::Sticky as usize).cloned();
     }
-    if c.tags == 0 {
+    if is_hidden(c.win) {
         return schemes.get(SchemeWin::Minimized as usize).cloned();
     }
     schemes.get(SchemeWin::Normal as usize).cloned()
@@ -386,17 +387,23 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
         let mut remainder = total_width % n;
         let mut x = x;
 
-        let clients: Vec<Client> = g.clients.values().cloned().collect();
-        for c in clients.iter() {
-            let mon_match = c.mon_id == Some(g.selmon);
-            if !mon_match {
-                continue;
-            }
+        // Walk the intrusive linked list so the draw order matches the order
+        // used by classify_bar_click — HashMap iteration order is non-deterministic
+        // and would cause click regions to map to the wrong window titles.
+        // Use the passed monitor `m` (not selmon) so that secondary monitors
+        // draw their own clients, not the selected monitor's clients.
+        let mut current = m.clients;
+        while let Some(c_win) = current {
+            let Some(c) = g.clients.get(&c_win) else {
+                break;
+            };
+            current = c.next;
 
             if !c.is_visible() {
                 continue;
             }
 
+            let c = c.clone();
             let this_width = if remainder > 0 {
                 remainder -= 1;
                 each_width + 1
@@ -404,7 +411,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
                 each_width
             };
 
-            draw_window_title(m, c, x, this_width, bh);
+            draw_window_title(m, &c, x, this_width, bh);
             x += this_width;
         }
         return;

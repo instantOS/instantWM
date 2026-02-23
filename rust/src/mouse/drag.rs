@@ -28,6 +28,7 @@ use crate::floating::{
 };
 use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut};
+use crate::layouts::restack;
 use crate::monitor::{arrange, is_current_layout_tiling};
 use crate::tags::{
     follow_tag, get_tag_at_x, get_tag_width, move_left, move_right, tag, tag_all, tag_to_left,
@@ -743,12 +744,13 @@ pub fn window_title_mouse_handler(arg: &Arg) {
         return;
     };
 
-    let was_focused = get_globals()
-        .monitors
-        .get(get_globals().selmon)
-        .and_then(|m| m.sel)
-        == Some(win);
-    let was_hidden = crate::client::is_hidden(win);
+    // Snapshot was_focused and was_hidden before grabbing the pointer so that
+    // the state reflects the moment the user clicked, not after any side-effects.
+    let (was_focused, was_hidden) = {
+        let g = get_globals();
+        let sel = g.monitors.get(g.selmon).and_then(|m| m.sel);
+        (sel == Some(win), crate::client::is_hidden(win))
+    };
 
     let Some(conn) = grab_pointer(0) else { return };
     let Some((start_x, start_y)) = get_root_ptr() else {
@@ -773,7 +775,9 @@ pub fn window_title_mouse_handler(arg: &Arg) {
                     || (m.event_y as i32 - start_y).abs() > DRAG_THRESHOLD
                 {
                     ungrab(conn);
-                    crate::client::show(win);
+                    if was_hidden {
+                        crate::client::show(win);
+                    }
                     focus(Some(win));
                     warp_into(win);
                     move_mouse(&Arg::default());
@@ -787,12 +791,23 @@ pub fn window_title_mouse_handler(arg: &Arg) {
     // Only reached on ButtonRelease (click, not drag).
     ungrab(conn);
     if was_hidden {
+        // Unminimize: show the window, focus it, and restack.
         crate::client::show(win);
         focus(Some(win));
+        let g = get_globals_mut();
+        if let Some(mon) = g.monitors.get_mut(g.selmon) {
+            restack(mon);
+        }
     } else if was_focused {
+        // Already focused: minimize it.
         crate::client::hide(win);
     } else {
+        // Unfocused: focus it and restack.
         focus(Some(win));
+        let g = get_globals_mut();
+        if let Some(mon) = g.monitors.get_mut(g.selmon) {
+            restack(mon);
+        }
     }
 }
 

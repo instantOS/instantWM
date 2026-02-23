@@ -7,6 +7,10 @@ use std::time::Duration;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::Window;
 
+// QueuedAlready = 0: count events already in the client-side queue without
+// making a round-trip to the X server (matches C's XEventsQueued(dpy, QueuedAlready)).
+const QUEUED_ALREADY: std::os::raw::c_int = 0;
+
 pub fn ease_out_cubic(t: f64) -> f64 {
     let t = t - 1.0;
     1.0 + t * t * t
@@ -31,25 +35,15 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         }
     };
 
-    let (target_w, target_h) = if w != 0 { (w, h) } else { (start_w, start_h) };
+    // w=0 / h=0 is a sentinel meaning "keep the current size".
+    // Resolve to the actual target dimensions immediately so every subsequent
+    // calculation (clamping, dist_moved, recursion guard) works on real values.
+    let target_w = if w != 0 { w } else { start_w };
+    let target_h = if h != 0 { h } else { start_h };
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();
-        if !globals.animated {
-            if target_w > 0 && target_h > 0 {
-                resize_client_rect(
-                    win,
-                    &Rect {
-                        x,
-                        y,
-                        w: target_w,
-                        h: target_h,
-                    },
-                );
-            }
-            return;
-        }
 
         let (mon_mw, mon_mh) = {
             if let Some(mon_id) = globals.clients.get(&win).and_then(|c| c.mon_id) {
@@ -63,6 +57,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             }
         };
 
+        // Clamp to monitor bounds (matching C behaviour).
         let actual_w = if target_w > mon_mw - 2 * 2 {
             mon_mw - 2 * 2
         } else {
@@ -74,22 +69,100 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             target_h
         };
 
+        // Skip animation entirely when globals.animated is false.
+        if !globals.animated {
+            if actual_w > 0 && actual_h > 0 {
+                resize_client_rect(
+                    win,
+                    &Rect {
+                        x,
+                        y,
+                        w: actual_w,
+                        h: actual_h,
+                    },
+                );
+            }
+            return;
+        }
+
+        // Count pending X events and halve frames if there are many queued,
+        // mirroring the C code's `frames / 1 + (XEventsQueued(...) > 50)` and
+        // the "no animation if > 100 events" short-circuit.
+        let queued_events = unsafe {
+            crate::drw::XEventsQueued(
+                globals.xlibdisplay.0 as *mut std::os::raw::c_void,
+                QUEUED_ALREADY,
+            )
+        };
+        let effective_frames = if queued_events > 100 {
+            0
+        } else if queued_events > 50 {
+            (frames / 2).max(1)
+        } else {
+            frames
+        };
+
+        if effective_frames == 0 {
+            // Too many queued events — skip animation, just place the window.
+            if actual_w > 0 && actual_h > 0 {
+                if reset_pos != 0 {
+                    resize_client_rect(
+                        win,
+                        &Rect {
+                            x: start_x,
+                            y: start_y,
+                            w: actual_w,
+                            h: actual_h,
+                        },
+                    );
+                } else {
+                    resize_client_rect(
+                        win,
+                        &Rect {
+                            x,
+                            y,
+                            w: actual_w,
+                            h: actual_h,
+                        },
+                    );
+                }
+            }
+            return;
+        }
+
         let dx = (x - start_x) as f64;
         let dy = (y - start_y) as f64;
 
+        // Use the resolved actual_w / actual_h for the distance check so that
+        // passing w=0 (keep size) never falsely triggers the "size changed" branch.
         let dist_moved = (start_x - x).abs() > 10
             || (start_y - y).abs() > 10
-            || (w - start_w).abs() > 10
-            || (h - start_h).abs() > 10;
+            || (actual_w - start_w).abs() > 10
+            || (actual_h - start_h).abs() > 10;
 
         if dist_moved {
             if x == start_x && y == start_y && start_w < mon_mw - 50 {
+                // Pure size change with no position delta: animate by moving the
+                // window to its new corner position, then snapping back.
+                // Only recurse when there is a real size difference to animate;
+                // if actual_w == start_w and actual_h == start_h we already know
+                // dist_moved was false for position, so skip to avoid infinite recursion.
                 let delta_w = actual_w - start_w;
                 let delta_h = actual_h - start_h;
-                animate_client(win, start_x + delta_w, start_y + delta_h, 0, 0, frames, 0);
+                if delta_w != 0 || delta_h != 0 {
+                    animate_client(
+                        win,
+                        start_x + delta_w,
+                        start_y + delta_h,
+                        actual_w,
+                        actual_h,
+                        effective_frames,
+                        0,
+                    );
+                }
             } else {
-                for time in 1..=frames {
-                    let progress = ease_out_cubic(time as f64 / frames as f64);
+                for time in 1..=effective_frames {
+                    let progress = ease_out_cubic(time as f64 / effective_frames as f64);
                     let step_x = (start_x as f64 + progress * dx) as i32;
                     let step_y = (start_y as f64 + progress * dy) as i32;
 
@@ -111,8 +184,8 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             }
         }
 
-        if reset_pos != 0 {
-            if actual_w > 0 && actual_h > 0 {
+        if actual_w > 0 && actual_h > 0 {
+            if reset_pos != 0 {
                 resize_client_rect(
                     win,
                     &Rect {
@@ -122,17 +195,17 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                         h: actual_h,
                     },
                 );
+            } else {
+                resize_client_rect(
+                    win,
+                    &Rect {
+                        x,
+                        y,
+                        w: actual_w,
+                        h: actual_h,
+                    },
+                );
             }
-        } else if actual_w > 0 && actual_h > 0 {
-            resize_client_rect(
-                win,
-                &Rect {
-                    x,
-                    y,
-                    w: actual_w,
-                    h: actual_h,
-                },
-            );
         }
     }
 }

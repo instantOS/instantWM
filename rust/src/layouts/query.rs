@@ -42,12 +42,17 @@ pub fn client_count() -> i32 {
         None => return 0,
     };
 
+    // Match C's clientcountmon which uses nexttiled — hidden (iconic) clients
+    // are excluded so the count reflects only clients that are actually tiled
+    // and on-screen.  Using is_hidden here avoids inflating clientcount when
+    // windows are minimized, which would break single-client border-stripping
+    // and layout frame-rate heuristics.
     let mut count = 0;
     let mut c_win = mon.clients;
     while let Some(win) = c_win {
         match g.clients.get(&win) {
             Some(c) => {
-                if c.is_visible() && !c.isfloating {
+                if c.is_visible() && !c.isfloating && !crate::client::is_hidden(win) {
                     count += 1;
                 }
                 c_win = c.next;
@@ -70,11 +75,14 @@ pub fn client_count_mon(m: &Monitor) -> i32 {
     let g = get_globals();
     let mut count = 0;
 
+    // Mirror C's nexttiled-based clientcountmon: skip floating AND hidden clients
+    // so that m.clientcount only reflects windows that the tiling layout will
+    // actually place on screen.
     let mut c_win = m.clients;
     while let Some(win) = c_win {
         match g.clients.get(&win) {
             Some(c) => {
-                if c.is_visible() && !c.isfloating {
+                if c.is_visible() && !c.isfloating && !crate::client::is_hidden(win) {
                     count += 1;
                 }
                 c_win = c.next;

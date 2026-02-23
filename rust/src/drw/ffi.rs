@@ -257,6 +257,7 @@ extern "C" {
 
     pub fn XSync(display: *mut libc::c_void, discard: c_int);
     pub fn XFlush(display: *mut libc::c_void);
+    pub fn XEventsQueued(display: *mut libc::c_void, mode: c_int) -> c_int;
 
     pub fn XSetLineAttributes(
         display: *mut libc::c_void,
