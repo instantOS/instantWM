@@ -1,6 +1,7 @@
 use crate::client::next_tiled;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
+pub use crate::layouts::query::{client_count, client_count_mon};
 use crate::monitor::arrange;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
@@ -56,61 +57,6 @@ pub fn prev_c(c_win: Window, include_floating: bool) -> Option<Window> {
     }
 
     r
-}
-
-//TODO: do other layouts need this as well? Should this be used in more places?
-pub fn client_count_mon(mon: &Monitor) -> i32 {
-    let globals = get_globals();
-    let mut n = 0;
-    let mut current = next_tiled(mon.clients);
-
-    while let Some(win) = current {
-        n += 1;
-        if let Some(c) = globals.clients.get(&win) {
-            current = next_tiled(c.next);
-        } else {
-            break;
-        }
-    }
-
-    n
-}
-
-pub fn client_count() -> i32 {
-    let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(globals.selmon) {
-        return client_count_mon(mon);
-    }
-    0
-}
-
-pub fn all_client_count() -> i32 {
-    let globals = get_globals();
-
-    if globals.monitors.is_empty() {
-        return 0;
-    }
-
-    let mon = match globals.monitors.get(globals.selmon) {
-        Some(m) => m,
-        None => return 0,
-    };
-
-    let mut n = 0;
-    let mut current = mon.clients;
-
-    while let Some(win) = current {
-        if let Some(c) = globals.clients.get(&win) {
-            if Some(win) != mon.overlay {
-                n += 1;
-            }
-            current = c.next;
-        } else {
-            break;
-        }
-    }
-
-    n
 }
 
 pub fn client_distance(c1: &Client, c2: &Client) -> i32 {

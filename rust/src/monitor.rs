@@ -12,22 +12,6 @@ use x11rb::protocol::xproto::Window;
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
-//TODO: this is a bad name. Document function, rename to something more descriptive
-fn tagmon(arg: &Arg) {
-    if let Some(target) = dir_to_mon(arg.i) {
-        let g = get_globals();
-        let mon_id = g.selmon;
-        if let Some(client) = g.monitors.get(mon_id).and_then(|_m| {
-            g.clients
-                .values()
-                .find(|c| c.mon_id == Some(mon_id))
-                .map(|c| c.win)
-        }) {
-            send_mon(client, target);
-        }
-    }
-}
-
 pub fn create_monitor() -> Monitor {
     eprintln!(
         "TRACE: create_monitor - start (WARNING: this version calls get_globals, may deadlock)"
@@ -344,7 +328,7 @@ pub fn follow_mon(arg: &Arg) {
         None => return,
     };
 
-    tagmon(arg);
+    crate::tags::tag_mon(arg);
 
     {
         let g = get_globals_mut();

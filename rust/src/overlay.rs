@@ -19,64 +19,31 @@ pub const OVERLAY_LEFT: i32 = 3;
 pub fn overlay_exists() -> bool {
     let globals = get_globals();
 
-    if globals.monitors.is_empty() {
-        return false;
-    }
-
-    let selmon_overlay = globals.monitors.get(globals.selmon).and_then(|m| m.overlay);
-
-    let overlay_win = match selmon_overlay {
+    let overlay_win = match globals.monitors.get(globals.selmon).and_then(|m| m.overlay) {
         Some(w) => w,
         None => return false,
     };
 
-    //TODO: is there an existing util to do this?
-    for mon in &globals.monitors {
-        let mut current = mon.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = globals.clients.get(&c_win) {
-                if c_win == overlay_win {
-                    return true;
-                }
-                current = c.next;
-            } else {
-                break;
-            }
-        }
-    }
-
-    false
+    globals.clients.contains_key(&overlay_win)
 }
 
 pub fn create_overlay(_arg: &Arg) {
-    //TODO: are there utils to do this?
-    let (sel_win, sel_overlay, sel_fullscreen) = {
-        let globals = get_globals();
-
-        if globals.monitors.is_empty() {
-            return;
-        }
-
-        let mon = match globals.monitors.get(globals.selmon) {
-            Some(m) => m,
-            None => return,
-        };
-
-        let sel = match mon.sel {
-            Some(w) => w,
-            None => return,
-        };
-
-        let is_fullscreen = globals
-            .clients
-            .get(&sel)
-            .map(|c| c.is_fullscreen && !c.isfakefullscreen)
-            .unwrap_or(false);
-
-        let _is_overlay = mon.overlay == Some(sel);
-
-        (sel, mon.overlay, is_fullscreen)
+    let globals = get_globals();
+    let mon = match globals.monitors.get(globals.selmon) {
+        Some(m) => m,
+        None => return,
     };
+    let sel_win = match mon.sel {
+        Some(w) => w,
+        None => return,
+    };
+    let sel_overlay = mon.overlay;
+    let sel_fullscreen = globals
+        .clients
+        .get(&sel_win)
+        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .unwrap_or(false);
+    drop(globals);
 
     if sel_fullscreen {
         crate::floating::temp_fullscreen(&Arg::default());

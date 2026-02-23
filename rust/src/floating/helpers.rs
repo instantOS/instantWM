@@ -50,21 +50,15 @@ pub fn check_floating(win: Window) -> bool {
 /// A client is visible when it belongs to the currently selected tagset of
 /// the monitor it is assigned to.
 ///
-/// Note: this mirrors `Client::is_visible` but operates by window ID rather
-/// than by reference, which is convenient for call-sites that only hold a
-/// `Window` handle.
-//
-// TODO: consider deduplicating with `Client::is_visible` in types.rs.
+/// This is a window-ID convenience wrapper around [`Client::is_visible`] for
+/// call-sites that only hold a `Window` handle rather than a `&Client`.
 pub fn visible_client(win: Window) -> bool {
     let globals = get_globals();
-    if let Some(client) = globals.clients.get(&win) {
-        for (idx, mon) in globals.monitors.iter().enumerate() {
-            if (client.tags & mon.tagset[mon.seltags as usize]) != 0 && client.mon_id == Some(idx) {
-                return true;
-            }
-        }
-    }
-    false
+    globals
+        .clients
+        .get(&win)
+        .map(|c| c.is_visible())
+        .unwrap_or(false)
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
