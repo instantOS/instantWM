@@ -26,7 +26,8 @@ use crate::floating::restore_border_width_win;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{
-    client_count, client_count_mon, get_current_layout, get_current_layout_idx, is_overview_layout,
+    client_count, client_count_mon, get_current_layout, get_current_layout_idx, is_monocle_layout,
+    is_overview_layout, is_tiling_layout,
 };
 use crate::types::{Arg, Monitor, MonitorId, Rect};
 use crate::util::max;
@@ -110,103 +111,92 @@ pub fn arrange(mon_id: Option<MonitorId>) {
 /// [`Layout`]: crate::types::Layout
 pub fn arrange_monitor(m: &mut Monitor) {
     m.clientcount = client_count_mon(m) as u32;
+    apply_border_widths(m);
+    run_layout(m);
+    place_overlay(m);
+}
 
-    // ── border-width pass ─────────────────────────────────────────────────
+/// Adjust border widths for all tiled clients on `m`.
+///
+/// Borders are stripped (set to 0) when a client would fill the entire tiling
+/// area anyway — specifically when it is the only tiled client in a tiling
+/// layout, or when the active layout is monocle.  In all other cases the
+/// previously-saved border width is restored.
+///
+/// The layout flags (`is_tiling`, `is_monocle`) are read once before the loop
+/// because every client on this monitor shares the same layout.
+fn apply_border_widths(m: &Monitor) {
+    // Read layout properties once — all tiled clients on this monitor share them.
+    let is_tiling = is_tiling_layout(m);
+    let is_monocle = is_monocle_layout(m);
+    let clientcount = m.clientcount;
+
     let mut c_win = next_tiled(m.clients);
     while let Some(win) = c_win {
-        // Snapshot the fields we need before any mutable borrows.
-        let (is_floating, is_fullscreen, mon_clientcount, is_tiling, is_monocle) = {
+        let (is_floating, is_fullscreen) = {
             let g = get_globals();
             match g.clients.get(&win) {
-                None => {
-                    c_win = None;
-                    continue;
-                }
-                Some(c) => {
-                    let is_floating = c.isfloating;
-                    let is_fullscreen = c.is_fullscreen;
-
-                    // Walk to the client's own monitor to read its layout.
-                    let (clientcount, is_tiling, is_monocle) =
-                        match c.mon_id.and_then(|mid| g.monitors.get(mid)) {
-                            Some(mon) => {
-                                let idx = get_current_layout_idx(mon).unwrap_or(0);
-                                let layout = g.layouts.get(idx);
-                                (
-                                    mon.clientcount,
-                                    layout.is_none_or(|l| l.is_tiling()),
-                                    layout.is_some_and(|l| l.is_monocle()),
-                                )
-                            }
-                            None => (0, true, false),
-                        };
-
-                    (
-                        is_floating,
-                        is_fullscreen,
-                        clientcount,
-                        is_tiling,
-                        is_monocle,
-                    )
-                }
+                None => break,
+                Some(c) => (c.isfloating, c.is_fullscreen),
             }
         };
 
         // Strip border when a single tiled client fills the whole area, or
         // in monocle mode (where all clients fill the area anyway).
         let strip_border =
-            !is_floating && !is_fullscreen && ((mon_clientcount == 1 && is_tiling) || is_monocle);
+            !is_floating && !is_fullscreen && ((clientcount == 1 && is_tiling) || is_monocle);
 
         if strip_border {
             save_border_width(win);
-            let g = get_globals_mut();
-            if let Some(c) = g.clients.get_mut(&win) {
+            if let Some(c) = get_globals_mut().clients.get_mut(&win) {
                 c.border_width = 0;
             }
         } else {
             restore_border_width_win(win);
         }
 
-        // Advance to the next tiled client.
-        let g = get_globals();
-        c_win = g
+        c_win = get_globals()
             .clients
             .get(&win)
-            .and_then(|c| next_tiled(c.next))
-            .or(None);
-        // `next_tiled` already returns `None` at end-of-list; the `or(None)`
-        // is just for clarity.
+            .and_then(|c| next_tiled(c.next));
     }
+}
 
-    // ── run the active layout algorithm ───────────────────────────────────
-    let layout = get_current_layout(m);
-    layout.arrange(m);
+/// Run the active layout algorithm for `m`.
+fn run_layout(m: &mut Monitor) {
+    get_current_layout(m).arrange(m);
+}
 
-    // ── overlay window placement ──────────────────────────────────────────
-    // The overlay (e.g. the instantOS overlay panel) always occupies the full
-    // monitor, inset only by the bar height when the bar is visible.
+/// Place the overlay window (if any) so it fills the monitor work area.
+///
+/// The overlay always occupies the full monitor rect, inset only by the bar
+/// height when the bar is visible.  `work_rect` already encodes this, so we
+/// derive the overlay geometry directly from it rather than re-computing the
+/// bar offset manually.
+fn place_overlay(m: &mut Monitor) {
+    let overlay_win = match m.overlay {
+        Some(w) => w,
+        None => return,
+    };
+
     let g = get_globals_mut();
-    let showbar = crate::monitor::get_current_showbar(m, &g.tags);
-
-    if let Some(overlay_win) = m.overlay {
-        if let Some(c) = g.clients.get_mut(&overlay_win) {
-            let bw = c.border_width;
-            if c.isfloating {
-                save_floating(overlay_win);
-            }
-            let bar_offset = if showbar { g.bh } else { 0 };
-            resize(
-                overlay_win,
-                &Rect {
-                    x: m.monitor_rect.x,
-                    y: m.monitor_rect.y + bar_offset,
-                    w: m.monitor_rect.w - 2 * bw,
-                    h: m.monitor_rect.h - bar_offset - 2 * bw,
-                },
-                false,
-            );
+    if let Some(c) = g.clients.get_mut(&overlay_win) {
+        if c.isfloating {
+            save_floating(overlay_win);
         }
     }
+
+    // work_rect already has y nudged past the bar (top-bar) and h reduced by
+    // bh, so no manual bar-offset arithmetic is needed here.
+    let bw = g.clients.get(&overlay_win).map_or(0, |c| c.border_width);
+    let geo = Rect {
+        x: m.work_rect.x,
+        y: m.work_rect.y,
+        w: m.work_rect.w - 2 * bw,
+        h: m.work_rect.h - 2 * bw,
+    };
+
+    resize(overlay_win, &geo, false);
 }
 
 // ── restack ───────────────────────────────────────────────────────────────────
