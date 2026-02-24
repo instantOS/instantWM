@@ -309,6 +309,29 @@ pub fn handle_floating_resize_hover() -> bool {
     false
 }
 
+pub fn handle_sidebar_hover(root_x: i32, root_y: i32) -> bool {
+    let globals = get_globals();
+    let Some(mon) = globals.monitors.get(globals.selmon) else {
+        return false;
+    };
+
+    if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
+        if get_globals().altcursor == AltCursor::None && root_y > get_globals().bh + 60 {
+            set_root_cursor(8);
+            get_globals_mut().altcursor = AltCursor::Sidebar;
+        }
+        return true;
+    }
+
+    if get_globals().altcursor == AltCursor::Sidebar {
+        get_globals_mut().altcursor = AltCursor::None;
+        set_root_cursor(0);
+        return true;
+    }
+
+    false
+}
+
 // ── Modal hover-resize loop ──────────────────────────────────────────────────
 
 /// Enter a modal grab loop that waits for a click while the cursor is in the

@@ -25,6 +25,7 @@ use crate::bar::bar_position_at_x;
 use crate::bar::draw_bar;
 use crate::bar::BarPosition;
 use crate::client::resize;
+use crate::config::commands::Cmd;
 use crate::floating::{
     change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir, SNAP_LEFT, SNAP_RIGHT,
     SNAP_TOP,
@@ -672,8 +673,17 @@ pub fn gesture_mouse(_arg: &Arg) {
                     .map(|m| m.monitor_rect.h / 30)
                     .unwrap_or(0);
                 if (last_y - m.event_y as i32).abs() > threshold {
-                    crate::util::spawn(&Arg::default());
-                    last_y = m.event_y as i32;
+                    let event_y = m.event_y as i32;
+                    let cmd = if event_y < last_y {
+                        Cmd::UpVol
+                    } else {
+                        Cmd::DownVol
+                    };
+                    crate::util::spawn(&Arg {
+                        v: Some(cmd as usize),
+                        ..Arg::default()
+                    });
+                    last_y = event_y;
                 }
             }
             _ => {}
