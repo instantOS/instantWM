@@ -88,8 +88,8 @@ pub fn grid(m: &mut Monitor) {
         rows as u32
     };
 
-    let ch = m.work_rect.h / if rows > 0 { rows } else { 1 };
-    let cw = m.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
+    let cell_height = m.work_rect.h / if rows > 0 { rows } else { 1 };
+    let cell_width = m.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
 
     // ── place each client ─────────────────────────────────────────────────
     let mut i: i32 = 0;
@@ -103,18 +103,18 @@ pub fn grid(m: &mut Monitor) {
                 .unwrap_or((0, None))
         };
 
-        let cx = m.work_rect.x + (i / rows) * cw;
-        let cy = m.work_rect.y + (i % rows) * ch;
+        let cell_x = m.work_rect.x + (i / rows) * cell_width;
+        let cell_y = m.work_rect.y + (i % rows) * cell_height;
 
         // Last cell in a row or column gets the remaining pixels to avoid gaps
         // caused by integer division rounding.
         let extra_h = if (i + 1) % rows == 0 {
-            m.work_rect.h - ch * rows
+            m.work_rect.h - cell_height * rows
         } else {
             0
         };
         let extra_w = if i >= rows * (cols as i32 - 1) {
-            m.work_rect.w - cw * cols as i32
+            m.work_rect.w - cell_width * cols as i32
         } else {
             0
         };
@@ -122,10 +122,10 @@ pub fn grid(m: &mut Monitor) {
         animate_client_rect(
             win,
             &Rect {
-                x: cx,
-                y: cy,
-                w: cw - 2 * border_width + extra_w,
-                h: ch - 2 * border_width + extra_h,
+                x: cell_x,
+                y: cell_y,
+                w: cell_width - 2 * border_width + extra_w,
+                h: cell_height - 2 * border_width + extra_h,
             },
             framecount,
             0,
@@ -176,7 +176,7 @@ pub fn horizgrid(m: &mut Monitor) {
         } else {
             n / cols
         };
-        let cw = m.work_rect.w / cols as i32;
+        let cell_width = m.work_rect.w / cols as i32;
 
         // Walk forward to the first client belonging to this column.
         let mut c_win = next_tiled(m.clients);
@@ -201,13 +201,13 @@ pub fn horizgrid(m: &mut Monitor) {
                         .unwrap_or((0, None))
                 };
 
-                let ch = m.work_rect.h / cn as i32;
-                let cx = m.work_rect.x + col as i32 * cw;
-                let cy = m.work_rect.y + row as i32 * ch;
+                let cell_height = m.work_rect.h / cn as i32;
+                let cell_x = m.work_rect.x + col as i32 * cell_width;
+                let cell_y = m.work_rect.y + row as i32 * cell_height;
 
                 // Last column gets any remaining width from rounding.
                 let extra_w = if col == cols - 1 {
-                    m.work_rect.w - cols as i32 * cw + cw
+                    m.work_rect.w - cols as i32 * cell_width + cell_width
                 } else {
                     0
                 };
@@ -215,10 +215,10 @@ pub fn horizgrid(m: &mut Monitor) {
                 animate_client_rect(
                     win,
                     &Rect {
-                        x: cx,
-                        y: cy,
-                        w: cw - 2 * border_width + extra_w,
-                        h: ch - 2 * border_width,
+                        x: cell_x,
+                        y: cell_y,
+                        w: cell_width - 2 * border_width + extra_w,
+                        h: cell_height - 2 * border_width,
                     },
                     framecount,
                     0,

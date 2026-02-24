@@ -223,19 +223,19 @@ fn play_slide_animation(win: x11rb::protocol::xproto::Window, dir: Direction) {
         let _ = conn.flush();
     }
 
-    let (mon_w, c_x, c_y) = {
+    let (mon_w, client_x, client_y) = {
         let globals = get_globals();
         let mon_w = globals
             .monitors
             .get(globals.selmon)
             .map(|m| m.monitor_rect.w)
             .unwrap_or(0);
-        let (cx, cy) = globals
+        let (client_x, client_y) = globals
             .clients
             .get(&win)
             .map(|c| (c.geo.x, c.geo.y))
             .unwrap_or((0, 0));
-        (mon_w, cx, cy)
+        (mon_w, client_x, client_y)
     };
 
     // Slide 10% of the monitor width in the direction of travel.
@@ -250,8 +250,8 @@ fn play_slide_animation(win: x11rb::protocol::xproto::Window, dir: Direction) {
     crate::animation::animate_client_rect(
         win,
         &Rect {
-            x: c_x + anim_dx,
-            y: c_y,
+            x: client_x + anim_dx,
+            y: client_y,
             w: 0,
             h: 0,
         },

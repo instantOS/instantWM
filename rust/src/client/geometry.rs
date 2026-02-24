@@ -48,20 +48,27 @@ pub fn client_height(c: &Client) -> i32 {
 pub fn resize(win: Window, rect: &Rect, interact: bool) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        let mut nx = rect.x;
-        let mut ny = rect.y;
-        let mut nw = rect.w;
-        let mut nh = rect.h;
-        let changed = apply_size_hints(client, &mut nx, &mut ny, &mut nw, &mut nh, interact);
+        let mut new_x = rect.x;
+        let mut new_y = rect.y;
+        let mut new_width = rect.w;
+        let mut new_height = rect.h;
+        let changed = apply_size_hints(
+            client,
+            &mut new_x,
+            &mut new_y,
+            &mut new_width,
+            &mut new_height,
+            interact,
+        );
         let client_count = globals.clients.len();
         if changed || client_count == 1 {
             resize_client_rect(
                 win,
                 &Rect {
-                    x: nx,
-                    y: ny,
-                    w: nw,
-                    h: nh,
+                    x: new_x,
+                    y: new_y,
+                    w: new_width,
+                    h: new_height,
                 },
             );
         }

@@ -57,8 +57,8 @@ fn refresh_rate() -> u32 {
     }
 }
 
-/// Snap `nx`/`ny` to the work-area edges of `selmon` when within `globals.snap` pixels.
-fn snap_to_monitor_edges(c: &Client, nx: &mut i32, ny: &mut i32) {
+/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.snap` pixels.
+fn snap_to_monitor_edges(c: &Client, new_x: &mut i32, new_y: &mut i32) {
     let globals = get_globals();
     let snap = globals.snap;
     let Some(mon) = globals.monitors.get(globals.selmon) else {
@@ -68,16 +68,16 @@ fn snap_to_monitor_edges(c: &Client, nx: &mut i32, ny: &mut i32) {
     let width = c.geo.total_width(c.border_width);
     let height = c.geo.total_height(c.border_width);
 
-    if (mon.work_rect.x - *nx).abs() < snap {
-        *nx = mon.work_rect.x;
-    } else if (mon.work_rect.x + mon.work_rect.w - (*nx + width)).abs() < snap {
-        *nx = mon.work_rect.x + mon.work_rect.w - width;
+    if (mon.work_rect.x - *new_x).abs() < snap {
+        *new_x = mon.work_rect.x;
+    } else if (mon.work_rect.x + mon.work_rect.w - (*new_x + width)).abs() < snap {
+        *new_x = mon.work_rect.x + mon.work_rect.w - width;
     }
 
-    if (mon.work_rect.y - *ny).abs() < snap {
-        *ny = mon.work_rect.y;
-    } else if (mon.work_rect.y + mon.work_rect.h - (*ny + height)).abs() < snap {
-        *ny = mon.work_rect.y + mon.work_rect.h - height;
+    if (mon.work_rect.y - *new_y).abs() < snap {
+        *new_y = mon.work_rect.y;
+    } else if (mon.work_rect.y + mon.work_rect.h - (*new_y + height)).abs() < snap {
+        *new_y = mon.work_rect.y + mon.work_rect.h - height;
     }
 }
 
@@ -123,8 +123,8 @@ struct MoveState {
     start_x: i32,
     start_y: i32,
     /// Window position at drag start.
-    ocx: i32,
-    ocy: i32,
+    grab_start_x: i32,
+    grab_start_y: i32,
     /// Whether the cursor was over the bar on the previous motion event.
     cursor_on_bar: bool,
     /// The last edge-snap zone the cursor was in (`SNAP_*` constant or `0`).
@@ -272,8 +272,8 @@ fn on_motion(
     state.cursor_on_bar = update_bar_hover(root_x, root_y, state);
     state.edge_snap_indicator = check_edge_snap(root_x, root_y);
 
-    let mut nx = state.ocx + (event_x - state.start_x);
-    let mut ny = state.ocy + (event_y - state.start_y);
+    let mut new_x = state.grab_start_x + (event_x - state.start_x);
+    let mut new_y = state.grab_start_y + (event_y - state.start_y);
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
@@ -282,8 +282,8 @@ fn on_motion(
             .monitors
             .get(globals.selmon)
             .map(|m| m.by + globals.bh)
-            .unwrap_or(ny);
-        ny = bar_bottom;
+            .unwrap_or(new_y);
+        new_y = bar_bottom;
     }
 
     let (snap, has_tiling) = {
@@ -320,7 +320,7 @@ fn on_motion(
     // as the only geometry change the compositor ever sees.
     if !is_floating
         && has_tiling
-        && ((nx - drag_geo.x).abs() > snap || (ny - drag_geo.y).abs() > snap)
+        && ((new_x - drag_geo.x).abs() > snap || (new_y - drag_geo.y).abs() > snap)
     {
         // Resolve float dimensions before touching state.
         // If the window was never floating, float_geo will be zeroed; fall
@@ -347,20 +347,20 @@ fn on_motion(
         arrange(Some(get_globals().selmon));
 
         // The window's width is changing (tiled → floating), so the old
-        // `ocx`-based `nx` would leave the window at x≈0 while the cursor
+        // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
         // is far to the right.  Re-center the floating window under the
         // cursor and rebase the drag anchors so subsequent motion events
         // track correctly from the new position.
-        nx = event_x - float_w / 2;
-        state.ocx = nx;
-        state.ocy = ny;
+        new_x = event_x - float_w / 2;
+        state.grab_start_x = new_x;
+        state.grab_start_y = new_y;
         state.start_x = event_x;
         state.start_y = event_y;
 
         is_floating = true;
         drag_geo = Rect {
-            x: nx,
-            y: ny,
+            x: new_x,
+            y: new_y,
             w: float_w,
             h: float_h,
         };
@@ -370,14 +370,14 @@ fn on_motion(
         {
             let globals = get_globals();
             if let Some(client) = globals.clients.get(&win) {
-                snap_to_monitor_edges(client, &mut nx, &mut ny);
+                snap_to_monitor_edges(client, &mut new_x, &mut new_y);
             }
         }
         resize(
             win,
             &Rect {
-                x: nx,
-                y: ny,
+                x: new_x,
+                y: new_y,
                 w: drag_geo.w,
                 h: drag_geo.h,
             },
@@ -406,13 +406,13 @@ fn clear_bar_hover() {
 /// * Dropped on a tag button → `set_tiled()` + `tag()`
 /// * Dropped elsewhere on bar, window floating → `set_tiled()`
 ///
-/// # `ocx`
+/// # `grab_start_x`
 ///
 /// The window's x position at the moment the drag started.  When the window
 /// was floating, this is the true pre-drag origin; we save it into
 /// `float_geo.x` so that un-tiling later restores the window to where it was
 /// before the user dragged it onto the bar.
-fn handle_bar_drop(win: Window, ocx: i32) {
+fn handle_bar_drop(win: Window, grab_start_x: i32) {
     let Some((ptr_x, ptr_y)) = get_root_ptr() else {
         return;
     };
@@ -476,7 +476,7 @@ fn handle_bar_drop(win: Window, ocx: i32) {
     // set_tiled saved `client.geo` (the drag position near
     // the bar) into `float_geo`.  That's wrong — we want the position the
     // window occupied *before* the drag started:
-    //   x = ocx  (original window x at grab time)
+    //   x = grab_start_x  (original window x at grab time)
     //   y = just below the bar
     if was_floating {
         let bar_bottom = {
@@ -488,7 +488,7 @@ fn handle_bar_drop(win: Window, ocx: i32) {
                 .unwrap_or(0)
         };
         if let Some(client) = get_globals_mut().clients.get_mut(&win) {
-            client.float_geo.x = ocx;
+            client.float_geo.x = grab_start_x;
             client.float_geo.y = bar_bottom;
         }
     }
@@ -588,7 +588,7 @@ pub fn move_mouse(_arg: &Arg) {
         return;
     };
 
-    let (ocx, ocy) = get_globals()
+    let (grab_start_x, grab_start_y) = get_globals()
         .clients
         .get(&win)
         .map(|c| (c.geo.x, c.geo.y))
@@ -597,8 +597,8 @@ pub fn move_mouse(_arg: &Arg) {
     let mut state = MoveState {
         start_x,
         start_y,
-        ocx,
-        ocy,
+        grab_start_x,
+        grab_start_y,
         cursor_on_bar: false,
         edge_snap_indicator: 0,
     };
@@ -633,7 +633,7 @@ pub fn move_mouse(_arg: &Arg) {
     clear_bar_hover();
 
     if !apply_edge_drop(win, state.edge_snap_indicator) {
-        handle_bar_drop(win, state.ocx);
+        handle_bar_drop(win, state.grab_start_x);
         handle_client_monitor_switch(win);
     }
 }

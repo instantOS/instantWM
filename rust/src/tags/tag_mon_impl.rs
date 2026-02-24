@@ -87,10 +87,17 @@ pub fn tag_mon(arg: &Arg) {
 /// Move a floating client to `target_id`, preserving its relative position.
 fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::MonitorId) {
     // Snapshot source geometry before send_mon() transfers ownership.
-    let (c_x, c_y, src_mx, src_my, src_ww, src_wh) = {
+    let (
+        client_x,
+        client_y,
+        src_monitor_x,
+        src_monitor_y,
+        src_work_area_width,
+        src_work_area_height,
+    ) = {
         let globals = get_globals();
 
-        let (mx, my, ww, wh) = globals
+        let (monitor_x, monitor_y, work_area_width, work_area_height) = globals
             .monitors
             .get(globals.selmon)
             .map(|m| {
@@ -103,30 +110,37 @@ fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::
             })
             .unwrap_or((0, 0, 0, 0));
 
-        let (cx, cy) = globals
+        let (win_x, win_y) = globals
             .clients
             .get(&win)
             .map(|c| (c.geo.x, c.geo.y))
             .unwrap_or((0, 0));
 
-        (cx, cy, mx, my, ww, wh)
+        (
+            win_x,
+            win_y,
+            monitor_x,
+            monitor_y,
+            work_area_width,
+            work_area_height,
+        )
     };
 
     // Fractional position on the source monitor (clamped to avoid division by
     // zero on degenerate monitors).
-    let xfact = if src_ww > 0 {
-        (c_x - src_mx) as f32 / src_ww as f32
+    let xfact = if src_work_area_width > 0 {
+        (client_x - src_monitor_x) as f32 / src_work_area_width as f32
     } else {
         0.0
     };
-    let yfact = if src_wh > 0 {
-        (c_y - src_my) as f32 / src_wh as f32
+    let yfact = if src_work_area_height > 0 {
+        (client_y - src_monitor_y) as f32 / src_work_area_height as f32
     } else {
         0.0
     };
 
     // Target monitor geometry.
-    let (tgt_mx, tgt_my, tgt_ww, tgt_wh) = {
+    let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = {
         let globals = get_globals();
         globals
             .monitors
@@ -149,8 +163,8 @@ fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::
     {
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
-            client.geo.x = tgt_mx + (tgt_ww as f32 * xfact) as i32;
-            client.geo.y = tgt_my + (tgt_wh as f32 * yfact) as i32;
+            client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
+            client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
         }
     }
 

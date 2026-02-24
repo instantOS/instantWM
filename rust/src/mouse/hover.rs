@@ -75,17 +75,17 @@ impl ResizeDirection {
 
 /// Determine which edge or corner the cursor is closest to, using the cursor's
 /// position *relative to the window* (win-local coordinates).
-pub fn get_resize_direction(w: i32, h: i32, nx: i32, ny: i32) -> ResizeDirection {
-    if ny > h / 2 {
+pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDirection {
+    if hit_y > h / 2 {
         // bottom half
-        if nx < w / 3 {
-            if ny < 2 * h / 3 {
+        if hit_x < w / 3 {
+            if hit_y < 2 * h / 3 {
                 ResizeDirection::Left
             } else {
                 ResizeDirection::BottomLeft
             }
-        } else if nx > 2 * w / 3 {
-            if ny < 2 * h / 3 {
+        } else if hit_x > 2 * w / 3 {
+            if hit_y < 2 * h / 3 {
                 ResizeDirection::Right
             } else {
                 ResizeDirection::BottomRight
@@ -95,14 +95,14 @@ pub fn get_resize_direction(w: i32, h: i32, nx: i32, ny: i32) -> ResizeDirection
         }
     } else {
         // top half
-        if nx < w / 3 {
-            if ny > h / 3 {
+        if hit_x < w / 3 {
+            if hit_y > h / 3 {
                 ResizeDirection::Left
             } else {
                 ResizeDirection::TopLeft
             }
-        } else if nx > 2 * w / 3 {
-            if ny > h / 3 {
+        } else if hit_x > 2 * w / 3 {
+            if hit_y > h / 3 {
                 ResizeDirection::Right
             } else {
                 ResizeDirection::TopRight
@@ -181,11 +181,13 @@ pub fn is_in_resize_border() -> bool {
     }
     let geo = c.geo;
 
-    // Need to drop globals before calling get_root_ptr (may re-borrow).
-    drop(globals);
-
-    let Some((px, py)) = get_root_ptr() else {
-        return false;
+    // Release the globals borrow before calling get_root_ptr (may re-borrow).
+    let (px, py) = {
+        let _ = globals;
+        let Some((px, py)) = get_root_ptr() else {
+            return false;
+        };
+        (px, py)
     };
 
     let globals = get_globals();

@@ -224,7 +224,7 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
     // Hover-resize: when the pointer enters the root window (i.e. leaves a
     // client) near a floating window, enter the modal hover-resize loop.
     // This must run regardless of the focus-follows-mouse setting.
-    {
+    let trigger_hover = {
         let globals = get_globals();
         let has_floating_sel = globals
             .monitors
@@ -241,12 +241,12 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
             })
             .unwrap_or(false);
 
-        let trigger_hover = (entering_root || entering_client.is_some()) && has_floating_sel;
-        if trigger_hover {
-            drop(globals);
-            if hover_resize_mouse() {
-                return;
-            }
+        (entering_root || entering_client.is_some()) && has_floating_sel
+    };
+
+    if trigger_hover {
+        if hover_resize_mouse() {
+            return;
         }
     }
 

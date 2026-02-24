@@ -82,7 +82,7 @@ pub fn deck(m: &mut Monitor) {
     };
 
     // ── place each client ─────────────────────────────────────────────────
-    let mut my: u32 = 0; // running y-offset inside master column
+    let mut master_column_offset: u32 = 0; // running y-offset inside master column
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
 
@@ -97,12 +97,13 @@ pub fn deck(m: &mut Monitor) {
 
         if i < m.nmaster as u32 {
             // ── master client — animated vertical split ───────────────────
-            let h = (m.work_rect.h - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
+            let h = (m.work_rect.h - master_column_offset as i32)
+                / (min(n, m.nmaster as u32) - i) as i32;
             resize(
                 win,
                 &Rect {
                     x: m.work_rect.x,
-                    y: m.work_rect.y + my as i32,
+                    y: m.work_rect.y + master_column_offset as i32,
                     w: mw as i32 - 2 * border_width,
                     h: h - 2 * border_width,
                 },
@@ -111,7 +112,7 @@ pub fn deck(m: &mut Monitor) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                my += client_height(c) as u32;
+                master_column_offset += client_height(c) as u32;
             }
         } else {
             // ── stack client — all overlap in the same rect ───────────────
@@ -179,7 +180,7 @@ pub fn bstack(m: &mut Monitor) {
     };
 
     // ── place each client ─────────────────────────────────────────────────
-    let mut mx: i32 = 0; // running x-offset inside master row
+    let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let mut tx: i32 = m.work_rect.x; // running x-offset inside stack row
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
@@ -195,11 +196,11 @@ pub fn bstack(m: &mut Monitor) {
 
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
-            let w = (m.work_rect.w - mx) / (min(n, m.nmaster as u32) - i) as i32;
+            let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client_rect(
                 win,
                 &Rect {
-                    x: m.work_rect.x + mx,
+                    x: m.work_rect.x + master_row_offset,
                     y: m.work_rect.y,
                     w: w - 2 * border_width,
                     h: mh - 2 * border_width,
@@ -210,7 +211,7 @@ pub fn bstack(m: &mut Monitor) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                mx += client_width(c);
+                master_row_offset += client_width(c);
             }
         } else {
             // ── stack client — column in the bottom row ───────────────────
@@ -287,7 +288,7 @@ pub fn bstackhoriz(m: &mut Monitor) {
     };
 
     // ── place each client ─────────────────────────────────────────────────
-    let mut mx: i32 = 0; // running x-offset inside master row
+    let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let tx: i32 = m.work_rect.x;
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
@@ -303,11 +304,11 @@ pub fn bstackhoriz(m: &mut Monitor) {
 
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
-            let w = (m.work_rect.w - mx) / (min(n, m.nmaster as u32) - i) as i32;
+            let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client_rect(
                 win,
                 &Rect {
-                    x: m.work_rect.x + mx,
+                    x: m.work_rect.x + master_row_offset,
                     y: m.work_rect.y,
                     w: w - 2 * border_width,
                     h: mh - 2 * border_width,
@@ -318,7 +319,7 @@ pub fn bstackhoriz(m: &mut Monitor) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                mx += client_width(c);
+                master_row_offset += client_width(c);
             }
         } else {
             // ── stack client — full-width horizontal row ──────────────────

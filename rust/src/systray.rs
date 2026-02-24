@@ -63,9 +63,16 @@ pub fn update_systray_icon_geom(icon_win: Window, w: i32, h: i32) {
 
         let mut x = client.geo.x;
         let mut y = client.geo.y;
-        let mut cw = client.geo.w;
-        let mut ch = client.geo.h;
-        let _ = apply_size_hints(client, &mut x, &mut y, &mut cw, &mut ch, false);
+        let mut client_width = client.geo.w;
+        let mut client_height = client.geo.h;
+        let _ = apply_size_hints(
+            client,
+            &mut x,
+            &mut y,
+            &mut client_width,
+            &mut client_height,
+            false,
+        );
 
         if client.geo.h > bh {
             if client.geo.w == client.geo.h {

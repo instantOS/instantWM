@@ -162,7 +162,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     let x11 = get_x11();
 
     if let Some(ref conn) = x11.conn {
-        let (isfloating, cw, ch) = get_globals()
+        let (isfloating, client_width, client_height) = get_globals()
             .clients
             .get(&w)
             .map(|c| (c.isfloating, c.geo.w, c.geo.h))
@@ -172,8 +172,8 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
         // border even if borderpx > 0.
         let border_width = if !isfloating
             && is_monocle
-            && cw > mon_monitor_rect.w - 30
-            && ch > mon_monitor_rect.h - 30 - bh
+            && client_width > mon_monitor_rect.w - 30
+            && client_height > mon_monitor_rect.h - 30 - bh
         {
             0
         } else {
@@ -301,7 +301,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // 12. Move the window off-screen initially, then arrange + map it.
     //     (Avoids a visible "flash" at (0,0) before the layout runs.)
     // -------------------------------------------------------------------------
-    let (sw, cx, cy, cw, ch) = {
+    let (screen_width, client_x, client_y, client_width, client_height) = {
         let globals = get_globals();
         globals
             .clients
@@ -322,10 +322,10 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
         let _ = conn.configure_window(
             w,
             &ConfigureWindowAux::new()
-                .x(cx + 2 * sw)
-                .y(cy)
-                .width(cw as u32)
-                .height(ch as u32),
+                .x(client_x + 2 * screen_width)
+                .y(client_y)
+                .width(client_width as u32)
+                .height(client_height as u32),
         );
         let _ = conn.flush();
     }

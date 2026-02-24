@@ -64,7 +64,7 @@ pub fn tile(m: &mut Monitor) {
     };
 
     // ── place each client ─────────────────────────────────────────────────
-    let mut my: u32 = 0; // running y-offset inside master column
+    let mut master_y_offset: u32 = 0; // running y-offset inside master column
     let mut ty: u32 = 0; // running y-offset inside stack  column
     let mut i: u32 = 0;
     let mut c_win = next_tiled(m.clients);
@@ -80,7 +80,8 @@ pub fn tile(m: &mut Monitor) {
 
         if i < m.nmaster as u32 {
             // ── master client ─────────────────────────────────────────────
-            let h = (m.work_rect.h - my as i32) / (min(n, m.nmaster as u32) - i) as i32;
+            let h =
+                (m.work_rect.h - master_y_offset as i32) / (min(n, m.nmaster as u32) - i) as i32;
 
             // Two-client special-case: no animation to avoid visual glitch.
             let frames = if n == 2 { 0 } else { framecount };
@@ -89,7 +90,7 @@ pub fn tile(m: &mut Monitor) {
                 win,
                 &Rect {
                     x: m.work_rect.x,
-                    y: m.work_rect.y + my as i32,
+                    y: m.work_rect.y + master_y_offset as i32,
                     w: mw - 2 * border_width,
                     h: h - 2 * border_width,
                 },
@@ -108,8 +109,8 @@ pub fn tile(m: &mut Monitor) {
 
             let g = get_globals();
             if let Some(c) = g.clients.get(&win) {
-                if my as i32 + client_height(c) < m.work_rect.h {
-                    my += client_height(c) as u32;
+                if master_y_offset as i32 + client_height(c) < m.work_rect.h {
+                    master_y_offset += client_height(c) as u32;
                 }
             }
         } else {

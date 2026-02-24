@@ -153,14 +153,20 @@ pub fn focus_direction(direction: Direction) {
         return;
     };
 
-    let (sx, sy) = source_client.geo.center();
+    let (source_center_x, source_center_y) = source_client.geo.center();
 
     let Some(mon) = globals.monitors.get(sel_mon_id) else {
         return;
     };
 
-    let candidates =
-        get_directional_candidates(mon.clients, &globals, source_win, sx, sy, direction);
+    let candidates = get_directional_candidates(
+        mon.clients,
+        &globals,
+        source_win,
+        source_center_x,
+        source_center_y,
+        direction,
+    );
 
     if let Some(target) = candidates {
         focus(Some(target));
@@ -173,8 +179,8 @@ fn get_directional_candidates(
     clients: Option<Window>,
     globals: &crate::globals::Globals,
     source_win: Window,
-    sx: i32,
-    sy: i32,
+    source_center_x: i32,
+    source_center_y: i32,
     direction: Direction,
 ) -> Option<Window> {
     let mut out_client: Option<Window> = None;
@@ -191,11 +197,25 @@ fn get_directional_candidates(
             continue;
         }
 
-        let cx = c.geo.x + c.geo.w / 2;
-        let cy = c.geo.y + c.geo.h / 2;
+        let center_x = c.geo.x + c.geo.w / 2;
+        let center_y = c.geo.y + c.geo.h / 2;
 
-        if is_client_in_direction(c_win, source_win, cx, cy, sx, sy, direction) {
-            let score = calculate_direction_score(cx, cy, sx, sy, direction);
+        if is_client_in_direction(
+            c_win,
+            source_win,
+            center_x,
+            center_y,
+            source_center_x,
+            source_center_y,
+            direction,
+        ) {
+            let score = calculate_direction_score(
+                center_x,
+                center_y,
+                source_center_x,
+                source_center_y,
+                direction,
+            );
             if score < min_score || min_score == 0 {
                 out_client = Some(c_win);
                 min_score = score;
@@ -212,10 +232,10 @@ fn get_directional_candidates(
 fn is_client_in_direction(
     c_win: Window,
     source_win: Window,
-    cx: i32,
-    cy: i32,
-    sx: i32,
-    sy: i32,
+    center_x: i32,
+    center_y: i32,
+    source_center_x: i32,
+    source_center_y: i32,
     direction: Direction,
 ) -> bool {
     // Can't focus on self
@@ -224,18 +244,24 @@ fn is_client_in_direction(
     }
 
     match direction {
-        Direction::Up => cy < sy,
-        Direction::Down => cy > sy,
-        Direction::Left => cx < sx,
-        Direction::Right => cx > sx,
+        Direction::Up => center_y < source_center_y,
+        Direction::Down => center_y > source_center_y,
+        Direction::Left => center_x < source_center_x,
+        Direction::Right => center_x > source_center_x,
     }
 }
 
 /// Calculate a score for how well a client matches the direction.
 /// Lower score = better match.
-fn calculate_direction_score(cx: i32, cy: i32, sx: i32, sy: i32, direction: Direction) -> i32 {
-    let dist_x = (sx - cx).abs();
-    let dist_y = (sy - cy).abs();
+fn calculate_direction_score(
+    center_x: i32,
+    center_y: i32,
+    source_center_x: i32,
+    source_center_y: i32,
+    direction: Direction,
+) -> i32 {
+    let dist_x = (source_center_x - center_x).abs();
+    let dist_y = (source_center_y - center_y).abs();
 
     match direction {
         Direction::Up | Direction::Down => {

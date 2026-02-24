@@ -64,8 +64,8 @@ pub fn moveresize(arg: &Arg) {
     ];
 
     let dir = arg.i.max(0).min(3) as usize;
-    let mut nx = geo.x + DELTAS[dir][0];
-    let mut ny = geo.y + DELTAS[dir][1];
+    let mut new_x = geo.x + DELTAS[dir][0];
+    let mut new_y = geo.y + DELTAS[dir][1];
 
     let mon_rect = {
         let globals = get_globals();
@@ -76,20 +76,20 @@ pub fn moveresize(arg: &Arg) {
     };
 
     // Clamp to monitor bounds.
-    nx = nx.max(mon_rect.x);
-    ny = ny.max(mon_rect.y);
-    if ny + geo.h > mon_rect.y + mon_rect.h {
-        ny = (mon_rect.h + mon_rect.y) - geo.h - border_width * 2;
+    new_x = new_x.max(mon_rect.x);
+    new_y = new_y.max(mon_rect.y);
+    if new_y + geo.h > mon_rect.y + mon_rect.h {
+        new_y = (mon_rect.h + mon_rect.y) - geo.h - border_width * 2;
     }
-    if nx + geo.w > mon_rect.x + mon_rect.w {
-        nx = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
+    if new_x + geo.w > mon_rect.x + mon_rect.w {
+        new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
     animate_client_rect(
         win,
         &Rect {
-            x: nx,
-            y: ny,
+            x: new_x,
+            y: new_y,
             w: geo.w,
             h: geo.h,
         },
@@ -112,7 +112,7 @@ pub fn moveresize(arg: &Arg) {
 /// | 2     | Wider (right)|
 /// | 3     | Narrower     |
 ///
-/// Any active snap is cancelled before resizing so the window reverts to free
+/// Anew_y active snap is cancelled before resizing so the window reverts to free
 /// floating, then the new size is applied immediately (no animation).
 pub fn key_resize(arg: &Arg) {
     let sel_win = get_sel_win();
