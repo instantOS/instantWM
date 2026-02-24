@@ -313,6 +313,95 @@ pub enum SnapPosition {
     Maximized,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeDirection {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+impl ResizeDirection {
+    pub fn cursor_index(self) -> usize {
+        match self {
+            Self::TopLeft => 8,
+            Self::Top => 4,
+            Self::TopRight => 9,
+            Self::Right => 5,
+            Self::BottomRight => 7,
+            Self::Bottom => 4,
+            Self::BottomLeft => 6,
+            Self::Left => 5,
+        }
+    }
+
+    pub fn affected_edges(self) -> (bool, bool, bool, bool) {
+        match self {
+            Self::TopLeft => (true, false, true, false),
+            Self::Top => (false, false, true, false),
+            Self::TopRight => (false, true, true, false),
+            Self::Right => (false, true, false, false),
+            Self::BottomRight => (false, true, false, true),
+            Self::Bottom => (false, false, false, true),
+            Self::BottomLeft => (true, false, false, true),
+            Self::Left => (true, false, false, false),
+        }
+    }
+
+    pub fn warp_offset(self, w: i32, h: i32, bw: i32) -> (i32, i32) {
+        match self {
+            Self::TopLeft => (-bw, -bw),
+            Self::Top => ((w + bw - 1) / 2, -bw),
+            Self::TopRight => (w + bw - 1, -bw),
+            Self::Right => (w + bw - 1, (h + bw - 1) / 2),
+            Self::BottomRight => (w + bw - 1, h + bw - 1),
+            Self::Bottom => ((w + bw - 1) / 2, h + bw - 1),
+            Self::BottomLeft => (-bw, h + bw - 1),
+            Self::Left => (-bw, (h + bw - 1) / 2),
+        }
+    }
+}
+
+pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDirection {
+    if hit_y > h / 2 {
+        if hit_x < w / 3 {
+            if hit_y < 2 * h / 3 {
+                ResizeDirection::Left
+            } else {
+                ResizeDirection::BottomLeft
+            }
+        } else if hit_x > 2 * w / 3 {
+            if hit_y < 2 * h / 3 {
+                ResizeDirection::Right
+            } else {
+                ResizeDirection::BottomRight
+            }
+        } else {
+            ResizeDirection::Bottom
+        }
+    } else {
+        if hit_x < w / 3 {
+            if hit_y > h / 3 {
+                ResizeDirection::Left
+            } else {
+                ResizeDirection::TopLeft
+            }
+        } else if hit_x > 2 * w / 3 {
+            if hit_y > h / 3 {
+                ResizeDirection::Right
+            } else {
+                ResizeDirection::TopRight
+            }
+        } else {
+            ResizeDirection::Top
+        }
+    }
+}
+
 /// The side of the screen from which the overlay window slides in/out.
 ///
 /// Mirrors the `OverlayTop` / `OverlayRight` / `OverlayBottom` / `OverlayLeft`

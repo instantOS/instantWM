@@ -35,7 +35,7 @@ use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focu
 use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up_press};
 use crate::layouts::{cycle_layout, inc_nmaster, set_layout, set_mfact};
 use crate::monitor::{focus_mon, follow_mon};
-use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse};
+use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
@@ -252,7 +252,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,   XK_L      => moveresize, i:2),
         key!(MS,   XK_H      => moveresize, i:3),
         key!(MS,   XK_M      => move_mouse),
-        key!(MA,   XK_M      => resize_mouse),
+        key!(MA,   XK_M      => resize_mouse_from_cursor),
         // --- Overview / skippy ---
         key!(MODKEY, XK_E  => toggle_overview,            ui:!0),
         key!(MS,     XK_E  => toggle_fullscreen_overview, ui:!0),

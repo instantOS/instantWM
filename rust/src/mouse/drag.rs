@@ -990,7 +990,7 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
                         crate::client::show(win);
                         focus(Some(win));
                     }
-                    super::resize::resize_mouse(&Arg::default());
+                    super::resize::resize_mouse_from_cursor(&Arg::default());
                     return;
                 }
             }

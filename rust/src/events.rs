@@ -15,7 +15,7 @@ use crate::monitor::{
 };
 use crate::mouse::{
     find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
-    handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse,
+    handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse_directional,
 };
 use crate::systray::{update_systray, win_to_systray_icon};
 use crate::tags::get_tag_width;
@@ -64,7 +64,12 @@ pub fn button_press(e: &ButtonPressEvent) {
     if let Some(win) = win_to_client(e.event) {
         click_target = Click::ClientWin;
         click_arg.v = Some(win as usize);
-        if focusfollowsmouse || e.detail <= 3 {
+        // Only focus on button press if it's NOT a simple left/middle/right click
+        // (e.g., for scroll wheel or other buttons). Simple clicks should not
+        // change focus or raise windows - the user explicitly wants to interact
+        // with the window without changing stacking order.
+        // For focus-follows-mouse mode, we still focus since that's the expected behavior.
+        if focusfollowsmouse && e.detail > 3 {
             focus(Some(win));
             let globals = get_globals_mut();
             if let Some(mon_id) = globals.clients.get(&win).and_then(|c| c.mon_id) {
@@ -99,8 +104,9 @@ pub fn button_press(e: &ButtonPressEvent) {
                     .unwrap_or(false);
                 let has_tiling = crate::monitor::is_current_layout_tiling(mon, &globals.tags);
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
+                    let dir = get_globals().resize_direction;
                     reset_cursor();
-                    resize_mouse(&Arg::default());
+                    resize_mouse_directional(dir);
                     return;
                 }
             }
@@ -277,10 +283,7 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
 
         // If we have a floating selection and are entering a different client,
         // try hover_resize_mouse first (same as C code's handle_floating_focus)
-        if sel_win != Some(client_win)
-            && is_floating_sel
-            && (entering_root || is_visible)
-        {
+        if sel_win != Some(client_win) && is_floating_sel && (entering_root || is_visible) {
             if hover_resize_mouse() {
                 return;
             }

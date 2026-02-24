@@ -71,7 +71,10 @@ pub use hover::{
 
 // ── resize ────────────────────────────────────────────────────────────────────
 
-pub use resize::{force_resize_mouse, resize_aspect_mouse, resize_mouse, resize_mouse_directional};
+pub use resize::{
+    force_resize_mouse, resize_aspect_mouse, resize_mouse, resize_mouse_directional,
+    resize_mouse_from_cursor,
+};
 
 // ── slop ─────────────────────────────────────────────────────────────────────
 

@@ -31,8 +31,7 @@ use crate::layouts::{cycle_layout, set_layout};
 
 use crate::floating::toggle_floating;
 use crate::mouse::{
-    drag_tag, draw_window, force_resize_mouse, gesture_mouse, move_mouse, resize_aspect_mouse,
-    resize_mouse, window_title_mouse_handler, window_title_mouse_handler_right,
+    drag_tag, draw_window, resize_mouse_from_cursor, gesture_mouse, move_mouse, resize_aspect_mouse, window_title_mouse_handler, window_title_mouse_handler_right,
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push_down, push_up};
@@ -187,8 +186,8 @@ pub fn get_buttons() -> Vec<Button> {
         // --- Client window ---
         btn!(ClientWin, MODKEY, button:1 => move_mouse),
         btn!(ClientWin, MODKEY, button:2 => toggle_floating),
-        btn!(ClientWin, MODKEY, button:3 => resize_mouse),
-        btn!(ClientWin, MA,     button:3 => force_resize_mouse),
+        btn!(ClientWin, MODKEY, button:3 => resize_mouse_from_cursor),
+        btn!(ClientWin, MA,     button:3 => resize_mouse_from_cursor),
         btn!(ClientWin, MS,     button:3 => resize_aspect_mouse),
         // --- Close button widget ---
         btn!(CloseButton, 0, button:1 => kill_client),

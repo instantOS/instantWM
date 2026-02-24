@@ -20,7 +20,7 @@
 
 use crate::client::resize;
 use crate::floating::toggle_floating;
-use crate::globals::get_globals;
+use crate::globals::{get_globals, get_x11};
 use crate::monitor::is_current_layout_tiling;
 use crate::types::*;
 use crate::util::get_sel_win;
@@ -29,8 +29,8 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
 use super::grab::{grab_pointer, ungrab};
-use super::hover::ResizeDirection;
 use super::monitor::handle_client_monitor_switch;
+use crate::types::ResizeDirection;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -48,6 +48,33 @@ fn selected_resizable_window() -> Option<Window> {
     }
 
     Some(win)
+}
+
+pub fn resize_mouse_from_cursor(_arg: &Arg) {
+    let Some(win) = selected_resizable_window() else {
+        return;
+    };
+
+    let dir = {
+        let globals = get_globals();
+        let Some(c) = globals.clients.get(&win) else {
+            return;
+        };
+
+        let x11 = get_x11();
+        let Some(ref conn) = x11.conn else { return };
+        let Ok(cookie) = conn.query_pointer(win) else {
+            return;
+        };
+        let Ok(reply) = cookie.reply() else { return };
+
+        let hit_x = reply.win_x as i32;
+        let hit_y = reply.win_y as i32;
+
+        get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
+    };
+
+    resize_mouse_directional(Some(dir));
 }
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.

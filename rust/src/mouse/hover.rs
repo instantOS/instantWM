@@ -26,109 +26,11 @@ use super::drag::move_mouse;
 use super::grab::{grab_pointer_with_keys, ungrab};
 use super::warp::get_root_ptr;
 
-// Re-export resize_mouse from parent module for use in hover_resize_mouse
 use super::resize::resize_mouse_directional;
 
 // ── Resize direction ─────────────────────────────────────────────────────────
 
-/// Which edge or corner of a window the cursor is nearest to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResizeDirection {
-    TopLeft,
-    Top,
-    TopRight,
-    Right,
-    BottomRight,
-    Bottom,
-    BottomLeft,
-    Left,
-}
-
-impl ResizeDirection {
-    /// Index into `globals.cursors` for the appropriate resize cursor shape.
-    pub fn cursor_index(self) -> usize {
-        match self {
-            Self::TopLeft => 8,     // XC_TOP_LEFT_CORNER
-            Self::Top => 4,         // XC_SB_V_DOUBLE_ARROW
-            Self::TopRight => 9,    // XC_TOP_RIGHT_CORNER
-            Self::Right => 5,       // XC_SB_H_DOUBLE_ARROW
-            Self::BottomRight => 7, // XC_BOTTOM_RIGHT_CORNER
-            Self::Bottom => 4,      // XC_SB_V_DOUBLE_ARROW
-            Self::BottomLeft => 6,  // XC_BOTTOM_LEFT_CORNER
-            Self::Left => 5,        // XC_SB_H_DOUBLE_ARROW
-        }
-    }
-
-    /// Returns which edges are affected by this resize direction.
-    /// (affects_left, affects_right, affects_top, affects_bottom)
-    pub fn affected_edges(self) -> (bool, bool, bool, bool) {
-        match self {
-            Self::TopLeft => (true, false, true, false),
-            Self::Top => (false, false, true, false),
-            Self::TopRight => (false, true, true, false),
-            Self::Right => (false, true, false, false),
-            Self::BottomRight => (false, true, false, true),
-            Self::Bottom => (false, false, false, true),
-            Self::BottomLeft => (true, false, false, true),
-            Self::Left => (true, false, false, false),
-        }
-    }
-
-    /// Warp offset (relative to the client window) to place the pointer on the
-    /// edge/corner corresponding to this direction.
-    pub fn warp_offset(self, w: i32, h: i32, bw: i32) -> (i32, i32) {
-        match self {
-            Self::TopLeft => (-bw, -bw),
-            Self::Top => ((w + bw - 1) / 2, -bw),
-            Self::TopRight => (w + bw - 1, -bw),
-            Self::Right => (w + bw - 1, (h + bw - 1) / 2),
-            Self::BottomRight => (w + bw - 1, h + bw - 1),
-            Self::Bottom => ((w + bw - 1) / 2, h + bw - 1),
-            Self::BottomLeft => (-bw, h + bw - 1),
-            Self::Left => (-bw, (h + bw - 1) / 2),
-        }
-    }
-}
-
-/// Determine which edge or corner the cursor is closest to, using the cursor's
-/// position *relative to the window* (win-local coordinates).
-pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDirection {
-    if hit_y > h / 2 {
-        // bottom half
-        if hit_x < w / 3 {
-            if hit_y < 2 * h / 3 {
-                ResizeDirection::Left
-            } else {
-                ResizeDirection::BottomLeft
-            }
-        } else if hit_x > 2 * w / 3 {
-            if hit_y < 2 * h / 3 {
-                ResizeDirection::Right
-            } else {
-                ResizeDirection::BottomRight
-            }
-        } else {
-            ResizeDirection::Bottom
-        }
-    } else {
-        // top half
-        if hit_x < w / 3 {
-            if hit_y > h / 3 {
-                ResizeDirection::Left
-            } else {
-                ResizeDirection::TopLeft
-            }
-        } else if hit_x > 2 * w / 3 {
-            if hit_y > h / 3 {
-                ResizeDirection::Right
-            } else {
-                ResizeDirection::TopRight
-            }
-        } else {
-            ResizeDirection::Top
-        }
-    }
-}
+// ResizeDirection and get_resize_direction are now defined in types.rs
 
 /// Returns `true` when the cursor (in root coordinates) is on the top-middle
 /// edge of a window — used to distinguish a *move* from a *resize*.
@@ -305,9 +207,9 @@ pub fn handle_floating_resize_hover() -> bool {
     }
 
     if let Some(win) = find_floating_win_at_resize_border() {
-        let (cursor_idx, should_focus) = {
+        let (cursor_idx, dir, should_focus) = {
             let globals = get_globals();
-            let cursor_idx = if let Some(c) = globals.clients.get(&win) {
+            let (cursor_idx, dir) = if let Some(c) = globals.clients.get(&win) {
                 let (px, py) = match get_root_ptr() {
                     Some(p) => p,
                     None => (0, 0),
@@ -315,19 +217,19 @@ pub fn handle_floating_resize_hover() -> bool {
                 let hit_x = px - c.geo.x;
                 let hit_y = py - c.geo.y;
                 let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
-                dir.cursor_index()
+                (dir.cursor_index(), dir)
             } else {
-                1
+                (1, ResizeDirection::BottomRight)
             };
             let should_focus =
                 globals.monitors.get(globals.selmon).and_then(|m| m.sel) != Some(win);
-            (cursor_idx, should_focus)
+            (cursor_idx, dir, should_focus)
         };
 
-        if get_globals().altcursor != AltCursor::Resize {
-            set_root_cursor(cursor_idx);
-            get_globals_mut().altcursor = AltCursor::Resize;
-        }
+        set_root_cursor(cursor_idx);
+        get_globals_mut().altcursor = AltCursor::Resize;
+        get_globals_mut().resize_direction = Some(dir);
+
         if should_focus {
             focus(Some(win));
         }
@@ -335,6 +237,7 @@ pub fn handle_floating_resize_hover() -> bool {
     }
 
     if get_globals().altcursor == AltCursor::Resize {
+        get_globals_mut().resize_direction = None;
         crate::mouse::reset_cursor();
     }
     false
@@ -451,7 +354,7 @@ pub fn hover_resize_mouse() -> bool {
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
                             warp_pointer_resize(win, dir);
-                            crate::mouse::resize_mouse_directional(Some(dir));
+                            resize_mouse_directional(Some(dir));
                         }
                     }
                     _ => {}
