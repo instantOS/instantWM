@@ -2,27 +2,16 @@
 //! Layout query helpers — stateless reads over the global window/monitor state.
 //!
 //! These functions answer questions like "how many tiled clients are on the
-//! selected monitor?" or "what is the active layout index?" without mutating
+//! selected monitor?" or "what is the active layout?" without mutating
 //! any state.  They are kept separate from the arrange/restack machinery so
 //! that both the algorithm modules and the manager can depend on them without
 //! creating circular imports.
-//!
-//! ## Contents
-//!
-//! | Function                  | Description                                              |
-//! |---------------------------|----------------------------------------------------------|
-//! [`client_count`]            | Tiled, visible clients on the selected monitor           |
-//! [`client_count_mon`]        | Tiled, visible clients on a specific monitor             |
-//! [`all_client_count`]        | Total number of tracked clients (all monitors/tags)      |
-//! [`find_visible_client`]     | Walk a client linked-list, returning the first visible   |
-//! [`get_current_layout_idx`]  | Active layout index for a monitor (via its current tag)  |
-//! [`get_current_layout`]      | Active `&dyn Layout` for a monitor                       |
 
 use crate::globals::get_globals;
-use crate::types::{Layout, Monitor};
+use crate::types::Monitor;
 use x11rb::protocol::xproto::Window;
 
-use super::TILE_LAYOUT;
+use super::LayoutKind;
 
 // ── per-monitor counts ────────────────────────────────────────────────────────
 
@@ -127,20 +116,20 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
     None
 }
 
-// ── layout index & trait-object resolution ────────────────────────────────────
+// ── layout query ───────────────────────────────────────────────────────────────
 
 /// Return the active layout for monitor `m`.
 ///
 /// The layout is stored per-tag in `tags[current_tag - 1].layouts.get_layout()`.
-/// Falls back to [`TILE_LAYOUT`] when tag index is invalid.
-pub fn get_current_layout(m: &Monitor) -> &'static dyn Layout {
+/// Falls back to [`LayoutKind::Tile`] when tag index is invalid.
+pub fn get_current_layout(m: &Monitor) -> LayoutKind {
     let g = get_globals();
     let tag = m.current_tag;
 
     if tag > 0 && tag <= g.tags.tags.len() {
         g.tags.tags[tag - 1].layouts.get_layout()
     } else {
-        &TILE_LAYOUT
+        LayoutKind::Tile
     }
 }
 
@@ -158,8 +147,7 @@ pub fn get_current_layout_symbol() -> Option<&'static str> {
         }
     }
 
-    // Fallback: tile layout symbol.
-    Some(TILE_LAYOUT.symbol())
+    Some(LayoutKind::Tile.symbol())
 }
 
 /// Returns `true` when the active layout for the *selected* monitor is

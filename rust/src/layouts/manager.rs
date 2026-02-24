@@ -288,16 +288,11 @@ pub fn cycle_layout_direction(forward: bool) {
         g.monitors.get(g.selmon).map(|m| get_current_layout(m))
     };
 
-    let layouts_len = get_globals().layouts.len();
-    if layouts_len == 0 {
-        return;
-    }
+    let all_layouts = LayoutKind::all();
+    let layouts_len = all_layouts.len();
 
-    let current_symbol = current_layout.map(|l| l.symbol());
-
-    let g = get_globals();
-    let current_idx = current_symbol
-        .and_then(|sym| g.layouts.iter().position(|l| l.symbol() == sym))
+    let current_idx = current_layout
+        .map(|l| all_layouts.iter().position(|&x| x == l).unwrap_or(0))
         .unwrap_or(0);
 
     let candidate = if forward {
@@ -308,40 +303,32 @@ pub fn cycle_layout_direction(forward: bool) {
         current_idx - 1
     };
 
-    let skip = {
-        let g = get_globals();
-        g.layouts.get(candidate).is_some_and(|l| l.is_overview())
-    };
-
-    let final_idx = if skip {
-        if forward {
+    let candidate_layout = all_layouts[candidate];
+    let final_layout = if candidate_layout.is_overview() {
+        let final_idx = if forward {
             (candidate + 1) % layouts_len
         } else if candidate == 0 {
             layouts_len - 1
         } else {
             candidate - 1
-        }
+        };
+        all_layouts[final_idx]
     } else {
-        candidate
+        candidate_layout
     };
 
-    if let Some(&layout) = get_globals().layouts.get(final_idx) {
-        set_layout(layout);
-    }
+    set_layout(final_layout);
 }
 
 pub fn command_layout(layout_idx: u32) {
-    let g = get_globals();
-    let layouts_len = g.layouts.len();
-    let idx = if layout_idx > 0 && (layout_idx as usize) < layouts_len {
+    let all_layouts = LayoutKind::all();
+    let idx = if layout_idx > 0 && (layout_idx as usize) < all_layouts.len() {
         layout_idx as usize
     } else {
         0
     };
 
-    if let Some(&layout) = g.layouts.get(idx) {
-        set_layout(layout);
-    }
+    set_layout(all_layouts[idx]);
 }
 
 pub fn inc_nmaster_by(delta: i32) {

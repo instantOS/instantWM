@@ -82,7 +82,6 @@ pub struct Globals {
     /// Snap-to-edge distance in pixels.
     pub snap: i32,
     pub resizehints: i32,
-    pub layouts: Vec<&'static dyn Layout>,
     pub commands: Vec<XCommand>,
     pub buttons: Vec<Button>,
     pub fonts: Vec<&'static str>,
@@ -151,7 +150,6 @@ impl Default for Globals {
             startmenusize: 0,
             snap: 32,
             resizehints: 1,
-            layouts: Vec::new(),
             commands: Vec::new(),
             buttons: Vec::new(),
             fonts: Vec::new(),

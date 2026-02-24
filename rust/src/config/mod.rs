@@ -95,30 +95,6 @@ pub fn get_tags_alt() -> Vec<&'static str> {
 }
 
 // ---------------------------------------------------------------------------
-// Layout list
-// ---------------------------------------------------------------------------
-
-use crate::layouts::*;
-use crate::types::Layout;
-
-/// Ordered list of available layouts.  Index 0 is the default.
-///
-/// Layout indices are used in keybindings via `set_layout v:N`.
-pub fn get_layouts() -> Vec<&'static dyn Layout> {
-    vec![
-        &TILE_LAYOUT,     // 0 — tile (default)
-        &GRID_LAYOUT,     // 1 — grid
-        &FLOATING_LAYOUT, // 2 — float
-        &MONOCLE_LAYOUT,  // 3 — monocle
-        &VERT_LAYOUT,     // 4 — vertical stack
-        &DECK_LAYOUT,     // 5 — deck
-        &OVERVIEW_LAYOUT, // 6 — overview
-        &BSTACK_LAYOUT,   // 7 — bottom stack
-        &HORIZ_LAYOUT,    // 8 — horizontal
-    ]
-}
-
-// ---------------------------------------------------------------------------
 // X resource preferences
 // ---------------------------------------------------------------------------
 
@@ -238,8 +214,7 @@ pub struct Config {
     /// `[fg, bg, detail]`
     pub statusbarcolors: Vec<&'static str>,
 
-    // --- Layouts / bindings ---
-    pub layouts: Vec<&'static dyn Layout>,
+    // --- Bindings ---
     pub keys: Vec<Key>,
     pub dkeys: Vec<Key>,
     pub buttons: Vec<Button>,
@@ -294,8 +269,7 @@ pub fn init_config() -> Config {
         bordercolors: get_border_colors(),
         statusbarcolors: get_status_bar_colors(),
 
-        // --- Layouts / bindings ---
-        layouts: get_layouts(),
+        // --- Bindings ---
         keys: get_keys(),
         dkeys: get_dkeys(),
         buttons: buttons::get_buttons(),

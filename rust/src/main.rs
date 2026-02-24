@@ -243,7 +243,6 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
     globals.closebuttoncolors = cfg.closebuttoncolors;
     globals.bordercolors = cfg.bordercolors;
     globals.statusbarcolors = cfg.statusbarcolors;
-    globals.layouts = cfg.layouts;
     globals.keys = cfg.keys;
     globals.dkeys = cfg.dkeys;
     globals.buttons = cfg.buttons;

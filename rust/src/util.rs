@@ -1,6 +1,5 @@
 use std::ffi::CString;
 use std::io::{self, Write};
-use std::os::fd::AsRawFd;
 use std::process::exit;
 use std::ptr;
 
@@ -44,109 +43,46 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
     exit(1);
 }
 
-/// Allocate a vector with default values - idiomatic Rust replacement for C's ecalloc.
-/// Use `vec![T::default(); nmemb]` directly in new code.
-pub fn ecalloc<T: Default + Clone>(nmemb: usize) -> Vec<T> {
-    vec![T::default(); nmemb]
-}
-
-/// Allocate a boxed slice with default values.
-/// Prefer using `vec![T::default(); nmemb].into_boxed_slice()` directly in new code.
-pub fn ecalloc_box<T: Default + Clone>(nmemb: usize) -> Box<[T]> {
-    vec![T::default(); nmemb].into_boxed_slice()
-}
-
 /// Spawn a command identified by a [`Cmd`] variant.
 pub fn spawn(cmd: Cmd) {
     let globals = get_globals();
     let argv = globals.external_commands.get(cmd);
     if !argv.is_empty() {
-        spawn_with_args(argv, None);
-    }
-}
+        let c_args: Vec<CString> = argv
+            .iter()
+            .map(|s| CString::new(*s).unwrap_or_else(|_| CString::new("").unwrap()))
+            .collect();
 
-pub fn spawn_with_args(cmd: &[&str], _extra_env: Option<&[(&str, &str)]>) {
-    if cmd.is_empty() {
-        return;
-    }
+        let args: Vec<*const libc::c_char> = c_args
+            .iter()
+            .map(|s| s.as_ptr())
+            .chain(std::iter::once(ptr::null()))
+            .collect();
 
-    let c_args: Vec<CString> = cmd
-        .iter()
-        .map(|s| CString::new(*s).unwrap_or_else(|_| CString::new("").unwrap()))
-        .collect();
+        unsafe {
+            match libc::fork() {
+                -1 => {
+                    die_with_errno("fork failed");
+                }
+                0 => {
+                    libc::setsid();
 
-    let argv: Vec<*const libc::c_char> = c_args
-        .iter()
-        .map(|s| s.as_ptr())
-        .chain(std::iter::once(ptr::null()))
-        .collect();
+                    libc::sigprocmask(libc::SIG_SETMASK, ptr::null(), ptr::null_mut());
 
-    unsafe {
-        match libc::fork() {
-            -1 => {
-                die_with_errno("fork failed");
+                    let mut sa: libc::sigaction = std::mem::zeroed();
+                    sa.sa_sigaction = libc::SIG_DFL;
+                    libc::sigemptyset(&mut sa.sa_mask);
+                    sa.sa_flags = 0;
+                    libc::sigaction(libc::SIGCHLD, &sa, ptr::null_mut());
+
+                    libc::execvp(c_args[0].as_ptr(), args.as_ptr());
+
+                    die_args_with_errno(&["instantwm: execvp '", argv[0], "' failed"]);
+                }
+                _ => {}
             }
-            0 => {
-                libc::setsid();
-
-                libc::sigprocmask(libc::SIG_SETMASK, ptr::null(), ptr::null_mut());
-
-                let mut sa: libc::sigaction = std::mem::zeroed();
-                sa.sa_sigaction = libc::SIG_DFL;
-                libc::sigemptyset(&mut sa.sa_mask);
-                sa.sa_flags = 0;
-                libc::sigaction(libc::SIGCHLD, &sa, ptr::null_mut());
-
-                libc::execvp(c_args[0].as_ptr(), argv.as_ptr());
-
-                die_args_with_errno(&["instantwm: execvp '", cmd[0], "' failed"]);
-            }
-            _ => {}
         }
     }
-}
-
-pub fn spawn_vec(cmd: &[CString]) {
-    if cmd.is_empty() {
-        return;
-    }
-
-    let argv: Vec<*const libc::c_char> = cmd
-        .iter()
-        .map(|s| s.as_ptr())
-        .chain(std::iter::once(ptr::null()))
-        .collect();
-
-    unsafe {
-        match libc::fork() {
-            -1 => {
-                die_with_errno("fork failed");
-            }
-            0 => {
-                libc::setsid();
-
-                libc::sigprocmask(libc::SIG_SETMASK, ptr::null(), ptr::null_mut());
-
-                let mut sa: libc::sigaction = std::mem::zeroed();
-                sa.sa_sigaction = libc::SIG_DFL;
-                libc::sigemptyset(&mut sa.sa_mask);
-                sa.sa_flags = 0;
-                libc::sigaction(libc::SIGCHLD, &sa, ptr::null_mut());
-
-                libc::execvp(cmd[0].as_ptr(), argv.as_ptr());
-
-                let cmd_str = cmd[0].to_string_lossy();
-                die_args_with_errno(&["instantwm: execvp '", &cmd_str, "' failed"]);
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Check if a value is between two bounds (inclusive).
-#[inline]
-pub fn between<T: Ord>(x: T, a: T, b: T) -> bool {
-    a <= x && x <= b
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
@@ -159,18 +95,6 @@ pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
             | x11rb::protocol::xproto::ModMask::M3.bits() as u32
             | x11rb::protocol::xproto::ModMask::M4.bits() as u32
             | x11rb::protocol::xproto::ModMask::M5.bits() as u32)
-}
-
-pub fn tagmask(num_tags: usize) -> u32 {
-    (1 << num_tags) - 1
-}
-
-pub fn close_fd(fd: i32) -> bool {
-    unsafe { libc::close(fd) == 0 }
-}
-
-pub fn get_x11_fd(conn: &x11rb::rust_connection::RustConnection) -> Option<i32> {
-    Some(conn.stream().as_raw_fd())
 }
 
 /// Get the currently selected window from the selected monitor.
@@ -190,27 +114,5 @@ pub fn get_sel_mon() -> Option<MonitorId> {
         None
     } else {
         Some(globals.selmon)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_between() {
-        assert!(between(5, 1, 10));
-        assert!(between(1, 1, 10));
-        assert!(between(10, 1, 10));
-        assert!(!between(0, 1, 10));
-        assert!(!between(11, 1, 10));
-    }
-
-    #[test]
-    fn test_tagmask() {
-        assert_eq!(tagmask(1), 1);
-        assert_eq!(tagmask(2), 3);
-        assert_eq!(tagmask(3), 7);
-        assert_eq!(tagmask(9), 511);
     }
 }

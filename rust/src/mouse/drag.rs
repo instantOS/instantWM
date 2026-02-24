@@ -32,7 +32,8 @@ use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::{arrange, restack};
 use crate::monitor::is_current_layout_tiling;
 use crate::tags::{
-    follow_tag, move_left, move_right, set_client_tag, tag_all, tag_to_left, tag_to_right, view,
+    follow_tag, move_left, move_right, set_client_tag, tag_all, tag_to_left_by, tag_to_right_by,
+    view,
 };
 use crate::types::SnapPosition;
 use crate::types::*;
@@ -541,9 +542,9 @@ fn apply_edge_drop(win: Window, edge: Option<SnapPosition>) -> bool {
                 move_right();
             }
         } else if at_left {
-            tag_to_left();
+            tag_to_left_by(1);
         } else {
-            tag_to_right();
+            tag_to_right_by(1);
         }
 
         {

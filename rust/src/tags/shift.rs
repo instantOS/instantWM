@@ -23,21 +23,13 @@ pub fn tag_to_right_by(offset: i32) {
     shift_tag(Direction::Right, offset.max(1));
 }
 
-pub fn tag_to_left() {
-    tag_to_left_by(1);
-}
-
-pub fn tag_to_right() {
-    tag_to_right_by(1);
-}
-
 pub fn move_left() {
-    tag_to_left();
+    tag_to_left_by(1);
     crate::tags::view::view_to_left();
 }
 
 pub fn move_right() {
-    tag_to_right();
+    tag_to_right_by(1);
     crate::tags::view::view_to_right();
 }
 

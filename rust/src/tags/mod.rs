@@ -32,7 +32,7 @@ pub use view::{
 // Re-export TagMask for convenience
 pub use crate::types::TagMask;
 
-pub use shift::{move_left, move_right, tag_to_left, tag_to_right};
+pub use shift::{move_left, move_right, tag_to_left_by, tag_to_right_by};
 
 pub use sticky::reset_sticky;
 

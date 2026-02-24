@@ -11,8 +11,7 @@ use crate::floating::{center_window, distribute_clients, temp_fullscreen};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up_press};
 use crate::layouts::{
-    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, FLOATING_LAYOUT,
-    GRID_LAYOUT, MONOCLE_LAYOUT, TILE_LAYOUT,
+    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
@@ -20,9 +19,9 @@ use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_left, move_right, quit, shift_view, tag_mon, tag_to_left,
-    tag_to_right, toggle_fullscreen_overview, toggle_overview, view, view_to_left, view_to_right,
-    win_view,
+    follow_view, last_view, move_left, move_right, quit, shift_view, tag_mon, tag_to_left_by,
+    tag_to_right_by, toggle_fullscreen_overview, toggle_overview, view, view_to_left,
+    view_to_right, win_view,
 };
 use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
@@ -101,10 +100,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_D => || inc_nmaster_by(-1)),
         key!(MODKEY, XK_H => || set_mfact(-0.05)),
         key!(MODKEY, XK_L => || set_mfact(0.05)),
-        key!(MODKEY,    XK_T => || set_layout(&TILE_LAYOUT)),
-        key!(MODKEY,    XK_C => || set_layout(&GRID_LAYOUT)),
-        key!(MODKEY,    XK_F => || set_layout(&FLOATING_LAYOUT)),
-        key!(MODKEY,    XK_M => || set_layout(&MONOCLE_LAYOUT)),
+        key!(MODKEY,    XK_T => || set_layout(LayoutKind::Tile)),
+        key!(MODKEY,    XK_C => || set_layout(LayoutKind::Grid)),
+        key!(MODKEY,    XK_F => || set_layout(LayoutKind::Floating)),
+        key!(MODKEY,    XK_M => || set_layout(LayoutKind::Monocle)),
         key!(MODKEY,    XK_P => toggle_layout),
         key!(MC,        XK_COMMA  => || cycle_layout_direction(false)),
         key!(MC,        XK_PERIOD => || cycle_layout_direction(true)),
@@ -127,8 +126,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,  XK_RIGHT   => anim_right),
         key!(MA,      XK_LEFT    => move_left),
         key!(MA,      XK_RIGHT   => move_right),
-        key!(MS,      XK_LEFT    => tag_to_left),
-        key!(MS,      XK_RIGHT   => tag_to_right),
+        key!(MS,      XK_LEFT    => || tag_to_left_by(1)),
+        key!(MS,      XK_RIGHT   => || tag_to_right_by(1)),
         key!(MSC,     XK_RIGHT   => || shift_view(Direction::Right)),
         key!(MSC,     XK_LEFT    => || shift_view(Direction::Left)),
         // View all tags (overview mode)
