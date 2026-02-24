@@ -8,7 +8,7 @@ use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::animation::{down_scale_client, up_scale_client};
 use crate::client::{close_win, kill_client};
 use crate::focus::focus_stack;
-use crate::layouts::{cycle_layout_direction, set_layout};
+use crate::layouts::{cycle_layout_direction, set_layout, TILE_LAYOUT};
 
 use crate::floating::toggle_floating;
 use crate::mouse::{
@@ -45,7 +45,7 @@ pub fn get_buttons() -> Vec<Button> {
     vec![
         btn!(LtSymbol, 0,     button:1 => || cycle_layout_direction(false)),
         btn!(LtSymbol, 0,     button:3 => || cycle_layout_direction(true)),
-        btn!(LtSymbol, 0,     button:2 => || set_layout(Some(0))),
+        btn!(LtSymbol, 0,     button:2 => || set_layout(&TILE_LAYOUT)),
         btn!(LtSymbol, MODKEY, button:1 => create_overlay),
         btn!(WinTitle, 0,     button:1 => window_title_mouse_handler),
         btn!(WinTitle, 0,     button:2 => close_win),

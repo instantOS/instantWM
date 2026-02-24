@@ -10,7 +10,10 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::floating::{center_window, distribute_clients, temp_fullscreen};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up_press};
-use crate::layouts::{cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact};
+use crate::layouts::{
+    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, FLOATING_LAYOUT,
+    GRID_LAYOUT, MONOCLE_LAYOUT, TILE_LAYOUT,
+};
 use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
@@ -98,11 +101,11 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_D => || inc_nmaster_by(-1)),
         key!(MODKEY, XK_H => || set_mfact(-0.05)),
         key!(MODKEY, XK_L => || set_mfact(0.05)),
-        key!(MODKEY,    XK_T => || set_layout(Some(0))),
-        key!(MODKEY,    XK_C => || set_layout(Some(1))),
-        key!(MODKEY,    XK_F => || set_layout(Some(2))),
-        key!(MODKEY,    XK_M => || set_layout(Some(3))),
-        key!(MODKEY,    XK_P => || set_layout(None)),
+        key!(MODKEY,    XK_T => || set_layout(&TILE_LAYOUT)),
+        key!(MODKEY,    XK_C => || set_layout(&GRID_LAYOUT)),
+        key!(MODKEY,    XK_F => || set_layout(&FLOATING_LAYOUT)),
+        key!(MODKEY,    XK_M => || set_layout(&MONOCLE_LAYOUT)),
+        key!(MODKEY,    XK_P => toggle_layout),
         key!(MC,        XK_COMMA  => || cycle_layout_direction(false)),
         key!(MC,        XK_PERIOD => || cycle_layout_direction(true)),
         key!(MODKEY, XK_J    => || focus_stack(StackDirection::Next)),

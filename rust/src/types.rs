@@ -251,78 +251,97 @@ impl TagSet {
     }
 }
 
-/// Stores the primary and secondary layouts for a tag.
+/// Stores layout state for a tag with last-used tracking.
 ///
-/// Each tag can have two layouts that can be toggled between (e.g., tiling and floating).
-/// This struct provides methods to get/set the layout for each slot and toggle between them.
+/// Each tag maintains its current layout and remembers the previously used layout,
+/// enabling `restore_last_layout()` functionality. The primary/secondary slot system
+/// is internal and managed automatically.
 #[derive(Debug, Clone, Copy)]
 pub struct TagLayouts {
-    /// The primary layout (used when `active_slot` is `Primary`).
-    pub primary: Option<&'static dyn Layout>,
-    /// The secondary layout (used when `active_slot` is `Secondary`).
-    pub secondary: Option<&'static dyn Layout>,
-    /// Which slot is currently active.
-    pub active_slot: LayoutSlot,
+    primary: &'static dyn Layout,
+    secondary: &'static dyn Layout,
+    active_slot: LayoutSlot,
+    last_layout: Option<&'static dyn Layout>,
 }
 
 impl Default for TagLayouts {
     fn default() -> Self {
         Self {
-            primary: None,
-            secondary: None,
+            primary: &crate::layouts::TILE_LAYOUT,
+            secondary: &crate::layouts::FLOATING_LAYOUT,
             active_slot: LayoutSlot::default(),
+            last_layout: None,
         }
     }
 }
 
 impl TagLayouts {
     /// Get the currently active layout.
-    pub fn current(self) -> Option<&'static dyn Layout> {
+    pub fn get_layout(self) -> &'static dyn Layout {
         match self.active_slot {
             LayoutSlot::Primary => self.primary,
             LayoutSlot::Secondary => self.secondary,
         }
     }
 
-    /// Get the layout for a specific slot.
-    pub fn get(self, slot: LayoutSlot) -> Option<&'static dyn Layout> {
-        match slot {
-            LayoutSlot::Primary => self.primary,
-            LayoutSlot::Secondary => self.secondary,
+    /// Set a new layout on the active slot, saving the current one to `last_layout`.
+    /// If the new layout matches the current one, this is a no-op.
+    pub fn set_layout(&mut self, layout: &'static dyn Layout) {
+        let current = self.get_layout();
+        if current.symbol() == layout.symbol() {
+            return;
         }
-    }
-
-    /// Set the layout for a specific slot.
-    pub fn set(&mut self, slot: LayoutSlot, layout: Option<&'static dyn Layout>) {
-        match slot {
+        self.last_layout = Some(current);
+        match self.active_slot {
             LayoutSlot::Primary => self.primary = layout,
             LayoutSlot::Secondary => self.secondary = layout,
         }
     }
 
-    /// Toggle between primary and secondary layouts.
-    pub fn toggle(&mut self) {
-        self.active_slot = self.active_slot.toggle();
+    /// Swap the current layout with the last used layout.
+    /// Returns true if a swap occurred, false if no last layout was stored.
+    pub fn restore_last_layout(&mut self) -> bool {
+        let current = self.get_layout();
+        let last = self.last_layout.take();
+
+        match last {
+            Some(last) => {
+                self.last_layout = Some(current);
+                match self.active_slot {
+                    LayoutSlot::Primary => self.primary = last,
+                    LayoutSlot::Secondary => self.secondary = last,
+                }
+                true
+            }
+            None => false,
+        }
     }
 
     /// Returns true if the current layout is a tiling layout.
     pub fn is_tiling(self) -> bool {
-        self.current().map(|l| l.is_tiling()).unwrap_or(true)
+        self.get_layout().is_tiling()
     }
 
     /// Returns true if the current layout is a monocle layout.
     pub fn is_monocle(self) -> bool {
-        self.current().map(|l| l.is_monocle()).unwrap_or(false)
+        self.get_layout().is_monocle()
     }
 
     /// Returns true if the current layout is an overview layout.
     pub fn is_overview(self) -> bool {
-        self.current().map(|l| l.is_overview()).unwrap_or(false)
+        self.get_layout().is_overview()
     }
 
     /// Get the symbol of the current layout.
     pub fn symbol(self) -> &'static str {
-        self.current().map(|l| l.symbol()).unwrap_or("[]=")
+        self.get_layout().symbol()
+    }
+
+    /// Toggle between primary and secondary slots.
+    /// Saves current layout to last_layout before toggling.
+    pub fn toggle_slot(&mut self) {
+        self.last_layout = Some(self.get_layout());
+        self.active_slot = self.active_slot.toggle();
     }
 }
 

@@ -235,7 +235,7 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
         tag.nmaster = cfg.nmaster;
         tag.mfact = cfg.mfact;
         tag.showbar = cfg.showbar;
-        // layouts and active_slot default to None/Primary which is fine
+        // layouts default to TILE_LAYOUT (primary) and FLOATING_LAYOUT (secondary)
         globals.tags.tags.push(tag);
     }
 

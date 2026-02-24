@@ -11,11 +11,11 @@ use crate::scratchpad::{
     scratchpad_toggle, scratchpad_unmake,
 };
 use crate::tags::{name_tag, reset_name_tag, tag_mon, view};
-use crate::types::TagMask;
 use crate::toggles::{
     alt_tab_free, set_border_width, toggle_alt_tag, toggle_animated,
     toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_show_tags,
 };
+use crate::types::TagMask;
 use crate::types::{ToggleAction, XCommand};
 
 use super::mod_consts::BORDERPX;

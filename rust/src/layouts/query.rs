@@ -131,15 +131,14 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
 
 /// Return the active layout for monitor `m`.
 ///
-/// The layout is stored per-tag in `tags[current_tag - 1].layouts.current()`.
-/// Falls back to [`TILE_LAYOUT`] when no layout has been set.
+/// The layout is stored per-tag in `tags[current_tag - 1].layouts.get_layout()`.
+/// Falls back to [`TILE_LAYOUT`] when tag index is invalid.
 pub fn get_current_layout(m: &Monitor) -> &'static dyn Layout {
     let g = get_globals();
     let tag = m.current_tag;
 
     if tag > 0 && tag <= g.tags.tags.len() {
-        let t = &g.tags.tags[tag - 1];
-        t.layouts.current().unwrap_or(&TILE_LAYOUT)
+        g.tags.tags[tag - 1].layouts.get_layout()
     } else {
         &TILE_LAYOUT
     }

@@ -220,12 +220,12 @@ pub fn init_commands() -> Vec<XCommand> {
         XCommand {
             cmd: "setlayout",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    None
+                if arg.is_empty() {
+                    crate::layouts::toggle_layout();
                 } else {
-                    Some(arg.parse().unwrap_or(0))
-                };
-                crate::layouts::set_layout(val);
+                    let val = arg.parse().unwrap_or(0);
+                    crate::layouts::command_layout(val);
+                }
             },
         },
         XCommand {

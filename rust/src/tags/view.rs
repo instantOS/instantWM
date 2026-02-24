@@ -114,7 +114,10 @@ pub fn shift_view(direction: Direction) {
         let Some(mon) = globals.monitors.get(selmon_id) else {
             return;
         };
-        (TagMask::from_bits(mon.tagset[mon.seltags as usize]), globals.tags.count())
+        (
+            TagMask::from_bits(mon.tagset[mon.seltags as usize]),
+            globals.tags.count(),
+        )
     };
 
     let mut next_mask = tagset;
@@ -232,7 +235,10 @@ pub fn swap_tags(mask: TagMask) {
         let Some(mon) = globals.monitors.get(selmon_id) else {
             return;
         };
-        (mon.current_tag, TagMask::from_bits(mon.tagset[mon.seltags as usize]))
+        (
+            mon.current_tag,
+            TagMask::from_bits(mon.tagset[mon.seltags as usize]),
+        )
     };
 
     // Can only swap from single-tag view
@@ -267,7 +273,11 @@ pub fn swap_tags(mask: TagMask) {
         if let Some(client) = globals.clients.get_mut(&win) {
             let ctags = TagMask::from_bits(client.tags);
             let new_tags = ctags ^ current_tagset ^ newtag;
-            client.tags = if new_tags.is_empty() { newtag.bits() } else { new_tags.bits() };
+            client.tags = if new_tags.is_empty() {
+                newtag.bits()
+            } else {
+                new_tags.bits()
+            };
         }
     }
 
@@ -404,7 +414,9 @@ fn scroll_view(dir: Direction) {
     if dir == Direction::Left && current_tag <= 1 {
         return;
     }
-    if dir == Direction::Right && current_tag >= crate::constants::animation::MAX_TAG_NUMBER as usize {
+    if dir == Direction::Right
+        && current_tag >= crate::constants::animation::MAX_TAG_NUMBER as usize
+    {
         return;
     }
 

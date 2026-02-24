@@ -110,7 +110,9 @@ pub fn toggle_tag(mask: TagMask) {
         let globals = get_globals();
         let client = globals.clients.get(&win);
         (
-            client.map(|c| TagMask::from_bits(c.tags)).unwrap_or(TagMask::EMPTY),
+            client
+                .map(|c| TagMask::from_bits(c.tags))
+                .unwrap_or(TagMask::EMPTY),
             client.map(|c| c.tags == SCRATCHPAD_MASK).unwrap_or(false),
         )
     };

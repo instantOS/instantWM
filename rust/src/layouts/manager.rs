@@ -5,7 +5,7 @@ use crate::client::{next_tiled, resize, restore_border_width, save_border_width}
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
-use crate::types::{Monitor, MonitorId, Rect};
+use crate::types::{Layout, Monitor, MonitorId, Rect};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -176,24 +176,18 @@ pub fn restack(m: &mut Monitor) {
     }
 }
 
-pub fn set_layout(layout_idx: Option<usize>) {
+pub fn set_layout(layout: &'static dyn Layout) {
     let tagprefix = get_globals().tags.prefix;
 
     if tagprefix {
         {
             let g = get_globals_mut();
             for tag in g.tags.tags.iter_mut() {
-                if layout_idx.is_none() {
-                    tag.layouts.toggle();
-                }
-                if let Some(idx) = layout_idx {
-                    let layout = g.layouts.get(idx).copied();
-                    tag.layouts.set(tag.layouts.active_slot, layout);
-                }
+                tag.layouts.set_layout(layout);
             }
             g.tags.prefix = false;
         }
-        set_layout(layout_idx);
+        finish_layout_change();
         return;
     }
 
@@ -203,21 +197,73 @@ pub fn set_layout(layout_idx: Option<usize>) {
             let current_tag = m.current_tag;
             if current_tag > 0 && current_tag <= g.tags.tags.len() {
                 let tag = &mut g.tags.tags[current_tag - 1];
-                let current_layout = tag.layouts.current();
-                let new_layout = layout_idx.and_then(|idx| g.layouts.get(idx).copied());
-
-                if layout_idx.is_none()
-                    || new_layout.map(|l| l.symbol()) != current_layout.map(|l| l.symbol())
-                {
-                    tag.layouts.toggle();
-                }
-                if let Some(layout) = new_layout {
-                    tag.layouts.set(tag.layouts.active_slot, Some(layout));
-                }
+                tag.layouts.set_layout(layout);
             }
         }
     }
 
+    finish_layout_change();
+}
+
+pub fn toggle_layout() {
+    let tagprefix = get_globals().tags.prefix;
+
+    if tagprefix {
+        {
+            let g = get_globals_mut();
+            for tag in g.tags.tags.iter_mut() {
+                tag.layouts.toggle_slot();
+            }
+            g.tags.prefix = false;
+        }
+        finish_layout_change();
+        return;
+    }
+
+    {
+        let g = get_globals_mut();
+        if let Some(m) = g.monitors.get_mut(g.selmon) {
+            let current_tag = m.current_tag;
+            if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                let tag = &mut g.tags.tags[current_tag - 1];
+                tag.layouts.toggle_slot();
+            }
+        }
+    }
+
+    finish_layout_change();
+}
+
+pub fn restore_last_layout() {
+    let tagprefix = get_globals().tags.prefix;
+
+    if tagprefix {
+        {
+            let g = get_globals_mut();
+            for tag in g.tags.tags.iter_mut() {
+                tag.layouts.restore_last_layout();
+            }
+            g.tags.prefix = false;
+        }
+        finish_layout_change();
+        return;
+    }
+
+    {
+        let g = get_globals_mut();
+        if let Some(m) = g.monitors.get_mut(g.selmon) {
+            let current_tag = m.current_tag;
+            if current_tag > 0 && current_tag <= g.tags.tags.len() {
+                let tag = &mut g.tags.tags[current_tag - 1];
+                tag.layouts.restore_last_layout();
+            }
+        }
+    }
+
+    finish_layout_change();
+}
+
+fn finish_layout_change() {
     let (selmon, sel) = {
         let g = get_globals();
         let sel = g.monitors.get(g.selmon).and_then(|m| m.sel);
@@ -235,35 +281,29 @@ pub fn set_layout(layout_idx: Option<usize>) {
 }
 
 pub fn cycle_layout_direction(forward: bool) {
-    let (current_symbol, layouts_len) = {
+    let current_layout = {
         let g = get_globals();
-        let symbol = g
-            .monitors
-            .get(g.selmon)
-            .map(|m| get_current_layout(m).symbol());
-        (symbol, g.layouts.len())
+        g.monitors.get(g.selmon).map(|m| get_current_layout(m))
     };
 
+    let layouts_len = get_globals().layouts.len();
     if layouts_len == 0 {
         return;
     }
 
-    // Find the index of the current layout by matching symbols
+    let current_symbol = current_layout.map(|l| l.symbol());
+
     let g = get_globals();
-    let current = current_symbol
-        .and_then(|sym| {
-            g.layouts
-                .iter()
-                .position(|l| l.symbol() == sym)
-        })
+    let current_idx = current_symbol
+        .and_then(|sym| g.layouts.iter().position(|l| l.symbol() == sym))
         .unwrap_or(0);
 
     let candidate = if forward {
-        (current + 1) % layouts_len
-    } else if current == 0 {
+        (current_idx + 1) % layouts_len
+    } else if current_idx == 0 {
         layouts_len - 1
     } else {
-        current - 1
+        current_idx - 1
     };
 
     let skip = {
@@ -283,7 +323,23 @@ pub fn cycle_layout_direction(forward: bool) {
         candidate
     };
 
-    set_layout(Some(final_idx));
+    if let Some(&layout) = get_globals().layouts.get(final_idx) {
+        set_layout(layout);
+    }
+}
+
+pub fn command_layout(layout_idx: u32) {
+    let g = get_globals();
+    let layouts_len = g.layouts.len();
+    let idx = if layout_idx > 0 && (layout_idx as usize) < layouts_len {
+        layout_idx as usize
+    } else {
+        0
+    };
+
+    if let Some(&layout) = g.layouts.get(idx) {
+        set_layout(layout);
+    }
 }
 
 pub fn inc_nmaster_by(delta: i32) {
@@ -365,15 +421,4 @@ pub fn set_mfact(mfact_val: f32) {
     if animation_on {
         get_globals_mut().animated = true;
     }
-}
-
-pub fn command_layout(layout_idx: u32) {
-    let layouts_len = get_globals().layouts.len();
-    let idx = if layout_idx > 0 && (layout_idx as usize) < layouts_len {
-        layout_idx as usize
-    } else {
-        0
-    };
-
-    set_layout(Some(idx));
 }
