@@ -18,185 +18,168 @@ pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 + t * t * t
 }
 
+fn get_start_rect(win: Window, reset_pos: i32) -> Option<Rect> {
+    let globals = get_globals();
+    globals
+        .clients
+        .get(&win)
+        .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
+}
+
+fn get_monitor_size(win: Window) -> (i32, i32) {
+    let globals = get_globals();
+    globals
+        .clients
+        .get(&win)
+        .and_then(|c| c.mon_id)
+        .and_then(|mon_id| globals.monitors.get(mon_id))
+        .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
+        .unwrap_or((0, 0))
+}
+
+fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i32, i32) {
+    let actual_w = if target_w > mon_w - 4 {
+        mon_w - 4
+    } else {
+        target_w
+    };
+    let actual_h = if target_h > mon_h - 4 {
+        mon_h - 4
+    } else {
+        target_h
+    };
+    (actual_w, actual_h)
+}
+
+fn final_rect(
+    rect: &Rect,
+    start_rect: &Rect,
+    actual_w: i32,
+    actual_h: i32,
+    reset_pos: i32,
+) -> Rect {
+    let (x, y) = if reset_pos != 0 {
+        (start_rect.x, start_rect.y)
+    } else {
+        (rect.x, rect.y)
+    };
+    Rect {
+        x,
+        y,
+        w: actual_w,
+        h: actual_h,
+    }
+}
+
+fn try_resize(win: Window, rect: &Rect) {
+    if rect.is_valid() {
+        resize_client(win, rect);
+    }
+}
+
 pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     if frames <= 0 {
         return;
     }
 
-    let (start_x, start_y, start_w, start_h) = {
-        let globals = get_globals();
-        if let Some(client) = globals.clients.get(&win) {
-            let start_rect = if reset_pos != 0 {
-                client.geo
-            } else {
-                client.old_geo
-            };
-            (start_rect.x, start_rect.y, start_rect.w, start_rect.h)
-        } else {
-            return;
-        }
+    let start_rect = match get_start_rect(win, reset_pos) {
+        Some(r) => r,
+        None => return,
     };
 
-    let target_w = if rect.w != 0 { rect.w } else { start_w };
-    let target_h = if rect.h != 0 { rect.h } else { start_h };
+    let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
+    let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
     let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
+    let Some(ref conn) = x11.conn else { return };
 
-        let (mon_mw, mon_mh) = {
-            if let Some(mon_id) = globals.clients.get(&win).and_then(|c| c.mon_id) {
-                if let Some(mon) = globals.monitors.get(mon_id) {
-                    (mon.monitor_rect.w, mon.monitor_rect.h)
-                } else {
-                    (0, 0)
-                }
-            } else {
-                (0, 0)
-            }
-        };
+    let (mon_w, mon_h) = get_monitor_size(win);
+    let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
-        let actual_w = if target_w > mon_mw - 2 * 2 {
-            mon_mw - 2 * 2
-        } else {
-            target_w
-        };
-        let actual_h = if target_h > mon_mh - 2 * 2 {
-            mon_mh - 2 * 2
-        } else {
-            target_h
-        };
+    let globals = get_globals();
+    if !globals.animated {
+        try_resize(
+            win,
+            &Rect {
+                x: rect.x,
+                y: rect.y,
+                w: actual_w,
+                h: actual_h,
+            },
+        );
+        return;
+    }
 
-        if !globals.animated {
-            if actual_w > 0 && actual_h > 0 {
-                resize_client(
+    let queued_events = unsafe {
+        crate::drw::XEventsQueued(
+            globals.xlibdisplay.0 as *mut std::os::raw::c_void,
+            QUEUED_ALREADY,
+        )
+    };
+    let effective_frames = if queued_events > QUEUE_SKIP_THRESHOLD {
+        0
+    } else if queued_events > QUEUE_REDUCE_THRESHOLD {
+        (frames / 2).max(1)
+    } else {
+        frames
+    };
+
+    let final_rect = final_rect(rect, &start_rect, actual_w, actual_h, reset_pos);
+
+    if effective_frames == 0 {
+        try_resize(win, &final_rect);
+        return;
+    }
+
+    let dx = (rect.x - start_rect.x) as f64;
+    let dy = (rect.y - start_rect.y) as f64;
+
+    let dist_moved = (start_rect.x - rect.x).abs() > DISTANCE_THRESHOLD
+        || (start_rect.y - rect.y).abs() > DISTANCE_THRESHOLD
+        || (actual_w - start_rect.w).abs() > DISTANCE_THRESHOLD
+        || (actual_h - start_rect.h).abs() > DISTANCE_THRESHOLD;
+
+    if dist_moved {
+        if rect.x == start_rect.x
+            && rect.y == start_rect.y
+            && start_rect.w < mon_w - MONITOR_WIDTH_THRESHOLD
+        {
+            let delta_w = actual_w - start_rect.w;
+            let delta_h = actual_h - start_rect.h;
+            if delta_w != 0 || delta_h != 0 {
+                animate_client(
                     win,
                     &Rect {
-                        x: rect.x,
-                        y: rect.y,
+                        x: start_rect.x + delta_w,
+                        y: start_rect.y + delta_h,
+                        w: actual_w,
+                        h: actual_h,
+                    },
+                    effective_frames,
+                    0,
+                );
+            }
+        } else {
+            for time in 1..=effective_frames {
+                let progress = ease_out_cubic(time as f64 / effective_frames as f64);
+                let step_x = (start_rect.x as f64 + progress * dx) as i32;
+                let step_y = (start_rect.y as f64 + progress * dy) as i32;
+                try_resize(
+                    win,
+                    &Rect {
+                        x: step_x,
+                        y: step_y,
                         w: actual_w,
                         h: actual_h,
                     },
                 );
-            }
-            return;
-        }
-
-        let queued_events = unsafe {
-            crate::drw::XEventsQueued(
-                globals.xlibdisplay.0 as *mut std::os::raw::c_void,
-                QUEUED_ALREADY,
-            )
-        };
-        let effective_frames = if queued_events > QUEUE_SKIP_THRESHOLD {
-            0
-        } else if queued_events > QUEUE_REDUCE_THRESHOLD {
-            (frames / 2).max(1)
-        } else {
-            frames
-        };
-
-        if effective_frames == 0 {
-            if actual_w > 0 && actual_h > 0 {
-                if reset_pos != 0 {
-                    resize_client(
-                        win,
-                        &Rect {
-                            x: start_x,
-                            y: start_y,
-                            w: actual_w,
-                            h: actual_h,
-                        },
-                    );
-                } else {
-                    resize_client(
-                        win,
-                        &Rect {
-                            x: rect.x,
-                            y: rect.y,
-                            w: actual_w,
-                            h: actual_h,
-                        },
-                    );
-                }
-            }
-            return;
-        }
-
-        let dx = (rect.x - start_x) as f64;
-        let dy = (rect.y - start_y) as f64;
-
-        let dist_moved = (start_x - rect.x).abs() > DISTANCE_THRESHOLD
-            || (start_y - rect.y).abs() > DISTANCE_THRESHOLD
-            || (actual_w - start_w).abs() > DISTANCE_THRESHOLD
-            || (actual_h - start_h).abs() > DISTANCE_THRESHOLD;
-
-        if dist_moved {
-            if rect.x == start_x && rect.y == start_y && start_w < mon_mw - MONITOR_WIDTH_THRESHOLD
-            {
-                let delta_w = actual_w - start_w;
-                let delta_h = actual_h - start_h;
-                if delta_w != 0 || delta_h != 0 {
-                    animate_client(
-                        win,
-                        &Rect {
-                            x: start_x + delta_w,
-                            y: start_y + delta_h,
-                            w: actual_w,
-                            h: actual_h,
-                        },
-                        effective_frames,
-                        0,
-                    );
-                }
-            } else {
-                for time in 1..=effective_frames {
-                    let progress = ease_out_cubic(time as f64 / effective_frames as f64);
-                    let step_x = (start_x as f64 + progress * dx) as i32;
-                    let step_y = (start_y as f64 + progress * dy) as i32;
-
-                    if actual_w > 0 && actual_h > 0 {
-                        resize_client(
-                            win,
-                            &Rect {
-                                x: step_x,
-                                y: step_y,
-                                w: actual_w,
-                                h: actual_h,
-                            },
-                        );
-                    }
-
-                    let _ = conn.flush();
-                    thread::sleep(Duration::from_micros(FRAME_SLEEP_MICROS));
-                }
-            }
-        }
-
-        if actual_w > 0 && actual_h > 0 {
-            if reset_pos != 0 {
-                resize_client(
-                    win,
-                    &Rect {
-                        x: start_x,
-                        y: start_y,
-                        w: actual_w,
-                        h: actual_h,
-                    },
-                );
-            } else {
-                resize_client(
-                    win,
-                    &Rect {
-                        x: rect.x,
-                        y: rect.y,
-                        w: actual_w,
-                        h: actual_h,
-                    },
-                );
+                let _ = conn.flush();
+                thread::sleep(Duration::from_micros(FRAME_SLEEP_MICROS));
             }
         }
     }
+
+    try_resize(win, &final_rect);
 }
 
 pub fn check_animate(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
@@ -224,15 +207,7 @@ pub fn down_scale_client() {
     }
 }
 
-pub fn anim_left() {
-    anim_scroll(Direction::Left);
-}
-
-pub fn anim_right() {
-    anim_scroll(Direction::Right);
-}
-
-fn anim_scroll(dir: Direction) {
+pub fn anim_scroll(dir: Direction) {
     let sel_mon = match get_sel_mon() {
         Some(m) => m,
         None => return,
@@ -302,10 +277,10 @@ fn anim_scroll(dir: Direction) {
     }
 
     match dir {
-        Direction::Right => view_to_right(),
-        Direction::Left => view_to_left(),
-        Direction::Up => view_to_left(),
-        Direction::Down => view_to_right(),
+        Direction::Right => crate::tags::view::scroll_view(Direction::Right),
+        Direction::Left => crate::tags::view::scroll_view(Direction::Left),
+        Direction::Up => crate::tags::view::scroll_view(Direction::Left),
+        Direction::Down => crate::tags::view::scroll_view(Direction::Right),
     }
 }
 

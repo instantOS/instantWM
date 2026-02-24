@@ -99,14 +99,6 @@ pub fn toggle_view(mask: TagMask) {
     arrange(Some(selmon_id));
 }
 
-pub fn view_to_left() {
-    scroll_view(Direction::Left);
-}
-
-pub fn view_to_right() {
-    scroll_view(Direction::Right);
-}
-
 pub fn shift_view(direction: Direction) {
     let selmon_id = get_globals().selmon;
     let (tagset, numtags) = {
@@ -397,7 +389,7 @@ pub(super) fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
     }
 }
 
-fn scroll_view(dir: Direction) {
+pub fn scroll_view(dir: Direction) {
     let selmon_id = get_globals().selmon;
     let (current_tag, tagset, tagmask) = {
         let globals = get_globals();

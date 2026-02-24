@@ -25,8 +25,8 @@ pub use naming::{name_tag, reset_name_tag};
 pub use client_tags::{follow_tag, set_client_tag, tag_all, toggle_tag};
 
 pub use view::{
-    follow_view, last_view, shift_view, swap_tags, toggle_fullscreen_overview, toggle_overview,
-    toggle_view, view, view_to_left, view_to_right, win_view,
+    follow_view, last_view, scroll_view, shift_view, swap_tags, toggle_fullscreen_overview,
+    toggle_overview, toggle_view, view, win_view,
 };
 
 // Re-export TagMask for convenience

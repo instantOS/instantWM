@@ -25,12 +25,12 @@ pub fn tag_to_right_by(offset: i32) {
 
 pub fn move_left() {
     tag_to_left_by(1);
-    crate::tags::view::view_to_left();
+    crate::tags::view::scroll_view(Direction::Left);
 }
 
 pub fn move_right() {
     tag_to_right_by(1);
-    crate::tags::view::view_to_right();
+    crate::tags::view::scroll_view(Direction::Right);
 }
 
 fn shift_tag(dir: Direction, offset: i32) {

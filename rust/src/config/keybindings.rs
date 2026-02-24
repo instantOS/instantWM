@@ -4,7 +4,7 @@
 use std::rc::Rc;
 
 use super::commands::Cmd;
-use crate::animation::{anim_left, anim_right};
+use crate::animation;
 use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::floating::{center_window, distribute_clients, temp_fullscreen};
@@ -122,8 +122,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,  XK_TAB     => last_view),
         key!(MS,      XK_TAB     => focus_last_client),
         key!(MA,      XK_TAB     => follow_view),
-        key!(MODKEY,  XK_LEFT    => anim_left),
-        key!(MODKEY,  XK_RIGHT   => anim_right),
+        key!(MODKEY,  XK_LEFT    => || animation::anim_scroll(Direction::Left)),
+        key!(MODKEY,  XK_RIGHT   => || animation::anim_scroll(Direction::Right)),
         key!(MA,      XK_LEFT    => move_left),
         key!(MA,      XK_RIGHT   => move_right),
         key!(MS,      XK_LEFT    => || tag_to_left_by(1)),
