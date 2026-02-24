@@ -21,8 +21,7 @@
 //! | [`command_layout`]        | IPC command handler — set layout by 1-based `arg.ui`       |
 
 use crate::bar::draw_bar;
-use crate::client::{next_tiled, resize, save_border_width};
-use crate::floating::restore_border_width_win;
+use crate::client::{next_tiled, resize, restore_border_width, save_border_width};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{
@@ -152,7 +151,7 @@ fn apply_border_widths(m: &Monitor) {
                 c.border_width = 0;
             }
         } else {
-            restore_border_width_win(win);
+            restore_border_width(win);
         }
 
         c_win = get_globals()

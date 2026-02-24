@@ -62,7 +62,9 @@ pub use visibility::{hide, is_hidden, show, show_hide};
 pub use focus::{configure, set_focus, unfocus_win, LAST_CLIENT};
 
 // -- Fullscreen --------------------------------------------------------------
-pub use fullscreen::{save_border_width, set_fullscreen, toggle_fake_fullscreen};
+pub use fullscreen::{
+    restore_border_width, save_border_width, set_fullscreen, toggle_fake_fullscreen,
+};
 
 // -- X11 state / properties --------------------------------------------------
 pub use state::{set_client_state, set_client_tag_prop, set_urgent, update_title, update_wm_hints};

@@ -9,7 +9,9 @@
 //! - **float_geo** (`Client::float_geo`) — the last known floating rect.
 //!   Saved when entering tiling or snap; restored when returning to free float.
 //! - **border_width / old_border_width** — maximized-snap zeroes the border;
-//!   these fields let us round-trip the original value.
+//!   these fields let us round-trip the original value.  Border save/restore
+//!   is handled by [`crate::client::save_border_width`] /
+//!   [`crate::client::restore_border_width`].
 //! - **`apply_float_change`** — the single internal function that actually
 //!   flips `isfloating`.  All public toggle/set helpers funnel through it.
 //!
@@ -19,8 +21,6 @@
 //! |-------------------------|------------------------------------------------------|
 //! | `save_floating_win`     | snapshot current geometry into `float_geo`           |
 //! | `restore_floating_win`  | resize window to its saved `float_geo`               |
-//! | `save_bw_win`           | snapshot border width into `old_border_width`        |
-//! | `restore_border_width_win` | write `old_border_width` back to `border_width`   |
 //! | `toggle_floating`       | flip the selected window's floating state (animated) |
 //! | `change_floating_win`   | flip any window's floating state (no animation)      |
 //! | `set_floating`          | make a window floating if it isn't already           |
@@ -28,7 +28,7 @@
 //! | `temp_fullscreen`       | toggle quick fullscreen outside the EWMH protocol    |
 
 use crate::animation::animate_client_rect;
-use crate::client::resize;
+use crate::client::{resize, restore_border_width};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::*;
@@ -62,34 +62,6 @@ pub fn restore_floating_win(win: Window) {
     }
 }
 
-// ── Border width persistence ──────────────────────────────────────────────────
-
-/// Snapshot the current border width into `Client::old_border_width`.
-///
-/// Called before maximized-snap zeroes the border so it can be restored later.
-/// Does nothing if the current border width is already zero.
-pub fn save_bw_win(win: Window) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        if client.border_width != 0 {
-            client.old_border_width = client.border_width;
-        }
-    }
-}
-
-/// Write `old_border_width` back to `border_width`.
-///
-/// Called when leaving maximized-snap to undo the border zeroing.
-/// Does nothing if no border width was previously saved.
-pub fn restore_border_width_win(win: Window) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        if client.old_border_width != 0 {
-            client.border_width = client.old_border_width;
-        }
-    }
-}
-
 // ── Core state transition ─────────────────────────────────────────────────────
 
 /// Flip a window's `isfloating` flag and handle all side-effects.
@@ -114,7 +86,7 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
         }
 
         if update_borders {
-            restore_border_width_win(win);
+            restore_border_width(win);
 
             let x11 = get_x11();
             if let Some(ref conn) = x11.conn {
@@ -155,7 +127,12 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
             if update_borders {
                 // Single-window layouts don't need a visible border.
                 if client_count <= 1 && client.snapstatus == SnapPosition::None {
-                    client.old_border_width = client.border_width;
+                    // Mirror the C savebw guard: only overwrite old_border_width
+                    // when border_width is non-zero so we never clobber a
+                    // previously saved value with 0.
+                    if client.border_width != 0 {
+                        client.old_border_width = client.border_width;
+                    }
                     client.border_width = 0;
                 }
                 // Border repaint is handled by the caller (arrange → drawbar).

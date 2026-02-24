@@ -18,6 +18,7 @@
 //! [`reset_snap`].
 
 use crate::animation::check_animate_rect;
+use crate::client::{restore_border_width, save_border_width};
 use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
@@ -206,7 +207,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
 
     // Restore border width for all positions except Maximized (which needs bw=0).
     if snapstatus != SnapPosition::Maximized {
-        super::state::restore_border_width_win(win);
+        restore_border_width(win);
     }
 
     match snapstatus {
@@ -318,7 +319,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::Maximized => {
-            super::state::save_bw_win(win);
+            save_border_width(win);
             {
                 let globals = get_globals_mut();
                 if let Some(client) = globals.clients.get_mut(&win) {
@@ -381,7 +382,7 @@ pub fn reset_snap(win: Window) {
                 client.snapstatus = SnapPosition::None;
             }
         }
-        super::state::restore_border_width_win(win);
+        restore_border_width(win);
         super::state::restore_floating_win(win);
         super::helpers::apply_size(win);
     }

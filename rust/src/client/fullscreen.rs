@@ -37,20 +37,35 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 /// Copy `client.border_width` → `client.old_border_width`.
 ///
-/// Call this just before entering fullscreen so that [`restore_border_width`]
-/// can put the border back on exit.
+/// Call this just before entering fullscreen (or stripping the border for a
+/// single-client tiling layout) so that [`restore_border_width`] can put the
+/// border back on exit.
+///
+/// **Guard:** if `border_width` is already 0 the save is skipped — we must
+/// never clobber a previously saved non-zero value with 0, or restoring would
+/// silently become a no-op.  This matches the C `savebw` implementation.
 pub fn save_border_width(win: Window) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        client.old_border_width = client.border_width;
+        if client.border_width != 0 {
+            client.old_border_width = client.border_width;
+        }
     }
 }
 
 /// Copy `client.old_border_width` → `client.border_width`.
+///
+/// **Guard:** if `old_border_width` is 0 (i.e. was never saved, or the
+/// window genuinely had no border) the restore is skipped — unconditionally
+/// writing 0 back would remove the border from windows that were managed
+/// without ever going through the strip path.  This matches the C
+/// `restore_border_width` implementation.
 pub fn restore_border_width(win: Window) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
-        client.border_width = client.old_border_width;
+        if client.old_border_width != 0 {
+            client.border_width = client.old_border_width;
+        }
     }
 }
 

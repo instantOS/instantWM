@@ -1,6 +1,6 @@
 use crate::animation::animate_client_rect;
+use crate::client::save_border_width;
 use crate::client::{attach, attach_stack, detach, detach_stack, resize};
-use crate::floating::save_bw_win;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
@@ -69,7 +69,7 @@ pub fn create_overlay(_arg: &Arg) {
         }
     }
 
-    save_bw_win(temp_client);
+    save_border_width(temp_client);
 
     {
         let globals = get_globals_mut();

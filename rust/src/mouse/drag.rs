@@ -302,13 +302,37 @@ fn on_motion(
     };
 
     // Promote a tiled window to floating once the user drags it far enough.
-    if !is_floating
+    // Mirrors the C movemouse_motion behaviour exactly:
+    //   1. Disable animation so the window jumps to float_geo instantly rather
+    //      than playing a 7-frame animation that blocks the event loop and fills
+    //      the queue with stale MotionNotify events.
+    //   2. Call toggle_floating (which moves the window to float_geo and calls
+    //      arrange).
+    //   3. Re-read isfloating / client_geo — toggle_floating changed them.
+    //   4. Fall through to the resize below so the window is immediately placed
+    //      at (nx, ny) (≈ the current cursor position relative to tiled origin).
+    //      Without this fall-through the window would sit at float_geo for one
+    //      frame, and every subsequent event would anchor to the stale tiled
+    //      ocx/ocy, causing the "jumps all the way to the left" symptom.
+    let (is_floating, client_geo) = if !is_floating
         && has_tiling
         && ((nx - client_geo.x).abs() > snap || (ny - client_geo.y).abs() > snap)
     {
+        // Temporarily suppress animation so toggle_floating's resize is instant.
+        get_globals_mut().animated = false;
         toggle_floating(&Arg::default());
-        return;
-    }
+        get_globals_mut().animated = true;
+
+        // Re-read the post-toggle state (isfloating=true, geo=float_geo).
+        let globals = get_globals();
+        globals
+            .clients
+            .get(&win)
+            .map(|c| (c.isfloating, c.geo))
+            .unwrap_or((true, client_geo))
+    } else {
+        (is_floating, client_geo)
+    };
 
     if !has_tiling || is_floating {
         {
