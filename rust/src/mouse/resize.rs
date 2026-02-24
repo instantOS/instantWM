@@ -223,41 +223,47 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
                 let globals = get_globals();
                 let snap = globals.snap;
 
-                if let Some(client) = globals.clients.get(&win) {
+                let should_toggle = if let Some(client) = globals.clients.get(&win) {
                     let has_tiling = globals
                         .monitors
                         .get(globals.selmon)
                         .map(|m| is_current_layout_tiling(m, &globals.tags))
                         .unwrap_or(true);
 
-                    if !client.isfloating
+                    !client.isfloating
                         && has_tiling
                         && ((new_w - client.geo.w).abs() > snap
                             || (new_h - client.geo.h).abs() > snap)
-                    {
-                        drop(client);
-                        drop(globals);
-                        toggle_floating(&Arg::default());
-                    } else if !has_tiling
-                        || globals
-                            .clients
-                            .get(&win)
-                            .map(|c| c.isfloating)
-                            .unwrap_or(false)
-                    {
-                        let globals = get_globals();
-                        if let Some(client) = globals.clients.get(&win) {
-                            resize(
-                                win,
-                                &Rect {
-                                    x: new_x,
-                                    y: new_y,
-                                    w: new_w,
-                                    h: new_h,
-                                },
-                                true,
-                            );
-                        }
+                } else {
+                    false
+                };
+
+                if should_toggle {
+                    toggle_floating(&Arg::default());
+                } else {
+                    let globals = get_globals();
+                    let is_floating = globals
+                        .clients
+                        .get(&win)
+                        .map(|c| c.isfloating)
+                        .unwrap_or(false);
+                    let has_tiling = globals
+                        .monitors
+                        .get(globals.selmon)
+                        .map(|m| is_current_layout_tiling(m, &globals.tags))
+                        .unwrap_or(true);
+
+                    if !has_tiling || is_floating {
+                        resize(
+                            win,
+                            &Rect {
+                                x: new_x,
+                                y: new_y,
+                                w: new_w,
+                                h: new_h,
+                            },
+                            true,
+                        );
                     }
                 }
             }

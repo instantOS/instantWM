@@ -27,7 +27,7 @@ use super::grab::{grab_pointer_with_keys, ungrab};
 use super::warp::get_root_ptr;
 
 // Re-export resize_mouse from parent module for use in hover_resize_mouse
-use crate::mouse::resize_mouse;
+use super::resize::resize_mouse_directional;
 
 // ── Resize direction ─────────────────────────────────────────────────────────
 
@@ -451,7 +451,7 @@ pub fn hover_resize_mouse() -> bool {
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
                             warp_pointer_resize(win, dir);
-                            resize_mouse_directional(Some(dir));
+                            crate::mouse::resize_mouse_directional(Some(dir));
                         }
                     }
                     _ => {}
