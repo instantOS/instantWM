@@ -129,71 +129,55 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
 
 // ── layout index & trait-object resolution ────────────────────────────────────
 
-/// Return the active layout index for monitor `m`.
+/// Return the active layout for monitor `m`.
 ///
-/// The index is stored per-tag: `tags[current_tag - 1].ltidxs[active_layout_slot.as_index()]`.
-/// Returns `None` when the tag index is out of range (e.g. during
-/// initialisation before any tag has been selected).
-pub fn get_current_layout_idx(m: &Monitor) -> Option<usize> {
+/// The layout is stored per-tag in `tags[current_tag - 1].layouts.current()`.
+/// Falls back to [`TILE_LAYOUT`] when no layout has been set.
+pub fn get_current_layout(m: &Monitor) -> &'static dyn Layout {
     let g = get_globals();
     let tag = m.current_tag;
 
     if tag > 0 && tag <= g.tags.tags.len() {
         let t = &g.tags.tags[tag - 1];
-        t.layout_indices.get(t.active_layout_slot)
+        t.layouts.current().unwrap_or(&TILE_LAYOUT)
     } else {
-        None
+        &TILE_LAYOUT
     }
 }
 
-/// Return the active [`Layout`] trait object for monitor `m`.
-///
-/// Falls back to [`TILE_LAYOUT`] when the stored index is out of range or no
-/// layout has been selected yet, so callers never have to deal with an
-/// `Option`.
-pub fn get_current_layout(m: &Monitor) -> &'static dyn Layout {
-    let g = get_globals();
-    let idx = get_current_layout_idx(m).unwrap_or(0);
-    g.layouts.get(idx).copied().unwrap_or(&TILE_LAYOUT)
-}
-
-/// Return the active layout index for the *selected* monitor, or `None`.
-///
-/// Convenience wrapper used by the manager and command handlers that always
-/// operate on `selmon`.
-pub fn get_selmon_layout_idx() -> Option<usize> {
-    let g = get_globals();
-    let m = g.monitors.get(g.selmon)?;
-    get_current_layout_idx(m)
-}
-
-/// Return the layout symbol string for the *selected* monitor, or the
-/// first layout's symbol as a fallback.
+/// Return the active layout symbol string for the *selected* monitor, or the
+/// tile layout's symbol as a fallback.
 ///
 /// Used by the bar renderer to display the current layout indicator.
 pub fn get_current_layout_symbol() -> Option<&'static str> {
     let g = get_globals();
 
     if let Some(m) = g.monitors.get(g.selmon) {
-        if let Some(idx) = get_current_layout_idx(m) {
-            if let Some(layout) = g.layouts.get(idx) {
-                return Some(layout.symbol());
-            }
+        let tag = m.current_tag;
+        if tag > 0 && tag <= g.tags.tags.len() {
+            return Some(g.tags.tags[tag - 1].layouts.symbol());
         }
     }
 
-    // Fallback: first registered layout.
-    g.layouts.first().map(|l| l.symbol())
+    // Fallback: tile layout symbol.
+    Some(TILE_LAYOUT.symbol())
 }
 
 /// Returns `true` when the active layout for the *selected* monitor is
-/// a floating (non-tiling) layout.
+/// a tiling layout.
 ///
 /// Used by `floating::has_tiling_layout` and a few other callers.
 pub fn selmon_has_tiling_layout() -> bool {
     let g = get_globals();
     match g.monitors.get(g.selmon) {
-        Some(m) => get_current_layout(m).is_tiling(),
+        Some(m) => {
+            let tag = m.current_tag;
+            if tag > 0 && tag <= g.tags.tags.len() {
+                g.tags.tags[tag - 1].layouts.is_tiling()
+            } else {
+                true
+            }
+        }
         None => false,
     }
 }

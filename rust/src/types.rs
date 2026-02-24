@@ -251,30 +251,78 @@ impl TagSet {
     }
 }
 
-/// Layout configuration for a tag, storing indices for primary and secondary layouts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct LayoutIndices {
-    /// Layout index for the primary slot (used when `active_layout_slot` is `Primary`).
-    pub primary: Option<usize>,
-    /// Layout index for the secondary slot (used when `active_layout_slot` is `Secondary`).
-    pub secondary: Option<usize>,
+/// Stores the primary and secondary layouts for a tag.
+///
+/// Each tag can have two layouts that can be toggled between (e.g., tiling and floating).
+/// This struct provides methods to get/set the layout for each slot and toggle between them.
+#[derive(Debug, Clone, Copy)]
+pub struct TagLayouts {
+    /// The primary layout (used when `active_slot` is `Primary`).
+    pub primary: Option<&'static dyn Layout>,
+    /// The secondary layout (used when `active_slot` is `Secondary`).
+    pub secondary: Option<&'static dyn Layout>,
+    /// Which slot is currently active.
+    pub active_slot: LayoutSlot,
 }
 
-impl LayoutIndices {
-    /// Get the layout index for the given slot.
-    pub fn get(self, slot: LayoutSlot) -> Option<usize> {
+impl Default for TagLayouts {
+    fn default() -> Self {
+        Self {
+            primary: None,
+            secondary: None,
+            active_slot: LayoutSlot::default(),
+        }
+    }
+}
+
+impl TagLayouts {
+    /// Get the currently active layout.
+    pub fn current(self) -> Option<&'static dyn Layout> {
+        match self.active_slot {
+            LayoutSlot::Primary => self.primary,
+            LayoutSlot::Secondary => self.secondary,
+        }
+    }
+
+    /// Get the layout for a specific slot.
+    pub fn get(self, slot: LayoutSlot) -> Option<&'static dyn Layout> {
         match slot {
             LayoutSlot::Primary => self.primary,
             LayoutSlot::Secondary => self.secondary,
         }
     }
 
-    /// Set the layout index for the given slot.
-    pub fn set(&mut self, slot: LayoutSlot, index: Option<usize>) {
+    /// Set the layout for a specific slot.
+    pub fn set(&mut self, slot: LayoutSlot, layout: Option<&'static dyn Layout>) {
         match slot {
-            LayoutSlot::Primary => self.primary = index,
-            LayoutSlot::Secondary => self.secondary = index,
+            LayoutSlot::Primary => self.primary = layout,
+            LayoutSlot::Secondary => self.secondary = layout,
         }
+    }
+
+    /// Toggle between primary and secondary layouts.
+    pub fn toggle(&mut self) {
+        self.active_slot = self.active_slot.toggle();
+    }
+
+    /// Returns true if the current layout is a tiling layout.
+    pub fn is_tiling(self) -> bool {
+        self.current().map(|l| l.is_tiling()).unwrap_or(true)
+    }
+
+    /// Returns true if the current layout is a monocle layout.
+    pub fn is_monocle(self) -> bool {
+        self.current().map(|l| l.is_monocle()).unwrap_or(false)
+    }
+
+    /// Returns true if the current layout is an overview layout.
+    pub fn is_overview(self) -> bool {
+        self.current().map(|l| l.is_overview()).unwrap_or(false)
+    }
+
+    /// Get the symbol of the current layout.
+    pub fn symbol(self) -> &'static str {
+        self.current().map(|l| l.symbol()).unwrap_or("[]=")
     }
 }
 
@@ -282,16 +330,14 @@ impl LayoutIndices {
 pub struct Tag {
     pub name: String,
     pub alt_name: &'static str,
-    // Pertag / Layout fields
+    /// Number of clients in the master area for tiling layouts.
     pub nmaster: i32,
+    /// Master factor for tiling layouts (0.0 to 1.0).
     pub mfact: f32,
-    /// Which layout slot (primary or secondary) is currently active.
-    /// Each tag stores two layouts in `layout_indices`; this field selects which one is active.
-    pub active_layout_slot: LayoutSlot,
+    /// Whether to show the bar on this tag.
     pub showbar: bool,
-    /// Layout indices for the primary and secondary slots.
-    /// The active slot is determined by `active_layout_slot`.
-    pub layout_indices: LayoutIndices,
+    /// The layouts for this tag (primary and secondary).
+    pub layouts: TagLayouts,
 }
 
 impl Default for Tag {
@@ -301,9 +347,8 @@ impl Default for Tag {
             alt_name: "",
             nmaster: 1,
             mfact: 0.55,
-            active_layout_slot: LayoutSlot::default(),
             showbar: true,
-            layout_indices: LayoutIndices::default(),
+            layouts: TagLayouts::default(),
         }
     }
 }

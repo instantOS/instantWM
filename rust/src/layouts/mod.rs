@@ -233,7 +233,7 @@ impl Layout for HorizLayout {
 #[allow(unused_imports)]
 pub use query::{
     all_client_count, client_count, client_count_mon, find_visible_client, get_current_layout,
-    get_current_layout_idx, get_current_layout_symbol, selmon_has_tiling_layout,
+    get_current_layout_symbol, selmon_has_tiling_layout,
 };
 
 // ── Re-exports: manager ───────────────────────────────────────────────────────

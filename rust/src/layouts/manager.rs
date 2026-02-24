@@ -4,9 +4,7 @@ use crate::bar::draw_bar;
 use crate::client::{next_tiled, resize, restore_border_width, save_border_width};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::algo::save_floating;
-use crate::layouts::query::{
-    client_count, client_count_mon, get_current_layout, get_current_layout_idx,
-};
+use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
 use crate::types::{Monitor, MonitorId, Rect};
 use std::cmp::max;
 use x11rb::connection::Connection;
@@ -186,10 +184,11 @@ pub fn set_layout(layout_idx: Option<usize>) {
             let g = get_globals_mut();
             for tag in g.tags.tags.iter_mut() {
                 if layout_idx.is_none() {
-                    tag.active_layout_slot = tag.active_layout_slot.toggle();
+                    tag.layouts.toggle();
                 }
                 if let Some(idx) = layout_idx {
-                    tag.ltidxs[tag.active_layout_slot.as_index()] = Some(idx);
+                    let layout = g.layouts.get(idx).copied();
+                    tag.layouts.set(tag.layouts.active_slot, layout);
                 }
             }
             g.tags.prefix = false;
@@ -204,13 +203,16 @@ pub fn set_layout(layout_idx: Option<usize>) {
             let current_tag = m.current_tag;
             if current_tag > 0 && current_tag <= g.tags.tags.len() {
                 let tag = &mut g.tags.tags[current_tag - 1];
-                let current_idx = tag.ltidxs[tag.active_layout_slot.as_index()];
+                let current_layout = tag.layouts.current();
+                let new_layout = layout_idx.and_then(|idx| g.layouts.get(idx).copied());
 
-                if layout_idx.is_none() || layout_idx != current_idx {
-                    tag.active_layout_slot = tag.active_layout_slot.toggle();
+                if layout_idx.is_none()
+                    || new_layout.map(|l| l.symbol()) != current_layout.map(|l| l.symbol())
+                {
+                    tag.layouts.toggle();
                 }
-                if let Some(idx) = layout_idx {
-                    tag.ltidxs[tag.active_layout_slot.as_index()] = Some(idx);
+                if let Some(layout) = new_layout {
+                    tag.layouts.set(tag.layouts.active_slot, Some(layout));
                 }
             }
         }
@@ -233,17 +235,28 @@ pub fn set_layout(layout_idx: Option<usize>) {
 }
 
 pub fn cycle_layout_direction(forward: bool) {
-    let (current_idx, layouts_len) = {
+    let (current_symbol, layouts_len) = {
         let g = get_globals();
-        let idx = g.monitors.get(g.selmon).and_then(get_current_layout_idx);
-        (idx, g.layouts.len())
+        let symbol = g
+            .monitors
+            .get(g.selmon)
+            .map(|m| get_current_layout(m).symbol());
+        (symbol, g.layouts.len())
     };
 
     if layouts_len == 0 {
         return;
     }
 
-    let current = current_idx.unwrap_or(0);
+    // Find the index of the current layout by matching symbols
+    let g = get_globals();
+    let current = current_symbol
+        .and_then(|sym| {
+            g.layouts
+                .iter()
+                .position(|l| l.symbol() == sym)
+        })
+        .unwrap_or(0);
 
     let candidate = if forward {
         (current + 1) % layouts_len

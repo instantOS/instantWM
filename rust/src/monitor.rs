@@ -609,16 +609,9 @@ pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'
     }
 }
 
-pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet, layouts: &[&dyn Layout]) -> String {
+pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet) -> String {
     if let Some(tag) = get_current_tag(mon, tags) {
-        if let Some(lt_idx) = tag.layout_indices.get(tag.active_layout_slot) {
-            layouts
-                .get(lt_idx)
-                .map(|l: &&dyn Layout| l.symbol().to_string())
-                .unwrap_or_else(|| "[]=".to_string())
-        } else {
-            "[]=".to_string()
-        }
+        tag.layouts.symbol().to_string()
     } else {
         "[]=".to_string()
     }
@@ -631,8 +624,7 @@ pub fn get_current_showbar(mon: &Monitor, tags: &TagSet) -> bool {
 }
 
 pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
-    use crate::types::LayoutSlot;
     get_current_tag(mon, tags)
-        .map(|t| t.active_layout_slot == LayoutSlot::Primary)
+        .map(|t| t.layouts.is_tiling())
         .unwrap_or(true)
 }

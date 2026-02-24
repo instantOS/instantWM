@@ -27,7 +27,7 @@ pub fn text_width(text: &str) -> i32 {
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
     let g = get_globals();
-    crate::monitor::get_current_ltsymbol(m, &g.tags, &g.layouts)
+    crate::monitor::get_current_ltsymbol(m, &g.tags)
 }
 
 pub fn get_layout_symbol_width(m: &Monitor) -> i32 {
