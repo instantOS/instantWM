@@ -85,8 +85,8 @@ pub fn grab_keys() {
         let globals = get_globals();
         let root = globals.root;
         let numlockmask = globals.numlockmask;
-        let keys = globals.keys.clone();
-        let dkeys = globals.dkeys.clone();
+        let keys = &globals.keys;
+        let dkeys = &globals.dkeys;
         let free_alt_tab = true;
 
         let _ = ungrab_key(conn, 0, root, ModMask::ANY);

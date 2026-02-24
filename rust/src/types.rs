@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use x11rb::protocol::xproto::Window;
 
 use crate::drw::Clr;
@@ -900,19 +902,59 @@ pub struct Systray {
     pub icons: Vec<Window>,
 }
 
-#[derive(Debug, Clone)]
 pub struct Key {
     pub mod_mask: u32,
     pub keysym: u32,
-    pub action: Box<dyn Fn()>,
+    pub action: Rc<Box<dyn Fn()>>,
 }
 
-#[derive(Debug, Clone)]
+impl Debug for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Key")
+            .field("mod_mask", &self.mod_mask)
+            .field("keysym", &self.keysym)
+            .field("action", &"<closure>")
+            .finish()
+    }
+}
+
+impl Clone for Key {
+    fn clone(&self) -> Self {
+        Self {
+            mod_mask: self.mod_mask,
+            keysym: self.keysym,
+            action: Rc::clone(&self.action),
+        }
+    }
+}
+
 pub struct Button {
     pub click: Click,
     pub mask: u32,
     pub button: u8,
-    pub action: Box<dyn Fn()>,
+    pub action: Rc<Box<dyn Fn()>>,
+}
+
+impl Debug for Button {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Button")
+            .field("click", &self.click)
+            .field("mask", &self.mask)
+            .field("button", &self.button)
+            .field("action", &"<closure>")
+            .finish()
+    }
+}
+
+impl Clone for Button {
+    fn clone(&self) -> Self {
+        Self {
+            click: self.click,
+            mask: self.mask,
+            button: self.button,
+            action: Rc::clone(&self.action),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,6 +1,6 @@
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::systray::get_systray_width;
-use crate::types::{Arg, Monitor};
+use crate::types::Monitor;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
@@ -150,7 +150,7 @@ pub(crate) fn update_bars() {
     }
 }
 
-pub(crate) fn toggle_bar(_arg: &Arg) {
+pub(crate) fn toggle_bar() {
     let g = get_globals_mut();
 
     let animated = g.animated;

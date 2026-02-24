@@ -22,7 +22,7 @@ pub fn overlay_exists() -> bool {
     globals.clients.contains_key(&overlay_win)
 }
 
-pub fn create_overlay(_arg: &Arg) {
+pub fn create_overlay() {
     let (sel_win, sel_overlay, sel_fullscreen) = {
         let globals = get_globals();
         let mon = match globals.monitors.get(globals.selmon) {
@@ -43,7 +43,7 @@ pub fn create_overlay(_arg: &Arg) {
     };
 
     if sel_fullscreen {
-        crate::floating::temp_fullscreen(&Arg::default());
+        crate::floating::temp_fullscreen();
     }
 
     if Some(sel_win) == sel_overlay {
@@ -113,7 +113,7 @@ pub fn create_overlay(_arg: &Arg) {
         let _ = conn.flush();
     }
 
-    show_overlay(&Arg::default());
+    show_overlay();
 }
 
 pub fn reset_overlay() {
@@ -151,7 +151,7 @@ pub fn reset_overlay() {
     focus(Some(overlay_win));
 }
 
-pub fn show_overlay(_arg: &Arg) {
+pub fn show_overlay() {
     if !overlay_exists() {
         return;
     }
@@ -377,7 +377,7 @@ pub fn show_overlay(_arg: &Arg) {
     }
 }
 
-pub fn hide_overlay(_arg: &Arg) {
+pub fn hide_overlay() {
     if !overlay_exists() {
         return;
     }
@@ -440,7 +440,7 @@ pub fn hide_overlay(_arg: &Arg) {
     };
 
     if is_fullscreen {
-        crate::floating::temp_fullscreen(&Arg::default());
+        crate::floating::temp_fullscreen();
     }
 
     {
@@ -522,7 +522,7 @@ pub fn hide_overlay(_arg: &Arg) {
     arrange(Some(selmon_id));
 }
 
-pub fn set_overlay(_arg: &Arg) {
+pub fn set_overlay() {
     if !overlay_exists() {
         return;
     }
@@ -548,11 +548,11 @@ pub fn set_overlay(_arg: &Arg) {
     };
 
     if overlaystatus == 0 {
-        show_overlay(&Arg::default());
+        show_overlay();
     } else if overlay_visible {
-        hide_overlay(&Arg::default());
+        hide_overlay();
     } else {
-        show_overlay(&Arg::default());
+        show_overlay();
     }
 }
 
@@ -595,8 +595,8 @@ pub fn set_overlay_mode(mode: OverlayMode) {
     }
 
     if overlaystatus != 0 {
-        hide_overlay(&Arg::default());
-        show_overlay(&Arg::default());
+        hide_overlay();
+        show_overlay();
     }
 }
 
@@ -610,8 +610,8 @@ pub fn is_overlay_window(win: Window) -> bool {
     false
 }
 
-pub fn set_overlay_mode_cmd(arg: &Arg) {
-    let mode = OverlayMode::from_i32(arg.i).unwrap_or_default();
+pub fn set_overlay_mode_cmd(mode: i32) {
+    let mode = OverlayMode::from_i32(mode).unwrap_or_default();
     set_overlay_mode(mode);
 }
 

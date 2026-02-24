@@ -13,7 +13,6 @@
 
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::{arrange, dir_to_mon, send_mon};
-use crate::types::Arg;
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
@@ -22,9 +21,9 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Send the selected client to the monitor in direction `arg.i`.
+/// Send the selected client to the monitor in direction `direction`.
 ///
-/// `arg.i` is passed directly to [`dir_to_mon`] which resolves it to an
+/// `direction` is passed directly to [`dir_to_mon`] which resolves it to an
 /// absolute monitor index.  Positive values mean "next monitor", negative
 /// values mean "previous monitor" (matching the dwm convention).
 ///
@@ -42,7 +41,7 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 /// - No client is currently selected.
 /// - Only one monitor is connected.
 /// - [`dir_to_mon`] returns `None` (direction is out of range).
-pub fn tag_mon(arg: &Arg) {
+pub fn tag_mon(direction: i32) {
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
@@ -56,7 +55,7 @@ pub fn tag_mon(arg: &Arg) {
         return;
     }
 
-    let Some(target_id) = dir_to_mon(arg.i) else {
+    let Some(target_id) = dir_to_mon(direction) else {
         return;
     };
 

@@ -25,7 +25,7 @@ use crate::animation::animate_client_rect;
 use crate::client::geometry::resize_client_rect;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
-use crate::types::{Arg, Rect};
+use crate::types::Rect;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -211,7 +211,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
 ///
 /// The `isfakefullscreen` flag itself is flipped at the end regardless of the
 /// current state.
-pub fn toggle_fake_fullscreen(_arg: &Arg) {
+pub fn toggle_fake_fullscreen() {
     let Some(win) = crate::util::get_sel_win() else {
         return;
     };

@@ -1,31 +1,4 @@
 //! Floating state transitions and geometry persistence.
-//!
-//! This module owns everything that **changes** whether a window is floating
-//! and everything that **saves / restores** the geometry associated with that
-//! state.
-//!
-//! # Concepts
-//!
-//! - **float_geo** (`Client::float_geo`) — the last known floating rect.
-//!   Saved when entering tiling or snap; restored when returning to free float.
-//! - **border_width / old_border_width** — maximized-snap zeroes the border;
-//!   these fields let us round-trip the original value.  Border save/restore
-//!   is handled by [`crate::client::save_border_width`] /
-//!   [`crate::client::restore_border_width`].
-//! - **`apply_float_change`** — the single internal function that actually
-//!   flips `isfloating`.  All public toggle/set helpers funnel through it.
-//!
-//! # Public surface
-//!
-//! | Function                | Purpose                                              |
-//! |-------------------------|------------------------------------------------------|
-//! | `save_floating_win`     | snapshot current geometry into `float_geo`           |
-//! | `restore_floating_win`  | resize window to its saved `float_geo`               |
-//! | `toggle_floating`       | flip the selected window's floating state (animated) |
-//! | `change_floating_win`   | flip any window's floating state (no animation)      |
-//! | `set_floating`          | make a window floating if it isn't already           |
-//! | `set_tiled`             | make a window tiled if it isn't already              |
-//! | `temp_fullscreen`       | toggle quick fullscreen outside the EWMH protocol    |
 
 use crate::animation::animate_client_rect;
 use crate::client::{resize, restore_border_width};
@@ -35,29 +8,6 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-// ── Floating-in-place promotion ───────────────────────────────────────────────
-
-/// Promote a window to floating **without moving or resizing it**.
-///
-/// This is the correct primitive to use when a tiled window is being promoted
-/// to floating during an interactive drag.  Unlike [`toggle_floating`] /
-/// [`apply_float_change`], this function does **not** issue any
-/// `configure_window` call, so there is only one X11 resize event — the one
-/// the caller issues immediately after.
-///
-/// # What this does
-/// 1. Sets `isfloating = true`.
-/// 2. Restores `border_width` from `old_border_width` (guarded: skipped when
-///    `old_border_width == 0`).
-/// 3. Paints the border with the floating-focus colour.
-///
-/// # What the caller must do
-/// After calling this function:
-/// - Call [`arrange`] to re-tile the remaining windows.
-/// - Issue a single `resize(win, target_rect, true)` to place the window at
-///   the desired position.  Use `float_geo.w / float_geo.h` for the size so
-///   the dimensions match the saved floating geometry (fall back to the
-///   current tiled dimensions if `float_geo` was never set).
 pub fn set_floating_in_place(win: Window) {
     {
         let globals = get_globals_mut();
@@ -83,12 +33,6 @@ pub fn set_floating_in_place(win: Window) {
     }
 }
 
-// ── Geometry persistence ──────────────────────────────────────────────────────
-
-/// Snapshot the window's current geometry into `Client::float_geo`.
-///
-/// Call this before entering tiling or snap so that the position can be
-/// recovered when the window becomes freely floating again.
 pub fn save_floating_win(win: Window) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
@@ -96,10 +40,6 @@ pub fn save_floating_win(win: Window) {
     }
 }
 
-/// Resize the window to its previously saved `float_geo`.
-///
-/// Has no effect if the window has no saved geometry (e.g. it was never
-/// floating before) because `float_geo` will simply equal a zero rect.
 pub fn restore_floating_win(win: Window) {
     let float_geo = {
         let globals = get_globals();
@@ -110,20 +50,6 @@ pub fn restore_floating_win(win: Window) {
     }
 }
 
-// ── Core state transition ─────────────────────────────────────────────────────
-
-/// Flip a window's `isfloating` flag and handle all side-effects.
-///
-/// This is the single function that actually changes floating state.  All
-/// public helpers (`toggle_floating`, `set_floating`, …) delegate here.
-///
-/// # Parameters
-///
-/// - `floating`        — desired new state (`true` = floating, `false` = tiled)
-/// - `animate`         — play an animation when restoring the floating rect
-/// - `update_borders`  — repaint border and handle border-width bookkeeping
-///
-/// Does **not** call `arrange()`; the caller is responsible for that.
 pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders: bool) {
     if floating {
         {
@@ -164,8 +90,6 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
             resize(win, &saved_geo, false);
         }
     } else {
-        // Switching to tiled: persist the current floating rect so we can
-        // restore it if the window goes back to floating later.
         let client_count = get_globals().clients.len();
         let globals = get_globals_mut();
         if let Some(client) = globals.clients.get_mut(&win) {
@@ -173,33 +97,18 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
             client.float_geo = client.geo;
 
             if update_borders {
-                // Single-window layouts don't need a visible border.
                 if client_count <= 1 && client.snapstatus == SnapPosition::None {
-                    // Mirror the C savebw guard: only overwrite old_border_width
-                    // when border_width is non-zero so we never clobber a
-                    // previously saved value with 0.
                     if client.border_width != 0 {
                         client.old_border_width = client.border_width;
                     }
                     client.border_width = 0;
                 }
-                // Border repaint is handled by the caller (arrange → drawbar).
             }
         }
     }
 }
 
-// ── Public toggle / set helpers ───────────────────────────────────────────────
-
-/// Flip the **selected** window's floating state with animation and border
-/// updates.
-///
-/// This is the user-facing command (bound to a key or mouse button).
-/// It does nothing if:
-/// - no window is selected
-/// - the selected window is the overlay
-/// - the window is in true fullscreen (not fake-fullscreen)
-pub fn toggle_floating(_arg: &Arg) {
+pub fn toggle_floating() {
     let sel_win = {
         let globals = get_globals();
         let mon = match globals.monitors.get(globals.selmon) {
@@ -230,20 +139,11 @@ pub fn toggle_floating(_arg: &Arg) {
             .unwrap_or((false, false))
     };
 
-    // A fixed window is always floating even if `isfloating` is false.
     let new_state = !is_floating || is_fixed;
     apply_float_change(win, new_state, true, true);
     arrange(Some(get_globals().selmon));
 }
 
-/// Flip **any** window's floating state without animation or border updates.
-///
-/// Unlike [`toggle_floating`] this:
-/// - accepts an explicit window instead of using `selmon->sel`
-/// - skips the animation (uses `resize` directly)
-/// - skips border colour / width updates
-///
-/// Used primarily for overlay windows where visual effects aren't desired.
 pub fn change_floating_win(win: Window) {
     let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = {
         let globals = get_globals();
@@ -262,14 +162,6 @@ pub fn change_floating_win(win: Window) {
     arrange(Some(get_globals().selmon));
 }
 
-/// Make a window floating if it is not already.
-///
-/// Does nothing when:
-/// - the window is in true fullscreen
-/// - the window is already floating
-///
-/// `should_arrange` triggers an `arrange()` pass after the state change, which
-/// is usually what you want unless you are batching multiple changes.
 pub fn set_floating(win: Window, should_arrange: bool) {
     let (is_fullscreen, is_fake_fullscreen, is_floating) = {
         let globals = get_globals();
@@ -283,7 +175,7 @@ pub fn set_floating(win: Window, should_arrange: bool) {
         return;
     }
     if is_floating {
-        return; // already floating, nothing to do
+        return;
     }
 
     apply_float_change(win, true, false, false);
@@ -293,13 +185,6 @@ pub fn set_floating(win: Window, should_arrange: bool) {
     }
 }
 
-/// Make a window tiled if it is not already.
-///
-/// Does nothing when:
-/// - the window is in true fullscreen
-/// - the window is already tiled (and not fixed)
-///
-/// `should_arrange` triggers an `arrange()` pass after the state change.
 pub fn set_tiled(win: Window, should_arrange: bool) {
     let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = {
         let globals = get_globals();
@@ -313,7 +198,7 @@ pub fn set_tiled(win: Window, should_arrange: bool) {
         return;
     }
     if !is_floating && !is_fixed {
-        return; // already tiled, nothing to do
+        return;
     }
 
     apply_float_change(win, false, false, false);
@@ -323,24 +208,7 @@ pub fn set_tiled(win: Window, should_arrange: bool) {
     }
 }
 
-// ── Temporary fullscreen ──────────────────────────────────────────────────────
-
-/// Toggle quick fullscreen for the selected window.
-///
-/// "Temporary" fullscreen differs from EWMH fullscreen
-/// (`_NET_WM_STATE_FULLSCREEN`) in several ways:
-///
-/// - State is tracked in `Monitor::fullscreen`, not in the client's
-///   `is_fullscreen` flag, so it does not interfere with EWMH consumers.
-/// - Entering fullscreen saves the current floating geometry; leaving restores
-///   it (for floating windows) or lets the layout engine re-tile the window.
-/// - Animations are temporarily disabled during the transition so the switch
-///   feels instant.
-/// - The window is raised above all siblings when entering fullscreen.
-///
-/// Typical use: a keybinding for quick "distraction-free" mode that the user
-/// can toggle without the window losing its place in the layout.
-pub fn temp_fullscreen(_arg: &Arg) {
+pub fn temp_fullscreen() {
     let (fullscreen_win, sel_win, animated) = {
         let globals = get_globals();
         let mon = match globals.monitors.get(globals.selmon) {
@@ -351,7 +219,6 @@ pub fn temp_fullscreen(_arg: &Arg) {
     };
 
     if let Some(win) = fullscreen_win {
-        // ── Leaving fullscreen ────────────────────────────────────────────
         let is_floating = {
             let globals = get_globals();
             globals
@@ -371,7 +238,6 @@ pub fn temp_fullscreen(_arg: &Arg) {
             mon.fullscreen = None;
         }
     } else {
-        // ── Entering fullscreen ───────────────────────────────────────────
         let Some(win) = sel_win else { return };
 
         {
@@ -381,13 +247,11 @@ pub fn temp_fullscreen(_arg: &Arg) {
             }
         }
 
-        // Save geometry so we can restore it when leaving.
         if super::helpers::check_floating(win) {
             save_floating_win(win);
         }
     }
 
-    // Disable animations for the instant layout switch, then restore.
     if animated {
         get_globals_mut().animated = false;
         arrange(Some(get_globals().selmon));
@@ -396,7 +260,6 @@ pub fn temp_fullscreen(_arg: &Arg) {
         arrange(Some(get_globals().selmon));
     }
 
-    // Raise the fullscreen window above everything else.
     if let Some(win) = get_globals()
         .monitors
         .get(get_globals().selmon)

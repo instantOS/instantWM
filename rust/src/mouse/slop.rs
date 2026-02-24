@@ -112,7 +112,7 @@ pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i3
     };
 
     if !is_floating {
-        toggle_floating(&Arg::default());
+        toggle_floating();
     }
 
     resize(c_win, &rect, true);
@@ -134,7 +134,7 @@ pub fn apply_window_resize_rect(c_win: Window, rect: &Rect) {
 /// * If the resulting rectangle is too small or identical to the current
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
-pub fn draw_window(_arg: &Arg) {
+pub fn draw_window() {
     let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
 
@@ -183,7 +183,7 @@ pub fn draw_window(_arg: &Arg) {
     };
 
     if !is_floating {
-        toggle_floating(&Arg::default());
+        toggle_floating();
     }
 
     resize(win, &rect, true);

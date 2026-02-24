@@ -344,13 +344,13 @@ pub fn hover_resize_mouse() -> bool {
                     // Right-click → move
                     3 => {
                         warp_into(win);
-                        move_mouse(&Arg::default());
+                        move_mouse();
                     }
                     // Left-click
                     1 => {
                         if is_at_top_middle_edge(&geo, root_x, root_y) {
                             warp_into(win);
-                            move_mouse(&Arg::default());
+                            move_mouse();
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
                             warp_pointer_resize(win, dir);

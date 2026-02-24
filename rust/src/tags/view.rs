@@ -111,9 +111,7 @@ pub fn view_to_right() {
     scroll_view(Direction::Right);
 }
 
-pub fn shift_view_direction(forward: bool) {
-    let direction: i32 = if forward { 1 } else { -1 };
-
+pub fn shift_view_direction(direction: i32) {
     let (tagset, numtags) = {
         let globals = get_globals();
         let Some(mon) = globals.monitors.get(globals.selmon) else {
@@ -167,8 +165,8 @@ pub fn shift_view_direction(forward: bool) {
     view(next_tagset);
 }
 
-pub fn shift_view(forward: bool) {
-    shift_view_direction(forward);
+pub fn shift_view(direction: i32) {
+    shift_view_direction(direction);
 }
 
 pub fn last_view() {

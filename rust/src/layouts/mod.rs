@@ -241,7 +241,7 @@ pub use query::{
 #[allow(unused_imports)]
 pub use manager::{
     arrange, arrange_monitor, command_layout, cycle_layout, cycle_layout_direction, inc_nmaster,
-    inc_nmaster_by, restack, set_layout, set_layout_by_index, set_mfact,
+    inc_nmaster_by, restack, set_layout, set_mfact,
 };
 
 // ── Re-exports: algorithms (convenience, used by config.rs via `layouts::*`) ──

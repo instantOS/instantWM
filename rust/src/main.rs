@@ -59,7 +59,7 @@ const XC_BOTTOM_RIGHT_CORNER: u32 = 14;
 const XC_TOP_LEFT_CORNER: u32 = 134;
 const XC_TOP_RIGHT_CORNER: u32 = 136;
 
-pub fn quit(_arg: &Arg) {
+pub fn quit() {
     RUNNING.store(false, Ordering::SeqCst);
 }
 

@@ -265,7 +265,7 @@ pub fn init_commands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "togglescratchpad",
-            action: |arg| crate::scratchpad::scratchpad_toggle(arg),
+            action: |arg| crate::scratchpad::scratchpad_toggle(Some(arg)),
         },
         XCommand {
             cmd: "showscratchpad",
@@ -277,7 +277,7 @@ pub fn init_commands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "makescratchpad",
-            action: |arg| crate::scratchpad::scratchpad_make(arg),
+            action: |arg| crate::scratchpad::scratchpad_make(Some(arg)),
         },
         XCommand {
             cmd: "unmakescratchpad",

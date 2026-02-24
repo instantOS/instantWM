@@ -28,8 +28,7 @@ pub use snap::{change_snap, reset_snap, SnapDir};
 
 /// Geometry / border-width persistence, and floating-state transitions.
 pub use state::{
-    save_floating_win, set_floating, set_floating_in_place, set_tiled, temp_fullscreen,
-    toggle_floating,
+    save_floating_win, set_floating_in_place, set_tiled, temp_fullscreen, toggle_floating,
 };
 
 // ── movement ─────────────────────────────────────────────────────────────────

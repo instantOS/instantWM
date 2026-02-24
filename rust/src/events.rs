@@ -44,7 +44,7 @@ pub fn button_press(e: &ButtonPressEvent) {
 
     let globals = get_globals();
     let numlockmask = globals.numlockmask;
-    let buttons = globals.buttons.clone();
+    let buttons = &globals.buttons;
     let altcursor = globals.altcursor;
     let mut selmon_id = globals.selmon;
     let focusfollowsmouse = globals.focusfollowsmouse;

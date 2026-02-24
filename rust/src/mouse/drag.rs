@@ -153,7 +153,7 @@ fn prepare_drag_target() -> Option<Window> {
             return None;
         }
         if Some(sel) == mon.fullscreen {
-            crate::floating::temp_fullscreen(&Arg::default());
+            crate::floating::temp_fullscreen();
             return None;
         }
         sel
@@ -457,10 +457,7 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
         set_tiled(win, false);
-        tag(&Arg {
-            ui: 1u32 << (tag_idx as u32),
-            ..Default::default()
-        });
+        tag(1u32 << (tag_idx as u32));
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
@@ -541,15 +538,15 @@ fn apply_edge_drop(win: Window, edge: i32) -> bool {
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_left(&Arg::default());
+                move_left();
             } else {
-                move_right(&Arg::default());
+                move_right();
             }
         } else {
             if at_left {
-                tag_to_left(&Arg::default());
+                tag_to_left();
             } else {
-                tag_to_right(&Arg::default());
+                tag_to_right();
             }
         }
 
@@ -578,7 +575,7 @@ fn apply_edge_drop(win: Window, edge: i32) -> bool {
 /// Interactively drag the focused window with the mouse.
 ///
 /// Grab → event loop → release handling. See helpers above for each phase.
-pub fn move_mouse(_arg: &Arg) {
+pub fn move_mouse() {
     let Some(win) = prepare_drag_target() else {
         return;
     };
@@ -645,7 +642,7 @@ pub fn move_mouse(_arg: &Arg) {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse(_arg: &Arg) {
+pub fn gesture_mouse() {
     let Some(conn) = grab_pointer(2) else { return };
     let Some((_, start_y)) = get_root_ptr() else {
         ungrab(conn);
@@ -679,10 +676,7 @@ pub fn gesture_mouse(_arg: &Arg) {
                     } else {
                         Cmd::DownVol
                     };
-                    crate::util::spawn(&Arg {
-                        v: Some(cmd as usize),
-                        ..Arg::default()
-                    });
+                    crate::util::spawn(cmd);
                     last_y = event_y;
                 }
             }
@@ -703,30 +697,47 @@ pub fn gesture_mouse(_arg: &Arg) {
 /// * Drag then release (no modifier)  → [`follow_tag`]
 ///
 /// If the pointer leaves the bar during the drag the loop exits without action.
-pub fn drag_tag(arg: &Arg) {
-    let (is_current_tag, has_sel, selmon_id, mon_mx) = {
+pub fn drag_tag() {
+    let (initial_tag, has_sel, selmon_id, mon_mx) = {
         let globals = get_globals();
-        let current_tagset = globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| m.tagset[m.seltags as usize]);
-        let is_current_tag = (arg.ui & globals.tags.mask()) == current_tagset.unwrap_or(0);
-        let has_sel = globals
-            .monitors
-            .get(globals.selmon)
-            .and_then(|m| m.sel)
-            .is_some();
         let selmon_id = globals.selmon;
         let mon_mx = globals
             .monitors
             .get(selmon_id)
             .map(|m| m.monitor_rect.x)
             .unwrap_or(0);
-        (is_current_tag, has_sel, selmon_id, mon_mx)
+
+        let Some((ptr_x, _)) = get_root_ptr() else {
+            return;
+        };
+
+        let initial_tag = globals
+            .monitors
+            .get(selmon_id)
+            .and_then(|mon| {
+                let local_x = ptr_x - mon.monitor_rect.x;
+                match bar_position_at_x(mon, globals, local_x) {
+                    BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
+                    _ => None,
+                }
+            })
+            .unwrap_or(0);
+
+        let current_tagset = globals
+            .monitors
+            .get(globals.selmon)
+            .map(|m| m.tagset[m.seltags as usize]);
+        let is_current_tag = (initial_tag & globals.tags.mask()) == current_tagset.unwrap_or(0);
+        let has_sel = globals
+            .monitors
+            .get(globals.selmon)
+            .and_then(|m| m.sel)
+            .is_some();
+        (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx)
     };
 
-    if !is_current_tag {
-        view(arg);
+    if !is_current_tag && initial_tag != 0 {
+        view(initial_tag);
         return;
     }
     if !has_sel {
@@ -823,17 +834,14 @@ pub fn drag_tag(arg: &Arg) {
             };
 
             if let BarPosition::Tag(tag_idx) = position {
-                let tag_arg = Arg {
-                    ui: 1u32 << (tag_idx as u32),
-                    ..Default::default()
-                };
+                let tag_mask = 1u32 << (tag_idx as u32);
                 let state = state as u32;
                 if (state & ModMask::SHIFT.bits() as u32) != 0 {
-                    tag(&tag_arg);
+                    tag(tag_mask);
                 } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
-                    tag_all(&tag_arg);
+                    tag_all(tag_mask);
                 } else {
-                    follow_tag(&tag_arg);
+                    follow_tag(tag_mask);
                 }
             }
         }
@@ -860,8 +868,8 @@ pub fn drag_tag(arg: &Arg) {
 ///
 /// Drag (cursor moves > [`DRAG_THRESHOLD`] px): show, focus, warp, then
 /// hand off to [`move_mouse`].
-pub fn window_title_mouse_handler(arg: &Arg) {
-    let Some(win) = arg.v.map(|v| v as Window) else {
+pub fn window_title_mouse_handler() {
+    let Some(win) = crate::util::get_sel_win() else {
         return;
     };
 
@@ -901,7 +909,7 @@ pub fn window_title_mouse_handler(arg: &Arg) {
                     }
                     focus(Some(win));
                     warp_into(win);
-                    move_mouse(&Arg::default());
+                    move_mouse();
                     return;
                 }
             }
@@ -944,8 +952,8 @@ pub fn window_title_mouse_handler(arg: &Arg) {
 /// hands off to [`crate::mouse::resize::resize_mouse`].
 ///
 /// Does nothing when the window is in true fullscreen.
-pub fn window_title_mouse_handler_right(arg: &Arg) {
-    let Some(win) = arg.v.map(|v| v as Window) else {
+pub fn window_title_mouse_handler_right() {
+    let Some(win) = crate::util::get_sel_win() else {
         return;
     };
 
@@ -990,7 +998,7 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
                         crate::client::show(win);
                         focus(Some(win));
                     }
-                    super::resize::resize_mouse_from_cursor(&Arg::default());
+                    super::resize::resize_mouse_from_cursor();
                     return;
                 }
             }
@@ -1004,5 +1012,5 @@ pub fn window_title_mouse_handler_right(arg: &Arg) {
         crate::client::show(win);
         focus(Some(win));
     }
-    crate::client::zoom(&Arg::default());
+    crate::client::zoom();
 }

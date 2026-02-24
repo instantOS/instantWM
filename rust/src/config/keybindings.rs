@@ -1,6 +1,8 @@
 #![allow(deprecated)]
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_dkeys`).
 
+use std::rc::Rc;
+
 use super::commands::Cmd;
 use crate::animation::{anim_left, anim_right};
 use crate::bar::toggle_bar;
@@ -38,7 +40,7 @@ macro_rules! key {
         Key {
             mod_mask: $mods,
             keysym: $sym,
-            action: Box::new($action),
+            action: Rc::new(Box::new($action)),
         }
     };
 }
@@ -101,8 +103,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,      XK_RIGHT   => || move_right()),
         key!(MS,      XK_LEFT    => || tag_to_left()),
         key!(MS,      XK_RIGHT   => || tag_to_right()),
-        key!(MSC,     XK_RIGHT   => || shift_view(true)),
-        key!(MSC,     XK_LEFT    => || shift_view(false)),
+        key!(MSC,     XK_RIGHT   => || shift_view(1)),
+        key!(MSC,     XK_LEFT    => || shift_view(-1)),
         key!(MODKEY,  XK_0       => || view(!0u32)),
         key!(MS,      XK_0       => || tag(!0u32)),
         key!(MODKEY,  XK_O       => || win_view()),
@@ -140,7 +142,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSC,    XK_S  => || toggle_show_tags(2)),
         key!(MSA,    XK_D  => || toggle_double_draw()),
         key!(MS,     XK_SPACE => || space_toggle()),
-        key!(MSCA,   XK_TAB   => || alt_tab_free()),
+        key!(MSCA,   XK_TAB   => || alt_tab_free(2)),
         key!(MC,     XK_R     => || redraw_win()),
         key!(MC,  XK_H => || hide_window()),
         key!(MCA, XK_H => || unhide_all()),
@@ -218,10 +220,10 @@ pub fn get_dkeys() -> Vec<Key> {
         key!(0, XK_L     => || view_to_right()),
         key!(0, XK_LEFT  => || view_to_left()),
         key!(0, XK_RIGHT => || view_to_right()),
-        key!(0, XK_K     => || shift_view(true)),
-        key!(0, XK_J     => || shift_view(false)),
-        key!(0, XK_UP    => || shift_view(true)),
-        key!(0, XK_DOWN  => || shift_view(false)),
+        key!(0, XK_K     => || shift_view(1)),
+        key!(0, XK_J     => || shift_view(-1)),
+        key!(0, XK_UP    => || shift_view(1)),
+        key!(0, XK_DOWN  => || shift_view(-1)),
         key!(0, XK_1 => || view(1 << 0)),
         key!(0, XK_2 => || view(1 << 1)),
         key!(0, XK_3 => || view(1 << 2)),

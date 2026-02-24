@@ -1,6 +1,8 @@
 #![allow(deprecated)]
 //! Mouse button bindings.
 
+use std::rc::Rc;
+
 use super::commands::Cmd;
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::animation::{down_scale_client, up_scale_client};
@@ -32,7 +34,7 @@ macro_rules! btn {
             click: $click,
             mask: $mask,
             button: $btn,
-            action: Box::new($action),
+            action: Rc::new(Box::new($action)),
         }
     };
 }
@@ -69,14 +71,14 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(StatusText, MS,     button:1 => || spawn(Cmd::PavuControl)),
         btn!(StatusText, MC,     button:1 => || spawn(Cmd::Notify)),
         btn!(TagBar, 0,     button:1 => || drag_tag()),
-        btn!(TagBar, 0,     button:3 => || toggle_view()),
+        btn!(TagBar, 0,     button:3 => || toggle_view(!0u32)),
         btn!(TagBar, 0,     button:4 => || view_to_left()),
         btn!(TagBar, 0,     button:5 => || view_to_right()),
-        btn!(TagBar, MODKEY, button:1 => || tag()),
-        btn!(TagBar, MODKEY, button:3 => || toggle_tag()),
-        btn!(TagBar, MOD1,   button:1 => || follow_tag()),
-        btn!(TagBar, MODKEY, button:4 => || shift_view(false)),
-        btn!(TagBar, MODKEY, button:5 => || shift_view(true)),
+        btn!(TagBar, MODKEY, button:1 => || tag(!0u32)),
+        btn!(TagBar, MODKEY, button:3 => || toggle_tag(!0u32)),
+        btn!(TagBar, MOD1,   button:1 => || follow_tag(!0u32)),
+        btn!(TagBar, MODKEY, button:4 => || shift_view(-1)),
+        btn!(TagBar, MODKEY, button:5 => || shift_view(1)),
         btn!(RootWin, 0,     button:1 => || spawn(Cmd::Panther)),
         btn!(RootWin, 0,     button:2 => || spawn(Cmd::InstantMenu)),
         btn!(RootWin, 0,     button:3 => || spawn(Cmd::Smart)),

@@ -144,8 +144,8 @@ pub fn update_bars() {
 }
 
 /// Toggle the visibility of the status bar on the selected monitor.
-pub fn toggle_bar(arg: &Arg) {
-    x11::toggle_bar(arg);
+pub fn toggle_bar() {
+    x11::toggle_bar();
 }
 
 pub(crate) fn get_lrpad() -> i32 {

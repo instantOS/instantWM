@@ -67,7 +67,7 @@ pub fn client_distance(c1: &Client, c2: &Client) -> i32 {
     ((y * y + x * x) as f64).sqrt() as i32
 }
 
-pub fn push_up(arg: &Arg) {
+pub fn push_up() {
     let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
@@ -85,11 +85,11 @@ pub fn push_up(arg: &Arg) {
             .unwrap_or(false)
     };
 
-    if is_floating && !arg.f.is_sign_positive() {
+    if is_floating {
         return;
     }
 
-    let include_floating = arg.f.is_sign_positive();
+    let include_floating = true;
 
     let selmon_id = get_globals().selmon;
 
@@ -164,7 +164,7 @@ pub fn push_up(arg: &Arg) {
     arrange(Some(selmon_id));
 }
 
-pub fn push_down(arg: &Arg) {
+pub fn push_down() {
     let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
@@ -182,11 +182,11 @@ pub fn push_down(arg: &Arg) {
             .unwrap_or(false)
     };
 
-    if is_floating && !arg.f.is_sign_positive() {
+    if is_floating {
         return;
     }
 
-    let include_floating = arg.f.is_sign_positive();
+    let include_floating = true;
 
     let selmon_id = get_globals().selmon;
 

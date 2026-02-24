@@ -183,7 +183,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "scratchpad-make",
-            action: |arg| scratchpad_make(arg),
+            action: |arg| scratchpad_make(Some(arg)),
         },
         XCommand {
             cmd: "scratchpad-unmake",
@@ -191,7 +191,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "scratchpad-toggle",
-            action: |arg| scratchpad_toggle(arg),
+            action: |arg| scratchpad_toggle(Some(arg)),
         },
         XCommand {
             cmd: "scratchpad-show",

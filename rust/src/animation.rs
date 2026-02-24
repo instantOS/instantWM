@@ -10,8 +10,6 @@ use std::time::Duration;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::Window;
 
-// QueuedAlready = 0: count events already in the client-side queue without
-// making a round-trip to the X server (matches C's XEventsQueued(dpy, QueuedAlready)).
 const QUEUED_ALREADY: std::os::raw::c_int = 0;
 
 pub fn ease_out_cubic(t: f64) -> f64 {
@@ -38,9 +36,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         }
     };
 
-    // w=0 / h=0 is a sentinel meaning "keep the current size".
-    // Resolve to the actual target dimensions immediately so every subsequent
-    // calculation (clamping, dist_moved, recursion guard) works on real values.
     let target_w = if w != 0 { w } else { start_w };
     let target_h = if h != 0 { h } else { start_h };
 
@@ -60,7 +55,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             }
         };
 
-        // Clamp to monitor bounds (matching C behaviour).
         let actual_w = if target_w > mon_mw - 2 * 2 {
             mon_mw - 2 * 2
         } else {
@@ -72,7 +66,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             target_h
         };
 
-        // Skip animation entirely when globals.animated is false.
         if !globals.animated {
             if actual_w > 0 && actual_h > 0 {
                 resize_client_rect(
@@ -88,9 +81,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             return;
         }
 
-        // Count pending X events and halve frames if there are many queued,
-        // mirroring the C code's `frames / 1 + (XEventsQueued(...) > 50)` and
-        // the "no animation if > 100 events" short-circuit.
         let queued_events = unsafe {
             crate::drw::XEventsQueued(
                 globals.xlibdisplay.0 as *mut std::os::raw::c_void,
@@ -106,7 +96,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         };
 
         if effective_frames == 0 {
-            // Too many queued events — skip animation, just place the window.
             if actual_w > 0 && actual_h > 0 {
                 if reset_pos != 0 {
                     resize_client_rect(
@@ -136,8 +125,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         let dx = (x - start_x) as f64;
         let dy = (y - start_y) as f64;
 
-        // Use the resolved actual_w / actual_h for the distance check so that
-        // passing w=0 (keep size) never falsely triggers the "size changed" branch.
         let dist_moved = (start_x - x).abs() > 10
             || (start_y - y).abs() > 10
             || (actual_w - start_w).abs() > 10
@@ -145,11 +132,6 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
 
         if dist_moved {
             if x == start_x && y == start_y && start_w < mon_mw - 50 {
-                // Pure size change with no position delta: animate by moving the
-                // window to its new corner position, then snapping back.
-                // Only recurse when there is a real size difference to animate;
-                // if actual_w == start_w and actual_h == start_h we already know
-                // dist_moved was false for position, so skip to avoid infinite recursion.
                 let delta_w = actual_w - start_w;
                 let delta_h = actual_h - start_h;
                 if delta_w != 0 || delta_h != 0 {
@@ -224,43 +206,35 @@ pub fn check_animate(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, r
     }
 }
 
-/// Animate a window using a Rect struct.
 pub fn animate_client_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     animate_client(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
 }
 
-/// Check and animate a window using a Rect struct.
 pub fn check_animate_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     check_animate(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
 }
 
-pub fn up_scale_client(arg: &Arg) {
-    let scale = arg.i.max(1);
-    let sel_win = get_sel_win();
-
-    if let Some(win) = sel_win {
-        crate::client::scale_client(win, scale);
+pub fn up_scale_client() {
+    if let Some(win) = get_sel_win() {
+        crate::client::scale_client(win, 1);
     }
 }
 
-pub fn down_scale_client(arg: &Arg) {
-    let scale = arg.i.max(1);
-    let sel_win = get_sel_win();
-
-    if let Some(win) = sel_win {
-        crate::client::scale_client(win, 100 / scale);
+pub fn down_scale_client() {
+    if let Some(win) = get_sel_win() {
+        crate::client::scale_client(win, 100);
     }
 }
 
-pub fn anim_left(arg: &Arg) {
-    anim_scroll(arg, Direction::Left);
+pub fn anim_left() {
+    anim_scroll(Direction::Left);
 }
 
-pub fn anim_right(arg: &Arg) {
-    anim_scroll(arg, Direction::Right);
+pub fn anim_right() {
+    anim_scroll(Direction::Right);
 }
 
-fn anim_scroll(arg: &Arg, dir: Direction) {
+fn anim_scroll(dir: Direction) {
     let sel_mon = match get_sel_mon() {
         Some(m) => m,
         None => return,
@@ -281,7 +255,6 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         (is_floating, has_tiling, current_tag)
     };
 
-    // Handle overview mode - redirect to focus_direction
     if has_tiling {
         let focus_dir = match dir {
             Direction::Left => Direction::Up,
@@ -293,7 +266,6 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    // Handle non-tiling (floating) mode
     if !has_tiling {
         if let Some(sel_win) = get_sel_win() {
             let snap_dir = match dir {
@@ -307,7 +279,6 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    // Validate current tag
     if current_tag == 0 {
         return;
     }
@@ -320,7 +291,6 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    // Handle animation if enabled
     let animated = get_globals().animated;
     if animated {
         let modifier: i32 = match dir {
@@ -334,14 +304,13 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
     }
 
     match dir {
-        Direction::Right => view_to_right(arg),
-        Direction::Left => view_to_left(arg),
-        Direction::Up => view_to_left(arg),
-        Direction::Down => view_to_right(arg),
+        Direction::Right => view_to_right(),
+        Direction::Left => view_to_left(),
+        Direction::Up => view_to_left(),
+        Direction::Down => view_to_right(),
     }
 }
 
-/// Check if any client on the target tag exists (used for animation).
 fn check_client_on_target_tag(sel_mon: MonitorId, target: u32) {
     let globals = get_globals();
     if let Some(mon) = globals.monitors.get(sel_mon) {

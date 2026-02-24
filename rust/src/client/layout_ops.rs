@@ -11,7 +11,6 @@
 
 use crate::client::list::{next_tiled, pop};
 use crate::globals::{get_globals, get_x11};
-use crate::types::Arg;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -33,7 +32,7 @@ use x11rb::protocol::xproto::*;
 /// * When the selected window **is already** the master, the *next* tiled
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
-pub fn zoom(_arg: &Arg) {
+pub fn zoom() {
     let Some(win) = crate::util::get_sel_win() else {
         return;
     };

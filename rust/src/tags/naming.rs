@@ -9,7 +9,7 @@
 use crate::bar::draw_bars;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::tags::bar::get_tag_width;
-use crate::types::{Arg, MAX_TAGS};
+use crate::types::MAX_TAGS;
 
 /// Maximum byte-length (excluding the NUL terminator) accepted for a tag name.
 const MAX_TAGLEN: usize = 16;
@@ -20,31 +20,14 @@ const MAX_TAGLEN: usize = 16;
 
 /// Rename the currently visible tag(s).
 ///
-/// The new name is read from `arg.v` as a C string pointer.  If the pointer
-/// is `None`, or the string is empty, the tag name is reset to its default
+/// If the string is empty, the tag name is reset to its default
 /// (`"1"` … `"9"`).  Names longer than [`MAX_TAGLEN`] bytes are silently
 /// ignored.
 ///
 /// All tags included in the monitor's current tagset are renamed, so the
 /// function works correctly even when multiple tags are visible at once.
-///
-/// # Safety
-/// `arg.v` must either be `None` or a valid pointer to a NUL-terminated C
-/// string that remains live for the duration of this call.
-pub fn name_tag(arg: &Arg) {
-    // -----------------------------------------------------------------------
-    // 1. Decode the name from the raw pointer.
-    // -----------------------------------------------------------------------
-    let name_ptr = arg.v;
-    let name_bytes = match name_ptr {
-        Some(ptr) => {
-            let cstr = unsafe { std::ffi::CStr::from_ptr(ptr as *const i8) };
-            cstr.to_bytes()
-        }
-        None => b"" as &[u8],
-    };
-
-    if name_bytes.len() >= MAX_TAGLEN {
+pub fn name_tag(arg: &str) {
+    if arg.len() >= MAX_TAGLEN {
         return;
     }
 
@@ -75,8 +58,8 @@ pub fn name_tag(arg: &Arg) {
             continue;
         }
         if let Some(tag) = globals.tags.tags.get_mut(i) {
-            if !name_bytes.is_empty() {
-                tag.name = String::from_utf8_lossy(name_bytes).into_owned();
+            if !arg.is_empty() {
+                tag.name = arg.to_string();
             } else {
                 tag.name = default_tag_name(i);
             }
@@ -88,7 +71,7 @@ pub fn name_tag(arg: &Arg) {
 }
 
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.).
-pub fn reset_name_tag(_arg: &Arg) {
+pub fn reset_name_tag() {
     let globals = get_globals_mut();
     let count = globals.tags.count().min(MAX_TAGS);
 

@@ -152,7 +152,7 @@ pub fn force_warp(c: &Client) {
 ///
 /// Reads `selmon → sel` and delegates to [`warp_impl`].  Does nothing when no
 /// window is selected.
-pub fn warp_to_focus(_arg: &Arg) {
+pub fn warp_to_focus() {
     if let Some(win) = get_sel_win() {
         warp_impl(win);
     }

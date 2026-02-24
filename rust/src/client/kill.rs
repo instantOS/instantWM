@@ -26,7 +26,7 @@
 use crate::animation::animate_client_rect;
 use crate::client::focus::{send_event, ANIM_CLIENT};
 use crate::globals::{get_globals, get_x11};
-use crate::types::{Arg, Rect};
+use crate::types::Rect;
 use crate::util::get_sel_win;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
@@ -44,7 +44,7 @@ use x11rb::CURRENT_TIME;
 /// 2. Play a "slide down" animation (skipped when already animating or
 ///    the window is fullscreen).
 /// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
-pub fn kill_client(_arg: &Arg) {
+pub fn kill_client() {
     let Some(win) = get_sel_win() else {
         return;
     };
@@ -96,7 +96,7 @@ pub fn kill_client(_arg: &Arg) {
 /// This is bound to the "power" key: pressing it on an empty monitor triggers
 /// an orderly system shutdown; pressing it when windows are open closes the
 /// focused window instead.
-pub fn shut_kill(arg: &Arg) {
+pub fn shut_kill() {
     let globals = get_globals();
     let has_clients = globals
         .monitors
@@ -104,13 +104,9 @@ pub fn shut_kill(arg: &Arg) {
         .is_some_and(|m| m.clients.is_some());
 
     if has_clients {
-        kill_client(arg);
+        kill_client();
     } else {
-        let shut_arg = Arg {
-            v: Some(crate::config::commands::Cmd::InstantShutdown as usize),
-            ..Default::default()
-        };
-        crate::util::spawn(&shut_arg);
+        crate::util::spawn(crate::config::commands::Cmd::InstantShutdown);
     }
 }
 
@@ -124,10 +120,9 @@ pub fn shut_kill(arg: &Arg) {
 /// Used by the per-client close button in the bar.
 ///
 /// The window is still animated before the close message is sent.
-pub fn close_win(arg: &Arg) {
-    let win = match arg.v {
-        Some(ptr) => ptr as u32,
-        None => return,
+pub fn close_win() {
+    let Some(win) = get_sel_win() else {
+        return;
     };
 
     let globals = get_globals();

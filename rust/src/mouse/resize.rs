@@ -50,7 +50,7 @@ fn selected_resizable_window() -> Option<Window> {
     Some(win)
 }
 
-pub fn resize_mouse_from_cursor(_arg: &Arg) {
+pub fn resize_mouse_from_cursor() {
     let Some(win) = selected_resizable_window() else {
         return;
     };
@@ -98,7 +98,7 @@ fn refresh_rate() -> u32 {
 /// The loop ends on `ButtonRelease`.  After the grab is released,
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
-pub fn resize_mouse(_arg: &Arg) {
+pub fn resize_mouse() {
     let Some(win) = selected_resizable_window() else {
         return;
     };
@@ -150,7 +150,7 @@ pub fn resize_mouse(_arg: &Arg) {
                         && has_tiling
                         && ((nw - client.geo.w).abs() > snap || (nh - client.geo.h).abs() > snap)
                     {
-                        toggle_floating(&Arg::default());
+                        toggle_floating();
                     } else if !has_tiling || client.isfloating {
                         resize(
                             win,
@@ -266,7 +266,7 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
                 };
 
                 if should_toggle {
-                    toggle_floating(&Arg::default());
+                    toggle_floating();
                 } else {
                     let globals = get_globals();
                     let is_floating = globals
@@ -309,8 +309,8 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
 /// that bypassed an additional fullscreen guard.  The Rust version already
 /// handles this cleanly in [`selected_resizable_window`].
 #[inline]
-pub fn force_resize_mouse(arg: &Arg) {
-    resize_mouse(arg);
+pub fn force_resize_mouse() {
+    resize_mouse();
 }
 
 // ── resize_aspect_mouse ───────────────────────────────────────────────────────
@@ -324,7 +324,7 @@ pub fn force_resize_mouse(arg: &Arg) {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(_arg: &Arg) {
+pub fn resize_aspect_mouse() {
     let globals = get_globals();
     let win = get_sel_win().filter(|&w| {
         !globals

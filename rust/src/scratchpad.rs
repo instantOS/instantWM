@@ -30,7 +30,12 @@ pub fn unhide_one() -> bool {
     false
 }
 
-pub fn scratchpad_make(name: &str) {
+pub fn scratchpad_make(name: Option<&str>) {
+    let name = match name {
+        Some(n) => n,
+        None => return,
+    };
+
     if name.is_empty() {
         return;
     }
