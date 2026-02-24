@@ -224,32 +224,19 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
     let entering_root = e.event == root;
     let entering_client = win_to_client(e.event);
 
-    // Hover-resize: when the pointer enters the root window (i.e. leaves a
-    // client) near a floating window, enter the modal hover-resize loop.
-    // This must run regardless of the focus-follows-mouse setting.
-    let trigger_hover = {
-        let globals = get_globals();
-        let has_floating_sel = globals
-            .monitors
-            .get(globals.selmon)
-            .and_then(|m| m.sel)
-            .and_then(|sel| globals.clients.get(&sel))
-            .map(|c| {
-                c.isfloating
-                    || !globals
-                        .monitors
-                        .get(globals.selmon)
-                        .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
-                        .unwrap_or(true)
-            })
-            .unwrap_or(false);
-
-        (entering_root || entering_client.is_some()) && has_floating_sel
-    };
-
-    if trigger_hover {
-        if hover_resize_mouse() {
-            return;
+    if entering_root {
+        if let Some(hover_win) = find_floating_win_at_resize_border() {
+            if get_globals()
+                .monitors
+                .get(get_globals().selmon)
+                .and_then(|m| m.sel)
+                != Some(hover_win)
+            {
+                focus(Some(hover_win));
+            }
+            if hover_resize_mouse() {
+                return;
+            }
         }
     }
 
@@ -471,25 +458,6 @@ pub fn leave_notify(e: &LeaveNotifyEvent) {
     reset_bar();
 
     let leaving_client = win_to_client(e.event);
-    let globals = get_globals();
-    let has_floating_sel = globals
-        .monitors
-        .get(globals.selmon)
-        .and_then(|m| m.sel)
-        .and_then(|sel| globals.clients.get(&sel))
-        .map(|c| {
-            c.isfloating
-                || !globals
-                    .monitors
-                    .get(globals.selmon)
-                    .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
-                    .unwrap_or(true)
-        })
-        .unwrap_or(false);
-
-    if !has_floating_sel {
-        return;
-    }
 
     if let Some(leaving_win) = leaving_client {
         if let Some(hover_win) = find_floating_win_at_resize_border() {
@@ -501,9 +469,6 @@ pub fn leave_notify(e: &LeaveNotifyEvent) {
                     != Some(hover_win)
                 {
                     focus(Some(hover_win));
-                }
-                if get_globals().altcursor != AltCursor::Resize {
-                    reset_cursor();
                 }
                 if hover_resize_mouse() {
                     return;
