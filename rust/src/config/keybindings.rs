@@ -20,7 +20,7 @@ use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag_by, shift_view, tag_mon,
-    toggle_fullscreen_overview, toggle_overview, view, win_view,
+    toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,

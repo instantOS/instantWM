@@ -453,7 +453,7 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
         set_tiled(win, false);
-        set_client_tag(TagMask::single(tag_idx as usize + 1).unwrap_or(TagMask::EMPTY));
+        set_client_tag(TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY));
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
@@ -828,7 +828,7 @@ pub fn drag_tag() {
             };
 
             if let BarPosition::Tag(tag_idx) = position {
-                let tag_mask = TagMask::single(tag_idx as usize + 1).unwrap_or(TagMask::EMPTY);
+                let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
                 let state = state as u32;
                 if (state & ModMask::SHIFT.bits() as u32) != 0 {
                     set_client_tag(tag_mask);

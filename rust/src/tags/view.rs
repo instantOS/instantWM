@@ -21,7 +21,7 @@ pub fn view(mask: TagMask) {
     }
 
     // Get all needed state in one globals access
-    let (prev_tag, current_tag) = {
+    let (_prev_tag, _current_tag) = {
         let globals = get_globals_mut();
         let mon = match globals.monitors.get_mut(selmon_id) {
             Some(m) => m,
@@ -317,7 +317,7 @@ pub fn follow_view() {
     arrange(Some(selmon_id));
 }
 
-pub fn toggle_overview(mask: TagMask) {
+pub fn toggle_overview(_mask: TagMask) {
     let selmon_id = get_globals().selmon;
     let (has_clients, current_tag, num_tags) = {
         let globals = get_globals();
@@ -351,7 +351,7 @@ pub fn toggle_overview(mask: TagMask) {
     }
 }
 
-pub fn toggle_fullscreen_overview(mask: TagMask) {
+pub fn toggle_fullscreen_overview(_mask: TagMask) {
     let selmon_id = get_globals().selmon;
     let current_tag = {
         let globals = get_globals();
@@ -391,7 +391,7 @@ pub(super) fn apply_pertag_settings(globals: &mut crate::globals::Globals) {
 
 pub fn scroll_view(dir: Direction) {
     let selmon_id = get_globals().selmon;
-    let (current_tag, tagset, tagmask) = {
+    let (current_tag, tagset, _tagmask) = {
         let globals = get_globals();
         let Some(mon) = globals.monitors.get(selmon_id) else {
             return;

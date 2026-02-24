@@ -104,7 +104,7 @@ pub fn toggle_tag(mask: TagMask) {
     let Some(win) = sel_win else { return };
 
     let tagmask = TagMask::from_bits(get_globals().tags.mask());
-    let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
+    let _scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
     let (current_tags, is_scratchpad) = {
         let globals = get_globals();

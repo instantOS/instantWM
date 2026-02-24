@@ -388,6 +388,32 @@ pub enum Click {
     ResizeWidget,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MouseButton {
+    Left = 1,
+    Middle = 2,
+    Right = 3,
+    ScrollUp = 4,
+    ScrollDown = 5,
+}
+
+impl MouseButton {
+    pub fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            1 => Some(Self::Left),
+            2 => Some(Self::Middle),
+            3 => Some(Self::Right),
+            4 => Some(Self::ScrollUp),
+            5 => Some(Self::ScrollDown),
+            _ => None,
+        }
+    }
+
+    pub fn as_u8(self) -> u8 {
+        self as u8
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AltCursor {
     #[default]
@@ -1107,7 +1133,7 @@ impl Clone for Key {
 pub struct Button {
     pub click: Click,
     pub mask: u32,
-    pub button: u8,
+    pub button: MouseButton,
     pub action: Rc<Box<dyn Fn()>>,
 }
 

@@ -285,7 +285,7 @@ fn finish_layout_change() {
 pub fn cycle_layout_direction(forward: bool) {
     let current_layout = {
         let g = get_globals();
-        g.monitors.get(g.selmon).map(|m| get_current_layout(m))
+        g.monitors.get(g.selmon).map(get_current_layout)
     };
 
     let all_layouts = LayoutKind::all();

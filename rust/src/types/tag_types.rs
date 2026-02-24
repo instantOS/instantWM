@@ -214,9 +214,10 @@ impl Iterator for TagIter {
 ///
 /// This enum is used for commands that need to interpret what the user
 /// wants to do with tags, rather than just passing raw bitmasks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TagSelection {
     /// Select no tags (empty workspace).
+    #[default]
     None,
     /// Select a single specific tag.
     Single(usize),
@@ -251,12 +252,6 @@ impl TagSelection {
     /// Check if this selection would result in an empty tag set.
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::None)
-    }
-}
-
-impl Default for TagSelection {
-    fn default() -> Self {
-        Self::None
     }
 }
 

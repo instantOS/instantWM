@@ -114,7 +114,7 @@ pub fn button_press(e: &ButtonPressEvent) {
     let clean_state = clean_mask(e.state.into(), numlockmask);
 
     for button in buttons {
-        if button.click != click_target || button.button != e.detail {
+        if button.click != click_target || button.button.as_u8() != e.detail {
             continue;
         }
         if clean_mask(button.mask, numlockmask) != clean_state {
