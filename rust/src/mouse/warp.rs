@@ -14,7 +14,7 @@
 //! | [`warp_to_focus`]           | Keybinding handler – warp to the selected window        |
 //! | [`reset_cursor`]            | Restore the normal (arrow) X11 root cursor              |
 
-use crate::globals::{get_globals, get_x11};
+use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
@@ -158,11 +158,19 @@ pub fn warp_to_focus(_arg: &Arg) {
     }
 }
 
-/// Restore the root window's default (arrow) cursor.
+/// Restore the root window's default (arrow) cursor and clear `altcursor`.
 ///
 /// Call this after a modal grab ends so that the cursor reverts to normal even
 /// if the pointer is not over any client window.
 pub fn reset_cursor() {
+    {
+        let globals = get_globals();
+        if globals.altcursor == AltCursor::None {
+            return;
+        }
+    }
+    get_globals_mut().altcursor = AltCursor::None;
+
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let globals = get_globals();

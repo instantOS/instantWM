@@ -26,8 +26,8 @@ use crate::bar::draw_bar;
 use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::floating::{
-    change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir, SNAP_LEFT,
-    SNAP_RIGHT, SNAP_TOP,
+    change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir, SNAP_LEFT, SNAP_RIGHT,
+    SNAP_TOP,
 };
 use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut};

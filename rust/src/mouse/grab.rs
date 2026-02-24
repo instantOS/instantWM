@@ -80,7 +80,7 @@ pub fn grab_pointer(
 
 /// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
 ///
-/// Used by [`crate::mouse::resize::hover_resize_mouse`] so that pressing
+/// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
 pub fn grab_pointer_with_keys(
     cursor_index: usize,

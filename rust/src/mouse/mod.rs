@@ -17,7 +17,7 @@
 //!   └─► events.rs dispatches to one of:
 //!         ├─ move_mouse                  (drag module)
 //!         ├─ resize_mouse                (resize module)
-//!         ├─ hover_resize_mouse          (resize module)
+//!         ├─ hover_resize_mouse          (hover module)
 //!         ├─ window_title_mouse_handler  (drag module)
 //!         ├─ drag_tag                    (drag module)
 //!         └─ gesture_mouse               (drag module)
@@ -39,6 +39,7 @@
 pub mod constants;
 pub mod drag;
 pub mod grab;
+pub mod hover;
 pub mod monitor;
 pub mod resize;
 pub mod slop;
@@ -61,6 +62,10 @@ pub use drag::{
 // can use the single import path `crate::mouse::moveresize`.
 pub use crate::floating::moveresize;
 
+// ── hover ─────────────────────────────────────────────────────────────────────
+
+pub use hover::{handle_floating_resize_hover, hover_resize_mouse};
+
 // ── resize ────────────────────────────────────────────────────────────────────
 
 pub use resize::{force_resize_mouse, resize_aspect_mouse, resize_mouse};
@@ -68,40 +73,3 @@ pub use resize::{force_resize_mouse, resize_aspect_mouse, resize_mouse};
 // ── slop ─────────────────────────────────────────────────────────────────────
 
 pub use slop::draw_window;
-
-// ── monitor ───────────────────────────────────────────────────────────────────
-
-// ── get_cursor_client ─────────────────────────────────────────────────────────
-
-use crate::globals::get_globals;
-use crate::types::Client;
-
-/// Return the [`Client`] currently under the mouse pointer, if any.
-///
-/// Walks every monitor's client list and returns the first client whose
-/// geometry contains the current root-pointer position.
-///
-/// Returns `None` when:
-/// * The X11 pointer position cannot be queried.
-/// * No client's bounding box contains the pointer.
-pub fn get_cursor_client() -> Option<Client> {
-    let (ptr_x, ptr_y) = warp::get_root_ptr()?;
-
-    let globals = get_globals();
-    for mon in &globals.monitors {
-        let mut current = mon.clients;
-        while let Some(c_win) = current {
-            match globals.clients.get(&c_win) {
-                Some(c) => {
-                    if c.geo.contains_point(ptr_x, ptr_y) {
-                        return Some(c.clone());
-                    }
-                    current = c.next;
-                }
-                None => break,
-            }
-        }
-    }
-
-    None
-}

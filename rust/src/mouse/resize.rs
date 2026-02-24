@@ -6,7 +6,6 @@
 //! |---------------------------|--------------------------------------------------------------|
 //! | [`resize_mouse`]          | Drag the bottom-right corner to resize                      |
 //! | [`resize_aspect_mouse`]   | Same, but clamps to the window's declared aspect-ratio hints |
-//! | [`hover_resize_mouse`]    | Wait near a border; promote to full resize on click         |
 //! | [`force_resize_mouse`]    | Alias for `resize_mouse` (bypasses fullscreen guard)        |
 //!
 //! All three share the same grab/event-loop/ungrab skeleton; they differ only
@@ -28,8 +27,8 @@ use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-use super::constants::{KEYCODE_ESCAPE, REFRESH_RATE_HI, REFRESH_RATE_LO};
-use super::grab::{grab_pointer, grab_pointer_with_keys, ungrab};
+use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
+use super::grab::{grab_pointer, ungrab};
 use super::monitor::handle_client_monitor_switch;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -266,137 +265,4 @@ pub fn resize_aspect_mouse(_arg: &Arg) {
     handle_client_monitor_switch(win);
 }
 
-// ── hover_resize_mouse ────────────────────────────────────────────────────────
-
-/// Activate a "hover" resize state when the cursor is near a window border.
-///
-/// This function:
-/// 1. Checks [`is_in_resize_border`] – if the cursor is not near a border, it
-///    returns `0` immediately.
-/// 2. Grabs the pointer (with key events so Escape can abort).
-/// 3. Loops, waiting for one of:
-///    - `ButtonPress`  → releases the grab and calls [`resize_mouse`].
-///    - `MotionNotify` → re-checks the border zone; breaks if the cursor left.
-///    - `KeyPress` (Escape) → aborts.
-///    - `ButtonRelease` → aborts.
-///
-/// Returns `1` if the function ran its loop (regardless of whether a resize
-/// was started), or `0` if the cursor was not in a resize border.
-pub fn hover_resize_mouse(_arg: &Arg) -> i32 {
-    if !is_in_resize_border() {
-        return 0;
-    }
-
-    let Some(conn) = grab_pointer_with_keys(1) else {
-        return 0;
-    };
-
-    let mut resize_started = false;
-
-    loop {
-        let Ok(event) = conn.wait_for_event() else {
-            break;
-        };
-
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
-
-            x11rb::protocol::Event::MotionNotify(_) => {
-                if !is_in_resize_border() {
-                    break;
-                }
-            }
-
-            x11rb::protocol::Event::KeyPress(k) => {
-                if k.detail == KEYCODE_ESCAPE {
-                    break;
-                }
-            }
-
-            x11rb::protocol::Event::ButtonPress(_) => {
-                resize_started = true;
-                ungrab(conn);
-                resize_mouse(&Arg::default());
-                break;
-            }
-
-            _ => {}
-        }
-    }
-
-    if !resize_started {
-        ungrab(conn);
-    }
-
-    1
-}
-
-// ── is_in_resize_border ───────────────────────────────────────────────────────
-
-/// Return `true` when the pointer is in the resize-border zone of the
-/// currently focused floating window.
-///
-/// The border zone is a [`RESIZE_BORDER_ZONE`]-pixel band around the outside
-/// of the window frame.  The cursor must be:
-/// * Outside the window's content area.
-/// * Within `RESIZE_BORDER_ZONE` pixels of the window's edges.
-/// * Not on the bar.
-/// * The window must be floating (or the layout must be non-tiling).
-pub fn is_in_resize_border() -> bool {
-    use super::constants::RESIZE_BORDER_ZONE;
-    use super::warp::get_root_ptr;
-
-    let globals = get_globals();
-    let (isfloating, geo) = {
-        let Some(win) = get_sel_win() else {
-            return false;
-        };
-
-        let Some(c) = globals.clients.get(&win) else {
-            return false;
-        };
-
-        let has_tiling = globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| is_current_layout_tiling(m, &globals.tags))
-            .unwrap_or(true);
-
-        if !c.isfloating && has_tiling {
-            return false;
-        }
-
-        (c.isfloating, c.geo)
-    };
-
-    // globals is dropped here
-
-    let Some((px, py)) = get_root_ptr() else {
-        return false;
-    };
-
-    // Cursor is on the bar – not a resize border.
-    let globals = get_globals();
-    let bh = globals.bh;
-    if let Some(mon) = globals.monitors.get(globals.selmon) {
-        if mon.showbar && py < mon.monitor_rect.y + bh {
-            return false;
-        }
-    }
-
-    // Cursor is inside the window content – not a resize border.
-    if py > geo.y && py < geo.y + geo.h && px > geo.x && px < geo.x + geo.w {
-        return false;
-    }
-
-    // Cursor is too far away to be considered near the border.
-    if py < geo.y - RESIZE_BORDER_ZONE
-        || px < geo.x - RESIZE_BORDER_ZONE
-        || py > geo.y + geo.h + RESIZE_BORDER_ZONE
-        || px > geo.x + geo.w + RESIZE_BORDER_ZONE
-    {
-        return false;
-    }
-
-    true
-}
+// `hover_resize_mouse` and `is_in_resize_border` live in `super::hover`.

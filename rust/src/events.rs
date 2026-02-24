@@ -11,7 +11,7 @@ use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
-use crate::mouse::{reset_cursor, resize_mouse};
+use crate::mouse::{handle_floating_resize_hover, hover_resize_mouse, reset_cursor, resize_mouse};
 use crate::systray::{update_systray, win_to_systray_icon};
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -217,13 +217,44 @@ pub fn destroy_notify(e: &DestroyNotifyEvent) {
 }
 
 pub fn enter_notify(e: &EnterNotifyEvent) {
-    let globals = get_globals();
-    if !globals.focusfollowsmouse {
+    let root = get_globals().root;
+    let entering_root = e.event == root;
+    let entering_client = win_to_client(e.event);
+
+    // Hover-resize: when the pointer enters the root window (i.e. leaves a
+    // client) near a floating window, enter the modal hover-resize loop.
+    // This must run regardless of the focus-follows-mouse setting.
+    {
+        let globals = get_globals();
+        let has_floating_sel = globals
+            .monitors
+            .get(globals.selmon)
+            .and_then(|m| m.sel)
+            .and_then(|sel| globals.clients.get(&sel))
+            .map(|c| {
+                c.isfloating
+                    || !globals
+                        .monitors
+                        .get(globals.selmon)
+                        .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
+                        .unwrap_or(true)
+            })
+            .unwrap_or(false);
+
+        let trigger_hover = (entering_root || entering_client.is_some()) && has_floating_sel;
+        if trigger_hover {
+            drop(globals);
+            if hover_resize_mouse() {
+                return;
+            }
+        }
+    }
+
+    if !get_globals().focusfollowsmouse {
         return;
     }
 
-    let c = win_to_client(e.event);
-    if let Some(win) = c {
+    if let Some(win) = entering_client {
         let globals = get_globals();
         let sel_id = globals.selmon;
         if let Some(mon) = globals.monitors.get(sel_id) {
@@ -332,6 +363,9 @@ pub fn motion_notify(e: &MotionNotifyEvent) {
     };
 
     if root_y >= monitor_y + bar_height - 3 {
+        if handle_floating_resize_hover() {
+            return;
+        }
         reset_bar();
         return;
     }
