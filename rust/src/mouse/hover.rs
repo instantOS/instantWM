@@ -24,8 +24,10 @@ use x11rb::protocol::xproto::*;
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::drag::move_mouse;
 use super::grab::{grab_pointer_with_keys, ungrab};
-use super::resize::resize_mouse;
 use super::warp::get_root_ptr;
+
+// Re-export resize_mouse from parent module for use in hover_resize_mouse
+use crate::mouse::resize_mouse;
 
 // ── Resize direction ─────────────────────────────────────────────────────────
 
@@ -54,6 +56,21 @@ impl ResizeDirection {
             Self::Bottom => 4,      // XC_SB_V_DOUBLE_ARROW
             Self::BottomLeft => 6,  // XC_BOTTOM_LEFT_CORNER
             Self::Left => 5,        // XC_SB_H_DOUBLE_ARROW
+        }
+    }
+
+    /// Returns which edges are affected by this resize direction.
+    /// (affects_left, affects_right, affects_top, affects_bottom)
+    pub fn affected_edges(self) -> (bool, bool, bool, bool) {
+        match self {
+            Self::TopLeft => (true, false, true, false),
+            Self::Top => (false, false, true, false),
+            Self::TopRight => (false, true, true, false),
+            Self::Right => (false, true, false, false),
+            Self::BottomRight => (false, true, false, true),
+            Self::Bottom => (false, false, false, true),
+            Self::BottomLeft => (true, false, false, true),
+            Self::Left => (true, false, false, false),
         }
     }
 
@@ -288,16 +305,30 @@ pub fn handle_floating_resize_hover() -> bool {
     }
 
     if let Some(win) = find_floating_win_at_resize_border() {
+        let (cursor_idx, should_focus) = {
+            let globals = get_globals();
+            let cursor_idx = if let Some(c) = globals.clients.get(&win) {
+                let (px, py) = match get_root_ptr() {
+                    Some(p) => p,
+                    None => (0, 0),
+                };
+                let hit_x = px - c.geo.x;
+                let hit_y = py - c.geo.y;
+                let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
+                dir.cursor_index()
+            } else {
+                1
+            };
+            let should_focus =
+                globals.monitors.get(globals.selmon).and_then(|m| m.sel) != Some(win);
+            (cursor_idx, should_focus)
+        };
+
         if get_globals().altcursor != AltCursor::Resize {
-            set_root_cursor(1);
+            set_root_cursor(cursor_idx);
             get_globals_mut().altcursor = AltCursor::Resize;
         }
-        if get_globals()
-            .monitors
-            .get(get_globals().selmon)
-            .and_then(|m| m.sel)
-            != Some(win)
-        {
+        if should_focus {
             focus(Some(win));
         }
         return true;
@@ -420,7 +451,7 @@ pub fn hover_resize_mouse() -> bool {
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
                             warp_pointer_resize(win, dir);
-                            resize_mouse(&Arg::default());
+                            resize_mouse_directional(Some(dir));
                         }
                     }
                     _ => {}
@@ -442,22 +473,26 @@ pub fn hover_resize_mouse() -> bool {
 // ── Utilities ────────────────────────────────────────────────────────────────
 
 /// Return the window ID of the client currently under the mouse pointer.
-fn get_cursor_client_win() -> Option<Window> {
-    let (ptr_x, ptr_y) = get_root_ptr()?;
+///
+/// Uses `query_pointer` on the root window to get the actual window under the
+/// cursor, respecting stacking order. This ensures that if multiple windows
+/// overlap, the topmost (visible) one is returned, not just any window whose
+/// geometry contains the cursor.
+pub fn get_cursor_client_win() -> Option<Window> {
+    let x11 = get_x11();
+    let conn = x11.conn.as_ref()?;
     let globals = get_globals();
-    for mon in &globals.monitors {
-        let mut current = mon.clients;
-        while let Some(win) = current {
-            match globals.clients.get(&win) {
-                Some(c) if c.is_visible() && c.geo.contains_point(ptr_x, ptr_y) => {
-                    return Some(win);
-                }
-                Some(c) => current = c.next,
-                None => break,
-            }
-        }
+
+    // Query pointer on root to get the actual child window under cursor
+    let reply = conn.query_pointer(globals.root).ok()?.reply().ok()?;
+
+    // child will be NONE if cursor is over root (no window)
+    if reply.child == x11rb::NONE {
+        return None;
     }
-    None
+
+    // Convert the window under cursor to a client
+    crate::client::win_to_client(reply.child)
 }
 
 /// Query the pointer position in both root and window-local coordinates.

@@ -10,7 +10,9 @@ use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
-use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
+use crate::monitor::{
+    arrange, is_current_layout_tiling, rect_to_mon, restack, update_geom, win_to_mon,
+};
 use crate::mouse::{
     find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
     handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse,
@@ -219,37 +221,131 @@ pub fn destroy_notify(e: &DestroyNotifyEvent) {
     }
 }
 
+/// Handle EnterNotify events for focus-follows-mouse behavior.
+///
+/// This is the Rust equivalent of the C code's `enternotify` and `handle_floating_focus`.
+/// The key insight is that when floating windows overlap, we must use `get_cursor_client_win`
+/// (which calls XQueryPointer) to get the actual topmost window under the cursor,
+/// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(e: &EnterNotifyEvent) {
-    let root = get_globals().root;
+    let globals = get_globals();
+    let root = globals.root;
+    let focusfollowsmouse = globals.focusfollowsmouse;
+    let focusfollowsfloatmouse = globals.focusfollowsfloatmouse;
     let entering_root = e.event == root;
+
+    // Filter out invalid crossing events (grab/ungrab, inferior notify)
+    if (e.mode != NotifyMode::NORMAL || e.detail == NotifyDetail::INFERIOR) && e.event != root {
+        return;
+    }
+
+    // Get current selection info
+    let (selmon_id, sel_win, is_floating_sel) = {
+        let globals = get_globals();
+        let selmon_id = globals.selmon;
+        let sel_win = globals.monitors.get(selmon_id).and_then(|m| m.sel);
+        let is_floating = sel_win
+            .and_then(|w| globals.clients.get(&w))
+            .map(|c| c.isfloating)
+            .unwrap_or(false);
+        let has_tiling = globals
+            .monitors
+            .get(selmon_id)
+            .map(|m| is_current_layout_tiling(m, &globals.tags))
+            .unwrap_or(true);
+        (selmon_id, sel_win, is_floating || !has_tiling)
+    };
+
+    // Handle entering root window with a floating selection: try resize mode
+    if entering_root && is_floating_sel {
+        if hover_resize_mouse() {
+            return;
+        }
+        // If hover_resize_mouse didn't grab, fall through to normal focus handling
+    }
+
+    // Check if we're entering a client window
     let entering_client = win_to_client(e.event);
 
-    if entering_root {
-        if let Some(hover_win) = find_floating_win_at_resize_border() {
-            if get_globals()
-                .monitors
-                .get(get_globals().selmon)
-                .and_then(|m| m.sel)
-                != Some(hover_win)
-            {
-                focus(Some(hover_win));
-            }
+    // Handle floating window focus logic
+    if let Some(client_win) = entering_client {
+        let is_visible = get_globals()
+            .clients
+            .get(&client_win)
+            .map(|c| c.is_visible())
+            .unwrap_or(false);
+
+        // If we have a floating selection and are entering a different client,
+        // try hover_resize_mouse first (same as C code's handle_floating_focus)
+        if sel_win != Some(client_win)
+            && is_floating_sel
+            && (entering_root || is_visible)
+        {
             if hover_resize_mouse() {
+                return;
+            }
+
+            // If hover_resize_mouse exited without action, focus the window under cursor
+            if focusfollowsfloatmouse {
+                if let Some(newc) = get_cursor_client_win() {
+                    if newc != sel_win.unwrap_or(0) {
+                        focus(Some(newc));
+                    }
+                }
                 return;
             }
         }
     }
 
-    if !get_globals().focusfollowsmouse {
+    // Skip focus changes for floating windows if focusfollowsfloatmouse is disabled
+    // (unless we're entering root, the window is visible, or selection is sticky)
+    if !focusfollowsfloatmouse {
+        if let Some(client_win) = entering_client {
+            let is_floating = get_globals()
+                .clients
+                .get(&client_win)
+                .map(|c| c.isfloating)
+                .unwrap_or(false);
+            let has_tiling = get_globals()
+                .monitors
+                .get(selmon_id)
+                .map(|m| is_current_layout_tiling(m, &get_globals().tags))
+                .unwrap_or(true);
+
+            // Skip focus for floating windows when not in floating layout
+            if e.event != root && sel_win.is_some() && is_floating && has_tiling {
+                return;
+            }
+        }
+    }
+
+    // Standard focus-follows-mouse behavior
+    if !focusfollowsmouse {
         return;
     }
 
-    if let Some(win) = entering_client {
-        let globals = get_globals();
-        let sel_id = globals.selmon;
-        if let Some(mon) = globals.monitors.get(sel_id) {
-            if mon.sel != Some(win) {
-                focus(Some(win));
+    // Handle monitor switching
+    if let Some(new_mon_id) = win_to_mon(e.event) {
+        if new_mon_id != selmon_id {
+            {
+                let globals = get_globals_mut();
+                globals.selmon = new_mon_id;
+            }
+            focus(None);
+            return;
+        }
+    }
+
+    // Focus the window under the cursor, not just the event window
+    // This ensures we focus the topmost window when windows overlap
+    if entering_client.is_some() || entering_root {
+        if let Some(win) = get_cursor_client_win() {
+            let globals = get_globals();
+            let sel_id = globals.selmon;
+            if let Some(mon) = globals.monitors.get(sel_id) {
+                if mon.sel != Some(win) {
+                    focus(Some(win));
+                }
             }
         }
     }

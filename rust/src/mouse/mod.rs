@@ -65,13 +65,13 @@ pub use crate::floating::moveresize;
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{
-    find_floating_win_at_resize_border, handle_floating_resize_hover, handle_sidebar_hover,
-    hover_resize_mouse,
+    find_floating_win_at_resize_border, get_cursor_client_win, get_resize_direction,
+    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse, ResizeDirection,
 };
 
-// ── resize ────────────────────────────────────────────────────────────────────
+// ── resize ────────────────────────────────────────────────────────────
 
-pub use resize::{force_resize_mouse, resize_aspect_mouse, resize_mouse};
+pub use resize::{force_resize_mouse, resize_aspect_mouse, resize_mouse, resize_mouse_directional};
 
 // ── slop ─────────────────────────────────────────────────────────────────────
 
