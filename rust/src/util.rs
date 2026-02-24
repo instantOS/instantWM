@@ -66,85 +66,12 @@ pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
     a.starts_with(b)
 }
 
-/// Spawn a command identified by a [`Cmd`] variant stored in `arg.v`.
-///
-/// The [`Cmd`] variant is cast to `usize` when building keybindings/buttons
-/// (via `Cmd::Foo as usize`), then reconstructed here via
-/// [`cmd_from_usize`] and resolved against the globals' [`ExternalCommands`].
-pub fn spawn(arg: &Arg) {
-    let id = match arg.v {
-        Some(v) => v,
-        None => return,
-    };
-
-    let cmd_variant = cmd_from_usize(id);
+/// Spawn a command identified by a [`Cmd`] variant.
+pub fn spawn(cmd: Cmd) {
     let globals = get_globals();
-    let argv = globals.external_commands.get(cmd_variant);
+    let argv = globals.external_commands.get(cmd);
     if !argv.is_empty() {
         spawn_with_args(argv, None);
-    }
-}
-
-/// Reconstruct a [`Cmd`] from its `usize` discriminant.
-///
-/// Unknown values map to [`Cmd::Default`] (a no-op) so stale bindings fail
-/// gracefully instead of panicking.
-pub fn cmd_from_usize(id: usize) -> Cmd {
-    // Keep in sync with the `Cmd` enum discriminants in config/commands.rs.
-    match id {
-        x if x == Cmd::Default as usize => Cmd::Default,
-        x if x == Cmd::Term as usize => Cmd::Term,
-        x if x == Cmd::TermScratch as usize => Cmd::TermScratch,
-        x if x == Cmd::InstantMenu as usize => Cmd::InstantMenu,
-        x if x == Cmd::ClipMenu as usize => Cmd::ClipMenu,
-        x if x == Cmd::Smart as usize => Cmd::Smart,
-        x if x == Cmd::InstantMenuSt as usize => Cmd::InstantMenuSt,
-        x if x == Cmd::QuickMenu as usize => Cmd::QuickMenu,
-        x if x == Cmd::InstantAssist as usize => Cmd::InstantAssist,
-        x if x == Cmd::InstantRepeat as usize => Cmd::InstantRepeat,
-        x if x == Cmd::InstantPacman as usize => Cmd::InstantPacman,
-        x if x == Cmd::InstantShare as usize => Cmd::InstantShare,
-        x if x == Cmd::Nautilus as usize => Cmd::Nautilus,
-        x if x == Cmd::Slock as usize => Cmd::Slock,
-        x if x == Cmd::OneKeyLock as usize => Cmd::OneKeyLock,
-        x if x == Cmd::LangSwitch as usize => Cmd::LangSwitch,
-        x if x == Cmd::OsLock as usize => Cmd::OsLock,
-        x if x == Cmd::Help as usize => Cmd::Help,
-        x if x == Cmd::Search as usize => Cmd::Search,
-        x if x == Cmd::KeyLayoutSwitch as usize => Cmd::KeyLayoutSwitch,
-        x if x == Cmd::ISwitch as usize => Cmd::ISwitch,
-        x if x == Cmd::InstantSwitch as usize => Cmd::InstantSwitch,
-        x if x == Cmd::CaretInstantSwitch as usize => Cmd::CaretInstantSwitch,
-        x if x == Cmd::InstantSkippy as usize => Cmd::InstantSkippy,
-        x if x == Cmd::Onboard as usize => Cmd::Onboard,
-        x if x == Cmd::InstantShutdown as usize => Cmd::InstantShutdown,
-        x if x == Cmd::SystemMonitor as usize => Cmd::SystemMonitor,
-        x if x == Cmd::Notify as usize => Cmd::Notify,
-        x if x == Cmd::Yazi as usize => Cmd::Yazi,
-        x if x == Cmd::Panther as usize => Cmd::Panther,
-        x if x == Cmd::ControlCenter as usize => Cmd::ControlCenter,
-        x if x == Cmd::Display as usize => Cmd::Display,
-        x if x == Cmd::PavuControl as usize => Cmd::PavuControl,
-        x if x == Cmd::InstantSettings as usize => Cmd::InstantSettings,
-        x if x == Cmd::Code as usize => Cmd::Code,
-        x if x == Cmd::StartMenu as usize => Cmd::StartMenu,
-        x if x == Cmd::Scrot as usize => Cmd::Scrot,
-        x if x == Cmd::FScrot as usize => Cmd::FScrot,
-        x if x == Cmd::ClipScrot as usize => Cmd::ClipScrot,
-        x if x == Cmd::FClipScrot as usize => Cmd::FClipScrot,
-        x if x == Cmd::Firefox as usize => Cmd::Firefox,
-        x if x == Cmd::Editor as usize => Cmd::Editor,
-        x if x == Cmd::PlayerNext as usize => Cmd::PlayerNext,
-        x if x == Cmd::PlayerPrevious as usize => Cmd::PlayerPrevious,
-        x if x == Cmd::PlayerPause as usize => Cmd::PlayerPause,
-        x if x == Cmd::Spoticli as usize => Cmd::Spoticli,
-        x if x == Cmd::UpVol as usize => Cmd::UpVol,
-        x if x == Cmd::DownVol as usize => Cmd::DownVol,
-        x if x == Cmd::MuteVol as usize => Cmd::MuteVol,
-        x if x == Cmd::UpBright as usize => Cmd::UpBright,
-        x if x == Cmd::DownBright as usize => Cmd::DownBright,
-        x if x == Cmd::Tag as usize => Cmd::Tag,
-        _ => Cmd::Default,
     }
 }
 

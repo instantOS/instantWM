@@ -586,15 +586,6 @@ impl CardinalDirection {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Arg {
-    pub i: i32,
-    pub ui: u32,
-    pub f: f32,
-    pub v: Option<usize>,
-    pub direction: Option<CardinalDirection>,
-}
-
 pub trait Layout: std::fmt::Debug {
     fn symbol(&self) -> &'static str;
     fn arrange(&self, m: &mut Monitor);
@@ -909,36 +900,11 @@ pub struct Systray {
     pub icons: Vec<Window>,
 }
 
-/// Action that can be bound to a key or button.
-/// This enum allows different function signatures to be used in bindings.
-#[derive(Debug, Clone, Copy, Default)]
-pub enum Action {
-    /// No action
-    #[default]
-    None,
-    /// Function taking an Arg pointer (legacy)
-    WithArg(fn(&Arg)),
-    /// Focus stack with direction
-    FocusStack(bool),
-    /// Focus in a direction
-    FocusDirection(Direction),
-    /// Cycle layout forward/backward
-    CycleLayout(bool),
-    /// Increment nmaster by delta
-    IncNmaster(i32),
-    /// Shift view forward/backward
-    ShiftView(bool),
-    /// Tag to left/right by offset
-    TagToLeft(i32),
-    TagToRight(i32),
-}
-
 #[derive(Debug, Clone)]
 pub struct Key {
     pub mod_mask: u32,
     pub keysym: u32,
-    pub func: Option<fn(&Arg)>,
-    pub arg: Arg,
+    pub action: Box<dyn Fn()>,
 }
 
 #[derive(Debug, Clone)]
@@ -946,16 +912,13 @@ pub struct Button {
     pub click: Click,
     pub mask: u32,
     pub button: u8,
-    pub func: Option<fn(&Arg)>,
-    pub arg: Arg,
+    pub action: Box<dyn Fn()>,
 }
 
 #[derive(Debug, Clone)]
 pub struct XCommand {
     pub cmd: &'static str,
-    pub func: Option<fn(&Arg)>,
-    pub arg: Arg,
-    pub cmd_type: u32,
+    pub action: fn(&str),
 }
 
 pub fn intersect(r: &Rect, m: &Monitor) -> i32 {
