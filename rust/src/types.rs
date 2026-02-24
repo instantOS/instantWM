@@ -1020,3 +1020,7 @@ pub fn intersect(r: &Rect, m: &Monitor) -> i32 {
     let y2 = (r.y + r.h).min(m.work_rect.y + m.work_rect.h);
     (x2 - x1).max(0) * (y2 - y1).max(0)
 }
+
+// Re-export type-safe tag types
+mod tag_types;
+pub use tag_types::{MonitorDirection, TagMask, TagSelection};

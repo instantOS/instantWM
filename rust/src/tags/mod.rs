@@ -9,6 +9,15 @@ pub mod view;
 
 mod tag_mon_impl;
 
+/// Type-safe tag operations with improved DX.
+///
+/// This module provides ergonomic wrappers using `TagMask` and `TagSelection`
+/// types, offering better type safety and clearer semantics than raw `u32` bitmasks.
+pub mod tag_ops;
+
+// Re-export key types for convenience
+pub use tag_ops::{ClientTagExt, TagViewBuilder};
+
 use crate::globals::{get_globals, get_globals_mut};
 use crate::util::get_sel_win;
 

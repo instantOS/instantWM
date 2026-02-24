@@ -1,6 +1,13 @@
 //! Moving clients between tags.
 
 use crate::focus::focus;
+
+/// Direction for shifting/tagging operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShiftDirection {
+    Left,
+    Right,
+}
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect};

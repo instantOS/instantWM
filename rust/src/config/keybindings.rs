@@ -45,15 +45,39 @@ macro_rules! key {
     };
 }
 
+use crate::tags::tag_ops;
+use crate::types::{TagMask, TagSelection};
+
 fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
-    let mask = 1u32 << tag_idx;
+    // Use type-safe TagMask - unwrap is safe here as tag_idx < 9
+    let mask = TagMask::single(tag_idx + 1).unwrap();
+    let mask_bits = mask.bits(); // For functions still using u32
+    
     [
-        key!(MODKEY,                    keysym => move || view(mask)),
-        key!(MODKEY | CONTROL,          keysym => move || toggle_view(mask)),
-        key!(MODKEY | SHIFT,            keysym => move || set_client_tag(mask)),
-        key!(MODKEY | MOD1,             keysym => move || follow_tag(mask)),
-        key!(MODKEY | CONTROL | SHIFT,  keysym => move || toggle_tag(mask)),
-        key!(MODKEY | MOD1   | SHIFT,   keysym => move || swap_tags(mask)),
+        // View: MOD+num
+        key!(MODKEY, keysym => move || {
+            tag_ops::view_selection(TagSelection::Single(tag_idx + 1))
+        }),
+        // Toggle view: MOD+Ctrl+num
+        key!(MODKEY | CONTROL, keysym => move || {
+            tag_ops::toggle_view_mask(TagMask::single(tag_idx + 1).unwrap())
+        }),
+        // Set client tag: MOD+Shift+num
+        key!(MODKEY | SHIFT, keysym => move || {
+            tag_ops::set_client_tag_mask(TagMask::single(tag_idx + 1).unwrap())
+        }),
+        // Follow tag: MOD+Alt+num
+        key!(MODKEY | MOD1, keysym => move || {
+            tag_ops::follow_tag_mask(TagMask::single(tag_idx + 1).unwrap())
+        }),
+        // Toggle tag: MOD+Ctrl+Shift+num
+        key!(MODKEY | CONTROL | SHIFT, keysym => move || {
+            tag_ops::toggle_client_tag_mask(TagMask::single(tag_idx + 1).unwrap())
+        }),
+        // Swap tags: MOD+Alt+Shift+num
+        key!(MODKEY | MOD1 | SHIFT, keysym => move || {
+            tag_ops::swap_tags_mask(TagMask::single(tag_idx + 1).unwrap())
+        }),
     ]
 }
 
@@ -223,14 +247,15 @@ pub fn get_dkeys() -> Vec<Key> {
         key!(0, XK_J     => || shift_view(Direction::Left)),
         key!(0, XK_UP    => || shift_view(Direction::Right)),
         key!(0, XK_DOWN  => || shift_view(Direction::Left)),
-        key!(0, XK_1 => || view(1 << 0)),
-        key!(0, XK_2 => || view(1 << 1)),
-        key!(0, XK_3 => || view(1 << 2)),
-        key!(0, XK_4 => || view(1 << 3)),
-        key!(0, XK_5 => || view(1 << 4)),
-        key!(0, XK_6 => || view(1 << 5)),
-        key!(0, XK_7 => || view(1 << 6)),
-        key!(0, XK_8 => || view(1 << 7)),
-        key!(0, XK_9 => || view(1 << 8)),
+        // Type-safe tag views with clear semantics
+        key!(0, XK_1 => || tag_ops::view_selection(TagSelection::Single(1))),
+        key!(0, XK_2 => || tag_ops::view_selection(TagSelection::Single(2))),
+        key!(0, XK_3 => || tag_ops::view_selection(TagSelection::Single(3))),
+        key!(0, XK_4 => || tag_ops::view_selection(TagSelection::Single(4))),
+        key!(0, XK_5 => || tag_ops::view_selection(TagSelection::Single(5))),
+        key!(0, XK_6 => || tag_ops::view_selection(TagSelection::Single(6))),
+        key!(0, XK_7 => || tag_ops::view_selection(TagSelection::Single(7))),
+        key!(0, XK_8 => || tag_ops::view_selection(TagSelection::Single(8))),
+        key!(0, XK_9 => || tag_ops::view_selection(TagSelection::Single(9))),
     ]
 }
