@@ -26,7 +26,8 @@ use crate::bar::draw_bar;
 use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::floating::{
-    change_snap, reset_snap, set_tiled, toggle_floating, SnapDir, SNAP_LEFT, SNAP_RIGHT, SNAP_TOP,
+    change_snap, reset_snap, set_floating_in_place, set_tiled, toggle_floating, SnapDir, SNAP_LEFT,
+    SNAP_RIGHT, SNAP_TOP,
 };
 use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut};
@@ -285,7 +286,7 @@ fn on_motion(
         ny = bar_bottom;
     }
 
-    let (snap, has_tiling, is_floating, client_geo) = {
+    let (snap, has_tiling) = {
         let globals = get_globals();
         let snap = globals.snap;
         let has_tiling = globals
@@ -293,46 +294,67 @@ fn on_motion(
             .get(globals.selmon)
             .map(|m| is_current_layout_tiling(m, &globals.tags))
             .unwrap_or(true);
-        let (is_floating, client_geo) = globals
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.geo))
-            .unwrap_or((false, Rect::default()));
-        (snap, has_tiling, is_floating, client_geo)
+        (snap, has_tiling)
     };
 
-    // Promote a tiled window to floating once the user drags it far enough.
-    // Mirrors the C movemouse_motion behaviour exactly:
-    //   1. Disable animation so the window jumps to float_geo instantly rather
-    //      than playing a 7-frame animation that blocks the event loop and fills
-    //      the queue with stale MotionNotify events.
-    //   2. Call toggle_floating (which moves the window to float_geo and calls
-    //      arrange).
-    //   3. Re-read isfloating / client_geo — toggle_floating changed them.
-    //   4. Fall through to the resize below so the window is immediately placed
-    //      at (nx, ny) (≈ the current cursor position relative to tiled origin).
-    //      Without this fall-through the window would sit at float_geo for one
-    //      frame, and every subsequent event would anchor to the stale tiled
-    //      ocx/ocy, causing the "jumps all the way to the left" symptom.
-    let (is_floating, client_geo) = if !is_floating
-        && has_tiling
-        && ((nx - client_geo.x).abs() > snap || (ny - client_geo.y).abs() > snap)
-    {
-        // Temporarily suppress animation so toggle_floating's resize is instant.
-        get_globals_mut().animated = false;
-        toggle_floating(&Arg::default());
-        get_globals_mut().animated = true;
-
-        // Re-read the post-toggle state (isfloating=true, geo=float_geo).
+    let (mut is_floating, mut drag_geo) = {
         let globals = get_globals();
         globals
             .clients
             .get(&win)
             .map(|c| (c.isfloating, c.geo))
-            .unwrap_or((true, client_geo))
-    } else {
-        (is_floating, client_geo)
+            .unwrap_or((false, Rect::default()))
     };
+
+    // Promote a tiled window to floating once the user drags it far enough.
+    //
+    // The critical constraint: we must issue exactly ONE configure_window for
+    // `win` during this promotion so the compositor never sees an intermediate
+    // position.  toggle_floating() is wrong here because it:
+    //   a) resizes to float_geo  (configure #1  → compositor paints "right" pos)
+    //   b) calls arrange()       (flushes for other windows)
+    //   c) caller then resizes to drag position  (configure #2  → "jumps left")
+    //
+    // set_floating_in_place() only flips isfloating + restores border width
+    // without issuing any configure_window, leaving the single resize below
+    // as the only geometry change the compositor ever sees.
+    if !is_floating
+        && has_tiling
+        && ((nx - drag_geo.x).abs() > snap || (ny - drag_geo.y).abs() > snap)
+    {
+        // Resolve float dimensions before touching state.
+        // If the window was never floating, float_geo will be zeroed; fall
+        // back to the current tiled dimensions so the window doesn't collapse.
+        let (float_w, float_h) = {
+            let globals = get_globals();
+            globals
+                .clients
+                .get(&win)
+                .map(|c| {
+                    if c.float_geo.w > 0 && c.float_geo.h > 0 {
+                        (c.float_geo.w, c.float_geo.h)
+                    } else {
+                        (c.geo.w, c.geo.h)
+                    }
+                })
+                .unwrap_or((drag_geo.w, drag_geo.h))
+        };
+
+        // Flip isfloating + restore border — zero configure_window calls.
+        set_floating_in_place(win);
+
+        // Re-tile the remaining windows (touches only the other clients).
+        arrange(Some(get_globals().selmon));
+
+        // Point the fall-through resize at the drag position with float dims.
+        is_floating = true;
+        drag_geo = Rect {
+            x: nx,
+            y: ny,
+            w: float_w,
+            h: float_h,
+        };
+    }
 
     if !has_tiling || is_floating {
         {
@@ -346,8 +368,8 @@ fn on_motion(
             &Rect {
                 x: nx,
                 y: ny,
-                w: client_geo.w,
-                h: client_geo.h,
+                w: drag_geo.w,
+                h: drag_geo.h,
             },
             true,
         );

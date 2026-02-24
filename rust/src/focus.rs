@@ -3,7 +3,7 @@ use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::tags::view;
 use crate::types::*;
-use crate::util::get_sel_win;
+use crate::util::{self, get_sel_win};
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -141,100 +141,116 @@ pub fn set_focus_win(win: Window) {
 /// # Arguments
 /// * `direction` - The direction to focus (Up, Down, Left, Right)
 pub fn focus_direction(direction: Direction) {
-    let (sel_mon_id, source_win) = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
-            return;
-        }
-        let sel_mon_id = globals.selmon;
-        if let Some(sel) = get_sel_win() {
-            (sel_mon_id, sel)
-        } else {
-            return;
-        }
+    let Some(sel_mon_id) = util::get_sel_mon() else {
+        return;
     };
-
-    let (sx, sy) = {
-        let globals = get_globals();
-        if let Some(client) = globals.clients.get(&source_win) {
-            (
-                client.geo.x + client.geo.w / 2,
-                client.geo.y + client.geo.h / 2,
-            )
-        } else {
-            return;
-        }
+    let Some(source_win) = get_sel_win() else {
+        return;
     };
-
-    let mut out_client: Option<Window> = None;
-    let mut min_score: i32 = 0;
-    let mut found_one = false;
 
     let globals = get_globals();
-
-    let current_mon = match globals.monitors.get(sel_mon_id) {
-        Some(m) => m,
-        None => return,
+    let Some(source_client) = globals.clients.get(&source_win) else {
+        return;
     };
 
-    let mut current = current_mon.clients;
+    let (sx, sy) = source_client.geo.center();
+
+    let Some(mon) = globals.monitors.get(sel_mon_id) else {
+        return;
+    };
+
+    let candidates =
+        get_directional_candidates(mon.clients, &globals, source_win, sx, sy, direction);
+
+    if let Some(target) = candidates {
+        focus(Some(target));
+    }
+}
+
+/// Get the best client to focus in a given direction from a source position.
+/// Returns the window of the best candidate, or None if no valid candidates exist.
+fn get_directional_candidates(
+    clients: Option<Window>,
+    globals: &crate::globals::Globals,
+    source_win: Window,
+    sx: i32,
+    sy: i32,
+    direction: Direction,
+) -> Option<Window> {
+    let mut out_client: Option<Window> = None;
+    let mut min_score: i32 = 0;
+
+    let mut current = clients;
     while let Some(c_win) = current {
-        if let Some(c) = globals.clients.get(&c_win) {
-            if !c.is_visible() {
-                current = c.next;
-                continue;
-            }
+        let Some(c) = globals.clients.get(&c_win) else {
+            break;
+        };
 
-            let cx = c.geo.x + c.geo.w / 2;
-            let cy = c.geo.y + c.geo.h / 2;
+        if !c.is_visible() {
+            current = c.next;
+            continue;
+        }
 
-            let skip = c_win == source_win
-                || (direction == Direction::Up && cy > sy)
-                || (direction == Direction::Right && cx < sx)
-                || (direction == Direction::Down && cy < sy)
-                || (direction == Direction::Left && cx > sx);
+        let cx = c.geo.x + c.geo.w / 2;
+        let cy = c.geo.y + c.geo.h / 2;
 
-            if skip {
-                current = c.next;
-                continue;
-            }
-
-            let score = match direction {
-                Direction::Up | Direction::Down => {
-                    let dist_x = (sx - cx).abs();
-                    let dist_y = (sy - cy).abs();
-                    if dist_x > dist_y {
-                        current = c.next;
-                        continue;
-                    }
-                    dist_x + dist_y / 4
-                }
-                Direction::Left | Direction::Right => {
-                    let dist_x = (sx - cx).abs();
-                    let dist_y = (sy - cy).abs();
-                    if dist_y > dist_x {
-                        current = c.next;
-                        continue;
-                    }
-                    dist_y + dist_x / 4
-                }
-            };
-
+        if is_client_in_direction(c_win, source_win, cx, cy, sx, sy, direction) {
+            let score = calculate_direction_score(cx, cy, sx, sy, direction);
             if score < min_score || min_score == 0 {
                 out_client = Some(c_win);
-                found_one = true;
                 min_score = score;
             }
-
-            current = c.next;
-        } else {
-            break;
         }
+
+        current = c.next;
     }
 
-    if let Some(c) = out_client {
-        if found_one {
-            focus(Some(c));
+    out_client
+}
+
+/// Check if a client is in the given direction from the source position.
+fn is_client_in_direction(
+    c_win: Window,
+    source_win: Window,
+    cx: i32,
+    cy: i32,
+    sx: i32,
+    sy: i32,
+    direction: Direction,
+) -> bool {
+    // Can't focus on self
+    if c_win == source_win {
+        return false;
+    }
+
+    match direction {
+        Direction::Up => cy < sy,
+        Direction::Down => cy > sy,
+        Direction::Left => cx < sx,
+        Direction::Right => cx > sx,
+    }
+}
+
+/// Calculate a score for how well a client matches the direction.
+/// Lower score = better match.
+fn calculate_direction_score(cx: i32, cy: i32, sx: i32, sy: i32, direction: Direction) -> i32 {
+    let dist_x = (sx - cx).abs();
+    let dist_y = (sy - cy).abs();
+
+    match direction {
+        Direction::Up | Direction::Down => {
+            // Skip if more horizontal than vertical
+            if dist_x > dist_y {
+                return i32::MAX;
+            }
+            dist_x + dist_y / 4
+        }
+        Direction::Left | Direction::Right => {
+            // Skip if more vertical than horizontal
+            if dist_y > dist_x {
+                return i32::MAX;
+            }
+            dist_y + dist_x / 4
         }
     }
 }

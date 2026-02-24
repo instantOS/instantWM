@@ -35,6 +35,54 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
+// ── Floating-in-place promotion ───────────────────────────────────────────────
+
+/// Promote a window to floating **without moving or resizing it**.
+///
+/// This is the correct primitive to use when a tiled window is being promoted
+/// to floating during an interactive drag.  Unlike [`toggle_floating`] /
+/// [`apply_float_change`], this function does **not** issue any
+/// `configure_window` call, so there is only one X11 resize event — the one
+/// the caller issues immediately after.
+///
+/// # What this does
+/// 1. Sets `isfloating = true`.
+/// 2. Restores `border_width` from `old_border_width` (guarded: skipped when
+///    `old_border_width == 0`).
+/// 3. Paints the border with the floating-focus colour.
+///
+/// # What the caller must do
+/// After calling this function:
+/// - Call [`arrange`] to re-tile the remaining windows.
+/// - Issue a single `resize(win, target_rect, true)` to place the window at
+///   the desired position.  Use `float_geo.w / float_geo.h` for the size so
+///   the dimensions match the saved floating geometry (fall back to the
+///   current tiled dimensions if `float_geo` was never set).
+pub fn set_floating_in_place(win: Window) {
+    {
+        let globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.isfloating = true;
+        }
+    }
+
+    restore_border_width(win);
+
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let globals = get_globals();
+        if let Some(ref scheme) = globals.borderscheme {
+            let pixel = scheme.float_focus.bg.color.pixel;
+            let _ = change_window_attributes(
+                conn,
+                win,
+                &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+            );
+            let _ = conn.flush();
+        }
+    }
+}
+
 // ── Geometry persistence ──────────────────────────────────────────────────────
 
 /// Snapshot the window's current geometry into `Client::float_geo`.
