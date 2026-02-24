@@ -11,7 +11,10 @@ use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
-use crate::mouse::{handle_floating_resize_hover, hover_resize_mouse, reset_cursor, resize_mouse};
+use crate::mouse::{
+    find_floating_win_at_resize_border, handle_floating_resize_hover, hover_resize_mouse,
+    reset_cursor, resize_mouse,
+};
 use crate::systray::{update_systray, win_to_systray_icon};
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -464,8 +467,50 @@ pub fn unmap_notify(e: &UnmapNotifyEvent) {
     }
 }
 
-pub fn leave_notify(_e: &LeaveNotifyEvent) {
+pub fn leave_notify(e: &LeaveNotifyEvent) {
     reset_bar();
+
+    let leaving_client = win_to_client(e.event);
+    let globals = get_globals();
+    let has_floating_sel = globals
+        .monitors
+        .get(globals.selmon)
+        .and_then(|m| m.sel)
+        .and_then(|sel| globals.clients.get(&sel))
+        .map(|c| {
+            c.isfloating
+                || !globals
+                    .monitors
+                    .get(globals.selmon)
+                    .map(|m| crate::monitor::is_current_layout_tiling(m, &globals.tags))
+                    .unwrap_or(true)
+        })
+        .unwrap_or(false);
+
+    if !has_floating_sel {
+        return;
+    }
+
+    if let Some(leaving_win) = leaving_client {
+        if let Some(hover_win) = find_floating_win_at_resize_border() {
+            if hover_win == leaving_win {
+                if get_globals()
+                    .monitors
+                    .get(get_globals().selmon)
+                    .and_then(|m| m.sel)
+                    != Some(hover_win)
+                {
+                    focus(Some(hover_win));
+                }
+                if get_globals().altcursor != AltCursor::Resize {
+                    reset_cursor();
+                }
+                if hover_resize_mouse() {
+                    return;
+                }
+            }
+        }
+    }
 }
 
 fn handle_systray_dock_request(_e: &ClientMessageEvent) {}

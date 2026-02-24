@@ -233,7 +233,9 @@ pub fn is_in_resize_border() -> bool {
         return false;
     }
 
-    let (px, py) = get_root_ptr()?;
+    let Some((px, py)) = get_root_ptr() else {
+        return false;
+    };
     let globals = get_globals();
     if let Some(mon) = globals.monitors.get(globals.selmon) {
         if mon.showbar && py < mon.monitor_rect.y + globals.bh {
@@ -278,57 +280,29 @@ fn has_visible_tiled_client() -> bool {
 /// pointer is in the border zone of a floating window.  Resets both when the
 /// pointer leaves.
 ///
-/// Also focuses the floating window under the cursor if it differs from `sel`.
-///
 /// Returns `true` when the hover consumed the event and the caller should
 /// skip further motion handling.
 pub fn handle_floating_resize_hover() -> bool {
-    // Only activate when sel is floating (or non-tiling layout).
-    {
-        let globals = get_globals();
-        let Some(win) = get_sel_win() else {
-            return false;
-        };
-        let Some(c) = globals.clients.get(&win) else {
-            return false;
-        };
-        let has_tiling = globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| is_current_layout_tiling(m, &globals.tags))
-            .unwrap_or(true);
-        if !c.isfloating && has_tiling {
-            return false;
-        }
-    }
-
-    // Don't activate when there are visible tiled windows (mixed layout).
     if has_visible_tiled_client() {
         return false;
     }
 
-    if is_in_resize_border() {
+    if let Some(win) = find_floating_win_at_resize_border() {
         if get_globals().altcursor != AltCursor::Resize {
-            set_root_cursor(1); // crosshair / generic resize
+            set_root_cursor(1);
             get_globals_mut().altcursor = AltCursor::Resize;
         }
-
-        // Focus the floating window under the cursor if it differs from sel.
-        let should_refocus = get_cursor_client_win().filter(|&hover_win| {
-            get_globals()
-                .monitors
-                .get(get_globals().selmon)
-                .and_then(|m| m.sel)
-                != Some(hover_win)
-        });
-        if let Some(hover_win) = should_refocus {
-            focus(Some(hover_win));
+        if get_globals()
+            .monitors
+            .get(get_globals().selmon)
+            .and_then(|m| m.sel)
+            != Some(win)
+        {
+            focus(Some(win));
         }
-
         return true;
     }
 
-    // Left the resize zone — reset if we were in resize mode.
     if get_globals().altcursor == AltCursor::Resize {
         crate::mouse::reset_cursor();
     }

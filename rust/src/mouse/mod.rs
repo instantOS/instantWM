@@ -64,7 +64,9 @@ pub use crate::floating::moveresize;
 
 // ── hover ─────────────────────────────────────────────────────────────────────
 
-pub use hover::{handle_floating_resize_hover, hover_resize_mouse};
+pub use hover::{
+    find_floating_win_at_resize_border, handle_floating_resize_hover, hover_resize_mouse,
+};
 
 // ── resize ────────────────────────────────────────────────────────────────────
 
