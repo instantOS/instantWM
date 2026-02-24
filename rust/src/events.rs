@@ -5,6 +5,7 @@ use crate::client::{
     configure, get_transient_for_hint, is_hidden, set_client_state, set_fullscreen, unmanage,
     update_title, update_wm_hints, win_to_client, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
+use crate::commands::x_command;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::{
@@ -478,8 +479,10 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
     }
 
     let globals = get_globals();
-    if e.window == globals.root {
-        crate::bar::x11::update_status();
+    if e.window == globals.root && e.atom == AtomEnum::WM_NAME.into() {
+        if x_command() == 0 {
+            crate::bar::x11::update_status();
+        }
         return;
     }
 

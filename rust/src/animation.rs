@@ -3,7 +3,7 @@ use crate::constants::animation::*;
 use crate::floating::{change_snap, SnapDir};
 use crate::globals::{get_globals, get_x11};
 use crate::monitor::is_current_layout_tiling;
-use crate::tags::{view_to_left, view_to_right};
+use crate::tags::view::scroll_view;
 use crate::types::*;
 use crate::util::{get_sel_mon, get_sel_win};
 use std::thread;
@@ -277,10 +277,10 @@ pub fn anim_scroll(dir: Direction) {
     }
 
     match dir {
-        Direction::Right => crate::tags::view::scroll_view(Direction::Right),
-        Direction::Left => crate::tags::view::scroll_view(Direction::Left),
-        Direction::Up => crate::tags::view::scroll_view(Direction::Left),
-        Direction::Down => crate::tags::view::scroll_view(Direction::Right),
+        Direction::Right => scroll_view(Direction::Right),
+        Direction::Left => scroll_view(Direction::Left),
+        Direction::Up => scroll_view(Direction::Left),
+        Direction::Down => scroll_view(Direction::Right),
     }
 }
 

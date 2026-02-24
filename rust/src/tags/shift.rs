@@ -15,22 +15,13 @@ use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
-pub fn tag_to_left_by(offset: i32) {
-    shift_tag(Direction::Left, offset.max(1));
+pub fn shift_tag_by(dir: Direction, offset: i32) {
+    shift_tag(dir, offset.max(1));
 }
 
-pub fn tag_to_right_by(offset: i32) {
-    shift_tag(Direction::Right, offset.max(1));
-}
-
-pub fn move_left() {
-    tag_to_left_by(1);
-    crate::tags::view::scroll_view(Direction::Left);
-}
-
-pub fn move_right() {
-    tag_to_right_by(1);
-    crate::tags::view::scroll_view(Direction::Right);
+pub fn move_client(dir: Direction) {
+    shift_tag_by(dir, 1);
+    crate::tags::view::scroll_view(dir);
 }
 
 fn shift_tag(dir: Direction, offset: i32) {

@@ -31,10 +31,7 @@ use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::{arrange, restack};
 use crate::monitor::is_current_layout_tiling;
-use crate::tags::{
-    follow_tag, move_left, move_right, set_client_tag, tag_all, tag_to_left_by, tag_to_right_by,
-    view,
-};
+use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
 use crate::types::SnapPosition;
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -537,14 +534,14 @@ fn apply_edge_drop(win: Window, edge: Option<SnapPosition>) -> bool {
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_left();
+                move_client(Direction::Left);
             } else {
-                move_right();
+                move_client(Direction::Right);
             }
         } else if at_left {
-            tag_to_left_by(1);
+            shift_tag_by(Direction::Left, 1);
         } else {
-            tag_to_right_by(1);
+            shift_tag_by(Direction::Right, 1);
         }
 
         {

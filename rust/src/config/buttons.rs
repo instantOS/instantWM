@@ -17,9 +17,7 @@ use crate::mouse::{
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push_down, push_up};
-use crate::tags::{
-    follow_tag, set_client_tag, shift_view, toggle_tag, toggle_view, view_to_left, view_to_right,
-};
+use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag, toggle_view};
 use crate::toggles::{toggle_locked, toggle_prefix};
 use crate::types::{Button, Click, Direction, StackDirection, TagMask};
 use crate::util::spawn;
@@ -72,8 +70,8 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(StatusText, MC,     button:1 => || spawn(Cmd::Notify)),
         btn!(TagBar, 0,     button:1 => drag_tag),
         btn!(TagBar, 0,     button:3 => || toggle_view(TagMask::ALL_BITS)),
-        btn!(TagBar, 0,     button:4 => view_to_left),
-        btn!(TagBar, 0,     button:5 => view_to_right),
+        btn!(TagBar, 0,     button:4 => || crate::tags::view::scroll_view(Direction::Left)),
+        btn!(TagBar, 0,     button:5 => || crate::tags::view::scroll_view(Direction::Right)),
         btn!(TagBar, MODKEY, button:1 => || set_client_tag(TagMask::ALL_BITS)),
         btn!(TagBar, MODKEY, button:3 => || toggle_tag(TagMask::ALL_BITS)),
         btn!(TagBar, MOD1,   button:1 => || follow_tag(TagMask::ALL_BITS)),

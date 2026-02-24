@@ -19,9 +19,8 @@ use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_left, move_right, quit, shift_view, tag_mon, tag_to_left_by,
-    tag_to_right_by, toggle_fullscreen_overview, toggle_overview, view, view_to_left,
-    view_to_right, win_view,
+    follow_view, last_view, move_client, quit, shift_tag_by, shift_view, tag_mon,
+    toggle_fullscreen_overview, toggle_overview, view, win_view,
 };
 use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
@@ -124,10 +123,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,      XK_TAB     => follow_view),
         key!(MODKEY,  XK_LEFT    => || animation::anim_scroll(Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => || animation::anim_scroll(Direction::Right)),
-        key!(MA,      XK_LEFT    => move_left),
-        key!(MA,      XK_RIGHT   => move_right),
-        key!(MS,      XK_LEFT    => || tag_to_left_by(1)),
-        key!(MS,      XK_RIGHT   => || tag_to_right_by(1)),
+        key!(MA,      XK_LEFT    => || move_client(Direction::Left)),
+        key!(MA,      XK_RIGHT   => || move_client(Direction::Right)),
+        key!(MS,      XK_LEFT    => || shift_tag_by(Direction::Left, 1)),
+        key!(MS,      XK_RIGHT   => || shift_tag_by(Direction::Right, 1)),
         key!(MSC,     XK_RIGHT   => || shift_view(Direction::Right)),
         key!(MSC,     XK_LEFT    => || shift_view(Direction::Left)),
         // View all tags (overview mode)
@@ -254,10 +253,10 @@ pub fn get_dkeys() -> Vec<Key> {
         key!(0, XK_TAB    => || spawn(Cmd::CaretInstantSwitch)),
         key!(0, XK_PLUS   => || spawn(Cmd::UpVol)),
         key!(0, XK_MINUS  => || spawn(Cmd::DownVol)),
-        key!(0, XK_H     => view_to_left),
-        key!(0, XK_L     => view_to_right),
-        key!(0, XK_LEFT  => view_to_left),
-        key!(0, XK_RIGHT => view_to_right),
+        key!(0, XK_H     => || crate::tags::view::scroll_view(Direction::Left)),
+        key!(0, XK_L     => || crate::tags::view::scroll_view(Direction::Right)),
+        key!(0, XK_LEFT  => || crate::tags::view::scroll_view(Direction::Left)),
+        key!(0, XK_RIGHT => || crate::tags::view::scroll_view(Direction::Right)),
         key!(0, XK_K     => || shift_view(Direction::Right)),
         key!(0, XK_J     => || shift_view(Direction::Left)),
         key!(0, XK_UP    => || shift_view(Direction::Right)),
