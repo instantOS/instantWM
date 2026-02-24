@@ -113,7 +113,6 @@ pub fn dir_to_mon(dir: i32) -> Option<MonitorId> {
     }
 }
 
-/// Find the monitor that a [`Rect`] intersects with most.
 pub fn rect_to_mon(rect: &Rect) -> Option<MonitorId> {
     let g = get_globals();
     if g.monitors.is_empty() {
@@ -263,14 +262,14 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
     }
 }
 
-pub fn focus_mon(arg: &Arg) {
+pub fn focus_mon(direction: i32) {
     let g = get_globals();
 
     if g.monitors.len() <= 1 {
         return;
     }
 
-    let target = match dir_to_mon(arg.i) {
+    let target = match dir_to_mon(direction) {
         Some(id) => id,
         None => return,
     };
@@ -290,7 +289,7 @@ pub fn focus_mon(arg: &Arg) {
     focus(None);
 }
 
-pub fn focus_n_mon(arg: &Arg) {
+pub fn focus_n_mon(index: i32) {
     let g = get_globals();
 
     if g.monitors.len() <= 1 {
@@ -298,7 +297,7 @@ pub fn focus_n_mon(arg: &Arg) {
     }
 
     let mut target = 0;
-    for i in 0..arg.i as usize {
+    for i in 0..index as usize {
         if i + 1 < g.monitors.len() {
             target = i + 1;
         } else {
@@ -317,7 +316,7 @@ pub fn focus_n_mon(arg: &Arg) {
     focus(None);
 }
 
-pub fn follow_mon(arg: &Arg) {
+pub fn follow_mon(direction: i32) {
     let c_win = {
         let g = get_globals();
         g.monitors.get(g.selmon).and_then(|m| m.sel)
@@ -328,11 +327,11 @@ pub fn follow_mon(arg: &Arg) {
         None => return,
     };
 
-    crate::tags::tag_mon(arg);
+    tag_mon(direction);
 
     {
         let g = get_globals_mut();
-        if let Some(c) = g.clients.get(&c_win) {
+        if let Some(c) = g.clients.get_mut(&c_win) {
             if let Some(mon_id) = c.mon_id {
                 g.selmon = mon_id;
             }
@@ -356,7 +355,6 @@ pub fn follow_mon(arg: &Arg) {
     }
 }
 
-/// Check if a Rect is unique in a list of Rects (no duplicate geometry).
 #[cfg(feature = "xinerama")]
 fn is_unique_geom(unique: &[Rect], info: &Rect) -> bool {
     !unique
@@ -418,7 +416,6 @@ pub fn update_geom() -> bool {
                                 {
                                     eprintln!("TRACE: update_geom - before create_monitor loop");
                                     let g = get_globals_mut();
-                                    // Get values before the loop to use in create_monitor
                                     let mfact = g.mfact;
                                     let nmaster = g.nmaster;
                                     let showbar = g.showbar;
@@ -432,7 +429,6 @@ pub fn update_geom() -> bool {
                                 }
 
                                 eprintln!("TRACE: update_geom - before unique.iter().enumerate");
-                                // Track which monitors need bar position updates
                                 let mut monitors_need_bar_update: Vec<usize> = Vec::new();
 
                                 for (i, info) in unique.iter().enumerate() {
@@ -581,8 +577,8 @@ pub fn restack(m: &mut Monitor) {
     crate::layouts::restack(m);
 }
 
-pub fn tag_mon(arg: &Arg) {
-    crate::tags::tag_mon(arg);
+pub fn tag_mon(direction: i32) {
+    crate::tags::tag_mon(direction);
 }
 
 fn get_root_ptr() -> Option<(i32, i32)> {
@@ -613,8 +609,6 @@ fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
     g.monitors.get(mon_id).and_then(|m| m.sel)
 }
 
-/// Get the current tag for a monitor.
-/// Returns None if the monitor's current_tag is invalid.
 pub fn get_current_tag<'a>(mon: &Monitor, tags: &'a TagSet) -> Option<&'a Tag> {
     if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
         Some(&tags.tags[mon.current_tag - 1])
@@ -623,7 +617,6 @@ pub fn get_current_tag<'a>(mon: &Monitor, tags: &'a TagSet) -> Option<&'a Tag> {
     }
 }
 
-/// Get the current tag mutably.
 pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
     if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
         Some(&mut tags.tags[mon.current_tag - 1])
@@ -632,7 +625,6 @@ pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'
     }
 }
 
-/// Get the current layout symbol for a monitor.
 pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet, layouts: &[&dyn Layout]) -> String {
     if let Some(tag) = get_current_tag(mon, tags) {
         if let Some(lt_idx) = tag.ltidxs[tag.sellt as usize] {
@@ -648,14 +640,12 @@ pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet, layouts: &[&dyn Layout
     }
 }
 
-/// Check if the current tag's showbar is enabled.
 pub fn get_current_showbar(mon: &Monitor, tags: &TagSet) -> bool {
     get_current_tag(mon, tags)
         .map(|t| t.showbar)
         .unwrap_or(true)
 }
 
-/// Check if the current layout is tiling (sellt == 0).
 pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
     get_current_tag(mon, tags)
         .map(|t| t.sellt == 0)
