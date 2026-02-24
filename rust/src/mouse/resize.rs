@@ -29,6 +29,7 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
 use super::grab::{grab_pointer, ungrab};
+use super::hover::ResizeDirection;
 use super::monitor::handle_client_monitor_switch;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -134,6 +135,129 @@ pub fn resize_mouse(_arg: &Arg) {
                             },
                             true,
                         );
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    ungrab(conn);
+    handle_client_monitor_switch(win);
+}
+
+/// Directional resize: supports all 8 directions (corners and edges).
+///
+/// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
+/// Otherwise, resizes from the specified edge or corner.
+pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
+    let Some(win) = selected_resizable_window() else {
+        return;
+    };
+
+    let Some(conn) = grab_pointer(1) else { return };
+
+    let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
+        let globals = get_globals();
+        match globals.clients.get(&win) {
+            Some(c) => (
+                c.geo.x,
+                c.geo.y,
+                c.geo.x + c.geo.w,
+                c.geo.y + c.geo.h,
+                c.border_width,
+            ),
+            None => {
+                ungrab(conn);
+                return;
+            }
+        }
+    };
+
+    let dir = direction.unwrap_or(ResizeDirection::BottomRight);
+    let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
+
+    let rate = refresh_rate();
+    let mut last_time: u32 = 0;
+
+    loop {
+        let Ok(event) = conn.wait_for_event() else {
+            break;
+        };
+
+        match &event {
+            x11rb::protocol::Event::ButtonRelease(_) => break,
+
+            x11rb::protocol::Event::MotionNotify(m) => {
+                if m.time - last_time <= 1000 / rate {
+                    continue;
+                }
+                last_time = m.time;
+
+                let pointer_x = m.event_x as i32;
+                let pointer_y = m.event_y as i32;
+
+                let (new_x, new_w) = if affects_left {
+                    let nx = pointer_x;
+                    let nw = (orig_right - pointer_x).max(1);
+                    (nx, nw)
+                } else if affects_right {
+                    let nw = (pointer_x - orig_left - 2 * border_width + 1).max(1);
+                    (orig_left, nw)
+                } else {
+                    (orig_left, orig_right - orig_left)
+                };
+
+                let (new_y, new_h) = if affects_top {
+                    let ny = pointer_y;
+                    let nh = (orig_bottom - pointer_y).max(1);
+                    (ny, nh)
+                } else if affects_bottom {
+                    let nh = (pointer_y - orig_top - 2 * border_width + 1).max(1);
+                    (orig_top, nh)
+                } else {
+                    (orig_top, orig_bottom - orig_top)
+                };
+
+                let globals = get_globals();
+                let snap = globals.snap;
+
+                if let Some(client) = globals.clients.get(&win) {
+                    let has_tiling = globals
+                        .monitors
+                        .get(globals.selmon)
+                        .map(|m| is_current_layout_tiling(m, &globals.tags))
+                        .unwrap_or(true);
+
+                    if !client.isfloating
+                        && has_tiling
+                        && ((new_w - client.geo.w).abs() > snap
+                            || (new_h - client.geo.h).abs() > snap)
+                    {
+                        drop(client);
+                        drop(globals);
+                        toggle_floating(&Arg::default());
+                    } else if !has_tiling
+                        || globals
+                            .clients
+                            .get(&win)
+                            .map(|c| c.isfloating)
+                            .unwrap_or(false)
+                    {
+                        let globals = get_globals();
+                        if let Some(client) = globals.clients.get(&win) {
+                            resize(
+                                win,
+                                &Rect {
+                                    x: new_x,
+                                    y: new_y,
+                                    w: new_w,
+                                    h: new_h,
+                                },
+                                true,
+                            );
+                        }
                     }
                 }
             }

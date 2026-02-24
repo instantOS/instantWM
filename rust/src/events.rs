@@ -12,8 +12,8 @@ use crate::keyboard::{
 };
 use crate::monitor::{arrange, rect_to_mon, restack, update_geom, win_to_mon};
 use crate::mouse::{
-    find_floating_win_at_resize_border, handle_floating_resize_hover, handle_sidebar_hover,
-    hover_resize_mouse, reset_cursor, resize_mouse,
+    find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
+    handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse,
 };
 use crate::systray::{update_systray, win_to_systray_icon};
 use crate::tags::get_tag_width;
