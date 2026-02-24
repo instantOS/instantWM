@@ -5,10 +5,12 @@ use crate::client::{next_tiled, resize, restore_border_width, save_border_width}
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
-use crate::types::{Layout, Monitor, MonitorId, Rect};
+use crate::types::{Monitor, MonitorId, Rect};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+
+use super::LayoutKind;
 
 pub fn arrange(mon_id: Option<MonitorId>) {
     crate::mouse::reset_cursor();
@@ -176,7 +178,7 @@ pub fn restack(m: &mut Monitor) {
     }
 }
 
-pub fn set_layout(layout: &'static dyn Layout) {
+pub fn set_layout(layout: LayoutKind) {
     let tagprefix = get_globals().tags.prefix;
 
     if tagprefix {

@@ -258,17 +258,18 @@ impl TagSet {
 /// is internal and managed automatically.
 #[derive(Debug, Clone, Copy)]
 pub struct TagLayouts {
-    primary: &'static dyn Layout,
-    secondary: &'static dyn Layout,
+    primary: crate::layouts::LayoutKind,
+    secondary: crate::layouts::LayoutKind,
     active_slot: LayoutSlot,
-    last_layout: Option<&'static dyn Layout>,
+    last_layout: Option<crate::layouts::LayoutKind>,
 }
 
 impl Default for TagLayouts {
     fn default() -> Self {
+        use crate::layouts::LayoutKind;
         Self {
-            primary: &crate::layouts::TILE_LAYOUT,
-            secondary: &crate::layouts::FLOATING_LAYOUT,
+            primary: LayoutKind::Tile,
+            secondary: LayoutKind::Floating,
             active_slot: LayoutSlot::default(),
             last_layout: None,
         }
@@ -277,7 +278,7 @@ impl Default for TagLayouts {
 
 impl TagLayouts {
     /// Get the currently active layout.
-    pub fn get_layout(self) -> &'static dyn Layout {
+    pub fn get_layout(self) -> crate::layouts::LayoutKind {
         match self.active_slot {
             LayoutSlot::Primary => self.primary,
             LayoutSlot::Secondary => self.secondary,
@@ -286,9 +287,9 @@ impl TagLayouts {
 
     /// Set a new layout on the active slot, saving the current one to `last_layout`.
     /// If the new layout matches the current one, this is a no-op.
-    pub fn set_layout(&mut self, layout: &'static dyn Layout) {
+    pub fn set_layout(&mut self, layout: crate::layouts::LayoutKind) {
         let current = self.get_layout();
-        if current.symbol() == layout.symbol() {
+        if current == layout {
             return;
         }
         self.last_layout = Some(current);
@@ -772,18 +773,6 @@ impl CardinalDirection {
             Self::Right => (step, 0),
             Self::Left => (-step, 0),
         }
-    }
-}
-
-pub trait Layout: std::fmt::Debug {
-    fn symbol(&self) -> &'static str;
-    fn arrange(&self, m: &mut Monitor);
-    fn is_tiling(&self) -> bool;
-    fn is_monocle(&self) -> bool {
-        false
-    }
-    fn is_overview(&self) -> bool {
-        false
     }
 }
 
