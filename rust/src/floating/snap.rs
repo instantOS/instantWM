@@ -19,10 +19,9 @@
 
 use crate::animation::check_animate;
 use crate::client::{restore_border_width, save_border_width};
+use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
-use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -147,18 +146,15 @@ fn snap_pos_to_index(s: SnapPosition) -> usize {
 ///
 /// If the window is not currently snapped, its current geometry is saved first
 /// so that [`reset_snap`] can restore it later.
-pub fn change_snap(win: Window, direction: SnapDir) {
-    let snapstatus = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => c.snapstatus,
-            None => return,
-        }
+pub fn change_snap(ctx: &mut WmCtx, win: Window, direction: SnapDir) {
+    let snapstatus = match ctx.g.clients.get(&win) {
+        Some(c) => c.snapstatus,
+        None => return,
     };
 
     // Save geometry before entering snap for the first time.
-    if snapstatus == SnapPosition::None && super::helpers::check_floating(win) {
-        super::state::save_floating_win(win);
+    if snapstatus == SnapPosition::None && super::helpers::check_floating(ctx, win) {
+        super::state::save_floating_win(ctx, win);
     }
 
     let new_snap = {
@@ -167,17 +163,14 @@ pub fn change_snap(win: Window, direction: SnapDir) {
         SNAP_MATRIX[row][col]
     };
 
-    let mon_id = {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            client.snapstatus = new_snap;
-            client.mon_id
-        } else {
-            return;
-        }
+    let mon_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
+        client.snapstatus = new_snap;
+        client.mon_id
+    } else {
+        return;
     };
 
-    apply_snap(win, mon_id);
+    apply_snap(ctx, win, mon_id);
     warp_cursor_to_client(win);
     crate::focus::focus(Some(win));
 }
@@ -188,33 +181,27 @@ pub fn change_snap(win: Window, direction: SnapDir) {
 /// - [`SnapPosition::None`] restores the saved floating geometry.
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
-pub fn apply_snap(win: Window, mon_id: Option<usize>) {
-    let (snapstatus, saved_geo, border_width) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.snapstatus, c.float_geo, c.border_width),
-            None => return,
-        }
+pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
+    let (snapstatus, saved_geo, border_width) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.snapstatus, c.float_geo, c.border_width),
+        None => return,
     };
 
     let Some(mid) = mon_id else { return };
 
     // Geometry of the target monitor.
-    let (m_mx, m_mw, m_mh, m_wh, mony) = {
-        let globals = get_globals();
-        match globals.monitors.get(mid) {
-            Some(m) => {
-                let mony = m.monitor_rect.y + if m.showbar { globals.bh } else { 0 };
-                (
-                    m.monitor_rect.x,
-                    m.monitor_rect.w,
-                    m.monitor_rect.h,
-                    m.work_rect.h,
-                    mony,
-                )
-            }
-            None => return,
+    let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.g.monitors.get(mid) {
+        Some(m) => {
+            let mony = m.monitor_rect.y + if m.showbar { ctx.g.cfg.bh } else { 0 };
+            (
+                m.monitor_rect.x,
+                m.monitor_rect.w,
+                m.monitor_rect.h,
+                m.work_rect.h,
+                mony,
+            )
         }
+        None => return,
     };
 
     // Restore border width for all positions except Maximized (which needs bw=0).
@@ -342,11 +329,8 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::Maximized => {
             save_border_width(win);
-            {
-                let globals = get_globals_mut();
-                if let Some(client) = globals.clients.get_mut(&win) {
-                    client.border_width = 0;
-                }
+            if let Some(client) = ctx.g.clients.get_mut(&win) {
+                client.border_width = 0;
             }
             check_animate(
                 win,
@@ -361,10 +345,9 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
 
             // Raise the window if it is the focused one.
-            let is_sel = get_sel_win() == Some(win);
+            let is_sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) == Some(win);
             if is_sel {
-                let x11 = get_x11();
-                if let Some(ref conn) = x11.conn {
+                if let Some(ref conn) = ctx.x11.conn {
                     let _ = configure_window(
                         conn,
                         win,
@@ -382,31 +365,25 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
 ///
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
-pub fn reset_snap(win: Window) {
-    let (is_floating, snapstatus) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.isfloating, c.snapstatus),
-            None => return,
-        }
+pub fn reset_snap(ctx: &mut WmCtx, win: Window) {
+    let (is_floating, snapstatus) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.isfloating, c.snapstatus),
+        None => return,
     };
 
     if snapstatus == SnapPosition::None {
         return;
     }
 
-    let tiling = super::helpers::has_tiling_layout();
+    let tiling = super::helpers::has_tiling_layout(ctx);
 
     if is_floating || !tiling {
-        {
-            let globals = get_globals_mut();
-            if let Some(client) = globals.clients.get_mut(&win) {
-                client.snapstatus = SnapPosition::None;
-            }
+        if let Some(client) = ctx.g.clients.get_mut(&win) {
+            client.snapstatus = SnapPosition::None;
         }
         restore_border_width(win);
-        super::state::restore_floating_win(win);
-        super::helpers::apply_size(win);
+        super::state::restore_floating_win(ctx, win);
+        super::helpers::apply_size(ctx, win);
     }
 }
 

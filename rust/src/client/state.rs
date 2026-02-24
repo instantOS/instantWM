@@ -24,8 +24,9 @@ use crate::client::constants::{
 use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen;
 use crate::client::geometry::{client_height, client_width, resize};
+use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::types::{Rect, RuleFloat, SpecialNext};
+use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -52,8 +53,8 @@ pub fn set_client_state(win: Window, state: i32) {
     let _ = conn.change_property32(
         PropMode::REPLACE,
         win,
-        globals.wmatom.state,
-        globals.wmatom.state,
+        globals.cfg.wmatom.state,
+        globals.cfg.wmatom.state,
         &data,
     );
     let _ = conn.flush();
@@ -87,7 +88,7 @@ pub fn set_client_tag_prop(win: Window) {
     let _ = conn.change_property(
         PropMode::REPLACE,
         win,
-        globals.netatom.client_info,
+        globals.cfg.netatom.client_info,
         AtomEnum::CARDINAL,
         8u8,
         data.len() as u32,
@@ -112,15 +113,15 @@ pub fn update_client_list() {
     let globals = get_globals();
 
     // Delete the existing property first so we start with a clean slate.
-    let _ = conn.delete_property(globals.root, globals.netatom.client_list);
+    let _ = conn.delete_property(globals.cfg.root, globals.cfg.netatom.client_list);
 
     for mon in &globals.monitors {
         let mut current = mon.clients;
         while let Some(cur_win) = current {
             let _ = conn.change_property32(
                 PropMode::APPEND,
-                globals.root,
-                globals.netatom.client_list,
+                globals.cfg.root,
+                globals.cfg.netatom.client_list,
                 AtomEnum::WINDOW,
                 &[cur_win],
             );
@@ -157,7 +158,7 @@ fn read_window_title(win: Window) -> String {
         return BROKEN.to_string();
     };
 
-    let net_wm_name = get_globals().netatom.wm_name;
+    let net_wm_name = get_globals().cfg.netatom.wm_name;
 
     for atom in [net_wm_name, AtomEnum::WM_NAME.into()] {
         if atom == 0 {
@@ -227,7 +228,7 @@ pub fn apply_rules(win: Window) {
     let special_next = globals.specialnext;
     let rules = globals.rules.clone();
     let tagmask = globals.tags.mask();
-    let bh = globals.bh;
+    let bh = globals.cfg.bh;
 
     // --- Handle SpecialNext shortcut ------------------------------------------
     if special_next != SpecialNext::None {
@@ -329,9 +330,15 @@ pub fn apply_rules(win: Window) {
             }
 
             // Optionally move the client to a specific monitor.
-            if let Some(target_mid) = globals.monitors.iter().position(|m| m.num == rule.monitor) {
-                if let Some(c) = globals.clients.get_mut(&win) {
-                    c.mon_id = Some(target_mid);
+            if let MonitorRule::Index(target_num) = rule.monitor {
+                if let Some(target_mid) = globals
+                    .monitors
+                    .iter()
+                    .position(|m| m.num == target_num as i32)
+                {
+                    if let Some(c) = globals.clients.get_mut(&win) {
+                        c.mon_id = Some(target_mid);
+                    }
                 }
             }
         }
@@ -392,19 +399,19 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 ///   [`set_fullscreen`] to enter fullscreen immediately.
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
-pub fn update_window_type(win: Window) {
+pub fn update_window_type(ctx: &mut WmCtx, win: Window) {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else { return };
 
     let globals = get_globals();
-    let state = get_atom_prop(conn, win, globals.netatom.wm_state);
-    let wtype = get_atom_prop(conn, win, globals.netatom.wm_window_type);
+    let state = get_atom_prop(conn, win, globals.cfg.netatom.wm_state);
+    let wtype = get_atom_prop(conn, win, globals.cfg.netatom.wm_window_type);
 
-    let atom_fullscreen = globals.netatom.wm_fullscreen;
-    let atom_dialog = globals.netatom.wm_window_type_dialog;
+    let atom_fullscreen = globals.cfg.netatom.wm_fullscreen;
+    let atom_dialog = globals.cfg.netatom.wm_window_type_dialog;
 
     if state == Some(atom_fullscreen) {
-        set_fullscreen(win, true);
+        set_fullscreen(ctx, win, true);
     }
 
     if wtype == Some(atom_dialog) {
@@ -424,9 +431,8 @@ pub fn update_window_type(win: Window) {
 /// * If the urgency hint is set on the *currently selected* window, the hint is
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
-pub fn update_wm_hints(win: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn update_wm_hints(ctx: &mut WmCtx, win: Window) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     let Ok(cookie) = conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
     else {
@@ -446,19 +452,19 @@ pub fn update_wm_hints(win: Window) {
 
     let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
-    let globals = get_globals_mut();
-    let is_selected = globals
+    let is_selected = ctx
+        .g
         .monitors
-        .get(globals.selmon)
+        .get(ctx.g.selmon)
         .is_some_and(|mon| mon.sel == Some(win));
 
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.
     if is_selected && is_urgent {
-        clear_urgency_hint(conn, win);
+        clear_urgency_hint(ctx, win);
     }
 
-    if let Some(client) = globals.clients.get_mut(&win) {
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.isurgent = is_urgent;
         client.neverfocus = if flags & WM_HINTS_INPUT_HINT != 0 {
             input == 0
@@ -536,12 +542,12 @@ pub fn set_urgent(win: Window, urg: bool) {
 /// This function is a no-op when `decorhints` is disabled in the global config.
 pub fn update_motif_hints(win: Window) {
     let globals = get_globals();
-    if globals.decorhints == 0 {
+    if globals.cfg.decorhints == 0 {
         return;
     }
 
     let motif_atom = globals.motifatom;
-    let borderpx = globals.borderpx;
+    let borderpx = globals.cfg.borderpx;
 
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else { return };

@@ -3,10 +3,8 @@ use std::io::{self, Write};
 use std::process::exit;
 use std::ptr;
 
-use x11rb::protocol::xproto::Window;
-
 use crate::config::commands::Cmd;
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::types::*;
 
 pub fn die(fmt: &str) -> ! {
@@ -44,9 +42,8 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
 }
 
 /// Spawn a command identified by a [`Cmd`] variant.
-pub fn spawn(cmd: Cmd) {
-    let globals = get_globals();
-    let argv = globals.external_commands.get(cmd);
+pub fn spawn(ctx: &WmCtx, cmd: Cmd) {
+    let argv = ctx.g.cfg.external_commands.get(cmd);
     if !argv.is_empty() {
         let c_args: Vec<CString> = argv
             .iter()
@@ -97,22 +94,13 @@ pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
             | x11rb::protocol::xproto::ModMask::M5.bits() as u32)
 }
 
-/// Get the currently selected window from the selected monitor.
-/// Returns `None` if no monitor is selected or no window is selected on that monitor.
-#[inline]
-pub fn get_sel_win() -> Option<Window> {
-    let globals = get_globals();
-    globals.monitors.get(globals.selmon).and_then(|mon| mon.sel)
-}
-
 /// Get the currently selected monitor ID.
 /// Returns `None` if no monitor is selected (monitors list is empty).
 #[inline]
-pub fn get_sel_mon() -> Option<MonitorId> {
-    let globals = get_globals();
-    if globals.monitors.is_empty() {
+pub fn get_sel_mon(ctx: &WmCtx) -> Option<MonitorId> {
+    if ctx.g.monitors.is_empty() {
         None
     } else {
-        Some(globals.selmon)
+        Some(ctx.g.selmon)
     }
 }

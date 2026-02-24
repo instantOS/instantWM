@@ -18,55 +18,46 @@
 
 use crate::animation::animate_client;
 use crate::client::next_tiled;
-use crate::globals::{get_globals, get_x11};
+use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-pub fn monocle(m: &mut Monitor) {
+pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── raise the selected client so it is visible while we animate ───────
-    {
-        let g = get_globals();
-        let is_animated = g.animated && !g.monitors.is_empty();
+    let is_animated = ctx.g.animated && !ctx.g.monitors.is_empty();
 
-        if is_animated {
-            if let Some(mon) = g.monitors.get(g.selmon) {
-                if let Some(sel_win) = mon.sel {
-                    let x11 = get_x11();
-                    if let Some(ref conn) = x11.conn {
-                        let _ = configure_window(
-                            conn,
-                            sel_win,
-                            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                        );
-                        let _ = conn.flush();
-                    }
+    if is_animated {
+        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+            if let Some(sel_win) = mon.sel {
+                if let Some(ref conn) = ctx.x11.conn {
+                    let _ = configure_window(
+                        conn,
+                        sel_win,
+                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                    );
+                    let _ = conn.flush();
                 }
             }
         }
     }
 
-    // ── snapshot animation state & selected window before the loop ────────
-    let (animated, sel_win) = {
-        let g = get_globals();
-        let sel = g.monitors.get(g.selmon).and_then(|mon| mon.sel);
-        (g.animated, sel)
-    };
+    // ── snapshot selected window before the loop ────────
+    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
 
     // ── resize every tiled client to fill the work area ───────────────────
     let mut c_win = next_tiled(m.clients);
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.
-        let frames = if animated && Some(win) == sel_win {
+        let frames = if ctx.g.animated && Some(win) == sel_win {
             7
         } else {
             0

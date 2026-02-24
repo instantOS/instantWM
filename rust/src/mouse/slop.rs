@@ -19,11 +19,10 @@
 //! ```
 
 use crate::client::resize;
+use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
-use crate::globals::get_globals;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
-use crate::util::get_sel_win;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{MIN_WINDOW_SIZE, SLOP_MARGIN};
@@ -65,9 +64,15 @@ pub fn parse_slop_output(output: &str) -> Option<Rect> {
 ///   (i.e. not wildly off-screen).
 /// * At least one dimension differs by more than 20 px from the current
 ///   geometry (prevents no-op resizes).
-pub fn is_valid_window_size(x: i32, y: i32, width: i32, height: i32, c_win: Window) -> bool {
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&c_win) else {
+pub fn is_valid_window_size(
+    ctx: &WmCtx,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    c_win: Window,
+) -> bool {
+    let Some(c) = ctx.g.clients.get(&c_win) else {
         return false;
     };
 
@@ -83,8 +88,8 @@ pub fn is_valid_window_size(x: i32, y: i32, width: i32, height: i32, c_win: Wind
 
 /// Rect-typed convenience wrapper around [`is_valid_window_size`].
 #[inline]
-pub fn is_valid_window_size_rect(rect: &Rect, c_win: Window) -> bool {
-    is_valid_window_size(rect.x, rect.y, rect.w, rect.h, c_win)
+pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: Window) -> bool {
+    is_valid_window_size(ctx, rect.x, rect.y, rect.w, rect.h, c_win)
 }
 
 // ── Window resize helpers ─────────────────────────────────────────────────────
@@ -94,15 +99,20 @@ pub fn is_valid_window_size_rect(rect: &Rect, c_win: Window) -> bool {
 ///
 /// This is the single point where all external "place this window here"
 /// requests should funnel.
-pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i32) {
-    let is_floating = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&c_win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false)
-    };
+pub fn apply_window_resize(
+    ctx: &mut WmCtx,
+    c_win: Window,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) {
+    let is_floating = ctx
+        .g
+        .clients
+        .get(&c_win)
+        .map(|c| c.isfloating)
+        .unwrap_or(false);
 
     let rect = Rect {
         x,
@@ -112,7 +122,7 @@ pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i3
     };
 
     if !is_floating {
-        toggle_floating();
+        toggle_floating(ctx);
     }
 
     resize(c_win, &rect, true);
@@ -120,8 +130,8 @@ pub fn apply_window_resize(c_win: Window, x: i32, y: i32, width: i32, height: i3
 
 /// Rect-typed convenience wrapper around [`apply_window_resize`].
 #[inline]
-pub fn apply_window_resize_rect(c_win: Window, rect: &Rect) {
-    apply_window_resize(c_win, rect.x, rect.y, rect.w, rect.h);
+pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
+    apply_window_resize(ctx, c_win, rect.x, rect.y, rect.w, rect.h);
 }
 
 // ── draw_window ───────────────────────────────────────────────────────────────
@@ -134,9 +144,10 @@ pub fn apply_window_resize_rect(c_win: Window, rect: &Rect) {
 /// * If the resulting rectangle is too small or identical to the current
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
-pub fn draw_window() {
-    let sel_win = get_sel_win();
-    let Some(win) = sel_win else { return };
+pub fn draw_window(ctx: &mut WmCtx) {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+        return;
+    };
 
     let output = std::process::Command::new("instantslop")
         .arg("-f")
@@ -155,35 +166,30 @@ pub fn draw_window() {
     }
 
     // Check the rect is meaningfully different from the current geometry.
-    let is_different = {
-        let globals = get_globals();
-        globals.clients.get(&win).is_some_and(|c| {
-            (c.geo.w - rect.w).abs() > 20
-                || (c.geo.h - rect.h).abs() > 20
-                || (c.geo.x - rect.x).abs() > 20
-                || (c.geo.y - rect.y).abs() > 20
-        })
-    };
+    let is_different = ctx.g.clients.get(&win).is_some_and(|c| {
+        (c.geo.w - rect.w).abs() > 20
+            || (c.geo.h - rect.h).abs() > 20
+            || (c.geo.x - rect.x).abs() > 20
+            || (c.geo.y - rect.y).abs() > 20
+    });
 
     if !is_different {
         return;
     }
 
     // Migrate to the correct monitor if the rect crosses a boundary.
-    handle_monitor_switch(win, &rect);
+    handle_monitor_switch(&mut ctx, win, &rect);
 
     // Promote to floating if needed, then apply.
-    let is_floating = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false)
-    };
+    let is_floating = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.isfloating)
+        .unwrap_or(false);
 
     if !is_floating {
-        toggle_floating();
+        toggle_floating(ctx);
     }
 
     resize(win, &rect, true);

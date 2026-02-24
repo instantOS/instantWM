@@ -25,7 +25,7 @@
 //! ungrab(conn);
 //! ```
 
-use crate::globals::{get_globals, get_x11};
+use crate::contexts::WmCtx;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -34,7 +34,10 @@ use x11rb::CURRENT_TIME;
 
 /// Grab the pointer for a modal drag/resize loop.
 ///
-/// * `cursor_index` is an index into `globals.cursors`:
+/// # Parameters
+///
+/// * `ctx` - The mouse context containing connection and cursor data
+/// * `cursor_index` - Index into cursors array:
 ///   - `0` → normal arrow
 ///   - `1` → resize (crosshair / corner arrows)
 ///   - `2` → move (fleur)
@@ -46,14 +49,15 @@ use x11rb::CURRENT_TIME;
 /// The grab captures `ButtonPress | ButtonRelease | PointerMotion` in async
 /// mode on the root window with no event-window confinement.
 pub fn grab_pointer(
+    ctx: &WmCtx,
     cursor_index: usize,
 ) -> Option<&'static x11rb::rust_connection::RustConnection> {
-    let x11 = get_x11();
-    let conn = x11.conn.as_ref()?;
+    let conn = ctx.x11.conn.as_ref()?;
 
-    let globals = get_globals();
-    let root = globals.root;
-    let cursor = globals
+    let root = ctx.g.cfg.root;
+    let cursor = ctx
+        .g
+        .cfg
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
@@ -82,15 +86,21 @@ pub fn grab_pointer(
 ///
 /// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
+///
+/// # Parameters
+///
+/// * `ctx` - The mouse context containing connection and cursor data
+/// * `cursor_index` - Index into cursors array (see [`grab_pointer`])
 pub fn grab_pointer_with_keys(
+    ctx: &WmCtx,
     cursor_index: usize,
 ) -> Option<&'static x11rb::rust_connection::RustConnection> {
-    let x11 = get_x11();
-    let conn = x11.conn.as_ref()?;
+    let conn = ctx.x11.conn.as_ref()?;
 
-    let globals = get_globals();
-    let root = globals.root;
-    let cursor = globals
+    let root = ctx.g.cfg.root;
+    let cursor = ctx
+        .g
+        .cfg
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
@@ -132,6 +142,12 @@ pub fn ungrab(conn: &x11rb::rust_connection::RustConnection) {
 
 /// Register (or clear) passive button grabs on a client window.
 ///
+/// # Parameters
+///
+/// * `ctx` - The mouse context containing numlockmask
+/// * `c_win` - The client window to configure grabs on
+/// * `focused` - Whether the window is focused
+///
 /// * When `focused` is **`true`**: all existing grabs are removed.  The WM
 ///   receives pointer events through the normal event mask rather than a grab.
 ///
@@ -140,9 +156,8 @@ pub fn ungrab(conn: &x11rb::rust_connection::RustConnection) {
 ///   modifiers so that accidental lock states do not break focus-follows-click.
 ///
 /// This mirrors the behaviour of the original C `grabbuttons()`.
-pub fn grab_buttons(c_win: Window, focused: bool) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn grab_buttons(ctx: &WmCtx, c_win: Window, focused: bool) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     // Always start clean.
     let _ = conn.ungrab_button(0u8.into(), c_win, ModMask::from(0u16));
@@ -153,8 +168,7 @@ pub fn grab_buttons(c_win: Window, focused: bool) {
         return;
     }
 
-    let globals = get_globals();
-    let numlockmask = globals.numlockmask as u16;
+    let numlockmask = ctx.g.cfg.numlockmask as u16;
 
     // The four modifier combinations that must all be caught:
     //   plain | NumLock | CapsLock | NumLock+CapsLock

@@ -8,7 +8,7 @@
 //! operates on an already-borrowed `&mut Client` without touching the global
 //! state machine, which is why it lives separately from [`super::shift`].
 
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::types::Client;
 
 // ---------------------------------------------------------------------------
@@ -23,15 +23,14 @@ use crate::types::Client;
 /// stops appearing on every tag on its new home monitor.
 ///
 /// If `c.issticky` is already `false` this is a no-op.
-pub fn reset_sticky(c: &mut Client) {
+pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
     if !c.issticky {
         return;
     }
 
     c.issticky = false;
 
-    let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(globals.selmon) {
+    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
         if mon.current_tag > 0 {
             c.tags = 1 << (mon.current_tag - 1);
         }

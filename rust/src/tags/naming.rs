@@ -7,7 +7,7 @@
 //! * [`reset_name_tag`] – restore all tag names to their defaults (`"1"`…`"9"`).
 
 use crate::bar::draw_bars;
-use crate::globals::{get_globals, get_globals_mut};
+use crate::contexts::WmCtx;
 use crate::tags::bar::get_tag_width;
 use crate::types::MAX_TAGS;
 
@@ -26,7 +26,7 @@ const MAX_TAGLEN: usize = 16;
 ///
 /// All tags included in the monitor's current tagset are renamed, so the
 /// function works correctly even when multiple tags are visible at once.
-pub fn name_tag(arg: &str) {
+pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     if arg.len() >= MAX_TAGLEN {
         return;
     }
@@ -34,16 +34,14 @@ pub fn name_tag(arg: &str) {
     // -----------------------------------------------------------------------
     // 2. Find which tags are currently selected on the active monitor.
     // -----------------------------------------------------------------------
-    let (numtags, tagset) = {
-        let globals = get_globals();
-        let numtags = globals.tags.count();
-        let tagset = globals
+    let (numtags, tagset) = (
+        ctx.g.tags.count(),
+        ctx.g
             .monitors
-            .get(globals.selmon)
+            .get(ctx.g.selmon)
             .map(|m| m.tagset[m.seltags as usize])
-            .unwrap_or(0);
-        (numtags, tagset)
-    };
+            .unwrap_or(0),
+    );
 
     if tagset == 0 {
         return;
@@ -52,12 +50,11 @@ pub fn name_tag(arg: &str) {
     // -----------------------------------------------------------------------
     // 3. Apply the new (or default) name to every tag in the current tagset.
     // -----------------------------------------------------------------------
-    let globals = get_globals_mut();
     for i in 0..numtags.min(MAX_TAGS) {
         if (tagset & (1 << i)) == 0 {
             continue;
         }
-        if let Some(tag) = globals.tags.tags.get_mut(i) {
+        if let Some(tag) = ctx.g.tags.tags.get_mut(i) {
             if !arg.is_empty() {
                 tag.name = arg.to_string();
             } else {
@@ -66,22 +63,21 @@ pub fn name_tag(arg: &str) {
         }
     }
 
-    globals.tags.width = get_tag_width();
+    ctx.g.tags.width = get_tag_width(ctx);
     draw_bars();
 }
 
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.).
-pub fn reset_name_tag() {
-    let globals = get_globals_mut();
-    let count = globals.tags.count().min(MAX_TAGS);
+pub fn reset_name_tag(ctx: &mut WmCtx) {
+    let count = ctx.g.tags.count().min(MAX_TAGS);
 
     for i in 0..count {
-        if let Some(tag) = globals.tags.tags.get_mut(i) {
+        if let Some(tag) = ctx.g.tags.tags.get_mut(i) {
             tag.name = default_tag_name(i);
         }
     }
 
-    globals.tags.width = get_tag_width();
+    ctx.g.tags.width = get_tag_width(ctx);
     draw_bars();
 }
 

@@ -47,21 +47,21 @@
 //! | `false` | away from centre (dwindle)   |
 
 use crate::client::{next_tiled, resize};
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
 // ── public entry points ───────────────────────────────────────────────────────
 
 /// Inward-spiral fibonacci layout.
 #[inline]
-pub fn spiral(m: &mut Monitor) {
-    fibonacci(m, true);
+pub fn spiral(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    fibonacci(ctx, m, true);
 }
 
 /// Outward-dwindle fibonacci layout.
 #[inline]
-pub fn dwindle(m: &mut Monitor) {
-    fibonacci(m, false);
+pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    fibonacci(ctx, m, false);
 }
 
 // ── shared implementation ─────────────────────────────────────────────────────
@@ -81,14 +81,13 @@ pub fn dwindle(m: &mut Monitor) {
 ///                      inward (classic golden-ratio spiral).
 /// - `spiral = false` — the client takes the inner half; the remainder grows
 ///                      outward (dwindle / Fibonacci staircase).
-pub fn fibonacci(m: &mut Monitor, spiral: bool) {
+pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -107,13 +106,12 @@ pub fn fibonacci(m: &mut Monitor, spiral: bool) {
     let mut c_win = next_tiled(m.clients);
 
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         // Split the remaining rect starting from the second client.
         if i > 0 {

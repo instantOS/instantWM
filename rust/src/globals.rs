@@ -7,30 +7,144 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
 
-// Wrapper for Xlib display pointer that implements Send/Sync
-// Xlib displays are thread-safe for reading (but not for concurrent writes to the same display)
 #[derive(Clone, Copy)]
 pub struct XlibDisplay(pub *mut libc::c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
-pub struct Globals {
+/// Runtime configuration - values loaded from config and xresources
+/// These are set during initialization and updated on reload
+#[derive(Clone)]
+pub struct RuntimeConfig {
+    // Screen/Display info
     pub screen: i32,
     pub root: Window,
     pub sw: i32,
     pub sh: i32,
-    /// All monitors attached to this display, indexed by `MonitorId`.
-    /// `MonitorId` is a `usize` index into this `Vec`. This index-based
-    /// approach is used throughout (e.g. `selmon`, `Client::mon_id`) to
-    /// avoid self-referential structs and borrow checker conflicts.
+
+    // Window manager configuration
+    pub borderpx: i32,
+    pub snap: i32,
+    pub startmenusize: i32,
+    pub resizehints: i32,
+    pub decorhints: i32,
+    pub mfact: f32,
+    pub nmaster: i32,
+    pub showbar: bool,
+    pub topbar: bool,
+    pub barheight: i32,
+    pub showsystray: bool,
+    pub systraypinning: usize,
+    pub systrayspacing: i32,
+
+    // X11 atoms
+    pub wmatom: WmAtoms,
+    pub netatom: NetAtoms,
+    pub xatom: XAtoms,
+    pub motifatom: Atom,
+    pub numlockmask: u32,
+
+    // Color schemes
+    pub borderscheme: Option<BorderScheme>,
+    pub statusscheme: Option<StatusScheme>,
+    pub windowschemes: WindowSchemes,
+    pub closebuttonschemes: CloseButtonSchemes,
+
+    // Raw color strings for xresources override
+    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
+    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
+    pub bordercolors: Vec<&'static str>,
+    pub statusbarcolors: Vec<&'static str>,
+
+    // Bindings
+    pub keys: Vec<Key>,
+    pub dkeys: Vec<Key>,
+    pub buttons: Vec<Button>,
+    pub rules: Vec<Rule>,
+    pub commands: Vec<XCommand>,
+
+    // Resources
+    pub resources: Vec<ResourcePref>,
+    pub fonts: Vec<&'static str>,
+    pub xresourcesfont: String,
+    pub instantmenumon: String,
+
+    // External commands
+    pub external_commands: ExternalCommands,
+
+    // Drawing context
+    pub drw: Option<Drw>,
+    pub xlibdisplay: XlibDisplay,
+    pub cursors: [Option<Cur>; 10],
+    pub bh: i32,
+    pub lrpad: i32,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            screen: 0,
+            root: 0,
+            sw: 0,
+            sh: 0,
+            borderpx: 1,
+            snap: 32,
+            startmenusize: 0,
+            resizehints: 1,
+            decorhints: 0,
+            mfact: 0.55,
+            nmaster: 1,
+            showbar: true,
+            topbar: true,
+            barheight: 0,
+            showsystray: true,
+            systraypinning: 0,
+            systrayspacing: 2,
+            wmatom: WmAtoms::default(),
+            netatom: NetAtoms::default(),
+            xatom: XAtoms::default(),
+            motifatom: 0,
+            numlockmask: 0,
+            borderscheme: None,
+            statusscheme: None,
+            windowschemes: WindowSchemes::default(),
+            closebuttonschemes: CloseButtonSchemes::default(),
+            windowcolors: Vec::new(),
+            closebuttoncolors: Vec::new(),
+            bordercolors: Vec::new(),
+            statusbarcolors: Vec::new(),
+            keys: Vec::new(),
+            dkeys: Vec::new(),
+            buttons: Vec::new(),
+            rules: Vec::new(),
+            commands: Vec::new(),
+            resources: Vec::new(),
+            fonts: Vec::new(),
+            xresourcesfont: String::new(),
+            instantmenumon: String::new(),
+            external_commands: crate::config::commands::default_commands(),
+            drw: None,
+            xlibdisplay: XlibDisplay(std::ptr::null_mut()),
+            cursors: [const { None }; 10],
+            bh: 0,
+            lrpad: 0,
+        }
+    }
+}
+
+pub struct Globals {
+    // Runtime configuration (loaded from config + xresources)
+    pub cfg: RuntimeConfig,
+
+    // Runtime state (changes during WM operation)
     pub monitors: Vec<Monitor>,
     pub selmon: MonitorId,
     pub clients: HashMap<Window, Client>,
     pub client_list: Vec<ClientId>,
-    /// Bar height in pixels (calculated from font metrics).
-    /// This is the actual rendered height of the bar window.
-    pub bh: i32,
-    pub lrpad: i32,
+    pub tags: TagSet,
+    pub systray: Option<Systray>,
+
+    // Runtime flags
     pub animated: bool,
     pub focusfollowsmouse: bool,
     pub focusfollowsfloatmouse: bool,
@@ -39,87 +153,20 @@ pub struct Globals {
     pub doubledraw: bool,
     pub specialnext: SpecialNext,
     pub bar_dragging: bool,
-    pub tags: TagSet,
-    /// Width of the status text area in pixels (cached for layout calculations).
     pub status_text_width: i32,
-    /// Status text displayed in the bar (right side, shows system info).
     pub status_text: String,
-    pub wmatom: WmAtoms,
-    pub netatom: NetAtoms,
-    pub xatom: XAtoms,
-    pub motifatom: Atom,
-    /// X11 modifier mask for NumLock (used when matching/grabbing keys and buttons).
-    pub numlockmask: u32,
-    pub showsystray: bool,
-    /// Number of systray icons to pin to the start (0 = no pinning).
-    pub systraypinning: usize,
-    /// Pixel gap between systray icons.
-    pub systrayspacing: i32,
-    pub systray: Option<Systray>,
-    /// The drawing context used for all bar rendering.
-    ///
-    /// # Invariant
-    ///
-    /// This is `None` only during the brief window between `Globals::default()`
-    /// and the end of `setup()`.  `setup()` calls `die()` (which terminates the
-    /// process) if `Drw::new()` fails, so **after `setup()` returns this is
-    /// always `Some`**.  The window manager cannot function without a drawing
-    /// context — the C codebase models this as a plain pointer that is set once
-    /// and never NULL.
-    ///
-    /// Prefer the [`get_drw`] / [`get_drw_mut`] free functions over
-    /// `.drw.as_ref().unwrap()` at call sites; they produce a clear panic
-    /// message if the invariant is ever violated during development.
-    pub drw: Option<Drw>,
-    pub xlibdisplay: XlibDisplay,
-    pub cursors: [Option<Cur>; 10],
-    pub borderscheme: Option<BorderScheme>,
-    pub statusscheme: Option<StatusScheme>,
-    pub windowschemes: WindowSchemes,
-    pub closebuttonschemes: CloseButtonSchemes,
-    /// Start menu / tag bar width in pixels.
-    pub startmenusize: i32,
-    /// Snap-to-edge distance in pixels.
-    pub snap: i32,
-    pub resizehints: i32,
-    pub commands: Vec<XCommand>,
-    pub buttons: Vec<Button>,
-    pub fonts: Vec<&'static str>,
-    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
-    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
-    pub bordercolors: Vec<&'static str>,
-    pub statusbarcolors: Vec<&'static str>,
-    pub keys: Vec<Key>,
-    pub dkeys: Vec<Key>,
-    pub rules: Vec<Rule>,
-    pub resources: Vec<ResourcePref>,
-    /// Border width in pixels.
-    pub borderpx: i32,
-    pub decorhints: i32,
-    pub mfact: f32,
-    pub nmaster: i32,
-    pub showbar: bool,
-    pub topbar: bool,
-    pub barheight: i32,
-    pub xresourcesfont: String,
-    pub instantmenumon: String,
-    /// All external commands resolved at startup from [`crate::config::commands`].
-    pub external_commands: ExternalCommands,
 }
 
 impl Default for Globals {
     fn default() -> Self {
         Self {
-            screen: 0,
-            root: 0,
-            sw: 0,
-            sh: 0,
+            cfg: RuntimeConfig::default(),
             monitors: Vec::new(),
             selmon: 0,
             clients: HashMap::new(),
             client_list: Vec::new(),
-            bh: 0,
-            lrpad: 0,
+            tags: TagSet::default(),
+            systray: None,
             animated: true,
             focusfollowsmouse: true,
             focusfollowsfloatmouse: true,
@@ -128,55 +175,12 @@ impl Default for Globals {
             doubledraw: false,
             specialnext: SpecialNext::None,
             bar_dragging: false,
-            tags: TagSet::default(),
             status_text_width: 0,
             status_text: String::new(),
-            wmatom: WmAtoms::default(),
-            netatom: NetAtoms::default(),
-            xatom: XAtoms::default(),
-            motifatom: 0,
-            numlockmask: 0,
-            showsystray: true,
-            systraypinning: 0,
-            systrayspacing: 2,
-            systray: None,
-            drw: None,
-            xlibdisplay: XlibDisplay(std::ptr::null_mut()),
-            cursors: Default::default(),
-            borderscheme: None,
-            statusscheme: None,
-            windowschemes: WindowSchemes::default(),
-            closebuttonschemes: CloseButtonSchemes::default(),
-            startmenusize: 0,
-            snap: 32,
-            resizehints: 1,
-            commands: Vec::new(),
-            buttons: Vec::new(),
-            fonts: Vec::new(),
-            windowcolors: Vec::new(),
-            closebuttoncolors: Vec::new(),
-            bordercolors: Vec::new(),
-            statusbarcolors: Vec::new(),
-            keys: Vec::new(),
-            dkeys: Vec::new(),
-            rules: Vec::new(),
-            resources: Vec::new(),
-            borderpx: 1,
-            decorhints: 0,
-            mfact: 0.55,
-            nmaster: 1,
-            showbar: true,
-            topbar: true,
-            barheight: 0,
-            xresourcesfont: String::new(),
-            instantmenumon: String::new(),
-            external_commands: crate::config::commands::default_commands(),
         }
     }
 }
 
-// SAFETY: instantWM is a single-threaded window manager.
-// Globals are accessed from the main thread event loop, like dwm's C globals.
 struct MainThreadCell<T>(UnsafeCell<T>);
 unsafe impl<T> Sync for MainThreadCell<T> {}
 unsafe impl<T> Send for MainThreadCell<T> {}
@@ -184,34 +188,25 @@ unsafe impl<T> Send for MainThreadCell<T> {}
 pub static GLOBALS: Lazy<MainThreadCell<Globals>> =
     Lazy::new(|| MainThreadCell(UnsafeCell::new(Globals::default())));
 
-/// Return a reference to the drawing context.
-///
-/// # Panics
-///
-/// Panics if called before `setup()` has stored the `Drw` instance.  This
-/// should never happen in normal operation — the panic exists to catch
-/// programming errors during development rather than silently skipping drawing.
+pub static RUNNING: AtomicBool = AtomicBool::new(true);
+
 #[inline]
 pub fn get_drw() -> &'static Drw {
     get_globals()
+        .cfg
         .drw
         .as_ref()
         .expect("get_drw() called before setup() initialised the drawing context")
 }
 
-/// Return a mutable reference to the drawing context.
-///
-/// # Panics
-///
-/// Panics if called before `setup()` has stored the `Drw` instance.
 #[inline]
 pub fn get_drw_mut() -> &'static mut Drw {
     get_globals_mut()
+        .cfg
         .drw
         .as_mut()
         .expect("get_drw_mut() called before setup() initialised the drawing context")
 }
-pub static RUNNING: AtomicBool = AtomicBool::new(true);
 
 pub fn get_globals() -> &'static Globals {
     unsafe { &*GLOBALS.0.get() }
@@ -236,4 +231,67 @@ pub fn get_x11() -> &'static X11Connection {
 
 pub fn get_x11_mut() -> &'static mut X11Connection {
     unsafe { &mut *X11.0.get() }
+}
+
+/// Update the runtime configuration from a config::Config struct
+/// This is called during initialization and on reload
+pub fn update_config_from_config(cfg: &crate::config::Config) {
+    let g = get_globals_mut();
+    g.cfg.borderpx = cfg.borderpx;
+    g.cfg.snap = cfg.snap;
+    g.cfg.startmenusize = cfg.startmenusize;
+    g.cfg.systraypinning = cfg.systraypinning;
+    g.cfg.systrayspacing = cfg.systrayspacing;
+    g.cfg.showsystray = cfg.showsystray;
+    g.cfg.showbar = cfg.showbar;
+    g.cfg.topbar = cfg.topbar;
+    g.cfg.barheight = cfg.barheight;
+    g.cfg.resizehints = cfg.resizehints;
+    g.cfg.decorhints = cfg.decorhints;
+    g.cfg.mfact = cfg.mfact;
+    g.cfg.nmaster = cfg.nmaster;
+
+    g.cfg.windowcolors = cfg.windowcolors.clone();
+    g.cfg.closebuttoncolors = cfg.closebuttoncolors.clone();
+    g.cfg.bordercolors = cfg.bordercolors.clone();
+    g.cfg.statusbarcolors = cfg.statusbarcolors.clone();
+
+    g.cfg.keys = cfg.keys.clone();
+    g.cfg.dkeys = cfg.dkeys.clone();
+    g.cfg.buttons = cfg.buttons.clone();
+    g.cfg.rules = cfg.rules.clone();
+    g.cfg.commands = cfg.commands.clone();
+    g.cfg.resources = cfg.resources.clone();
+    g.cfg.fonts = cfg.fonts.clone();
+    g.cfg.external_commands = cfg.external_commands.clone();
+}
+
+/// Initialize tags from config
+pub fn init_tags_from_config(cfg: &crate::config::Config) {
+    let g = get_globals_mut();
+    g.tags.colors = cfg.tag_colors.clone();
+
+    let num_tags = cfg.num_tags;
+    g.tags.tags = Vec::with_capacity(num_tags);
+    for i in 0..num_tags {
+        let name = if i < cfg.tag_names.len() {
+            cfg.tag_names[i].clone()
+        } else {
+            format!("{}", i + 1)
+        };
+
+        let alt_name = if i < cfg.tag_alt_names.len() {
+            cfg.tag_alt_names[i]
+        } else {
+            ""
+        };
+
+        let mut tag = Tag::default();
+        tag.name = name;
+        tag.alt_name = alt_name;
+        tag.nmaster = cfg.nmaster;
+        tag.mfact = cfg.mfact;
+        tag.showbar = cfg.showbar;
+        g.tags.tags.push(tag);
+    }
 }

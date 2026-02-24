@@ -1,5 +1,6 @@
 //! Moving clients between tags.
 
+use crate::contexts::WmCtx;
 use crate::focus::focus;
 
 /// Direction for shifting/tagging operations.
@@ -8,35 +9,32 @@ pub enum ShiftDirection {
     Left,
     Right,
 }
-use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect};
-use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
-pub fn shift_tag_by(dir: Direction, offset: i32) {
-    shift_tag(dir, offset.max(1));
+pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
+    shift_tag(ctx, dir, offset.max(1));
 }
 
-pub fn move_client(dir: Direction) {
-    shift_tag_by(dir, 1);
-    crate::tags::view::scroll_view(dir);
+pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
+    shift_tag_by(ctx, dir, 1);
+    crate::tags::view::scroll_view(ctx, dir);
 }
 
-fn shift_tag(dir: Direction, offset: i32) {
-    let sel_win = get_sel_win();
-    let Some(win) = sel_win else { return };
-
-    let (current_tag, overlay_win) = {
-        let globals = get_globals();
-        let current_tag = globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| m.current_tag as u32);
-        let overlay = globals.monitors.get(globals.selmon).and_then(|m| m.overlay);
-        (current_tag, overlay)
+fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel) else {
+        return;
     };
+
+    let (current_tag, overlay_win) = (
+        ctx.g
+            .monitors
+            .get(ctx.g.selmon)
+            .map(|m| m.current_tag as u32),
+        ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay),
+    );
 
     let Some(current_tag) = current_tag else {
         return;
@@ -60,57 +58,48 @@ fn shift_tag(dir: Direction, offset: i32) {
         return;
     }
 
-    let (tagset, tagmask) = {
-        let globals = get_globals();
-        let Some(mon) = globals.monitors.get(globals.selmon) else {
-            return;
-        };
-        (mon.tagset[mon.seltags as usize], globals.tags.mask())
+    let (tagset, tagmask) = match ctx.g.monitors.get(ctx.g.selmon) {
+        Some(mon) => (mon.tagset[mon.seltags as usize], ctx.g.tags.mask()),
+        None => return,
     };
 
     if (tagset & tagmask).count_ones() != 1 {
         return;
     }
 
-    clear_sticky(win);
+    clear_sticky(ctx, win);
 
-    if get_globals().animated {
-        play_slide_animation(win, dir);
+    if ctx.g.animated {
+        play_slide_animation(ctx, win, dir);
     }
 
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            match dir {
-                Direction::Left if tagset > 1 => {
-                    client.tags >>= offset;
-                }
-                Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
-                    client.tags <<= offset;
-                }
-                _ => return,
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        match dir {
+            Direction::Left if tagset > 1 => {
+                client.tags >>= offset;
             }
+            Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
+                client.tags <<= offset;
+            }
+            _ => return,
         }
     }
 
-    focus(None);
-    arrange(Some(get_globals().selmon));
+    let selmon = ctx.g.selmon;
+    focus(ctx, None);
+    arrange(ctx, Some(selmon));
 }
 
-fn clear_sticky(win: x11rb::protocol::xproto::Window) {
-    let target_tags = {
-        let globals = get_globals();
-        globals.monitors.get(globals.selmon).and_then(|mon| {
-            if mon.current_tag > 0 {
-                Some(1u32 << (mon.current_tag - 1))
-            } else {
-                None
-            }
-        })
-    };
+fn clear_sticky(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window) {
+    let target_tags = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| {
+        if mon.current_tag > 0 {
+            Some(1u32 << (mon.current_tag - 1))
+        } else {
+            None
+        }
+    });
 
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
         if client.issticky {
             client.issticky = false;
             if let Some(tags) = target_tags {
@@ -120,27 +109,24 @@ fn clear_sticky(win: x11rb::protocol::xproto::Window) {
     }
 }
 
-fn play_slide_animation(win: x11rb::protocol::xproto::Window, dir: Direction) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
+fn play_slide_animation(ctx: &WmCtx, win: x11rb::protocol::xproto::Window, dir: Direction) {
+    if let Some(ref conn) = ctx.x11.conn {
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }
 
-    let (mon_w, client_x, client_y) = {
-        let globals = get_globals();
-        let mon_w = globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| m.monitor_rect.w)
-            .unwrap_or(0);
-        let (client_x, client_y) = globals
-            .clients
-            .get(&win)
-            .map(|c| (c.geo.x, c.geo.y))
-            .unwrap_or((0, 0));
-        (mon_w, client_x, client_y)
-    };
+    let mon_w = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| m.monitor_rect.w)
+        .unwrap_or(0);
+    let (client_x, client_y) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (c.geo.x, c.geo.y))
+        .unwrap_or((0, 0));
 
     let anim_dx = (mon_w / 10)
         * match dir {

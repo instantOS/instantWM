@@ -44,7 +44,7 @@
 
 use crate::animation::animate_client;
 use crate::client::{client_height, client_width, next_tiled, resize};
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::layouts::query::client_count;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
@@ -56,14 +56,13 @@ use std::cmp::min;
 /// The master column is split vertically among the first `nmaster` clients.
 /// All stack clients are placed on top of each other in the remaining area —
 /// only the topmost is visible, giving a card-deck feel.
-pub fn deck(m: &mut Monitor) {
+pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -87,13 +86,12 @@ pub fn deck(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
 
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
             // ── master client — animated vertical split ───────────────────
@@ -110,8 +108,7 @@ pub fn deck(m: &mut Monitor) {
                 false,
             );
 
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 master_column_offset += client_height(c) as u32;
             }
         } else {
@@ -139,10 +136,9 @@ pub fn deck(m: &mut Monitor) {
 ///
 /// The first `nmaster` clients share a horizontal master row at the top.
 /// Remaining clients are divided into equal-width vertical columns below.
-pub fn bstack(m: &mut Monitor) {
+pub fn bstack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = {
-        let g = get_globals();
-        if g.animated && client_count() > 4 {
+        if ctx.g.animated && client_count(ctx.g) > 4 {
             4
         } else {
             7
@@ -154,8 +150,7 @@ pub fn bstack(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -186,13 +181,12 @@ pub fn bstack(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
 
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
@@ -209,8 +203,7 @@ pub fn bstack(m: &mut Monitor) {
                 0,
             );
 
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 master_row_offset += client_width(c);
             }
         } else {
@@ -228,8 +221,7 @@ pub fn bstack(m: &mut Monitor) {
                 0,
             );
 
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 if tw != m.work_rect.w {
                     tx += client_width(c);
                 }
@@ -247,10 +239,9 @@ pub fn bstack(m: &mut Monitor) {
 ///
 /// Like [`bstack`] but stack clients are arranged as horizontal rows rather
 /// than vertical columns — each stack client spans the full work width.
-pub fn bstackhoriz(m: &mut Monitor) {
+pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = {
-        let g = get_globals();
-        if g.animated && client_count() > 4 {
+        if ctx.g.animated && client_count(ctx.g) > 4 {
             4
         } else {
             7
@@ -262,8 +253,7 @@ pub fn bstackhoriz(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -294,13 +284,12 @@ pub fn bstackhoriz(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
 
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
@@ -317,8 +306,7 @@ pub fn bstackhoriz(m: &mut Monitor) {
                 0,
             );
 
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 master_row_offset += client_width(c);
             }
         } else {
@@ -337,8 +325,7 @@ pub fn bstackhoriz(m: &mut Monitor) {
 
             // Advance ty only when stack rows don't fill the whole height
             // (i.e. there are multiple stack clients).
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 if th != m.work_rect.h {
                     ty += client_height(c);
                 }

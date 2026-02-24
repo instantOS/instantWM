@@ -19,11 +19,10 @@
 //! resize support.
 
 use crate::client::resize;
+use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
-use crate::globals::{get_globals, get_x11};
 use crate::monitor::is_current_layout_tiling;
 use crate::types::*;
-use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -34,35 +33,24 @@ use crate::types::ResizeDirection;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-/// Return the selected window for the current monitor, unless it is
-/// non-fake-fullscreen (in which case resize is a no-op).
-///
-/// Returns `None` to signal "do nothing".
-fn selected_resizable_window() -> Option<Window> {
-    let win = get_sel_win()?;
-
-    let globals = get_globals();
-    let c = globals.clients.get(&win)?;
-    if c.is_fullscreen && !c.isfakefullscreen {
-        return None;
-    }
-
-    Some(win)
-}
-
-pub fn resize_mouse_from_cursor() {
-    let Some(win) = selected_resizable_window() else {
+pub fn resize_mouse_from_cursor(ctx: &WmCtx) {
+    let win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
+    let Some(win) = win.filter(|&win| {
+        ctx.g
+            .clients
+            .get(&win)
+            .map(|c| !(c.is_fullscreen && !c.isfakefullscreen))
+            .unwrap_or(false)
+    }) else {
         return;
     };
 
     let dir = {
-        let globals = get_globals();
-        let Some(c) = globals.clients.get(&win) else {
+        let Some(c) = ctx.g.clients.get(&win) else {
             return;
         };
 
-        let x11 = get_x11();
-        let Some(ref conn) = x11.conn else { return };
+        let Some(ref conn) = ctx.x11.conn else { return };
         let Ok(cookie) = conn.query_pointer(win) else {
             return;
         };
@@ -74,12 +62,19 @@ pub fn resize_mouse_from_cursor() {
         get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
     };
 
-    resize_mouse_directional(Some(dir));
+    resize_mouse_directional(ctx, Some(dir));
+}
+
+pub fn resize_aspect_mouse_with_selection(ctx: &mut WmCtx) {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+        return;
+    };
+    resize_aspect_mouse_for_window(ctx, win);
 }
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.
-fn refresh_rate() -> u32 {
-    if get_globals().doubledraw {
+fn refresh_rate(ctx: &WmCtx) -> u32 {
+    if ctx.g.doubledraw {
         REFRESH_RATE_HI
     } else {
         REFRESH_RATE_LO
@@ -98,16 +93,24 @@ fn refresh_rate() -> u32 {
 /// The loop ends on `ButtonRelease`.  After the grab is released,
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
-pub fn resize_mouse() {
-    let Some(win) = selected_resizable_window() else {
+pub fn resize_mouse(ctx: &mut WmCtx) {
+    let win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
+    let Some(win) = win.filter(|&win| {
+        ctx.g
+            .clients
+            .get(&win)
+            .map(|c| !(c.is_fullscreen && !c.isfakefullscreen))
+            .unwrap_or(false)
+    }) else {
         return;
     };
 
-    let Some(conn) = grab_pointer(1) else { return };
+    let Some(conn) = grab_pointer(ctx, 1) else {
+        return;
+    };
 
     let (orig_left, orig_top) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
+        match ctx.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
                 ungrab(conn);
@@ -116,7 +119,7 @@ pub fn resize_mouse() {
         }
     };
 
-    let rate = refresh_rate();
+    let rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -136,23 +139,24 @@ pub fn resize_mouse() {
                 let nw = (m.event_x as i32 - orig_left + 1).max(1);
                 let nh = (m.event_y as i32 - orig_top + 1).max(1);
 
-                let globals = get_globals();
-                let snap = globals.snap;
+                let snap = ctx.g.cfg.snap;
 
-                if let Some(client) = globals.clients.get(&win) {
-                    let has_tiling = globals
+                if let Some(client) = ctx.g.clients.get(&win) {
+                    let has_tiling = ctx
+                        .g
                         .monitors
-                        .get(globals.selmon)
-                        .map(|m| is_current_layout_tiling(m, &globals.tags))
+                        .get(ctx.g.selmon)
+                        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
                         .unwrap_or(true);
 
                     if !client.isfloating
                         && has_tiling
                         && ((nw - client.geo.w).abs() > snap || (nh - client.geo.h).abs() > snap)
                     {
-                        toggle_floating();
+                        toggle_floating(ctx);
                     } else if !has_tiling || client.isfloating {
                         resize(
+                            ctx,
                             win,
                             &Rect {
                                 x: client.geo.x,
@@ -171,23 +175,31 @@ pub fn resize_mouse() {
     }
 
     ungrab(conn);
-    handle_client_monitor_switch(win);
+    handle_client_monitor_switch(ctx, win);
 }
 
 /// Directional resize: supports all 8 directions (corners and edges).
 ///
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
-pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
-    let Some(win) = selected_resizable_window() else {
+pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirection>) {
+    let win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
+    let Some(win) = win.filter(|&win| {
+        ctx.g
+            .clients
+            .get(&win)
+            .map(|c| !(c.is_fullscreen && !c.isfakefullscreen))
+            .unwrap_or(false)
+    }) else {
         return;
     };
 
-    let Some(conn) = grab_pointer(1) else { return };
+    let Some(conn) = grab_pointer(ctx, 1) else {
+        return;
+    };
 
     let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
+        match ctx.g.clients.get(&win) {
             Some(c) => (
                 c.geo.x,
                 c.geo.y,
@@ -205,7 +217,7 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
     let dir = direction.unwrap_or(ResizeDirection::BottomRight);
     let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
 
-    let rate = refresh_rate();
+    let rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -247,14 +259,14 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
                     (orig_top, orig_bottom - orig_top)
                 };
 
-                let globals = get_globals();
-                let snap = globals.snap;
+                let snap = ctx.g.cfg.snap;
 
-                let should_toggle = if let Some(client) = globals.clients.get(&win) {
-                    let has_tiling = globals
+                let should_toggle = if let Some(client) = ctx.g.clients.get(&win) {
+                    let has_tiling = ctx
+                        .g
                         .monitors
-                        .get(globals.selmon)
-                        .map(|m| is_current_layout_tiling(m, &globals.tags))
+                        .get(ctx.g.selmon)
+                        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
                         .unwrap_or(true);
 
                     !client.isfloating
@@ -266,22 +278,24 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
                 };
 
                 if should_toggle {
-                    toggle_floating();
+                    toggle_floating(ctx);
                 } else {
-                    let globals = get_globals();
-                    let is_floating = globals
+                    let is_floating = ctx
+                        .g
                         .clients
                         .get(&win)
                         .map(|c| c.isfloating)
                         .unwrap_or(false);
-                    let has_tiling = globals
+                    let has_tiling = ctx
+                        .g
                         .monitors
-                        .get(globals.selmon)
-                        .map(|m| is_current_layout_tiling(m, &globals.tags))
+                        .get(ctx.g.selmon)
+                        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
                         .unwrap_or(true);
 
                     if !has_tiling || is_floating {
                         resize(
+                            ctx,
                             win,
                             &Rect {
                                 x: new_x,
@@ -300,7 +314,7 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
     }
 
     ungrab(conn);
-    handle_client_monitor_switch(win);
+    handle_client_monitor_switch(ctx, win);
 }
 
 /// Alias for [`resize_mouse`].
@@ -309,8 +323,8 @@ pub fn resize_mouse_directional(direction: Option<ResizeDirection>) {
 /// that bypassed an additional fullscreen guard.  The Rust version already
 /// handles this cleanly in [`selected_resizable_window`].
 #[inline]
-pub fn force_resize_mouse() {
-    resize_mouse();
+pub fn force_resize_mouse(ctx: &mut WmCtx) {
+    resize_mouse(ctx);
 }
 
 // ── resize_aspect_mouse ───────────────────────────────────────────────────────
@@ -324,24 +338,23 @@ pub fn force_resize_mouse() {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse() {
-    let globals = get_globals();
-    let win = get_sel_win().filter(|&w| {
-        !globals
-            .clients
-            .get(&w)
-            .map(|c| c.is_fullscreen)
-            .unwrap_or(false)
-    });
-    let Some(win) = win else {
+pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
+    let is_fullscreen = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.is_fullscreen)
+        .unwrap_or(false);
+    if is_fullscreen {
         return;
     };
 
-    let Some(conn) = grab_pointer(1) else { return };
+    let Some(conn) = grab_pointer(ctx, 1) else {
+        return;
+    };
 
     let (orig_left, orig_top) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
+        match ctx.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
                 ungrab(conn);
@@ -350,7 +363,7 @@ pub fn resize_aspect_mouse() {
         }
     };
 
-    let rate = refresh_rate();
+    let rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -370,8 +383,7 @@ pub fn resize_aspect_mouse() {
                 let raw_nw = (m.event_x as i32 - orig_left + 1).max(1);
                 let raw_nh = (m.event_y as i32 - orig_top + 1).max(1);
 
-                let globals = get_globals();
-                if let Some(client) = globals.clients.get(&win) {
+                if let Some(client) = ctx.g.clients.get(&win) {
                     let sh = &client.size_hints;
                     let (mina, maxa) = (client.mina, client.maxa);
 
@@ -419,7 +431,7 @@ pub fn resize_aspect_mouse() {
     }
 
     ungrab(conn);
-    handle_client_monitor_switch(win);
+    handle_client_monitor_switch(ctx, win);
 }
 
 // `hover_resize_mouse` and `is_in_resize_border` live in `super::hover`.

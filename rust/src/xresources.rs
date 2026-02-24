@@ -1,4 +1,4 @@
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use x11rb::protocol::xproto::ConnectionExt;
 
 const NUM_SCHEMEHOVERTYPES: usize = 2;
@@ -22,19 +22,6 @@ const SCHEME_WINDOW_TYPES: [&str; NUM_SCHEMEWINDOWTYPES] = [
 const SCHEME_TAG_TYPES: [&str; NUM_SCHEMETAGTYPES] =
     ["inactive", "filled", "focus", "nofocus", "empty"];
 const SCHEME_CLOSE_TYPES: [&str; NUM_SCHEMECLOSETYPES] = ["normal", "locked", "fullscreen"];
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ResourceType {
-    String,
-    Integer,
-    Float,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResourcePref {
-    pub name: &'static str,
-    pub rtype: ResourceType,
-}
 
 pub fn list_xresources() {
     for i in 0..NUM_SCHEMEHOVERTYPES {
@@ -74,67 +61,14 @@ pub fn list_xresources() {
     println!("status.detail");
 }
 
-pub fn resource_load(name: &str, rtype: ResourceType, dst: &mut [u8]) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-
-    let fullname = format!("instantwm.{}", name);
-
-    let Ok(cookie) = conn.get_property(
-        false,
-        get_globals().root,
-        x11rb::protocol::xproto::AtomEnum::RESOURCE_MANAGER,
-        x11rb::protocol::xproto::AtomEnum::STRING,
-        0,
-        1024,
-    ) else {
-        return;
-    };
-
-    let Ok(reply) = cookie.reply() else { return };
-
-    let resource_str = String::from_utf8_lossy(&reply.value);
-
-    for line in resource_str.lines() {
-        let line = line.trim();
-        if let Some(colon_pos) = line.find(':') {
-            let key = line[..colon_pos].trim();
-            let value = line[colon_pos + 1..].trim();
-
-            if key == fullname {
-                match rtype {
-                    ResourceType::String => {
-                        let bytes = value.as_bytes();
-                        let len = bytes.len().min(dst.len() - 1);
-                        dst[..len].copy_from_slice(&bytes[..len]);
-                        dst[len] = 0;
-                    }
-                    ResourceType::Integer => {
-                        if let Ok(val) = value.parse::<u32>() {
-                            let val_bytes = val.to_ne_bytes();
-                            dst[..4].copy_from_slice(&val_bytes);
-                        }
-                    }
-                    ResourceType::Float => {
-                        if let Ok(val) = value.parse::<f32>() {
-                            let val_bytes = val.to_ne_bytes();
-                            dst[..4].copy_from_slice(&val_bytes);
-                        }
-                    }
-                }
-                return;
-            }
-        }
-    }
-}
-
-pub fn load_xresources() {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+/// Load xresources and update the runtime configuration
+/// This should be called after init_globals but before setup
+pub fn load_xresources(ctx: &mut WmCtx) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     let Ok(res_cookie) = conn.get_property(
         false,
-        get_globals().root,
+        ctx.g.cfg.root,
         x11rb::protocol::xproto::AtomEnum::RESOURCE_MANAGER,
         x11rb::protocol::xproto::AtomEnum::STRING,
         0,
@@ -149,13 +83,11 @@ pub fn load_xresources() {
 
     let resource_str = String::from_utf8_lossy(&res_reply.value);
 
-    load_color_resources(&resource_str);
-    load_tag_resources(&resource_str);
+    load_color_resources(ctx, &resource_str);
+    load_tag_resources(ctx, &resource_str);
 }
 
-fn load_color_resources(resource_str: &str) {
-    let globals = get_globals_mut();
-
+fn load_color_resources(ctx: &mut WmCtx, resource_str: &str) {
     for i in 0..NUM_SCHEMEHOVERTYPES {
         for q in 0..NUM_SCHEMECOLORTYPES {
             for u in 0..NUM_SCHEMEWINDOWTYPES {
@@ -165,11 +97,11 @@ fn load_color_resources(resource_str: &str) {
                 );
 
                 if let Some(value) = find_resource(resource_str, &propname) {
-                    if i < globals.windowcolors.len()
-                        && u < globals.windowcolors[i].len()
-                        && q < globals.windowcolors[i][u].len()
+                    if i < ctx.g.cfg.windowcolors.len()
+                        && u < ctx.g.cfg.windowcolors[i].len()
+                        && q < ctx.g.cfg.windowcolors[i][u].len()
                     {
-                        globals.windowcolors[i][u][q] = Box::leak(value.into_boxed_str());
+                        ctx.g.cfg.windowcolors[i][u][q] = Box::leak(value.into_boxed_str());
                     }
                 }
             }
@@ -181,11 +113,11 @@ fn load_color_resources(resource_str: &str) {
                 );
 
                 if let Some(value) = find_resource(resource_str, &propname) {
-                    if i < globals.tags.colors.len()
-                        && u < globals.tags.colors[i].len()
-                        && q < globals.tags.colors[i][u].len()
+                    if i < ctx.g.tags.colors.len()
+                        && u < ctx.g.tags.colors[i].len()
+                        && q < ctx.g.tags.colors[i][u].len()
                     {
-                        globals.tags.colors[i][u][q] = Box::leak(value.into_boxed_str());
+                        ctx.g.tags.colors[i][u][q] = Box::leak(value.into_boxed_str());
                     }
                 }
             }
@@ -197,11 +129,11 @@ fn load_color_resources(resource_str: &str) {
                 );
 
                 if let Some(value) = find_resource(resource_str, &propname) {
-                    if i < globals.closebuttoncolors.len()
-                        && u < globals.closebuttoncolors[i].len()
-                        && q < globals.closebuttoncolors[i][u].len()
+                    if i < ctx.g.cfg.closebuttoncolors.len()
+                        && u < ctx.g.cfg.closebuttoncolors[i].len()
+                        && q < ctx.g.cfg.closebuttoncolors[i][u].len()
                     {
-                        globals.closebuttoncolors[i][u][q] = Box::leak(value.into_boxed_str());
+                        ctx.g.cfg.closebuttoncolors[i][u][q] = Box::leak(value.into_boxed_str());
                     }
                 }
             }
@@ -216,8 +148,8 @@ fn load_color_resources(resource_str: &str) {
     ];
     for (i, name) in border_names.iter().enumerate() {
         if let Some(value) = find_resource(resource_str, name) {
-            if i < globals.bordercolors.len() {
-                globals.bordercolors[i] = Box::leak(value.into_boxed_str());
+            if i < ctx.g.cfg.bordercolors.len() {
+                ctx.g.cfg.bordercolors[i] = Box::leak(value.into_boxed_str());
             }
         }
     }
@@ -225,21 +157,19 @@ fn load_color_resources(resource_str: &str) {
     let status_names = ["status.fg", "status.bg", "status.detail"];
     for (i, name) in status_names.iter().enumerate() {
         if let Some(value) = find_resource(resource_str, name) {
-            if i < globals.statusbarcolors.len() {
-                globals.statusbarcolors[i] = Box::leak(value.into_boxed_str());
+            if i < ctx.g.cfg.statusbarcolors.len() {
+                ctx.g.cfg.statusbarcolors[i] = Box::leak(value.into_boxed_str());
             }
         }
     }
 }
 
-fn load_tag_resources(resource_str: &str) {
-    let globals = get_globals_mut();
-
+fn load_tag_resources(ctx: &mut WmCtx, resource_str: &str) {
     for i in 0..9 {
         let propname = format!("tag.{}", i + 1);
         if let Some(value) = find_resource(resource_str, &propname) {
-            if i < globals.tags.tags.len() {
-                globals.tags.tags[i].name = value;
+            if i < ctx.g.tags.tags.len() {
+                ctx.g.tags.tags[i].name = value;
             }
         }
     }
@@ -263,64 +193,13 @@ fn find_resource(resource_str: &str, name: &str) -> Option<String> {
     None
 }
 
-pub fn verify_tags_xres() {
-    let globals = get_globals_mut();
-
+pub fn verify_tags_xres(ctx: &mut WmCtx) {
     for i in 0..9 {
-        if i < globals.tags.tags.len() {
-            let len = globals.tags.tags[i].name.len();
+        if i < ctx.g.tags.tags.len() {
+            let len = ctx.g.tags.tags[i].name.len();
             if len > MAX_TAGLEN - 1 || len == 0 {
-                globals.tags.tags[i].name = "Xres err".to_string();
+                ctx.g.tags.tags[i].name = "Xres err".to_string();
             }
         }
     }
-}
-
-pub fn get_resources() -> Vec<ResourcePref> {
-    vec![
-        ResourcePref {
-            name: "borderpx",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "snap",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "showbar",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "topbar",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "nmaster",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "mfact",
-            rtype: ResourceType::Float,
-        },
-        ResourcePref {
-            name: "focusfollowsmouse",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "focusfollowsfloatmouse",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "animated",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "barheight",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "systraypinning",
-            rtype: ResourceType::Integer,
-        },
-    ]
 }

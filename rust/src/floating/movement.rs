@@ -2,25 +2,18 @@
 
 use crate::animation::animate_client;
 use crate::client::resize;
+use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
-use crate::globals::get_globals;
 use crate::types::*;
-use crate::util::get_sel_win;
 use x11rb::protocol::xproto::Window;
 
-pub fn moveresize(dir: CardinalDirection) {
-    let sel_win = get_sel_win();
-    let Some(win) = sel_win else { return };
-
-    let (is_floating, geo, border_width) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.isfloating, c.geo, c.border_width),
-            None => return,
-        }
+pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
+    let (is_floating, geo, border_width) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.isfloating, c.geo, c.border_width),
+        None => return,
     };
 
-    if super::helpers::has_tiling_layout() && !is_floating {
+    if super::helpers::has_tiling_layout(ctx) && !is_floating {
         return;
     }
 
@@ -29,12 +22,9 @@ pub fn moveresize(dir: CardinalDirection) {
     let mut new_x = geo.x + dx;
     let mut new_y = geo.y + dy;
 
-    let mon_rect = {
-        let globals = get_globals();
-        match globals.monitors.get(globals.selmon) {
-            Some(m) => m.monitor_rect,
-            None => return,
-        }
+    let mon_rect = match ctx.g.monitors.get(ctx.g.selmon) {
+        Some(m) => m.monitor_rect,
+        None => return,
     };
 
     new_x = new_x.max(mon_rect.x);
@@ -60,21 +50,15 @@ pub fn moveresize(dir: CardinalDirection) {
     warp_cursor_to_client(win);
 }
 
-pub fn key_resize(dir: CardinalDirection) {
-    let sel_win = get_sel_win();
-    let Some(win) = sel_win else { return };
-
-    let (is_floating, geo) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.isfloating, c.geo),
-            None => return,
-        }
+pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
+    let (is_floating, geo) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.isfloating, c.geo),
+        None => return,
     };
 
-    super::snap::reset_snap(win);
+    super::snap::reset_snap(ctx, win);
 
-    if super::helpers::has_tiling_layout() && !is_floating {
+    if super::helpers::has_tiling_layout(ctx) && !is_floating {
         return;
     }
 
@@ -85,6 +69,7 @@ pub fn key_resize(dir: CardinalDirection) {
 
     warp_cursor_to_client(win);
     resize(
+        ctx,
         win,
         &Rect {
             x: geo.x,
@@ -96,38 +81,23 @@ pub fn key_resize(dir: CardinalDirection) {
     );
 }
 
-pub fn center_window() {
-    let sel_win = {
-        let mon = match get_globals().monitors.get(get_globals().selmon) {
-            Some(m) => m,
-            None => return,
-        };
-        match mon.sel {
-            Some(sel) if Some(sel) != mon.overlay => Some(sel),
-            _ => None,
-        }
-    };
-    let Some(win) = sel_win else { return };
-
-    let (geo, is_floating) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.geo, c.isfloating),
-            None => return,
-        }
+pub fn center_window(ctx: &mut WmCtx, win: Window) {
+    let is_overlay = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay) == Some(win);
+    if is_overlay {
+        return;
+    }
+    let (geo, is_floating) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.geo, c.isfloating),
+        None => return,
     };
 
-    if super::helpers::has_tiling_layout() && !is_floating {
+    if super::helpers::has_tiling_layout(ctx) && !is_floating {
         return;
     }
 
-    let (work_rect, mon_rect, showbar, bh) = {
-        let globals = get_globals();
-        let mon = match globals.monitors.get(globals.selmon) {
-            Some(m) => m,
-            None => return,
-        };
-        (mon.work_rect, mon.monitor_rect, mon.showbar, globals.bh)
+    let (work_rect, mon_rect, showbar, bh) = match ctx.g.monitors.get(ctx.g.selmon) {
+        Some(m) => (m.work_rect, m.monitor_rect, m.showbar, ctx.g.cfg.bh),
+        None => return,
     };
 
     if geo.w > work_rect.w || geo.h > work_rect.h {
@@ -137,6 +107,7 @@ pub fn center_window() {
     let y_offset = if showbar { bh } else { -bh };
 
     resize(
+        ctx,
         win,
         &Rect {
             x: mon_rect.x + (work_rect.w / 2) - (geo.w / 2),
@@ -148,51 +119,39 @@ pub fn center_window() {
     );
 }
 
-pub fn upscale_client() {
-    if let Some(win) = get_sel_win() {
-        scale_client_win(win, 30);
-    }
+pub fn upscale_client(ctx: &mut WmCtx, win: Window) {
+    scale_client_win(ctx, win, 30);
 }
 
-pub fn downscale_client() {
-    let Some(win) = get_sel_win() else { return };
-
-    let is_floating = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false)
-    };
+pub fn downscale_client(ctx: &mut WmCtx, win: Window) {
+    let is_floating = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.isfloating)
+        .unwrap_or(false);
 
     if !is_floating {
         crate::focus::focus(Some(win));
-        super::state::toggle_floating();
+        super::state::toggle_floating(ctx);
     }
 
-    scale_client_win(win, -30);
+    scale_client_win(ctx, win, -30);
 }
 
-pub fn scale_client_win(win: Window, scale: i32) {
-    let (is_floating, geo) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.isfloating, c.geo),
-            None => return,
-        }
+pub fn scale_client_win(ctx: &mut WmCtx, win: Window, scale: i32) {
+    let (is_floating, geo) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.isfloating, c.geo),
+        None => return,
     };
 
     if !is_floating {
         return;
     }
 
-    let (mon_rect, bh) = {
-        let globals = get_globals();
-        match globals.monitors.get(globals.selmon) {
-            Some(m) => (m.monitor_rect, globals.bh),
-            None => return,
-        }
+    let (mon_rect, bh) = match ctx.g.monitors.get(ctx.g.selmon) {
+        Some(m) => (m.monitor_rect, ctx.g.cfg.bh),
+        None => return,
     };
 
     let mut w = geo.w + scale;

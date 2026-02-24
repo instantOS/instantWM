@@ -24,32 +24,26 @@
 
 use crate::animation::animate_client;
 use crate::client::focus::{send_event, ANIM_CLIENT};
-use crate::globals::{get_globals, get_x11};
+use crate::contexts::WmCtx;
 use crate::types::Rect;
-use crate::util::get_sel_win;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::protocol::xproto::{ConnectionExt, Window};
 use x11rb::CURRENT_TIME;
 
 // ---------------------------------------------------------------------------
 // kill_client
 // ---------------------------------------------------------------------------
 
-/// Kill the currently selected window.
+/// Kill the given window.
 ///
 /// Steps:
 /// 1. Return immediately if the window is locked (`islocked`).
 /// 2. Play a "slide down" animation (skipped when already animating or
 ///    the window is fullscreen).
 /// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
-pub fn kill_client() {
-    let Some(win) = get_sel_win() else {
-        return;
-    };
-
-    let globals = get_globals();
-    let Some(client) = globals.clients.get(&win) else {
+pub fn kill_client(ctx: &mut WmCtx, win: Window) {
+    let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
 
@@ -60,11 +54,11 @@ pub fn kill_client() {
     let is_fullscreen = client.is_fullscreen;
     let mon_mh = client
         .mon_id
-        .and_then(|mid| globals.monitors.get(mid))
+        .and_then(|mid| ctx.g.monitors.get(mid))
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 
-    let animated = globals.animated;
+    let animated = ctx.g.animated;
     let anim_client = ANIM_CLIENT.load(Ordering::Relaxed);
 
     if animated && win != anim_client && !is_fullscreen {
@@ -82,8 +76,13 @@ pub fn kill_client() {
         );
     }
 
-    let wmatom_delete = globals.wmatom.delete;
-    force_close(win, wmatom_delete);
+    let wmatom_delete = ctx.g.cfg.wmatom.delete;
+    force_close(ctx, win, wmatom_delete);
+}
+
+/// Return the selected window for the current monitor.
+pub fn selected_window(ctx: &WmCtx) -> Option<Window> {
+    ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel)
 }
 
 // ---------------------------------------------------------------------------
@@ -95,17 +94,19 @@ pub fn kill_client() {
 /// This is bound to the "power" key: pressing it on an empty monitor triggers
 /// an orderly system shutdown; pressing it when windows are open closes the
 /// focused window instead.
-pub fn shut_kill() {
-    let globals = get_globals();
-    let has_clients = globals
+pub fn shut_kill(ctx: &mut WmCtx) {
+    let has_clients = ctx
+        .g
         .monitors
-        .get(globals.selmon)
+        .get(ctx.g.selmon)
         .is_some_and(|m| m.clients.is_some());
 
     if has_clients {
-        kill_client();
+        if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel) {
+            kill_client(ctx, win);
+        }
     } else {
-        crate::util::spawn(crate::config::commands::Cmd::InstantShutdown);
+        crate::util::spawn(ctx, crate::config::commands::Cmd::InstantShutdown);
     }
 }
 
@@ -119,19 +120,15 @@ pub fn shut_kill() {
 /// Used by the per-client close button in the bar.
 ///
 /// The window is still animated before the close message is sent.
-pub fn close_win() {
-    let Some(win) = get_sel_win() else {
-        return;
-    };
-
-    let globals = get_globals();
-    let (is_locked, mon_mh) = globals
+pub fn close_win(ctx: &mut WmCtx, win: Window) {
+    let (is_locked, mon_mh) = ctx
+        .g
         .clients
         .get(&win)
         .map(|c| {
             let mh = c
                 .mon_id
-                .and_then(|mid| globals.monitors.get(mid))
+                .and_then(|mid| ctx.g.monitors.get(mid))
                 .map(|m| m.monitor_rect.h)
                 .unwrap_or(0);
             (c.islocked, mh)
@@ -154,8 +151,8 @@ pub fn close_win() {
         0,
     );
 
-    let wmatom_delete = get_globals().wmatom.delete;
-    force_close(win, wmatom_delete);
+    let wmatom_delete = ctx.g.cfg.wmatom.delete;
+    force_close(ctx, win, wmatom_delete);
 }
 
 // ---------------------------------------------------------------------------
@@ -163,8 +160,9 @@ pub fn close_win() {
 // ---------------------------------------------------------------------------
 
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient`.
-fn force_close(win: u32, wmatom_delete: u32) {
+fn force_close(ctx: &mut WmCtx, win: Window, wmatom_delete: u32) {
     let sent = send_event(
+        ctx,
         win,
         wmatom_delete,
         0,
@@ -176,8 +174,7 @@ fn force_close(win: u32, wmatom_delete: u32) {
     );
 
     if !sent {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
+        if let Some(ref conn) = ctx.x11.conn {
             let _ = conn.grab_server();
             let _ = conn.kill_client(win);
             let _ = conn.flush();

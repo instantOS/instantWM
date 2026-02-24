@@ -10,8 +10,8 @@
 //!              already is master, promote the next tiled window instead).
 
 use crate::client::list::{next_tiled, pop};
-use crate::globals::{get_globals, get_x11};
-use x11rb::connection::Connection;
+use crate::contexts::WmCtx;
+use crate::globals::get_globals;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -32,15 +32,14 @@ use x11rb::protocol::xproto::*;
 /// * When the selected window **is already** the master, the *next* tiled
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
-pub fn zoom() {
-    let Some(win) = crate::util::get_sel_win() else {
+pub fn zoom(ctx: &mut WmCtx) {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
         return;
     };
 
     // Raise the window immediately so it appears on top while the layout
     // catches up on the next arrange pass.
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
+    if let Some(ref conn) = ctx.x11.conn {
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }
@@ -81,5 +80,5 @@ pub fn zoom() {
         }
     }
 
-    pop(win);
+    pop(ctx, win);
 }

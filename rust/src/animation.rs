@@ -1,11 +1,11 @@
 use crate::client::resize_client;
 use crate::constants::animation::*;
+use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
-use crate::globals::{get_globals, get_x11};
+use crate::globals::get_globals;
 use crate::monitor::is_current_layout_tiling;
 use crate::tags::view::scroll_view;
 use crate::types::*;
-use crate::util::{get_sel_mon, get_sel_win};
 use std::thread;
 use std::time::Duration;
 use x11rb::connection::Connection;
@@ -90,8 +90,9 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
     let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let Some(ref conn) = crate::globals::get_x11().conn else {
+        return;
+    };
 
     let (mon_w, mon_h) = get_monitor_size(win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
@@ -195,35 +196,27 @@ pub fn check_animate(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     }
 }
 
-pub fn up_scale_client() {
-    if let Some(win) = get_sel_win() {
-        crate::client::scale_client(win, 1);
-    }
+pub fn up_scale_client(_ctx: &mut WmCtx, win: Window) {
+    crate::client::scale_client(win, 1);
 }
 
-pub fn down_scale_client() {
-    if let Some(win) = get_sel_win() {
-        crate::client::scale_client(win, 100);
-    }
+pub fn down_scale_client(_ctx: &mut WmCtx, win: Window) {
+    crate::client::scale_client(win, 100);
 }
 
-pub fn anim_scroll(dir: Direction) {
-    let sel_mon = match get_sel_mon() {
-        Some(m) => m,
-        None => return,
-    };
+pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
+    let sel_mon = ctx.g.selmon;
 
     let (_is_floating, has_tiling, current_tag) = {
-        let globals = get_globals();
-        let mon = match globals.monitors.get(sel_mon) {
+        let mon = match ctx.g.monitors.get(sel_mon) {
             Some(m) => m,
             None => return,
         };
         let is_floating = mon
             .sel
-            .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
+            .and_then(|w| ctx.g.clients.get(&w).map(|c| c.isfloating))
             .unwrap_or(false);
-        let has_tiling = is_current_layout_tiling(mon, &globals.tags);
+        let has_tiling = is_current_layout_tiling(mon, &ctx.g.tags);
         let current_tag = mon.current_tag as u32;
         (is_floating, has_tiling, current_tag)
     };
@@ -235,12 +228,16 @@ pub fn anim_scroll(dir: Direction) {
             Direction::Up => Direction::Up,
             Direction::Down => Direction::Down,
         };
-        crate::focus::focus_direction(focus_dir);
+        let mut target = None;
+        crate::focus::focus_direction(ctx, focus_dir, |win| target = win);
+        if let Some(win) = target {
+            crate::focus::focus(ctx, Some(win));
+        }
         return;
     }
 
     if !has_tiling {
-        if let Some(sel_win) = get_sel_win() {
+        if let Some(sel_win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,
@@ -264,7 +261,7 @@ pub fn anim_scroll(dir: Direction) {
         return;
     }
 
-    let animated = get_globals().animated;
+    let animated = ctx.g.animated;
     if animated {
         let modifier: i32 = match dir {
             Direction::Right => 1,
@@ -277,10 +274,10 @@ pub fn anim_scroll(dir: Direction) {
     }
 
     match dir {
-        Direction::Right => scroll_view(Direction::Right),
-        Direction::Left => scroll_view(Direction::Left),
-        Direction::Up => scroll_view(Direction::Left),
-        Direction::Down => scroll_view(Direction::Right),
+        Direction::Right => scroll_view(ctx, Direction::Right),
+        Direction::Left => scroll_view(ctx, Direction::Left),
+        Direction::Up => scroll_view(ctx, Direction::Left),
+        Direction::Down => scroll_view(ctx, Direction::Right),
     }
 }
 

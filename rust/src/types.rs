@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use x11rb::protocol::xproto::Window;
 
+use crate::contexts::WmCtx;
 use crate::drw::Clr;
 
 /// X11 atom identifier (protocol type is CARDINAL / 32-bit).
@@ -679,6 +680,18 @@ pub enum RuleFloat {
     Scratchpad,
 }
 
+/// Monitor selection in rules.
+///
+/// Replaces the old `i32` field where `-1` meant "any monitor" and `0+` meant
+/// a specific monitor index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MonitorRule {
+    /// Place on any available monitor (was -1).
+    Any,
+    /// Place on specific monitor by index.
+    Index(usize),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SpecialNext {
     #[default]
@@ -705,12 +718,22 @@ pub enum ToggleAction {
 
 impl ToggleAction {
     /// Parse from a raw u32 value (for compatibility with external commands).
-    /// Returns None for invalid values.
-    pub fn from_u32(v: u32) -> Option<Self> {
+    /// Returns Toggle for invalid values.
+    pub fn from_u32(v: u32) -> Self {
         match v {
-            0 | 2 => Some(Self::Toggle),
-            1 => Some(Self::SetFalse),
-            _ => Some(Self::SetTrue),
+            0 | 2 => Self::Toggle,
+            1 => Self::SetFalse,
+            _ => Self::SetTrue,
+        }
+    }
+
+    /// Parse from command argument string.
+    /// Empty string defaults to Toggle, otherwise parses as u32.
+    pub fn from_arg(arg: &str) -> Self {
+        if arg.is_empty() {
+            Self::Toggle
+        } else {
+            arg.parse().ok().map(Self::from_u32).unwrap_or_default()
         }
     }
 
@@ -1082,7 +1105,7 @@ pub struct Rule {
     pub title: Option<&'static str>,
     pub tags: u32,
     pub isfloating: RuleFloat,
-    pub monitor: i32,
+    pub monitor: MonitorRule,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1107,7 +1130,7 @@ pub struct Systray {
 pub struct Key {
     pub mod_mask: u32,
     pub keysym: u32,
-    pub action: Rc<Box<dyn Fn()>>,
+    pub action: Rc<Box<dyn Fn(&mut WmCtx)>>,
 }
 
 impl Debug for Key {
@@ -1134,7 +1157,7 @@ pub struct Button {
     pub click: Click,
     pub mask: u32,
     pub button: MouseButton,
-    pub action: Rc<Box<dyn Fn()>>,
+    pub action: Rc<Box<dyn Fn(&mut WmCtx)>>,
 }
 
 impl Debug for Button {
@@ -1162,7 +1185,7 @@ impl Clone for Button {
 #[derive(Debug, Clone)]
 pub struct XCommand {
     pub cmd: &'static str,
-    pub action: fn(&str),
+    pub action: fn(&mut WmCtx, &str),
 }
 
 pub fn intersect(r: &Rect, m: &Monitor) -> i32 {

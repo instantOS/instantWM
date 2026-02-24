@@ -19,14 +19,13 @@
 
 use crate::animation::animate_client;
 use crate::client::{client_height, next_tiled};
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
-pub fn tile(m: &mut Monitor) {
+pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = {
-        let g = get_globals();
-        if g.animated && crate::layouts::query::client_count() > 5 {
+        if ctx.g.animated && crate::layouts::query::client_count(ctx.g) > 5 {
             4
         } else {
             7
@@ -38,8 +37,7 @@ pub fn tile(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -57,7 +55,7 @@ pub fn tile(m: &mut Monitor) {
         // All clients fit in the master column — handle degeneracy.
         if n > 1 && n < m.nmaster as u32 {
             m.nmaster = n as i32;
-            tile(m);
+            tile(ctx, m);
             return;
         }
         m.work_rect.w
@@ -70,13 +68,12 @@ pub fn tile(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
 
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
             // ── master client ─────────────────────────────────────────────
@@ -101,14 +98,12 @@ pub fn tile(m: &mut Monitor) {
             // When there is exactly one master, let its actual rendered width
             // dictate the stack column's x-offset (respects size hints).
             if m.nmaster == 1 && n > 1 {
-                let g = get_globals();
-                if let Some(c) = g.clients.get(&win) {
+                if let Some(c) = ctx.g.clients.get(&win) {
                     mw = c.geo.w + c.border_width * 2;
                 }
             }
 
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 if master_y_offset as i32 + client_height(c) < m.work_rect.h {
                     master_y_offset += client_height(c) as u32;
                 }
@@ -129,8 +124,7 @@ pub fn tile(m: &mut Monitor) {
                 0,
             );
 
-            let g = get_globals();
-            if let Some(c) = g.clients.get(&win) {
+            if let Some(c) = ctx.g.clients.get(&win) {
                 if ty as i32 + client_height(c) < m.work_rect.h {
                     ty += client_height(c) as u32;
                 }

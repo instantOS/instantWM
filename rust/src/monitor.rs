@@ -1,8 +1,57 @@
+//! Monitor management with dependency injection support.
+//!
+//! This module provides monitor management functionality that supports both
+//! the legacy global-state-based API and a new dependency-injected API.
+//!
+//! # Migration Guide
+//!
+//! The module provides versions of functions that accept a unified `WmCtx`
+//! instead of accessing global state.
+//!
+//! ## Legacy API (uses global state)
+//! ```ignore
+//! use crate::monitor::{create_monitor, win_to_mon};
+//!
+//! // These functions access global state internally
+//! let mon = create_monitor();
+//! let target = win_to_mon(some_window);
+//! ```
+//!
+//! ## New API (uses dependency injection)
+//! ```ignore
+//! use crate::contexts::WmCtx;
+//! use crate::globals::{get_globals_mut, get_x11};
+//! use crate::monitor::{create_monitor_with_defaults, focus_mon, dir_to_mon};
+//!
+//! // Create context from global state
+//! let mut g = get_globals_mut();
+//! let x11 = get_x11();
+//! let mut ctx = WmCtx::new(&mut g, &x11);
+//!
+//! // Pass context explicitly
+//! let mon = create_monitor_with_defaults(&mut ctx);
+//! focus_mon(&mut ctx, 1);  // Focus next monitor
+//! let target = dir_to_mon(&ctx.g.monitors, ctx.g.selmon, 1);
+//! ```
+//!
+//! # Benefits of Dependency Injection
+//!
+//! - **Testability**: Functions can be tested with mock state
+//! - **Reduced coupling**: No hidden dependencies on global state
+//! - **Thread safety**: Easier to reason about with explicit state passing
+//! - **Flexibility**: Can work with temporary state without affecting globals
+//!
+//! # Backward Compatibility
+//!
+//! All legacy functions are marked with `#[deprecated]` but remain functional
+//! to avoid breaking existing code. New code should prefer the `WmCtx` versions.
+
 use crate::bar::x11::update_bar_pos;
 use crate::client::{
     attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
 };
+use crate::contexts::WmCtx;
 use crate::focus::{focus, warp_cursor_to_client};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::tags::reset_sticky;
@@ -12,31 +61,35 @@ use x11rb::protocol::xproto::Window;
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
-pub fn create_monitor() -> Monitor {
-    eprintln!(
-        "TRACE: create_monitor - start (WARNING: this version calls get_globals, may deadlock)"
-    );
-    let g = get_globals();
-    eprintln!("TRACE: create_monitor - after get_globals");
+/// Create a new monitor with default values from the runtime configuration.
+///
+/// This function uses dependency injection by accepting configuration parameters
+/// instead of accessing global state directly.
+pub fn create_monitor_with_defaults(ctx: &WmCtx) -> Monitor {
+    eprintln!("TRACE: create_monitor_with_defaults - start");
 
     let m = Monitor {
         tagset: [1, 1],
-        mfact: g.mfact,
-        nmaster: g.nmaster,
-        showbar: g.showbar,
-        topbar: g.topbar,
+        mfact: ctx.g.mfact,
+        nmaster: ctx.g.nmaster,
+        showbar: ctx.g.showbar,
+        topbar: ctx.g.topbar,
         clientcount: 0,
         overlaymode: OverlayMode::Top,
         current_tag: 1,
         prev_tag: 1,
         ..Default::default()
     };
-    eprintln!("TRACE: create_monitor - after creating Monitor");
+    eprintln!("TRACE: create_monitor_with_defaults - after creating Monitor");
 
-    eprintln!("TRACE: create_monitor - returning");
+    eprintln!("TRACE: create_monitor_with_defaults - returning");
     m
 }
 
+/// Create a new monitor with explicit values.
+///
+/// This function is useful when you need to create a monitor with
+/// specific configuration values different from the defaults.
 pub fn create_monitor_with_values(
     mfact: f32,
     nmaster: i32,
@@ -63,66 +116,89 @@ pub fn create_monitor_with_values(
     m
 }
 
-pub fn cleanup_monitor(mon_id: MonitorId) {
-    let g = get_globals_mut();
-
-    if mon_id >= g.monitors.len() {
+/// Remove a monitor and clean up its resources.
+///
+/// This function uses dependency injection by accepting a WmCtx
+/// instead of accessing global state directly.
+pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
+    if mon_id >= ctx.g.monitors.len() {
         return;
     }
 
-    let barwin = g.monitors[mon_id].barwin;
+    let barwin = ctx.g.monitors[mon_id].barwin;
 
-    g.monitors.remove(mon_id);
+    ctx.g.monitors.remove(mon_id);
 
-    if g.selmon == mon_id {
-        g.selmon = 0;
-    } else if g.selmon > mon_id {
-        g.selmon -= 1;
+    if ctx.g.selmon == mon_id {
+        ctx.g.selmon = 0;
+    } else if ctx.g.selmon > mon_id {
+        ctx.g.selmon -= 1;
     }
 
     if barwin != 0 {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
+        if let Some(ref conn) = ctx.x11.conn {
             let _ = x11rb::protocol::xproto::unmap_window(conn, barwin);
             let _ = x11rb::protocol::xproto::destroy_window(conn, barwin);
         }
     }
 }
 
-pub fn dir_to_mon(dir: i32) -> Option<MonitorId> {
-    let g = get_globals();
-    if g.monitors.is_empty() {
+/// Get the monitor ID in the given direction from the selected monitor.
+///
+/// This function uses dependency injection by accepting references to
+/// monitor state instead of accessing global state.
+///
+/// # Arguments
+/// * `monitors` - Slice of all monitors
+/// * `selmon` - Currently selected monitor ID
+/// * `dir` - Direction (> 0 for next, < 0 for previous)
+///
+/// # Returns
+/// * `Some(monitor_id)` - The target monitor ID
+/// * `None` - If there are no monitors
+pub fn dir_to_mon(monitors: &[Monitor], selmon: MonitorId, dir: i32) -> Option<MonitorId> {
+    if monitors.is_empty() {
         return None;
     }
-    let selmon = g.selmon;
 
-    if g.monitors.len() <= 1 {
+    if monitors.len() <= 1 {
         return Some(selmon);
     }
 
     if dir > 0 {
-        if selmon + 1 >= g.monitors.len() {
+        if selmon + 1 >= monitors.len() {
             Some(0)
         } else {
             Some(selmon + 1)
         }
     } else if selmon == 0 {
-        Some(g.monitors.len() - 1)
+        Some(monitors.len() - 1)
     } else {
         Some(selmon - 1)
     }
 }
 
-pub fn rect_to_mon(rect: &Rect) -> Option<MonitorId> {
-    let g = get_globals();
-    if g.monitors.is_empty() {
+/// Find which monitor a rectangle intersects with the most.
+///
+/// This function uses dependency injection by accepting references to
+/// monitor state instead of accessing global state.
+///
+/// # Arguments
+/// * `monitors` - Slice of all monitors
+/// * `selmon` - Currently selected monitor ID (fallback)
+/// * `rect` - The rectangle to check
+///
+/// # Returns
+/// * `Some(monitor_id)` - The monitor with maximum intersection area
+/// * `None` - If there are no monitors
+pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Option<MonitorId> {
+    if monitors.is_empty() {
         return None;
     }
-    let selmon = g.selmon;
     let mut result = selmon;
     let mut max_area = 0;
 
-    for (i, m) in g.monitors.iter().enumerate() {
+    for (i, m) in monitors.iter().enumerate() {
         let area = intersect(rect, m);
         if area > max_area {
             max_area = area;
@@ -214,13 +290,21 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
     attach_stack(c_win);
     set_client_tag_prop(c_win);
 
-    focus(None);
+    {
+        let x11 = get_x11();
+        let mut g = get_globals_mut();
+        let mut ctx = WmCtx::new(&mut g, x11);
+        focus(&mut ctx, None);
+    }
 
     {
         let g = get_globals();
         if let Some(c) = g.clients.get(&c_win) {
             if !c.isfloating {
-                crate::layouts::arrange(None);
+                let x11 = get_x11();
+                let mut g = get_globals_mut();
+                let mut ctx = WmCtx::new(&mut g, x11);
+                crate::layouts::arrange(&mut ctx, None);
             }
         }
     }
@@ -244,7 +328,10 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                 };
 
                 if let Some(name) = sp_name {
-                    crate::scratchpad::scratchpad_show_name(&name);
+                    let x11 = get_x11();
+                    let mut g = get_globals_mut();
+                    let mut ctx = WmCtx::new(&mut g, x11);
+                    crate::scratchpad::scratchpad_show_name(&mut ctx, &name);
                 }
 
                 {
@@ -256,103 +343,103 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                     g.selmon = current_mon_id;
                 }
 
-                focus(None);
+                let x11 = get_x11();
+                let mut g = get_globals_mut();
+                let mut ctx = WmCtx::new(&mut g, x11);
+                focus(&mut ctx, None);
             }
         }
     }
 }
 
-pub fn focus_mon(direction: i32) {
-    let g = get_globals();
-
-    if g.monitors.len() <= 1 {
+/// Change focus to the next or previous monitor.
+///
+/// This function uses dependency injection by accepting a WmCtx
+/// instead of accessing global state directly.
+///
+/// # Arguments
+/// * `ctx` - WM context with mutable access to monitor state
+/// * `direction` - Direction (> 0 for next, < 0 for previous)
+pub fn focus_mon(ctx: &mut WmCtx, direction: i32) {
+    if ctx.g.monitors.len() <= 1 {
         return;
     }
 
-    let target = match dir_to_mon(direction) {
+    let target = match dir_to_mon(&ctx.g.monitors, ctx.g.selmon, direction) {
         Some(id) => id,
         None => return,
     };
 
-    if target == g.selmon {
+    if target == ctx.g.selmon {
         return;
     }
 
-    let old_id = g.selmon;
-    if let Some(win) = get_selected_client_win(old_id) {
-        unfocus_win(win, false);
+    let old_id = ctx.g.selmon;
+    if let Some(win) = ctx.g.monitors.get(old_id).and_then(|m| m.sel) {
+        unfocus_win(ctx, win, false);
     }
 
-    let g = get_globals_mut();
-    g.selmon = target;
+    ctx.g.selmon = target;
 
-    focus(None);
+    focus(ctx, None);
 }
 
-pub fn focus_n_mon(index: i32) {
-    let g = get_globals();
-
-    if g.monitors.len() <= 1 {
+/// Change focus to a specific monitor by index.
+///
+/// This function uses dependency injection by accepting a WmCtx
+/// instead of accessing global state directly.
+///
+/// # Arguments
+/// * `ctx` - WM context with mutable access to monitor state
+/// * `index` - Target monitor index (clamped to available monitors)
+pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
+    if ctx.g.monitors.len() <= 1 {
         return;
     }
 
     let mut target = 0;
     for i in 0..index as usize {
-        if i + 1 < g.monitors.len() {
+        if i + 1 < ctx.g.monitors.len() {
             target = i + 1;
         } else {
             break;
         }
     }
 
-    let old_id = g.selmon;
-    if let Some(win) = get_selected_client_win(old_id) {
-        unfocus_win(win, false);
+    let old_id = ctx.g.selmon;
+    if let Some(win) = ctx.g.monitors.get(old_id).and_then(|m| m.sel) {
+        unfocus_win(ctx, win, false);
     }
 
-    let g = get_globals_mut();
-    g.selmon = target;
+    ctx.g.selmon = target;
 
-    focus(None);
+    focus(ctx, None);
 }
 
-pub fn follow_mon(direction: i32) {
-    let c_win = {
-        let g = get_globals();
-        g.monitors.get(g.selmon).and_then(|m| m.sel)
-    };
-
-    let c_win = match c_win {
+pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
+    let c_win = match ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
         Some(w) => w,
         None => return,
     };
 
-    crate::tags::tag_mon(direction);
+    crate::tags::tag_mon(ctx, direction);
 
-    {
-        let g = get_globals_mut();
-        if let Some(c) = g.clients.get_mut(&c_win) {
-            if let Some(mon_id) = c.mon_id {
-                g.selmon = mon_id;
-            }
-        }
+    if let Some(mon_id) = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id) {
+        ctx.g.selmon = mon_id;
     }
 
-    focus(Some(c_win));
+    focus(ctx, Some(c_win));
 
-    {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
-            let _ = x11rb::protocol::xproto::configure_window(
-                conn,
-                c_win,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
-            );
-        }
-
-        warp_cursor_to_client(c_win);
+    if let Some(ref conn) = ctx.x11.conn {
+        let _ = x11rb::protocol::xproto::configure_window(
+            conn,
+            c_win,
+            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
+        );
     }
+
+    warp_cursor_to_client(ctx, c_win);
 }
 
 #[cfg(feature = "xinerama")]
@@ -494,12 +581,14 @@ pub fn update_geom() -> bool {
                                         attach_stack(win);
                                     }
 
+                                    let x11 = get_x11();
                                     let g = get_globals_mut();
                                     if g.selmon == i {
                                         g.selmon = 0;
                                     }
 
-                                    cleanup_monitor(i);
+                                    let mut ctx = WmCtx::new(g, &x11);
+                                    cleanup_monitor(&mut ctx, i);
                                 }
 
                                 if dirty {

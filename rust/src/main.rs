@@ -4,6 +4,7 @@ mod client;
 mod commands;
 mod config;
 mod constants;
+mod contexts;
 mod drw;
 mod events;
 mod floating;
@@ -40,7 +41,7 @@ use crate::config::init_config;
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11, get_x11_mut, RUNNING};
+use crate::globals::{get_globals, get_globals_mut, get_x11, get_x11_mut, XlibDisplay, RUNNING};
 use crate::keyboard::grab_keys;
 use crate::monitor::update_geom;
 use crate::types::*;
@@ -81,13 +82,10 @@ fn main() {
         die("usage: instantwm [-VX]");
     }
 
-    eprintln!("TRACE: main - before set_locale");
     if set_locale().is_err() {
         eprintln!("warning: no locale support");
     }
-    eprintln!("TRACE: main - after set_locale");
 
-    eprintln!("TRACE: main - before RustConnection::connect");
     let (conn, screen_num) = match RustConnection::connect(None) {
         Ok((c, s)) => (c, s),
         Err(_) => {
@@ -97,16 +95,11 @@ fn main() {
             std::process::exit(1);
         }
     };
-    eprintln!(
-        "TRACE: main - after RustConnection::connect, screen_num={}",
-        screen_num
-    );
 
     {
         let x11 = get_x11_mut();
         x11.conn = Some(conn);
         x11.screen_num = screen_num;
-        eprintln!("TRACE: main - x11.conn and x11.screen_num set");
     }
 
     let screen = {
@@ -115,44 +108,25 @@ fn main() {
         conn_ref.setup().roots[screen_num].clone()
     };
     let root = screen.root;
-    eprintln!("TRACE: main - screen and root obtained, root={}", root);
 
-    eprintln!("TRACE: main - before check_other_wm_init");
     check_other_wm_init(root);
-    eprintln!("TRACE: main - after check_other_wm_init");
 
-    eprintln!("TRACE: main - before init_globals");
     init_globals(screen_num, root, &screen);
-    eprintln!("TRACE: main - after init_globals");
-
-    eprintln!("TRACE: main - before load_xresources");
-    load_xresources();
-    eprintln!("TRACE: main - after load_xresources");
-
-    eprintln!("TRACE: main - before setup");
+    {
+        let x11 = get_x11();
+        let mut globals = get_globals_mut();
+        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        load_xresources(&mut ctx);
+    }
     setup(screen_num, root, &screen);
-    eprintln!("TRACE: main - after setup");
-
-    eprintln!("TRACE: main - before scan");
     scan();
-    eprintln!("TRACE: main - after scan");
-
-    eprintln!("TRACE: main - before run_autostart");
     run_autostart();
-    eprintln!("TRACE: main - after run_autostart");
-
-    eprintln!("TRACE: main - before run");
     run();
-    eprintln!("TRACE: main - after run (should not reach here unless exiting)");
-
-    eprintln!("TRACE: main - before cleanup");
     cleanup();
-    eprintln!("TRACE: main - after cleanup");
 
     {
         let x11 = get_x11_mut();
         x11.conn = None;
-        eprintln!("TRACE: main - x11.conn set to None");
     }
 }
 
@@ -190,170 +164,93 @@ fn check_other_wm_init(root: Window) {
 }
 
 fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xproto::Screen) {
-    let globals = get_globals_mut();
     let cfg = init_config();
 
-    globals.screen = screen_num as i32;
-    globals.root = root;
-    globals.sw = screen.width_in_pixels as i32;
-    globals.sh = screen.height_in_pixels as i32;
-
-    globals.borderpx = cfg.borderpx;
-    globals.snap = cfg.snap;
-    globals.startmenusize = cfg.startmenusize;
-    globals.systraypinning = cfg.systraypinning;
-    globals.systrayspacing = cfg.systrayspacing;
-    globals.showsystray = cfg.showsystray;
-    globals.showbar = cfg.showbar;
-    globals.topbar = cfg.topbar;
-    globals.barheight = cfg.barheight;
-    globals.resizehints = cfg.resizehints;
-    globals.decorhints = cfg.decorhints;
-    globals.mfact = cfg.mfact;
-    globals.nmaster = cfg.nmaster;
-
-    globals.tags.colors = cfg.tag_colors;
-
-    let num_tags = cfg.num_tags;
-    globals.tags.tags = Vec::with_capacity(num_tags);
-    for i in 0..num_tags {
-        let name = if i < cfg.tag_names.len() {
-            cfg.tag_names[i].clone()
-        } else {
-            format!("{}", i + 1)
-        };
-
-        let alt_name = if i < cfg.tag_alt_names.len() {
-            cfg.tag_alt_names[i]
-        } else {
-            ""
-        };
-
-        let mut tag = Tag::default();
-        tag.name = name;
-        tag.alt_name = alt_name;
-        tag.nmaster = cfg.nmaster;
-        tag.mfact = cfg.mfact;
-        tag.showbar = cfg.showbar;
-        // layouts default to TILE_LAYOUT (primary) and FLOATING_LAYOUT (secondary)
-        globals.tags.tags.push(tag);
+    // Initialize screen info
+    {
+        let globals = get_globals_mut();
+        globals.cfg.screen = screen_num as i32;
+        globals.cfg.root = root;
+        globals.cfg.sw = screen.width_in_pixels as i32;
+        globals.cfg.sh = screen.height_in_pixels as i32;
     }
 
-    globals.windowcolors = cfg.windowcolors;
-    globals.closebuttoncolors = cfg.closebuttoncolors;
-    globals.bordercolors = cfg.bordercolors;
-    globals.statusbarcolors = cfg.statusbarcolors;
-    globals.keys = cfg.keys;
-    globals.dkeys = cfg.dkeys;
-    globals.buttons = cfg.buttons;
-    globals.rules = cfg.rules;
-    globals.commands = cfg.commands;
-    globals.resources = cfg.resources;
-    globals.fonts = cfg.fonts;
-    globals.external_commands = cfg.external_commands;
+    // Update runtime config from config
+    crate::globals::update_config_from_config(&cfg);
+
+    // Initialize tags from config
+    crate::globals::init_tags_from_config(&cfg);
 }
 
 fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Screen) {
-    eprintln!("TRACE: setup - START");
-    eprintln!("TRACE: setup - before setup_signal_handlers");
     setup_signal_handlers();
-    eprintln!("TRACE: setup - after setup_signal_handlers");
 
     while unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG) } > 0 {}
 
-    eprintln!("TRACE: setup - before Drw::new");
     let mut drw = match Drw::new(None) {
         Ok(d) => d,
         Err(_) => die("instantwm: cannot create drawing context"),
     };
-    eprintln!("TRACE: setup - after Drw::new");
 
     let fonts: Vec<&str> = {
         let g = get_globals();
-        g.fonts.clone()
+        g.cfg.fonts.clone()
     };
 
-    eprintln!("TRACE: setup - before fontset_create");
     if drw.fontset_create(&fonts).is_err() {
         die("no fonts could be loaded.");
     }
-    eprintln!("TRACE: setup - after fontset_create");
 
     let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
-    eprintln!("TRACE: setup - font_height = {}", font_height);
 
     let barheight = {
         let g = get_globals();
-        g.barheight
+        g.cfg.barheight
     };
-    eprintln!("TRACE: setup - barheight = {}", barheight);
 
     let bh = if barheight > 0 {
         font_height + barheight as u32
     } else {
         font_height + 12
     };
-    eprintln!("TRACE: setup - bh = {}", bh);
 
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
-            eprintln!("TRACE: setup - no connection, returning early");
             return;
         };
-        eprintln!("TRACE: setup - before init_atoms");
         init_atoms(conn);
-        eprintln!("TRACE: setup - after init_atoms");
     }
 
-    eprintln!("TRACE: setup - before init_cursors");
-    init_cursors(&drw);
-    eprintln!("TRACE: setup - after init_cursors");
-
-    eprintln!("TRACE: setup - before init_schemes");
-    init_schemes(&drw);
-    eprintln!("TRACE: setup - after init_schemes");
+    init_cursors(&mut drw);
+    init_schemes(&mut drw);
 
     {
         let globals = get_globals_mut();
-        globals.xlibdisplay = crate::globals::XlibDisplay(drw.display());
-        globals.drw = Some(drw);
-        globals.bh = bh as i32;
-        globals.lrpad = font_height as i32;
-        eprintln!(
-            "TRACE: setup - globals set (drw, bh={}, lrpad={})",
-            bh, font_height
-        );
+        globals.cfg.xlibdisplay = XlibDisplay(drw.display());
+        globals.cfg.drw = Some(drw);
+        globals.cfg.bh = bh as i32;
+        globals.cfg.lrpad = font_height as i32;
     }
 
-    eprintln!("TRACE: setup - before update_geom");
     update_geom();
-    eprintln!("TRACE: setup - after update_geom");
+    {
+        let x11 = get_x11();
+        let mut globals = get_globals_mut();
+        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        verify_tags_xres(&mut ctx);
+        update_bars(&mut ctx);
+        update_status(&mut ctx);
+    }
 
-    eprintln!("TRACE: setup - before verify_tags_xres");
-    verify_tags_xres();
-    eprintln!("TRACE: setup - after verify_tags_xres");
-
-    eprintln!("TRACE: setup - before update_bars");
-    update_bars();
-    eprintln!("TRACE: setup - after update_bars");
-
-    eprintln!("TRACE: setup - before update_status");
-    update_status();
-    eprintln!("TRACE: setup - after update_status");
-
-    eprintln!("TRACE: setup - before init_wm_check_window");
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
-            eprintln!("TRACE: setup - no connection, returning early");
             return;
         };
         init_wm_check_window(conn, screen_num, root);
     }
-    eprintln!("TRACE: setup - after init_wm_check_window");
 
-    eprintln!("TRACE: setup - before setting event mask");
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
@@ -367,14 +264,12 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
 
     let cursor = {
         let g = get_globals();
-        g.cursors[0].as_ref().map(|c| c.cursor).unwrap_or(0)
+        g.cfg.cursors[0].as_ref().map(|c| c.cursor).unwrap_or(0)
     };
-    eprintln!("TRACE: setup - cursor = {}", cursor);
 
     {
         let x11 = get_x11();
         let Some(ref conn) = x11.conn else {
-            eprintln!("TRACE: setup - no connection, returning early");
             return;
         };
         let _ = conn.change_window_attributes(
@@ -383,20 +278,16 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
                 .event_mask(mask)
                 .cursor(cursor),
         );
-
         let _ = conn.flush();
-        eprintln!("TRACE: setup - event mask and cursor set");
     }
-    eprintln!("TRACE: setup - after setting event mask");
 
-    eprintln!("TRACE: setup - before grab_keys");
-    grab_keys();
-    eprintln!("TRACE: setup - after grab_keys");
-
-    eprintln!("TRACE: setup - before focus");
-    focus(None);
-    eprintln!("TRACE: setup - after focus");
-    eprintln!("TRACE: setup - END");
+    {
+        let x11 = get_x11();
+        let mut globals = get_globals_mut();
+        let ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        grab_keys(&ctx);
+        focus(&mut ctx, None);
+    }
 }
 
 fn setup_signal_handlers() {
@@ -439,13 +330,13 @@ fn init_atoms<C: Connection>(conn: &C) {
     let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
 
     let globals = get_globals_mut();
-    globals.wmatom = crate::types::WmAtoms {
+    globals.cfg.wmatom = crate::types::WmAtoms {
         protocols: wm_protocols,
         delete: wm_delete,
         state: wm_state,
         take_focus: wm_take_focus,
     };
-    globals.netatom = crate::types::NetAtoms {
+    globals.cfg.netatom = crate::types::NetAtoms {
         active_window: net_active_window,
         supported: net_supported,
         system_tray: net_system_tray,
@@ -461,8 +352,8 @@ fn init_atoms<C: Connection>(conn: &C) {
         client_list: net_client_list,
         client_info: net_client_info,
     };
-    globals.motifatom = motifatom;
-    globals.xatom = crate::types::XAtoms {
+    globals.cfg.motifatom = motifatom;
+    globals.cfg.xatom = crate::types::XAtoms {
         manager: xembed_manager,
         xembed,
         xembed_info,
@@ -479,7 +370,7 @@ fn intern_atom<C: Connection>(conn: &C, name: &str, only_if_exists: bool) -> u32
     }
 }
 
-fn init_cursors(drw: &Drw) {
+fn init_cursors(drw: &mut Drw) {
     let cursors = [
         drw.cur_create(XC_LEFT_PTR),
         drw.cur_create(XC_CROSSHAIR),
@@ -495,20 +386,20 @@ fn init_cursors(drw: &Drw) {
 
     let globals = get_globals_mut();
     for (i, cursor) in cursors.into_iter().enumerate() {
-        if i < globals.cursors.len() {
-            globals.cursors[i] = Some(cursor);
+        if i < globals.cfg.cursors.len() {
+            globals.cfg.cursors[i] = Some(cursor);
         }
     }
 }
 
-fn init_schemes(drw: &Drw) {
+fn init_schemes(drw: &mut Drw) {
     let bordercolors: Vec<&str> = {
         let g = get_globals();
-        g.bordercolors.clone()
+        g.cfg.bordercolors.clone()
     };
     let statusbarcolors: Vec<&str> = {
         let g = get_globals();
-        g.statusbarcolors.clone()
+        g.cfg.statusbarcolors.clone()
     };
     let tagcolors: Vec<Vec<Vec<&str>>> = {
         let g = get_globals();
@@ -516,11 +407,11 @@ fn init_schemes(drw: &Drw) {
     };
     let windowcolors: Vec<Vec<Vec<&str>>> = {
         let g = get_globals();
-        g.windowcolors.clone()
+        g.cfg.windowcolors.clone()
     };
     let closebuttoncolors: Vec<Vec<Vec<&str>>> = {
         let g = get_globals();
-        g.closebuttoncolors.clone()
+        g.cfg.closebuttoncolors.clone()
     };
 
     let borderscheme = drw.scm_create(&bordercolors).ok().map(|clr| {
@@ -626,11 +517,11 @@ fn init_schemes(drw: &Drw) {
     };
 
     let globals = get_globals_mut();
-    globals.borderscheme = borderscheme;
-    globals.statusscheme = statusscheme;
+    globals.cfg.borderscheme = borderscheme;
+    globals.cfg.statusscheme = statusscheme;
     globals.tags.schemes = tagschemes;
-    globals.windowschemes = windowschemes;
-    globals.closebuttonschemes = closebuttonschemes;
+    globals.cfg.windowschemes = windowschemes;
+    globals.cfg.closebuttonschemes = closebuttonschemes;
 }
 
 fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Window) {
@@ -641,7 +532,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
     }
 
     let _ = conn.create_window(
-        0u8, // depth: COPY_FROM_PARENT as u8 is 0
+        0u8,
         wmcheckwin,
         root,
         0,
@@ -656,7 +547,7 @@ fn init_wm_check_window<C: Connection>(conn: &C, _screen_num: usize, root: Windo
 
     let (net_wm_check, net_wm_name, net_supported, net_atoms, net_client_list, net_client_info) = {
         let g = get_globals();
-        let na = g.netatom;
+        let na = g.cfg.netatom;
         let net_atoms = vec![
             na.active_window,
             na.supported,

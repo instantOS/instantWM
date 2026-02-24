@@ -17,24 +17,28 @@ mod state;
 
 // ── snap ─────────────────────────────────────────────────────────────────────
 
-/// `SnapDir` is the typed direction enum; `change_snap` / `reset_snap` are used by keyboard.rs.
-pub use snap::{change_snap, reset_snap, SnapDir};
-
-// ── state ────────────────────────────────────────────────────────────────────
-
-/// Geometry / border-width persistence, and floating-state transitions.
-pub use state::{
-    save_floating_win, set_floating_in_place, set_tiled, temp_fullscreen, toggle_floating,
-};
+/// `SnapDir` is the typed direction enum.
+pub use snap::SnapDir;
+pub use snap::{apply_snap, change_snap, reset_snap};
 
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{center_window, key_resize, moveresize};
+pub use movement::{
+    center_window, downscale_client, key_resize, moveresize, scale_client_win, upscale_client,
+};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
-/// Batch save/restore across all floating clients, and grid distribution.
 pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+pub use helpers::{apply_size, check_floating, has_tiling_layout, visible_client};
+
+// ── state ────────────────────────────────────────────────────────────────────
+
+pub use state::{
+    apply_float_change, change_floating_win, restore_floating_win, save_floating_win, set_floating,
+    set_floating_in_place, set_tiled, temp_fullscreen, toggle_floating,
+};

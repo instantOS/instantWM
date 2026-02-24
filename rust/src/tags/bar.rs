@@ -10,7 +10,8 @@
 //! tag-index remapping, skip logic, display names, and widths in one place.
 
 use crate::bar::text_width;
-use crate::globals::{get_globals, Globals};
+use crate::contexts::WmCtx;
+use crate::globals::Globals;
 use crate::types::Monitor;
 
 /// Maximum number of tag slots rendered in the bar.
@@ -37,7 +38,7 @@ pub(crate) fn visible_tags<'a>(
     monitor: &Monitor,
     occupied: u32,
 ) -> Vec<VisibleTag<'a>> {
-    let lrpad = globals.lrpad;
+    let lrpad = globals.cfg.lrpad;
     let show_alt = globals.tags.show_alt;
     let slot_count = globals.tags.count().min(MAX_BAR_SLOTS);
 
@@ -73,31 +74,32 @@ pub(crate) fn visible_tags<'a>(
 
 /// Return the total pixel width of the tag strip (including the start-menu
 /// button at the left edge).
-pub fn get_tag_width() -> i32 {
-    let g = get_globals();
-    let occupied = occupied_tags_on_selmon(g);
+pub fn get_tag_width(ctx: &WmCtx) -> i32 {
+    let occupied = occupied_tags_on_selmon(ctx.g);
 
-    let Some(m) = g.monitors.get(g.selmon) else {
-        return g.startmenusize;
+    let Some(m) = ctx.g.monitors.get(ctx.g.selmon) else {
+        return ctx.g.cfg.startmenusize;
     };
 
-    let tags_width: i32 = visible_tags(g, m, occupied).iter().map(|t| t.width).sum();
-    g.startmenusize + tags_width
+    let tags_width: i32 = visible_tags(ctx.g, m, occupied)
+        .iter()
+        .map(|t| t.width)
+        .sum();
+    ctx.g.cfg.startmenusize + tags_width
 }
 
 /// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
 ///
 /// `click_x` is relative to the left edge of the bar window.
-pub fn get_tag_at_x(click_x: i32) -> i32 {
-    let g = get_globals();
-    let occupied = occupied_tags_on_selmon(g);
+pub fn get_tag_at_x(ctx: &WmCtx, click_x: i32) -> i32 {
+    let occupied = occupied_tags_on_selmon(ctx.g);
 
-    let Some(m) = g.monitors.get(g.selmon) else {
+    let Some(m) = ctx.g.monitors.get(ctx.g.selmon) else {
         return -1;
     };
 
-    let mut acc = g.startmenusize;
-    for t in visible_tags(g, m, occupied) {
+    let mut acc = ctx.g.cfg.startmenusize;
+    for t in visible_tags(ctx.g, m, occupied) {
         acc += t.width;
         if acc >= click_x {
             return t.tag_index as i32;

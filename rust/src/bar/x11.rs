@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::systray::get_systray_width;
 use crate::types::Monitor;
@@ -7,37 +8,32 @@ use x11rb::protocol::xproto::Window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn update_status() {
-    let (root, selmon_idx) = {
-        let g = get_globals();
-        (g.root, g.selmon)
-    };
+pub fn update_status(ctx: &mut WmCtx) {
+    let root = ctx.g.root;
+    let selmon_idx = ctx.g.selmon;
 
-    let text = get_text_prop(root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
-    {
-        let g = get_globals_mut();
-        match text {
-            Some(t) => {
-                if t.starts_with("ipc:") {
-                    return;
-                }
-                g.status_text = t;
+    let text = get_text_prop(ctx, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
+    match text {
+        Some(t) => {
+            if t.starts_with("ipc:") {
+                return;
             }
-            None => {
-                g.status_text = format!("instantwm-{}", VERSION);
-            }
+            ctx.g.status_text = t;
+        }
+        None => {
+            ctx.g.status_text = format!("instantwm-{}", VERSION);
         }
     }
 
-    if let Some(m) = get_globals_mut().monitors.get_mut(selmon_idx) {
-        super::draw_bar(m);
+    if let Some(m) = ctx.g.monitors.get_mut(selmon_idx) {
+        super::draw_bar_ctx(ctx, m);
     }
 
     crate::systray::update_systray();
 }
 
 pub fn update_bar_pos(m: &mut Monitor) {
-    let bh = get_globals().bh;
+    let bh = get_globals().cfg.bh;
     update_bar_pos_with_bh(m, bh);
 }
 
@@ -60,8 +56,8 @@ pub(crate) fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
 
 pub fn resize_bar_win(m: &Monitor) {
     let g = get_globals();
-    let bh = g.bh;
-    let showsystray = g.showsystray;
+    let bh = g.cfg.bh;
+    let showsystray = g.cfg.showsystray;
     let is_selmon = g
         .monitors
         .get(g.selmon)
@@ -85,23 +81,23 @@ pub fn resize_bar_win(m: &Monitor) {
     }
 }
 
-pub fn update_bars() {
+pub fn update_bars(ctx: &mut WmCtx) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let g = get_globals();
-        let bh = g.bh;
-        let showsystray = g.showsystray;
-        let status_bg = parse_color_to_u32(g.statusbarcolors.get(1).copied().unwrap_or("#121212"));
-        let xlibdisplay = g.xlibdisplay.0;
-        let root = g.root;
+        let bh = ctx.g.cfg.bh;
+        let showsystray = ctx.g.cfg.showsystray;
+        let status_bg =
+            parse_color_to_u32(ctx.g.statusbarcolors.get(1).copied().unwrap_or("#121212"));
+        let xlibdisplay = ctx.g.xlibdisplay.0;
+        let root = ctx.g.root;
 
         let mut bar_configs = Vec::new();
-        for (i, m) in g.monitors.iter().enumerate() {
+        for (i, m) in ctx.g.monitors.iter().enumerate() {
             if m.barwin != 0 {
                 continue;
             }
 
             let mut w = m.work_rect.w as u32;
-            if showsystray && g.selmon == i {
+            if showsystray && ctx.g.selmon == i {
                 w = w.saturating_sub(crate::systray::get_systray_width());
             }
             bar_configs.push((i, m.work_rect.x, m.by, w, bh));
@@ -144,8 +140,9 @@ pub fn update_bars() {
             let _ = conn.map_window(win_id);
             let _ = conn.flush();
 
-            let globals_mut = get_globals_mut();
-            globals_mut.monitors[i].barwin = win_id;
+            if let Some(mon) = ctx.g.monitors.get_mut(i) {
+                mon.barwin = win_id;
+            }
         }
     }
 }
@@ -180,9 +177,8 @@ pub fn toggle_bar() {
     }
 }
 
-fn get_text_prop(win: Window, atom: u32) -> Option<String> {
-    let x11 = get_x11();
-    let conn = x11.conn.as_ref()?;
+fn get_text_prop(ctx: &WmCtx, win: Window, atom: u32) -> Option<String> {
+    let conn = ctx.x11.conn.as_ref()?;
     let reply = conn
         .get_property(
             false,

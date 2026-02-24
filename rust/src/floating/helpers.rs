@@ -3,7 +3,7 @@
 //! None of these functions mutate floating state – they only inspect it.
 
 use crate::client::resize;
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use x11rb::protocol::xproto::Window;
 
 // ── Layout query ─────────────────────────────────────────────────────────────
@@ -13,12 +13,10 @@ use x11rb::protocol::xproto::Window;
 /// Used as a guard throughout the floating module: floating-only operations
 /// should be no-ops when a tiling layout is active and the window is not
 /// explicitly floating.
-pub fn has_tiling_layout() -> bool {
-    let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(globals.selmon) {
-        return crate::monitor::is_current_layout_tiling(mon, &globals.tags);
+pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
+    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        return crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags);
     }
-    // No monitor → treat as tiling so we don't accidentally float things.
     true
 }
 
@@ -30,14 +28,13 @@ pub fn has_tiling_layout() -> bool {
 /// - its `isfloating` flag is set, or
 /// - no tiling layout is active on the selected monitor (all windows float in
 ///   floating-only layouts).
-pub fn check_floating(win: Window) -> bool {
-    let globals = get_globals();
-    if let Some(client) = globals.clients.get(&win) {
+pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
+    if let Some(client) = ctx.g.clients.get(&win) {
         if client.isfloating {
             return true;
         }
-        if let Some(mon) = globals.monitors.get(globals.selmon) {
-            if !crate::monitor::is_current_layout_tiling(mon, &globals.tags) {
+        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+            if !crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags) {
                 return true;
             }
         }
@@ -52,9 +49,8 @@ pub fn check_floating(win: Window) -> bool {
 ///
 /// This is a window-ID convenience wrapper around [`Client::is_visible`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
-pub fn visible_client(win: Window) -> bool {
-    let globals = get_globals();
-    globals
+pub fn visible_client(ctx: &WmCtx, win: Window) -> bool {
+    ctx.g
         .clients
         .get(&win)
         .map(|c| c.is_visible())
@@ -69,13 +65,10 @@ pub fn visible_client(win: Window) -> bool {
 /// repaint the window frame without triggering a full `arrange()` pass.  It is
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
-pub fn apply_size(win: Window) {
-    let geo = {
-        let globals = get_globals();
-        globals.clients.get(&win).map(|c| c.geo)
-    };
+pub fn apply_size(ctx: &mut WmCtx, win: Window) {
+    let geo = ctx.g.clients.get(&win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;
-        resize(win, &rect, false);
+        resize(ctx, win, &rect, false);
     }
 }

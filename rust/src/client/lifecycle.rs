@@ -39,9 +39,9 @@ use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
     update_wm_hints,
 };
-
+use crate::contexts::WmCtx;
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::get_x11;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect};
 use std::cmp::max;
@@ -58,7 +58,8 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 ///
 /// `wa_*` arguments come directly from the `GetWindowAttributesReply` /
 /// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
-pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
+///
+pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
@@ -69,24 +70,29 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     c.old_border_width = wa_border_width as i32;
     // Read the window title before insertion so that apply_rules can match on
     // rule.title from the very first moment the client exists in the map.
-    c.name = read_title_from_x(w);
+    c.name = read_title_from_x(ctx, w);
 
     // -------------------------------------------------------------------------
     // 2. Assign the initial monitor (from transient parent or selmon).
     // -------------------------------------------------------------------------
-    let trans = get_transient_for_hint(w);
+    let trans = get_transient_for_hint_ctx(ctx, w);
 
     {
-        let globals = get_globals();
-        let trans_client = trans.and_then(win_to_client);
+        let trans_client = trans.and_then(|win| {
+            if ctx.g.clients.contains_key(&win) {
+                Some(win)
+            } else {
+                None
+            }
+        });
 
         if let Some(tc_win) = trans_client {
-            if let Some(tc) = globals.clients.get(&tc_win) {
+            if let Some(tc) = ctx.g.clients.get(&tc_win) {
                 c.mon_id = tc.mon_id;
                 c.tags = tc.tags;
             }
         } else {
-            c.mon_id = Some(globals.selmon);
+            c.mon_id = Some(ctx.g.selmon);
         }
     }
 
@@ -100,39 +106,31 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     c.is_hidden =
         crate::client::visibility::get_state(w) == crate::client::constants::WM_STATE_ICONIC;
 
-    {
-        let globals = get_globals_mut();
-        globals.clients.insert(w, c.clone());
-    }
+    ctx.g.clients.insert(w, c.clone());
 
     apply_rules(w);
 
     // -------------------------------------------------------------------------
     // 4. Apply the global default border width.
     // -------------------------------------------------------------------------
-    let borderpx = get_globals().borderpx;
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&w) {
-            client.border_width = borderpx;
-        }
+    let borderpx = ctx.g.cfg.borderpx;
+    if let Some(client) = ctx.g.clients.get_mut(&w) {
+        client.border_width = borderpx;
     }
 
     // -------------------------------------------------------------------------
     // 5. Clamp the initial position to the monitor work-area.
     // -------------------------------------------------------------------------
     let (_mon_showbar, mon_work_rect, mon_monitor_rect) = {
-        let globals = get_globals();
-        let mon_id = globals.clients.get(&w).and_then(|c| c.mon_id);
+        let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
         mon_id
-            .and_then(|mid| globals.monitors.get(mid))
+            .and_then(|mid| ctx.g.monitors.get(mid))
             .map(|m| (m.showbar, m.work_rect, m.monitor_rect))
             .unwrap_or((false, Rect::default(), Rect::default()))
     };
 
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&w) {
+        if let Some(client) = ctx.g.clients.get_mut(&w) {
             if client.geo.x + client_width(client) > mon_work_rect.x + mon_work_rect.w {
                 client.geo.x = mon_work_rect.x + mon_work_rect.w - client_width(client);
             }
@@ -148,19 +146,19 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // 6. Configure the X11 window: border width and border colour.
     // -------------------------------------------------------------------------
     let is_monocle = {
-        let globals = get_globals();
-        let mon_id = globals.clients.get(&w).and_then(|c| c.mon_id);
+        let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
         mon_id
-            .and_then(|mid| globals.monitors.get(mid))
-            .map(|mon| !crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+            .and_then(|mid| ctx.g.monitors.get(mid))
+            .map(|mon| !crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags))
             .unwrap_or(false)
     };
 
-    let bh = get_globals().bh;
-    let x11 = get_x11();
+    let bh = ctx.g.cfg.bh;
+    let x11 = ctx.x11;
 
     if let Some(ref conn) = x11.conn {
-        let (isfloating, client_width, client_height) = get_globals()
+        let (isfloating, client_width, client_height) = ctx
+            .g
             .clients
             .get(&w)
             .map(|c| (c.isfloating, c.geo.w, c.geo.h))
@@ -178,11 +176,8 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
             borderpx
         };
 
-        {
-            let globals = get_globals_mut();
-            if let Some(client) = globals.clients.get_mut(&w) {
-                client.border_width = border_width;
-            }
+        if let Some(client) = ctx.g.clients.get_mut(&w) {
+            client.border_width = border_width;
         }
 
         let _ = conn.configure_window(
@@ -190,8 +185,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
             &ConfigureWindowAux::new().border_width(border_width as u32),
         );
 
-        let globals = get_globals();
-        if let Some(ref scheme) = globals.borderscheme {
+        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
             let pixel = scheme.normal.bg.pixel();
             let _ = conn.change_window_attributes(
                 w,
@@ -204,11 +198,11 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     // 7. Read and apply all X11 hints/properties.
     // -------------------------------------------------------------------------
-    crate::client::focus::configure(w);
-    update_window_type(w);
+    crate::client::focus::configure(ctx, w);
+    update_window_type(ctx, w);
     update_size_hints_win(w);
-    update_wm_hints(w);
-    read_client_info(w);
+    update_wm_hints(ctx, w);
+    read_client_info(ctx, w);
     set_client_tag_prop(w);
     update_motif_hints(w);
 
@@ -216,8 +210,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // 8. Store the floating geometry snapshot.
     // -------------------------------------------------------------------------
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&w) {
+        if let Some(client) = ctx.g.clients.get_mut(&w) {
             client.float_geo.x = client.geo.x;
             // When the window's y is above the monitor origin (can happen with
             // multi-monitor setups), offset by the monitor's y.
@@ -243,21 +236,16 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
             conn.change_window_attributes(w, &ChangeWindowAttributesAux::new().event_mask(mask));
     }
 
-    grab_buttons(w, false);
+    grab_buttons(ctx, w, false);
 
     // -------------------------------------------------------------------------
     // 10. Determine the initial floating state.
     // -------------------------------------------------------------------------
-    let isfixed = get_globals()
-        .clients
-        .get(&w)
-        .map(|c| c.isfixed)
-        .unwrap_or(false);
+    let isfixed = ctx.g.clients.get(&w).map(|c| c.isfixed).unwrap_or(false);
 
     let mut should_raise = false;
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&w) {
+        if let Some(client) = ctx.g.clients.get_mut(&w) {
             if !client.isfloating {
                 client.isfloating = trans.is_some() || isfixed;
                 client.oldstate = client.isfloating as i32;
@@ -282,12 +270,11 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     attach_stack(w);
 
     {
-        let globals = get_globals();
         if let Some(ref conn) = x11.conn {
             let _ = conn.change_property32(
                 PropMode::APPEND,
-                globals.root,
-                globals.netatom.client_list,
+                ctx.g.cfg.root,
+                ctx.g.cfg.netatom.client_list,
                 AtomEnum::WINDOW,
                 &[w],
             );
@@ -300,13 +287,12 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     //     (Avoids a visible "flash" at (0,0) before the layout runs.)
     // -------------------------------------------------------------------------
     let (screen_width, client_x, client_y, client_width, client_height) = {
-        let globals = get_globals();
-        globals
+        ctx.g
             .clients
             .get(&w)
             .map(|client| {
                 (
-                    globals.sw,
+                    ctx.g.cfg.sw,
                     client.geo.x,
                     client.geo.y,
                     client.geo.w,
@@ -328,41 +314,31 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
         let _ = conn.flush();
     }
 
-    let initially_hidden = get_globals()
-        .clients
-        .get(&w)
-        .map(|c| c.is_hidden)
-        .unwrap_or(false);
+    let initially_hidden = ctx.g.clients.get(&w).map(|c| c.is_hidden).unwrap_or(false);
 
     if !initially_hidden {
         set_client_state(w, WM_STATE_NORMAL);
     }
 
     // Unfocus the previously selected window before reassigning sel.
-    let sel_win = get_globals()
-        .monitors
-        .get(get_globals().selmon)
-        .and_then(|mon| mon.sel);
+    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
 
     if let Some(sel_win) = sel_win {
-        unfocus_win(sel_win, false);
+        unfocus_win(ctx, sel_win, false);
     }
 
     // Re-snapshot c from the map (apply_rules / hints may have changed it).
-    let c = get_globals().clients.get(&w).cloned().unwrap_or_default();
+    let c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
 
-    let animated = {
-        let globals = get_globals_mut();
-        if let Some(mon_id) = c.mon_id {
-            if let Some(mon) = globals.monitors.get_mut(mon_id) {
-                mon.sel = Some(w);
-            }
+    let animated = ctx.g.animated;
+    if let Some(mon_id) = c.mon_id {
+        if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
+            mon.sel = Some(w);
         }
-        globals.animated
-    };
+    }
 
     if let Some(mon_id) = c.mon_id {
-        arrange(Some(mon_id));
+        arrange(ctx, Some(mon_id));
     }
 
     if !initially_hidden {
@@ -372,7 +348,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
         }
     }
 
-    focus(None);
+    focus(ctx, None);
 
     // -------------------------------------------------------------------------
     // 13. Entrance animation.
@@ -402,8 +378,8 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
 
         let is_tiling = c
             .mon_id
-            .and_then(|mid| get_globals().monitors.get(mid))
-            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &get_globals().tags))
+            .and_then(|mid| ctx.g.monitors.get(mid))
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags))
             .unwrap_or(false);
 
         if !is_tiling {
@@ -414,7 +390,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
             }
         } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
             if let Some(mon_id) = c.mon_id {
-                arrange(Some(mon_id));
+                arrange(ctx, Some(mon_id));
             }
         }
     }
@@ -431,14 +407,14 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
 /// attempt to configure it will fail).  When `false` (e.g. a `UnmapNotify`
 /// from a deliberately withdrawn window) we restore the border width and clear
 /// the event mask / WM_STATE.
-pub fn unmanage(win: Window, destroyed: bool) {
-    let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
+///
+pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
+    let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
 
     // Clear overlay and fullscreen references so those code paths don't hold
     // dangling window IDs after the client is gone.
     {
-        let globals = get_globals_mut();
-        for mon in &mut globals.monitors {
+        for mon in &mut ctx.g.monitors {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
             }
@@ -452,9 +428,9 @@ pub fn unmanage(win: Window, destroyed: bool) {
     detach_stack(win);
 
     if !destroyed {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
-            let old_bw = get_globals()
+        if let Some(ref conn) = ctx.x11.conn {
+            let old_bw = ctx
+                .g
                 .clients
                 .get(&win)
                 .map(|c| c.old_border_width)
@@ -483,13 +459,13 @@ pub fn unmanage(win: Window, destroyed: bool) {
     }
 
     // Remove from the global map.
-    get_globals_mut().clients.remove(&win);
+    ctx.g.clients.remove(&win);
 
-    focus(None);
+    focus(ctx, None);
     update_client_list();
 
     if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        arrange(ctx, Some(mid));
     }
 }
 
@@ -502,13 +478,12 @@ pub fn unmanage(win: Window, destroyed: bool) {
 /// [`Client`] has been inserted.
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
-fn read_title_from_x(win: Window) -> String {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
+fn read_title_from_x(ctx: &WmCtx, win: Window) -> String {
+    let Some(ref conn) = ctx.x11.conn else {
         return BROKEN.to_string();
     };
 
-    let net_wm_name = get_globals().netatom.wm_name;
+    let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
     for atom in [
         net_wm_name,
@@ -569,11 +544,10 @@ pub fn get_transient_for_hint(w: Window) -> Option<Window> {
 /// This is used to persist client state across WM restarts: when the WM starts
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
-fn read_client_info(w: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+fn read_client_info(ctx: &mut WmCtx, w: Window) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
-    let client_info_atom = get_globals().netatom.client_info;
+    let client_info_atom = ctx.g.cfg.netatom.client_info;
 
     let Ok(cookie) = conn.get_property(false, w, client_info_atom, AtomEnum::CARDINAL, 0, 2) else {
         return;
@@ -586,16 +560,23 @@ fn read_client_info(w: Window) {
     let tags = data.next().unwrap_or(0);
     let mon_num = data.next().unwrap_or(0);
 
-    let target_mon = get_globals()
-        .monitors
-        .iter()
-        .position(|m| m.num as u32 == mon_num);
+    let target_mon = ctx.g.monitors.iter().position(|m| m.num as u32 == mon_num);
 
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&w) {
+    if let Some(client) = ctx.g.clients.get_mut(&w) {
         client.tags = tags;
         if let Some(mid) = target_mon {
             client.mon_id = Some(mid);
         }
     }
+}
+
+fn get_transient_for_hint_ctx(ctx: &WmCtx, w: Window) -> Option<Window> {
+    let Some(ref conn) = ctx.x11.conn else {
+        return None;
+    };
+
+    conn.get_property(false, w, AtomEnum::WM_TRANSIENT_FOR, AtomEnum::WINDOW, 0, 1)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
 }

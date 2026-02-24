@@ -14,7 +14,7 @@
 //!                       whether it is currently focused.
 
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
-use crate::globals::{get_globals, get_x11};
+use crate::contexts::WmCtx;
 use std::sync::atomic::{AtomicU32, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -42,12 +42,10 @@ pub static LAST_CLIENT: AtomicU32 = AtomicU32::new(0);
 /// learn about position/size changes that did not originate from their own
 /// `ConfigureRequest`.  We send it after every [`super::geometry::resize_client`]
 /// call.
-pub fn configure(win: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn configure(ctx: &mut WmCtx, win: Window) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
 
@@ -82,6 +80,7 @@ pub fn configure(win: Window) {
 /// For any other `proto` value the message is sent unconditionally and `true`
 /// is returned.
 pub fn send_event(
+    ctx: &mut WmCtx,
     win: Window,
     proto: u32,
     mask: u32,
@@ -91,19 +90,17 @@ pub fn send_event(
     d3: i64,
     d4: i64,
 ) -> bool {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
+    let Some(ref conn) = ctx.x11.conn else {
         return false;
     };
 
-    let globals = get_globals();
-    let wmatom_protocols = globals.wmatom.protocols;
-    let wmatom_take_focus = globals.wmatom.take_focus;
-    let wmatom_delete = globals.wmatom.delete;
+    let wmatom_protocols = ctx.g.cfg.wmatom.protocols;
+    let wmatom_take_focus = ctx.g.cfg.wmatom.take_focus;
+    let wmatom_delete = ctx.g.cfg.wmatom.delete;
 
     let (exists, message_type) = if proto == wmatom_take_focus || proto == wmatom_delete {
         // Check whether the client advertises support for this protocol.
-        let supported = read_wm_protocols(conn, win, globals.wmatom.protocols)
+        let supported = read_wm_protocols(conn, win, ctx.g.cfg.wmatom.protocols)
             .into_iter()
             .any(|p| p == proto);
         (supported, wmatom_protocols)
@@ -136,12 +133,10 @@ pub fn send_event(
 /// Sets the X input focus (unless the client has `neverfocus` set) and updates
 /// `_NET_ACTIVE_WINDOW` on the root.  Also sends `WM_TAKE_FOCUS` so that
 /// clients using the "locally active" input model receive focus correctly.
-pub fn set_focus(win: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn set_focus(ctx: &mut WmCtx, win: Window) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
 
@@ -149,18 +144,19 @@ pub fn set_focus(win: Window) {
         let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
         let _ = conn.change_property32(
             PropMode::REPLACE,
-            globals.root,
-            globals.netatom.active_window,
+            ctx.g.cfg.root,
+            ctx.g.cfg.netatom.active_window,
             AtomEnum::WINDOW,
             &[win],
         );
     }
 
     send_event(
+        ctx,
         win,
-        globals.wmatom.take_focus,
+        ctx.g.cfg.wmatom.take_focus,
         0,
-        globals.wmatom.take_focus as i64,
+        ctx.g.cfg.wmatom.take_focus as i64,
         CURRENT_TIME as i64,
         0,
         0,
@@ -179,29 +175,26 @@ pub fn set_focus(win: Window) {
 /// If `redirect_to_root` is `true`, focus is explicitly returned to the root
 /// window and `_NET_ACTIVE_WINDOW` is deleted – this is used when no other
 /// client is taking focus.
-pub fn unfocus_win(win: Window, redirect_to_root: bool) {
+pub fn unfocus_win(ctx: &mut WmCtx, win: Window, redirect_to_root: bool) {
     if win == 0 {
         return;
     }
 
     LAST_CLIENT.store(win, Ordering::Relaxed);
-    grab_buttons(win, false);
+    grab_buttons(ctx, win, false);
 
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-
-    let globals = get_globals();
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     // Reset the border to the normal (unfocused) colour.
-    if let Some(ref scheme) = globals.borderscheme {
+    if let Some(ref scheme) = ctx.g.cfg.borderscheme {
         let pixel = scheme.normal.bg.pixel();
         let _ = conn
             .change_window_attributes(win, &ChangeWindowAttributesAux::new().border_pixel(pixel));
     }
 
     if redirect_to_root {
-        let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, globals.root, CURRENT_TIME);
-        let _ = conn.delete_property(globals.root, globals.netatom.active_window);
+        let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, ctx.g.cfg.root, CURRENT_TIME);
+        let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.active_window);
     }
 
     let _ = conn.flush();
@@ -219,16 +212,14 @@ pub fn unfocus_win(win: Window, redirect_to_root: bool) {
 ///
 /// When `focused` is `true`, all button grabs are released so the client
 /// receives button events directly.
-pub fn grab_buttons(win: Window, focused: bool) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn grab_buttons(ctx: &mut WmCtx, win: Window, focused: bool) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     // Always start clean.
     let _ = ungrab_button(conn, ButtonIndex::from(0u8), win, ModMask::from(0u16));
 
     if !focused {
-        let globals = get_globals();
-        let numlockmask = globals.numlockmask;
+        let numlockmask = ctx.g.numlockmask;
         let lock_mask = ModMask::LOCK.bits() as u32;
         let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
 
@@ -306,7 +297,9 @@ fn ungrab_button(
 ///
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
-pub fn clear_urgency_hint(conn: &x11rb::rust_connection::RustConnection, win: Window) {
+pub fn clear_urgency_hint(ctx: &mut WmCtx, win: Window) {
+    let Some(ref conn) = ctx.x11.conn else { return };
+
     let Ok(cookie) = conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
     else {
         return;

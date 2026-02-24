@@ -7,7 +7,7 @@
 //! that both the algorithm modules and the manager can depend on them without
 //! creating circular imports.
 
-use crate::globals::get_globals;
+use crate::globals::Globals;
 use crate::types::Monitor;
 use x11rb::protocol::xproto::Window;
 
@@ -23,9 +23,7 @@ use super::LayoutKind;
 ///
 /// This is the count used to tune animation frame-rates and decide whether
 /// a single-client layout should remove borders.
-pub fn client_count() -> i32 {
-    let g = get_globals();
-
+pub fn client_count(g: &Globals) -> i32 {
     let mon = match g.monitors.get(g.selmon) {
         Some(m) => m,
         None => return 0,
@@ -60,8 +58,7 @@ pub fn client_count() -> i32 {
 /// update `m.clientcount` before invoking the layout algorithm.
 ///
 /// [`arrange_monitor`]: crate::layouts::manager::arrange_monitor
-pub fn client_count_mon(m: &Monitor) -> i32 {
-    let g = get_globals();
+pub fn client_count_mon(g: &Globals, m: &Monitor) -> i32 {
     let mut count = 0;
 
     // Mirror C's nexttiled-based clientcountmon: skip floating AND hidden clients
@@ -87,8 +84,8 @@ pub fn client_count_mon(m: &Monitor) -> i32 {
 ///
 /// This is simply the length of `globals.clients` and is used by the
 /// overview layout to size its grid.
-pub fn all_client_count() -> i32 {
-    get_globals().clients.len() as i32
+pub fn all_client_count(g: &Globals) -> i32 {
+    g.clients.len() as i32
 }
 
 // ── visibility walk ───────────────────────────────────────────────────────────
@@ -97,8 +94,7 @@ pub fn all_client_count() -> i32 {
 /// client that passes [`Client::is_visible`].
 ///
 /// Returns `None` if the list is exhausted without finding a visible client.
-pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
-    let g = get_globals();
+pub fn find_visible_client(g: &Globals, start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;
 
     while let Some(win) = current {
@@ -122,8 +118,7 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
 ///
 /// The layout is stored per-tag in `tags[current_tag - 1].layouts.get_layout()`.
 /// Falls back to [`LayoutKind::Tile`] when tag index is invalid.
-pub fn get_current_layout(m: &Monitor) -> LayoutKind {
-    let g = get_globals();
+pub fn get_current_layout(g: &Globals, m: &Monitor) -> LayoutKind {
     let tag = m.current_tag;
 
     if tag > 0 && tag <= g.tags.tags.len() {
@@ -137,9 +132,7 @@ pub fn get_current_layout(m: &Monitor) -> LayoutKind {
 /// tile layout's symbol as a fallback.
 ///
 /// Used by the bar renderer to display the current layout indicator.
-pub fn get_current_layout_symbol() -> Option<&'static str> {
-    let g = get_globals();
-
+pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
     if let Some(m) = g.monitors.get(g.selmon) {
         let tag = m.current_tag;
         if tag > 0 && tag <= g.tags.tags.len() {
@@ -154,8 +147,7 @@ pub fn get_current_layout_symbol() -> Option<&'static str> {
 /// a tiling layout.
 ///
 /// Used by `floating::has_tiling_layout` and a few other callers.
-pub fn selmon_has_tiling_layout() -> bool {
-    let g = get_globals();
+pub fn selmon_has_tiling_layout(g: &Globals) -> bool {
     match g.monitors.get(g.selmon) {
         Some(m) => {
             let tag = m.current_tag;

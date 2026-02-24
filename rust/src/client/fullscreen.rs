@@ -23,10 +23,10 @@
 
 use crate::animation::animate_client;
 use crate::client::geometry::resize_client;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
+use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::arrange;
 use crate::types::Rect;
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
@@ -85,13 +85,15 @@ pub fn restore_border_width(win: Window) {
 /// When the client has `isfakefullscreen` enabled, geometry/border changes are
 /// skipped – only the EWMH property is toggled so the application remains happy
 /// while the window keeps participating in the tiling layout.
-pub fn set_fullscreen(win: Window, fullscreen: bool) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     let (net_wm_fullscreen, net_wm_state) = {
         let globals = get_globals();
-        (globals.netatom.wm_fullscreen, globals.netatom.wm_state)
+        (
+            globals.cfg.netatom.wm_fullscreen,
+            globals.cfg.netatom.wm_state,
+        )
     };
 
     // Snapshot what we need before taking a mutable borrow.
@@ -193,7 +195,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
             resize_client(win, &old_geo);
 
             if let Some(mid) = mon_id {
-                arrange(Some(mid));
+                arrange(ctx, Some(mid));
             }
         }
     }
@@ -211,34 +213,33 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
 ///
 /// The `isfakefullscreen` flag itself is flipped at the end regardless of the
 /// current state.
-pub fn toggle_fake_fullscreen() {
-    let Some(win) = crate::util::get_sel_win() else {
+pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
         return;
     };
 
-    let (is_fullscreen, isfakefullscreen, mon_id, old_border_width) = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| {
-                (
-                    c.is_fullscreen,
-                    c.isfakefullscreen,
-                    c.mon_id,
-                    c.old_border_width,
-                )
-            })
-            .unwrap_or((false, false, None, 0))
-    };
+    let (is_fullscreen, isfakefullscreen, mon_id, old_border_width) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| {
+            (
+                c.is_fullscreen,
+                c.isfakefullscreen,
+                c.mon_id,
+                c.old_border_width,
+            )
+        })
+        .unwrap_or((false, false, None, 0));
 
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.
     if is_fullscreen && isfakefullscreen {
-        let borderpx = get_globals().borderpx;
+        let borderpx = ctx.g.cfg.borderpx;
 
         if let Some(mid) = mon_id {
-            let mon_rect = get_globals()
+            let mon_rect = ctx
+                .g
                 .monitors
                 .get(mid)
                 .map(|m| m.monitor_rect)
@@ -254,8 +255,7 @@ pub fn toggle_fake_fullscreen() {
                 },
             );
 
-            let x11 = get_x11();
-            if let Some(ref conn) = x11.conn {
+            if let Some(ref conn) = ctx.x11.conn {
                 let _ = conn
                     .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
                 let _ = conn.flush();
@@ -266,13 +266,10 @@ pub fn toggle_fake_fullscreen() {
     // Restore the border width when leaving fake-fullscreen while still in
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            if client.is_fullscreen && !client.isfakefullscreen {
-                client.border_width = old_border_width;
-            }
-            client.isfakefullscreen = !client.isfakefullscreen;
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        if client.is_fullscreen && !client.isfakefullscreen {
+            client.border_width = old_border_width;
         }
+        client.isfakefullscreen = !client.isfakefullscreen;
     }
 }

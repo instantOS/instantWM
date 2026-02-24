@@ -18,6 +18,7 @@ use crate::animation::animate_client;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
+use crate::contexts::WmCtx;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
@@ -41,9 +42,14 @@ pub fn get_state(win: Window) -> i32 {
     };
 
     let globals = get_globals();
-    let Ok(cookie) =
-        conn.get_property(false, win, globals.wmatom.state, globals.wmatom.state, 0, 2)
-    else {
+    let Ok(cookie) = conn.get_property(
+        false,
+        win,
+        globals.cfg.wmatom.state,
+        globals.cfg.wmatom.state,
+        0,
+        2,
+    ) else {
         return WM_STATE_NORMAL;
     };
 
@@ -211,7 +217,10 @@ pub fn show(win: Window) {
 
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        let x11 = get_x11();
+        let mut globals = get_globals_mut();
+        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        arrange(&mut ctx, Some(mid));
     }
 }
 
@@ -235,7 +244,7 @@ pub fn hide(win: Window) {
 
     let Rect { x, y, w, h } = client.geo;
     let mon_id = client.mon_id;
-    let bh = globals.bh;
+    let bh = globals.cfg.bh;
     let animated = globals.animated;
 
     if animated {
@@ -285,10 +294,13 @@ pub fn hide(win: Window) {
     resize(win, &Rect { x, y, w, h }, false);
 
     let snext = get_globals().clients.get(&win).and_then(|c| c.snext);
-    focus(snext);
+    let x11 = get_x11();
+    let mut globals = get_globals_mut();
+    let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+    focus(&mut ctx, snext);
 
     if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        arrange(&mut ctx, Some(mid));
     }
 }
 

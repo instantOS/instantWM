@@ -2,7 +2,7 @@
 
 use crate::bar::draw_bar;
 use crate::client::{next_tiled, resize, restore_border_width, save_border_width};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
 use crate::types::{Monitor, MonitorId, Rect};
@@ -12,61 +12,48 @@ use x11rb::protocol::xproto::*;
 
 use super::LayoutKind;
 
-pub fn arrange(mon_id: Option<MonitorId>) {
-    crate::mouse::reset_cursor();
+pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
+    crate::mouse::reset_cursor(ctx);
 
     if let Some(id) = mon_id {
-        {
-            let g = get_globals_mut();
-            if let Some(m) = g.monitors.get_mut(id) {
-                let stack = m.stack;
-                crate::client::show_hide(stack);
-            }
+        if let Some(m) = ctx.g.monitors.get_mut(id) {
+            let stack = m.stack;
+            crate::client::show_hide(stack);
         }
-        {
-            let g = get_globals_mut();
-            if let Some(m) = g.monitors.get_mut(id) {
-                arrange_monitor(m);
-                restack(m);
-            }
+        if let Some(m) = ctx.g.monitors.get_mut(id) {
+            arrange_monitor(ctx, m);
+            restack(ctx, m);
         }
     } else {
-        let stacks: Vec<Option<Window>> = {
-            let g = get_globals();
-            g.monitors.iter().map(|m| m.stack).collect()
-        };
+        let stacks: Vec<Option<Window>> = ctx.g.monitors.iter().map(|m| m.stack).collect();
 
         for stack in stacks {
             crate::client::show_hide(stack);
         }
 
-        let g = get_globals_mut();
-        for m in g.monitors.iter_mut() {
-            arrange_monitor(m);
+        for m in ctx.g.monitors.iter_mut() {
+            arrange_monitor(ctx, m);
         }
     }
 }
 
-pub fn arrange_monitor(m: &mut Monitor) {
-    m.clientcount = client_count_mon(m) as u32;
-    apply_border_widths(m);
-    run_layout(m);
-    place_overlay(m);
+pub fn arrange_monitor(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    m.clientcount = client_count_mon(ctx.g, m) as u32;
+    apply_border_widths(ctx, m);
+    run_layout(ctx, m);
+    place_overlay(ctx, m);
 }
 
-fn apply_border_widths(m: &Monitor) {
-    let is_tiling = get_current_layout(m).is_tiling();
-    let is_monocle = get_current_layout(m).is_monocle();
+fn apply_border_widths(ctx: &mut WmCtx<'_>, m: &Monitor) {
+    let is_tiling = get_current_layout(ctx.g, m).is_tiling();
+    let is_monocle = get_current_layout(ctx.g, m).is_monocle();
     let clientcount = m.clientcount;
 
     let mut c_win = next_tiled(m.clients);
     while let Some(win) = c_win {
-        let (is_floating, is_fullscreen) = {
-            let g = get_globals();
-            match g.clients.get(&win) {
-                None => break,
-                Some(c) => (c.isfloating, c.is_fullscreen),
-            }
+        let (is_floating, is_fullscreen) = match ctx.g.clients.get(&win) {
+            None => break,
+            Some(c) => (c.isfloating, c.is_fullscreen),
         };
 
         let strip_border =
@@ -74,38 +61,38 @@ fn apply_border_widths(m: &Monitor) {
 
         if strip_border {
             save_border_width(win);
-            if let Some(c) = get_globals_mut().clients.get_mut(&win) {
+            if let Some(c) = ctx.g.clients.get_mut(&win) {
                 c.border_width = 0;
             }
         } else {
             restore_border_width(win);
         }
 
-        c_win = get_globals()
-            .clients
-            .get(&win)
-            .and_then(|c| next_tiled(c.next));
+        c_win = ctx.g.clients.get(&win).and_then(|c| next_tiled(c.next));
     }
 }
 
-fn run_layout(m: &mut Monitor) {
-    get_current_layout(m).arrange(m);
+fn run_layout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    get_current_layout(ctx.g, m).arrange(ctx, m);
 }
 
-fn place_overlay(m: &mut Monitor) {
+fn place_overlay(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let overlay_win = match m.overlay {
         Some(w) => w,
         None => return,
     };
 
-    let g = get_globals_mut();
-    if let Some(c) = g.clients.get_mut(&overlay_win) {
+    if let Some(c) = ctx.g.clients.get_mut(&overlay_win) {
         if c.isfloating {
-            save_floating(overlay_win);
+            save_floating(ctx, overlay_win);
         }
     }
 
-    let bw = g.clients.get(&overlay_win).map_or(0, |c| c.border_width);
+    let bw = ctx
+        .g
+        .clients
+        .get(&overlay_win)
+        .map_or(0, |c| c.border_width);
     let geo = Rect {
         x: m.work_rect.x,
         y: m.work_rect.y,
@@ -113,11 +100,11 @@ fn place_overlay(m: &mut Monitor) {
         h: m.work_rect.h - 2 * bw,
     };
 
-    resize(overlay_win, &geo, false);
+    resize(ctx, overlay_win, &geo, false);
 }
 
-pub fn restack(m: &mut Monitor) {
-    if get_current_layout(m).is_overview() {
+pub fn restack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    if get_current_layout(ctx.g, m).is_overview() {
         return;
     }
 
@@ -128,11 +115,11 @@ pub fn restack(m: &mut Monitor) {
         None => return,
     };
 
-    let is_tiling = get_current_layout(m).is_tiling();
+    let is_tiling = get_current_layout(ctx.g, m).is_tiling();
 
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let is_floating = get_globals()
+    if let Some(ref conn) = ctx.x11.conn {
+        let is_floating = ctx
+            .g
             .clients
             .get(&sel_win)
             .map(|c| c.isfloating)
@@ -153,8 +140,7 @@ pub fn restack(m: &mut Monitor) {
 
             let mut s_win = m.stack;
             while let Some(win) = s_win {
-                let g = get_globals();
-                match g.clients.get(&win) {
+                match ctx.g.clients.get(&win) {
                     None => break,
                     Some(c) => {
                         let is_win_floating = c.isfloating;
@@ -178,115 +164,94 @@ pub fn restack(m: &mut Monitor) {
     }
 }
 
-pub fn set_layout(layout: LayoutKind) {
-    let tagprefix = get_globals().tags.prefix;
+pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
+    let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        {
-            let g = get_globals_mut();
-            for tag in g.tags.tags.iter_mut() {
-                tag.layouts.set_layout(layout);
-            }
-            g.tags.prefix = false;
+        for tag in ctx.g.tags.tags.iter_mut() {
+            tag.layouts.set_layout(layout);
         }
-        finish_layout_change();
+        ctx.g.tags.prefix = false;
+        finish_layout_change(ctx);
         return;
     }
 
-    {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(g.selmon) {
-            let current_tag = m.current_tag;
-            if current_tag > 0 && current_tag <= g.tags.tags.len() {
-                let tag = &mut g.tags.tags[current_tag - 1];
-                tag.layouts.set_layout(layout);
-            }
+    if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        let current_tag = m.current_tag;
+        if current_tag > 0 && current_tag <= ctx.g.tags.tags.len() {
+            let tag = &mut ctx.g.tags.tags[current_tag - 1];
+            tag.layouts.set_layout(layout);
         }
     }
 
-    finish_layout_change();
+    finish_layout_change(ctx);
 }
 
-pub fn toggle_layout() {
-    let tagprefix = get_globals().tags.prefix;
+pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
+    let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        {
-            let g = get_globals_mut();
-            for tag in g.tags.tags.iter_mut() {
-                tag.layouts.toggle_slot();
-            }
-            g.tags.prefix = false;
+        for tag in ctx.g.tags.tags.iter_mut() {
+            tag.layouts.toggle_slot();
         }
-        finish_layout_change();
+        ctx.g.tags.prefix = false;
+        finish_layout_change(ctx);
         return;
     }
 
-    {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(g.selmon) {
-            let current_tag = m.current_tag;
-            if current_tag > 0 && current_tag <= g.tags.tags.len() {
-                let tag = &mut g.tags.tags[current_tag - 1];
-                tag.layouts.toggle_slot();
-            }
+    if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        let current_tag = m.current_tag;
+        if current_tag > 0 && current_tag <= ctx.g.tags.tags.len() {
+            let tag = &mut ctx.g.tags.tags[current_tag - 1];
+            tag.layouts.toggle_slot();
         }
     }
 
-    finish_layout_change();
+    finish_layout_change(ctx);
 }
 
-pub fn restore_last_layout() {
-    let tagprefix = get_globals().tags.prefix;
+pub fn restore_last_layout(ctx: &mut WmCtx<'_>) {
+    let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        {
-            let g = get_globals_mut();
-            for tag in g.tags.tags.iter_mut() {
-                tag.layouts.restore_last_layout();
-            }
-            g.tags.prefix = false;
+        for tag in ctx.g.tags.tags.iter_mut() {
+            tag.layouts.restore_last_layout();
         }
-        finish_layout_change();
+        ctx.g.tags.prefix = false;
+        finish_layout_change(ctx);
         return;
     }
 
-    {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(g.selmon) {
-            let current_tag = m.current_tag;
-            if current_tag > 0 && current_tag <= g.tags.tags.len() {
-                let tag = &mut g.tags.tags[current_tag - 1];
-                tag.layouts.restore_last_layout();
-            }
+    if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        let current_tag = m.current_tag;
+        if current_tag > 0 && current_tag <= ctx.g.tags.tags.len() {
+            let tag = &mut ctx.g.tags.tags[current_tag - 1];
+            tag.layouts.restore_last_layout();
         }
     }
 
-    finish_layout_change();
+    finish_layout_change(ctx);
 }
 
-fn finish_layout_change() {
-    let (selmon, sel) = {
-        let g = get_globals();
-        let sel = g.monitors.get(g.selmon).and_then(|m| m.sel);
-        (g.selmon, sel)
-    };
+fn finish_layout_change(ctx: &mut WmCtx<'_>) {
+    let selmon = ctx.g.selmon;
+    let sel = ctx.g.monitors.get(selmon).and_then(|m| m.sel);
 
     if sel.is_some() {
-        arrange(Some(selmon));
+        arrange(ctx, Some(selmon));
     } else {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(selmon) {
+        if let Some(m) = ctx.g.monitors.get_mut(selmon) {
             draw_bar(m);
         }
     }
 }
 
-pub fn cycle_layout_direction(forward: bool) {
-    let current_layout = {
-        let g = get_globals();
-        g.monitors.get(g.selmon).map(get_current_layout)
-    };
+pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
+    let current_layout = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| get_current_layout(ctx.g, m));
 
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
@@ -317,10 +282,10 @@ pub fn cycle_layout_direction(forward: bool) {
         candidate_layout
     };
 
-    set_layout(final_layout);
+    set_layout(ctx, final_layout);
 }
 
-pub fn command_layout(layout_idx: u32) {
+pub fn command_layout(ctx: &mut WmCtx<'_>, layout_idx: u32) {
     let all_layouts = LayoutKind::all();
     let idx = if layout_idx > 0 && (layout_idx as usize) < all_layouts.len() {
         layout_idx as usize
@@ -328,15 +293,14 @@ pub fn command_layout(layout_idx: u32) {
         0
     };
 
-    set_layout(all_layouts[idx]);
+    set_layout(ctx, all_layouts[idx]);
 }
 
-pub fn inc_nmaster_by(delta: i32) {
-    let ccount = client_count();
+pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
+    let ccount = client_count(ctx.g);
 
     {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(g.selmon) {
+        if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
             if delta > 0 && m.nmaster >= ccount {
                 m.nmaster = ccount;
                 return;
@@ -346,37 +310,38 @@ pub fn inc_nmaster_by(delta: i32) {
             m.nmaster = new_nmaster;
 
             let tag = m.current_tag;
-            if tag > 0 && tag <= g.tags.tags.len() {
-                g.tags.tags[tag - 1].nmaster = new_nmaster;
+            if tag > 0 && tag <= ctx.g.tags.tags.len() {
+                ctx.g.tags.tags[tag - 1].nmaster = new_nmaster;
             }
         }
     }
 
-    let selmon = get_globals().selmon;
-    arrange(Some(selmon));
+    let selmon = ctx.g.selmon;
+    arrange(ctx, Some(selmon));
 }
 
-pub fn set_mfact(mfact_val: f32) {
+pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     if mfact_val == 0.0 {
         return;
     }
 
-    let is_tiling = {
-        let g = get_globals();
-        g.monitors
-            .get(g.selmon)
-            .map(|m| get_current_layout(m).is_tiling())
-            .unwrap_or(false)
-    };
+    let is_tiling = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| get_current_layout(ctx.g, m).is_tiling())
+        .unwrap_or(false);
 
     if !is_tiling {
         return;
     }
 
-    let current_mfact = {
-        let g = get_globals();
-        g.monitors.get(g.selmon).map(|m| m.mfact).unwrap_or(0.55)
-    };
+    let current_mfact = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| m.mfact)
+        .unwrap_or(0.55);
 
     let new_mfact = if mfact_val < 1.0 {
         mfact_val + current_mfact
@@ -388,26 +353,25 @@ pub fn set_mfact(mfact_val: f32) {
         return;
     }
 
-    let animation_on = get_globals().animated && client_count() > 2;
+    let animation_on = ctx.g.animated && client_count(ctx.g) > 2;
     if animation_on {
-        get_globals_mut().animated = false;
+        ctx.g.animated = false;
     }
 
     {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(g.selmon) {
+        if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
             m.mfact = new_mfact;
             let tag = m.current_tag;
-            if tag > 0 && tag <= g.tags.tags.len() {
-                g.tags.tags[tag - 1].mfact = new_mfact;
+            if tag > 0 && tag <= ctx.g.tags.tags.len() {
+                ctx.g.tags.tags[tag - 1].mfact = new_mfact;
             }
         }
     }
 
-    let selmon = get_globals().selmon;
-    arrange(Some(selmon));
+    let selmon = ctx.g.selmon;
+    arrange(ctx, Some(selmon));
 
     if animation_on {
-        get_globals_mut().animated = true;
+        ctx.g.animated = true;
     }
 }

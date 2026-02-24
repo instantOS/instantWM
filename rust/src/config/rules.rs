@@ -4,7 +4,7 @@
 //! matching rule wins.  A `None` field is a wildcard that matches anything.
 
 use super::commands::SCRATCHPAD_CLASS;
-use crate::types::{Rule, RuleFloat};
+use crate::types::{MonitorRule, Rule, RuleFloat};
 
 /// Build the list of window placement rules.
 pub fn get_rules() -> Vec<Rule> {
@@ -24,7 +24,7 @@ pub fn get_rules() -> Vec<Rule> {
             title: None,
             tags: 0,
             isfloating: RuleFloat::FloatCenter,
-            monitor: -1,
+            monitor: MonitorRule::Any,
         },
         // --- Scratchpad ---
         Rule {
@@ -33,7 +33,7 @@ pub fn get_rules() -> Vec<Rule> {
             title: None,
             tags: 0,
             isfloating: RuleFloat::Scratchpad,
-            monitor: -1,
+            monitor: MonitorRule::Any,
         },
         // --- Fullscreen floating (takes full screen but stays floating) ---
         fullscreen_float("kdeconnect.daemon"),
@@ -56,7 +56,7 @@ fn float(class: &'static str) -> Rule {
         title: None,
         tags: 0,
         isfloating: RuleFloat::Float,
-        monitor: -1,
+        monitor: MonitorRule::Any,
     }
 }
 
@@ -68,6 +68,6 @@ fn fullscreen_float(class: &'static str) -> Rule {
         title: None,
         tags: 0,
         isfloating: RuleFloat::FloatFullscreen,
-        monitor: -1,
+        monitor: MonitorRule::Any,
     }
 }

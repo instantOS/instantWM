@@ -6,6 +6,7 @@ pub mod x11;
 pub use model::{bar_position_at_x, BarPosition};
 pub use x11::resize_bar_win;
 
+use crate::contexts::WmCtx;
 use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut};
 use crate::types::*;
 use model::ClientBarStats;
@@ -49,18 +50,18 @@ pub fn draw_bar(m: &mut Monitor) {
 
     {
         let g = get_globals_mut();
-        let bh = g.bh;
+        let bh = g.cfg.bh;
         get_drw_mut().resize(m.work_rect.w as u32, bh as u32);
     }
 
     let g = get_globals();
-    let bh = g.bh;
+    let bh = g.cfg.bh;
     let is_selmon = g
         .monitors
         .get(g.selmon)
         .is_some_and(|selmon| selmon.num == m.num);
 
-    let systray_width = if g.showsystray && is_selmon {
+    let systray_width = if g.cfg.showsystray && is_selmon {
         crate::systray::get_systray_width() as i32
     } else {
         0
@@ -76,7 +77,7 @@ pub fn draw_bar(m: &mut Monitor) {
     x11::resize_bar_win(m);
 
     let stats = ClientBarStats::collect(m, g);
-    let mut x = g.startmenusize;
+    let mut x = g.cfg.startmenusize;
     x = widgets::draw_tag_indicators(m, x, stats.occupied_tags, stats.urgent_tags, bh);
     x = widgets::draw_layout_indicator(m, x, bh);
 
@@ -89,6 +90,71 @@ pub fn draw_bar(m: &mut Monitor) {
 
     if title_width > bh {
         widgets::draw_window_titles(m, x, title_width, stats.visible_clients, bh);
+    }
+
+    m.bt = stats.visible_clients;
+    m.bar_clients_width = title_width;
+
+    get_drw().map(m.barwin, 0, 0, m.work_rect.w as u16, bh as u16);
+
+    DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+}
+
+/// Draw bar with dependency injection
+///
+/// This version uses WmCtx for explicit dependency injection
+/// instead of accessing global state directly.
+pub fn draw_bar_ctx(ctx: &mut WmCtx, m: &mut Monitor) {
+    let count = DRAW_BAR_RECURSION.fetch_add(1, Ordering::SeqCst);
+    if count > MAX_BAR_RECURSION {
+        std::process::abort();
+    }
+
+    let showbar = crate::monitor::get_current_showbar(m, &ctx.g.tags);
+    if PAUSEDRAW.load(Ordering::Relaxed) || !showbar {
+        DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+        return;
+    }
+
+    let bh = ctx.g.cfg.bh;
+    get_drw().resize(m.work_rect.w as u32, bh as u32);
+
+    let is_selmon = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .is_some_and(|selmon| selmon.num == m.num);
+
+    let systray_width = if ctx.g.cfg.showsystray && is_selmon {
+        crate::systray::get_systray_width() as i32
+    } else {
+        0
+    };
+
+    let status_start_x = if is_selmon {
+        let status_text = ctx.g.status_text.clone();
+        status::draw_status_bar_ctx(ctx, m, &status_text)
+    } else {
+        0
+    };
+
+    widgets::draw_startmenu_icon_ctx(ctx);
+    x11::resize_bar_win(m);
+
+    let stats = ClientBarStats::collect(m, ctx.g);
+    let mut x = ctx.g.cfg.startmenusize;
+    x = widgets::draw_tag_indicators_ctx(ctx, m, x, stats.occupied_tags, stats.urgent_tags);
+    x = widgets::draw_layout_indicator_ctx(ctx, m, x);
+
+    let title_end_x = if is_selmon {
+        status_start_x
+    } else {
+        m.work_rect.w - systray_width
+    };
+    let title_width = (title_end_x - x).max(0);
+
+    if title_width > bh {
+        widgets::draw_window_titles_ctx(ctx, m, x, title_width, stats.visible_clients);
     }
 
     m.bt = stats.visible_clients;
@@ -128,5 +194,5 @@ pub fn reset_bar() {
 }
 
 pub(crate) fn get_lrpad() -> i32 {
-    get_globals().lrpad
+    get_globals().cfg.lrpad
 }

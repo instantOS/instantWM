@@ -144,16 +144,3 @@ pub use ffi::{
 };
 
 // ── Compatibility helpers ─────────────────────────────────────────────────────
-
-/// Recursively free a fontset linked list.
-///
-/// Prefer simply dropping the [`Fnt`] value; this function exists for
-/// call-sites ported verbatim from the original C `drw_fontset_free`.
-#[allow(dead_code)]
-pub fn drw_fontset_free(font: Option<Box<Fnt>>) {
-    if let Some(mut f) = font {
-        let next = f.next.take();
-        drop(f);
-        drw_fontset_free(next);
-    }
-}

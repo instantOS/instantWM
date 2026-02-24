@@ -16,7 +16,7 @@
 //! and are correctly restored when the user switches back.
 
 use crate::client::resize;
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
 
@@ -31,12 +31,12 @@ use x11rb::protocol::xproto::Window;
 ///
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
-pub fn save_all_floating(mon_id: Option<usize>) {
+pub fn save_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
     let Some(mid) = mon_id else { return };
 
-    let wins_to_save = collect_floating_wins(mid);
+    let wins_to_save = collect_floating_wins(ctx.g, mid);
     for win in wins_to_save {
-        super::state::save_floating_win(win);
+        super::state::save_floating_win(ctx, win);
     }
 }
 
@@ -44,12 +44,12 @@ pub fn save_all_floating(mon_id: Option<usize>) {
 ///
 /// Counterpart to [`save_all_floating`]: resizes each window back to the rect
 /// that was captured by the most recent `save_all_floating` call.
-pub fn restore_all_floating(mon_id: Option<usize>) {
+pub fn restore_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
     let Some(mid) = mon_id else { return };
 
-    let wins_to_restore = collect_floating_wins(mid);
+    let wins_to_restore = collect_floating_wins(ctx.g, mid);
     for win in wins_to_restore {
-        super::state::restore_floating_win(win);
+        super::state::restore_floating_win(ctx, win);
     }
 }
 
@@ -58,9 +58,7 @@ pub fn restore_all_floating(mon_id: Option<usize>) {
 /// - not currently snapped.
 ///
 /// This is the shared selection logic for both save and restore.
-fn collect_floating_wins(mid: usize) -> Vec<Window> {
-    let globals = get_globals();
-
+fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<Window> {
     let Some(mon) = globals.monitors.get(mid) else {
         return Vec::new();
     };
@@ -108,11 +106,10 @@ fn collect_floating_wins(mid: usize) -> Vec<Window> {
 /// that.  Each cell receives one window, sized to exactly fill its cell.
 ///
 /// Does nothing when there are no qualifying windows.
-pub fn distribute_clients() {
-    let globals = get_globals();
-    let sel_mon_id = globals.selmon;
+pub fn distribute_clients(ctx: &mut WmCtx) {
+    let sel_mon_id = ctx.g.selmon;
 
-    let (floating_wins, work_rect) = collect_distribute_targets(sel_mon_id);
+    let (floating_wins, work_rect) = collect_distribute_targets(ctx.g, sel_mon_id);
 
     if floating_wins.is_empty() {
         return;
@@ -132,6 +129,7 @@ pub fn distribute_clients() {
         let row = (i as i32) / cols;
 
         resize(
+            ctx,
             win,
             &Rect {
                 x: work_rect.x + col * cell_w,
@@ -152,9 +150,10 @@ pub fn distribute_clients() {
 /// `work_rect` directly means the bar offset is already baked in for both
 /// top-bar and bottom-bar configurations, and no manual `y_offset` correction
 /// is needed in the caller.
-fn collect_distribute_targets(sel_mon_id: usize) -> (Vec<Window>, Rect) {
-    let globals = get_globals();
-
+fn collect_distribute_targets(
+    globals: &crate::globals::Globals,
+    sel_mon_id: usize,
+) -> (Vec<Window>, Rect) {
     let empty = (Vec::new(), Rect::default());
 
     let Some(mon) = globals.monitors.get(sel_mon_id) else {

@@ -2,26 +2,21 @@
 
 use crate::animation::animate_client;
 use crate::client::{resize, restore_border_width};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-pub fn set_floating_in_place(win: Window) {
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            client.isfloating = true;
-        }
+pub fn set_floating_in_place(ctx: &mut WmCtx, win: Window) {
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        client.isfloating = true;
     }
 
     restore_border_width(win);
 
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        if let Some(ref scheme) = globals.borderscheme {
+    if let Some(ref conn) = ctx.x11.conn {
+        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
             let pixel = scheme.float_focus.bg.color.pixel;
             let _ = change_window_attributes(
                 conn,
@@ -33,39 +28,36 @@ pub fn set_floating_in_place(win: Window) {
     }
 }
 
-pub fn save_floating_win(win: Window) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+pub fn save_floating_win(ctx: &mut WmCtx, win: Window) {
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.float_geo = client.geo;
     }
 }
 
-pub fn restore_floating_win(win: Window) {
-    let float_geo = {
-        let globals = get_globals();
-        globals.clients.get(&win).map(|c| c.float_geo)
-    };
+pub fn restore_floating_win(ctx: &mut WmCtx, win: Window) {
+    let float_geo = ctx.g.clients.get(&win).map(|c| c.float_geo);
     if let Some(rect) = float_geo {
-        resize(win, &rect, false);
+        resize(ctx, win, &rect, false);
     }
 }
 
-pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_borders: bool) {
+pub fn apply_float_change(
+    ctx: &mut WmCtx,
+    win: Window,
+    floating: bool,
+    animate: bool,
+    update_borders: bool,
+) {
     if floating {
-        {
-            let globals = get_globals_mut();
-            if let Some(client) = globals.clients.get_mut(&win) {
-                client.isfloating = true;
-            }
+        if let Some(client) = ctx.g.clients.get_mut(&win) {
+            client.isfloating = true;
         }
 
         if update_borders {
             restore_border_width(win);
 
-            let x11 = get_x11();
-            if let Some(ref conn) = x11.conn {
-                let globals = get_globals();
-                if let Some(ref scheme) = globals.borderscheme {
+            if let Some(ref conn) = ctx.x11.conn {
+                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                     let pixel = scheme.float_focus.bg.color.pixel;
                     let _ = change_window_attributes(
                         conn,
@@ -77,11 +69,7 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
             }
         }
 
-        let saved_geo = {
-            let globals = get_globals();
-            globals.clients.get(&win).map(|c| c.float_geo)
-        };
-
+        let saved_geo = ctx.g.clients.get(&win).map(|c| c.float_geo);
         let Some(saved_geo) = saved_geo else { return };
 
         if animate {
@@ -97,12 +85,11 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
                 0,
             );
         } else {
-            resize(win, &saved_geo, false);
+            resize(ctx, win, &saved_geo, false);
         }
     } else {
-        let client_count = get_globals().clients.len();
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
+        let client_count = ctx.g.clients.len();
+        if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.isfloating = false;
             client.float_geo = client.geo;
 
@@ -116,16 +103,15 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
     }
 }
 
-pub fn toggle_floating() {
+pub fn toggle_floating(ctx: &mut WmCtx) {
     let sel_win = {
-        let globals = get_globals();
-        let mon = match globals.monitors.get(globals.selmon) {
+        let mon = match ctx.g.monitors.get(ctx.g.selmon) {
             Some(m) => m,
             None => return,
         };
         match mon.sel {
             Some(sel) if Some(sel) != mon.overlay => {
-                if let Some(c) = globals.clients.get(&sel) {
+                if let Some(c) = ctx.g.clients.get(&sel) {
                     if c.is_fullscreen && !c.isfakefullscreen {
                         return;
                     }
@@ -138,27 +124,22 @@ pub fn toggle_floating() {
 
     let Some(win) = sel_win else { return };
 
-    let (is_floating, is_fixed) = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.isfixed))
-            .unwrap_or((false, false))
-    };
+    let (is_floating, is_fixed) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (c.isfloating, c.isfixed))
+        .unwrap_or((false, false));
 
     let new_state = !is_floating || is_fixed;
-    apply_float_change(win, new_state, true, true);
-    arrange(Some(get_globals().selmon));
+    apply_float_change(ctx, win, new_state, true, true);
+    arrange(ctx, Some(ctx.g.selmon));
 }
 
-pub fn change_floating_win(win: Window) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
-            None => return,
-        }
+pub fn change_floating_win(ctx: &mut WmCtx, win: Window) {
+    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
+        None => return,
     };
 
     if is_fullscreen && !is_fake_fullscreen {
@@ -166,17 +147,14 @@ pub fn change_floating_win(win: Window) {
     }
 
     let new_state = !is_floating || is_fixed;
-    apply_float_change(win, new_state, false, false);
-    arrange(Some(get_globals().selmon));
+    apply_float_change(ctx, win, new_state, false, false);
+    arrange(ctx, Some(ctx.g.selmon));
 }
 
-pub fn set_floating(win: Window, should_arrange: bool) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating),
-            None => return,
-        }
+pub fn set_floating(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
+    let (is_fullscreen, is_fake_fullscreen, is_floating) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating),
+        None => return,
     };
 
     if is_fullscreen && !is_fake_fullscreen {
@@ -186,20 +164,17 @@ pub fn set_floating(win: Window, should_arrange: bool) {
         return;
     }
 
-    apply_float_change(win, true, false, false);
+    apply_float_change(ctx, win, true, false, false);
 
     if should_arrange {
-        arrange(Some(get_globals().selmon));
+        arrange(ctx, Some(ctx.g.selmon));
     }
 }
 
-pub fn set_tiled(win: Window, should_arrange: bool) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = {
-        let globals = get_globals();
-        match globals.clients.get(&win) {
-            Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
-            None => return,
-        }
+pub fn set_tiled(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
+    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
+        None => return,
     };
 
     if is_fullscreen && !is_fake_fullscreen {
@@ -209,72 +184,60 @@ pub fn set_tiled(win: Window, should_arrange: bool) {
         return;
     }
 
-    apply_float_change(win, false, false, false);
+    apply_float_change(ctx, win, false, false, false);
 
     if should_arrange {
-        arrange(Some(get_globals().selmon));
+        arrange(ctx, Some(ctx.g.selmon));
     }
 }
 
-pub fn temp_fullscreen() {
+pub fn temp_fullscreen(ctx: &mut WmCtx) {
     let (fullscreen_win, sel_win, animated) = {
-        let globals = get_globals();
-        let mon = match globals.monitors.get(globals.selmon) {
+        let mon = match ctx.g.monitors.get(ctx.g.selmon) {
             Some(m) => m,
             None => return,
         };
-        (mon.fullscreen, mon.sel, globals.animated)
+        (mon.fullscreen, mon.sel, ctx.g.animated)
     };
 
     if let Some(win) = fullscreen_win {
-        let is_floating = {
-            let globals = get_globals();
-            globals
-                .clients
-                .get(&win)
-                .map(|c| c.isfloating)
-                .unwrap_or(false)
-        };
+        let is_floating = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.isfloating)
+            .unwrap_or(false);
 
-        if is_floating || !super::helpers::has_tiling_layout() {
-            restore_floating_win(win);
-            super::helpers::apply_size(win);
+        if is_floating || !super::helpers::has_tiling_layout(ctx) {
+            restore_floating_win(ctx, win);
+            super::helpers::apply_size(ctx, win);
         }
 
-        let globals = get_globals_mut();
-        if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
+        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
             mon.fullscreen = None;
         }
     } else {
         let Some(win) = sel_win else { return };
 
-        {
-            let globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
-                mon.fullscreen = Some(win);
-            }
+        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+            mon.fullscreen = Some(win);
         }
 
-        if super::helpers::check_floating(win) {
-            save_floating_win(win);
+        if super::helpers::check_floating(ctx, win) {
+            save_floating_win(ctx, win);
         }
     }
 
     if animated {
-        get_globals_mut().animated = false;
-        arrange(Some(get_globals().selmon));
-        get_globals_mut().animated = true;
+        ctx.g.animated = false;
+        arrange(ctx, Some(ctx.g.selmon));
+        ctx.g.animated = true;
     } else {
-        arrange(Some(get_globals().selmon));
+        arrange(ctx, Some(ctx.g.selmon));
     }
 
-    if let Some(win) = get_globals()
-        .monitors
-        .get(get_globals().selmon)
-        .and_then(|m| m.fullscreen)
-    {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
+    if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.fullscreen) {
+        if let Some(ref conn) = ctx.x11.conn {
             let _ = configure_window(
                 conn,
                 win,

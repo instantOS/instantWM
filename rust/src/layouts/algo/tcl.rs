@@ -33,17 +33,16 @@
 //! When there is only one side column (2 clients), it takes the full remaining width.
 
 use crate::client::{client_height, next_tiled, resize};
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
-pub fn tcl(m: &mut Monitor) {
+pub fn tcl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -62,13 +61,12 @@ pub fn tcl(m: &mut Monitor) {
     let sw = (m.work_rect.w - mw) / 2;
 
     // ── place the master client ───────────────────────────────────────────
-    let (master_bw, master_next) = {
-        let g = get_globals();
-        g.clients
-            .get(&first_win)
-            .map(|c| (2 * c.border_width, c.next))
-            .unwrap_or((0, None))
-    };
+    let (master_bw, master_next) = ctx
+        .g
+        .clients
+        .get(&first_win)
+        .map(|c| (2 * c.border_width, c.next))
+        .unwrap_or((0, None));
 
     // When n < 3 the two side columns collapse into one, so the master starts
     // at work_rect.x; with three columns it is inset by sw.
@@ -113,10 +111,7 @@ pub fn tcl(m: &mut Monitor) {
     let right_n = stack_n.div_ceil(2); // ceil(stack_n / 2)
     let left_n = stack_n / 2; // floor(stack_n / 2)
 
-    let bh = {
-        let g = get_globals();
-        g.bh
-    };
+    let bh = ctx.g.cfg.bh;
 
     // ── right column (even stack indices) ─────────────────────────────────
     if right_n > 0 {
@@ -135,13 +130,12 @@ pub fn tcl(m: &mut Monitor) {
                 break;
             }
 
-            let (border_width, next_client) = {
-                let g = get_globals();
-                g.clients
-                    .get(&win)
-                    .map(|c| (c.border_width, c.next))
-                    .unwrap_or((0, None))
-            };
+            let (border_width, next_client) = ctx
+                .g
+                .clients
+                .get(&win)
+                .map(|c| (c.border_width, c.next))
+                .unwrap_or((0, None));
 
             // Last client in the column absorbs rounding remainder.
             let h = if idx + 1 == right_n {
@@ -163,8 +157,7 @@ pub fn tcl(m: &mut Monitor) {
 
             // Advance y only when cells are a fixed height.
             if cell_h != m.work_rect.h {
-                let g = get_globals();
-                if let Some(c) = g.clients.get(&win) {
+                if let Some(c) = ctx.g.clients.get(&win) {
                     y = c.geo.y + client_height(c);
                 }
             }
@@ -174,8 +167,11 @@ pub fn tcl(m: &mut Monitor) {
 
             // Skip the next client — it belongs to the left column.
             if let Some(skip_win) = c_win {
-                let g = get_globals();
-                c_win = g.clients.get(&skip_win).and_then(|c| next_tiled(c.next));
+                c_win = ctx
+                    .g
+                    .clients
+                    .get(&skip_win)
+                    .and_then(|c| next_tiled(c.next));
             }
         }
     }
@@ -194,10 +190,8 @@ pub fn tcl(m: &mut Monitor) {
         // Walk to the first odd-index stack client by skipping the first
         // right-column client.
         let first_right = next_tiled(master_next);
-        let first_left = first_right.and_then(|w| {
-            let g = get_globals();
-            g.clients.get(&w).and_then(|c| next_tiled(c.next))
-        });
+        let first_left =
+            first_right.and_then(|w| ctx.g.clients.get(&w).and_then(|c| next_tiled(c.next)));
 
         let mut c_win = first_left;
         let mut idx: u32 = 0;
@@ -207,13 +201,12 @@ pub fn tcl(m: &mut Monitor) {
                 break;
             }
 
-            let (border_width, next_client) = {
-                let g = get_globals();
-                g.clients
-                    .get(&win)
-                    .map(|c| (c.border_width, c.next))
-                    .unwrap_or((0, None))
-            };
+            let (border_width, next_client) = ctx
+                .g
+                .clients
+                .get(&win)
+                .map(|c| (c.border_width, c.next))
+                .unwrap_or((0, None));
 
             let h = if idx + 1 == left_n {
                 m.work_rect.y + m.work_rect.h - y - 2 * border_width
@@ -233,8 +226,7 @@ pub fn tcl(m: &mut Monitor) {
             );
 
             if cell_h != m.work_rect.h {
-                let g = get_globals();
-                if let Some(c) = g.clients.get(&win) {
+                if let Some(c) = ctx.g.clients.get(&win) {
                     y = c.geo.y + client_height(c);
                 }
             }
@@ -244,8 +236,11 @@ pub fn tcl(m: &mut Monitor) {
 
             // Skip the next client — it belongs to the right column.
             if let Some(skip_win) = c_win {
-                let g = get_globals();
-                c_win = g.clients.get(&skip_win).and_then(|c| next_tiled(c.next));
+                c_win = ctx
+                    .g
+                    .clients
+                    .get(&skip_win)
+                    .and_then(|c| next_tiled(c.next));
             }
         }
     }

@@ -9,6 +9,7 @@
 //! and terminated by `None`.  All mutation goes through the helpers here so that
 //! the invariants of both lists are maintained in one place.
 
+use crate::contexts::WmCtx;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::arrange;
@@ -190,14 +191,14 @@ pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
 
 /// Detach `win` from the client list and re-attach it at the front (master
 /// position), then re-focus and re-arrange the monitor.
-pub fn pop(win: Window) {
+pub fn pop(ctx: &mut WmCtx, win: Window) {
     detach(win);
     attach(win);
-    focus(Some(win));
+    let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
+    focus(ctx, Some(win));
 
-    let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        arrange(ctx, Some(mid));
     }
 }
 

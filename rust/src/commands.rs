@@ -1,17 +1,17 @@
 use crate::bar::draw_bar;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::types::*;
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::ConnectionExt;
 
 const COMMAND_INDICATOR: &[u8] = b"c;:;";
 
-pub fn x_command() -> i32 {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return 0 };
+pub fn x_command(ctx: &mut WmCtx) -> i32 {
+    let Some(ref conn) = ctx.x11.conn else {
+        return 0;
+    };
 
-    let globals = get_globals();
-    let root = globals.root;
+    let root = ctx.g.cfg.root;
 
     let Ok(cookie) = conn.get_property::<u32, u8>(
         false,
@@ -39,7 +39,7 @@ pub fn x_command() -> i32 {
 
     let fcursor = &command_bytes[COMMAND_INDICATOR.len()..];
 
-    let commands = globals.commands.clone();
+    let commands = ctx.g.cfg.commands.clone();
 
     for cmd in &commands {
         if fcursor.len() < cmd.cmd.len() {
@@ -62,7 +62,7 @@ pub fn x_command() -> i32 {
             std::str::from_utf8(fcursor).unwrap_or("")
         };
 
-        (cmd.action)(arg_str);
+        (cmd.action)(ctx, arg_str);
 
         return 1;
     }
@@ -70,21 +70,18 @@ pub fn x_command() -> i32 {
     0
 }
 
-pub fn set_special_next(value: u32) {
-    let globals = get_globals_mut();
-    globals.specialnext = match value {
+pub fn set_special_next(ctx: &mut WmCtx, value: u32) {
+    ctx.g.specialnext = match value {
         0 => SpecialNext::None,
         _ => SpecialNext::Float,
     };
 }
 
-pub fn command_prefix(value: u32) {
-    let globals = get_globals_mut();
-    globals.tags.prefix = value != 0;
+pub fn command_prefix(ctx: &mut WmCtx, value: u32) {
+    ctx.g.tags.prefix = value != 0;
 
-    let selmon_id = globals.selmon;
-    let globals = get_globals_mut();
-    if let Some(mon) = globals.monitors.get_mut(selmon_id) {
+    let selmon_id = ctx.g.selmon;
+    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
         draw_bar(mon);
     }
 }
@@ -93,199 +90,211 @@ pub fn init_commands() -> Vec<XCommand> {
     vec![
         XCommand {
             cmd: "layout",
-            action: |arg| {
+            action: |ctx, arg| {
                 let val = if arg.is_empty() {
                     0u32
                 } else {
                     arg.parse().unwrap_or(0)
                 };
-                crate::layouts::command_layout(val);
+                crate::layouts::command_layout(ctx, val);
             },
         },
         XCommand {
             cmd: "tag",
-            action: |arg| {
+            action: |ctx, arg| {
                 let mask = if arg.is_empty() {
                     TagMask::EMPTY
                 } else {
                     let argnum = arg.parse::<usize>().unwrap_or(0);
                     TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::set_client_tag(mask);
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::tags::set_client_tag(ctx, win, mask);
+                }
             },
         },
         XCommand {
             cmd: "view",
-            action: |arg| {
+            action: |ctx, arg| {
                 let mask = if arg.is_empty() {
                     TagMask::EMPTY
                 } else {
                     let argnum = arg.parse::<usize>().unwrap_or(0);
                     TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::view(mask);
+                crate::tags::view(ctx, mask);
             },
         },
         XCommand {
             cmd: "toggleview",
-            action: |arg| {
+            action: |ctx, arg| {
                 let mask = if arg.is_empty() {
                     TagMask::EMPTY
                 } else {
                     let argnum = arg.parse::<usize>().unwrap_or(0);
                     TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::toggle_view(mask);
+                crate::tags::toggle_view(ctx, mask);
             },
         },
         XCommand {
             cmd: "toggletag",
-            action: |arg| {
+            action: |ctx, arg| {
                 let mask = if arg.is_empty() {
                     TagMask::EMPTY
                 } else {
                     let argnum = arg.parse::<usize>().unwrap_or(0);
                     TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::toggle_tag(mask);
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::tags::toggle_tag(ctx, win, mask);
+                }
             },
         },
         XCommand {
             cmd: "togglebar",
-            action: |_arg| crate::bar::x11::toggle_bar(),
+            action: |_ctx, _arg| crate::bar::x11::toggle_bar(),
         },
         XCommand {
             cmd: "focusmon",
-            action: |arg| {
+            action: |ctx, arg| {
                 let val = if arg.is_empty() {
                     1i32
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::monitor::focus_mon(val);
+                crate::monitor::focus_mon(ctx, val);
             },
         },
         XCommand {
             cmd: "tagmon",
-            action: |arg| {
+            action: |ctx, arg| {
                 let val = if arg.is_empty() {
                     1i32
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::tags::tag_mon(val);
+                crate::tags::tag_mon(ctx, val);
             },
         },
         XCommand {
             cmd: "focusstack",
-            action: |arg| {
+            action: |ctx, arg| {
                 let direction = if arg.is_empty() {
                     StackDirection::default()
                 } else {
                     StackDirection::from_i32(arg.parse().unwrap_or(1))
                 };
-                crate::focus::focus_stack(direction);
+                crate::focus::focus_stack(ctx, direction);
             },
         },
         XCommand {
             cmd: "incnmaster",
-            action: |arg| {
+            action: |ctx, arg| {
                 let val = if arg.is_empty() {
                     1i32
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::layouts::inc_nmaster_by(val);
+                crate::layouts::inc_nmaster_by(ctx, val);
             },
         },
         XCommand {
             cmd: "setmfact",
-            action: |arg| {
+            action: |ctx, arg| {
                 let val = if arg.is_empty() {
                     0.05f32
                 } else {
                     arg.parse().unwrap_or(0.05)
                 };
-                crate::layouts::set_mfact(val);
+                crate::layouts::set_mfact(ctx, val);
             },
         },
         XCommand {
             cmd: "zoom",
-            action: |_arg| crate::tags::zoom(),
+            action: |ctx, _arg| crate::tags::zoom(ctx),
         },
         XCommand {
             cmd: "killclient",
-            action: |_arg| crate::client::kill_client(),
+            action: |ctx, _arg| {
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::client::kill_client(ctx, win);
+                }
+            },
         },
         XCommand {
             cmd: "setlayout",
-            action: |arg| {
+            action: |ctx, arg| {
                 if arg.is_empty() {
-                    crate::layouts::toggle_layout();
+                    crate::layouts::toggle_layout(ctx);
                 } else {
                     let val = arg.parse().unwrap_or(0);
-                    crate::layouts::command_layout(val);
+                    crate::layouts::command_layout(ctx, val);
                 }
             },
         },
         XCommand {
             cmd: "cyclelayout",
-            action: |arg| {
+            action: |ctx, arg| {
                 let val = if arg.is_empty() {
                     1i32
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::layouts::cycle_layout_direction(val > 0);
+                crate::layouts::cycle_layout_direction(ctx, val > 0);
             },
         },
         XCommand {
             cmd: "togglefloating",
-            action: |_arg| crate::floating::toggle_floating(),
+            action: |ctx, _arg| crate::floating::toggle_floating(ctx),
         },
         XCommand {
             cmd: "togglesticky",
-            action: |_arg| crate::toggles::toggle_sticky(),
+            action: |ctx, _arg| {
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::toggles::toggle_sticky(ctx, win);
+                }
+            },
         },
         XCommand {
             cmd: "togglescratchpad",
-            action: |arg| crate::scratchpad::scratchpad_toggle(Some(arg)),
+            action: |ctx, arg| crate::scratchpad::scratchpad_toggle(ctx, Some(arg)),
         },
         XCommand {
             cmd: "showscratchpad",
-            action: |arg| crate::scratchpad::scratchpad_show_name(arg),
+            action: |ctx, arg| crate::scratchpad::scratchpad_show_name(ctx, arg),
         },
         XCommand {
             cmd: "hidescratchpad",
-            action: |arg| crate::scratchpad::scratchpad_hide_name(arg),
+            action: |ctx, arg| crate::scratchpad::scratchpad_hide_name(ctx, arg),
         },
         XCommand {
             cmd: "makescratchpad",
-            action: |arg| crate::scratchpad::scratchpad_make(Some(arg)),
+            action: |ctx, arg| crate::scratchpad::scratchpad_make(ctx, Some(arg)),
         },
         XCommand {
             cmd: "unmakescratchpad",
-            action: |_arg| crate::scratchpad::scratchpad_unmake(),
+            action: |ctx, _arg| crate::scratchpad::scratchpad_unmake(ctx),
         },
         XCommand {
             cmd: "scratchpadstatus",
-            action: |arg| crate::scratchpad::scratchpad_status(arg),
+            action: |ctx, arg| crate::scratchpad::scratchpad_status(ctx, arg),
         },
         XCommand {
             cmd: "setoverlay",
-            action: |_arg| crate::overlay::set_overlay(),
+            action: |ctx, _arg| crate::overlay::set_overlay(ctx),
         },
         XCommand {
             cmd: "showoverlay",
-            action: |_arg| crate::overlay::show_overlay(),
+            action: |ctx, _arg| crate::overlay::show_overlay(ctx),
         },
         XCommand {
             cmd: "hideoverlay",
-            action: |_arg| crate::overlay::hide_overlay(),
+            action: |ctx, _arg| crate::overlay::hide_overlay(ctx),
         },
         XCommand {
             cmd: "setoverlaymode",
-            action: |arg| {
+            action: |_ctx, arg| {
                 let mode = if arg.is_empty() {
                     OverlayMode::default()
                 } else {
@@ -299,55 +308,52 @@ pub fn init_commands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "togglealttag",
-            action: |arg| {
-                let action = if arg.is_empty() {
-                    ToggleAction::Toggle
-                } else {
-                    let val: u32 = arg.parse().unwrap_or(2);
-                    ToggleAction::from_u32(val).unwrap_or_default()
-                };
-                crate::toggles::toggle_alt_tag(action);
+            action: |ctx, arg| {
+                let action = ToggleAction::from_arg(arg);
+                crate::toggles::toggle_alt_tag(ctx, action);
             },
         },
         XCommand {
             cmd: "toggleanimated",
-            action: |arg| {
-                let action = if arg.is_empty() {
-                    ToggleAction::Toggle
-                } else {
-                    let val: u32 = arg.parse().unwrap_or(2);
-                    ToggleAction::from_u32(val).unwrap_or_default()
-                };
-                crate::toggles::toggle_animated(action);
+            action: |ctx, arg| {
+                let action = ToggleAction::from_arg(arg);
+                crate::toggles::toggle_animated(ctx, action);
             },
         },
         XCommand {
             cmd: "togglefocusfollowsmouse",
-            action: |arg| {
-                let action = if arg.is_empty() {
-                    ToggleAction::Toggle
-                } else {
-                    let val: u32 = arg.parse().unwrap_or(2);
-                    ToggleAction::from_u32(val).unwrap_or_default()
-                };
-                crate::toggles::toggle_focus_follows_mouse(action);
+            action: |ctx, arg| {
+                let action = ToggleAction::from_arg(arg);
+                crate::toggles::toggle_focus_follows_mouse(ctx, action);
             },
         },
         XCommand {
             cmd: "togglelocked",
-            action: |_arg| crate::toggles::toggle_locked(),
+            action: |ctx, _arg| {
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::toggles::toggle_locked(ctx, win);
+                }
+            },
         },
         XCommand {
             cmd: "pushup",
-            action: |_arg| crate::push::push_up(),
+            action: |ctx, _arg| {
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::push::push_up(ctx, win);
+                }
+            },
         },
         XCommand {
             cmd: "pushdown",
-            action: |_arg| crate::push::push_down(),
+            action: |ctx, _arg| {
+                if let Some(win) = crate::client::selected_window(ctx) {
+                    crate::push::push_down(ctx, win);
+                }
+            },
         },
         XCommand {
             cmd: "quit",
-            action: |_arg| crate::tags::quit(),
+            action: |_ctx, _arg| crate::tags::quit(),
         },
     ]
 }

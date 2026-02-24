@@ -13,11 +13,10 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
+use crate::contexts::WmCtx;
 use crate::focus::{focus, warp_into};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::is_current_layout_tiling;
 use crate::types::*;
-use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -43,14 +42,12 @@ fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 // ── Cursor helpers ───────────────────────────────────────────────────────────
 
 /// Change the root window cursor to the shape at `cursor_index`.
-fn set_root_cursor(cursor_index: usize) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-    let globals = get_globals();
-    if let Some(ref cur) = globals.cursors[cursor_index] {
+fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
+    let Some(ref conn) = ctx.x11.conn else { return };
+    if let Some(ref cur) = ctx.g.cfg.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
-            globals.root,
+            ctx.g.cfg.root,
             &ChangeWindowAttributesAux::new().cursor(cur.cursor),
         );
         let _ = conn.flush();
@@ -58,11 +55,9 @@ fn set_root_cursor(cursor_index: usize) {
 }
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
-fn warp_pointer_resize(win: Window, dir: ResizeDirection) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&win) else {
+fn warp_pointer_resize(ctx: &WmCtx, win: Window, dir: ResizeDirection) {
+    let Some(ref conn) = ctx.x11.conn else { return };
+    let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -92,31 +87,26 @@ fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
 /// Returns the window ID if found, or None.
 ///
 /// Also checks that the cursor is not on the bar.
-pub fn find_floating_win_at_resize_border() -> Option<Window> {
-    let globals = get_globals();
-
-    let has_tiling = globals
+pub fn find_floating_win_at_resize_border(ctx: &WmCtx) -> Option<Window> {
+    let has_tiling = ctx
+        .g
         .monitors
-        .get(globals.selmon)
-        .map(|m| is_current_layout_tiling(m, &globals.tags))
+        .get(ctx.g.selmon)
+        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
         .unwrap_or(true);
 
-    let (px, py) = {
-        let _ = globals;
-        get_root_ptr()?
-    };
+    let (px, py) = get_root_ptr(ctx)?;
 
-    let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(globals.selmon) {
-        if mon.showbar && py < mon.monitor_rect.y + globals.bh {
+    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
             return None;
         }
     }
 
-    let mon = globals.monitors.get(globals.selmon)?;
+    let mon = ctx.g.monitors.get(ctx.g.selmon)?;
     let mut win = mon.clients;
     while let Some(w) = win {
-        let Some(c) = globals.clients.get(&w) else {
+        let Some(c) = ctx.g.clients.get(&w) else {
             break;
         };
         win = c.next;
@@ -135,29 +125,28 @@ pub fn find_floating_win_at_resize_border() -> Option<Window> {
 
 /// Return `true` when the pointer is in the resize-border zone of the
 /// currently selected floating window.
-pub fn is_in_resize_border() -> bool {
-    let Some(win) = get_sel_win() else {
+pub fn is_in_resize_border(ctx: &WmCtx) -> bool {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
         return false;
     };
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = ctx.g.clients.get(&win) else {
         return false;
     };
-    let has_tiling = globals
+    let has_tiling = ctx
+        .g
         .monitors
-        .get(globals.selmon)
-        .map(|m| is_current_layout_tiling(m, &globals.tags))
+        .get(ctx.g.selmon)
+        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
         .unwrap_or(true);
     if !c.isfloating && has_tiling {
         return false;
     }
 
-    let Some((px, py)) = get_root_ptr() else {
+    let Some((px, py)) = get_root_ptr(ctx) else {
         return false;
     };
-    let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(globals.selmon) {
-        if mon.showbar && py < mon.monitor_rect.y + globals.bh {
+    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
             return false;
         }
     }
@@ -165,21 +154,21 @@ pub fn is_in_resize_border() -> bool {
 }
 
 /// Check whether any visible client on the current monitor is tiled.
-fn has_visible_tiled_client() -> bool {
-    let globals = get_globals();
-    let has_tiling = globals
+fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
+    let has_tiling = ctx
+        .g
         .monitors
-        .get(globals.selmon)
-        .map(|m| is_current_layout_tiling(m, &globals.tags))
+        .get(ctx.g.selmon)
+        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
         .unwrap_or(true);
 
-    let Some(mon) = globals.monitors.get(globals.selmon) else {
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
         return false;
     };
 
     let mut win = mon.clients;
     while let Some(w) = win {
-        let Some(c) = globals.clients.get(&w) else {
+        let Some(c) = ctx.g.clients.get(&w) else {
             break;
         };
         if c.is_visible() && !(c.isfloating || !has_tiling) {
@@ -201,16 +190,15 @@ fn has_visible_tiled_client() -> bool {
 ///
 /// Returns `true` when the hover consumed the event and the caller should
 /// skip further motion handling.
-pub fn handle_floating_resize_hover() -> bool {
-    if has_visible_tiled_client() {
+pub fn handle_floating_resize_hover(ctx: &mut WmCtx) -> bool {
+    if has_visible_tiled_client(ctx) {
         return false;
     }
 
-    if let Some(win) = find_floating_win_at_resize_border() {
+    if let Some(win) = find_floating_win_at_resize_border(ctx) {
         let (cursor_idx, dir, should_focus) = {
-            let globals = get_globals();
-            let (cursor_idx, dir) = if let Some(c) = globals.clients.get(&win) {
-                let (px, py) = get_root_ptr().unwrap_or_default();
+            let (cursor_idx, dir) = if let Some(c) = ctx.g.clients.get(&win) {
+                let (px, py) = get_root_ptr(ctx).unwrap_or_default();
                 let hit_x = px - c.geo.x;
                 let hit_y = py - c.geo.y;
                 let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
@@ -218,45 +206,43 @@ pub fn handle_floating_resize_hover() -> bool {
             } else {
                 (1, ResizeDirection::BottomRight)
             };
-            let should_focus =
-                globals.monitors.get(globals.selmon).and_then(|m| m.sel) != Some(win);
+            let should_focus = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(win);
             (cursor_idx, dir, should_focus)
         };
 
-        set_root_cursor(cursor_idx);
-        get_globals_mut().altcursor = AltCursor::Resize;
-        get_globals_mut().resize_direction = Some(dir);
+        set_root_cursor(ctx, cursor_idx);
+        ctx.g.altcursor = AltCursor::Resize;
+        ctx.g.resize_direction = Some(dir);
 
         if should_focus {
-            focus(Some(win));
+            focus(ctx, Some(win));
         }
         return true;
     }
 
-    if get_globals().altcursor == AltCursor::Resize {
-        get_globals_mut().resize_direction = None;
-        crate::mouse::reset_cursor();
+    if ctx.g.altcursor == AltCursor::Resize {
+        ctx.g.resize_direction = None;
+        crate::mouse::reset_cursor(ctx);
     }
     false
 }
 
-pub fn handle_sidebar_hover(root_x: i32, root_y: i32) -> bool {
-    let globals = get_globals();
-    let Some(mon) = globals.monitors.get(globals.selmon) else {
+pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
         return false;
     };
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
-        if get_globals().altcursor == AltCursor::None && root_y > get_globals().bh + 60 {
-            set_root_cursor(8);
-            get_globals_mut().altcursor = AltCursor::Sidebar;
+        if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.bh + 60 {
+            set_root_cursor(ctx, 8);
+            ctx.g.altcursor = AltCursor::Sidebar;
         }
         return true;
     }
 
-    if get_globals().altcursor == AltCursor::Sidebar {
-        get_globals_mut().altcursor = AltCursor::None;
-        set_root_cursor(0);
+    if ctx.g.altcursor == AltCursor::Sidebar {
+        ctx.g.altcursor = AltCursor::None;
+        set_root_cursor(ctx, 0);
         return true;
     }
 
@@ -278,12 +264,12 @@ pub fn handle_sidebar_hover(root_x: i32, root_y: i32) -> bool {
 ///
 /// Returns `true` if the function entered its loop (caller should skip normal
 /// focus/event handling), `false` if the cursor was not in a resize border.
-pub fn hover_resize_mouse() -> bool {
-    if !is_in_resize_border() {
+pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
+    if !is_in_resize_border(&ctx) {
         return false;
     }
 
-    let Some(conn) = grab_pointer_with_keys(1) else {
+    let Some(conn) = grab_pointer_with_keys(ctx, 1) else {
         return false;
     };
 
@@ -298,17 +284,13 @@ pub fn hover_resize_mouse() -> bool {
             x11rb::protocol::Event::ButtonRelease(_) => break,
 
             x11rb::protocol::Event::MotionNotify(_) => {
-                if !is_in_resize_border() {
+                if !is_in_resize_border(&ctx) {
                     // Focus the window under the cursor when leaving.
-                    let should_refocus = get_cursor_client_win().filter(|&hover_win| {
-                        get_globals()
-                            .monitors
-                            .get(get_globals().selmon)
-                            .and_then(|m| m.sel)
-                            != Some(hover_win)
+                    let should_refocus = get_cursor_client_win(ctx).filter(|&hover_win| {
+                        ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win)
                     });
                     if let Some(hover_win) = should_refocus {
-                        focus(Some(hover_win));
+                        focus(&mut ctx, Some(hover_win));
                     }
                     break;
                 }
@@ -324,10 +306,11 @@ pub fn hover_resize_mouse() -> bool {
                 action_started = true;
                 ungrab(conn);
 
-                let Some(win) = get_sel_win() else { break };
+                let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+                    break;
+                };
                 let (geo, w, h) = {
-                    let globals = get_globals();
-                    let Some(c) = globals.clients.get(&win) else {
+                    let Some(c) = ctx.g.clients.get(&win) else {
                         break;
                     };
                     (c.geo, c.geo.w, c.geo.h)
@@ -335,23 +318,23 @@ pub fn hover_resize_mouse() -> bool {
 
                 // Query cursor position relative to the client window.
                 let (root_x, root_y, win_x, win_y) =
-                    query_pointer_on_win(win).unwrap_or((0, 0, 0, 0));
+                    query_pointer_on_win(ctx, win).unwrap_or((0, 0, 0, 0));
 
                 match bp.detail {
                     // Right-click → move
                     3 => {
-                        warp_into(win);
-                        move_mouse();
+                        warp_into(ctx, win);
+                        move_mouse(ctx);
                     }
                     // Left-click
                     1 => {
                         if is_at_top_middle_edge(&geo, root_x, root_y) {
-                            warp_into(win);
-                            move_mouse();
+                            warp_into(ctx, win);
+                            move_mouse(ctx);
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
-                            warp_pointer_resize(win, dir);
-                            resize_mouse_directional(Some(dir));
+                            warp_pointer_resize(ctx, win, dir);
+                            resize_mouse_directional(ctx, Some(dir));
                         }
                     }
                     _ => {}
@@ -378,13 +361,11 @@ pub fn hover_resize_mouse() -> bool {
 /// cursor, respecting stacking order. This ensures that if multiple windows
 /// overlap, the topmost (visible) one is returned, not just any window whose
 /// geometry contains the cursor.
-pub fn get_cursor_client_win() -> Option<Window> {
-    let x11 = get_x11();
-    let conn = x11.conn.as_ref()?;
-    let globals = get_globals();
+pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<Window> {
+    let conn = ctx.x11.conn.as_ref()?;
 
     // Query pointer on root to get the actual child window under cursor
-    let reply = conn.query_pointer(globals.root).ok()?.reply().ok()?;
+    let reply = conn.query_pointer(ctx.g.cfg.root).ok()?.reply().ok()?;
 
     // child will be NONE if cursor is over root (no window)
     if reply.child == x11rb::NONE {
@@ -396,9 +377,8 @@ pub fn get_cursor_client_win() -> Option<Window> {
 }
 
 /// Query the pointer position in both root and window-local coordinates.
-fn query_pointer_on_win(win: Window) -> Option<(i32, i32, i32, i32)> {
-    let x11 = get_x11();
-    let conn = x11.conn.as_ref()?;
+fn query_pointer_on_win(ctx: &WmCtx, win: Window) -> Option<(i32, i32, i32, i32)> {
+    let conn = ctx.x11.conn.as_ref()?;
     let reply = conn.query_pointer(win).ok()?.reply().ok()?;
     Some((
         reply.root_x as i32,

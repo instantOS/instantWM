@@ -13,7 +13,7 @@ use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,
 };
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::types::{Client, Rect};
 use std::cmp::{max, min};
 use x11rb::connection::Connection;
@@ -45,24 +45,25 @@ pub fn client_height(c: &Client) -> i32 {
 /// If the size-hint check determines that nothing changed *and* there is more
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
-pub fn resize(win: Window, rect: &Rect, interact: bool) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
         let mut new_x = rect.x;
         let mut new_y = rect.y;
         let mut new_width = rect.w;
         let mut new_height = rect.h;
         let changed = apply_size_hints(
-            client,
+            ctx,
+            win,
             &mut new_x,
             &mut new_y,
             &mut new_width,
             &mut new_height,
             interact,
         );
-        let client_count = globals.clients.len();
+        let client_count = ctx.g.clients.len();
         if changed || client_count == 1 {
             resize_client(
+                ctx,
                 win,
                 &Rect {
                     x: new_x,
@@ -85,39 +86,37 @@ pub fn resize(win: Window, rect: &Rect, interact: bool) {
 /// level.  Always call [`resize`] from layout code so that size hints are
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
-pub fn resize_client(win: Window, rect: &Rect) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            // Snapshot old geometry before overwriting.
-            client.old_geo.x = client.geo.x;
-            client.old_geo.y = client.geo.y;
-            client.old_geo.w = client.geo.w;
-            client.old_geo.h = client.geo.h;
+pub fn resize_client(ctx: &mut WmCtx, win: Window, rect: &Rect) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
-            client.geo.x = rect.x;
-            client.geo.y = rect.y;
-            client.geo.w = rect.w;
-            client.geo.h = rect.h;
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        // Snapshot old geometry before overwriting.
+        client.old_geo.x = client.geo.x;
+        client.old_geo.y = client.geo.y;
+        client.old_geo.w = client.geo.w;
+        client.old_geo.h = client.geo.h;
 
-            let border_width = client.border_width;
+        client.geo.x = rect.x;
+        client.geo.y = rect.y;
+        client.geo.w = rect.w;
+        client.geo.h = rect.h;
 
-            let _ = conn.configure_window(
-                win,
-                &ConfigureWindowAux::new()
-                    .x(rect.x)
-                    .y(rect.y)
-                    .width(rect.w as u32)
-                    .height(rect.h as u32)
-                    .border_width(border_width as u32),
-            );
-        }
+        let border_width = client.border_width;
 
-        // Send a synthetic ConfigureNotify so the client knows its geometry.
-        crate::client::focus::configure(win);
-        let _ = conn.flush();
+        let _ = conn.configure_window(
+            win,
+            &ConfigureWindowAux::new()
+                .x(rect.x)
+                .y(rect.y)
+                .width(rect.w as u32)
+                .height(rect.h as u32)
+                .border_width(border_width as u32),
+        );
     }
+
+    // Send a synthetic ConfigureNotify so the client knows its geometry.
+    crate::client::focus::configure(ctx, win);
+    let _ = conn.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -132,51 +131,72 @@ pub fn resize_client(win: Window, rect: &Rect) {
 /// Returns `true` if the resulting geometry differs from the client's current
 /// stored geometry (i.e. an actual change would occur).
 pub fn apply_size_hints(
-    c: &mut Client,
+    ctx: &mut WmCtx,
+    win: Window,
     x: &mut i32,
     y: &mut i32,
     w: &mut i32,
     h: &mut i32,
     interact: bool,
 ) -> bool {
-    let globals = get_globals();
+    let Some(c) = ctx.g.clients.get_mut(&win) else {
+        return false;
+    };
+
+    // Snapshot current geometry before any modifications.
+    let old_x = c.geo.x;
+    let old_y = c.geo.y;
+    let old_w = c.geo.w;
+    let old_h = c.geo.h;
+    let border_width = c.border_width;
+    let client_w = c.geo.w + 2 * c.border_width;
+    let client_h = c.geo.h + 2 * c.border_width;
+    let mon_id = c.mon_id;
+    let hintsvalid = c.hintsvalid;
+    let isfloating = c.isfloating;
+
+    // Release the mutable borrow of ctx.g before we might need to call update_size_hints.
+    let (cfg, monitors, tags) = {
+        let g = &*ctx.g;
+        (g.cfg.clone(), g.monitors.clone(), g.tags.clone())
+    };
 
     *w = max(1, *w);
     *h = max(1, *h);
 
     // Clamp position so the window doesn't escape the usable area.
     if interact {
-        if *x > globals.sw {
-            *x = globals.sw - client_width(c);
+        if *x > cfg.sw {
+            *x = cfg.sw - client_w;
         }
-        if *y > globals.sh {
-            *y = globals.sh - client_height(c);
+        if *y > cfg.sh {
+            *y = cfg.sh - client_h;
         }
-        if *x + *w + 2 * c.border_width < 0 {
+        if *x + client_w < 0 {
             *x = 0;
         }
-        if *y + *h + 2 * c.border_width < 0 {
+        if *y + client_h < 0 {
             *y = 0;
         }
-    } else if let Some(mon_id) = c.mon_id {
-        if let Some(m) = globals.monitors.get(mon_id) {
+    } else if let Some(mon_id) = mon_id {
+        if let Some(m) = monitors.get(&mon_id) {
             if *x >= m.work_rect.x + m.work_rect.w {
-                *x = m.work_rect.x + m.work_rect.w - client_width(c);
+                *x = m.work_rect.x + m.work_rect.w - client_w;
             }
             if *y >= m.work_rect.y + m.work_rect.h {
-                *y = m.work_rect.y + m.work_rect.h - client_height(c);
+                *y = m.work_rect.y + m.work_rect.h - client_h;
             }
-            if *x + *w + 2 * c.border_width <= m.work_rect.x {
+            if *x + client_w <= m.work_rect.x {
                 *x = m.work_rect.x;
             }
-            if *y + *h + 2 * c.border_width <= m.work_rect.y {
+            if *y + client_h <= m.work_rect.y {
                 *y = m.work_rect.y;
             }
         }
     }
 
     // Enforce a minimum size of one bar-height in each dimension.
-    let bh = globals.bh;
+    let bh = cfg.bh;
     if *h < bh {
         *h = bh;
     }
@@ -184,83 +204,137 @@ pub fn apply_size_hints(
         *w = bh;
     }
 
-    let resizehints = globals.resizehints;
-    let is_tiling = c
-        .mon_id
-        .and_then(|mid| globals.monitors.get(mid))
-        .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
+    let resizehints = cfg.resizehints;
+    let is_tiling = mon_id
+        .and_then(|mid| monitors.get(&mid))
+        .map(|mon| crate::monitor::is_current_layout_tiling(mon, &tags))
         .unwrap_or(true);
+
+    // Need to get mutable client again for the size hints section.
+    let Some(c) = ctx.g.clients.get_mut(&win) else {
+        return false;
+    };
 
     // Only apply ICCCM size hints when hints are enabled, or the client is
     // floating / not in a tiling layout.
-    if resizehints != 0 || c.isfloating || !is_tiling {
-        if c.hintsvalid == 0 {
-            update_size_hints(c);
-        }
+    if resizehints != 0 || isfloating || !is_tiling {
+        if hintsvalid == 0 {
+            drop(c); // Release mutable borrow before calling update_size_hints
+            update_size_hints(ctx, win);
+            let c = ctx.g.clients.get_mut(&win).unwrap();
 
-        let base_is_min =
-            c.size_hints.basew == c.size_hints.minw && c.size_hints.baseh == c.size_hints.minh;
+            let base_is_min =
+                c.size_hints.basew == c.size_hints.minw && c.size_hints.baseh == c.size_hints.minh;
 
-        // Step 1: subtract base size before aspect / increment checks.
-        if !base_is_min {
-            *w -= c.size_hints.basew;
-            *h -= c.size_hints.baseh;
-        }
-
-        // Step 2: enforce aspect ratio.
-        if c.mina > 0.0 && c.maxa > 0.0 {
-            if c.maxa < (*w as f32) / (*h as f32) {
-                *w = (*h as f32 * c.maxa + 0.5) as i32;
-            } else if c.mina < (*h as f32) / (*w as f32) {
-                *h = (*w as f32 * c.mina + 0.5) as i32;
+            // Step 1: subtract base size before aspect / increment checks.
+            if !base_is_min {
+                *w -= c.size_hints.basew;
+                *h -= c.size_hints.baseh;
             }
-        }
 
-        // Step 3: when base == min, subtract base *after* the aspect check.
-        if base_is_min {
-            *w -= c.size_hints.basew;
-            *h -= c.size_hints.baseh;
-        }
+            // Step 2: enforce aspect ratio.
+            if c.mina > 0.0 && c.maxa > 0.0 {
+                if c.maxa < (*w as f32) / (*h as f32) {
+                    *w = (*h as f32 * c.maxa + 0.5) as i32;
+                } else if c.mina < (*h as f32) / (*w as f32) {
+                    *h = (*w as f32 * c.mina + 0.5) as i32;
+                }
+            }
 
-        // Step 4: snap to resize increments.
-        if c.size_hints.incw != 0 {
-            *w -= *w % c.size_hints.incw;
-        }
-        if c.size_hints.inch != 0 {
-            *h -= *h % c.size_hints.inch;
-        }
+            // Step 3: when base == min, subtract base *after* the aspect check.
+            if base_is_min {
+                *w -= c.size_hints.basew;
+                *h -= c.size_hints.baseh;
+            }
 
-        // Step 5: re-add base and clamp to [min, max].
-        *w = max(*w + c.size_hints.basew, c.size_hints.minw);
-        *h = max(*h + c.size_hints.baseh, c.size_hints.minh);
+            // Step 4: snap to resize increments.
+            if c.size_hints.incw != 0 {
+                *w -= *w % c.size_hints.incw;
+            }
+            if c.size_hints.inch != 0 {
+                *h -= *h % c.size_hints.inch;
+            }
 
-        if c.size_hints.maxw != 0 {
-            *w = min(*w, c.size_hints.maxw);
-        }
-        if c.size_hints.maxh != 0 {
-            *h = min(*h, c.size_hints.maxh);
+            // Step 5: re-add base and clamp to [min, max].
+            *w = max(*w + c.size_hints.basew, c.size_hints.minw);
+            *h = max(*h + c.size_hints.baseh, c.size_hints.minh);
+
+            if c.size_hints.maxw != 0 {
+                *w = min(*w, c.size_hints.maxw);
+            }
+            if c.size_hints.maxh != 0 {
+                *h = min(*h, c.size_hints.maxh);
+            }
+        } else {
+            // hintsvalid != 0, already have valid hints
+            let base_is_min =
+                c.size_hints.basew == c.size_hints.minw && c.size_hints.baseh == c.size_hints.minh;
+
+            // Step 1: subtract base size before aspect / increment checks.
+            if !base_is_min {
+                *w -= c.size_hints.basew;
+                *h -= c.size_hints.baseh;
+            }
+
+            // Step 2: enforce aspect ratio.
+            if c.mina > 0.0 && c.maxa > 0.0 {
+                if c.maxa < (*w as f32) / (*h as f32) {
+                    *w = (*h as f32 * c.maxa + 0.5) as i32;
+                } else if c.mina < (*h as f32) / (*w as f32) {
+                    *h = (*w as f32 * c.mina + 0.5) as i32;
+                }
+            }
+
+            // Step 3: when base == min, subtract base *after* the aspect check.
+            if base_is_min {
+                *w -= c.size_hints.basew;
+                *h -= c.size_hints.baseh;
+            }
+
+            // Step 4: snap to resize increments.
+            if c.size_hints.incw != 0 {
+                *w -= *w % c.size_hints.incw;
+            }
+            if c.size_hints.inch != 0 {
+                *h -= *h % c.size_hints.inch;
+            }
+
+            // Step 5: re-add base and clamp to [min, max].
+            *w = max(*w + c.size_hints.basew, c.size_hints.minw);
+            *h = max(*h + c.size_hints.baseh, c.size_hints.minh);
+
+            if c.size_hints.maxw != 0 {
+                *w = min(*w, c.size_hints.maxw);
+            }
+            if c.size_hints.maxh != 0 {
+                *h = min(*h, c.size_hints.maxh);
+            }
         }
     }
 
-    *x != c.geo.x || *y != c.geo.y || *w != c.geo.w || *h != c.geo.h
+    *x != old_x || *y != old_y || *w != old_w || *h != old_h
 }
 
 // ---------------------------------------------------------------------------
 // WM_NORMAL_HINTS parsing
 // ---------------------------------------------------------------------------
 
-/// Read `WM_NORMAL_HINTS` from the X server and populate `c.size_hints`,
-/// `c.mina`, `c.maxa`, and `c.isfixed`.
+/// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
+/// `mina`, `maxa`, and `isfixed`.
 ///
 /// The raw property is a packed C struct; we read individual 4-byte integers
 /// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
-pub fn update_size_hints(c: &mut Client) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
+    let Some(ref conn) = ctx.x11.conn else { return };
+
+    let Some(c) = ctx.g.clients.get_mut(&win) else {
+        return;
+    };
+    let cwin = c.win;
 
     let Ok(cookie) = conn.get_property(
         false,
-        c.win,
+        cwin,
         AtomEnum::WM_NORMAL_HINTS,
         AtomEnum::WM_SIZE_HINTS,
         0,
@@ -286,6 +360,12 @@ pub fn update_size_hints(c: &mut Client) {
         u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
     } else {
         0
+    };
+
+    // Re-acquire mutable reference.
+    let c = match ctx.g.clients.get_mut(&win) {
+        Some(c) => c,
+        None => return,
     };
 
     // --- base size (byte offset 8) / min size (byte offset 16) ---
@@ -366,11 +446,8 @@ pub fn update_size_hints(c: &mut Client) {
 
 /// Convenience wrapper: look up `win` in the global client map and call
 /// [`update_size_hints`] on the found [`Client`].
-pub fn update_size_hints_win(win: Window) {
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
-        update_size_hints(client);
-    }
+pub fn update_size_hints_win(ctx: &mut WmCtx, win: Window) {
+    update_size_hints(ctx, win);
 }
 
 // ---------------------------------------------------------------------------
@@ -380,20 +457,19 @@ pub fn update_size_hints_win(win: Window) {
 /// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
-pub fn scale_client(win: Window, scale: i32) {
-    let globals = get_globals_mut();
-    let Some(client) = globals.clients.get_mut(&win) else {
-        return;
+pub fn scale_client(ctx: &mut WmCtx, win: Window, scale: i32) {
+    let (mon_id, old_geo, border_width) = {
+        let c = match ctx.g.clients.get(&win) {
+            Some(c) => c,
+            None => return,
+        };
+        (c.mon_id, c.geo, c.border_width)
     };
-
-    let mon_id = client.mon_id;
-    let old_geo = client.geo;
-    let border_width = client.border_width;
 
     // Determine the reference rectangle (monitor bounds, or fall back to the
     // client's own geometry when no monitor is assigned).
     let mon_rect = mon_id
-        .and_then(|mid| get_globals().monitors.get(mid).map(|m| m.monitor_rect))
+        .and_then(|mid| ctx.g.monitors.get(&mid).map(|m| m.monitor_rect))
         .unwrap_or(old_geo);
 
     let new_w = old_geo.w * scale / 100;
@@ -402,6 +478,7 @@ pub fn scale_client(win: Window, scale: i32) {
     let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
 
     resize(
+        ctx,
         win,
         &Rect {
             x: new_x,

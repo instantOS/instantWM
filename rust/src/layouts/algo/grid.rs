@@ -33,7 +33,7 @@
 
 use crate::animation::animate_client;
 use crate::client::next_tiled;
-use crate::globals::get_globals;
+use crate::contexts::WmCtx;
 use crate::layouts::query::client_count;
 use crate::types::{Monitor, Rect};
 
@@ -43,16 +43,15 @@ use crate::types::{Monitor, Rect};
 ///
 /// Falls back to [`super::tile::tile`] when there are ≤ 2 clients on a
 /// landscape monitor, where a master/stack split looks better.
-pub fn grid(m: &mut Monitor) {
+pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // Two-client landscape shortcut: tile looks nicer.
     if m.clientcount <= 2 && m.monitor_rect.w > m.monitor_rect.h {
-        super::tile::tile(m);
+        super::tile::tile(ctx, m);
         return;
     }
 
     let framecount = {
-        let g = get_globals();
-        if g.animated && client_count() > 5 {
+        if ctx.g.animated && client_count(ctx.g) > 5 {
             3
         } else {
             6
@@ -64,8 +63,7 @@ pub fn grid(m: &mut Monitor) {
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -95,13 +93,12 @@ pub fn grid(m: &mut Monitor) {
     let mut i: i32 = 0;
     let mut c_win = next_tiled(m.clients);
     while let Some(win) = c_win {
-        let (border_width, next_client) = {
-            let g = get_globals();
-            g.clients
-                .get(&win)
-                .map(|c| (c.border_width, c.next))
-                .unwrap_or((0, None))
-        };
+        let (border_width, next_client) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.border_width, c.next))
+            .unwrap_or((0, None));
 
         let cell_x = m.work_rect.x + (i / rows) * cell_width;
         let cell_y = m.work_rect.y + (i % rows) * cell_height;
@@ -143,14 +140,13 @@ pub fn grid(m: &mut Monitor) {
 /// Arranges clients in equal-width columns, each column containing an equal
 /// share of clients stacked vertically.  The last column absorbs any remainder
 /// so there are never empty cells.
-pub fn horizgrid(m: &mut Monitor) {
+pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
     while c_win.is_some() {
         n += 1;
-        let g = get_globals();
-        c_win = c_win.and_then(|w| g.clients.get(&w)?.next);
+        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
     }
 
     if n == 0 {
@@ -158,8 +154,7 @@ pub fn horizgrid(m: &mut Monitor) {
     }
 
     let framecount = {
-        let g = get_globals();
-        if g.animated && client_count() > 5 {
+        if ctx.g.animated && client_count(ctx.g) > 5 {
             3
         } else {
             6
@@ -183,8 +178,7 @@ pub fn horizgrid(m: &mut Monitor) {
         let mut skip = col * (n / cols);
         while skip > 0 {
             if let Some(win) = c_win {
-                let g = get_globals();
-                c_win = g.clients.get(&win).and_then(|c| next_tiled(c.next));
+                c_win = ctx.g.clients.get(&win).and_then(|c| next_tiled(c.next));
             } else {
                 break;
             }
@@ -193,13 +187,12 @@ pub fn horizgrid(m: &mut Monitor) {
 
         for row in 0..cn {
             if let Some(win) = c_win {
-                let (border_width, next_client) = {
-                    let g = get_globals();
-                    g.clients
-                        .get(&win)
-                        .map(|c| (c.border_width, c.next))
-                        .unwrap_or((0, None))
-                };
+                let (border_width, next_client) = ctx
+                    .g
+                    .clients
+                    .get(&win)
+                    .map(|c| (c.border_width, c.next))
+                    .unwrap_or((0, None));
 
                 let cell_height = m.work_rect.h / cn as i32;
                 let cell_x = m.work_rect.x + col as i32 * cell_width;
@@ -237,6 +230,6 @@ pub fn horizgrid(m: &mut Monitor) {
 /// Kept as a named entry point so that layout index tables that reference
 /// `gaplessgrid` by name continue to compile without changes.
 #[inline]
-pub fn gaplessgrid(m: &mut Monitor) {
-    grid(m);
+pub fn gaplessgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    grid(ctx, m);
 }

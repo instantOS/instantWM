@@ -36,6 +36,7 @@ pub mod algo;
 pub mod manager;
 pub mod query;
 
+use crate::contexts::WmCtx;
 use crate::types::Monitor;
 
 /// All available window layouts.
@@ -80,17 +81,17 @@ impl LayoutKind {
         }
     }
 
-    pub fn arrange(self, m: &mut Monitor) {
+    pub fn arrange(self, ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         match self {
-            Self::Tile => algo::tile(m),
-            Self::Grid => algo::grid(m),
-            Self::Floating => algo::floatl(m),
-            Self::Monocle => algo::monocle(m),
-            Self::Vert => algo::floatl(m),
-            Self::Deck => algo::deck(m),
-            Self::Overview => algo::overviewlayout(m),
-            Self::Bstack => algo::bstack(m),
-            Self::Horiz => algo::floatl(m),
+            Self::Tile => algo::tile(ctx, m),
+            Self::Grid => algo::grid(ctx, m),
+            Self::Floating => algo::floatl(ctx, m),
+            Self::Monocle => algo::monocle(ctx, m),
+            Self::Vert => algo::floatl(ctx, m),
+            Self::Deck => algo::deck(ctx, m),
+            Self::Overview => algo::overviewlayout(ctx, m),
+            Self::Bstack => algo::bstack(ctx, m),
+            Self::Horiz => algo::floatl(ctx, m),
         }
     }
 

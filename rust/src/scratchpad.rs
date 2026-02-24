@@ -1,21 +1,16 @@
 use crate::client::{attach, attach_stack, detach, detach_stack};
+use crate::contexts::WmCtx;
 use crate::focus::{focus, warp_cursor_to_client};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::layouts::arrange;
-use crate::layouts::restack;
+use crate::layouts::{arrange, restack};
 use crate::types::*;
-use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
 
-pub fn unhide_one() -> bool {
-    let clients: Vec<Window> = {
-        let globals = get_globals();
-        globals.clients.keys().copied().collect()
-    };
+pub fn unhide_one(ctx: &WmCtx) -> bool {
+    let clients: Vec<Window> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
         if crate::client::is_hidden(win) {
@@ -26,7 +21,7 @@ pub fn unhide_one() -> bool {
     false
 }
 
-pub fn scratchpad_make(name: Option<&str>) {
+pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     let name = match name {
         Some(n) => n,
         None => return,
@@ -36,20 +31,19 @@ pub fn scratchpad_make(name: Option<&str>) {
         return;
     }
 
-    let sel_win = get_sel_win();
+    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
 
     let sel_win = match sel_win {
         Some(w) => w,
         None => return,
     };
 
-    if scratchpad_find(name).is_some() {
+    if scratchpad_find(ctx, name).is_some() {
         return;
     }
 
     let (was_scratchpad, old_tags) = {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&sel_win) {
+        if let Some(c) = ctx.g.clients.get(&sel_win) {
             let was_sp = c.is_scratchpad();
             let old_tags = if !was_sp { c.tags } else { 0 };
             (was_sp, old_tags)
@@ -59,8 +53,7 @@ pub fn scratchpad_make(name: Option<&str>) {
     };
 
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&sel_win) {
+        if let Some(client) = ctx.g.clients.get_mut(&sel_win) {
             client.scratchpad_name = name.to_string();
 
             if !was_scratchpad {
@@ -76,18 +69,15 @@ pub fn scratchpad_make(name: Option<&str>) {
         }
     }
 
-    focus(None);
-
-    {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            arrange(Some(globals.selmon));
-        }
+    let selmon = ctx.g.selmon;
+    focus(ctx, None);
+    if !ctx.g.monitors.is_empty() {
+        arrange(ctx, Some(selmon));
     }
 }
 
-pub fn scratchpad_unmake() {
-    let sel_win = get_sel_win();
+pub fn scratchpad_unmake(ctx: &mut WmCtx) {
+    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
 
     let sel_win = match sel_win {
         Some(w) => w,
@@ -95,15 +85,15 @@ pub fn scratchpad_unmake() {
     };
 
     let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        let mon_tags = globals
+        let selmon_id = ctx.g.selmon;
+        let mon_tags = ctx
+            .g
             .monitors
             .get(selmon_id)
             .map(|m| m.tagset[m.seltags as usize])
             .unwrap_or(1);
 
-        if let Some(c) = globals.clients.get(&sel_win) {
+        if let Some(c) = ctx.g.clients.get(&sel_win) {
             (
                 c.is_scratchpad(),
                 c.scratchpad_restore_tags,
@@ -120,8 +110,7 @@ pub fn scratchpad_unmake() {
     }
 
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&sel_win) {
+        if let Some(client) = ctx.g.clients.get_mut(&sel_win) {
             client.scratchpad_name.clear();
             client.issticky = false;
             client.tags = if restore_tags != 0 {
@@ -134,20 +123,20 @@ pub fn scratchpad_unmake() {
     }
 
     if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        arrange(ctx, Some(mid));
     }
 }
 
-pub(crate) fn scratchpad_show_name(name: &str) {
-    let found = match scratchpad_find(name) {
+pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
+    let found = match scratchpad_find(ctx, name) {
         Some(w) => w,
         None => return,
     };
 
     let (current_mon, target_mon) = {
-        let globals = get_globals();
-        let current_mon = globals.selmon;
-        let target_mon = globals
+        let current_mon = ctx.g.selmon;
+        let target_mon = ctx
+            .g
             .clients
             .get(&found)
             .and_then(|c| c.mon_id)
@@ -156,8 +145,7 @@ pub(crate) fn scratchpad_show_name(name: &str) {
     };
 
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&found) {
+        if let Some(client) = ctx.g.clients.get_mut(&found) {
             client.issticky = true;
             client.isfloating = true;
         }
@@ -168,8 +156,7 @@ pub(crate) fn scratchpad_show_name(name: &str) {
         detach_stack(found);
 
         {
-            let globals = get_globals_mut();
-            if let Some(client) = globals.clients.get_mut(&found) {
+            if let Some(client) = ctx.g.clients.get_mut(&found) {
                 client.mon_id = Some(current_mon);
             }
         }
@@ -178,39 +165,28 @@ pub(crate) fn scratchpad_show_name(name: &str) {
         attach_stack(found);
     }
 
-    focus(Some(found));
-
-    {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            let mid = globals.selmon;
-            arrange(Some(mid));
-            let globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(mid) {
-                restack(mon);
-            }
+    let focusfollowsmouse = ctx.g.focusfollowsmouse;
+    if !ctx.g.monitors.is_empty() {
+        let mid = ctx.g.selmon;
+        focus(ctx, Some(found));
+        arrange(ctx, Some(mid));
+        if let Some(mon) = ctx.g.monitors.get_mut(mid) {
+            restack(ctx, mon);
         }
-    }
-
-    let focusfollowsmouse = {
-        let globals = get_globals();
-        globals.focusfollowsmouse
-    };
-
-    if focusfollowsmouse {
-        warp_cursor_to_client(found);
+        if focusfollowsmouse {
+            warp_cursor_to_client(ctx, found);
+        }
     }
 }
 
-pub(crate) fn scratchpad_hide_name(name: &str) {
-    let found = match scratchpad_find(name) {
+pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
+    let found = match scratchpad_find(ctx, name) {
         Some(w) => w,
         None => return,
     };
 
     let (is_sticky, mon_id) = {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&found) {
+        if let Some(c) = ctx.g.clients.get(&found) {
             (c.issticky, c.mon_id)
         } else {
             return;
@@ -222,31 +198,28 @@ pub(crate) fn scratchpad_hide_name(name: &str) {
     }
 
     {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&found) {
+        if let Some(client) = ctx.g.clients.get_mut(&found) {
             client.issticky = false;
             client.tags = SCRATCHPAD_MASK;
         }
     }
 
-    focus(None);
-
+    focus(ctx, None);
     if let Some(mid) = mon_id {
-        arrange(Some(mid));
+        arrange(ctx, Some(mid));
     }
 }
 
-pub fn scratchpad_toggle(name: Option<&str>) {
+pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     let name = match name {
         Some(n) => n,
         None => return,
     };
 
     let is_overview = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        if let Some(mon) = globals.monitors.get(selmon_id) {
-            !crate::monitor::is_current_layout_tiling(mon, &globals.tags)
+        let selmon_id = ctx.g.selmon;
+        if let Some(mon) = ctx.g.monitors.get(selmon_id) {
+            !crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags)
         } else {
             false
         }
@@ -256,41 +229,37 @@ pub fn scratchpad_toggle(name: Option<&str>) {
         return;
     }
 
-    let found = match scratchpad_find(name) {
+    let found = match scratchpad_find(ctx, name) {
         Some(w) => w,
         None => return,
     };
 
-    let is_sticky = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&found)
-            .map(|c| c.issticky)
-            .unwrap_or(false)
-    };
+    let is_sticky = ctx
+        .g
+        .clients
+        .get(&found)
+        .map(|c| c.issticky)
+        .unwrap_or(false);
 
     if is_sticky {
-        scratchpad_hide_name(name);
+        scratchpad_hide_name(ctx, name);
     } else {
-        scratchpad_show_name(name);
+        scratchpad_show_name(ctx, name);
     }
 }
 
-pub fn scratchpad_status(name: &str) {
-    let globals = get_globals();
-    let root = globals.root;
+pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
+    let root = ctx.g.cfg.root;
 
     if !name.is_empty() && name != "all" {
-        let found = scratchpad_find(name);
+        let found = scratchpad_find(ctx, name);
         let visible = found
-            .map(|w| globals.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
+            .map(|w| ctx.g.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
             .unwrap_or(false);
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
 
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
+        if let Some(ref conn) = ctx.x11.conn {
             let _ = conn.change_property(
                 x11rb::protocol::xproto::PropMode::REPLACE,
                 root,
@@ -308,10 +277,10 @@ pub fn scratchpad_status(name: &str) {
     let mut status = String::from("ipc:scratchpads:");
     let mut first = true;
 
-    for mon in &globals.monitors {
+    for mon in &ctx.g.monitors {
         let mut current = mon.clients;
         while let Some(c_win) = current {
-            if let Some(c) = globals.clients.get(&c_win) {
+            if let Some(c) = ctx.g.clients.get(&c_win) {
                 if c.is_scratchpad() {
                     if !first {
                         status.push(',');
@@ -334,8 +303,7 @@ pub fn scratchpad_status(name: &str) {
         status.push_str("none");
     }
 
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
+    if let Some(ref conn) = ctx.x11.conn {
         let _ = conn.change_property(
             x11rb::protocol::xproto::PropMode::REPLACE,
             root,
@@ -349,16 +317,15 @@ pub fn scratchpad_status(name: &str) {
     }
 }
 
-fn scratchpad_find(name: &str) -> Option<Window> {
+fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<Window> {
     if name.is_empty() {
         return None;
     }
 
-    let globals = get_globals();
-    for mon in &globals.monitors {
+    for mon in &ctx.g.monitors {
         let mut current = mon.clients;
         while let Some(c_win) = current {
-            if let Some(c) = globals.clients.get(&c_win) {
+            if let Some(c) = ctx.g.clients.get(&c_win) {
                 if c.is_scratchpad() && c.scratchpad_name == name {
                     return Some(c_win);
                 }
@@ -371,11 +338,10 @@ fn scratchpad_find(name: &str) -> Option<Window> {
     None
 }
 
-pub fn scratchpad_any_visible(mon: &Monitor) -> bool {
-    let globals = get_globals();
+pub fn scratchpad_any_visible(ctx: &WmCtx, mon: &Monitor) -> bool {
     let mut current = mon.clients;
     while let Some(c_win) = current {
-        if let Some(c) = globals.clients.get(&c_win) {
+        if let Some(c) = ctx.g.clients.get(&c_win) {
             if c.is_scratchpad() && c.issticky {
                 return true;
             }
@@ -387,9 +353,8 @@ pub fn scratchpad_any_visible(mon: &Monitor) -> bool {
     false
 }
 
-pub fn scratchpad_identify_client(c: &mut Client) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn scratchpad_identify_client(ctx: &WmCtx, c: &mut Client) {
+    let Some(ref conn) = ctx.x11.conn else { return };
 
     let class_hint = conn.get_property(false, c.win, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024);
 

@@ -1,9 +1,13 @@
+//! Focus management using explicit WM context.
+//!
+//! This module provides window focus functionality via `WmCtx`, avoiding
+//! global state access and making dependencies explicit.
+
 use crate::bar::draw_bars;
 use crate::client::{set_focus, set_urgent, unfocus_win};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::tags::view;
 use crate::types::*;
-use crate::util::{self, get_sel_win};
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -11,19 +15,19 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
-pub fn focus(win: Option<Window>) {
+/// Set focus to a window, or to the root if None.
+pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
+        if ctx.g.monitors.is_empty() {
             return;
         }
-        let sel_mon_id = globals.selmon;
-        let Some(mon) = globals.monitors.get(sel_mon_id) else {
+        let sel_mon_id = ctx.g.selmon;
+        let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
             return;
         };
 
         let mut target = win.filter(|w| {
-            globals
+            ctx.g
                 .clients
                 .get(w)
                 .map(|c| c.is_visible() && !c.is_hidden)
@@ -33,7 +37,7 @@ pub fn focus(win: Option<Window>) {
         if target.is_none() {
             let mut stack = mon.stack;
             while let Some(c_win) = stack {
-                let Some(c) = globals.clients.get(&c_win) else {
+                let Some(c) = ctx.g.clients.get(&c_win) else {
                     break;
                 };
                 if c.is_visible() && !c.is_hidden {
@@ -48,71 +52,57 @@ pub fn focus(win: Option<Window>) {
             sel_mon_id,
             mon.sel,
             target,
-            globals.root,
-            globals.netatom.active_window,
+            ctx.g.cfg.root,
+            ctx.g.cfg.netatom.active_window,
         )
     };
 
     if current_sel == target {
         if let Some(w) = target {
-            set_focus(w);
-        } else {
-            let x11 = get_x11();
-            if let Some(ref conn) = x11.conn {
-                let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-                let _ = conn.delete_property(root, net_active_window);
-                let _ = conn.flush();
-            }
+            set_focus(ctx, w);
+        } else if let Some(ref conn) = ctx.x11.conn {
+            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+            let _ = conn.delete_property(root, net_active_window);
+            let _ = conn.flush();
         }
         return;
     }
 
     if let Some(cur_win) = current_sel {
-        unfocus_win(cur_win, false);
+        unfocus_win(ctx, cur_win, false);
     }
 
-    {
-        let globals = get_globals_mut();
-        if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
-            mon.sel = target;
-            if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
-                mon.gesture = Gesture::None;
-            }
+    if let Some(mon) = ctx.g.monitors.get_mut(sel_mon_id) {
+        mon.sel = target;
+        if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
+            mon.gesture = Gesture::None;
         }
     }
 
     draw_bars();
 
     if let Some(w) = target.take() {
-        let is_urgent = {
-            let globals = get_globals();
-            globals.clients.get(&w).map(|c| c.isurgent).unwrap_or(false)
-        };
+        let is_urgent = ctx.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
         if is_urgent {
             set_urgent(w, false);
         }
         set_focus(w);
-    } else {
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
-            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-            let _ = conn.delete_property(root, net_active_window);
-            let _ = conn.flush();
-        }
+    } else if let Some(ref conn) = ctx.x11.conn {
+        let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+        let _ = conn.delete_property(root, net_active_window);
+        let _ = conn.flush();
     }
 }
 
-pub fn set_focus_win(win: Window) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&win) {
+pub fn set_focus_win(ctx: &WmCtx, win: Window) {
+    if let Some(ref conn) = ctx.x11.conn {
+        if let Some(c) = ctx.g.clients.get(&win) {
             if !c.neverfocus {
                 let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
                 let _ = conn.change_property32(
                     PropMode::REPLACE,
-                    globals.root,
-                    globals.netatom.active_window,
+                    ctx.g.cfg.root,
+                    ctx.g.cfg.netatom.active_window,
                     AtomEnum::WINDOW,
                     &[win],
                 );
@@ -122,42 +112,53 @@ pub fn set_focus_win(win: Window) {
     }
 }
 
-pub fn focus_direction(direction: Direction) {
-    let Some(sel_mon_id) = util::get_sel_mon() else {
-        return;
-    };
-    let Some(source_win) = get_sel_win() else {
+/// Focus a client in the given direction.
+///
+/// This function uses dependency injection by accepting explicit parameters
+/// instead of accessing global state directly.
+///
+/// # Arguments
+/// * `monitors` - Slice of all monitors
+/// * `sel_mon_id` - Currently selected monitor ID
+/// * `clients` - Reference to all clients
+/// * `direction` - Direction to search for a client
+/// * `focus_fn` - Function to call with the target window
+pub fn focus_direction<F>(ctx: &WmCtx, direction: Direction, focus_fn: F)
+where
+    F: FnOnce(Option<Window>),
+{
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+        focus_fn(None);
         return;
     };
 
-    let globals = get_globals();
-    let Some(source_client) = globals.clients.get(&source_win) else {
+    let Some(source_win) = mon.sel else {
+        focus_fn(None);
+        return;
+    };
+
+    let Some(source_client) = ctx.g.clients.get(&source_win) else {
+        focus_fn(None);
         return;
     };
 
     let (source_center_x, source_center_y) = source_client.geo.center();
 
-    let Some(mon) = globals.monitors.get(sel_mon_id) else {
-        return;
-    };
-
     let candidates = get_directional_candidates(
         mon.clients,
-        globals,
+        &ctx.g.clients,
         source_win,
         source_center_x,
         source_center_y,
         direction,
     );
 
-    if let Some(target) = candidates {
-        focus(Some(target));
-    }
+    focus_fn(candidates);
 }
 
 fn get_directional_candidates(
     clients: Option<Window>,
-    globals: &crate::globals::Globals,
+    globals_map: &std::collections::HashMap<Window, Client>,
     source_win: Window,
     source_center_x: i32,
     source_center_y: i32,
@@ -168,7 +169,7 @@ fn get_directional_candidates(
 
     let mut current = clients;
     while let Some(c_win) = current {
-        let Some(c) = globals.clients.get(&c_win) else {
+        let Some(c) = globals_map.get(&c_win) else {
             break;
         };
 
@@ -255,25 +256,52 @@ fn calculate_direction_score(
     }
 }
 
-pub fn direction_focus(direction: Direction) {
-    focus_direction(direction);
+pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
+    let candidates = {
+        if ctx.g.monitors.is_empty() {
+            return;
+        }
+        let sel_mon_id = ctx.g.selmon;
+        let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
+            return;
+        };
+        let Some(source_win) = mon.sel else {
+            return;
+        };
+        let Some(source_client) = ctx.g.clients.get(&source_win) else {
+            return;
+        };
+        let (source_center_x, source_center_y) = source_client.geo.center();
+
+        get_directional_candidates(
+            mon.clients,
+            &ctx.g.clients,
+            source_win,
+            source_center_x,
+            source_center_y,
+            direction,
+        )
+    };
+
+    if let Some(target) = candidates {
+        focus(ctx, Some(target));
+    }
 }
 
-pub fn focus_last_client() {
+pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_client_win = crate::client::LAST_CLIENT.load(Ordering::Relaxed);
     if last_client_win == 0 {
         return;
     }
     let last_win = last_client_win;
 
-    let globals = get_globals();
-    let last_client = match globals.clients.get(&last_win) {
+    let last_client = match ctx.g.clients.get(&last_win) {
         Some(c) => c.clone(),
         None => return,
     };
 
     if last_client.is_scratchpad() {
-        crate::scratchpad::scratchpad_show_name(&last_client.scratchpad_name);
+        crate::scratchpad::scratchpad_show_name(ctx, &last_client.scratchpad_name);
         return;
     }
 
@@ -281,37 +309,30 @@ pub fn focus_last_client() {
     let last_mon_id = last_client.mon_id;
 
     if let Some(last_mid) = last_mon_id {
-        let globals = get_globals();
-        let sel_mon_id = globals.selmon;
-        if !globals.monitors.is_empty() && sel_mon_id != last_mid {
-            if let Some(sel) = globals.monitors.get(sel_mon_id).and_then(|m| m.sel) {
-                unfocus_win(sel, false);
-                let globals = get_globals_mut();
-                globals.selmon = last_mid;
+        let sel_mon_id = ctx.g.selmon;
+        if !ctx.g.monitors.is_empty() && sel_mon_id != last_mid {
+            if let Some(sel) = ctx.g.monitors.get(sel_mon_id).and_then(|m| m.sel) {
+                unfocus_win(ctx, sel, false);
+                ctx.g.selmon = last_mid;
             }
         }
     }
 
-    if let Some(cur) = get_sel_win() {
+    if let Some(cur) = get_selected_window(ctx) {
         crate::client::LAST_CLIENT.store(cur, Ordering::Relaxed);
     }
 
-    view(TagMask::from_bits(tags));
-    focus(Some(last_win));
+    view(ctx, TagMask::from_bits(tags));
+    focus(ctx, Some(last_win));
 
-    let mon_id = {
-        let globals = get_globals();
-        globals.selmon
-    };
-    crate::layouts::arrange(Some(mon_id));
+    let mon_id = ctx.g.selmon;
+    crate::layouts::arrange(ctx, Some(mon_id));
 }
 
-pub fn warp(c_win: Window) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&c_win) {
-            if let Some(_cursor_x) = get_root_ptr() {
+pub fn warp(ctx: &WmCtx, c_win: Window) {
+    if let Some(ref conn) = ctx.x11.conn {
+        if let Some(c) = ctx.g.clients.get(&c_win) {
+            if let Some(_cursor_x) = get_root_ptr(ctx) {
                 let _ = conn.warp_pointer(
                     CURRENT_TIME,
                     c.win,
@@ -328,11 +349,9 @@ pub fn warp(c_win: Window) {
     }
 }
 
-pub fn force_warp(c_win: Window) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&c_win) {
+pub fn force_warp(ctx: &WmCtx, c_win: Window) {
+    if let Some(ref conn) = ctx.x11.conn {
+        if let Some(c) = ctx.g.clients.get(&c_win) {
             let _ = conn.warp_pointer(
                 CURRENT_TIME,
                 c.win,
@@ -348,17 +367,14 @@ pub fn force_warp(c_win: Window) {
     }
 }
 
-pub fn warp_cursor_to_client(c_win: Window) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        let root = globals.root;
-        let bh = globals.bh;
+pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
+    if let Some(ref conn) = ctx.x11.conn {
+        let root = ctx.g.cfg.root;
+        let bh = ctx.g.cfg.bh;
 
         if c_win == 0 {
-            let globals = get_globals();
-            if !globals.monitors.is_empty() {
-                if let Some(mon) = globals.monitors.get(globals.selmon) {
+            if !ctx.g.monitors.is_empty() {
+                if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
                     let _ = conn.warp_pointer(
                         CURRENT_TIME,
                         root,
@@ -375,8 +391,8 @@ pub fn warp_cursor_to_client(c_win: Window) {
             return;
         }
 
-        if let Some(c) = globals.clients.get(&c_win) {
-            if let Some((x, y)) = get_root_ptr() {
+        if let Some(c) = ctx.g.clients.get(&c_win) {
+            if let Some((x, y)) = get_root_ptr(ctx) {
                 let in_window = c.geo.contains_point(x, y)
                     || (x > c.geo.x - c.border_width
                         && y > c.geo.y - c.border_width
@@ -384,7 +400,7 @@ pub fn warp_cursor_to_client(c_win: Window) {
                         && y < c.geo.y + c.geo.h + c.border_width * 2);
 
                 let on_bar = if let Some(mon_id) = c.mon_id {
-                    if let Some(mon) = globals.monitors.get(mon_id) {
+                    if let Some(mon) = ctx.g.monitors.get(mon_id) {
                         (y > mon.by && y < mon.by + bh) || (mon.topbar && y == 0)
                     } else {
                         false
@@ -413,14 +429,12 @@ pub fn warp_cursor_to_client(c_win: Window) {
     }
 }
 
-pub fn warp_into(c_win: Window) {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        let root = globals.root;
+pub fn warp_into(ctx: &WmCtx, c_win: Window) {
+    if let Some(ref conn) = ctx.x11.conn {
+        let root = ctx.g.cfg.root;
 
-        if let Some(c) = globals.clients.get(&c_win) {
-            if let Some((mut x, mut y)) = get_root_ptr() {
+        if let Some(c) = ctx.g.clients.get(&c_win) {
+            if let Some((mut x, mut y)) = get_root_ptr(ctx) {
                 if x < c.geo.x {
                     x = c.geo.x + 10;
                 } else if x > c.geo.x + c.geo.w {
@@ -440,17 +454,15 @@ pub fn warp_into(c_win: Window) {
     }
 }
 
-pub fn warp_to_focus() {
-    if let Some(win) = get_sel_win() {
-        warp_cursor_to_client(win);
+pub fn warp_to_focus(ctx: &WmCtx) {
+    if let Some(win) = get_selected_window(ctx) {
+        warp_cursor_to_client(ctx, win);
     }
 }
 
-fn get_root_ptr() -> Option<(i32, i32)> {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let globals = get_globals();
-        if let Ok(cookie) = query_pointer(conn, globals.root) {
+fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
+    if let Some(ref conn) = ctx.x11.conn {
+        if let Ok(cookie) = query_pointer(conn, ctx.g.cfg.root) {
             if let Ok(reply) = cookie.reply() {
                 return Some((reply.root_x as i32, reply.root_y as i32));
             }
@@ -459,16 +471,21 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     None
 }
 
-pub fn focus_stack_direction(forward: bool) {
-    let Some(sel_mon_id) = util::get_sel_mon() else {
+/// Focus the next or previous client in the stack.
+pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
+where
+    F: FnOnce(Option<Window>),
+{
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+        focus_fn(None);
         return;
     };
-    let sel_win = get_sel_win();
 
-    let globals = get_globals();
-    let stack = get_visible_stack(sel_mon_id, globals);
+    let sel_win = mon.sel;
+    let stack = get_visible_stack(mon, &ctx.g.clients);
 
     if stack.is_empty() {
+        focus_fn(None);
         return;
     }
 
@@ -485,19 +502,18 @@ pub fn focus_stack_direction(forward: bool) {
         current_idx - 1
     };
 
-    focus(Some(stack[next_idx]));
+    focus_fn(Some(stack[next_idx]));
 }
 
-fn get_visible_stack(sel_mon_id: MonitorId, globals: &crate::globals::Globals) -> Vec<Window> {
+fn get_visible_stack(
+    mon: &Monitor,
+    clients: &std::collections::HashMap<Window, Client>,
+) -> Vec<Window> {
     let mut stack = Vec::new();
-
-    let Some(mon) = globals.monitors.get(sel_mon_id) else {
-        return stack;
-    };
 
     let mut current = mon.stack;
     while let Some(c_win) = current {
-        let Some(c) = globals.clients.get(&c_win) else {
+        let Some(c) = clients.get(&c_win) else {
             break;
         };
         if c.is_visible() {
@@ -509,6 +525,40 @@ fn get_visible_stack(sel_mon_id: MonitorId, globals: &crate::globals::Globals) -
     stack
 }
 
-pub fn focus_stack(direction: StackDirection) {
-    focus_stack_direction(direction.is_forward());
+pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
+    let sel_win = get_selected_window(ctx);
+
+    let stack = {
+        if ctx.g.monitors.is_empty() {
+            return;
+        }
+        let sel_mon_id = ctx.g.selmon;
+        let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
+            return;
+        };
+        get_visible_stack(mon, &ctx.g.clients)
+    };
+
+    if stack.is_empty() {
+        return;
+    }
+
+    let current_idx = match sel_win {
+        Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
+        None => 0,
+    };
+
+    let next_idx = if direction.is_forward() {
+        (current_idx + 1) % stack.len()
+    } else if current_idx == 0 {
+        stack.len() - 1
+    } else {
+        current_idx - 1
+    };
+
+    focus(ctx, Some(stack[next_idx]));
+}
+
+fn get_selected_window(ctx: &WmCtx) -> Option<Window> {
+    ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel)
 }

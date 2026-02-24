@@ -11,10 +11,9 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::monitor::{dir_to_mon, send_mon};
-use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -42,13 +41,13 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 /// - No client is currently selected.
 /// - Only one monitor is connected.
 /// - [`dir_to_mon`] returns `None` (direction is out of range).
-pub fn tag_mon(direction: i32) {
+pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
     let (sel_win, has_multiple_mons) = {
-        let globals = get_globals();
-        (get_sel_win(), globals.monitors.len() > 1)
+        let sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+        (sel, ctx.g.monitors.len() > 1)
     };
 
     let Some(win) = sel_win else { return };
@@ -56,7 +55,7 @@ pub fn tag_mon(direction: i32) {
         return;
     }
 
-    let Some(target_id) = dir_to_mon(direction) else {
+    let Some(target_id) = dir_to_mon(&ctx.g.monitors, ctx.g.selmon, direction) else {
         return;
     };
 
@@ -64,19 +63,17 @@ pub fn tag_mon(direction: i32) {
     // 2. Dispatch: floating clients get proportional repositioning; tiled
     //    clients just move.
     // -----------------------------------------------------------------------
-    let is_floating = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false)
-    };
+    let is_floating = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.isfloating)
+        .unwrap_or(false);
 
     if is_floating {
-        move_floating(win, target_id);
+        move_floating(ctx, win, target_id);
     } else {
-        send_mon(win, target_id);
+        send_mon(ctx, win, target_id);
     }
 }
 
@@ -85,7 +82,11 @@ pub fn tag_mon(direction: i32) {
 // ---------------------------------------------------------------------------
 
 /// Move a floating client to `target_id`, preserving its relative position.
-fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::MonitorId) {
+fn move_floating(
+    ctx: &mut WmCtx,
+    win: x11rb::protocol::xproto::Window,
+    target_id: crate::types::MonitorId,
+) {
     // Snapshot source geometry before send_mon() transfers ownership.
     let (
         client_x,
@@ -95,11 +96,10 @@ fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::
         src_work_area_width,
         src_work_area_height,
     ) = {
-        let globals = get_globals();
-
-        let (monitor_x, monitor_y, work_area_width, work_area_height) = globals
+        let (monitor_x, monitor_y, work_area_width, work_area_height) = ctx
+            .g
             .monitors
-            .get(globals.selmon)
+            .get(ctx.g.selmon)
             .map(|m| {
                 (
                     m.monitor_rect.x,
@@ -110,7 +110,8 @@ fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::
             })
             .unwrap_or((0, 0, 0, 0));
 
-        let (win_x, win_y) = globals
+        let (win_x, win_y) = ctx
+            .g
             .clients
             .get(&win)
             .map(|c| (c.geo.x, c.geo.y))
@@ -140,39 +141,33 @@ fn move_floating(win: x11rb::protocol::xproto::Window, target_id: crate::types::
     };
 
     // Target monitor geometry.
-    let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = {
-        let globals = get_globals();
-        globals
-            .monitors
-            .get(target_id)
-            .map(|m| {
-                (
-                    m.monitor_rect.x,
-                    m.monitor_rect.y,
-                    m.work_rect.w,
-                    m.work_rect.h,
-                )
-            })
-            .unwrap_or((0, 0, 0, 0))
-    };
+    let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = ctx
+        .g
+        .monitors
+        .get(target_id)
+        .map(|m| {
+            (
+                m.monitor_rect.x,
+                m.monitor_rect.y,
+                m.work_rect.w,
+                m.work_rect.h,
+            )
+        })
+        .unwrap_or((0, 0, 0, 0));
 
     // Transfer the client to the target monitor.
-    send_mon(win, target_id);
+    send_mon(ctx, win, target_id);
 
     // Apply proportional position on the new monitor.
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
-            client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
-        }
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
+        client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }
 
-    arrange(Some(get_globals().selmon));
+    arrange(ctx, Some(ctx.g.selmon));
 
     // Raise so the window is immediately visible on the new monitor.
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
+    if let Some(ref conn) = ctx.x11.conn {
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }

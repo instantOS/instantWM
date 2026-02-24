@@ -25,7 +25,7 @@
 //!   overview is fully visible even on monitors with topbar enabled.
 
 use crate::client::resize;
-use crate::globals::{get_globals, get_x11};
+use crate::contexts::WmCtx;
 use crate::layouts::query::all_client_count;
 use crate::types::{Monitor, Rect};
 use x11rb::connection::Connection;
@@ -35,15 +35,14 @@ use x11rb::protocol::xproto::*;
 ///
 /// Called before repositioning a floating client so that its position can be
 /// restored when leaving overview mode.
-fn save_floating(win: Window) {
-    let g = crate::globals::get_globals_mut();
-    if let Some(c) = g.clients.get_mut(&win) {
+fn save_floating(ctx: &mut WmCtx<'_>, win: Window) {
+    if let Some(c) = ctx.g.clients.get_mut(&win) {
         c.float_geo = c.geo;
     }
 }
 
-pub fn overviewlayout(m: &mut Monitor) {
-    let n = all_client_count();
+pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    let n = all_client_count(ctx.g);
     if n == 0 {
         return;
     }
@@ -56,28 +55,22 @@ pub fn overviewlayout(m: &mut Monitor) {
     }
 
     // ── snapshot monitor geometry ─────────────────────────────────────────
-    let (mon_x, mon_y, work_h, work_w, showbar, barwin) = {
-        let g = get_globals();
-        if g.monitors.is_empty() {
-            return;
-        }
-        match g.monitors.get(g.selmon) {
-            Some(mon) => (
-                mon.monitor_rect.x,
-                mon.monitor_rect.y,
-                mon.work_rect.h,
-                mon.work_rect.w,
-                mon.showbar,
-                mon.barwin,
-            ),
-            None => return,
-        }
+    if ctx.g.monitors.is_empty() {
+        return;
+    }
+    let (mon_x, mon_y, work_h, work_w, showbar, barwin) = match ctx.g.monitors.get(ctx.g.selmon) {
+        Some(mon) => (
+            mon.monitor_rect.x,
+            mon.monitor_rect.y,
+            mon.work_rect.h,
+            mon.work_rect.w,
+            mon.showbar,
+            mon.barwin,
+        ),
+        None => return,
     };
 
-    let bh = {
-        let g = get_globals();
-        g.bh
-    };
+    let bh = ctx.g.cfg.bh;
 
     // ── cell dimensions ───────────────────────────────────────────────────
     let cell_w = work_w / gridwidth;
@@ -91,12 +84,10 @@ pub fn overviewlayout(m: &mut Monitor) {
     let mut cur_y = origin_y;
 
     // ── place every client ────────────────────────────────────────────────
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
+    if let Some(ref conn) = ctx.x11.conn {
         let mut c_win = m.clients;
         while let Some(win) = c_win {
-            let g = get_globals();
-            let c = match g.clients.get(&win) {
+            let c = match ctx.g.clients.get(&win) {
                 Some(c) => c,
                 None => break,
             };
@@ -114,12 +105,10 @@ pub fn overviewlayout(m: &mut Monitor) {
             let client_h = c.geo.h;
             let is_floating = c.isfloating;
             let next_client = c.next;
-            // `g` (the shared borrow) is dropped here at end of scope,
-            // before save_floating takes a mutable borrow below.
 
             // Persist float geometry so restore works after leaving overview.
             if is_floating {
-                save_floating(win);
+                save_floating(ctx, win);
             }
 
             resize(

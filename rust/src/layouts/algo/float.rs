@@ -33,7 +33,7 @@
 //! layout moves it, so the original position can be restored later.
 
 use crate::client::resize;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::contexts::WmCtx;
 use crate::layouts::manager::restack;
 use crate::types::{Monitor, Rect, SnapPosition};
 use x11rb::connection::Connection;
@@ -48,19 +48,18 @@ use x11rb::protocol::xproto::*;
 /// [`HorizLayout`](crate::layouts::HorizLayout) impls — all of which leave
 /// clients at their self-managed positions but still need snap geometry
 /// enforced and the window stack sorted.
-pub fn floatl(m: &mut Monitor) {
+pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // Disable animation for the duration of this arrange pass — floating
     // windows should snap into their positions instantly.
-    let animation_was_on = get_globals().animated;
+    let animation_was_on = ctx.g.animated;
     if animation_was_on {
-        get_globals_mut().animated = false;
+        ctx.g.animated = false;
     }
 
     // ── apply pending snap positions ──────────────────────────────────────
     let mut c_win = m.clients;
     while let Some(win) = c_win {
-        let g = get_globals();
-        let c = match g.clients.get(&win) {
+        let c = match ctx.g.clients.get(&win) {
             Some(c) => c,
             None => break,
         };
@@ -74,7 +73,7 @@ pub fn floatl(m: &mut Monitor) {
         let next_client = c.next;
 
         if snapstatus != SnapPosition::None {
-            apply_snap_for_window(win, m);
+            apply_snap_for_window(ctx, win, m);
         }
 
         c_win = next_client;
@@ -83,35 +82,28 @@ pub fn floatl(m: &mut Monitor) {
     // ── restack and raise selected client ─────────────────────────────────
     // `restack` uses a mutable Monitor reference so we call it here after the
     // immutable client loop above is finished.
-    {
-        let g = get_globals_mut();
-        if let Some(mon) = g.monitors.get_mut(g.selmon) {
-            restack(mon);
-        }
+    if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        restack(ctx, mon);
     }
 
     // Raise the selected window to the top of the Z-order so it is not
     // accidentally obscured by a tiled window placed above it by the compositor.
-    {
-        let g = get_globals();
-        if let Some(mon) = g.monitors.get(g.selmon) {
-            if let Some(sel_win) = mon.sel {
-                let x11 = get_x11();
-                if let Some(ref conn) = x11.conn {
-                    let _ = configure_window(
-                        conn,
-                        sel_win,
-                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                    );
-                    let _ = conn.flush();
-                }
+    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if let Some(sel_win) = mon.sel {
+            if let Some(ref conn) = ctx.x11.conn {
+                let _ = configure_window(
+                    conn,
+                    sel_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                );
+                let _ = conn.flush();
             }
         }
     }
 
     // Restore animation flag.
     if animation_was_on {
-        get_globals_mut().animated = true;
+        ctx.g.animated = true;
     }
 }
 
@@ -125,9 +117,8 @@ pub fn floatl(m: &mut Monitor) {
 ///
 /// Returns immediately if `snapstatus` is [`SnapPosition::None`] or the
 /// client window is not found.
-pub fn apply_snap_for_window(win: Window, m: &Monitor) {
-    let g = get_globals();
-    let c = match g.clients.get(&win) {
+pub fn apply_snap_for_window(ctx: &WmCtx<'_>, win: Window, m: &Monitor) {
+    let c = match ctx.g.clients.get(&win) {
         Some(c) => c,
         None => return,
     };
@@ -172,9 +163,8 @@ pub fn apply_snap_for_window(win: Window, m: &Monitor) {
 /// Called before any operation that will move a floating client (such as the
 /// overview layout), so the original position can be restored afterwards via
 /// `restore_floating_win`.
-pub fn save_floating(win: Window) {
-    let g = get_globals_mut();
-    if let Some(c) = g.clients.get_mut(&win) {
+pub fn save_floating(ctx: &mut WmCtx<'_>, win: Window) {
+    if let Some(c) = ctx.g.clients.get_mut(&win) {
         c.float_geo = c.geo;
     }
 }

@@ -26,9 +26,9 @@ use crate::bar::draw_bar;
 use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::config::commands::Cmd;
+use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 use crate::focus::{focus, warp_into};
-use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::{arrange, restack};
 use crate::monitor::is_current_layout_tiling;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
@@ -46,19 +46,18 @@ use super::warp::get_root_ptr;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-fn refresh_rate() -> u32 {
-    if get_globals().doubledraw {
+fn refresh_rate(ctx: &WmCtx) -> u32 {
+    if ctx.g.doubledraw {
         REFRESH_RATE_HI
     } else {
         REFRESH_RATE_LO
     }
 }
 
-/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.snap` pixels.
-fn snap_to_monitor_edges(c: &Client, new_x: &mut i32, new_y: &mut i32) {
-    let globals = get_globals();
-    let snap = globals.snap;
-    let Some(mon) = globals.monitors.get(globals.selmon) else {
+/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
+fn snap_to_monitor_edges(ctx: &WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
+    let snap = ctx.g.cfg.snap;
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
         return;
     };
 
@@ -79,9 +78,8 @@ fn snap_to_monitor_edges(c: &Client, new_x: &mut i32, new_y: &mut i32) {
 }
 
 /// Returns edge snap position based on cursor position.
-fn check_edge_snap(x: i32, y: i32) -> Option<SnapPosition> {
-    let globals = get_globals();
-    let Some(mon) = globals.monitors.get(globals.selmon) else {
+fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
         return None;
     };
 
@@ -93,21 +91,20 @@ fn check_edge_snap(x: i32, y: i32) -> Option<SnapPosition> {
     {
         return Some(SnapPosition::Right);
     }
-    if y <= mon.monitor_rect.y + if mon.showbar { globals.bh } else { 5 } {
+    if y <= mon.monitor_rect.y + if mon.showbar { ctx.g.cfg.bh } else { 5 } {
         return Some(SnapPosition::Top);
     }
     None
 }
 
 /// Returns `true` when `(x, y)` (root-space) is inside the bar of `selmon`.
-fn point_is_on_bar(x: i32, y: i32) -> bool {
-    let globals = get_globals();
-    let Some(mon) = globals.monitors.get(globals.selmon) else {
+fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
+    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
         return false;
     };
     mon.showbar
         && y >= mon.by
-        && y < mon.by + globals.bh
+        && y < mon.by + ctx.g.cfg.bh
         && x >= mon.monitor_rect.x
         && x < mon.monitor_rect.x + mon.monitor_rect.w
 }
@@ -135,12 +132,11 @@ struct MoveState {
 /// * exits fake-fullscreen and returns `None` so the caller re-enters after the transition
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
-fn prepare_drag_target() -> Option<Window> {
+fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
     let sel_win = {
-        let globals = get_globals();
-        let mon = globals.monitors.get(globals.selmon)?;
+        let mon = ctx.g.monitors.get(ctx.g.selmon)?;
         let sel = mon.sel?;
-        let c = globals.clients.get(&sel)?;
+        let c = ctx.g.clients.get(&sel)?;
 
         if c.is_fullscreen && !c.isfakefullscreen {
             return None;
@@ -156,7 +152,8 @@ fn prepare_drag_target() -> Option<Window> {
     };
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = get_globals()
+    let is_snapped = ctx
+        .g
         .clients
         .get(&sel_win)
         .map(|c| c.snapstatus != SnapPosition::None)
@@ -169,19 +166,19 @@ fn prepare_drag_target() -> Option<Window> {
     // In a floating layout, if the window fills (nearly) the whole monitor,
     // restore the saved float geometry so we drag the real size, not a maximized one.
     let restore_geo: Option<Rect> = {
-        let globals = get_globals();
-        let has_tiling = globals
+        let has_tiling = ctx
+            .g
             .monitors
-            .get(globals.selmon)
-            .map(|m| is_current_layout_tiling(m, &globals.tags))
+            .get(ctx.g.selmon)
+            .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
             .unwrap_or(true);
 
         if !has_tiling {
             if let (Some(c), Some(mon)) = (
-                globals.clients.get(&sel_win),
-                globals.monitors.get(globals.selmon),
+                ctx.g.clients.get(&sel_win),
+                ctx.g.monitors.get(ctx.g.selmon),
             ) {
-                let bh = globals.bh;
+                let bh = ctx.g.cfg.bh;
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.y >= mon.monitor_rect.y + bh - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
@@ -209,46 +206,42 @@ fn prepare_drag_target() -> Option<Window> {
 ///
 /// Tracks enter/leave transitions via `state.cursor_on_bar` so the bar is only
 /// redrawn when something changes.  Returns `true` while the cursor is on the bar.
-fn update_bar_hover(ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
-    let on_bar = point_is_on_bar(ptr_x, ptr_y);
+fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
+    let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
 
     if on_bar {
         // Use the canonical bar hit-test so that tag hover highlighting during
         // a window-drag uses exactly the same geometry as click dispatch and
         // motion_notify gesture detection.
-        let (selmon_id, new_gesture) = {
-            let globals = get_globals();
-            let selmon_id = globals.selmon;
-            let new_gesture = globals
-                .monitors
-                .get(selmon_id)
-                .map(|mon| {
-                    let local_x = ptr_x - mon.monitor_rect.x;
-                    bar_position_at_x(mon, globals, local_x).to_gesture()
-                })
-                .unwrap_or(Gesture::None);
-            (selmon_id, new_gesture)
-        };
+        let selmon_id = ctx.g.selmon;
+        let new_gesture = ctx
+            .g
+            .monitors
+            .get(selmon_id)
+            .map(|mon| {
+                let local_x = ptr_x - mon.monitor_rect.x;
+                bar_position_at_x(mon, ctx, local_x).to_gesture()
+            })
+            .unwrap_or(Gesture::None);
 
-        let gm = get_globals_mut();
-        let gesture_changed = gm
+        let gesture_changed = ctx
+            .g
             .monitors
             .get(selmon_id)
             .map(|m| m.gesture != new_gesture)
             .unwrap_or(false);
 
         if !state.cursor_on_bar || gesture_changed {
-            gm.bar_dragging = true;
-            if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+            ctx.g.bar_dragging = true;
+            if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
                 mon.gesture = new_gesture;
                 draw_bar(mon);
             }
         }
     } else if state.cursor_on_bar {
-        let gm = get_globals_mut();
-        gm.bar_dragging = false;
-        let selmon_id = gm.selmon;
-        if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+        ctx.g.bar_dragging = false;
+        let selmon_id = ctx.g.selmon;
+        if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = Gesture::None;
             draw_bar(mon);
         }
@@ -259,6 +252,7 @@ fn update_bar_hover(ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
 
 /// Process a single throttled `MotionNotify` event during `move_mouse`.
 fn on_motion(
+    ctx: &mut WmCtx,
     win: Window,
     event_x: i32,
     event_y: i32,
@@ -266,42 +260,37 @@ fn on_motion(
     root_y: i32,
     state: &mut MoveState,
 ) {
-    state.cursor_on_bar = update_bar_hover(root_x, root_y, state);
-    state.edge_snap_indicator = check_edge_snap(root_x, root_y);
+    state.cursor_on_bar = update_bar_hover(ctx, root_x, root_y, state);
+    state.edge_snap_indicator = check_edge_snap(ctx, root_x, root_y);
 
     let mut new_x = state.grab_start_x + (event_x - state.start_x);
     let mut new_y = state.grab_start_y + (event_y - state.start_y);
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let globals = get_globals();
-        let bar_bottom = globals
+        let bar_bottom = ctx
+            .g
             .monitors
-            .get(globals.selmon)
-            .map(|m| m.by + globals.bh)
+            .get(ctx.g.selmon)
+            .map(|m| m.by + ctx.g.cfg.bh)
             .unwrap_or(new_y);
         new_y = bar_bottom;
     }
 
-    let (snap, has_tiling) = {
-        let globals = get_globals();
-        let snap = globals.snap;
-        let has_tiling = globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| is_current_layout_tiling(m, &globals.tags))
-            .unwrap_or(true);
-        (snap, has_tiling)
-    };
+    let snap = ctx.g.cfg.snap;
+    let has_tiling = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .unwrap_or(true);
 
-    let (mut is_floating, mut drag_geo) = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.geo))
-            .unwrap_or((false, Rect::default()))
-    };
+    let (mut is_floating, mut drag_geo) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (c.isfloating, c.geo))
+        .unwrap_or((false, Rect::default()));
 
     // Promote a tiled window to floating once the user drags it far enough.
     //
@@ -323,8 +312,7 @@ fn on_motion(
         // If the window was never floating, float_geo will be zeroed; fall
         // back to the current tiled dimensions so the window doesn't collapse.
         let (float_w, float_h) = {
-            let globals = get_globals();
-            globals
+            ctx.g
                 .clients
                 .get(&win)
                 .map(|c| {
@@ -338,10 +326,11 @@ fn on_motion(
         };
 
         // Flip isfloating + restore border — zero configure_window calls.
-        set_floating_in_place(win);
+        set_floating_in_place(ctx, win);
 
         // Re-tile the remaining windows (touches only the other clients).
-        arrange(Some(get_globals().selmon));
+        let selmon = ctx.g.selmon;
+        arrange(ctx, Some(selmon));
 
         // The window's width is changing (tiled → floating), so the old
         // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
@@ -364,11 +353,8 @@ fn on_motion(
     }
 
     if !has_tiling || is_floating {
-        {
-            let globals = get_globals();
-            if let Some(client) = globals.clients.get(&win) {
-                snap_to_monitor_edges(client, &mut new_x, &mut new_y);
-            }
+        if let Some(client) = ctx.g.clients.get(&win) {
+            snap_to_monitor_edges(ctx, client, &mut new_x, &mut new_y);
         }
         resize(
             win,
@@ -386,11 +372,10 @@ fn on_motion(
 /// Clears `bar_dragging` and redraws the bar unconditionally.
 ///
 /// Called once the drag loop exits so that hover state is always cleaned up.
-fn clear_bar_hover() {
-    let gm = get_globals_mut();
-    gm.bar_dragging = false;
-    let selmon_id = gm.selmon;
-    if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+fn clear_bar_hover(ctx: &mut WmCtx) {
+    ctx.g.bar_dragging = false;
+    let selmon_id = ctx.g.selmon;
+    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
         mon.gesture = Gesture::None;
         draw_bar(mon);
     }
@@ -409,30 +394,30 @@ fn clear_bar_hover() {
 /// was floating, this is the true pre-drag origin; we save it into
 /// `float_geo.x` so that un-tiling later restores the window to where it was
 /// before the user dragged it onto the bar.
-fn handle_bar_drop(win: Window, grab_start_x: i32) {
-    let Some((ptr_x, ptr_y)) = get_root_ptr() else {
+fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
+    let Some((ptr_x, ptr_y)) = get_root_ptr(ctx) else {
         return;
     };
-    if !point_is_on_bar(ptr_x, ptr_y) {
+    if !point_is_on_bar(ctx, ptr_x, ptr_y) {
         return;
     }
 
     let position = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        globals
+        let selmon_id = ctx.g.selmon;
+        ctx.g
             .monitors
             .get(selmon_id)
             .map(|mon| {
                 let local_x = ptr_x - mon.monitor_rect.x;
-                bar_position_at_x(mon, globals, local_x)
+                bar_position_at_x(mon, ctx, local_x)
             })
             .unwrap_or(BarPosition::Root)
     };
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = get_globals()
+    let was_floating = ctx
+        .g
         .clients
         .get(&win)
         .map(|c| c.isfloating)
@@ -452,14 +437,18 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
         // tag() uses selmon->sel internally (via set_client_tag_impl), so win
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
-        set_tiled(win, false);
-        set_client_tag(TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY));
+        set_tiled(ctx, win, false);
+        set_client_tag(
+            ctx,
+            win,
+            TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
+        );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
-        set_tiled(win, true);
+        set_tiled(ctx, win, true);
     } else {
         // Window is already tiled and not dropped on a tag — nothing to do.
         return;
@@ -474,14 +463,13 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
     //   y = just below the bar
     if was_floating {
         let bar_bottom = {
-            let globals = get_globals();
-            globals
+            ctx.g
                 .monitors
-                .get(globals.selmon)
-                .map(|m| m.by + globals.bh)
+                .get(ctx.g.selmon)
+                .map(|m| m.by + ctx.g.cfg.bh)
                 .unwrap_or(0)
         };
-        if let Some(client) = get_globals_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.float_geo.x = grab_start_x;
             client.float_geo.y = bar_bottom;
         }
@@ -495,13 +483,13 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
 ///
 /// Returns `true` if the drop was fully handled (the caller should skip
 /// `handle_bar_drop` and `handle_client_monitor_switch`).
-fn apply_edge_drop(win: Window, edge: Option<SnapPosition>) -> bool {
+fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> bool {
     let edge = match edge {
         Some(e) => e,
         None => return false,
     };
 
-    let Some((_root_x, root_y)) = get_root_ptr() else {
+    let Some((_root_x, root_y)) = get_root_ptr(ctx) else {
         return false;
     };
 
@@ -512,53 +500,46 @@ fn apply_edge_drop(win: Window, edge: Option<SnapPosition>) -> bool {
         return false;
     }
 
-    let is_tiling = {
-        let globals = get_globals();
-        globals
-            .monitors
-            .get(globals.selmon)
-            .map(|m| is_current_layout_tiling(m, &globals.tags))
-            .unwrap_or(true)
-    };
+    let is_tiling = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .unwrap_or(true);
 
     if is_tiling {
-        let (mon_my, mon_mh) = {
-            let globals = get_globals();
-            globals
-                .monitors
-                .get(globals.selmon)
-                .map(|m| (m.monitor_rect.y, m.monitor_rect.h))
-                .unwrap_or((0, 1))
-        };
+        let (mon_my, mon_mh) = ctx
+            .g
+            .monitors
+            .get(ctx.g.selmon)
+            .map(|m| (m.monitor_rect.y, m.monitor_rect.h))
+            .unwrap_or((0, 1));
 
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_client(Direction::Left);
+                move_client(ctx, Direction::Left);
             } else {
-                move_client(Direction::Right);
+                move_client(ctx, Direction::Right);
             }
         } else if at_left {
-            shift_tag_by(Direction::Left, 1);
+            shift_tag_by(ctx, Direction::Left, 1);
         } else {
-            shift_tag_by(Direction::Right, 1);
+            shift_tag_by(ctx, Direction::Right, 1);
         }
 
-        {
-            let globals = get_globals_mut();
-            if let Some(c) = globals.clients.get_mut(&win) {
-                c.isfloating = false;
-            }
-            let selmon_id = globals.selmon;
-            arrange(Some(selmon_id));
+        if let Some(c) = ctx.g.clients.get_mut(&win) {
+            c.isfloating = false;
         }
+        let selmon_id = ctx.g.selmon;
+        arrange(ctx, Some(selmon_id));
     } else {
         let dir = if at_left {
             SnapDir::Left
         } else {
             SnapDir::Right
         };
-        change_snap(win, dir);
+        change_snap(ctx, win, dir);
     }
 
     true
@@ -569,18 +550,21 @@ fn apply_edge_drop(win: Window, edge: Option<SnapPosition>) -> bool {
 /// Interactively drag the focused window with the mouse.
 ///
 /// Grab → event loop → release handling. See helpers above for each phase.
-pub fn move_mouse() {
-    let Some(win) = prepare_drag_target() else {
+pub fn move_mouse(ctx: &mut WmCtx) {
+    let Some(win) = prepare_drag_target(ctx) else {
         return;
     };
 
-    let Some(conn) = grab_pointer(2) else { return };
-    let Some((start_x, start_y)) = get_root_ptr() else {
+    let Some(conn) = grab_pointer(ctx, 2) else {
+        return;
+    };
+    let Some((start_x, start_y)) = get_root_ptr(ctx) else {
         ungrab(conn);
         return;
     };
 
-    let (grab_start_x, grab_start_y) = get_globals()
+    let (grab_start_x, grab_start_y) = ctx
+        .g
         .clients
         .get(&win)
         .map(|c| (c.geo.x, c.geo.y))
@@ -594,7 +578,7 @@ pub fn move_mouse() {
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
-    let rate = refresh_rate();
+    let rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -609,6 +593,7 @@ pub fn move_mouse() {
                 }
                 last_time = m.time;
                 on_motion(
+                    ctx,
                     win,
                     m.event_x as i32,
                     m.event_y as i32,
@@ -622,11 +607,11 @@ pub fn move_mouse() {
     }
 
     ungrab(conn);
-    clear_bar_hover();
+    clear_bar_hover(ctx);
 
-    if !apply_edge_drop(win, state.edge_snap_indicator) {
-        handle_bar_drop(win, state.grab_start_x);
-        handle_client_monitor_switch(win);
+    if !apply_edge_drop(ctx, win, state.edge_snap_indicator) {
+        handle_bar_drop(ctx, win, state.grab_start_x);
+        handle_client_monitor_switch(ctx, win);
     }
 }
 
@@ -636,9 +621,11 @@ pub fn move_mouse() {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse() {
-    let Some(conn) = grab_pointer(2) else { return };
-    let Some((_, start_y)) = get_root_ptr() else {
+pub fn gesture_mouse(ctx: &WmCtx) {
+    let Some(conn) = grab_pointer(ctx, 2) else {
+        return;
+    };
+    let Some((_, start_y)) = get_root_ptr(ctx) else {
         ungrab(conn);
         return;
     };
@@ -658,9 +645,10 @@ pub fn gesture_mouse() {
                 }
                 last_time = m.time;
 
-                let threshold = get_globals()
+                let threshold = ctx
+                    .g
                     .monitors
-                    .get(get_globals().selmon)
+                    .get(ctx.g.selmon)
                     .map(|m| m.monitor_rect.h / 30)
                     .unwrap_or(0);
                 if (last_y - m.event_y as i32).abs() > threshold {
@@ -670,7 +658,7 @@ pub fn gesture_mouse() {
                     } else {
                         Cmd::DownVol
                     };
-                    crate::util::spawn(cmd);
+                    crate::util::spawn(ctx, cmd);
                     last_y = event_y;
                 }
             }
@@ -691,59 +679,63 @@ pub fn gesture_mouse() {
 /// * Drag then release (no modifier)  → [`follow_tag`]
 ///
 /// If the pointer leaves the bar during the drag the loop exits without action.
-pub fn drag_tag() {
+pub fn drag_tag(ctx: &mut WmCtx) {
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        let mon_mx = globals
+        let selmon_id = ctx.g.selmon;
+        let mon_mx = ctx
+            .g
             .monitors
             .get(selmon_id)
             .map(|m| m.monitor_rect.x)
             .unwrap_or(0);
 
-        let Some((ptr_x, _)) = get_root_ptr() else {
+        let Some((ptr_x, _)) = get_root_ptr(ctx) else {
             return;
         };
 
-        let initial_tag = globals
+        let initial_tag = ctx
+            .g
             .monitors
             .get(selmon_id)
             .and_then(|mon| {
                 let local_x = ptr_x - mon.monitor_rect.x;
-                match bar_position_at_x(mon, globals, local_x) {
+                match bar_position_at_x(mon, ctx, local_x) {
                     BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
                     _ => None,
                 }
             })
             .unwrap_or(0);
 
-        let current_tagset = globals
+        let current_tagset = ctx
+            .g
             .monitors
-            .get(globals.selmon)
+            .get(ctx.g.selmon)
             .map(|m| m.tagset[m.seltags as usize]);
-        let is_current_tag = (initial_tag & globals.tags.mask()) == current_tagset.unwrap_or(0);
-        let has_sel = globals
+        let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset.unwrap_or(0);
+        let has_sel = ctx
+            .g
             .monitors
-            .get(globals.selmon)
+            .get(ctx.g.selmon)
             .and_then(|m| m.sel)
             .is_some();
         (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx)
     };
 
     if !is_current_tag && initial_tag != 0 {
-        view(TagMask::from_bits(initial_tag));
+        view(ctx, TagMask::from_bits(initial_tag));
         return;
     }
     if !has_sel {
         return;
     }
 
-    let Some(conn) = grab_pointer(2) else { return };
+    let Some(conn) = grab_pointer(ctx, 2) else {
+        return;
+    };
 
     {
-        let gm = get_globals_mut();
-        gm.bar_dragging = true;
-        if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+        ctx.g.bar_dragging = true;
+        if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             draw_bar(mon);
         }
     }
@@ -768,11 +760,10 @@ pub fn drag_tag() {
                 last_motion = Some((m.event_x as i32, m.event_y as i32, u16::from(m.state)));
 
                 let bar_bottom = {
-                    let globals = get_globals();
-                    globals
+                    ctx.g
                         .monitors
-                        .get(globals.selmon)
-                        .map(|m| m.by + globals.bh + 1)
+                        .get(ctx.g.selmon)
+                        .map(|m| m.by + ctx.g.cfg.bh + 1)
                         .unwrap_or(9999)
                 };
                 if m.event_y as i32 > bar_bottom {
@@ -783,14 +774,12 @@ pub fn drag_tag() {
                 let local_x = m.event_x as i32 - mon_mx;
                 // Use the canonical hit-test to get the hovered bar position,
                 // then convert to a gesture for tag hover highlighting.
-                let new_gesture = {
-                    let globals = get_globals();
-                    globals
-                        .monitors
-                        .get(selmon_id)
-                        .map(|mon| bar_position_at_x(mon, globals, local_x).to_gesture())
-                        .unwrap_or(Gesture::None)
-                };
+                let new_gesture = ctx
+                    .g
+                    .monitors
+                    .get(selmon_id)
+                    .map(|mon| bar_position_at_x(mon, ctx, local_x).to_gesture())
+                    .unwrap_or(Gesture::None);
                 // Encode gesture as i32 for change-detection (reuse last_tag slot).
                 let gesture_key = match new_gesture {
                     Gesture::Tag(idx) => idx as i32,
@@ -799,8 +788,7 @@ pub fn drag_tag() {
 
                 if last_tag != gesture_key {
                     last_tag = gesture_key;
-                    let gm = get_globals_mut();
-                    if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+                    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
                         mon.gesture = new_gesture;
                         draw_bar(mon);
                     }
@@ -815,14 +803,13 @@ pub fn drag_tag() {
     if cursor_on_bar {
         if let Some((x, _, state)) = last_motion {
             let position = {
-                let globals = get_globals();
-                let selmon_id = globals.selmon;
-                globals
+                let selmon_id = ctx.g.selmon;
+                ctx.g
                     .monitors
                     .get(selmon_id)
                     .map(|mon| {
                         let local_x = x - mon.monitor_rect.x;
-                        bar_position_at_x(mon, globals, local_x)
+                        bar_position_at_x(mon, ctx, local_x)
                     })
                     .unwrap_or(BarPosition::Root)
             };
@@ -831,20 +818,23 @@ pub fn drag_tag() {
                 let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
                 let state = state as u32;
                 if (state & ModMask::SHIFT.bits() as u32) != 0 {
-                    set_client_tag(tag_mask);
+                    if let Some(win) = ctx.g.monitors.get(selmon_id).and_then(|m| m.sel) {
+                        set_client_tag(ctx, win, tag_mask);
+                    }
                 } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
-                    tag_all(tag_mask);
+                    tag_all(ctx, tag_mask);
                 } else {
-                    follow_tag(tag_mask);
+                    if let Some(win) = ctx.g.monitors.get(selmon_id).and_then(|m| m.sel) {
+                        follow_tag(ctx, win, tag_mask);
+                    }
                 }
             }
         }
     }
 
     {
-        let gm = get_globals_mut();
-        gm.bar_dragging = false;
-        if let Some(mon) = gm.monitors.get_mut(selmon_id) {
+        ctx.g.bar_dragging = false;
+        if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = Gesture::None;
             draw_bar(mon);
         }
@@ -862,21 +852,17 @@ pub fn drag_tag() {
 ///
 /// Drag (cursor moves > [`DRAG_THRESHOLD`] px): show, focus, warp, then
 /// hand off to [`move_mouse`].
-pub fn window_title_mouse_handler() {
-    let Some(win) = crate::util::get_sel_win() else {
-        return;
-    };
-
+pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
     // Snapshot was_focused and was_hidden before grabbing the pointer so that
     // the state reflects the moment the user clicked, not after any side-effects.
-    let (was_focused, was_hidden) = {
-        let g = get_globals();
-        let sel = g.monitors.get(g.selmon).and_then(|m| m.sel);
-        (sel == Some(win), crate::client::is_hidden(win))
-    };
+    let sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
+    let was_focused = sel == Some(win);
+    let was_hidden = crate::client::is_hidden(win);
 
-    let Some(conn) = grab_pointer(0) else { return };
-    let Some((start_x, start_y)) = get_root_ptr() else {
+    let Some(conn) = grab_pointer(ctx, 0) else {
+        return;
+    };
+    let Some((start_x, start_y)) = get_root_ptr(ctx) else {
         ungrab(conn);
         return;
     };
@@ -901,9 +887,9 @@ pub fn window_title_mouse_handler() {
                     if was_hidden {
                         crate::client::show(win);
                     }
-                    focus(Some(win));
-                    warp_into(win);
-                    move_mouse();
+                    focus(ctx, Some(win));
+                    warp_into(ctx, win);
+                    move_mouse(ctx);
                     return;
                 }
             }
@@ -916,20 +902,18 @@ pub fn window_title_mouse_handler() {
     if was_hidden {
         // Unminimize: show the window, focus it, and restack.
         crate::client::show(win);
-        focus(Some(win));
-        let g = get_globals_mut();
-        if let Some(mon) = g.monitors.get_mut(g.selmon) {
-            restack(mon);
+        focus(ctx, Some(win));
+        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+            restack(ctx, mon);
         }
     } else if was_focused {
         // Already focused: minimize it.
         crate::client::hide(win);
     } else {
         // Unfocused: focus it and restack.
-        focus(Some(win));
-        let g = get_globals_mut();
-        if let Some(mon) = g.monitors.get_mut(g.selmon) {
-            restack(mon);
+        focus(ctx, Some(win));
+        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+            restack(ctx, mon);
         }
     }
 }
@@ -946,14 +930,10 @@ pub fn window_title_mouse_handler() {
 /// hands off to [`crate::mouse::resize::resize_mouse`].
 ///
 /// Does nothing when the window is in true fullscreen.
-pub fn window_title_mouse_handler_right() {
-    let Some(win) = crate::util::get_sel_win() else {
-        return;
-    };
-
+pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
     {
-        let globals = get_globals();
-        if globals
+        if ctx
+            .g
             .clients
             .get(&win)
             .map(|c| c.is_fullscreen && !c.isfakefullscreen)
@@ -963,10 +943,12 @@ pub fn window_title_mouse_handler_right() {
         }
     }
 
-    focus(Some(win));
+    focus(ctx, Some(win));
 
-    let Some(conn) = grab_pointer(2) else { return };
-    let Some((start_x, start_y)) = get_root_ptr() else {
+    let Some(conn) = grab_pointer(ctx, 2) else {
+        return;
+    };
+    let Some((start_x, start_y)) = get_root_ptr(ctx) else {
         ungrab(conn);
         return;
     };
@@ -990,9 +972,9 @@ pub fn window_title_mouse_handler_right() {
                     ungrab(conn);
                     if crate::client::is_hidden(win) {
                         crate::client::show(win);
-                        focus(Some(win));
+                        focus(&mut ctx, Some(win));
                     }
-                    super::resize::resize_mouse_from_cursor();
+                    super::resize::resize_mouse_from_cursor(ctx);
                     return;
                 }
             }
@@ -1004,7 +986,7 @@ pub fn window_title_mouse_handler_right() {
     ungrab(conn);
     if crate::client::is_hidden(win) {
         crate::client::show(win);
-        focus(Some(win));
+        focus(&mut ctx, Some(win));
     }
-    crate::client::zoom();
+    crate::client::zoom(&mut ctx);
 }

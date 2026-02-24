@@ -1,3 +1,4 @@
+use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::systray::get_systray_width;
 use crate::tags::{get_tag_at_x, get_tag_width};
@@ -147,11 +148,11 @@ impl BarPosition {
 /// This function is the **single canonical hit-test** for the bar. Both click
 /// handling and hover-gesture detection should call it rather than reimplementing
 /// the geometry themselves.
-pub fn bar_position_at_x(mon: &Monitor, globals: &Globals, local_x: i32) -> BarPosition {
+pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPosition {
     use crate::bar::get_layout_symbol_width;
 
-    let start_menu_size = globals.startmenusize;
-    let tag_end = get_tag_width();
+    let start_menu_size = ctx.g.cfg.startmenusize;
+    let (tag_end, tag_idx) = (get_tag_width(ctx), get_tag_at_x(ctx, local_x));
     let blw = get_layout_symbol_width(mon);
 
     // ── Start menu ────────────────────────────────────────────────────────
@@ -160,7 +161,6 @@ pub fn bar_position_at_x(mon: &Monitor, globals: &Globals, local_x: i32) -> BarP
     }
 
     // ── Tag buttons ───────────────────────────────────────────────────────
-    let tag_idx = get_tag_at_x(local_x);
     if tag_idx >= 0 {
         return BarPosition::Tag(tag_idx as usize);
     }
@@ -171,14 +171,14 @@ pub fn bar_position_at_x(mon: &Monitor, globals: &Globals, local_x: i32) -> BarP
     }
 
     // ── Shutdown button (only when no client is selected) ─────────────────
-    let bh = globals.bh;
+    let bh = ctx.g.cfg.bh;
     if mon.sel.is_none() && local_x < tag_end + blw + bh {
         return BarPosition::ShutDown;
     }
 
     // ── Status text ───────────────────────────────────────────────────────
-    let status_hit_x = mon.work_rect.w - get_systray_width() as i32 - globals.status_text_width
-        + globals.lrpad
+    let status_hit_x = mon.work_rect.w - get_systray_width() as i32 - ctx.g.status_text_width
+        + ctx.g.cfg.lrpad
         - 2;
     if local_x > status_hit_x {
         return BarPosition::StatusText;
@@ -191,7 +191,7 @@ pub fn bar_position_at_x(mon: &Monitor, globals: &Globals, local_x: i32) -> BarP
     let mut visible_clients: Vec<Window> = Vec::new();
     let mut current = mon.clients;
     while let Some(c_win) = current {
-        let Some(c) = globals.clients.get(&c_win) else {
+        let Some(c) = ctx.g.clients.get(&c_win) else {
             break;
         };
         current = c.next;

@@ -15,8 +15,7 @@ mod tag_mon_impl;
 /// types, offering better type safety and clearer semantics than raw `u32` bitmasks.
 pub mod tag_ops;
 
-use crate::globals::{get_globals, get_globals_mut};
-use crate::util::get_sel_win;
+use crate::contexts::WmCtx;
 
 pub use bar::{get_tag_at_x, get_tag_width};
 
@@ -37,19 +36,23 @@ pub use sticky::reset_sticky;
 
 pub use tag_mon_impl::tag_mon;
 
-pub fn compute_prefix(arg: u32) -> u32 {
-    let prefix_active = get_globals().tags.prefix;
+use std::collections::HashMap;
+use x11rb::protocol::xproto::Window;
+
+pub fn compute_prefix(ctx: &mut WmCtx, arg: u32) -> u32 {
+    let prefix_active = ctx.g.tags.prefix;
     if prefix_active && arg != 0 {
-        get_globals_mut().tags.prefix = false;
+        ctx.g.tags.prefix = false;
         arg << 10
     } else {
         arg
     }
 }
 
-pub fn zoom() {
-    if let Some(win) = get_sel_win() {
-        crate::client::pop(win);
+pub fn zoom(ctx: &mut WmCtx) {
+    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+    if let Some(win) = sel_win {
+        crate::client::pop(ctx, win);
     }
 }
 
