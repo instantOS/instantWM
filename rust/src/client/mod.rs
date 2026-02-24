@@ -52,7 +52,7 @@ pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop, win_
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
-    apply_size_hints, client_height, client_width, resize, resize_client_rect, scale_client,
+    apply_size_hints, client_height, client_width, resize, resize_client, scale_client,
     update_size_hints_win,
 };
 

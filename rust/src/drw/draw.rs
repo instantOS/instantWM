@@ -394,8 +394,8 @@ impl Drw {
         fontname: Option<&str>,
         fontpattern: Option<*mut FcPattern>,
     ) -> Result<Option<Box<Fnt>>, String> {
-        let mut xfont: *mut XftFont;
-        let mut pattern: *mut FcPattern;
+        let xfont: *mut XftFont;
+        let pattern: *mut FcPattern;
 
         if let Some(name) = fontname {
             let c_name = CString::new(name).map_err(|_| "Invalid font name")?;

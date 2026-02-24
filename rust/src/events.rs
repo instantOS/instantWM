@@ -43,7 +43,7 @@ pub fn button_press(e: &ButtonPressEvent) {
 
     let globals = get_globals();
     let numlockmask = globals.numlockmask;
-    let buttons = &globals.buttons;
+    let buttons = globals.buttons.as_slice();
     let altcursor = globals.altcursor;
     let mut selmon_id = globals.selmon;
     let focusfollowsmouse = globals.focusfollowsmouse;
@@ -112,7 +112,7 @@ pub fn button_press(e: &ButtonPressEvent) {
 
     let clean_state = clean_mask(e.state.into(), numlockmask);
 
-    for button in &buttons {
+    for button in buttons {
         if button.click != click_target || button.button != e.detail {
             continue;
         }
@@ -244,12 +244,10 @@ pub fn enter_notify(e: &EnterNotifyEvent) {
     };
 
     // Handle entering root window with a floating selection: try resize mode
-    if entering_root && is_floating_sel {
-        if hover_resize_mouse() {
-            return;
-        }
-        // If hover_resize_mouse didn't grab, fall through to normal focus handling
+    if entering_root && is_floating_sel && hover_resize_mouse() {
+        return;
     }
+    // If hover_resize_mouse didn't grab, fall through to normal focus handling
 
     // Check if we're entering a client window
     let entering_client = win_to_client(e.event);
@@ -379,11 +377,9 @@ pub fn map_request(e: &MapRequestEvent) {
         return;
     }
 
-    if win_to_client(e.window).is_none() {
-        if !is_override_redirect(e.window) {
-            let (geo, border_width) = get_win_geometry(e.window);
-            crate::client::manage(e.window, geo, border_width);
-        }
+    if win_to_client(e.window).is_none() && !is_override_redirect(e.window) {
+        let (geo, border_width) = get_win_geometry(e.window);
+        crate::client::manage(e.window, geo, border_width);
     }
 }
 
@@ -556,9 +552,7 @@ pub fn leave_notify(e: &LeaveNotifyEvent) {
                 {
                     focus(Some(hover_win));
                 }
-                if hover_resize_mouse() {
-                    return;
-                }
+                if hover_resize_mouse() {}
             }
         }
     }
@@ -657,7 +651,7 @@ fn handle_systray_dock_request(e: &ClientMessageEvent) {
     );
 
     let xembed_atom = get_globals().xatom.xembed;
-    let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits() as u32;
+    let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
 
     crate::client::send_event(
         icon_win,

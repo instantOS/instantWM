@@ -386,22 +386,20 @@ pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDir
         } else {
             ResizeDirection::Bottom
         }
-    } else {
-        if hit_x < w / 3 {
-            if hit_y > h / 3 {
-                ResizeDirection::Left
-            } else {
-                ResizeDirection::TopLeft
-            }
-        } else if hit_x > 2 * w / 3 {
-            if hit_y > h / 3 {
-                ResizeDirection::Right
-            } else {
-                ResizeDirection::TopRight
-            }
+    } else if hit_x < w / 3 {
+        if hit_y > h / 3 {
+            ResizeDirection::Left
         } else {
-            ResizeDirection::Top
+            ResizeDirection::TopLeft
         }
+    } else if hit_x > 2 * w / 3 {
+        if hit_y > h / 3 {
+            ResizeDirection::Right
+        } else {
+            ResizeDirection::TopRight
+        }
+    } else {
+        ResizeDirection::Top
     }
 }
 
@@ -410,8 +408,8 @@ pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDir
 /// Mirrors the `OverlayTop` / `OverlayRight` / `OverlayBottom` / `OverlayLeft`
 /// constants from the C codebase and is stored on [`Monitor::overlaymode`].
 /// The numeric values are preserved so that external commands (e.g.
-/// `setoverlaymode`) that pass a raw integer continue to work via
-/// [`OverlayMode::from_i32`].
+/// `setoverlaymode`) that pass a raw integer continue to work. The command
+/// handler parses the integer and uses [`OverlayMode::from_i32`] to convert it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OverlayMode {
     /// Overlay slides down from the top edge (default).
@@ -426,8 +424,8 @@ pub enum OverlayMode {
 }
 
 impl OverlayMode {
-    /// Convert a raw `i32` (as used by `Arg::i` and the legacy C interface) to
-    /// an [`OverlayMode`].  Returns `None` for any value outside `0..=3`.
+    /// Convert a raw `i32` to an [`OverlayMode`].
+    /// Returns `None` for any value outside `0..=3`.
     pub fn from_i32(v: i32) -> Option<Self> {
         match v {
             0 => Some(Self::Top),
@@ -524,6 +522,44 @@ pub enum SpecialNext {
     Float,
 }
 
+/// Action to perform on a boolean toggle setting.
+///
+/// Replaces the old C pattern where `arg: u32` encoded toggle behavior:
+/// - 0 or 2: toggle the value
+/// - 1: set to false
+/// - else: set to true
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToggleAction {
+    /// Toggle the current value (true → false, false → true).
+    #[default]
+    Toggle,
+    /// Set the value to `false`.
+    SetFalse,
+    /// Set the value to `true`.
+    SetTrue,
+}
+
+impl ToggleAction {
+    /// Parse from a raw u32 value (for compatibility with external commands).
+    /// Returns None for invalid values.
+    pub fn from_u32(v: u32) -> Option<Self> {
+        match v {
+            0 | 2 => Some(Self::Toggle),
+            1 => Some(Self::SetFalse),
+            _ => Some(Self::SetTrue),
+        }
+    }
+
+    /// Apply this action to a boolean value.
+    pub fn apply(self, value: &mut bool) {
+        match self {
+            Self::Toggle => *value = !*value,
+            Self::SetFalse => *value = false,
+            Self::SetTrue => *value = true,
+        }
+    }
+}
+
 /// Direction for focus movement and similar operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
@@ -533,15 +569,28 @@ pub enum Direction {
     Right,
 }
 
-impl Direction {
-    /// Convert from direction index used in Arg.ui (0=Up, 1=Right, 2=Down, 3=Left)
-    pub fn from_index(index: u32) -> Option<Self> {
-        match index {
-            0 => Some(Self::Up),
-            1 => Some(Self::Right),
-            2 => Some(Self::Down),
-            3 => Some(Self::Left),
-            _ => None,
+/// Direction for stack-based focus movement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StackDirection {
+    /// Move to the next (forward) item in the stack.
+    #[default]
+    Next,
+    /// Move to the previous (backward) item in the stack.
+    Previous,
+}
+
+impl StackDirection {
+    /// Returns true if this is the Next direction.
+    pub fn is_forward(self) -> bool {
+        matches!(self, Self::Next)
+    }
+
+    /// Parse from i32 (for command compatibility): positive = Next, negative/zero = Previous.
+    pub fn from_i32(v: i32) -> Self {
+        if v > 0 {
+            Self::Next
+        } else {
+            Self::Previous
         }
     }
 }

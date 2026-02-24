@@ -1,9 +1,10 @@
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::direction_focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::unhide_one;
+use crate::types::Direction;
 use crate::types::*;
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
@@ -53,16 +54,14 @@ pub fn key_press(e: &KeyPressEvent) {
                     break;
                 }
             }
-            if result.is_none() {
-                if get_sel_win().is_none() {
-                    for key in &globals.dkeys {
-                        if keysym == key.keysym
-                            && clean_mask(key.mod_mask as u16, numlockmask)
-                                == clean_mask(state.bits(), numlockmask)
-                        {
-                            result = Some(key);
-                            break;
-                        }
+            if result.is_none() && get_sel_win().is_none() {
+                for key in &globals.dkeys {
+                    if keysym == key.keysym
+                        && clean_mask(key.mod_mask as u16, numlockmask)
+                            == clean_mask(state.bits(), numlockmask)
+                    {
+                        result = Some(key);
+                        break;
                     }
                 }
             }
@@ -85,8 +84,8 @@ pub fn grab_keys() {
         let globals = get_globals();
         let root = globals.root;
         let numlockmask = globals.numlockmask;
-        let keys = &globals.keys;
-        let dkeys = &globals.dkeys;
+        let keys = globals.keys.as_slice();
+        let dkeys = globals.dkeys.as_slice();
         let free_alt_tab = true;
 
         let _ = ungrab_key(conn, 0, root, ModMask::ANY);
@@ -121,7 +120,7 @@ pub fn grab_keys() {
                 continue;
             }
 
-            for key in &keys {
+            for key in keys {
                 let keysym = get_keysym(keycode);
                 if keysym == key.keysym {
                     for &modif in &modifiers {
@@ -142,7 +141,7 @@ pub fn grab_keys() {
             }
 
             if get_sel_win().is_none() {
-                for key in &dkeys {
+                for key in dkeys {
                     let keysym = get_keysym(keycode);
                     if keysym == key.keysym {
                         for &modif in &modifiers {
@@ -296,7 +295,7 @@ pub fn up_key(direction: i32) {
     };
 
     if is_overview {
-        direction_focus(0);
+        direction_focus(Direction::Up);
         return;
     }
 
@@ -343,7 +342,7 @@ pub fn down_key(direction: i32) {
     };
 
     if is_overview {
-        direction_focus(2);
+        direction_focus(Direction::Down);
         return;
     }
 

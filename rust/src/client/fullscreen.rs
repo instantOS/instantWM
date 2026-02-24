@@ -22,9 +22,9 @@
 //! border intact.
 
 use crate::animation::animate_client;
-use crate::client::geometry::resize_client_rect;
+use crate::client::geometry::resize_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::types::Rect;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -190,7 +190,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
-            resize_client_rect(win, &old_geo);
+            resize_client(win, &old_geo);
 
             if let Some(mid) = mon_id {
                 arrange(Some(mid));
@@ -244,7 +244,7 @@ pub fn toggle_fake_fullscreen() {
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
 
-            resize_client_rect(
+            resize_client(
                 win,
                 &Rect {
                     x: mon_rect.x + borderpx,

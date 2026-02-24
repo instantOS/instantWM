@@ -1,8 +1,8 @@
 use crate::client::next_tiled;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
-pub use crate::layouts::query::{client_count, client_count_mon};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
+pub use crate::layouts::query::client_count;
 use crate::types::*;
 use crate::util::get_sel_win;
 use x11rb::protocol::xproto::Window;

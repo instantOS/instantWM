@@ -32,9 +32,7 @@ use crate::animation::animate_client;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
-use crate::client::geometry::{
-    client_height, client_width, resize_client_rect, update_size_hints_win,
-};
+use crate::client::geometry::{client_height, client_width, resize_client, update_size_hints_win};
 use crate::client::list::{attach, attach_stack, detach, detach_stack, win_to_client};
 use crate::client::state::set_client_state;
 use crate::client::state::{
@@ -44,7 +42,7 @@ use crate::client::state::{
 
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::types::{Client, Rect};
 use std::cmp::max;
 use x11rb::connection::Connection;
@@ -194,7 +192,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
 
         let globals = get_globals();
         if let Some(ref scheme) = globals.borderscheme {
-            let pixel = scheme.normal.bg.pixel() as u32;
+            let pixel = scheme.normal.bg.pixel();
             let _ = conn.change_window_attributes(
                 w,
                 &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
@@ -381,7 +379,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     if animated && !c.is_fullscreen {
         // Place the window 70 px above its target so the animation slides it down.
-        resize_client_rect(
+        resize_client(
             w,
             &Rect {
                 x: c.geo.x,

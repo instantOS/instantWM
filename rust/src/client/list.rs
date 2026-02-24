@@ -11,7 +11,7 @@
 
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use x11rb::protocol::xproto::Window;
 
 // ---------------------------------------------------------------------------

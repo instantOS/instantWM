@@ -12,7 +12,8 @@
 //! care of placement.
 
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::{arrange, dir_to_mon, send_mon};
+use crate::layouts::arrange;
+use crate::monitor::{dir_to_mon, send_mon};
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};

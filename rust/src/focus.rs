@@ -11,11 +11,6 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
-pub const FOCUS_DIR_UP: u32 = 0;
-pub const FOCUS_DIR_RIGHT: u32 = 1;
-pub const FOCUS_DIR_DOWN: u32 = 2;
-pub const FOCUS_DIR_LEFT: u32 = 3;
-
 pub fn focus(win: Option<Window>) {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         let globals = get_globals();
@@ -148,7 +143,7 @@ pub fn focus_direction(direction: Direction) {
 
     let candidates = get_directional_candidates(
         mon.clients,
-        &globals,
+        globals,
         source_win,
         source_center_x,
         source_center_y,
@@ -260,10 +255,8 @@ fn calculate_direction_score(
     }
 }
 
-pub fn direction_focus(dir_index: u32) {
-    if let Some(dir) = Direction::from_index(dir_index) {
-        focus_direction(dir);
-    }
+pub fn direction_focus(direction: Direction) {
+    focus_direction(direction);
 }
 
 pub fn focus_last_client() {
@@ -473,7 +466,7 @@ pub fn focus_stack_direction(forward: bool) {
     let sel_win = get_sel_win();
 
     let globals = get_globals();
-    let stack = get_visible_stack(sel_mon_id, &globals);
+    let stack = get_visible_stack(sel_mon_id, globals);
 
     if stack.is_empty() {
         return;
@@ -516,6 +509,6 @@ fn get_visible_stack(sel_mon_id: MonitorId, globals: &crate::globals::Globals) -
     stack
 }
 
-pub fn focus_stack(direction: i32) {
-    focus_stack_direction(direction > 0);
+pub fn focus_stack(direction: StackDirection) {
+    focus_stack_direction(direction.is_forward());
 }

@@ -3,7 +3,7 @@
 use crate::client::set_client_tag_prop;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::tags::view::view;
 use crate::types::SCRATCHPAD_MASK;
 use crate::util::get_sel_win;

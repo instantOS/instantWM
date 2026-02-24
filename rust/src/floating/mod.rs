@@ -17,10 +17,6 @@ mod state;
 
 // ── snap ─────────────────────────────────────────────────────────────────────
 
-/// Re-exported for call-sites in mouse.rs / keyboard.rs that reference these
-/// integer constants by name.
-pub use snap::{SNAP_LEFT, SNAP_RIGHT, SNAP_TOP};
-
 /// `SnapDir` is the typed direction enum; `change_snap` / `reset_snap` are used by keyboard.rs.
 pub use snap::{change_snap, reset_snap, SnapDir};
 

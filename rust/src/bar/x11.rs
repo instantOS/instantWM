@@ -7,7 +7,7 @@ use x11rb::protocol::xproto::Window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub(crate) fn update_status() {
+pub fn update_status() {
     let (root, selmon_idx) = {
         let g = get_globals();
         (g.root, g.selmon)
@@ -36,7 +36,7 @@ pub(crate) fn update_status() {
     crate::systray::update_systray();
 }
 
-pub(crate) fn update_bar_pos(m: &mut Monitor) {
+pub fn update_bar_pos(m: &mut Monitor) {
     let bh = get_globals().bh;
     update_bar_pos_with_bh(m, bh);
 }
@@ -85,7 +85,7 @@ pub fn resize_bar_win(m: &Monitor) {
     }
 }
 
-pub(crate) fn update_bars() {
+pub fn update_bars() {
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let g = get_globals();
         let bh = g.bh;
@@ -150,7 +150,7 @@ pub(crate) fn update_bars() {
     }
 }
 
-pub(crate) fn toggle_bar() {
+pub fn toggle_bar() {
     let g = get_globals_mut();
 
     let animated = g.animated;

@@ -210,10 +210,7 @@ pub fn handle_floating_resize_hover() -> bool {
         let (cursor_idx, dir, should_focus) = {
             let globals = get_globals();
             let (cursor_idx, dir) = if let Some(c) = globals.clients.get(&win) {
-                let (px, py) = match get_root_ptr() {
-                    Some(p) => p,
-                    None => (0, 0),
-                };
+                let (px, py) = get_root_ptr().unwrap_or_default();
                 let hit_x = px - c.geo.x;
                 let hit_y = py - c.geo.y;
                 let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);

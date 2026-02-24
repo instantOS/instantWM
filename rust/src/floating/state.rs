@@ -3,7 +3,7 @@
 use crate::animation::animate_client;
 use crate::client::{resize, restore_border_width};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -85,7 +85,17 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
         let Some(saved_geo) = saved_geo else { return };
 
         if animate {
-            animate_client(win, &saved_geo, 7, 0);
+            animate_client(
+                win,
+                &Rect {
+                    x: saved_geo.x,
+                    y: saved_geo.y,
+                    w: saved_geo.w,
+                    h: saved_geo.h,
+                },
+                7,
+                0,
+            );
         } else {
             resize(win, &saved_geo, false);
         }
@@ -96,13 +106,11 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
             client.isfloating = false;
             client.float_geo = client.geo;
 
-            if update_borders {
-                if client_count <= 1 && client.snapstatus == SnapPosition::None {
-                    if client.border_width != 0 {
-                        client.old_border_width = client.border_width;
-                    }
-                    client.border_width = 0;
+            if update_borders && client_count <= 1 && client.snapstatus == SnapPosition::None {
+                if client.border_width != 0 {
+                    client.old_border_width = client.border_width;
                 }
+                client.border_width = 0;
             }
         }
     }

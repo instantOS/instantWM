@@ -26,23 +26,6 @@ use crate::util::get_sel_win;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-// ── Snap position integer constants ──────────────────────────────────────────
-//
-// These are kept as plain `i32` constants (mirroring the C header) so that
-// existing call-sites in mouse.rs / keyboard.rs that import them by name
-// continue to compile.  New code should prefer [`SnapPosition`] from types.rs.
-
-pub const SNAP_NONE: i32 = 0;
-pub const SNAP_TOP: i32 = 1;
-pub const SNAP_TOP_RIGHT: i32 = 2;
-pub const SNAP_RIGHT: i32 = 3;
-pub const SNAP_BOTTOM_RIGHT: i32 = 4;
-pub const SNAP_BOTTOM: i32 = 5;
-pub const SNAP_BOTTOM_LEFT: i32 = 6;
-pub const SNAP_LEFT: i32 = 7;
-pub const SNAP_TOP_LEFT: i32 = 8;
-pub const SNAP_MAXIMIZED: i32 = 9;
-
 // ── Snap direction ────────────────────────────────────────────────────────────
 
 /// The four cardinal directions used to navigate the snap graph.
@@ -57,7 +40,7 @@ pub enum SnapDir {
 }
 
 impl SnapDir {
-    /// Convert a raw integer (from an [`Arg`]) to a `SnapDir`.
+    /// Convert a raw integer to a `SnapDir`.
     /// Values outside `0..=3` clamp to `Up`.
     pub fn from_index(i: i32) -> Self {
         match i {
@@ -72,31 +55,76 @@ impl SnapDir {
 
 // ── Snap navigation matrix ────────────────────────────────────────────────────
 //
-// `SNAP_MATRIX[current_snap_index][direction_index]` → next snap index.
+// `SNAP_MATRIX[current_snap_index][direction_index]` → next snap position.
 //
-// Rows  = current snap position (SNAP_NONE = 0 … SNAP_MAXIMIZED = 9)
+// Rows  = current snap position (None = 0 … Maximized = 9)
 // Cols  = direction             (Up = 0, Right = 1, Down = 2, Left = 3)
 //
 //                                Up              Right           Down            Left
-static SNAP_MATRIX: [[i32; 4]; 10] = [
-    [SNAP_MAXIMIZED, SNAP_RIGHT, SNAP_BOTTOM, SNAP_LEFT], // None
-    [SNAP_MAXIMIZED, SNAP_TOP_RIGHT, SNAP_NONE, SNAP_TOP_LEFT], // Top
-    [SNAP_TOP_RIGHT, SNAP_TOP_RIGHT, SNAP_RIGHT, SNAP_TOP], // TopRight
-    [SNAP_TOP_RIGHT, SNAP_RIGHT, SNAP_BOTTOM_RIGHT, SNAP_NONE], // Right
+static SNAP_MATRIX: [[SnapPosition; 4]; 10] = [
     [
-        SNAP_RIGHT,
-        SNAP_BOTTOM_RIGHT,
-        SNAP_BOTTOM_RIGHT,
-        SNAP_BOTTOM,
+        SnapPosition::Maximized,
+        SnapPosition::Right,
+        SnapPosition::Bottom,
+        SnapPosition::Left,
+    ], // None
+    [
+        SnapPosition::Maximized,
+        SnapPosition::TopRight,
+        SnapPosition::None,
+        SnapPosition::TopLeft,
+    ], // Top
+    [
+        SnapPosition::TopRight,
+        SnapPosition::TopRight,
+        SnapPosition::Right,
+        SnapPosition::Top,
+    ], // TopRight
+    [
+        SnapPosition::TopRight,
+        SnapPosition::Right,
+        SnapPosition::BottomRight,
+        SnapPosition::None,
+    ], // Right
+    [
+        SnapPosition::Right,
+        SnapPosition::BottomRight,
+        SnapPosition::BottomRight,
+        SnapPosition::Bottom,
     ], // BottomRight
-    [SNAP_NONE, SNAP_BOTTOM_RIGHT, SNAP_BOTTOM, SNAP_BOTTOM_LEFT], // Bottom
-    [SNAP_LEFT, SNAP_BOTTOM, SNAP_BOTTOM_LEFT, SNAP_BOTTOM_LEFT], // BottomLeft
-    [SNAP_TOP_LEFT, SNAP_NONE, SNAP_BOTTOM_LEFT, SNAP_LEFT], // Left
-    [SNAP_TOP_LEFT, SNAP_TOP, SNAP_LEFT, SNAP_TOP],       // TopLeft
-    [SNAP_TOP, SNAP_RIGHT, SNAP_NONE, SNAP_LEFT],         // Maximized
+    [
+        SnapPosition::None,
+        SnapPosition::BottomRight,
+        SnapPosition::Bottom,
+        SnapPosition::BottomLeft,
+    ], // Bottom
+    [
+        SnapPosition::Left,
+        SnapPosition::Bottom,
+        SnapPosition::BottomLeft,
+        SnapPosition::BottomLeft,
+    ], // BottomLeft
+    [
+        SnapPosition::TopLeft,
+        SnapPosition::None,
+        SnapPosition::BottomLeft,
+        SnapPosition::Left,
+    ], // Left
+    [
+        SnapPosition::TopLeft,
+        SnapPosition::Top,
+        SnapPosition::Left,
+        SnapPosition::Top,
+    ], // TopLeft
+    [
+        SnapPosition::Top,
+        SnapPosition::Right,
+        SnapPosition::None,
+        SnapPosition::Left,
+    ], // Maximized
 ];
 
-// ── SnapPosition ↔ integer helpers ───────────────────────────────────────────
+// ── SnapPosition ↔ index helpers ───────────────────────────────────────────────
 
 fn snap_pos_to_index(s: SnapPosition) -> usize {
     match s {
@@ -110,22 +138,6 @@ fn snap_pos_to_index(s: SnapPosition) -> usize {
         SnapPosition::Left => 7,
         SnapPosition::TopLeft => 8,
         SnapPosition::Maximized => 9,
-    }
-}
-
-fn index_to_snap_pos(i: i32) -> SnapPosition {
-    match i {
-        SNAP_NONE => SnapPosition::None,
-        SNAP_TOP => SnapPosition::Top,
-        SNAP_TOP_RIGHT => SnapPosition::TopRight,
-        SNAP_RIGHT => SnapPosition::Right,
-        SNAP_BOTTOM_RIGHT => SnapPosition::BottomRight,
-        SNAP_BOTTOM => SnapPosition::Bottom,
-        SNAP_BOTTOM_LEFT => SnapPosition::BottomLeft,
-        SNAP_LEFT => SnapPosition::Left,
-        SNAP_TOP_LEFT => SnapPosition::TopLeft,
-        SNAP_MAXIMIZED => SnapPosition::Maximized,
-        _ => SnapPosition::None,
     }
 }
 
@@ -152,7 +164,7 @@ pub fn change_snap(win: Window, direction: SnapDir) {
     let new_snap = {
         let row = snap_pos_to_index(snapstatus);
         let col = direction as usize;
-        index_to_snap_pos(SNAP_MATRIX[row][col])
+        SNAP_MATRIX[row][col]
     };
 
     let mon_id = {
@@ -212,7 +224,17 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
 
     match snapstatus {
         SnapPosition::None => {
-            check_animate(win, &saved_geo, 7, 0);
+            check_animate(
+                win,
+                &Rect {
+                    x: saved_geo.x,
+                    y: saved_geo.y,
+                    w: saved_geo.w,
+                    h: saved_geo.h,
+                },
+                7,
+                0,
+            );
         }
         SnapPosition::Top => {
             check_animate(

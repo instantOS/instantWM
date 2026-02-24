@@ -20,7 +20,7 @@ use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::types::Rect;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;

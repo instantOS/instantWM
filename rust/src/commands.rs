@@ -195,12 +195,12 @@ pub fn init_commands() -> Vec<XCommand> {
         XCommand {
             cmd: "focusstack",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    1i32
+                let direction = if arg.is_empty() {
+                    StackDirection::default()
                 } else {
-                    arg.parse().unwrap_or(1)
+                    StackDirection::from_i32(arg.parse().unwrap_or(1))
                 };
-                crate::focus::focus_stack(val);
+                crate::focus::focus_stack(direction);
             },
         },
         XCommand {
@@ -302,45 +302,51 @@ pub fn init_commands() -> Vec<XCommand> {
         XCommand {
             cmd: "setoverlaymode",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    0i32
+                let mode = if arg.is_empty() {
+                    OverlayMode::default()
                 } else {
-                    arg.parse().unwrap_or(0)
+                    arg.parse::<i32>()
+                        .ok()
+                        .and_then(OverlayMode::from_i32)
+                        .unwrap_or_default()
                 };
-                crate::overlay::set_overlay_mode_cmd(val);
+                crate::overlay::set_overlay_mode(mode);
             },
         },
         XCommand {
             cmd: "togglealttag",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                crate::toggles::toggle_alt_tag(val);
+                crate::toggles::toggle_alt_tag(action);
             },
         },
         XCommand {
             cmd: "toggleanimated",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                crate::toggles::toggle_animated(val);
+                crate::toggles::toggle_animated(action);
             },
         },
         XCommand {
             cmd: "togglefocusfollowsmouse",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                crate::toggles::toggle_focus_follows_mouse(val);
+                crate::toggles::toggle_focus_follows_mouse(action);
             },
         },
         XCommand {

@@ -1,4 +1,4 @@
-use crate::client::resize_client_rect;
+use crate::client::resize_client;
 use crate::constants::animation::*;
 use crate::floating::{change_snap, SnapDir};
 use crate::globals::{get_globals, get_x11};
@@ -18,7 +18,7 @@ pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 + t * t * t
 }
 
-pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, reset_pos: i32) {
+pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     if frames <= 0 {
         return;
     }
@@ -37,8 +37,8 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         }
     };
 
-    let target_w = if w != 0 { w } else { start_w };
-    let target_h = if h != 0 { h } else { start_h };
+    let target_w = if rect.w != 0 { rect.w } else { start_w };
+    let target_h = if rect.h != 0 { rect.h } else { start_h };
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -69,11 +69,11 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
 
         if !globals.animated {
             if actual_w > 0 && actual_h > 0 {
-                resize_client_rect(
+                resize_client(
                     win,
                     &Rect {
-                        x,
-                        y,
+                        x: rect.x,
+                        y: rect.y,
                         w: actual_w,
                         h: actual_h,
                     },
@@ -99,7 +99,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         if effective_frames == 0 {
             if actual_w > 0 && actual_h > 0 {
                 if reset_pos != 0 {
-                    resize_client_rect(
+                    resize_client(
                         win,
                         &Rect {
                             x: start_x,
@@ -109,11 +109,11 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                         },
                     );
                 } else {
-                    resize_client_rect(
+                    resize_client(
                         win,
                         &Rect {
-                            x,
-                            y,
+                            x: rect.x,
+                            y: rect.y,
                             w: actual_w,
                             h: actual_h,
                         },
@@ -123,25 +123,28 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
             return;
         }
 
-        let dx = (x - start_x) as f64;
-        let dy = (y - start_y) as f64;
+        let dx = (rect.x - start_x) as f64;
+        let dy = (rect.y - start_y) as f64;
 
-        let dist_moved = (start_x - x).abs() > MOVEMENT_DISTANCE_THRESHOLD
-            || (start_y - y).abs() > MOVEMENT_DISTANCE_THRESHOLD
-            || (actual_w - start_w).abs() > MOVEMENT_DISTANCE_THRESHOLD
-            || (actual_h - start_h).abs() > MOVEMENT_DISTANCE_THRESHOLD;
+        let dist_moved = (start_x - rect.x).abs() > DISTANCE_THRESHOLD
+            || (start_y - rect.y).abs() > DISTANCE_THRESHOLD
+            || (actual_w - start_w).abs() > DISTANCE_THRESHOLD
+            || (actual_h - start_h).abs() > DISTANCE_THRESHOLD;
 
         if dist_moved {
-            if x == start_x && y == start_y && start_w < mon_mw - MONITOR_WIDTH_THRESHOLD {
+            if rect.x == start_x && rect.y == start_y && start_w < mon_mw - MONITOR_WIDTH_THRESHOLD
+            {
                 let delta_w = actual_w - start_w;
                 let delta_h = actual_h - start_h;
                 if delta_w != 0 || delta_h != 0 {
                     animate_client(
                         win,
-                        start_x + delta_w,
-                        start_y + delta_h,
-                        actual_w,
-                        actual_h,
+                        &Rect {
+                            x: start_x + delta_w,
+                            y: start_y + delta_h,
+                            w: actual_w,
+                            h: actual_h,
+                        },
                         effective_frames,
                         0,
                     );
@@ -153,7 +156,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                     let step_y = (start_y as f64 + progress * dy) as i32;
 
                     if actual_w > 0 && actual_h > 0 {
-                        resize_client_rect(
+                        resize_client(
                             win,
                             &Rect {
                                 x: step_x,
@@ -172,7 +175,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
 
         if actual_w > 0 && actual_h > 0 {
             if reset_pos != 0 {
-                resize_client_rect(
+                resize_client(
                     win,
                     &Rect {
                         x: start_x,
@@ -182,11 +185,11 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                     },
                 );
             } else {
-                resize_client_rect(
+                resize_client(
                     win,
                     &Rect {
-                        x,
-                        y,
+                        x: rect.x,
+                        y: rect.y,
                         w: actual_w,
                         h: actual_h,
                     },
@@ -196,13 +199,15 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
     }
 }
 
-pub fn check_animate(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, reset_pos: i32) {
+pub fn check_animate(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     let globals = get_globals();
     if let Some(client) = globals.clients.get(&win) {
-        let should_animate =
-            client.geo.x != x || client.geo.y != y || client.geo.w != w || client.geo.h != h;
+        let should_animate = client.geo.x != rect.x
+            || client.geo.y != rect.y
+            || client.geo.w != rect.w
+            || client.geo.h != rect.h;
         if should_animate {
-            animate_client(win, x, y, w, h, frames, reset_pos);
+            animate_client(win, rect, frames, reset_pos);
         }
     }
 }
@@ -233,7 +238,7 @@ fn anim_scroll(dir: Direction) {
         None => return,
     };
 
-    let (is_floating, has_tiling, current_tag) = {
+    let (_is_floating, has_tiling, current_tag) = {
         let globals = get_globals();
         let mon = match globals.monitors.get(sel_mon) {
             Some(m) => m,

@@ -218,10 +218,12 @@ pub fn bstack(m: &mut Monitor) {
             let h = m.work_rect.h - mh;
             animate_client(
                 win,
-                m.work_rect.x + master_row_offset,
-                m.work_rect.y,
-                w - 2 * border_width,
-                mh - 2 * border_width,
+                &Rect {
+                    x: tx,
+                    y: ty,
+                    w: tw - 2 * border_width,
+                    h: h - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -305,10 +307,12 @@ pub fn bstackhoriz(m: &mut Monitor) {
             let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client(
                 win,
-                m.work_rect.x + master_row_offset,
-                m.work_rect.y,
-                w - 2 * border_width,
-                mh - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x + master_row_offset,
+                    y: m.work_rect.y,
+                    w: w - 2 * border_width,
+                    h: mh - 2 * border_width,
+                },
                 framecount,
                 0,
             );
@@ -321,10 +325,12 @@ pub fn bstackhoriz(m: &mut Monitor) {
             // ── stack client — full-width horizontal row ──────────────────
             animate_client(
                 win,
-                tx,
-                ty,
-                tw - 2 * border_width,
-                h - 2 * border_width,
+                &Rect {
+                    x: tx,
+                    y: ty,
+                    w: m.work_rect.w - 2 * border_width,
+                    h: th - 2 * border_width,
+                },
                 framecount,
                 0,
             );

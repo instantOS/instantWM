@@ -33,7 +33,7 @@ pub const SCRATCHPAD_CLASS: &str = "scratchpad_default";
 
 /// Identifies a specific command entry inside [`ExternalCommands`].
 ///
-/// Use this in [`crate::types::Arg::v`] instead of a raw `usize` index.
+/// Use this to reference a command in keybindings and button handlers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cmd {
     /// Placeholder / sentinel — resolves to an empty slice.

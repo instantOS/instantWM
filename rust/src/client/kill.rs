@@ -12,8 +12,7 @@
 //!                      clients at all it shuts the whole session down instead.
 //!
 //! * [`close_win`]    – close an arbitrary window identified by its `Window`
-//!                      ID packed into an [`Arg`].  Used by the close button
-//!                      drawn in the bar.
+//!                      ID. Used by the close button drawn in the bar.
 //!
 //! # Graceful vs. forceful termination
 //!
@@ -114,7 +113,7 @@ pub fn shut_kill() {
 // close_win
 // ---------------------------------------------------------------------------
 
-/// Close an arbitrary window whose ID is packed into `arg.v`.
+/// Close an arbitrary window by its Window ID.
 ///
 /// Unlike [`kill_client`] this targets any window, not just the selected one.
 /// Used by the per-client close button in the bar.

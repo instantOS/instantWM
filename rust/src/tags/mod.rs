@@ -39,12 +39,6 @@ pub fn compute_prefix(arg: u32) -> u32 {
     }
 }
 
-pub fn tag(tag_bits: u32) {
-    set_client_tag(tag_bits);
-}
-
-pub fn desktop_set() {}
-
 pub fn zoom() {
     if let Some(win) = get_sel_win() {
         crate::client::pop(win);
@@ -53,20 +47,4 @@ pub fn zoom() {
 
 pub fn quit() {
     std::process::exit(0);
-}
-
-pub fn command_tag(tag_bits: u32) {
-    set_client_tag(tag_bits);
-}
-
-pub fn command_view(tag_bits: u32) {
-    view(tag_bits);
-}
-
-pub fn command_toggle_view(tag_bits: u32) {
-    toggle_view(tag_bits);
-}
-
-pub fn command_toggle_tag(tag_bits: u32) {
-    toggle_tag(tag_bits);
 }

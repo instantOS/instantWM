@@ -88,10 +88,12 @@ pub fn tile(m: &mut Monitor) {
 
             animate_client(
                 win,
-                m.work_rect.x,
-                m.work_rect.y + master_y_offset as i32,
-                mw - 2 * border_width,
-                h - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x,
+                    y: m.work_rect.y + master_y_offset as i32,
+                    w: mw - 2 * border_width,
+                    h: h - 2 * border_width,
+                },
                 frames,
                 0,
             );
@@ -117,10 +119,12 @@ pub fn tile(m: &mut Monitor) {
 
             animate_client(
                 win,
-                m.work_rect.x + mw,
-                m.work_rect.y + ty as i32,
-                m.work_rect.w - mw - 2 * border_width,
-                h - 2 * border_width,
+                &Rect {
+                    x: m.work_rect.x + mw,
+                    y: m.work_rect.y + ty as i32,
+                    w: m.work_rect.w - mw - 2 * border_width,
+                    h: h - 2 * border_width,
+                },
                 framecount,
                 0,
             );

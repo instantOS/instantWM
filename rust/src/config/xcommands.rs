@@ -7,15 +7,15 @@ use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, follow_mon};
 use crate::overlay::set_overlay;
 use crate::scratchpad::{
-    scratchpad_hide, scratchpad_make, scratchpad_show, scratchpad_status, scratchpad_toggle,
-    scratchpad_unmake,
+    scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_status,
+    scratchpad_toggle, scratchpad_unmake,
 };
 use crate::tags::{name_tag, reset_name_tag, tag_mon, view};
 use crate::toggles::{
     alt_tab_free, set_border_width, toggle_alt_tag, toggle_animated,
     toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_show_tags,
 };
-use crate::types::XCommand;
+use crate::types::{ToggleAction, XCommand};
 
 use super::mod_consts::BORDERPX;
 
@@ -43,67 +43,73 @@ pub fn get_xcommands() -> Vec<XCommand> {
         XCommand {
             cmd: "animated",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                toggle_animated(val);
+                toggle_animated(action);
             },
         },
         XCommand {
             cmd: "focusfollowsmouse",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                toggle_focus_follows_mouse(val);
+                toggle_focus_follows_mouse(action);
             },
         },
         XCommand {
             cmd: "focusfollowsfloatmouse",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                toggle_focus_follows_float_mouse(val);
+                toggle_focus_follows_float_mouse(action);
             },
         },
         XCommand {
             cmd: "alttab",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    2u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(2)
+                    let val: u32 = arg.parse().unwrap_or(2);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                alt_tab_free(val);
+                alt_tab_free(action);
             },
         },
         XCommand {
             cmd: "alttag",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    0u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(0)
+                    let val: u32 = arg.parse().unwrap_or(0);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                toggle_alt_tag(val);
+                toggle_alt_tag(action);
             },
         },
         XCommand {
             cmd: "hidetags",
             action: |arg| {
-                let val = if arg.is_empty() {
-                    0u32
+                let action = if arg.is_empty() {
+                    ToggleAction::Toggle
                 } else {
-                    arg.parse().unwrap_or(0)
+                    let val: u32 = arg.parse().unwrap_or(0);
+                    ToggleAction::from_u32(val).unwrap_or_default()
                 };
-                toggle_show_tags(val);
+                toggle_show_tags(action);
             },
         },
         XCommand {

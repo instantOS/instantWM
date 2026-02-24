@@ -4,7 +4,7 @@
 //!
 //! * [`client_width`] / [`client_height`] – total on-screen extent including borders.
 //! * [`resize`] – high-level resize that runs size-hint validation first.
-//! * [`resize_client`] / [`resize_client_rect`] – low-level X11 configure + state update.
+//! * [`resize_client`] – low-level X11 configure + state update.
 //! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM `WM_NORMAL_HINTS`.
 //! * [`update_size_hints`] / [`update_size_hints_win`] – read `WM_NORMAL_HINTS` from X.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
@@ -62,7 +62,7 @@ pub fn resize(win: Window, rect: &Rect, interact: bool) {
         );
         let client_count = globals.clients.len();
         if changed || client_count == 1 {
-            resize_client_rect(
+            resize_client(
                 win,
                 &Rect {
                     x: new_x,
@@ -85,7 +85,7 @@ pub fn resize(win: Window, rect: &Rect, interact: bool) {
 /// level.  Always call [`resize`] from layout code so that size hints are
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
-pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
+pub fn resize_client(win: Window, rect: &Rect) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let globals = get_globals_mut();
@@ -96,20 +96,20 @@ pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
             client.old_geo.w = client.geo.w;
             client.old_geo.h = client.geo.h;
 
-            client.geo.x = x;
-            client.geo.y = y;
-            client.geo.w = w;
-            client.geo.h = h;
+            client.geo.x = rect.x;
+            client.geo.y = rect.y;
+            client.geo.w = rect.w;
+            client.geo.h = rect.h;
 
             let border_width = client.border_width;
 
             let _ = conn.configure_window(
                 win,
                 &ConfigureWindowAux::new()
-                    .x(x)
-                    .y(y)
-                    .width(w as u32)
-                    .height(h as u32)
+                    .x(rect.x)
+                    .y(rect.y)
+                    .width(rect.w as u32)
+                    .height(rect.h as u32)
                     .border_width(border_width as u32),
             );
         }
@@ -118,12 +118,6 @@ pub fn resize_client(win: Window, x: i32, y: i32, w: i32, h: i32) {
         crate::client::focus::configure(win);
         let _ = conn.flush();
     }
-}
-
-/// Resize a client using a [`Rect`] – thin wrapper around [`resize_client`].
-#[inline]
-pub fn resize_client_rect(win: Window, rect: &Rect) {
-    resize_client(win, rect.x, rect.y, rect.w, rect.h);
 }
 
 // ---------------------------------------------------------------------------

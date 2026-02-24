@@ -26,17 +26,15 @@ use crate::bar::draw_bar;
 use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::config::commands::Cmd;
-use crate::floating::{
-    change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir, SNAP_LEFT, SNAP_RIGHT,
-    SNAP_TOP,
-};
+use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 use crate::focus::{focus, warp_into};
 use crate::globals::{get_globals, get_globals_mut};
-use crate::layouts::restack;
-use crate::monitor::{arrange, is_current_layout_tiling};
+use crate::layouts::{arrange, restack};
+use crate::monitor::is_current_layout_tiling;
 use crate::tags::{
     follow_tag, move_left, move_right, set_client_tag, tag_all, tag_to_left, tag_to_right, view,
 };
+use crate::types::SnapPosition;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -82,25 +80,25 @@ fn snap_to_monitor_edges(c: &Client, new_x: &mut i32, new_y: &mut i32) {
     }
 }
 
-/// Returns `SNAP_LEFT`, `SNAP_RIGHT`, `SNAP_TOP`, or `0` based on cursor position.
-fn check_edge_snap(x: i32, y: i32) -> i32 {
+/// Returns edge snap position based on cursor position.
+fn check_edge_snap(x: i32, y: i32) -> Option<SnapPosition> {
     let globals = get_globals();
     let Some(mon) = globals.monitors.get(globals.selmon) else {
-        return 0;
+        return None;
     };
 
     if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
-        return SNAP_LEFT;
+        return Some(SnapPosition::Left);
     }
     if x > mon.monitor_rect.x + mon.monitor_rect.w - OVERLAY_ZONE_WIDTH
         && x < mon.monitor_rect.x + mon.monitor_rect.w + 1
     {
-        return SNAP_RIGHT;
+        return Some(SnapPosition::Right);
     }
     if y <= mon.monitor_rect.y + if mon.showbar { globals.bh } else { 5 } {
-        return SNAP_TOP;
+        return Some(SnapPosition::Top);
     }
-    0
+    None
 }
 
 /// Returns `true` when `(x, y)` (root-space) is inside the bar of `selmon`.
@@ -128,8 +126,8 @@ struct MoveState {
     grab_start_y: i32,
     /// Whether the cursor was over the bar on the previous motion event.
     cursor_on_bar: bool,
-    /// The last edge-snap zone the cursor was in (`SNAP_*` constant or `0`).
-    edge_snap_indicator: i32,
+    /// The last edge-snap zone the cursor was in.
+    edge_snap_indicator: Option<SnapPosition>,
 }
 
 /// Perform the pre-flight checks for `move_mouse`.
@@ -499,18 +497,18 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
 ///
 /// Returns `true` if the drop was fully handled (the caller should skip
 /// `handle_bar_drop` and `handle_client_monitor_switch`).
-fn apply_edge_drop(win: Window, edge: i32) -> bool {
-    if edge == 0 {
-        return false;
-    }
+fn apply_edge_drop(win: Window, edge: Option<SnapPosition>) -> bool {
+    let edge = match edge {
+        Some(e) => e,
+        None => return false,
+    };
 
-    let Some((root_x, root_y)) = get_root_ptr() else {
+    let Some((_root_x, root_y)) = get_root_ptr() else {
         return false;
     };
 
-    let snap_dir = check_edge_snap(root_x, root_y);
-    let at_left = snap_dir == SNAP_LEFT;
-    let at_right = snap_dir == SNAP_RIGHT;
+    let at_left = edge == SnapPosition::Left;
+    let at_right = edge == SnapPosition::Right;
 
     if !at_left && !at_right {
         return false;
@@ -542,12 +540,10 @@ fn apply_edge_drop(win: Window, edge: i32) -> bool {
             } else {
                 move_right();
             }
+        } else if at_left {
+            tag_to_left();
         } else {
-            if at_left {
-                tag_to_left();
-            } else {
-                tag_to_right();
-            }
+            tag_to_right();
         }
 
         {
@@ -598,7 +594,7 @@ pub fn move_mouse() {
         grab_start_x,
         grab_start_y,
         cursor_on_bar: false,
-        edge_snap_indicator: 0,
+        edge_snap_indicator: None,
     };
     let rate = refresh_rate();
     let mut last_time: u32 = 0;
@@ -698,7 +694,7 @@ pub fn gesture_mouse() {
 ///
 /// If the pointer leaves the bar during the drag the loop exits without action.
 pub fn drag_tag() {
-    let (initial_tag, has_sel, selmon_id, mon_mx) = {
+    let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
         let globals = get_globals();
         let selmon_id = globals.selmon;
         let mon_mx = globals

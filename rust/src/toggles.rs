@@ -6,19 +6,15 @@ use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::get_sel_win;
 
-pub fn ctrl_toggle(value: &mut bool, arg: u32) {
-    if arg == 0 || arg == 2 {
-        *value = !*value;
-    } else {
-        *value = arg != 1;
-    }
+pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
+    action.apply(value);
 }
 
-pub fn toggle_alt_tag(arg: u32) {
+pub fn toggle_alt_tag(action: ToggleAction) {
     let new_value = {
         let globals = get_globals();
         let mut showalttag = globals.tags.show_alt;
-        ctrl_toggle(&mut showalttag, arg);
+        ctrl_toggle(&mut showalttag, action);
         showalttag
     };
 
@@ -49,8 +45,8 @@ pub fn toggle_alt_tag(arg: u32) {
     globals.tags.width = tagwidth;
 }
 
-pub fn alt_tab_free(arg: u32) {
-    ctrl_toggle(&mut get_globals_mut().tags.prefix, arg);
+pub fn alt_tab_free(action: ToggleAction) {
+    ctrl_toggle(&mut get_globals_mut().tags.prefix, action);
     grab_keys();
 }
 
@@ -85,9 +81,9 @@ pub fn toggle_prefix() {
     }
 }
 
-pub fn toggle_animated(arg: u32) {
+pub fn toggle_animated(action: ToggleAction) {
     let globals = get_globals_mut();
-    ctrl_toggle(&mut globals.animated, arg);
+    ctrl_toggle(&mut globals.animated, action);
 }
 
 pub fn set_border_width(width: i32) {
@@ -131,12 +127,12 @@ pub fn set_border_width(width: i32) {
     resize(win, &geo, false);
 }
 
-pub fn toggle_focus_follows_mouse(arg: u32) {
-    ctrl_toggle(&mut get_globals_mut().focusfollowsmouse, arg);
+pub fn toggle_focus_follows_mouse(action: ToggleAction) {
+    ctrl_toggle(&mut get_globals_mut().focusfollowsmouse, action);
 }
 
-pub fn toggle_focus_follows_float_mouse(arg: u32) {
-    ctrl_toggle(&mut get_globals_mut().focusfollowsfloatmouse, arg);
+pub fn toggle_focus_follows_float_mouse(action: ToggleAction) {
+    ctrl_toggle(&mut get_globals_mut().focusfollowsfloatmouse, action);
 }
 
 pub fn toggle_double_draw() {
@@ -168,22 +164,22 @@ pub fn toggle_locked() {
     }
 }
 
-pub fn toggle_show_tags(arg: u32) {
+pub fn toggle_show_tags(action: ToggleAction) {
     let (selmon_id, new_showtags) = {
         let globals = get_globals();
         let selmon_id = globals.selmon;
 
-        let mut showtags = if let Some(mon) = globals.monitors.get(selmon_id) {
+        let showtags = if let Some(mon) = globals.monitors.get(selmon_id) {
             mon.showtags
         } else {
             0
         };
 
         let mut show_bool = showtags != 0;
-        ctrl_toggle(&mut show_bool, arg);
-        showtags = if show_bool { 1 } else { 0 };
+        ctrl_toggle(&mut show_bool, action);
+        let new_showtags = if show_bool { 1 } else { 0 };
 
-        (selmon_id, showtags)
+        (selmon_id, new_showtags)
     };
 
     {

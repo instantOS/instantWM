@@ -2,7 +2,7 @@
 
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect};
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
@@ -160,7 +160,7 @@ fn play_slide_animation(win: x11rb::protocol::xproto::Window, dir: Direction) {
             Direction::Down => 1,
         };
 
-    crate::animation::animate_client_rect(
+    crate::animation::animate_client(
         win,
         &Rect {
             x: client_x + anim_dx,

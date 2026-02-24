@@ -3,7 +3,7 @@
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::monitor::arrange;
+use crate::layouts::arrange;
 use crate::types::{Direction, SCRATCHPAD_MASK};
 use crate::util::get_sel_win;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -51,7 +51,7 @@ pub fn view(tag_bits: u32) {
         }
     }
 
-    let mut globals = get_globals_mut();
+    let globals = get_globals_mut();
     apply_pertag_settings(globals);
     focus(None);
     arrange(Some(get_globals().selmon));
@@ -75,7 +75,7 @@ pub fn toggle_view(tag_bits: u32) {
     }
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
             mon.tagset[mon.seltags as usize] = new_tagset;
         }
@@ -445,7 +445,7 @@ fn scroll_view(dir: Direction) {
     let new_tag = lowest_set_bit(new_tagset) + 1;
 
     {
-        let mut globals = get_globals_mut();
+        let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(globals.selmon) {
             mon.seltags ^= 1;
             mon.tagset[mon.seltags as usize] = new_tagset;

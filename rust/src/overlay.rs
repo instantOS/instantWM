@@ -614,11 +614,6 @@ pub fn is_overlay_window(win: Window) -> bool {
     false
 }
 
-pub fn set_overlay_mode_cmd(mode: i32) {
-    let mode = OverlayMode::from_i32(mode).unwrap_or_default();
-    set_overlay_mode(mode);
-}
-
 pub fn reset_overlay_size() {
     let (
         has_overlay,
