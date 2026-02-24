@@ -131,7 +131,7 @@ pub fn find_visible_client(start_win: Option<Window>) -> Option<Window> {
 
 /// Return the active layout index for monitor `m`.
 ///
-/// The index is stored per-tag: `tags[current_tag - 1].ltidxs[sellt]`.
+/// The index is stored per-tag: `tags[current_tag - 1].ltidxs[active_layout_slot.as_index()]`.
 /// Returns `None` when the tag index is out of range (e.g. during
 /// initialisation before any tag has been selected).
 pub fn get_current_layout_idx(m: &Monitor) -> Option<usize> {
@@ -140,7 +140,7 @@ pub fn get_current_layout_idx(m: &Monitor) -> Option<usize> {
 
     if tag > 0 && tag <= g.tags.tags.len() {
         let t = &g.tags.tags[tag - 1];
-        t.ltidxs[t.sellt as usize]
+        t.ltidxs[t.active_layout_slot.as_index()]
     } else {
         None
     }

@@ -235,7 +235,7 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
         tag.nmaster = cfg.nmaster;
         tag.mfact = cfg.mfact;
         tag.showbar = cfg.showbar;
-        // sellt and ltidxs default to 0/None which is fine
+        // active_layout_slot and ltidxs default to Primary/None which is fine
         globals.tags.tags.push(tag);
     }
 

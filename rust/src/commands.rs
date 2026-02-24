@@ -105,65 +105,49 @@ pub fn init_commands() -> Vec<XCommand> {
         XCommand {
             cmd: "tag",
             action: |arg| {
-                let tag_bits = if arg.is_empty() {
-                    0u32
+                let mask = if arg.is_empty() {
+                    TagMask::EMPTY
                 } else {
-                    let argnum = arg.parse::<u32>().unwrap_or(0);
-                    if argnum != 0 || arg.starts_with('0') {
-                        1 << (argnum.saturating_sub(1))
-                    } else {
-                        0
-                    }
+                    let argnum = arg.parse::<usize>().unwrap_or(0);
+                    TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::set_client_tag(tag_bits);
+                crate::tags::set_client_tag(mask);
             },
         },
         XCommand {
             cmd: "view",
             action: |arg| {
-                let tag_bits = if arg.is_empty() {
-                    0u32
+                let mask = if arg.is_empty() {
+                    TagMask::EMPTY
                 } else {
-                    let argnum = arg.parse::<u32>().unwrap_or(0);
-                    if argnum != 0 || arg.starts_with('0') {
-                        1 << (argnum.saturating_sub(1))
-                    } else {
-                        0
-                    }
+                    let argnum = arg.parse::<usize>().unwrap_or(0);
+                    TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::view(tag_bits);
+                crate::tags::view(mask);
             },
         },
         XCommand {
             cmd: "toggleview",
             action: |arg| {
-                let tag_bits = if arg.is_empty() {
-                    0u32
+                let mask = if arg.is_empty() {
+                    TagMask::EMPTY
                 } else {
-                    let argnum = arg.parse::<u32>().unwrap_or(0);
-                    if argnum != 0 || arg.starts_with('0') {
-                        1 << (argnum.saturating_sub(1))
-                    } else {
-                        0
-                    }
+                    let argnum = arg.parse::<usize>().unwrap_or(0);
+                    TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::toggle_view(tag_bits);
+                crate::tags::toggle_view(mask);
             },
         },
         XCommand {
             cmd: "toggletag",
             action: |arg| {
-                let tag_bits = if arg.is_empty() {
-                    0u32
+                let mask = if arg.is_empty() {
+                    TagMask::EMPTY
                 } else {
-                    let argnum = arg.parse::<u32>().unwrap_or(0);
-                    if argnum != 0 || arg.starts_with('0') {
-                        1 << (argnum.saturating_sub(1))
-                    } else {
-                        0
-                    }
+                    let argnum = arg.parse::<usize>().unwrap_or(0);
+                    TagMask::single(argnum).unwrap_or(TagMask::EMPTY)
                 };
-                crate::tags::toggle_tag(tag_bits);
+                crate::tags::toggle_tag(mask);
             },
         },
         XCommand {

@@ -455,7 +455,7 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
         set_tiled(win, false);
-        set_client_tag(1u32 << (tag_idx as u32));
+        set_client_tag(TagMask::single(tag_idx as usize + 1).unwrap_or(TagMask::EMPTY));
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
@@ -733,7 +733,7 @@ pub fn drag_tag() {
     };
 
     if !is_current_tag && initial_tag != 0 {
-        view(initial_tag);
+        view(TagMask::from_bits(initial_tag));
         return;
     }
     if !has_sel {
@@ -815,32 +815,32 @@ pub fn drag_tag() {
     ungrab(conn);
 
     if cursor_on_bar {
-        if let Some((x, _, state)) = last_motion {
-            let position = {
-                let globals = get_globals();
-                let selmon_id = globals.selmon;
-                globals
-                    .monitors
-                    .get(selmon_id)
-                    .map(|mon| {
-                        let local_x = x - mon.monitor_rect.x;
-                        bar_position_at_x(mon, globals, local_x)
-                    })
-                    .unwrap_or(BarPosition::Root)
-            };
+            if let Some((x, _, state)) = last_motion {
+                let position = {
+                    let globals = get_globals();
+                    let selmon_id = globals.selmon;
+                    globals
+                        .monitors
+                        .get(selmon_id)
+                        .map(|mon| {
+                            let local_x = x - mon.monitor_rect.x;
+                            bar_position_at_x(mon, globals, local_x)
+                        })
+                        .unwrap_or(BarPosition::Root)
+                };
 
-            if let BarPosition::Tag(tag_idx) = position {
-                let tag_mask = 1u32 << (tag_idx as u32);
-                let state = state as u32;
-                if (state & ModMask::SHIFT.bits() as u32) != 0 {
-                    set_client_tag(tag_mask);
-                } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
-                    tag_all(tag_mask);
-                } else {
-                    follow_tag(tag_mask);
+                if let BarPosition::Tag(tag_idx) = position {
+                    let tag_mask = TagMask::single(tag_idx as usize + 1).unwrap_or(TagMask::EMPTY);
+                    let state = state as u32;
+                    if (state & ModMask::SHIFT.bits() as u32) != 0 {
+                        set_client_tag(tag_mask);
+                    } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
+                        tag_all(tag_mask);
+                    } else {
+                        follow_tag(tag_mask);
+                    }
                 }
             }
-        }
     }
 
     {

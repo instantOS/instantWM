@@ -258,8 +258,12 @@ pub struct Tag {
     // Pertag / Layout fields
     pub nmaster: i32,
     pub mfact: f32,
-    pub sellt: u32,
+    /// Which layout slot (primary or secondary) is currently active.
+    /// Each tag stores two layouts in `ltidxs`; this field selects which one is active.
+    pub active_layout_slot: LayoutSlot,
     pub showbar: bool,
+    /// Layout indices for the primary (index 0) and secondary (index 1) slots.
+    /// The active slot is determined by `active_layout_slot`.
     pub ltidxs: [Option<usize>; 2],
 }
 
@@ -270,7 +274,7 @@ impl Default for Tag {
             alt_name: "",
             nmaster: 1,
             mfact: 0.55,
-            sellt: 0,
+            active_layout_slot: LayoutSlot::default(),
             showbar: true,
             ltidxs: [None; 2],
         }
@@ -299,6 +303,48 @@ pub enum AltCursor {
     Resize,
     //TODO: Port over sidebar from C codebase
     Sidebar,
+}
+
+/// Identifies which layout slot (primary or secondary) is currently active for a tag.
+///
+/// Each tag maintains two layout slots that can be toggled between. This allows users
+/// to quickly switch between two different layouts (e.g., tiling and floating) without
+/// cycling through all available layouts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LayoutSlot {
+    /// The primary layout slot (index 0).
+    #[default]
+    Primary,
+    /// The secondary layout slot (index 1).
+    Secondary,
+}
+
+impl LayoutSlot {
+    /// Convert to a usize index (0 for Primary, 1 for Secondary).
+    pub const fn as_index(self) -> usize {
+        match self {
+            Self::Primary => 0,
+            Self::Secondary => 1,
+        }
+    }
+
+    /// Create a LayoutSlot from a usize index.
+    /// Returns None if the index is not 0 or 1.
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Primary),
+            1 => Some(Self::Secondary),
+            _ => None,
+        }
+    }
+
+    /// Toggle between Primary and Secondary.
+    pub const fn toggle(self) -> Self {
+        match self {
+            Self::Primary => Self::Secondary,
+            Self::Secondary => Self::Primary,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

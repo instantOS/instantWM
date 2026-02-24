@@ -11,6 +11,7 @@ use crate::scratchpad::{
     scratchpad_toggle, scratchpad_unmake,
 };
 use crate::tags::{name_tag, reset_name_tag, tag_mon, view};
+use crate::types::TagMask;
 use crate::toggles::{
     alt_tab_free, set_border_width, toggle_alt_tag, toggle_animated,
     toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_show_tags,
@@ -32,12 +33,14 @@ pub fn get_xcommands() -> Vec<XCommand> {
         XCommand {
             cmd: "tag",
             action: |arg| {
-                let tag_bits = if arg.is_empty() {
-                    2u32
+                let tag_num = if arg.is_empty() {
+                    2usize
                 } else {
                     arg.parse().unwrap_or(2)
                 };
-                view(tag_bits);
+                if let Some(mask) = TagMask::single(tag_num) {
+                    view(mask);
+                }
             },
         },
         XCommand {

@@ -21,7 +21,7 @@ use crate::tags::{
     follow_tag, set_client_tag, shift_view, toggle_tag, toggle_view, view_to_left, view_to_right,
 };
 use crate::toggles::{toggle_locked, toggle_prefix};
-use crate::types::{Button, Click, Direction, StackDirection};
+use crate::types::{Button, Click, Direction, StackDirection, TagMask};
 use crate::util::spawn;
 
 const MS: u32 = MODKEY | SHIFT;
@@ -71,12 +71,12 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(StatusText, MS,     button:1 => || spawn(Cmd::PavuControl)),
         btn!(StatusText, MC,     button:1 => || spawn(Cmd::Notify)),
         btn!(TagBar, 0,     button:1 => drag_tag),
-        btn!(TagBar, 0,     button:3 => || toggle_view(!0u32)),
+        btn!(TagBar, 0,     button:3 => || toggle_view(TagMask::ALL_BITS)),
         btn!(TagBar, 0,     button:4 => view_to_left),
         btn!(TagBar, 0,     button:5 => view_to_right),
-        btn!(TagBar, MODKEY, button:1 => || set_client_tag(!0u32)),
-        btn!(TagBar, MODKEY, button:3 => || toggle_tag(!0u32)),
-        btn!(TagBar, MOD1,   button:1 => || follow_tag(!0u32)),
+        btn!(TagBar, MODKEY, button:1 => || set_client_tag(TagMask::ALL_BITS)),
+        btn!(TagBar, MODKEY, button:3 => || toggle_tag(TagMask::ALL_BITS)),
+        btn!(TagBar, MOD1,   button:1 => || follow_tag(TagMask::ALL_BITS)),
         btn!(TagBar, MODKEY, button:4 => || shift_view(Direction::Left)),
         btn!(TagBar, MODKEY, button:5 => || shift_view(Direction::Right)),
         btn!(RootWin, 0,     button:1 => || spawn(Cmd::Panther)),

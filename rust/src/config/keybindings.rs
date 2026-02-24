@@ -52,7 +52,7 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     // Use type-safe TagMask - unwrap is safe here as tag_idx < 9
     let mask = TagMask::single(tag_idx + 1).unwrap();
     let mask_bits = mask.bits(); // For functions still using u32
-    
+
     [
         // View: MOD+num
         key!(MODKEY, keysym => move || {
@@ -129,8 +129,16 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,      XK_RIGHT   => tag_to_right),
         key!(MSC,     XK_RIGHT   => || shift_view(Direction::Right)),
         key!(MSC,     XK_LEFT    => || shift_view(Direction::Left)),
-        key!(MODKEY,  XK_0       => || view(!0u32)),
-        key!(MS,      XK_0       => || set_client_tag(!0u32)),
+        // View all tags (overview mode)
+        key!(MODKEY,  XK_0       => || {
+            use crate::types::TagMask;
+            crate::tags::view(TagMask::ALL_BITS)
+        }),
+        // Move client to all tags
+        key!(MS,      XK_0       => || {
+            use crate::types::TagMask;
+            crate::tags::tag_ops::set_client_tag_mask(TagMask::ALL_BITS)
+        }),
         key!(MODKEY,  XK_O       => win_view),
         key!(MODKEY, XK_COMMA  => || focus_mon(-1)),
         key!(MODKEY, XK_PERIOD => || focus_mon(1)),
@@ -149,8 +157,14 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,   XK_H      => || moveresize(CardinalDirection::Left)),
         key!(MS,   XK_M      => move_mouse),
         key!(MA,   XK_M      => resize_mouse_from_cursor),
-        key!(MODKEY, XK_E  => || toggle_overview(!0u32)),
-        key!(MS,     XK_E  => || toggle_fullscreen_overview(!0u32)),
+        key!(MODKEY, XK_E  => || {
+            use crate::types::TagMask;
+            toggle_overview(TagMask::ALL_BITS)
+        }),
+        key!(MS,     XK_E  => || {
+            use crate::types::TagMask;
+            toggle_fullscreen_overview(TagMask::ALL_BITS)
+        }),
         key!(MC,     XK_E  => || spawn(Cmd::InstantSkippy)),
         key!(MODKEY, XK_W  => set_overlay),
         key!(MC,     XK_W  => create_overlay),

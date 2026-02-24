@@ -127,7 +127,11 @@ impl TagMask {
     /// Shift all bits left by the given amount (wrapping around max tags).
     pub fn rotate_left(&self, amount: usize, num_tags: usize) -> Self {
         let num_tags = num_tags.min(MAX_TAGS);
-        let mask = if num_tags >= 32 { !0u32 } else { (1u32 << num_tags) - 1 };
+        let mask = if num_tags >= 32 {
+            !0u32
+        } else {
+            (1u32 << num_tags) - 1
+        };
         let bits = self.0 & mask;
         let amount = amount % num_tags.max(1);
         Self(((bits << amount) | (bits >> (num_tags - amount))) & mask)
@@ -136,7 +140,11 @@ impl TagMask {
     /// Shift all bits right by the given amount (wrapping around max tags).
     pub fn rotate_right(&self, amount: usize, num_tags: usize) -> Self {
         let num_tags = num_tags.min(MAX_TAGS);
-        let mask = if num_tags >= 32 { !0u32 } else { (1u32 << num_tags) - 1 };
+        let mask = if num_tags >= 32 {
+            !0u32
+        } else {
+            (1u32 << num_tags) - 1
+        };
         let bits = self.0 & mask;
         let amount = amount % num_tags.max(1);
         Self(((bits >> amount) | (bits << (num_tags - amount))) & mask)
@@ -356,7 +364,10 @@ mod tests {
         let current = TagMask::from_bits(0b0001);
 
         assert_eq!(TagSelection::None.to_mask(current, 2, 9).bits(), 0);
-        assert_eq!(TagSelection::Single(3).to_mask(current, 2, 9).bits(), 0b0100);
+        assert_eq!(
+            TagSelection::Single(3).to_mask(current, 2, 9).bits(),
+            0b0100
+        );
         assert_eq!(TagSelection::All.to_mask(current, 2, 4).bits(), 0b1111);
     }
 }

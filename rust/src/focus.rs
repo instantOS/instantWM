@@ -296,7 +296,7 @@ pub fn focus_last_client() {
         crate::client::LAST_CLIENT.store(cur, Ordering::Relaxed);
     }
 
-    view(tags);
+    view(TagMask::from_bits(tags));
     focus(Some(last_win));
 
     let mon_id = {

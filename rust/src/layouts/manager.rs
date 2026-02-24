@@ -186,10 +186,10 @@ pub fn set_layout(layout_idx: Option<usize>) {
             let g = get_globals_mut();
             for tag in g.tags.tags.iter_mut() {
                 if layout_idx.is_none() {
-                    tag.sellt ^= 1;
+                    tag.active_layout_slot = tag.active_layout_slot.toggle();
                 }
                 if let Some(idx) = layout_idx {
-                    tag.ltidxs[tag.sellt as usize] = Some(idx);
+                    tag.ltidxs[tag.active_layout_slot.as_index()] = Some(idx);
                 }
             }
             g.tags.prefix = false;
@@ -204,13 +204,13 @@ pub fn set_layout(layout_idx: Option<usize>) {
             let current_tag = m.current_tag;
             if current_tag > 0 && current_tag <= g.tags.tags.len() {
                 let tag = &mut g.tags.tags[current_tag - 1];
-                let current_idx = tag.ltidxs[tag.sellt as usize];
+                let current_idx = tag.ltidxs[tag.active_layout_slot.as_index()];
 
                 if layout_idx.is_none() || layout_idx != current_idx {
-                    tag.sellt ^= 1;
+                    tag.active_layout_slot = tag.active_layout_slot.toggle();
                 }
                 if let Some(idx) = layout_idx {
-                    tag.ltidxs[tag.sellt as usize] = Some(idx);
+                    tag.ltidxs[tag.active_layout_slot.as_index()] = Some(idx);
                 }
             }
         }
