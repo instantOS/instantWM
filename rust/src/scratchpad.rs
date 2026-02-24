@@ -30,18 +30,329 @@ pub fn unhide_one() -> bool {
     false
 }
 
-fn extract_name(arg: &Arg) -> Option<String> {
-    let ptr = arg.v? as *const u8;
-    let slice = unsafe {
-        let len = (0..SCRATCHPAD_NAME_LEN)
-            .find(|&i| *ptr.add(i) == 0)
-            .unwrap_or(SCRATCHPAD_NAME_LEN);
-        std::slice::from_raw_parts(ptr, len)
+pub fn scratchpad_make(name: &str) {
+    if name.is_empty() {
+        return;
+    }
+
+    let sel_win = get_sel_win();
+
+    let sel_win = match sel_win {
+        Some(w) => w,
+        None => return,
     };
-    if slice.is_empty() {
-        None
+
+    if scratchpad_find(name).is_some() {
+        return;
+    }
+
+    let (was_scratchpad, old_tags) = {
+        let globals = get_globals();
+        if let Some(c) = globals.clients.get(&sel_win) {
+            let was_sp = c.is_scratchpad();
+            let old_tags = if !was_sp { c.tags } else { 0 };
+            (was_sp, old_tags)
+        } else {
+            return;
+        }
+    };
+
+    {
+        let globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&sel_win) {
+            client.scratchpad_name = name.to_string();
+
+            if !was_scratchpad {
+                client.scratchpad_restore_tags = old_tags;
+            }
+
+            client.tags = SCRATCHPAD_MASK;
+            client.issticky = false;
+
+            if !client.isfloating {
+                client.isfloating = true;
+            }
+        }
+    }
+
+    focus(None);
+
+    {
+        let globals = get_globals();
+        if !globals.monitors.is_empty() {
+            arrange(Some(globals.selmon));
+        }
+    }
+}
+
+pub fn scratchpad_unmake() {
+    let sel_win = get_sel_win();
+
+    let sel_win = match sel_win {
+        Some(w) => w,
+        None => return,
+    };
+
+    let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
+        let globals = get_globals();
+        let selmon_id = globals.selmon;
+        let mon_tags = globals
+            .monitors
+            .get(selmon_id)
+            .map(|m| m.tagset[m.seltags as usize])
+            .unwrap_or(1);
+
+        if let Some(c) = globals.clients.get(&sel_win) {
+            (
+                c.is_scratchpad(),
+                c.scratchpad_restore_tags,
+                c.mon_id,
+                mon_tags,
+            )
+        } else {
+            return;
+        }
+    };
+
+    if !is_scratchpad {
+        return;
+    }
+
+    {
+        let globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&sel_win) {
+            client.scratchpad_name.clear();
+            client.issticky = false;
+            client.tags = if restore_tags != 0 {
+                restore_tags
+            } else {
+                mon_tags
+            };
+            client.scratchpad_restore_tags = 0;
+        }
+    }
+
+    if let Some(mid) = mon_id {
+        arrange(Some(mid));
+    }
+}
+
+pub fn scratchpad_show(name: &str) {
+    scratchpad_show_name(name);
+}
+
+pub(crate) fn scratchpad_show_name(name: &str) {
+    let found = match scratchpad_find(name) {
+        Some(w) => w,
+        None => return,
+    };
+
+    let (current_mon, target_mon) = {
+        let globals = get_globals();
+        let current_mon = globals.selmon;
+        let target_mon = globals
+            .clients
+            .get(&found)
+            .and_then(|c| c.mon_id)
+            .unwrap_or(current_mon);
+        (current_mon, target_mon)
+    };
+
+    {
+        let globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&found) {
+            client.issticky = true;
+            client.isfloating = true;
+        }
+    }
+
+    if target_mon != current_mon {
+        detach(found);
+        detach_stack(found);
+
+        {
+            let globals = get_globals_mut();
+            if let Some(client) = globals.clients.get_mut(&found) {
+                client.mon_id = Some(current_mon);
+            }
+        }
+
+        attach(found);
+        attach_stack(found);
+    }
+
+    focus(Some(found));
+
+    {
+        let globals = get_globals();
+        if !globals.monitors.is_empty() {
+            let mid = globals.selmon;
+            arrange(Some(mid));
+            let globals = get_globals_mut();
+            if let Some(mon) = globals.monitors.get_mut(mid) {
+                restack(mon);
+            }
+        }
+    }
+
+    let focusfollowsmouse = {
+        let globals = get_globals();
+        globals.focusfollowsmouse
+    };
+
+    if focusfollowsmouse {
+        warp_cursor_to_client(found);
+    }
+}
+
+pub fn scratchpad_hide(name: &str) {
+    scratchpad_hide_name(name);
+}
+
+pub(crate) fn scratchpad_hide_name(name: &str) {
+    let found = match scratchpad_find(name) {
+        Some(w) => w,
+        None => return,
+    };
+
+    let (is_sticky, mon_id) = {
+        let globals = get_globals();
+        if let Some(c) = globals.clients.get(&found) {
+            (c.issticky, c.mon_id)
+        } else {
+            return;
+        }
+    };
+
+    if !is_sticky {
+        return;
+    }
+
+    {
+        let globals = get_globals_mut();
+        if let Some(client) = globals.clients.get_mut(&found) {
+            client.issticky = false;
+            client.tags = SCRATCHPAD_MASK;
+        }
+    }
+
+    focus(None);
+
+    if let Some(mid) = mon_id {
+        arrange(Some(mid));
+    }
+}
+
+pub fn scratchpad_toggle(name: Option<&str>) {
+    let name = match name {
+        Some(n) => n,
+        None => return,
+    };
+
+    let is_overview = {
+        let globals = get_globals();
+        let selmon_id = globals.selmon;
+        if let Some(mon) = globals.monitors.get(selmon_id) {
+            !crate::monitor::is_current_layout_tiling(mon, &globals.tags)
+        } else {
+            false
+        }
+    };
+
+    if is_overview {
+        return;
+    }
+
+    let found = match scratchpad_find(name) {
+        Some(w) => w,
+        None => return,
+    };
+
+    let is_sticky = {
+        let globals = get_globals();
+        globals
+            .clients
+            .get(&found)
+            .map(|c| c.issticky)
+            .unwrap_or(false)
+    };
+
+    if is_sticky {
+        scratchpad_hide_name(name);
     } else {
-        Some(String::from_utf8_lossy(slice).into_owned())
+        scratchpad_show_name(name);
+    }
+}
+
+pub fn scratchpad_status(name: &str) {
+    let globals = get_globals();
+    let root = globals.root;
+
+    if !name.is_empty() && name != "all" {
+        let found = scratchpad_find(name);
+        let visible = found
+            .map(|w| globals.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
+            .unwrap_or(false);
+
+        let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
+
+        let x11 = get_x11();
+        if let Some(ref conn) = x11.conn {
+            let _ = conn.change_property(
+                x11rb::protocol::xproto::PropMode::REPLACE,
+                root,
+                AtomEnum::WM_NAME,
+                AtomEnum::STRING,
+                8u8,
+                status.len() as u32,
+                status.as_bytes(),
+            );
+            let _ = conn.flush();
+        }
+        return;
+    }
+
+    let mut status = String::from("ipc:scratchpads:");
+    let mut first = true;
+
+    for mon in &globals.monitors {
+        let mut current = mon.clients;
+        while let Some(c_win) = current {
+            if let Some(c) = globals.clients.get(&c_win) {
+                if c.is_scratchpad() {
+                    if !first {
+                        status.push(',');
+                    }
+                    status.push_str(&format!(
+                        "{}={}",
+                        c.scratchpad_name,
+                        if c.issticky { 1 } else { 0 }
+                    ));
+                    first = false;
+                }
+                current = c.next;
+            } else {
+                break;
+            }
+        }
+    }
+
+    if first {
+        status.push_str("none");
+    }
+
+    let x11 = get_x11();
+    if let Some(ref conn) = x11.conn {
+        let _ = conn.change_property(
+            x11rb::protocol::xproto::PropMode::REPLACE,
+            root,
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            8u8,
+            status.len() as u32,
+            status.as_bytes(),
+        );
+        let _ = conn.flush();
     }
 }
 
@@ -111,338 +422,5 @@ pub fn scratchpad_identify_client(c: &mut Client) {
         c.tags = SCRATCHPAD_MASK;
         c.issticky = true;
         c.isfloating = true;
-    }
-}
-
-pub fn scratchpad_make(arg: &Arg) {
-    let name = match extract_name(arg) {
-        Some(n) => n,
-        None => return,
-    };
-
-    let sel_win = get_sel_win();
-
-    let sel_win = match sel_win {
-        Some(w) => w,
-        None => return,
-    };
-
-    if scratchpad_find(&name).is_some() {
-        return;
-    }
-
-    let (was_scratchpad, old_tags) = {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&sel_win) {
-            let was_sp = c.is_scratchpad();
-            let old_tags = if !was_sp { c.tags } else { 0 };
-            (was_sp, old_tags)
-        } else {
-            return;
-        }
-    };
-
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&sel_win) {
-            client.scratchpad_name = name;
-
-            if !was_scratchpad {
-                client.scratchpad_restore_tags = old_tags;
-            }
-
-            client.tags = SCRATCHPAD_MASK;
-            client.issticky = false;
-
-            if !client.isfloating {
-                client.isfloating = true;
-            }
-        }
-    }
-
-    focus(None);
-
-    {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            arrange(Some(globals.selmon));
-        }
-    }
-}
-
-pub fn scratchpad_unmake(_arg: &Arg) {
-    let sel_win = get_sel_win();
-
-    let sel_win = match sel_win {
-        Some(w) => w,
-        None => return,
-    };
-
-    let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        let mon_tags = globals
-            .monitors
-            .get(selmon_id)
-            .map(|m| m.tagset[m.seltags as usize])
-            .unwrap_or(1);
-
-        if let Some(c) = globals.clients.get(&sel_win) {
-            (
-                c.is_scratchpad(),
-                c.scratchpad_restore_tags,
-                c.mon_id,
-                mon_tags,
-            )
-        } else {
-            return;
-        }
-    };
-
-    if !is_scratchpad {
-        return;
-    }
-
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&sel_win) {
-            client.scratchpad_name.clear();
-            client.issticky = false;
-            client.tags = if restore_tags != 0 {
-                restore_tags
-            } else {
-                mon_tags
-            };
-            client.scratchpad_restore_tags = 0;
-        }
-    }
-
-    if let Some(mid) = mon_id {
-        arrange(Some(mid));
-    }
-}
-
-pub fn scratchpad_show(arg: &Arg) {
-    if let Some(name) = extract_name(arg) {
-        scratchpad_show_name(&name);
-    }
-}
-
-pub(crate) fn scratchpad_show_name(name: &str) {
-    let found = match scratchpad_find(name) {
-        Some(w) => w,
-        None => return,
-    };
-
-    let (current_mon, target_mon) = {
-        let globals = get_globals();
-        let current_mon = globals.selmon;
-        let target_mon = globals
-            .clients
-            .get(&found)
-            .and_then(|c| c.mon_id)
-            .unwrap_or(current_mon);
-        (current_mon, target_mon)
-    };
-
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&found) {
-            client.issticky = true;
-            client.isfloating = true;
-        }
-    }
-
-    if target_mon != current_mon {
-        detach(found);
-        detach_stack(found);
-
-        {
-            let globals = get_globals_mut();
-            if let Some(client) = globals.clients.get_mut(&found) {
-                client.mon_id = Some(current_mon);
-            }
-        }
-
-        attach(found);
-        attach_stack(found);
-    }
-
-    focus(Some(found));
-
-    {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            let mid = globals.selmon;
-            arrange(Some(mid));
-            let globals = get_globals_mut();
-            if let Some(mon) = globals.monitors.get_mut(mid) {
-                restack(mon);
-            }
-        }
-    }
-
-    let focusfollowsmouse = {
-        let globals = get_globals();
-        globals.focusfollowsmouse
-    };
-
-    if focusfollowsmouse {
-        warp_cursor_to_client(found);
-    }
-}
-
-pub fn scratchpad_hide(arg: &Arg) {
-    if let Some(name) = extract_name(arg) {
-        scratchpad_hide_name(&name);
-    }
-}
-
-pub(crate) fn scratchpad_hide_name(name: &str) {
-    let found = match scratchpad_find(name) {
-        Some(w) => w,
-        None => return,
-    };
-
-    let (is_sticky, mon_id) = {
-        let globals = get_globals();
-        if let Some(c) = globals.clients.get(&found) {
-            (c.issticky, c.mon_id)
-        } else {
-            return;
-        }
-    };
-
-    if !is_sticky {
-        return;
-    }
-
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&found) {
-            client.issticky = false;
-            client.tags = SCRATCHPAD_MASK;
-        }
-    }
-
-    focus(None);
-
-    if let Some(mid) = mon_id {
-        arrange(Some(mid));
-    }
-}
-
-pub fn scratchpad_toggle(arg: &Arg) {
-    let name = match extract_name(arg) {
-        Some(n) => n,
-        None => return,
-    };
-
-    let is_overview = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        if let Some(mon) = globals.monitors.get(selmon_id) {
-            !crate::monitor::is_current_layout_tiling(mon, &globals.tags)
-        } else {
-            false
-        }
-    };
-
-    if is_overview {
-        return;
-    }
-
-    let found = match scratchpad_find(&name) {
-        Some(w) => w,
-        None => return,
-    };
-
-    let is_sticky = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&found)
-            .map(|c| c.issticky)
-            .unwrap_or(false)
-    };
-
-    if is_sticky {
-        scratchpad_hide_name(&name);
-    } else {
-        scratchpad_show_name(&name);
-    }
-}
-
-pub fn scratchpad_status(arg: &Arg) {
-    let name = extract_name(arg).unwrap_or_default();
-
-    let globals = get_globals();
-    let root = globals.root;
-
-    if !name.is_empty() && name != "all" {
-        let found = scratchpad_find(&name);
-        let visible = found
-            .map(|w| globals.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
-            .unwrap_or(false);
-
-        let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
-
-        let x11 = get_x11();
-        if let Some(ref conn) = x11.conn {
-            let _ = conn.change_property(
-                x11rb::protocol::xproto::PropMode::REPLACE,
-                root,
-                AtomEnum::WM_NAME,
-                AtomEnum::STRING,
-                8u8,
-                status.len() as u32,
-                status.as_bytes(),
-            );
-            let _ = conn.flush();
-        }
-        return;
-    }
-
-    let mut status = String::from("ipc:scratchpads:");
-    let mut first = true;
-
-    for mon in &globals.monitors {
-        let mut current = mon.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = globals.clients.get(&c_win) {
-                if c.is_scratchpad() {
-                    if !first {
-                        status.push(',');
-                    }
-                    status.push_str(&format!(
-                        "{}={}",
-                        c.scratchpad_name,
-                        if c.issticky { 1 } else { 0 }
-                    ));
-                    first = false;
-                }
-                current = c.next;
-            } else {
-                break;
-            }
-        }
-    }
-
-    if first {
-        status.push_str("none");
-    }
-
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let _ = conn.change_property(
-            x11rb::protocol::xproto::PropMode::REPLACE,
-            root,
-            AtomEnum::WM_NAME,
-            AtomEnum::STRING,
-            8u8,
-            status.len() as u32,
-            status.as_bytes(),
-        );
-        let _ = conn.flush();
     }
 }

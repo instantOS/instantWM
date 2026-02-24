@@ -110,7 +110,7 @@ fn collect_floating_wins(mid: usize) -> Vec<Window> {
 /// that.  Each cell receives one window, sized to exactly fill its cell.
 ///
 /// Does nothing when there are no qualifying windows.
-pub fn distribute_clients(_arg: &Arg) {
+pub fn distribute_clients() {
     let globals = get_globals();
     let sel_mon_id = globals.selmon;
 
