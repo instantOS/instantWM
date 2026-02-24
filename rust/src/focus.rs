@@ -471,35 +471,13 @@ fn get_root_ptr() -> Option<(i32, i32)> {
 /// # Arguments
 /// * `forward` - If true, focus the next client; if false, focus the previous.
 pub fn focus_stack_direction(forward: bool) {
-    let globals = get_globals();
-    if globals.monitors.is_empty() {
+    let Some(sel_mon_id) = util::get_sel_mon() else {
         return;
-    }
-
-    let (selmon_id, sel_win) = {
-        let globals = get_globals();
-        let selmon_id = globals.selmon;
-        let sel_win = get_sel_win();
-        (selmon_id, sel_win)
     };
+    let sel_win = get_sel_win();
 
-    let mut stack: Vec<Window> = Vec::new();
-    {
-        let globals = get_globals();
-        if let Some(mon) = globals.monitors.get(selmon_id) {
-            let mut current = mon.stack;
-            while let Some(c_win) = current {
-                if let Some(c) = globals.clients.get(&c_win) {
-                    if c.is_visible() {
-                        stack.push(c_win);
-                    }
-                    current = c.snext;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
+    let globals = get_globals();
+    let stack = get_visible_stack(sel_mon_id, &globals);
 
     if stack.is_empty() {
         return;
@@ -519,6 +497,28 @@ pub fn focus_stack_direction(forward: bool) {
     };
 
     focus(Some(stack[next_idx]));
+}
+
+/// Get all visible clients in the stack for a given monitor.
+fn get_visible_stack(sel_mon_id: MonitorId, globals: &crate::globals::Globals) -> Vec<Window> {
+    let mut stack = Vec::new();
+
+    let Some(mon) = globals.monitors.get(sel_mon_id) else {
+        return stack;
+    };
+
+    let mut current = mon.stack;
+    while let Some(c_win) = current {
+        let Some(c) = globals.clients.get(&c_win) else {
+            break;
+        };
+        if c.is_visible() {
+            stack.push(c_win);
+        }
+        current = c.snext;
+    }
+
+    stack
 }
 
 /// Legacy wrapper for key bindings. Use `focus_stack_direction` for new code.

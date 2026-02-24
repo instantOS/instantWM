@@ -1,8 +1,9 @@
 use crate::client::resize_client_rect;
 use crate::globals::{get_globals, get_x11};
+use crate::monitor::is_current_layout_tiling;
 use crate::tags::{view_to_left, view_to_right};
 use crate::types::*;
-use crate::util::get_sel_win;
+use crate::util::{get_sel_mon, get_sel_win};
 use std::thread;
 use std::time::Duration;
 use x11rb::connection::Connection;
@@ -258,22 +259,29 @@ pub fn anim_right(arg: &Arg) {
     anim_scroll(arg, Direction::Right);
 }
 
-//TODO: this is too long and should be refactored, it should also use existing utils where appropriate
 fn anim_scroll(arg: &Arg, dir: Direction) {
-    let is_overview = {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            globals
-                .monitors
-                .get(globals.selmon)
-                .map(|mon| crate::monitor::is_current_layout_tiling(mon, &globals.tags))
-                .unwrap_or(false)
-        } else {
-            false
-        }
+    let sel_mon = match get_sel_mon() {
+        Some(m) => m,
+        None => return,
     };
 
-    if is_overview {
+    let (is_floating, has_tiling, current_tag) = {
+        let globals = get_globals();
+        let mon = match globals.monitors.get(sel_mon) {
+            Some(m) => m,
+            None => return,
+        };
+        let is_floating = mon
+            .sel
+            .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
+            .unwrap_or(false);
+        let has_tiling = is_current_layout_tiling(mon, &globals.tags);
+        let current_tag = mon.current_tag as u32;
+        (is_floating, has_tiling, current_tag)
+    };
+
+    // Handle overview mode - redirect to focus_direction
+    if has_tiling {
         let focus_dir = match dir {
             Direction::Left => Direction::Up,
             Direction::Right => Direction::Down,
@@ -284,32 +292,9 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    let (_is_floating, has_tiling) = {
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            globals
-                .monitors
-                .get(globals.selmon)
-                .map(|mon| {
-                    let is_floating = mon
-                        .sel
-                        .and_then(|w| globals.clients.get(&w).map(|c| c.isfloating))
-                        .unwrap_or(false);
-                    let has_tiling = crate::monitor::is_current_layout_tiling(mon, &globals.tags);
-                    (is_floating, has_tiling)
-                })
-                .unwrap_or((false, true))
-        } else {
-            (false, true)
-        }
-    };
-
+    // Handle non-tiling (floating) mode
     if !has_tiling {
-        if let Some(sel_win) = {
-            let globals = get_globals();
-            globals.monitors.get(globals.selmon).and_then(|m| m.sel)
-        } {
-            //TODO: what are we doing here? If its redundant, change it
+        if let Some(sel_win) = get_sel_win() {
             let snap_dir = match dir {
                 Direction::Right => SnapDirection::Right,
                 Direction::Left => SnapDirection::Left,
@@ -321,17 +306,7 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    let current_tag = {
-        let globals = get_globals();
-        if globals.monitors.is_empty() {
-            return;
-        }
-        match globals.monitors.get(globals.selmon) {
-            Some(mon) => mon.current_tag as u32,
-            None => return,
-        }
-    };
-
+    // Validate current tag
     if current_tag == 0 {
         return;
     }
@@ -344,11 +319,8 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         return;
     }
 
-    let animated = {
-        let globals = get_globals();
-        globals.animated
-    };
-
+    // Handle animation if enabled
+    let animated = get_globals().animated;
     if animated {
         let modifier: i32 = match dir {
             Direction::Right => 1,
@@ -357,23 +329,7 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
             Direction::Down => 1,
         };
         let target = current_tag + modifier as u32;
-
-        let globals = get_globals();
-        if !globals.monitors.is_empty() {
-            if let Some(mon) = globals.monitors.get(globals.selmon) {
-                let mut current = mon.clients;
-                while let Some(c_win) = current {
-                    if let Some(c) = globals.clients.get(&c_win) {
-                        if (c.tags & (1 << (target - 1))) != 0 && !c.isfloating {
-                            // Empty block - was drop(())
-                        }
-                        current = c.next;
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
+        check_client_on_target_tag(sel_mon, target);
     }
 
     match dir {
@@ -381,6 +337,22 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
         Direction::Left => view_to_left(arg),
         Direction::Up => view_to_left(arg),
         Direction::Down => view_to_right(arg),
+    }
+}
+
+/// Check if any client on the target tag exists (used for animation).
+fn check_client_on_target_tag(sel_mon: MonitorId, target: u32) {
+    let globals = get_globals();
+    if let Some(mon) = globals.monitors.get(sel_mon) {
+        let mut current = mon.clients;
+        while let Some(c_win) = current {
+            if let Some(c) = globals.clients.get(&c_win) {
+                let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
+                current = c.next;
+            } else {
+                break;
+            }
+        }
     }
 }
 
