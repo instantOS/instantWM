@@ -21,7 +21,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
-use crate::util::{die, min};
+use crate::util::die;
+
+use std::cmp::min;
 
 use super::color::{Clr, Cur, COL_BG, COL_DETAIL, COL_FG};
 use super::ffi::{

@@ -56,16 +56,6 @@ pub fn ecalloc_box<T: Default + Clone>(nmemb: usize) -> Box<[T]> {
     vec![T::default(); nmemb].into_boxed_slice()
 }
 
-pub fn startswith(a: &str, b: &str) -> bool {
-    a.starts_with(b)
-}
-
-/// Check if byte slice starts with another byte slice.
-/// This is a wrapper around the standard library's starts_with for byte slices.
-pub fn startswith_bytes(a: &[u8], b: &[u8]) -> bool {
-    a.starts_with(b)
-}
-
 /// Spawn a command identified by a [`Cmd`] variant.
 pub fn spawn(cmd: Cmd) {
     let globals = get_globals();
@@ -153,28 +143,10 @@ pub fn spawn_vec(cmd: &[CString]) {
     }
 }
 
-/// Return the minimum of two values. Alias for `std::cmp::min`.
-#[inline]
-pub fn min<T: Ord>(a: T, b: T) -> T {
-    a.min(b)
-}
-
-/// Return the maximum of two values. Alias for `std::cmp::max`.
-#[inline]
-pub fn max<T: Ord>(a: T, b: T) -> T {
-    a.max(b)
-}
-
 /// Check if a value is between two bounds (inclusive).
 #[inline]
 pub fn between<T: Ord>(x: T, a: T, b: T) -> bool {
     a <= x && x <= b
-}
-
-/// Clamp a value between min and max bounds.
-#[inline]
-pub fn clamp<T: Ord>(val: T, min_val: T, max_val: T) -> T {
-    val.clamp(min_val, max_val)
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
@@ -187,10 +159,6 @@ pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
             | x11rb::protocol::xproto::ModMask::M3.bits() as u32
             | x11rb::protocol::xproto::ModMask::M4.bits() as u32
             | x11rb::protocol::xproto::ModMask::M5.bits() as u32)
-}
-
-pub fn length<T>(slice: &[T]) -> usize {
-    slice.len()
 }
 
 pub fn tagmask(num_tags: usize) -> u32 {
@@ -230,49 +198,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_min() {
-        assert_eq!(min(1, 2), 1);
-        assert_eq!(min(2, 1), 1);
-        assert_eq!(min(5, 5), 5);
-    }
-
-    #[test]
-    fn test_max() {
-        assert_eq!(max(1, 2), 2);
-        assert_eq!(max(2, 1), 2);
-        assert_eq!(max(5, 5), 5);
-    }
-
-    #[test]
     fn test_between() {
         assert!(between(5, 1, 10));
         assert!(between(1, 1, 10));
         assert!(between(10, 1, 10));
         assert!(!between(0, 1, 10));
         assert!(!between(11, 1, 10));
-    }
-
-    #[test]
-    fn test_clamp() {
-        assert_eq!(clamp(5, 1, 10), 5);
-        assert_eq!(clamp(0, 1, 10), 1);
-        assert_eq!(clamp(15, 1, 10), 10);
-    }
-
-    #[test]
-    fn test_startswith() {
-        assert!(startswith("hello world", "hello"));
-        assert!(startswith("hello", "hello"));
-        assert!(!startswith("hello", "world"));
-        assert!(startswith("hello", ""));
-        assert!(startswith("", ""));
-    }
-
-    #[test]
-    fn test_startswith_bytes() {
-        assert!(startswith_bytes(b"hello world", b"hello"));
-        assert!(!startswith_bytes(b"hello", b"world"));
-        assert!(startswith_bytes(b"hello", b""));
     }
 
     #[test]

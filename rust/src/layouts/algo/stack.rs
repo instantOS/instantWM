@@ -42,12 +42,12 @@
 //! └──────────────────────────────┘
 //! ```
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::{client_height, client_width, next_tiled, resize};
 use crate::globals::get_globals;
 use crate::layouts::query::client_count;
 use crate::types::{Monitor, Rect};
-use crate::util::min;
+use std::cmp::min;
 
 // ── deck ─────────────────────────────────────────────────────────────────────
 
@@ -197,7 +197,7 @@ pub fn bstack(m: &mut Monitor) {
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
             let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
-            animate_client_rect(
+            animate_client(
                 win,
                 &Rect {
                     x: m.work_rect.x + master_row_offset,
@@ -216,14 +216,12 @@ pub fn bstack(m: &mut Monitor) {
         } else {
             // ── stack client — column in the bottom row ───────────────────
             let h = m.work_rect.h - mh;
-            animate_client_rect(
+            animate_client(
                 win,
-                &Rect {
-                    x: tx,
-                    y: ty,
-                    w: tw - 2 * border_width,
-                    h: h - 2 * border_width,
-                },
+                m.work_rect.x + master_row_offset,
+                m.work_rect.y,
+                w - 2 * border_width,
+                mh - 2 * border_width,
                 framecount,
                 0,
             );
@@ -305,14 +303,12 @@ pub fn bstackhoriz(m: &mut Monitor) {
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
             let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
-            animate_client_rect(
+            animate_client(
                 win,
-                &Rect {
-                    x: m.work_rect.x + master_row_offset,
-                    y: m.work_rect.y,
-                    w: w - 2 * border_width,
-                    h: mh - 2 * border_width,
-                },
+                m.work_rect.x + master_row_offset,
+                m.work_rect.y,
+                w - 2 * border_width,
+                mh - 2 * border_width,
                 framecount,
                 0,
             );
@@ -323,14 +319,12 @@ pub fn bstackhoriz(m: &mut Monitor) {
             }
         } else {
             // ── stack client — full-width horizontal row ──────────────────
-            animate_client_rect(
+            animate_client(
                 win,
-                &Rect {
-                    x: tx,
-                    y: ty,
-                    w: m.work_rect.w - 2 * border_width,
-                    h: th - 2 * border_width,
-                },
+                tx,
+                ty,
+                tw - 2 * border_width,
+                h - 2 * border_width,
                 framecount,
                 0,
             );

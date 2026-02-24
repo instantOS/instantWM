@@ -195,11 +195,11 @@ pub fn get_xcommands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "scratchpad-show",
-            action: |arg| scratchpad_show(arg),
+            action: |arg| scratchpad_show_name(arg),
         },
         XCommand {
             cmd: "scratchpad-hide",
-            action: |arg| scratchpad_hide(arg),
+            action: |arg| scratchpad_hide_name(arg),
         },
         XCommand {
             cmd: "scratchpad-status",

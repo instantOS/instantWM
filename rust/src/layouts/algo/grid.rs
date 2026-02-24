@@ -31,7 +31,7 @@
 //! divide evenly: `grid` pads the last *row*, while `horizgrid` pads the last
 //! *column*.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::next_tiled;
 use crate::globals::get_globals;
 use crate::layouts::query::client_count;
@@ -119,7 +119,7 @@ pub fn grid(m: &mut Monitor) {
             0
         };
 
-        animate_client_rect(
+        animate_client(
             win,
             &Rect {
                 x: cell_x,
@@ -212,7 +212,7 @@ pub fn horizgrid(m: &mut Monitor) {
                     0
                 };
 
-                animate_client_rect(
+                animate_client(
                     win,
                     &Rect {
                         x: cell_x,

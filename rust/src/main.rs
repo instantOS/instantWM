@@ -3,6 +3,7 @@ mod bar;
 mod client;
 mod commands;
 mod config;
+mod constants;
 mod drw;
 mod events;
 mod floating;
@@ -34,7 +35,7 @@ use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as X11rbConnectionExt;
 
-use crate::bar::{update_bars, update_status};
+use crate::bar::x11::{update_bars, update_status};
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::events::{cleanup, run, scan};

@@ -1,7 +1,7 @@
 mod model;
 mod status;
 mod widgets;
-mod x11;
+pub mod x11;
 
 pub use model::{bar_position_at_x, BarPosition};
 pub use x11::resize_bar_win;
@@ -125,27 +125,6 @@ pub fn reset_bar() {
         selmon.gesture = Gesture::None;
         draw_bar(selmon);
     }
-}
-
-/// Update the status text from the X root window name.
-/// Delegates to the X11 implementation.
-pub fn update_status() {
-    x11::update_status();
-}
-
-/// Update the bar position for a monitor based on its showbar/topbar settings.
-pub fn update_bar_pos(m: &mut Monitor) {
-    x11::update_bar_pos(m);
-}
-
-/// Create and map bar windows for all monitors that don't have one.
-pub fn update_bars() {
-    x11::update_bars();
-}
-
-/// Toggle the visibility of the status bar on the selected monitor.
-pub fn toggle_bar() {
-    x11::toggle_bar();
 }
 
 pub(crate) fn get_lrpad() -> i32 {

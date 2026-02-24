@@ -1,4 +1,5 @@
 use crate::client::resize_client_rect;
+use crate::constants::animation::*;
 use crate::floating::{change_snap, SnapDir};
 use crate::globals::{get_globals, get_x11};
 use crate::monitor::is_current_layout_tiling;
@@ -87,9 +88,9 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                 QUEUED_ALREADY,
             )
         };
-        let effective_frames = if queued_events > 100 {
+        let effective_frames = if queued_events > QUEUE_SKIP_THRESHOLD {
             0
-        } else if queued_events > 50 {
+        } else if queued_events > QUEUE_REDUCE_THRESHOLD {
             (frames / 2).max(1)
         } else {
             frames
@@ -125,13 +126,13 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
         let dx = (x - start_x) as f64;
         let dy = (y - start_y) as f64;
 
-        let dist_moved = (start_x - x).abs() > 10
-            || (start_y - y).abs() > 10
-            || (actual_w - start_w).abs() > 10
-            || (actual_h - start_h).abs() > 10;
+        let dist_moved = (start_x - x).abs() > MOVEMENT_DISTANCE_THRESHOLD
+            || (start_y - y).abs() > MOVEMENT_DISTANCE_THRESHOLD
+            || (actual_w - start_w).abs() > MOVEMENT_DISTANCE_THRESHOLD
+            || (actual_h - start_h).abs() > MOVEMENT_DISTANCE_THRESHOLD;
 
         if dist_moved {
-            if x == start_x && y == start_y && start_w < mon_mw - 50 {
+            if x == start_x && y == start_y && start_w < mon_mw - MONITOR_WIDTH_THRESHOLD {
                 let delta_w = actual_w - start_w;
                 let delta_h = actual_h - start_h;
                 if delta_w != 0 || delta_h != 0 {
@@ -164,7 +165,7 @@ pub fn animate_client(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, 
                     }
 
                     let _ = conn.flush();
-                    thread::sleep(Duration::from_micros(15000));
+                    thread::sleep(Duration::from_micros(FRAME_SLEEP_MICROS));
                 }
             }
         }
@@ -204,14 +205,6 @@ pub fn check_animate(win: Window, x: i32, y: i32, w: i32, h: i32, frames: i32, r
             animate_client(win, x, y, w, h, frames, reset_pos);
         }
     }
-}
-
-pub fn animate_client_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
-    animate_client(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
-}
-
-pub fn check_animate_rect(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
-    check_animate(win, rect.x, rect.y, rect.w, rect.h, frames, reset_pos);
 }
 
 pub fn up_scale_client() {
@@ -287,7 +280,7 @@ fn anim_scroll(dir: Direction) {
         return;
     }
 
-    if dir == Direction::Right && current_tag >= 20 {
+    if dir == Direction::Right && current_tag >= MAX_TAG_NUMBER {
         return;
     }
 

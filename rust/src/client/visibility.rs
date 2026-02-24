@@ -14,7 +14,7 @@
 //! * [`show`]        – unmap → animate → arrange a previously hidden client.
 //! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
@@ -207,7 +207,7 @@ pub fn show(win: Window) {
     }
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client_rect(win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client(win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mid) = mon_id {
@@ -240,7 +240,7 @@ pub fn hide(win: Window) {
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
-        animate_client_rect(
+        animate_client(
             win,
             &Rect {
                 x,

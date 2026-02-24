@@ -111,7 +111,7 @@ pub fn view_to_right() {
     scroll_view(Direction::Right);
 }
 
-pub fn shift_view_direction(direction: i32) {
+pub fn shift_view_direction(direction: Direction) {
     let (tagset, numtags) = {
         let globals = get_globals();
         let Some(mon) = globals.monitors.get(globals.selmon) else {
@@ -124,13 +124,15 @@ pub fn shift_view_direction(direction: i32) {
     let mut found = false;
 
     for step in 1..=10i32 {
-        let shift = direction * step;
-        next_tagset = if direction > 0 {
-            (tagset << shift) | (tagset >> (numtags as i32 - 1 - shift))
-        } else {
-            let rshift = (-shift) as usize;
-            let lshift = (numtags as i32 - 1 + shift) as usize;
-            (tagset >> rshift) | (tagset << lshift)
+        next_tagset = match direction {
+            Direction::Right | Direction::Down => {
+                let shift = step as usize;
+                (tagset << shift) | (tagset >> (numtags - shift))
+            }
+            Direction::Left | Direction::Up => {
+                let rshift = step as usize;
+                (tagset >> rshift) | (tagset << (numtags - rshift))
+            }
         };
 
         let globals = get_globals();
@@ -165,7 +167,7 @@ pub fn shift_view_direction(direction: i32) {
     view(next_tagset);
 }
 
-pub fn shift_view(direction: i32) {
+pub fn shift_view(direction: Direction) {
     shift_view_direction(direction);
 }
 
@@ -405,7 +407,7 @@ fn scroll_view(dir: Direction) {
     if dir == Direction::Left && current_tag <= 1 {
         return;
     }
-    if dir == Direction::Right && current_tag >= 20 {
+    if dir == Direction::Right && current_tag >= crate::constants::animation::MAX_TAG_NUMBER {
         return;
     }
 

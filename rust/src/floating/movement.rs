@@ -1,6 +1,6 @@
 //! Keyboard-driven floating window movement, resize, and scaling.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::resize;
 use crate::focus::warp_cursor_to_client;
 use crate::globals::get_globals;
@@ -46,7 +46,7 @@ pub fn moveresize(dir: CardinalDirection) {
         new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
-    animate_client_rect(
+    animate_client(
         win,
         &Rect {
             x: new_x,
@@ -208,5 +208,5 @@ pub fn scale_client_win(win: Window, scale: i32) {
     }
     y = y.max(bh);
 
-    animate_client_rect(win, &Rect { x, y, w, h }, 3, 0);
+    animate_client(win, &Rect { x, y, w, h }, 3, 0);
 }

@@ -28,7 +28,7 @@
 //! When the global `animated` flag is set, newly managed windows slide in from
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
@@ -46,7 +46,7 @@ use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::types::{Client, Rect};
-use crate::util::max;
+use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -390,7 +390,7 @@ pub fn manage(w: Window, wa_geo: Rect, wa_border_width: u32) {
                 h: c.geo.h,
             },
         );
-        animate_client_rect(
+        animate_client(
             w,
             &Rect {
                 x: c.geo.x,

@@ -23,7 +23,7 @@
 //! other requests from the dying client are processed between the kill and the
 //! expected `DestroyNotify`.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::focus::{send_event, ANIM_CLIENT};
 use crate::globals::{get_globals, get_x11};
 use crate::types::Rect;
@@ -70,7 +70,7 @@ pub fn kill_client() {
 
     if animated && win != anim_client && !is_fullscreen {
         ANIM_CLIENT.store(win, Ordering::Relaxed);
-        animate_client_rect(
+        animate_client(
             win,
             &Rect {
                 x: 0,
@@ -143,7 +143,7 @@ pub fn close_win() {
         return;
     }
 
-    animate_client_rect(
+    animate_client(
         win,
         &Rect {
             x: 0,

@@ -186,21 +186,6 @@ pub fn get_current_layout_symbol() -> Option<&'static str> {
     g.layouts.first().map(|l| l.symbol())
 }
 
-/// Returns `true` when the active layout for `m` is the overview layout.
-pub fn is_overview_layout(m: &Monitor) -> bool {
-    get_current_layout(m).is_overview()
-}
-
-/// Returns `true` when the active layout for `m` is a tiling layout.
-pub fn is_tiling_layout(m: &Monitor) -> bool {
-    get_current_layout(m).is_tiling()
-}
-
-/// Returns `true` when the active layout for `m` is the monocle layout.
-pub fn is_monocle_layout(m: &Monitor) -> bool {
-    get_current_layout(m).is_monocle()
-}
-
 /// Returns `true` when the active layout for the *selected* monitor is
 /// a floating (non-tiling) layout.
 ///
@@ -208,7 +193,7 @@ pub fn is_monocle_layout(m: &Monitor) -> bool {
 pub fn selmon_has_tiling_layout() -> bool {
     let g = get_globals();
     match g.monitors.get(g.selmon) {
-        Some(m) => is_tiling_layout(m),
+        Some(m) => get_current_layout(m).is_tiling(),
         None => false,
     }
 }

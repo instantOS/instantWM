@@ -35,7 +35,7 @@ use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::restack;
 use crate::monitor::{arrange, is_current_layout_tiling};
 use crate::tags::{
-    follow_tag, move_left, move_right, tag, tag_all, tag_to_left, tag_to_right, view,
+    follow_tag, move_left, move_right, set_client_tag, tag_all, tag_to_left, tag_to_right, view,
 };
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -457,7 +457,7 @@ fn handle_bar_drop(win: Window, grab_start_x: i32) {
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
         set_tiled(win, false);
-        tag(1u32 << (tag_idx as u32));
+        set_client_tag(1u32 << (tag_idx as u32));
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
@@ -837,7 +837,7 @@ pub fn drag_tag() {
                 let tag_mask = 1u32 << (tag_idx as u32);
                 let state = state as u32;
                 if (state & ModMask::SHIFT.bits() as u32) != 0 {
-                    tag(tag_mask);
+                    set_client_tag(tag_mask);
                 } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
                     tag_all(tag_mask);
                 } else {

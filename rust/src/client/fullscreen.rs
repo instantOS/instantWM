@@ -21,7 +21,7 @@
 //! fullscreen) but the window remains in the normal layout stack with its
 //! border intact.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::geometry::resize_client_rect;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
@@ -148,7 +148,7 @@ pub fn set_fullscreen(win: Window, fullscreen: bool) {
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
             if !is_floating {
-                animate_client_rect(win, &mon_rect, 10, 0);
+                animate_client(win, &mon_rect, 10, 0);
             }
 
             // Position and raise the window.

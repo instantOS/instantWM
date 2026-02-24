@@ -310,7 +310,7 @@ pub fn focus_last_client() {
         let globals = get_globals();
         globals.selmon
     };
-    crate::monitor::arrange(Some(mon_id));
+    crate::layouts::arrange(Some(mon_id));
 }
 
 pub fn warp(c_win: Window) {

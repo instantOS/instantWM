@@ -8,7 +8,7 @@ use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::animation::{down_scale_client, up_scale_client};
 use crate::client::{close_win, kill_client};
 use crate::focus::focus_stack;
-use crate::layouts::{cycle_layout, set_layout};
+use crate::layouts::{cycle_layout_direction, set_layout};
 
 use crate::floating::toggle_floating;
 use crate::mouse::{
@@ -18,10 +18,10 @@ use crate::mouse::{
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push_down, push_up};
 use crate::tags::{
-    follow_tag, shift_view, tag, toggle_tag, toggle_view, view_to_left, view_to_right,
+    follow_tag, set_client_tag, shift_view, toggle_tag, toggle_view, view_to_left, view_to_right,
 };
 use crate::toggles::{toggle_locked, toggle_prefix};
-use crate::types::{Button, Click};
+use crate::types::{Button, Click, Direction};
 use crate::util::spawn;
 
 const MS: u32 = MODKEY | SHIFT;
@@ -43,8 +43,8 @@ pub fn get_buttons() -> Vec<Button> {
     use Click::*;
 
     vec![
-        btn!(LtSymbol, 0,     button:1 => || cycle_layout(-1)),
-        btn!(LtSymbol, 0,     button:3 => || cycle_layout(1)),
+        btn!(LtSymbol, 0,     button:1 => || cycle_layout_direction(false)),
+        btn!(LtSymbol, 0,     button:3 => || cycle_layout_direction(true)),
         btn!(LtSymbol, 0,     button:2 => || set_layout(Some(0))),
         btn!(LtSymbol, MODKEY, button:1 => || create_overlay()),
         btn!(WinTitle, 0,     button:1 => || window_title_mouse_handler()),
@@ -74,11 +74,11 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(TagBar, 0,     button:3 => || toggle_view(!0u32)),
         btn!(TagBar, 0,     button:4 => || view_to_left()),
         btn!(TagBar, 0,     button:5 => || view_to_right()),
-        btn!(TagBar, MODKEY, button:1 => || tag(!0u32)),
+        btn!(TagBar, MODKEY, button:1 => || set_client_tag(!0u32)),
         btn!(TagBar, MODKEY, button:3 => || toggle_tag(!0u32)),
         btn!(TagBar, MOD1,   button:1 => || follow_tag(!0u32)),
-        btn!(TagBar, MODKEY, button:4 => || shift_view(-1)),
-        btn!(TagBar, MODKEY, button:5 => || shift_view(1)),
+        btn!(TagBar, MODKEY, button:4 => || shift_view(Direction::Left)),
+        btn!(TagBar, MODKEY, button:5 => || shift_view(Direction::Right)),
         btn!(RootWin, 0,     button:1 => || spawn(Cmd::Panther)),
         btn!(RootWin, 0,     button:2 => || spawn(Cmd::InstantMenu)),
         btn!(RootWin, 0,     button:3 => || spawn(Cmd::Smart)),

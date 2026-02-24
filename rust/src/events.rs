@@ -10,9 +10,8 @@ use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
-use crate::monitor::{
-    arrange, is_current_layout_tiling, rect_to_mon, restack, update_geom, win_to_mon,
-};
+use crate::layouts::{arrange, restack};
+use crate::monitor::{is_current_layout_tiling, rect_to_mon, update_geom, win_to_mon};
 use crate::mouse::{
     find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
     handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse_directional,
@@ -484,7 +483,7 @@ pub fn property_notify(e: &PropertyNotifyEvent) {
 
     let globals = get_globals();
     if e.window == globals.root {
-        crate::bar::update_status();
+        crate::bar::x11::update_status();
         return;
     }
 

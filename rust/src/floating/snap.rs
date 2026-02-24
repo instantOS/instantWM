@@ -11,13 +11,13 @@
 //!      └─► change_snap(win, SnapDir::Left)
 //!               ├─ saves current float geometry (if entering snap for the first time)
 //!               ├─ looks up new position in SNAP_MATRIX
-//!               └─ calls apply_snap → check_animate_rect
+//!               └─ calls apply_snap → check_animate
 //! ```
 //!
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::animation::check_animate_rect;
+use crate::animation::check_animate;
 use crate::client::{restore_border_width, save_border_width};
 use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
@@ -212,10 +212,10 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
 
     match snapstatus {
         SnapPosition::None => {
-            check_animate_rect(win, &saved_geo, 7, 0);
+            check_animate(win, &saved_geo, 7, 0);
         }
         SnapPosition::Top => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx,
@@ -228,7 +228,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::TopRight => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -241,7 +241,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::Right => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -254,7 +254,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::BottomRight => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -267,7 +267,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::Bottom => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx,
@@ -280,7 +280,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::BottomLeft => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx,
@@ -293,7 +293,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::Left => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx,
@@ -306,7 +306,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
             );
         }
         SnapPosition::TopLeft => {
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx,
@@ -326,7 +326,7 @@ pub fn apply_snap(win: Window, mon_id: Option<usize>) {
                     client.border_width = 0;
                 }
             }
-            check_animate_rect(
+            check_animate(
                 win,
                 &Rect {
                     x: m_mx,

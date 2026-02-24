@@ -15,7 +15,7 @@ use crate::client::constants::{
 };
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::{Client, Rect};
-use crate::util::{max, min};
+use std::cmp::{max, min};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;

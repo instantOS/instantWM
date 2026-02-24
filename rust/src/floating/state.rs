@@ -1,6 +1,6 @@
 //! Floating state transitions and geometry persistence.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::{resize, restore_border_width};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
@@ -85,7 +85,7 @@ pub fn apply_float_change(win: Window, floating: bool, animate: bool, update_bor
         let Some(saved_geo) = saved_geo else { return };
 
         if animate {
-            animate_client_rect(win, &saved_geo, 7, 0);
+            animate_client(win, &saved_geo, 7, 0);
         } else {
             resize(win, &saved_geo, false);
         }

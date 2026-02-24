@@ -168,7 +168,7 @@ pub fn init_commands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "togglebar",
-            action: |_arg| crate::bar::toggle_bar(),
+            action: |_arg| crate::bar::x11::toggle_bar(),
         },
         XCommand {
             cmd: "focusmon",
@@ -189,7 +189,7 @@ pub fn init_commands() -> Vec<XCommand> {
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::monitor::tag_mon(val);
+                crate::tags::tag_mon(val);
             },
         },
         XCommand {
@@ -211,7 +211,7 @@ pub fn init_commands() -> Vec<XCommand> {
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::layouts::inc_nmaster(val);
+                crate::layouts::inc_nmaster_by(val);
             },
         },
         XCommand {
@@ -252,7 +252,7 @@ pub fn init_commands() -> Vec<XCommand> {
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                crate::layouts::cycle_layout(val);
+                crate::layouts::cycle_layout_direction(val > 0);
             },
         },
         XCommand {
@@ -269,11 +269,11 @@ pub fn init_commands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "showscratchpad",
-            action: |arg| crate::scratchpad::scratchpad_show(arg),
+            action: |arg| crate::scratchpad::scratchpad_show_name(arg),
         },
         XCommand {
             cmd: "hidescratchpad",
-            action: |arg| crate::scratchpad::scratchpad_hide(arg),
+            action: |arg| crate::scratchpad::scratchpad_hide_name(arg),
         },
         XCommand {
             cmd: "makescratchpad",

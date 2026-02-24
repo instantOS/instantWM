@@ -3,7 +3,7 @@ use crate::focus::direction_focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::arrange;
 use crate::overlay::set_overlay_mode;
-use crate::scratchpad::{hide_window, unhide_one};
+use crate::scratchpad::unhide_one;
 use crate::types::*;
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
@@ -235,7 +235,7 @@ pub fn up_press() {
     }
 
     if let Some(win) = sel_win {
-        hide_window(win);
+        crate::client::hide(win);
     }
 }
 

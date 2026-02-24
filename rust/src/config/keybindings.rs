@@ -5,27 +5,27 @@ use std::rc::Rc;
 
 use super::commands::Cmd;
 use crate::animation::{anim_left, anim_right};
-use crate::bar::toggle_bar;
+use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::floating::{center_window, distribute_clients, temp_fullscreen};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up_press};
-use crate::layouts::{cycle_layout, inc_nmaster, set_layout, set_mfact};
+use crate::layouts::{cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact};
 use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    desktop_set, follow_tag, follow_view, last_view, move_left, move_right, quit, shift_view,
-    swap_tags, tag, tag_mon, tag_to_left, tag_to_right, toggle_fullscreen_overview,
-    toggle_overview, toggle_tag, toggle_view, view, view_to_left, view_to_right, win_view,
+    follow_tag, follow_view, last_view, move_left, move_right, quit, set_client_tag, shift_view,
+    swap_tags, tag_mon, tag_to_left, tag_to_right, toggle_fullscreen_overview, toggle_overview,
+    toggle_tag, toggle_view, view, view_to_left, view_to_right, win_view,
 };
 use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
     toggle_prefix, toggle_show_tags, toggle_sticky, unhide_all,
 };
-use crate::types::{CardinalDirection, Key};
+use crate::types::{CardinalDirection, Direction, Key};
 use crate::util::spawn;
 
 use super::keysyms::*;
@@ -48,12 +48,12 @@ macro_rules! key {
 fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     let mask = 1u32 << tag_idx;
     [
-        key!(MODKEY,                    keysym => || view(mask)),
-        key!(MODKEY | CONTROL,          keysym => || toggle_view(mask)),
-        key!(MODKEY | SHIFT,            keysym => || tag(mask)),
-        key!(MODKEY | MOD1,             keysym => || follow_tag(mask)),
-        key!(MODKEY | CONTROL | SHIFT,  keysym => || toggle_tag(mask)),
-        key!(MODKEY | MOD1   | SHIFT,   keysym => || swap_tags(mask)),
+        key!(MODKEY,                    keysym => move || view(mask)),
+        key!(MODKEY | CONTROL,          keysym => move || toggle_view(mask)),
+        key!(MODKEY | SHIFT,            keysym => move || set_client_tag(mask)),
+        key!(MODKEY | MOD1,             keysym => move || follow_tag(mask)),
+        key!(MODKEY | CONTROL | SHIFT,  keysym => move || toggle_tag(mask)),
+        key!(MODKEY | MOD1   | SHIFT,   keysym => move || swap_tags(mask)),
     ]
 }
 
@@ -71,8 +71,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA, XK_K => || key_resize(CardinalDirection::Up)),
         key!(MA, XK_L => || key_resize(CardinalDirection::Right)),
         key!(MA, XK_H => || key_resize(CardinalDirection::Left)),
-        key!(MODKEY, XK_I => || inc_nmaster(1)),
-        key!(MODKEY, XK_D => || inc_nmaster(-1)),
+        key!(MODKEY, XK_I => || inc_nmaster_by(1)),
+        key!(MODKEY, XK_D => || inc_nmaster_by(-1)),
         key!(MODKEY, XK_H => || set_mfact(-0.05)),
         key!(MODKEY, XK_L => || set_mfact(0.05)),
         key!(MODKEY,    XK_T => || set_layout(Some(0))),
@@ -80,8 +80,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,    XK_F => || set_layout(Some(2))),
         key!(MODKEY,    XK_M => || set_layout(Some(3))),
         key!(MODKEY,    XK_P => || set_layout(None)),
-        key!(MC,        XK_COMMA  => || cycle_layout(-1)),
-        key!(MC,        XK_PERIOD => || cycle_layout(1)),
+        key!(MC,        XK_COMMA  => || cycle_layout_direction(false)),
+        key!(MC,        XK_PERIOD => || cycle_layout_direction(true)),
         key!(MODKEY, XK_J    => || focus_stack(1)),
         key!(MODKEY, XK_K    => || focus_stack(-1)),
         key!(MODKEY, XK_DOWN => || down_key(1)),
@@ -103,10 +103,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,      XK_RIGHT   => || move_right()),
         key!(MS,      XK_LEFT    => || tag_to_left()),
         key!(MS,      XK_RIGHT   => || tag_to_right()),
-        key!(MSC,     XK_RIGHT   => || shift_view(1)),
-        key!(MSC,     XK_LEFT    => || shift_view(-1)),
+        key!(MSC,     XK_RIGHT   => || shift_view(Direction::Right)),
+        key!(MSC,     XK_LEFT    => || shift_view(Direction::Left)),
         key!(MODKEY,  XK_0       => || view(!0u32)),
-        key!(MS,      XK_0       => || tag(!0u32)),
+        key!(MS,      XK_0       => || set_client_tag(!0u32)),
         key!(MODKEY,  XK_O       => || win_view()),
         key!(MODKEY, XK_COMMA  => || focus_mon(-1)),
         key!(MODKEY, XK_PERIOD => || focus_mon(1)),
@@ -114,7 +114,6 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,     XK_PERIOD => || tag_mon(1)),
         key!(MA,     XK_COMMA  => || follow_mon(-1)),
         key!(MA,     XK_PERIOD => || follow_mon(1)),
-        key!(MSCA,   XK_PERIOD => || desktop_set()),
         key!(MS,   XK_RETURN => || zoom()),
         key!(MC,   XK_D      => || distribute_clients()),
         key!(MS,   XK_D      => || draw_window()),
@@ -220,10 +219,10 @@ pub fn get_dkeys() -> Vec<Key> {
         key!(0, XK_L     => || view_to_right()),
         key!(0, XK_LEFT  => || view_to_left()),
         key!(0, XK_RIGHT => || view_to_right()),
-        key!(0, XK_K     => || shift_view(1)),
-        key!(0, XK_J     => || shift_view(-1)),
-        key!(0, XK_UP    => || shift_view(1)),
-        key!(0, XK_DOWN  => || shift_view(-1)),
+        key!(0, XK_K     => || shift_view(Direction::Right)),
+        key!(0, XK_J     => || shift_view(Direction::Left)),
+        key!(0, XK_UP    => || shift_view(Direction::Right)),
+        key!(0, XK_DOWN  => || shift_view(Direction::Left)),
         key!(0, XK_1 => || view(1 << 0)),
         key!(0, XK_2 => || view(1 << 1)),
         key!(0, XK_3 => || view(1 << 2)),

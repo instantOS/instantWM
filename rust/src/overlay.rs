@@ -1,6 +1,8 @@
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::save_border_width;
 use crate::client::{attach, attach_stack, detach, detach_stack, resize};
+use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
+use crate::constants::overlay::*;
 use crate::focus::focus;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
@@ -247,9 +249,9 @@ pub fn show_overlay() {
                 resize(
                     overlay_win,
                     &Rect {
-                        x: mon_mx + 20,
+                        x: mon_mx + OVERLAY_MARGIN_X,
                         y: mon_my + yoffset - client_h,
-                        w: mon_ww - 40,
+                        w: mon_ww - OVERLAY_INSET_X,
                         h: client_h,
                     },
                     true,
@@ -259,10 +261,10 @@ pub fn show_overlay() {
                 resize(
                     overlay_win,
                     &Rect {
-                        x: mon_mx + mon_mw - 20,
-                        y: mon_my + 40,
+                        x: mon_mx + mon_mw - OVERLAY_MARGIN_X,
+                        y: mon_my + OVERLAY_MARGIN_Y,
                         w: client_w,
-                        h: mon_mh - 80,
+                        h: mon_mh - OVERLAY_INSET_Y,
                     },
                     true,
                 );
@@ -271,9 +273,9 @@ pub fn show_overlay() {
                 resize(
                     overlay_win,
                     &Rect {
-                        x: mon_mx + 20,
+                        x: mon_mx + OVERLAY_MARGIN_X,
                         y: mon_my + mon_mh,
-                        w: mon_ww - 40,
+                        w: mon_ww - OVERLAY_INSET_X,
                         h: client_h,
                     },
                     true,
@@ -283,10 +285,10 @@ pub fn show_overlay() {
                 resize(
                     overlay_win,
                     &Rect {
-                        x: mon_mx - client_w + 20,
-                        y: mon_my + 40,
+                        x: mon_mx - client_w + OVERLAY_MARGIN_X,
+                        y: mon_my + OVERLAY_MARGIN_Y,
                         w: client_w,
-                        h: mon_mh - 80,
+                        h: mon_mh - OVERLAY_INSET_Y,
                     },
                     true,
                 );
@@ -334,20 +336,22 @@ pub fn show_overlay() {
                     OverlayMode::Top => (overlay_win as i32, mon.monitor_rect.y + yoffset),
                     OverlayMode::Right => (
                         mon.monitor_rect.x + mon.monitor_rect.w - client_w,
-                        mon.monitor_rect.y + 40,
+                        mon.monitor_rect.y + OVERLAY_MARGIN_Y,
                     ),
                     OverlayMode::Bottom => (
-                        mon.monitor_rect.x + 20,
+                        mon.monitor_rect.x + OVERLAY_MARGIN_X,
                         mon.monitor_rect.y + mon.monitor_rect.h - client_h,
                     ),
-                    OverlayMode::Left => (mon.monitor_rect.x, mon.monitor_rect.y + 40),
+                    OverlayMode::Left => {
+                        (mon.monitor_rect.x, mon.monitor_rect.y + OVERLAY_MARGIN_Y)
+                    }
                 }
             } else {
                 (0, 0)
             }
         };
 
-        animate_client_rect(
+        animate_client(
             overlay_win,
             &Rect {
                 x: target_x,
@@ -355,7 +359,7 @@ pub fn show_overlay() {
                 w: 0,
                 h: 0,
             },
-            15,
+            OVERLAY_ANIMATION_FRAMES,
             0,
         );
 
@@ -453,7 +457,7 @@ pub fn hide_overlay() {
     if is_locked {
         match overlay_mode {
             OverlayMode::Top => {
-                animate_client_rect(
+                animate_client(
                     overlay_win,
                     &Rect {
                         x: client_x,
@@ -461,12 +465,12 @@ pub fn hide_overlay() {
                         w: 0,
                         h: 0,
                     },
-                    15,
+                    OVERLAY_ANIMATION_FRAMES,
                     0,
                 );
             }
             OverlayMode::Right => {
-                animate_client_rect(
+                animate_client(
                     overlay_win,
                     &Rect {
                         x: mon_mx + mon_mw,
@@ -474,12 +478,12 @@ pub fn hide_overlay() {
                         w: 0,
                         h: 0,
                     },
-                    15,
+                    OVERLAY_ANIMATION_FRAMES,
                     0,
                 );
             }
             OverlayMode::Bottom => {
-                animate_client_rect(
+                animate_client(
                     overlay_win,
                     &Rect {
                         x: client_x,
@@ -487,20 +491,20 @@ pub fn hide_overlay() {
                         w: 0,
                         h: 0,
                     },
-                    15,
+                    OVERLAY_ANIMATION_FRAMES,
                     0,
                 );
             }
             OverlayMode::Left => {
-                animate_client_rect(
+                animate_client(
                     overlay_win,
                     &Rect {
                         x: mon_mx - client_w,
-                        y: 40,
+                        y: OVERLAY_MARGIN_Y,
                         w: 0,
                         h: 0,
                     },
-                    15,
+                    OVERLAY_ANIMATION_FRAMES,
                     0,
                 );
             }
@@ -673,9 +677,9 @@ pub fn reset_overlay_size() {
             resize(
                 win,
                 &Rect {
-                    x: mon_mx + 20,
+                    x: mon_mx + OVERLAY_MARGIN_X,
                     y: mon_my + yoffset,
-                    w: mon_ww - 40,
+                    w: mon_ww - OVERLAY_INSET_X,
                     h: mon_wh / 3,
                 },
                 true,
@@ -694,9 +698,9 @@ pub fn reset_overlay_size() {
                 win,
                 &Rect {
                     x: mon_mx + mon_mw - client_w,
-                    y: mon_my + 40,
+                    y: mon_my + OVERLAY_MARGIN_Y,
                     w: mon_mw / 3,
-                    h: mon_mh - 80,
+                    h: mon_mh - OVERLAY_INSET_Y,
                 },
                 true,
             );
@@ -713,9 +717,9 @@ pub fn reset_overlay_size() {
             resize(
                 win,
                 &Rect {
-                    x: mon_mx + 20,
+                    x: mon_mx + OVERLAY_MARGIN_X,
                     y: mon_my + mon_mh - client_h,
-                    w: mon_ww - 40,
+                    w: mon_ww - OVERLAY_INSET_X,
                     h: mon_wh / 3,
                 },
                 true,
@@ -726,9 +730,9 @@ pub fn reset_overlay_size() {
                 win,
                 &Rect {
                     x: mon_mx,
-                    y: mon_my + 40,
+                    y: mon_my + OVERLAY_MARGIN_Y,
                     w: mon_mw / 3,
-                    h: mon_mh - 80,
+                    h: mon_mh - OVERLAY_INSET_Y,
                 },
                 true,
             );

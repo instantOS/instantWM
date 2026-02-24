@@ -2,7 +2,7 @@ use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::focus::{focus, warp_cursor_to_client};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
-use crate::monitor::restack;
+use crate::layouts::restack;
 use crate::types::*;
 use crate::util::get_sel_win;
 use x11rb::connection::Connection;
@@ -10,10 +10,6 @@ use x11rb::protocol::xproto::*;
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
-
-pub fn hide_window(win: Window) {
-    crate::client::hide(win);
-}
 
 pub fn unhide_one() -> bool {
     let clients: Vec<Window> = {
@@ -142,10 +138,6 @@ pub fn scratchpad_unmake() {
     }
 }
 
-pub fn scratchpad_show(name: &str) {
-    scratchpad_show_name(name);
-}
-
 pub(crate) fn scratchpad_show_name(name: &str) {
     let found = match scratchpad_find(name) {
         Some(w) => w,
@@ -208,10 +200,6 @@ pub(crate) fn scratchpad_show_name(name: &str) {
     if focusfollowsmouse {
         warp_cursor_to_client(found);
     }
-}
-
-pub fn scratchpad_hide(name: &str) {
-    scratchpad_hide_name(name);
 }
 
 pub(crate) fn scratchpad_hide_name(name: &str) {

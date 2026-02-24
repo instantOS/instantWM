@@ -17,11 +17,11 @@
 //! - The right column holds all remaining clients in the same fashion.
 //! - When there is only one client it expands to fill the entire work area.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::{client_height, next_tiled};
 use crate::globals::get_globals;
 use crate::types::{Monitor, Rect};
-use crate::util::min;
+use std::cmp::min;
 
 pub fn tile(m: &mut Monitor) {
     let framecount = {
@@ -86,14 +86,12 @@ pub fn tile(m: &mut Monitor) {
             // Two-client special-case: no animation to avoid visual glitch.
             let frames = if n == 2 { 0 } else { framecount };
 
-            animate_client_rect(
+            animate_client(
                 win,
-                &Rect {
-                    x: m.work_rect.x,
-                    y: m.work_rect.y + master_y_offset as i32,
-                    w: mw - 2 * border_width,
-                    h: h - 2 * border_width,
-                },
+                m.work_rect.x,
+                m.work_rect.y + master_y_offset as i32,
+                mw - 2 * border_width,
+                h - 2 * border_width,
                 frames,
                 0,
             );
@@ -117,14 +115,12 @@ pub fn tile(m: &mut Monitor) {
             // ── stack client ──────────────────────────────────────────────
             let h = (m.work_rect.h - ty as i32) / (n - i) as i32;
 
-            animate_client_rect(
+            animate_client(
                 win,
-                &Rect {
-                    x: m.work_rect.x + mw,
-                    y: m.work_rect.y + ty as i32,
-                    w: m.work_rect.w - mw - 2 * border_width,
-                    h: h - 2 * border_width,
-                },
+                m.work_rect.x + mw,
+                m.work_rect.y + ty as i32,
+                m.work_rect.w - mw - 2 * border_width,
+                h - 2 * border_width,
                 framecount,
                 0,
             );

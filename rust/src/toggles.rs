@@ -70,7 +70,7 @@ pub fn toggle_sticky() {
     };
 
     if let Some(mid) = mon_id {
-        crate::monitor::arrange(Some(mid));
+        crate::layouts::arrange(Some(mid));
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::bar::update_bar_pos;
+use crate::bar::x11::update_bar_pos;
 use crate::client::{
     attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
@@ -220,7 +220,7 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         let g = get_globals();
         if let Some(c) = g.clients.get(&c_win) {
             if !c.isfloating {
-                arrange(None);
+                crate::layouts::arrange(None);
             }
         }
     }
@@ -327,7 +327,7 @@ pub fn follow_mon(direction: i32) {
         None => return,
     };
 
-    tag_mon(direction);
+    crate::tags::tag_mon(direction);
 
     {
         let g = get_globals_mut();
@@ -563,22 +563,6 @@ pub fn update_geom() -> bool {
     }
 
     dirty
-}
-
-pub fn arrange(m: Option<MonitorId>) {
-    crate::layouts::arrange(m);
-}
-
-pub fn arrange_mon(m: &mut Monitor) {
-    crate::layouts::arrange_monitor(m);
-}
-
-pub fn restack(m: &mut Monitor) {
-    crate::layouts::restack(m);
-}
-
-pub fn tag_mon(direction: i32) {
-    crate::tags::tag_mon(direction);
 }
 
 fn get_root_ptr() -> Option<(i32, i32)> {

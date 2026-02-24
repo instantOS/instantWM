@@ -5,31 +5,22 @@ use crate::client::{next_tiled, resize, restore_border_width, save_border_width}
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{
-    client_count, client_count_mon, get_current_layout, get_current_layout_idx, is_monocle_layout,
-    is_overview_layout, is_tiling_layout,
+    client_count, client_count_mon, get_current_layout, get_current_layout_idx,
 };
 use crate::types::{Monitor, MonitorId, Rect};
-use crate::util::max;
+use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-fn reset_cursor() {
-    crate::mouse::reset_cursor();
-}
-
-fn show_hide(win: Option<Window>) {
-    crate::client::show_hide(win);
-}
-
 pub fn arrange(mon_id: Option<MonitorId>) {
-    reset_cursor();
+    crate::mouse::reset_cursor();
 
     if let Some(id) = mon_id {
         {
             let g = get_globals_mut();
             if let Some(m) = g.monitors.get_mut(id) {
                 let stack = m.stack;
-                show_hide(stack);
+                crate::client::show_hide(stack);
             }
         }
         {
@@ -46,7 +37,7 @@ pub fn arrange(mon_id: Option<MonitorId>) {
         };
 
         for stack in stacks {
-            show_hide(stack);
+            crate::client::show_hide(stack);
         }
 
         let g = get_globals_mut();
@@ -64,8 +55,8 @@ pub fn arrange_monitor(m: &mut Monitor) {
 }
 
 fn apply_border_widths(m: &Monitor) {
-    let is_tiling = is_tiling_layout(m);
-    let is_monocle = is_monocle_layout(m);
+    let is_tiling = get_current_layout(m).is_tiling();
+    let is_monocle = get_current_layout(m).is_monocle();
     let clientcount = m.clientcount;
 
     let mut c_win = next_tiled(m.clients);
@@ -126,7 +117,7 @@ fn place_overlay(m: &mut Monitor) {
 }
 
 pub fn restack(m: &mut Monitor) {
-    if is_overview_layout(m) {
+    if get_current_layout(m).is_overview() {
         return;
     }
 
@@ -282,10 +273,6 @@ pub fn cycle_layout_direction(forward: bool) {
     set_layout(Some(final_idx));
 }
 
-pub fn cycle_layout(direction: i32) {
-    cycle_layout_direction(direction > 0);
-}
-
 pub fn inc_nmaster_by(delta: i32) {
     let ccount = client_count();
 
@@ -309,10 +296,6 @@ pub fn inc_nmaster_by(delta: i32) {
 
     let selmon = get_globals().selmon;
     arrange(Some(selmon));
-}
-
-pub fn inc_nmaster(delta: i32) {
-    inc_nmaster_by(delta);
 }
 
 pub fn set_mfact(mfact_val: f32) {

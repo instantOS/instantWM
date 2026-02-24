@@ -16,7 +16,7 @@
 //! window is snapped into place instantly (0 frames) to avoid mid-air ghost
 //! windows appearing during the animation.
 
-use crate::animation::animate_client_rect;
+use crate::animation::animate_client;
 use crate::client::next_tiled;
 use crate::globals::{get_globals, get_x11};
 use crate::types::{Monitor, Rect};
@@ -72,7 +72,7 @@ pub fn monocle(m: &mut Monitor) {
             0
         };
 
-        animate_client_rect(
+        animate_client(
             win,
             &Rect {
                 x: m.work_rect.x,

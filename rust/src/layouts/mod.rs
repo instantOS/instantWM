@@ -233,15 +233,14 @@ impl Layout for HorizLayout {
 #[allow(unused_imports)]
 pub use query::{
     all_client_count, client_count, client_count_mon, find_visible_client, get_current_layout,
-    get_current_layout_idx, get_current_layout_symbol, is_monocle_layout, is_overview_layout,
-    is_tiling_layout, selmon_has_tiling_layout,
+    get_current_layout_idx, get_current_layout_symbol, selmon_has_tiling_layout,
 };
 
 // ── Re-exports: manager ───────────────────────────────────────────────────────
 #[allow(unused_imports)]
 pub use manager::{
-    arrange, arrange_monitor, command_layout, cycle_layout, cycle_layout_direction, inc_nmaster,
-    inc_nmaster_by, restack, set_layout, set_mfact,
+    arrange, arrange_monitor, command_layout, cycle_layout_direction, inc_nmaster_by, restack,
+    set_layout, set_mfact,
 };
 
 // ── Re-exports: algorithms (convenience, used by config.rs via `layouts::*`) ──
