@@ -140,7 +140,7 @@ pub fn get_current_layout_idx(m: &Monitor) -> Option<usize> {
 
     if tag > 0 && tag <= g.tags.tags.len() {
         let t = &g.tags.tags[tag - 1];
-        t.ltidxs[t.active_layout_slot.as_index()]
+        t.layout_indices.get(t.active_layout_slot)
     } else {
         None
     }

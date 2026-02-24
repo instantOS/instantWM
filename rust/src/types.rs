@@ -251,6 +251,33 @@ impl TagSet {
     }
 }
 
+/// Layout configuration for a tag, storing indices for primary and secondary layouts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LayoutIndices {
+    /// Layout index for the primary slot (used when `active_layout_slot` is `Primary`).
+    pub primary: Option<usize>,
+    /// Layout index for the secondary slot (used when `active_layout_slot` is `Secondary`).
+    pub secondary: Option<usize>,
+}
+
+impl LayoutIndices {
+    /// Get the layout index for the given slot.
+    pub fn get(self, slot: LayoutSlot) -> Option<usize> {
+        match slot {
+            LayoutSlot::Primary => self.primary,
+            LayoutSlot::Secondary => self.secondary,
+        }
+    }
+
+    /// Set the layout index for the given slot.
+    pub fn set(&mut self, slot: LayoutSlot, index: Option<usize>) {
+        match slot {
+            LayoutSlot::Primary => self.primary = index,
+            LayoutSlot::Secondary => self.secondary = index,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Tag {
     pub name: String,
@@ -259,12 +286,12 @@ pub struct Tag {
     pub nmaster: i32,
     pub mfact: f32,
     /// Which layout slot (primary or secondary) is currently active.
-    /// Each tag stores two layouts in `ltidxs`; this field selects which one is active.
+    /// Each tag stores two layouts in `layout_indices`; this field selects which one is active.
     pub active_layout_slot: LayoutSlot,
     pub showbar: bool,
-    /// Layout indices for the primary (index 0) and secondary (index 1) slots.
+    /// Layout indices for the primary and secondary slots.
     /// The active slot is determined by `active_layout_slot`.
-    pub ltidxs: [Option<usize>; 2],
+    pub layout_indices: LayoutIndices,
 }
 
 impl Default for Tag {
@@ -276,7 +303,7 @@ impl Default for Tag {
             mfact: 0.55,
             active_layout_slot: LayoutSlot::default(),
             showbar: true,
-            ltidxs: [None; 2],
+            layout_indices: LayoutIndices::default(),
         }
     }
 }

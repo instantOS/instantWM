@@ -71,7 +71,7 @@ fn collect_floating_wins(mid: usize) -> Vec<Window> {
     for tag_idx in 0..numtags {
         // Skip tags that have a tiling layout — only purely-floating tags matter.
         let tag_is_floating = match globals.tags.tags.get(tag_idx) {
-            Some(tag) => tag.ltidxs[tag.active_layout_slot.as_index()].is_none(),
+            Some(tag) => tag.layout_indices.get(tag.active_layout_slot).is_none(),
             _ => false,
         };
 

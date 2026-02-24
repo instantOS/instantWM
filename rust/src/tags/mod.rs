@@ -15,9 +15,6 @@ mod tag_mon_impl;
 /// types, offering better type safety and clearer semantics than raw `u32` bitmasks.
 pub mod tag_ops;
 
-// Re-export key types for convenience
-pub use tag_ops::{ClientTagExt, TagViewBuilder};
-
 use crate::globals::{get_globals, get_globals_mut};
 use crate::util::get_sel_win;
 

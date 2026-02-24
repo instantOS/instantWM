@@ -611,7 +611,7 @@ pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'
 
 pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet, layouts: &[&dyn Layout]) -> String {
     if let Some(tag) = get_current_tag(mon, tags) {
-        if let Some(lt_idx) = tag.ltidxs[tag.active_layout_slot.as_index()] {
+        if let Some(lt_idx) = tag.layout_indices.get(tag.active_layout_slot) {
             layouts
                 .get(lt_idx)
                 .map(|l: &&dyn Layout| l.symbol().to_string())

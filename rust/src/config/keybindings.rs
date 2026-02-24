@@ -17,9 +17,9 @@ use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_tag, follow_view, last_view, move_left, move_right, quit, set_client_tag, shift_view,
-    swap_tags, tag_mon, tag_to_left, tag_to_right, toggle_fullscreen_overview, toggle_overview,
-    toggle_tag, toggle_view, view, view_to_left, view_to_right, win_view,
+    follow_view, last_view, move_left, move_right, quit, shift_view, tag_mon, tag_to_left,
+    tag_to_right, toggle_fullscreen_overview, toggle_overview, view, view_to_left, view_to_right,
+    win_view,
 };
 use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
@@ -50,8 +50,7 @@ use crate::types::{TagMask, TagSelection};
 
 fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     // Use type-safe TagMask - unwrap is safe here as tag_idx < 9
-    let mask = TagMask::single(tag_idx + 1).unwrap();
-    let mask_bits = mask.bits(); // For functions still using u32
+    let _mask = TagMask::single(tag_idx + 1).unwrap();
 
     [
         // View: MOD+num
@@ -60,23 +59,23 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
         }),
         // Toggle view: MOD+Ctrl+num
         key!(MODKEY | CONTROL, keysym => move || {
-            tag_ops::toggle_view_mask(TagMask::single(tag_idx + 1).unwrap())
+            crate::tags::toggle_view(TagMask::single(tag_idx + 1).unwrap())
         }),
         // Set client tag: MOD+Shift+num
         key!(MODKEY | SHIFT, keysym => move || {
-            tag_ops::set_client_tag_mask(TagMask::single(tag_idx + 1).unwrap())
+            crate::tags::set_client_tag(TagMask::single(tag_idx + 1).unwrap())
         }),
         // Follow tag: MOD+Alt+num
         key!(MODKEY | MOD1, keysym => move || {
-            tag_ops::follow_tag_mask(TagMask::single(tag_idx + 1).unwrap())
+            crate::tags::follow_tag(TagMask::single(tag_idx + 1).unwrap())
         }),
         // Toggle tag: MOD+Ctrl+Shift+num
         key!(MODKEY | CONTROL | SHIFT, keysym => move || {
-            tag_ops::toggle_client_tag_mask(TagMask::single(tag_idx + 1).unwrap())
+            crate::tags::toggle_tag(TagMask::single(tag_idx + 1).unwrap())
         }),
         // Swap tags: MOD+Alt+Shift+num
         key!(MODKEY | MOD1 | SHIFT, keysym => move || {
-            tag_ops::swap_tags_mask(TagMask::single(tag_idx + 1).unwrap())
+            crate::tags::swap_tags(TagMask::single(tag_idx + 1).unwrap())
         }),
     ]
 }
@@ -137,7 +136,7 @@ pub fn get_keys() -> Vec<Key> {
         // Move client to all tags
         key!(MS,      XK_0       => || {
             use crate::types::TagMask;
-            crate::tags::tag_ops::set_client_tag_mask(TagMask::ALL_BITS)
+            crate::tags::set_client_tag(TagMask::ALL_BITS)
         }),
         key!(MODKEY,  XK_O       => win_view),
         key!(MODKEY, XK_COMMA  => || focus_mon(-1)),
