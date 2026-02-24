@@ -543,12 +543,56 @@ impl Direction {
     }
 }
 
+/// Cardinal direction for keyboard-driven window movement/resize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CardinalDirection {
+    #[default]
+    Down,
+    Up,
+    Right,
+    Left,
+}
+
+impl CardinalDirection {
+    /// Convert from integer (for backward compat with config files if needed).
+    pub fn from_i32(i: i32) -> Option<Self> {
+        match i {
+            0 => Some(Self::Down),
+            1 => Some(Self::Up),
+            2 => Some(Self::Right),
+            3 => Some(Self::Left),
+            _ => None,
+        }
+    }
+
+    /// Delta for movement (dx, dy).
+    pub fn move_delta(self, step: i32) -> (i32, i32) {
+        match self {
+            Self::Down => (0, step),
+            Self::Up => (0, -step),
+            Self::Right => (step, 0),
+            Self::Left => (-step, 0),
+        }
+    }
+
+    /// Delta for resize (dw, dh) - grow direction.
+    pub fn resize_delta(self, step: i32) -> (i32, i32) {
+        match self {
+            Self::Down => (0, step),
+            Self::Up => (0, -step),
+            Self::Right => (step, 0),
+            Self::Left => (-step, 0),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Arg {
     pub i: i32,
     pub ui: u32,
     pub f: f32,
     pub v: Option<usize>,
+    pub direction: Option<CardinalDirection>,
 }
 
 pub trait Layout: std::fmt::Debug {

@@ -27,20 +27,23 @@ use x11rb::protocol::xproto::Window;
 
 /// Move a floating window in a cardinal direction using the keyboard.
 ///
-/// `arg.i` selects the direction:
+/// `arg.direction` (or `arg.i` for backward compat) selects the direction:
 ///
 /// | Value | Direction |
 /// |-------|-----------|
-/// | 0     | Down      |
-/// | 1     | Up        |
-/// | 2     | Right     |
-/// | 3     | Left      |
+/// | Down  | Down      |
+/// | Up    | Up        |
+/// | Right | Right     |
+/// | Left  | Left      |
 ///
 /// The window is clamped to the monitor bounds after the move.
 /// Movement is animated with a short 5-step animation.
 pub fn moveresize(arg: &Arg) {
     let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
+
+    let dir = arg.direction.or_else(|| CardinalDirection::from_i32(arg.i));
+    let Some(dir) = dir else { return };
 
     let (is_floating, geo, border_width) = {
         let globals = get_globals();
@@ -55,17 +58,9 @@ pub fn moveresize(arg: &Arg) {
     }
 
     const MOVE_STEP: i32 = 40;
-    // [Down, Up, Right, Left] → [dx, dy]
-    const DELTAS: [[i32; 2]; 4] = [
-        [0, MOVE_STEP],  // Down
-        [0, -MOVE_STEP], // Up
-        [MOVE_STEP, 0],  // Right
-        [-MOVE_STEP, 0], // Left
-    ];
-
-    let dir = arg.i.max(0).min(3) as usize;
-    let mut new_x = geo.x + DELTAS[dir][0];
-    let mut new_y = geo.y + DELTAS[dir][1];
+    let (dx, dy) = dir.move_delta(MOVE_STEP);
+    let mut new_x = geo.x + dx;
+    let mut new_y = geo.y + dy;
 
     let mon_rect = {
         let globals = get_globals();
@@ -103,20 +98,23 @@ pub fn moveresize(arg: &Arg) {
 
 /// Resize a floating window in a cardinal direction using the keyboard.
 ///
-/// `arg.i` selects the resize direction:
+/// `arg.direction` (or `arg.i` for backward compat) selects the resize direction:
 ///
-/// | Value | Effect       |
-/// |-------|--------------|
-/// | 0     | Taller (down)|
-/// | 1     | Shorter (up) |
-/// | 2     | Wider (right)|
-/// | 3     | Narrower     |
+/// | Direction | Effect       |
+/// |-----------|--------------|
+/// | Down      | Taller       |
+/// | Up        | Shorter      |
+/// | Right     | Wider        |
+/// | Left      | Narrower     |
 ///
-/// Anew_y active snap is cancelled before resizing so the window reverts to free
+/// An active snap is cancelled before resizing so the window reverts to free
 /// floating, then the new size is applied immediately (no animation).
 pub fn key_resize(arg: &Arg) {
     let sel_win = get_sel_win();
     let Some(win) = sel_win else { return };
+
+    let dir = arg.direction.or_else(|| CardinalDirection::from_i32(arg.i));
+    let Some(dir) = dir else { return };
 
     let (is_floating, geo) = {
         let globals = get_globals();
@@ -134,17 +132,9 @@ pub fn key_resize(arg: &Arg) {
     }
 
     const RESIZE_STEP: i32 = 40;
-    // [TallerDown, ShorterUp, WiderRight, NarrowerLeft] → [dw, dh]
-    const DELTAS: [[i32; 2]; 4] = [
-        [0, RESIZE_STEP],  // Taller (down)
-        [0, -RESIZE_STEP], // Shorter (up)
-        [RESIZE_STEP, 0],  // Wider (right)
-        [-RESIZE_STEP, 0], // Narrower (left)
-    ];
-
-    let dir = arg.i.max(0).min(3) as usize;
-    let nw = geo.w + DELTAS[dir][0];
-    let nh = geo.h + DELTAS[dir][1];
+    let (dw, dh) = dir.resize_delta(RESIZE_STEP);
+    let nw = geo.w + dw;
+    let nh = geo.h + dh;
 
     warp_cursor_to_client(win);
     resize(

@@ -31,7 +31,8 @@ use crate::layouts::{cycle_layout, set_layout};
 
 use crate::floating::toggle_floating;
 use crate::mouse::{
-    drag_tag, draw_window, resize_mouse_from_cursor, gesture_mouse, move_mouse, resize_aspect_mouse, window_title_mouse_handler, window_title_mouse_handler_right,
+    drag_tag, draw_window, gesture_mouse, move_mouse, resize_aspect_mouse,
+    resize_mouse_from_cursor, window_title_mouse_handler, window_title_mouse_handler_right,
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push_down, push_up};
@@ -58,6 +59,7 @@ const MA: u32 = MODKEY | MOD1;
 /// - `btn!(click, mask, button:N => func i:VAL)`     — integer arg
 /// - `btn!(click, mask, button:N => func ui:VAL)`    — unsigned-integer arg
 /// - `btn!(click, mask, button:N => func v:VAL)`     — usize/layout-index arg
+/// - `btn!(click, mask, button:N => func dir:DIR)`   — CardinalDirection arg
 /// - `btn!(click, mask, button:N => spawn CMD)`      — spawn a [`Cmd`]
 macro_rules! btn {
     // spawn shorthand
@@ -118,6 +120,19 @@ macro_rules! btn {
             func: Some($func),
             arg: Arg {
                 v: Some($val),
+                ..Default::default()
+            },
+        }
+    };
+    // direction arg
+    ($click:expr, $mask:expr, button:$btn:expr => $func:expr, dir:$dir:expr) => {
+        Button {
+            click: $click,
+            mask: $mask,
+            button: $btn,
+            func: Some($func),
+            arg: Arg {
+                direction: Some($dir),
                 ..Default::default()
             },
         }

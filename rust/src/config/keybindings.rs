@@ -48,7 +48,7 @@ use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
     toggle_prefix, toggle_show_tags, toggle_sticky, unhide_all,
 };
-use crate::types::{Arg, Key};
+use crate::types::{Arg, CardinalDirection, Key};
 use crate::util::spawn;
 
 use super::keysyms::*;
@@ -78,6 +78,7 @@ pub const MOD1: u32 = 1 << 3;
 /// - `key!(mods, sym => func ui:VAL)`       — unsigned-integer arg
 /// - `key!(mods, sym => func f:VAL)`        — float arg
 /// - `key!(mods, sym => func v:VAL)`        — usize/layout-index arg
+/// - `key!(mods, sym => func dir:DIR)`      — CardinalDirection arg
 /// - `key!(mods, sym => spawn CMD)`         — spawn with a [`Cmd`] variant
 macro_rules! key {
     // spawn shorthand
@@ -149,6 +150,18 @@ macro_rules! key {
             },
         }
     };
+    // direction arg
+    ($mods:expr, $sym:expr => $func:expr, dir:$dir:expr) => {
+        Key {
+            mod_mask: $mods,
+            keysym: $sym,
+            func: Some($func),
+            arg: Arg {
+                direction: Some($dir),
+                ..Default::default()
+            },
+        }
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,10 +199,10 @@ const MSCA: u32 = MODKEY | SHIFT | CONTROL | MOD1;
 pub fn get_keys() -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         // --- Resize focused tiled window with keyboard ---
-        key!(MA, XK_J => key_resize, i:0),
-        key!(MA, XK_K => key_resize, i:1),
-        key!(MA, XK_L => key_resize, i:2),
-        key!(MA, XK_H => key_resize, i:3),
+        key!(MA, XK_J => key_resize, dir:CardinalDirection::Down),
+        key!(MA, XK_K => key_resize, dir:CardinalDirection::Up),
+        key!(MA, XK_L => key_resize, dir:CardinalDirection::Right),
+        key!(MA, XK_H => key_resize, dir:CardinalDirection::Left),
         // --- Layout / master factor ---
         key!(MODKEY, XK_I => inc_nmaster, i:1),
         key!(MODKEY, XK_D => inc_nmaster, i:-1),
@@ -247,10 +260,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,   XK_D      => draw_window),
         key!(MA,   XK_W      => center_window),
         key!(MS,   XK_W      => warp_to_focus),
-        key!(MS,   XK_J      => moveresize, i:0),
-        key!(MS,   XK_K      => moveresize, i:1),
-        key!(MS,   XK_L      => moveresize, i:2),
-        key!(MS,   XK_H      => moveresize, i:3),
+        key!(MS,   XK_J      => moveresize, dir:CardinalDirection::Down),
+        key!(MS,   XK_K      => moveresize, dir:CardinalDirection::Up),
+        key!(MS,   XK_L      => moveresize, dir:CardinalDirection::Right),
+        key!(MS,   XK_H      => moveresize, dir:CardinalDirection::Left),
         key!(MS,   XK_M      => move_mouse),
         key!(MA,   XK_M      => resize_mouse_from_cursor),
         // --- Overview / skippy ---
