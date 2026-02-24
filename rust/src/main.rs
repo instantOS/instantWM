@@ -26,6 +26,8 @@ use std::env;
 use std::process::exit;
 use std::sync::atomic::Ordering;
 
+use libc::{setlocale, LC_CTYPE};
+
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -154,6 +156,12 @@ fn main() {
 }
 
 fn set_locale() -> Result<(), ()> {
+    unsafe {
+        let result = setlocale(LC_CTYPE, b"\0".as_ptr() as *const i8);
+        if result.is_null() {
+            eprintln!("warning: no locale support");
+        }
+    }
     Ok(())
 }
 
@@ -735,19 +743,4 @@ fn run_autostart() {
             _ => {}
         }
     }
-}
-
-//TODO: is this a stub? Is this incorrectly ported? Investigate and do what's appropriate
-// same for xerrordummy
-pub fn xerror(_display: *mut libc::c_void, _ee: *mut libc::c_void) -> i32 {
-    0
-}
-
-pub fn xerrordummy(_display: *mut libc::c_void, _ee: *mut libc::c_void) -> i32 {
-    0
-}
-
-pub fn xerrorstart(_display: *mut libc::c_void, _ee: *mut libc::c_void) -> i32 {
-    die("instantwm: another window manager is already running");
-    -1
 }

@@ -478,7 +478,154 @@ pub fn leave_notify(e: &LeaveNotifyEvent) {
     }
 }
 
-fn handle_systray_dock_request(_e: &ClientMessageEvent) {}
+fn handle_systray_dock_request(e: &ClientMessageEvent) {
+    let data = e.data.as_data32();
+    let icon_win = data[2];
+    if icon_win == 0 {
+        return;
+    }
+
+    let (selmon_id, systray_win_opt, statusescheme_bg_pixel) = {
+        let globals = get_globals();
+        let bg_pixel = globals
+            .statusscheme
+            .as_ref()
+            .map(|s| s.bg.color.pixel as u32)
+            .unwrap_or(0);
+        (
+            globals.selmon,
+            globals.systray.as_ref().map(|s| s.win),
+            bg_pixel,
+        )
+    };
+
+    let Some(systray_win) = systray_win_opt else {
+        return;
+    };
+
+    let x11 = get_x11();
+    let Some(ref conn) = x11.conn else {
+        return;
+    };
+
+    let (geo, border_width) = conn
+        .get_geometry(icon_win)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(|wa| {
+            (
+                Rect {
+                    x: 0,
+                    y: 0,
+                    w: wa.width as i32,
+                    h: wa.height as i32,
+                },
+                wa.border_width as i32,
+            )
+        })
+        .unwrap_or((
+            Rect {
+                x: 0,
+                y: 0,
+                w: 1,
+                h: 1,
+            },
+            0,
+        ));
+
+    let client = Client {
+        win: icon_win,
+        geo,
+        old_geo: geo,
+        old_border_width: border_width,
+        border_width: 0,
+        isfloating: true,
+        tags: 1,
+        mon_id: Some(selmon_id),
+        ..Default::default()
+    };
+
+    {
+        let globals = get_globals_mut();
+        globals.clients.insert(icon_win, client);
+        if let Some(ref mut systray) = globals.systray {
+            systray.icons.insert(0, icon_win);
+        }
+    }
+
+    crate::client::update_size_hints_win(icon_win);
+    crate::systray::update_systray_icon_geom(icon_win, geo.w, geo.h);
+
+    let _ = conn.change_save_set(SetMode::INSERT, icon_win);
+
+    let mask =
+        EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE | EventMask::RESIZE_REDIRECT;
+    let _ =
+        conn.change_window_attributes(icon_win, &ChangeWindowAttributesAux::new().event_mask(mask));
+
+    let _ = conn.reparent_window(icon_win, systray_win, 0, 0);
+
+    let _ = conn.change_window_attributes(
+        icon_win,
+        &ChangeWindowAttributesAux::new().background_pixel(statusescheme_bg_pixel),
+    );
+
+    let xembed_atom = get_globals().xatom.xembed;
+    let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits() as u32;
+
+    crate::client::send_event(
+        icon_win,
+        xembed_atom,
+        structure_notify_mask,
+        CURRENT_TIME as i64,
+        XEMBED_EMBEDDED_NOTIFY as i64,
+        0,
+        systray_win as i64,
+        XEMBED_EMBEDDED_VERSION as i64,
+    );
+    crate::client::send_event(
+        icon_win,
+        xembed_atom,
+        structure_notify_mask,
+        CURRENT_TIME as i64,
+        XEMBED_FOCUS_IN as i64,
+        0,
+        systray_win as i64,
+        XEMBED_EMBEDDED_VERSION as i64,
+    );
+    crate::client::send_event(
+        icon_win,
+        xembed_atom,
+        structure_notify_mask,
+        CURRENT_TIME as i64,
+        XEMBED_WINDOW_ACTIVATE as i64,
+        0,
+        systray_win as i64,
+        XEMBED_EMBEDDED_VERSION as i64,
+    );
+    crate::client::send_event(
+        icon_win,
+        xembed_atom,
+        structure_notify_mask,
+        CURRENT_TIME as i64,
+        XEMBED_MODALITY_ON as i64,
+        0,
+        systray_win as i64,
+        XEMBED_EMBEDDED_VERSION as i64,
+    );
+
+    let _ = conn.flush();
+
+    {
+        let globals = get_globals();
+        if let Some(mon) = globals.monitors.get(selmon_id) {
+            crate::bar::resize_bar_win(mon);
+        }
+    }
+
+    update_systray();
+    set_client_state(icon_win, 1);
+}
 
 fn handle_net_wm_state(e: &ClientMessageEvent, win: Window) {
     let data = e.data.as_data32();

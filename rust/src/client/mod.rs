@@ -53,13 +53,14 @@ pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop, win_
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
     apply_size_hints, client_height, client_width, resize, resize_client_rect, scale_client,
+    update_size_hints_win,
 };
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{hide, is_hidden, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{configure, set_focus, unfocus_win, LAST_CLIENT};
+pub use focus::{configure, send_event, set_focus, unfocus_win, LAST_CLIENT};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{

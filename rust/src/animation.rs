@@ -1,4 +1,5 @@
 use crate::client::resize_client_rect;
+use crate::floating::{change_snap, SnapDir};
 use crate::globals::{get_globals, get_x11};
 use crate::monitor::is_current_layout_tiling;
 use crate::tags::{view_to_left, view_to_right};
@@ -296,10 +297,10 @@ fn anim_scroll(arg: &Arg, dir: Direction) {
     if !has_tiling {
         if let Some(sel_win) = get_sel_win() {
             let snap_dir = match dir {
-                Direction::Right => SnapDirection::Right,
-                Direction::Left => SnapDirection::Left,
-                Direction::Up => SnapDirection::Up,
-                Direction::Down => SnapDirection::Down,
+                Direction::Right => SnapDir::Right,
+                Direction::Left => SnapDir::Left,
+                Direction::Up => SnapDir::Up,
+                Direction::Down => SnapDir::Down,
             };
             change_snap(sel_win, snap_dir);
         }
@@ -355,14 +356,3 @@ fn check_client_on_target_tag(sel_mon: MonitorId, target: u32) {
         }
     }
 }
-
-/// Direction for snap operations (used by change_snap).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SnapDirection {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-fn change_snap(_win: Window, _dir: SnapDirection) {}

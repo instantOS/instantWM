@@ -3,7 +3,7 @@ use crate::client::{
     attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
 };
-use crate::focus::focus;
+use crate::focus::{focus, warp_cursor_to_client};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::tags::reset_sticky;
 use crate::types::*;
@@ -661,6 +661,3 @@ pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
         .map(|t| t.sellt == 0)
         .unwrap_or(true)
 }
-
-//TODO: was this not properly ported from the C codebase? Investigate
-fn warp_cursor_to_client(_win: Window) {}
