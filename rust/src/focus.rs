@@ -59,8 +59,6 @@ pub fn focus(win: Option<Window>) {
     };
 
     if current_sel == target {
-        // `mon.sel` can already be set before this call (e.g. manage path),
-        // but X input focus may still point to PointerRoot.
         if let Some(w) = target {
             set_focus(w);
         } else {
@@ -75,7 +73,6 @@ pub fn focus(win: Option<Window>) {
     }
 
     if let Some(cur_win) = current_sel {
-        // Match dwm behavior: don't force root focus before selecting the new client.
         unfocus_win(cur_win, false);
     }
 
@@ -83,8 +80,6 @@ pub fn focus(win: Option<Window>) {
         let globals = get_globals_mut();
         if let Some(mon) = globals.monitors.get_mut(sel_mon_id) {
             mon.sel = target;
-            // Reset transient hover gestures on focus change (matching C behavior).
-            // Overlay is persistent state, not a hover; leave it alone.
             if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
                 mon.gesture = Gesture::None;
             }
@@ -94,7 +89,6 @@ pub fn focus(win: Option<Window>) {
     draw_bars();
 
     if let Some(w) = target.take() {
-        // Clear urgent flag when focusing a window (matches C behavior)
         let is_urgent = {
             let globals = get_globals();
             globals.clients.get(&w).map(|c| c.isurgent).unwrap_or(false)
@@ -113,9 +107,6 @@ pub fn focus(win: Option<Window>) {
     }
 }
 
-/// Set focus to a specific window.
-/// This is a low-level focus operation that sets the X input focus
-/// and updates the active window property.
 pub fn set_focus_win(win: Window) {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
@@ -136,10 +127,6 @@ pub fn set_focus_win(win: Window) {
     }
 }
 
-/// Focus the client in the given direction.
-///
-/// # Arguments
-/// * `direction` - The direction to focus (Up, Down, Left, Right)
 pub fn focus_direction(direction: Direction) {
     let Some(sel_mon_id) = util::get_sel_mon() else {
         return;
@@ -173,8 +160,6 @@ pub fn focus_direction(direction: Direction) {
     }
 }
 
-/// Get the best client to focus in a given direction from a source position.
-/// Returns the window of the best candidate, or None if no valid candidates exist.
 fn get_directional_candidates(
     clients: Option<Window>,
     globals: &crate::globals::Globals,
@@ -228,7 +213,6 @@ fn get_directional_candidates(
     out_client
 }
 
-/// Check if a client is in the given direction from the source position.
 fn is_client_in_direction(
     c_win: Window,
     source_win: Window,
@@ -238,7 +222,6 @@ fn is_client_in_direction(
     source_center_y: i32,
     direction: Direction,
 ) -> bool {
-    // Can't focus on self
     if c_win == source_win {
         return false;
     }
@@ -251,8 +234,6 @@ fn is_client_in_direction(
     }
 }
 
-/// Calculate a score for how well a client matches the direction.
-/// Lower score = better match.
 fn calculate_direction_score(
     center_x: i32,
     center_y: i32,
@@ -265,14 +246,12 @@ fn calculate_direction_score(
 
     match direction {
         Direction::Up | Direction::Down => {
-            // Skip if more horizontal than vertical
             if dist_x > dist_y {
                 return i32::MAX;
             }
             dist_x + dist_y / 4
         }
         Direction::Left | Direction::Right => {
-            // Skip if more vertical than horizontal
             if dist_y > dist_x {
                 return i32::MAX;
             }
@@ -281,14 +260,13 @@ fn calculate_direction_score(
     }
 }
 
-/// Legacy wrapper for key bindings. Use `focus_direction` for new code.
-pub fn direction_focus(arg: &Arg) {
-    if let Some(dir) = Direction::from_index(arg.ui) {
+pub fn direction_focus(dir_index: u32) {
+    if let Some(dir) = Direction::from_index(dir_index) {
         focus_direction(dir);
     }
 }
 
-pub fn focus_last_client(_arg: &Arg) {
+pub fn focus_last_client() {
     let last_client_win = crate::client::LAST_CLIENT.load(Ordering::Relaxed);
     if last_client_win == 0 {
         return;
@@ -325,11 +303,7 @@ pub fn focus_last_client(_arg: &Arg) {
         crate::client::LAST_CLIENT.store(cur, Ordering::Relaxed);
     }
 
-    let arg = Arg {
-        ui: tags,
-        ..Default::default()
-    };
-    view(&arg);
+    view(tags);
     focus(Some(last_win));
 
     let mon_id = {
@@ -473,7 +447,7 @@ pub fn warp_into(c_win: Window) {
     }
 }
 
-pub fn warp_to_focus(_arg: &Arg) {
+pub fn warp_to_focus() {
     if let Some(win) = get_sel_win() {
         warp_cursor_to_client(win);
     }
@@ -492,10 +466,6 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     None
 }
 
-/// Focus the next/previous client in the stack.
-///
-/// # Arguments
-/// * `forward` - If true, focus the next client; if false, focus the previous.
 pub fn focus_stack_direction(forward: bool) {
     let Some(sel_mon_id) = util::get_sel_mon() else {
         return;
@@ -525,7 +495,6 @@ pub fn focus_stack_direction(forward: bool) {
     focus(Some(stack[next_idx]));
 }
 
-/// Get all visible clients in the stack for a given monitor.
 fn get_visible_stack(sel_mon_id: MonitorId, globals: &crate::globals::Globals) -> Vec<Window> {
     let mut stack = Vec::new();
 
@@ -547,7 +516,6 @@ fn get_visible_stack(sel_mon_id: MonitorId, globals: &crate::globals::Globals) -
     stack
 }
 
-/// Legacy wrapper for key bindings. Use `focus_stack_direction` for new code.
-pub fn focus_stack(arg: &Arg) {
-    focus_stack_direction(arg.i > 0);
+pub fn focus_stack(direction: i32) {
+    focus_stack_direction(direction > 0);
 }

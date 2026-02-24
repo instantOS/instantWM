@@ -59,11 +59,9 @@ pub fn button_press(e: &ButtonPressEvent) {
     }
 
     let mut click_target = Click::RootWin;
-    let mut click_arg = Arg::default();
 
     if let Some(win) = win_to_client(e.event) {
         click_target = Click::ClientWin;
-        click_arg.v = Some(win as usize);
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
         // change focus or raise windows - the user explicitly wants to interact
@@ -86,7 +84,7 @@ pub fn button_press(e: &ButtonPressEvent) {
                 if position == BarPosition::StartMenu {
                     reset_bar();
                 }
-                (click_target, click_arg) = position.to_click();
+                click_target = position.to_click();
             } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
                 click_target = Click::SideBar;
             }
@@ -122,23 +120,7 @@ pub fn button_press(e: &ButtonPressEvent) {
         if clean_mask(button.mask, numlockmask) != clean_state {
             continue;
         }
-        if let Some(func) = button.func {
-            let dispatch_arg = if matches!(
-                click_target,
-                Click::TagBar
-                    | Click::WinTitle
-                    | Click::CloseButton
-                    | Click::ShutDown
-                    | Click::SideBar
-                    | Click::ResizeWidget
-            ) && button.arg.i == 0
-            {
-                click_arg
-            } else {
-                button.arg
-            };
-            func(&dispatch_arg);
-        }
+        (button.action)();
     }
 }
 

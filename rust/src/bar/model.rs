@@ -107,35 +107,18 @@ pub enum BarPosition {
 
 impl BarPosition {
     /// Convert to the `Click` enum used by the button-binding dispatch table.
-    ///
-    /// The `Arg` is populated where the binding expects a specific value
-    /// (tag mask for `TagBar`, window id for title/close/resize operations).
-    pub fn to_click(self) -> (Click, Arg) {
-        let mut arg = Arg::default();
-        let click = match self {
+    pub fn to_click(self) -> Click {
+        match self {
             BarPosition::StartMenu => Click::StartMenu,
-            BarPosition::Tag(idx) => {
-                arg.ui = 1u32 << (idx as u32);
-                Click::TagBar
-            }
+            BarPosition::Tag(_) => Click::TagBar,
             BarPosition::LayoutSymbol => Click::LtSymbol,
             BarPosition::ShutDown => Click::ShutDown,
-            BarPosition::WinTitle(win) => {
-                arg.v = Some(win as usize);
-                Click::WinTitle
-            }
-            BarPosition::CloseButton(win) => {
-                arg.v = Some(win as usize);
-                Click::CloseButton
-            }
-            BarPosition::ResizeWidget(win) => {
-                arg.v = Some(win as usize);
-                Click::ResizeWidget
-            }
+            BarPosition::WinTitle(_) => Click::WinTitle,
+            BarPosition::CloseButton(_) => Click::CloseButton,
+            BarPosition::ResizeWidget(_) => Click::ResizeWidget,
             BarPosition::StatusText => Click::StatusText,
             BarPosition::Root => Click::RootWin,
-        };
-        (click, arg)
+        }
     }
 
     /// Convert to the `Gesture` used for hover highlighting.

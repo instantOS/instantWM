@@ -49,7 +49,7 @@ pub fn key_press(e: &KeyPressEvent) {
                     && clean_mask(key.mod_mask as u16, numlockmask)
                         == clean_mask(state.bits(), numlockmask)
                 {
-                    result = Some((key.func, key.arg));
+                    result = Some(key);
                     break;
                 }
             }
@@ -60,7 +60,7 @@ pub fn key_press(e: &KeyPressEvent) {
                             && clean_mask(key.mod_mask as u16, numlockmask)
                                 == clean_mask(state.bits(), numlockmask)
                         {
-                            result = Some((key.func, key.arg));
+                            result = Some(key);
                             break;
                         }
                     }
@@ -69,10 +69,8 @@ pub fn key_press(e: &KeyPressEvent) {
             result
         };
 
-        if let Some((func, arg)) = matching_key {
-            if let Some(f) = func {
-                f(&arg);
-            }
+        if let Some(key) = matching_key {
+            (key.action)();
         }
     }
 }
@@ -208,7 +206,7 @@ pub fn update_num_lock_mask() {
     }
 }
 
-pub fn up_press(_arg: &Arg) {
+pub fn up_press() {
     let (sel_win, overlay_win, is_floating) = {
         let globals = get_globals();
         let Some(mon) = globals.monitors.get(globals.selmon) else {
@@ -232,7 +230,7 @@ pub fn up_press(_arg: &Arg) {
     }
 
     if is_floating {
-        toggle_floating(&Arg::default());
+        toggle_floating();
         return;
     }
 
@@ -241,7 +239,7 @@ pub fn up_press(_arg: &Arg) {
     }
 }
 
-pub fn down_press(_arg: &Arg) {
+pub fn down_press() {
     if unhide_one() {
         return;
     }
@@ -283,11 +281,11 @@ pub fn down_press(_arg: &Arg) {
     };
 
     if !is_floating {
-        toggle_floating(&Arg::default());
+        toggle_floating();
     }
 }
 
-pub fn up_key(arg: &Arg) {
+pub fn up_key(direction: i32) {
     let is_overview = {
         let globals = get_globals();
         globals
@@ -298,10 +296,7 @@ pub fn up_key(arg: &Arg) {
     };
 
     if is_overview {
-        direction_focus(&Arg {
-            ui: 0,
-            ..Default::default()
-        });
+        direction_focus(0);
         return;
     }
 
@@ -334,10 +329,10 @@ pub fn up_key(arg: &Arg) {
         return;
     }
 
-    focus_stack(arg);
+    focus_stack(direction);
 }
 
-pub fn down_key(arg: &Arg) {
+pub fn down_key(direction: i32) {
     let is_overview = {
         let globals = get_globals();
         globals
@@ -348,10 +343,7 @@ pub fn down_key(arg: &Arg) {
     };
 
     if is_overview {
-        direction_focus(&Arg {
-            ui: 2,
-            ..Default::default()
-        });
+        direction_focus(2);
         return;
     }
 
@@ -371,10 +363,10 @@ pub fn down_key(arg: &Arg) {
         return;
     }
 
-    focus_stack(arg);
+    focus_stack(direction);
 }
 
-pub fn space_toggle(_arg: &Arg) {
+pub fn space_toggle() {
     let has_tiling = {
         let globals = get_globals();
         globals
@@ -423,21 +415,19 @@ pub fn space_toggle(_arg: &Arg) {
             arrange(Some(get_globals().selmon));
         }
     } else {
-        toggle_floating(&Arg::default());
+        toggle_floating();
     }
 }
 
-pub fn key_resize(arg: &Arg) {
-    crate::floating::key_resize(arg);
+pub fn key_resize(dir: CardinalDirection) {
+    crate::floating::key_resize(dir);
 }
 
-pub fn center_window(arg: &Arg) {
-    crate::floating::center_window(arg);
+pub fn center_window() {
+    crate::floating::center_window();
 }
 
-pub fn focus_stack(arg: &Arg) {
-    let direction = arg.i;
-
+pub fn focus_stack(direction: i32) {
     let (sel_win, clients_head) = {
         let globals = get_globals();
         let Some(mon) = globals.monitors.get(globals.selmon) else {
@@ -492,14 +482,14 @@ pub fn focus_stack(arg: &Arg) {
     }
 }
 
-pub fn focus_mon(arg: &Arg) {
-    crate::monitor::focus_mon(arg);
+pub fn focus_mon(direction: i32) {
+    crate::monitor::focus_mon(direction);
 }
 
-pub fn focus_nmon(arg: &Arg) {
-    crate::monitor::focus_n_mon(arg);
+pub fn focus_nmon(index: i32) {
+    crate::monitor::focus_n_mon(index);
 }
 
-pub fn follow_mon(arg: &Arg) {
-    crate::monitor::follow_mon(arg);
+pub fn follow_mon(direction: i32) {
+    crate::monitor::follow_mon(direction);
 }

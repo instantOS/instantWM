@@ -4,12 +4,6 @@ use crate::types::*;
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::ConnectionExt;
 
-pub const CMD_ARG_NONE: u32 = 0;
-pub const CMD_ARG_TOGGLE: u32 = 1;
-pub const CMD_ARG_TAG: u32 = 2;
-pub const CMD_ARG_STRING: u32 = 3;
-pub const CMD_ARG_INT: u32 = 4;
-
 const COMMAND_INDICATOR: &[u8] = b"c;:;";
 
 pub fn x_command() -> i32 {
@@ -58,65 +52,17 @@ pub fn x_command() -> i32 {
 
         let mut fcursor = &fcursor[cmd.cmd.len()..];
 
-        let arg = if fcursor.is_empty() {
-            cmd.arg
+        let arg_str = if fcursor.is_empty() {
+            ""
         } else {
             if fcursor[0] != b';' {
                 continue;
             }
             fcursor = &fcursor[1..];
-
-            let arg_str = std::str::from_utf8(fcursor).unwrap_or("");
-
-            match cmd.cmd_type {
-                CMD_ARG_NONE => cmd.arg,
-                CMD_ARG_TOGGLE => {
-                    let argnum = arg_str.parse::<u32>().unwrap_or(0);
-                    if argnum != 0 || fcursor.starts_with(b"0") {
-                        Arg {
-                            ui: argnum,
-                            ..Default::default()
-                        }
-                    } else {
-                        cmd.arg
-                    }
-                }
-                CMD_ARG_TAG => {
-                    let argnum = arg_str.parse::<u32>().unwrap_or(0);
-                    if argnum != 0 || fcursor.starts_with(b"0") {
-                        Arg {
-                            ui: 1 << (argnum.saturating_sub(1)),
-                            ..Default::default()
-                        }
-                    } else {
-                        cmd.arg
-                    }
-                }
-                CMD_ARG_STRING => {
-                    let ptr = fcursor.as_ptr() as usize;
-                    Arg {
-                        v: Some(ptr),
-                        ..Default::default()
-                    }
-                }
-                CMD_ARG_INT => {
-                    if !fcursor.is_empty() {
-                        let val = arg_str.parse::<i32>().unwrap_or(0);
-                        Arg {
-                            i: val,
-                            ..Default::default()
-                        }
-                    } else {
-                        cmd.arg
-                    }
-                }
-                _ => cmd.arg,
-            }
+            std::str::from_utf8(fcursor).unwrap_or("")
         };
 
-        if let Some(func) = cmd.func {
-            func(&arg);
-        }
+        (cmd.action)(arg_str);
 
         return 1;
     }
@@ -124,17 +70,17 @@ pub fn x_command() -> i32 {
     0
 }
 
-pub fn set_special_next(arg: &Arg) {
+pub fn set_special_next(value: u32) {
     let globals = get_globals_mut();
-    globals.specialnext = match arg.ui {
+    globals.specialnext = match value {
         0 => SpecialNext::None,
         _ => SpecialNext::Float,
     };
 }
 
-pub fn command_prefix(arg: &Arg) {
+pub fn command_prefix(value: u32) {
     let globals = get_globals_mut();
-    globals.tags.prefix = arg.ui != 0;
+    globals.tags.prefix = value != 0;
 
     let selmon_id = globals.selmon;
     let globals = get_globals_mut();
@@ -147,246 +93,271 @@ pub fn init_commands() -> Vec<XCommand> {
     vec![
         XCommand {
             cmd: "layout",
-            func: Some(crate::layouts::command_layout),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_INT,
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    0u32
+                } else {
+                    arg.parse().unwrap_or(0)
+                };
+                crate::layouts::command_layout(val);
+            },
         },
         XCommand {
             cmd: "tag",
-            func: Some(crate::tags::command_tag),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_TAG,
+            action: |arg| {
+                let tag_bits = if arg.is_empty() {
+                    0u32
+                } else {
+                    let argnum = arg.parse::<u32>().unwrap_or(0);
+                    if argnum != 0 || arg.starts_with('0') {
+                        1 << (argnum.saturating_sub(1))
+                    } else {
+                        0
+                    }
+                };
+                crate::tags::set_client_tag(tag_bits);
+            },
         },
         XCommand {
             cmd: "view",
-            func: Some(crate::tags::command_view),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_TAG,
+            action: |arg| {
+                let tag_bits = if arg.is_empty() {
+                    0u32
+                } else {
+                    let argnum = arg.parse::<u32>().unwrap_or(0);
+                    if argnum != 0 || arg.starts_with('0') {
+                        1 << (argnum.saturating_sub(1))
+                    } else {
+                        0
+                    }
+                };
+                crate::tags::view(tag_bits);
+            },
         },
         XCommand {
             cmd: "toggleview",
-            func: Some(crate::tags::command_toggle_view),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_TAG,
+            action: |arg| {
+                let tag_bits = if arg.is_empty() {
+                    0u32
+                } else {
+                    let argnum = arg.parse::<u32>().unwrap_or(0);
+                    if argnum != 0 || arg.starts_with('0') {
+                        1 << (argnum.saturating_sub(1))
+                    } else {
+                        0
+                    }
+                };
+                crate::tags::toggle_view(tag_bits);
+            },
         },
         XCommand {
             cmd: "toggletag",
-            func: Some(crate::tags::command_toggle_tag),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_TAG,
+            action: |arg| {
+                let tag_bits = if arg.is_empty() {
+                    0u32
+                } else {
+                    let argnum = arg.parse::<u32>().unwrap_or(0);
+                    if argnum != 0 || arg.starts_with('0') {
+                        1 << (argnum.saturating_sub(1))
+                    } else {
+                        0
+                    }
+                };
+                crate::tags::toggle_tag(tag_bits);
+            },
         },
         XCommand {
             cmd: "togglebar",
-            func: Some(crate::bar::toggle_bar),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::bar::toggle_bar(),
         },
         XCommand {
             cmd: "focusmon",
-            func: Some(crate::monitor::focus_mon),
-            arg: Arg {
-                i: 1,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    1i32
+                } else {
+                    arg.parse().unwrap_or(1)
+                };
+                crate::monitor::focus_mon(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "tagmon",
-            func: Some(crate::monitor::tag_mon),
-            arg: Arg {
-                i: 1,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    1i32
+                } else {
+                    arg.parse().unwrap_or(1)
+                };
+                crate::monitor::tag_mon(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "focusstack",
-            func: Some(crate::focus::focus_stack),
-            arg: Arg {
-                i: 1,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    1i32
+                } else {
+                    arg.parse().unwrap_or(1)
+                };
+                crate::focus::focus_stack(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "incnmaster",
-            func: Some(crate::layouts::inc_nmaster),
-            arg: Arg {
-                i: 1,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    1i32
+                } else {
+                    arg.parse().unwrap_or(1)
+                };
+                crate::layouts::inc_nmaster(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "setmfact",
-            func: Some(crate::layouts::set_mfact),
-            arg: Arg {
-                f: 0.05,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    0.05f32
+                } else {
+                    arg.parse().unwrap_or(0.05)
+                };
+                crate::layouts::set_mfact(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "zoom",
-            func: Some(crate::tags::zoom),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::tags::zoom(),
         },
         XCommand {
             cmd: "killclient",
-            func: Some(crate::client::kill_client),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::client::kill_client(),
         },
         XCommand {
             cmd: "setlayout",
-            func: Some(crate::layouts::set_layout),
-            arg: Arg {
-                v: Some(0),
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    None
+                } else {
+                    Some(arg.parse().unwrap_or(0))
+                };
+                crate::layouts::set_layout(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "cyclelayout",
-            func: Some(crate::layouts::cycle_layout),
-            arg: Arg {
-                i: 1,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    1i32
+                } else {
+                    arg.parse().unwrap_or(1)
+                };
+                crate::layouts::cycle_layout(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "togglefloating",
-            func: Some(crate::floating::toggle_floating),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::floating::toggle_floating(),
         },
         XCommand {
             cmd: "togglesticky",
-            func: Some(crate::toggles::toggle_sticky),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::toggles::toggle_sticky(),
         },
         XCommand {
             cmd: "togglescratchpad",
-            func: Some(crate::scratchpad::scratchpad_toggle),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_STRING,
+            action: |arg| crate::scratchpad::scratchpad_toggle(arg),
         },
         XCommand {
             cmd: "showscratchpad",
-            func: Some(crate::scratchpad::scratchpad_show),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_STRING,
+            action: |arg| crate::scratchpad::scratchpad_show(arg),
         },
         XCommand {
             cmd: "hidescratchpad",
-            func: Some(crate::scratchpad::scratchpad_hide),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_STRING,
+            action: |arg| crate::scratchpad::scratchpad_hide(arg),
         },
         XCommand {
             cmd: "makescratchpad",
-            func: Some(crate::scratchpad::scratchpad_make),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_STRING,
+            action: |arg| crate::scratchpad::scratchpad_make(arg),
         },
         XCommand {
             cmd: "unmakescratchpad",
-            func: Some(crate::scratchpad::scratchpad_unmake),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::scratchpad::scratchpad_unmake(),
         },
         XCommand {
             cmd: "scratchpadstatus",
-            func: Some(crate::scratchpad::scratchpad_status),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_STRING,
+            action: |arg| crate::scratchpad::scratchpad_status(arg),
         },
         XCommand {
             cmd: "setoverlay",
-            func: Some(crate::overlay::set_overlay),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::overlay::set_overlay(),
         },
         XCommand {
             cmd: "showoverlay",
-            func: Some(crate::overlay::show_overlay),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::overlay::show_overlay(),
         },
         XCommand {
             cmd: "hideoverlay",
-            func: Some(crate::overlay::hide_overlay),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::overlay::hide_overlay(),
         },
         XCommand {
             cmd: "setoverlaymode",
-            func: Some(crate::overlay::set_overlay_mode_cmd),
-            arg: Arg {
-                i: 0,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    0i32
+                } else {
+                    arg.parse().unwrap_or(0)
+                };
+                crate::overlay::set_overlay_mode_cmd(val);
             },
-            cmd_type: CMD_ARG_INT,
         },
         XCommand {
             cmd: "togglealttag",
-            func: Some(crate::toggles::toggle_alt_tag),
-            arg: Arg {
-                ui: 2,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    2u32
+                } else {
+                    arg.parse().unwrap_or(2)
+                };
+                crate::toggles::toggle_alt_tag(val);
             },
-            cmd_type: CMD_ARG_TOGGLE,
         },
         XCommand {
             cmd: "toggleanimated",
-            func: Some(crate::toggles::toggle_animated),
-            arg: Arg {
-                ui: 2,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    2u32
+                } else {
+                    arg.parse().unwrap_or(2)
+                };
+                crate::toggles::toggle_animated(val);
             },
-            cmd_type: CMD_ARG_TOGGLE,
         },
         XCommand {
             cmd: "togglefocusfollowsmouse",
-            func: Some(crate::toggles::toggle_focus_follows_mouse),
-            arg: Arg {
-                ui: 2,
-                ..Default::default()
+            action: |arg| {
+                let val = if arg.is_empty() {
+                    2u32
+                } else {
+                    arg.parse().unwrap_or(2)
+                };
+                crate::toggles::toggle_focus_follows_mouse(val);
             },
-            cmd_type: CMD_ARG_TOGGLE,
         },
         XCommand {
             cmd: "togglelocked",
-            func: Some(crate::toggles::toggle_locked),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::toggles::toggle_locked(),
         },
         XCommand {
             cmd: "pushup",
-            func: Some(crate::push::push_up),
-            arg: Arg {
-                f: 0.0,
-                ..Default::default()
-            },
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::push::push_up(),
         },
         XCommand {
             cmd: "pushdown",
-            func: Some(crate::push::push_down),
-            arg: Arg {
-                f: 0.0,
-                ..Default::default()
-            },
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::push::push_down(),
         },
         XCommand {
             cmd: "quit",
-            func: Some(crate::tags::quit),
-            arg: Arg::default(),
-            cmd_type: CMD_ARG_NONE,
+            action: |_arg| crate::tags::quit(),
         },
     ]
 }

@@ -14,11 +14,11 @@ pub fn ctrl_toggle(value: &mut bool, arg: u32) {
     }
 }
 
-pub fn toggle_alt_tag(arg: &Arg) {
+pub fn toggle_alt_tag(arg: u32) {
     let new_value = {
         let globals = get_globals();
         let mut showalttag = globals.tags.show_alt;
-        ctrl_toggle(&mut showalttag, arg.ui);
+        ctrl_toggle(&mut showalttag, arg);
         showalttag
     };
 
@@ -49,12 +49,12 @@ pub fn toggle_alt_tag(arg: &Arg) {
     globals.tags.width = tagwidth;
 }
 
-pub fn alt_tab_free(arg: &Arg) {
-    ctrl_toggle(&mut get_globals_mut().tags.prefix, arg.ui);
+pub fn alt_tab_free(arg: u32) {
+    ctrl_toggle(&mut get_globals_mut().tags.prefix, arg);
     grab_keys();
 }
 
-pub fn toggle_sticky(_arg: &Arg) {
+pub fn toggle_sticky() {
     let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
@@ -74,7 +74,7 @@ pub fn toggle_sticky(_arg: &Arg) {
     }
 }
 
-pub fn toggle_prefix(_arg: &Arg) {
+pub fn toggle_prefix() {
     let globals = get_globals_mut();
     globals.tags.prefix = !globals.tags.prefix;
 
@@ -85,12 +85,12 @@ pub fn toggle_prefix(_arg: &Arg) {
     }
 }
 
-pub fn toggle_animated(arg: &Arg) {
+pub fn toggle_animated(arg: u32) {
     let globals = get_globals_mut();
-    ctrl_toggle(&mut globals.animated, arg.ui);
+    ctrl_toggle(&mut globals.animated, arg);
 }
 
-pub fn set_border_width(arg: &Arg) {
+pub fn set_border_width(width: i32) {
     let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
@@ -104,7 +104,7 @@ pub fn set_border_width(arg: &Arg) {
         }
     };
 
-    let new_bw = arg.i;
+    let new_bw = width;
     let d = old_bw - new_bw;
 
     {
@@ -131,20 +131,20 @@ pub fn set_border_width(arg: &Arg) {
     resize(win, &geo, false);
 }
 
-pub fn toggle_focus_follows_mouse(arg: &Arg) {
-    ctrl_toggle(&mut get_globals_mut().focusfollowsmouse, arg.ui);
+pub fn toggle_focus_follows_mouse(arg: u32) {
+    ctrl_toggle(&mut get_globals_mut().focusfollowsmouse, arg);
 }
 
-pub fn toggle_focus_follows_float_mouse(arg: &Arg) {
-    ctrl_toggle(&mut get_globals_mut().focusfollowsfloatmouse, arg.ui);
+pub fn toggle_focus_follows_float_mouse(arg: u32) {
+    ctrl_toggle(&mut get_globals_mut().focusfollowsfloatmouse, arg);
 }
 
-pub fn toggle_double_draw(_arg: &Arg) {
+pub fn toggle_double_draw() {
     let globals = get_globals_mut();
     globals.doubledraw = !globals.doubledraw;
 }
 
-pub fn toggle_locked(_arg: &Arg) {
+pub fn toggle_locked() {
     let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
@@ -168,7 +168,7 @@ pub fn toggle_locked(_arg: &Arg) {
     }
 }
 
-pub fn toggle_show_tags(arg: &Arg) {
+pub fn toggle_show_tags(arg: u32) {
     let (selmon_id, new_showtags) = {
         let globals = get_globals();
         let selmon_id = globals.selmon;
@@ -180,7 +180,7 @@ pub fn toggle_show_tags(arg: &Arg) {
         };
 
         let mut show_bool = showtags != 0;
-        ctrl_toggle(&mut show_bool, arg.ui);
+        ctrl_toggle(&mut show_bool, arg);
         showtags = if show_bool { 1 } else { 0 };
 
         (selmon_id, showtags)
@@ -202,7 +202,7 @@ pub fn toggle_show_tags(arg: &Arg) {
     }
 }
 
-pub fn hide_window(_arg: &Arg) {
+pub fn hide_window() {
     let sel_win = get_sel_win();
 
     let Some(win) = sel_win else { return };
@@ -210,7 +210,7 @@ pub fn hide_window(_arg: &Arg) {
     crate::client::hide(win);
 }
 
-pub fn unhide_all(_arg: &Arg) {
+pub fn unhide_all() {
     let clients: Vec<x11rb::protocol::xproto::Window> = {
         let globals = get_globals();
         globals.clients.keys().copied().collect()
@@ -221,7 +221,7 @@ pub fn unhide_all(_arg: &Arg) {
     }
 }
 
-pub fn redraw_win(_arg: &Arg) {
+pub fn redraw_win() {
     let monitors: Vec<usize> = {
         let globals = get_globals();
         globals
