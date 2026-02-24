@@ -153,21 +153,74 @@ fn warp_pointer_resize(win: Window, dir: ResizeDirection) {
 
 // ── Border detection ─────────────────────────────────────────────────────────
 
-/// Return `true` when the pointer is in the resize-border zone of the
-/// currently selected floating window.
+/// Check if point (px, py) is in the resize-border zone of a window with geometry geo.
+/// The zone is a [`RESIZE_BORDER_ZONE`]-pixel band around the outside of the window.
+fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
+    if px > geo.x && px < geo.x + geo.w && py > geo.y && py < geo.y + geo.h {
+        return false;
+    }
+    if py < geo.y - RESIZE_BORDER_ZONE
+        || px < geo.x - RESIZE_BORDER_ZONE
+        || py > geo.y + geo.h + RESIZE_BORDER_ZONE
+        || px > geo.x + geo.w + RESIZE_BORDER_ZONE
+    {
+        return false;
+    }
+    true
+}
+
+/// Find a visible floating window whose resize border zone contains the cursor.
+/// Returns the window ID if found, or None.
 ///
-/// The zone is a [`RESIZE_BORDER_ZONE`]-pixel band around the outside of the
-/// window.  Returns `false` when:
-/// * No window is selected, or it is tiled in a tiling layout.
-/// * The cursor is on the bar.
-/// * The cursor is inside the window content.
-/// * The cursor is further than `RESIZE_BORDER_ZONE` from any edge.
-pub fn is_in_resize_border() -> bool {
+/// Also checks that the cursor is not on the bar.
+pub fn find_floating_win_at_resize_border() -> Option<Window> {
     let globals = get_globals();
 
+    let has_tiling = globals
+        .monitors
+        .get(globals.selmon)
+        .map(|m| is_current_layout_tiling(m, &globals.tags))
+        .unwrap_or(true);
+
+    let (px, py) = {
+        let _ = globals;
+        get_root_ptr()?
+    };
+
+    let globals = get_globals();
+    if let Some(mon) = globals.monitors.get(globals.selmon) {
+        if mon.showbar && py < mon.monitor_rect.y + globals.bh {
+            return None;
+        }
+    }
+
+    let mon = globals.monitors.get(globals.selmon)?;
+    let mut win = mon.clients;
+    while let Some(w) = win {
+        let Some(c) = globals.clients.get(&w) else {
+            break;
+        };
+        win = c.next;
+        if !c.is_visible() {
+            continue;
+        }
+        if !c.isfloating && has_tiling {
+            continue;
+        }
+        if is_point_in_resize_border(&c.geo, px, py) {
+            return Some(w);
+        }
+    }
+    None
+}
+
+/// Return `true` when the pointer is in the resize-border zone of the
+/// currently selected floating window.
+pub fn is_in_resize_border() -> bool {
     let Some(win) = get_sel_win() else {
         return false;
     };
+    let globals = get_globals();
     let Some(c) = globals.clients.get(&win) else {
         return false;
     };
@@ -179,39 +232,15 @@ pub fn is_in_resize_border() -> bool {
     if !c.isfloating && has_tiling {
         return false;
     }
-    let geo = c.geo;
 
-    // Release the globals borrow before calling get_root_ptr (may re-borrow).
-    let (px, py) = {
-        let _ = globals;
-        let Some((px, py)) = get_root_ptr() else {
-            return false;
-        };
-        (px, py)
-    };
-
+    let (px, py) = get_root_ptr()?;
     let globals = get_globals();
     if let Some(mon) = globals.monitors.get(globals.selmon) {
         if mon.showbar && py < mon.monitor_rect.y + globals.bh {
             return false;
         }
     }
-
-    // Inside the window content area → not a border.
-    if px > geo.x && px < geo.x + geo.w && py > geo.y && py < geo.y + geo.h {
-        return false;
-    }
-
-    // Too far from any edge → not in border zone.
-    if py < geo.y - RESIZE_BORDER_ZONE
-        || px < geo.x - RESIZE_BORDER_ZONE
-        || py > geo.y + geo.h + RESIZE_BORDER_ZONE
-        || px > geo.x + geo.w + RESIZE_BORDER_ZONE
-    {
-        return false;
-    }
-
-    true
+    is_point_in_resize_border(&c.geo, px, py)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
