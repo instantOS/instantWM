@@ -26,7 +26,7 @@ use crate::bar::draw_bar;
 use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::floating::{
-    change_snap, reset_snap, set_floating_in_place, set_tiled, toggle_floating, SnapDir, SNAP_LEFT,
+    change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir, SNAP_LEFT,
     SNAP_RIGHT, SNAP_TOP,
 };
 use crate::focus::{focus, warp_into};
@@ -346,7 +346,17 @@ fn on_motion(
         // Re-tile the remaining windows (touches only the other clients).
         arrange(Some(get_globals().selmon));
 
-        // Point the fall-through resize at the drag position with float dims.
+        // The window's width is changing (tiled → floating), so the old
+        // `ocx`-based `nx` would leave the window at x≈0 while the cursor
+        // is far to the right.  Re-center the floating window under the
+        // cursor and rebase the drag anchors so subsequent motion events
+        // track correctly from the new position.
+        nx = event_x - float_w / 2;
+        state.ocx = nx;
+        state.ocy = ny;
+        state.start_x = event_x;
+        state.start_y = event_y;
+
         is_floating = true;
         drag_geo = Rect {
             x: nx,
@@ -394,16 +404,15 @@ fn clear_bar_hover() {
 ///
 /// Mirrors the C `handle_bar_drop`:
 /// * Dropped on a tag button → `set_tiled()` + `tag()`
-/// * Dropped elsewhere on bar, window floating → `toggle_floating()`
+/// * Dropped elsewhere on bar, window floating → `set_tiled()`
 ///
-/// # `grab_x_offset`
+/// # `ocx`
 ///
-/// The cursor's x offset from the window's left edge at the moment the drag
-/// started (`start_x - ocx`).  This is used to correct `float_geo.x` after
-/// tiling: since `on_motion` is rate-limited, `client.geo.x` may lag behind
-/// the cursor's actual release position.  Using `ptr_x - grab_x_offset` gives
-/// the true window-origin x at the moment the button was released.
-fn handle_bar_drop(win: Window, grab_x_offset: i32) {
+/// The window's x position at the moment the drag started.  When the window
+/// was floating, this is the true pre-drag origin; we save it into
+/// `float_geo.x` so that un-tiling later restores the window to where it was
+/// before the user dragged it onto the bar.
+fn handle_bar_drop(win: Window, ocx: i32) {
     let Some((ptr_x, ptr_y)) = get_root_ptr() else {
         return;
     };
@@ -452,43 +461,35 @@ fn handle_bar_drop(win: Window, grab_x_offset: i32) {
             ..Default::default()
         });
     } else if was_floating {
-        // Dropped on the bar but not on a tag button: make the floating window
-        // tiled again.  toggle_floating() saves float_geo then calls arrange().
-        toggle_floating(&Arg::default());
+        // Dropped on the bar but not on a tag button: tile the window.
+        // Use set_tiled(win, …) directly instead of toggle_floating() which
+        // operates on mon.sel — a value that could theoretically diverge from
+        // the window we actually dragged.
+        set_tiled(win, true);
     } else {
         // Window is already tiled and not dropped on a tag — nothing to do.
         return;
     }
 
-    // ── Correct float_geo.x using the actual release position ────────────
+    // ── Correct float_geo using the pre-drag position ─────────────────────
     //
-    // on_motion is rate-limited (≤120 events/s), so client.geo.x reflects
-    // the cursor position at the *last processed* motion event, not at the
-    // moment the button was released.  The true window-origin x at release is:
-    //
-    //   float_geo.x = ptr_x − grab_x_offset
-    //               = ptr_x − (start_x − ocx)
-    //
-    // where ptr_x is the cursor x right now (button already released) and
-    // grab_x_offset is the fixed cursor-to-window-left-edge distance for this
-    // drag.
-    //
-    // Only do this when the window was floating at drop time: for a window
-    // that was already tiled when it hit the bar, float_geo should be left
-    // untouched (it either holds a prior meaningful float position or is
-    // zeroed, and neither should be overwritten with the tiled-bar position).
+    // set_tiled saved `client.geo` (the drag position near
+    // the bar) into `float_geo`.  That's wrong — we want the position the
+    // window occupied *before* the drag started:
+    //   x = ocx  (original window x at grab time)
+    //   y = just below the bar
     if was_floating {
-        let border_width = get_globals()
-            .clients
-            .get(&win)
-            .map(|c| c.border_width)
-            .unwrap_or(0);
-        let corrected_x = ptr_x - grab_x_offset;
-        // Allow the window to sit flush against the left edge (x = −bw) the
-        // same way on_motion does, but don't go further off-screen.
-        let clamped_x = corrected_x.max(-border_width);
+        let bar_bottom = {
+            let globals = get_globals();
+            globals
+                .monitors
+                .get(globals.selmon)
+                .map(|m| m.by + globals.bh)
+                .unwrap_or(0)
+        };
         if let Some(client) = get_globals_mut().clients.get_mut(&win) {
-            client.float_geo.x = clamped_x;
+            client.float_geo.x = ocx;
+            client.float_geo.y = bar_bottom;
         }
     }
 }
@@ -632,10 +633,7 @@ pub fn move_mouse(_arg: &Arg) {
     clear_bar_hover();
 
     if !apply_edge_drop(win, state.edge_snap_indicator) {
-        // grab_x_offset is the fixed cursor-to-window-left-edge distance for
-        // this drag: cursor_x − window_origin_x = start_x − ocx.
-        let grab_x_offset = state.start_x - state.ocx;
-        handle_bar_drop(win, grab_x_offset);
+        handle_bar_drop(win, state.ocx);
         handle_client_monitor_switch(win);
     }
 }
