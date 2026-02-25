@@ -154,9 +154,9 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     };
 
     let bh = ctx.g.cfg.bh;
-    let x11 = ctx.x11;
+    let conn = ctx.x11.conn;
 
-    if let Some(ref conn) = x11.conn {
+    {
         let (isfloating, client_width, client_height) = ctx
             .g
             .clients
@@ -227,7 +227,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     // 9. Subscribe to the events we care about on this window.
     // -------------------------------------------------------------------------
-    if let Some(ref conn) = x11.conn {
+    {
         let mask = EventMask::ENTER_WINDOW
             | EventMask::FOCUS_CHANGE
             | EventMask::PROPERTY_CHANGE
@@ -256,11 +256,8 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 
     // Floating windows start on top.
     if should_raise {
-        if let Some(ref conn) = x11.conn {
-            let _ =
-                conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
-            let _ = conn.flush();
-        }
+        let _ = conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        let _ = conn.flush();
     }
 
     // -------------------------------------------------------------------------
@@ -270,16 +267,14 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     attach_stack(w);
 
     {
-        if let Some(ref conn) = x11.conn {
-            let _ = conn.change_property32(
-                PropMode::APPEND,
-                ctx.g.cfg.root,
-                ctx.g.cfg.netatom.client_list,
-                AtomEnum::WINDOW,
-                &[w],
-            );
-            let _ = conn.flush();
-        }
+        let _ = conn.change_property32(
+            PropMode::APPEND,
+            ctx.g.cfg.root,
+            ctx.g.cfg.netatom.client_list,
+            AtomEnum::WINDOW,
+            &[w],
+        );
+        let _ = conn.flush();
     }
 
     // -------------------------------------------------------------------------
@@ -302,7 +297,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             .unwrap_or((0, 0, 0, 0, 0))
     };
 
-    if let Some(ref conn) = x11.conn {
+    {
         let _ = conn.configure_window(
             w,
             &ConfigureWindowAux::new()
@@ -342,10 +337,8 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     }
 
     if !initially_hidden {
-        if let Some(ref conn) = x11.conn {
-            let _ = conn.map_window(w);
-            let _ = conn.flush();
-        }
+        let _ = conn.map_window(w);
+        let _ = conn.flush();
     }
 
     focus(ctx, None);
@@ -385,11 +378,9 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             .unwrap_or(false);
 
         if !is_tiling {
-            if let Some(ref conn) = x11.conn {
-                let _ = conn
-                    .configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
-                let _ = conn.flush();
-            }
+            let _ =
+                conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+            let _ = conn.flush();
         } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
             if let Some(mon_id) = c.mon_id {
                 arrange(ctx, Some(mon_id));
@@ -430,34 +421,32 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
     detach_stack(win);
 
     if !destroyed {
-        if true { let conn = ctx.x11.conn;
-            let old_bw = ctx
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.old_border_width)
-                .unwrap_or(0);
+        let conn = ctx.x11.conn;
+        let old_bw = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.old_border_width)
+            .unwrap_or(0);
 
-            let _ = conn.grab_server();
+        let _ = conn.grab_server();
 
-            // Stop receiving events so we don't get confused during cleanup.
-            let _ = conn.change_window_attributes(
-                win,
-                &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
-            );
+        // Stop receiving events so we don't get confused during cleanup.
+        let _ = conn.change_window_attributes(
+            win,
+            &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
+        );
 
-            // Restore the original border width the application expects.
-            let _ =
-                conn.configure_window(win, &ConfigureWindowAux::new().border_width(old_bw as u32));
+        // Restore the original border width the application expects.
+        let _ = conn.configure_window(win, &ConfigureWindowAux::new().border_width(old_bw as u32));
 
-            // Release button grabs.
-            let _ = conn.ungrab_button(ButtonIndex::from(0u8), win, ModMask::from(0u16));
+        // Release button grabs.
+        let _ = conn.ungrab_button(ButtonIndex::from(0u8), win, ModMask::from(0u16));
 
-            set_client_state(win, WM_STATE_WITHDRAWN);
+        set_client_state(win, WM_STATE_WITHDRAWN);
 
-            let _ = conn.flush();
-            let _ = conn.ungrab_server();
-        }
+        let _ = conn.flush();
+        let _ = conn.ungrab_server();
     }
 
     // Remove from the global map.

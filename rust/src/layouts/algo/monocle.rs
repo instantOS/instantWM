@@ -30,14 +30,13 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if is_animated {
         if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
             if let Some(sel_win) = mon.sel {
-                if let Some(ref conn) = ctx.x11.conn {
-                    let _ = configure_window(
-                        conn,
-                        sel_win,
-                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                    );
-                    let _ = conn.flush();
-                }
+                let conn = ctx.x11.conn;
+                let _ = configure_window(
+                    conn,
+                    sel_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                );
+                let _ = conn.flush();
             }
         }
     }

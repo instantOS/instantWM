@@ -45,8 +45,6 @@ use x11rb::CURRENT_TIME;
 /// loop and [`ungrab_ctx`] to release the grab when done.
 pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
     let conn = ctx.x11.conn;
-        return false;
-    };
 
     let root = ctx.g.cfg.root;
     let cursor = ctx
@@ -80,8 +78,6 @@ pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
 /// Escape can abort the hover-resize wait before the user clicks.
 pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
     let conn = ctx.x11.conn;
-        return false;
-    };
 
     let root = ctx.g.cfg.root;
     let cursor = ctx
@@ -135,9 +131,7 @@ pub fn ungrab(conn: &x11rb::rust_connection::RustConnection) {
 /// Convenience wrapper around [`ungrab`] that extracts the connection from ctx.
 #[inline]
 pub fn ungrab_ctx(ctx: &WmCtx) {
-    if true { let conn = ctx.x11.conn;
-        ungrab(conn);
-    }
+    ungrab(ctx.x11.conn);
 }
 
 // ── Passive button grabs ──────────────────────────────────────────────────────

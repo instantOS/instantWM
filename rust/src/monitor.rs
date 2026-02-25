@@ -510,7 +510,7 @@ fn cleanup_removed_monitors(start_idx: usize, x11: &crate::globals::X11Connectio
             g.selmon = 0;
         }
 
-        let mut ctx = WmCtx::new(g, x11);
+        let mut ctx = WmCtx::new(g, x11.as_conn());
         cleanup_monitor(&mut ctx, i);
     }
 

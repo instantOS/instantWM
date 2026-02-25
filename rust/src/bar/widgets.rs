@@ -1,3 +1,4 @@
+use x11rb::protocol::xproto::Window;
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
 use crate::globals::{get_drw, get_globals, Globals};
@@ -396,7 +397,15 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
         // and would cause click regions to map to the wrong window titles.
         // Use the passed monitor `m` (not selmon) so that secondary monitors
         // draw their own clients, not the selected monitor's clients.
-        for (_c_win, c) in m.iter_clients(&g.clients) {
+        let wins: Vec<x11rb::protocol::xproto::Window> = m
+            .iter_clients(&g.clients)
+            .filter_map(|(c_win, c)| c.is_visible_on_tags(selected).then_some(c_win))
+            .collect();
+
+        for c_win in wins {
+            let Some(c) = g.clients.get(&c_win) else {
+                continue;
+            };
             if !c.is_visible_on_tags(selected) {
                 continue;
             }

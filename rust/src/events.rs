@@ -52,7 +52,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
             selmon_id = clicked_mon;
             focus(ctx, None);
         }
-    }
+    };
 
     let mut click_target = Click::RootWin;
 
@@ -81,7 +81,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                 click_target = Click::SideBar;
             }
         }
-    }
+    };
 
     if click_target == Click::RootWin {
         if let Some(mon) = ctx.g.monitors.get(selmon_id) {
@@ -101,7 +101,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                 }
             }
         }
-    }
+    };
 
     let clean_state = clean_mask(e.state.into(), numlockmask);
 
@@ -129,23 +129,23 @@ pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
             handle_systray_dock_request(ctx, e);
         }
         return;
-    }
+    };
 
     let Some(win) = win_to_client(e.window) else {
         return;
-    }
+    };
 
     if e.type_ == net_wm_state {
         handle_net_wm_state(ctx, e, win);
     } else if e.type_ == net_active_window {
         handle_active_window(ctx, win);
-    }
+    };
 }
 
 pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
     if e.window != ctx.g.cfg.root {
         return;
-    }
+    };
 
     ctx.g.cfg.sw = e.width as i32;
     ctx.g.cfg.sh = e.height as i32;
@@ -170,7 +170,7 @@ pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
                 .border_width(e.border_width as u32),
         );
         let _ = conn.flush();
-    }
+    };
 }
 
 pub fn create_notify(_e: &CreateNotifyEvent) {}
@@ -189,7 +189,7 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
             crate::bar::resize_bar_win(mon);
         }
         systray::update_systray(ctx);
-    }
+    };
 }
 
 /// Handle EnterNotify events for focus-follows-mouse behavior.
@@ -207,7 +207,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     // Filter out invalid crossing events (grab/ungrab, inferior notify)
     if (e.mode != NotifyMode::NORMAL || e.detail == NotifyDetail::INFERIOR) && e.event != root {
         return;
-    }
+    };
 
     // Get current selection info
     let (selmon_id, sel_win, is_floating_sel) = {
@@ -224,12 +224,12 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
             .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
         (selmon_id, sel_win, is_floating || !has_tiling)
-    }
+    };
 
     // Handle entering root window with a floating selection: try resize mode
     if entering_root && is_floating_sel && hover_resize_mouse(ctx) {
         return;
-    }
+    };
     // If hover_resize_mouse didn't grab, fall through to normal focus handling
 
     // Check if we're entering a client window
@@ -267,7 +267,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                 return;
             }
         }
-    }
+    };
 
     // Skip focus changes for floating windows if focusfollowsfloatmouse is disabled
     // (unless we're entering root, the window is visible, or selection is sticky)
@@ -291,12 +291,12 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                 return;
             }
         }
-    }
+    };
 
     // Standard focus-follows-mouse behavior
     if !focusfollowsmouse {
         return;
-    }
+    };
 
     // Handle monitor switching
     if let Some(new_mon_id) = win_to_mon(e.event) {
@@ -305,7 +305,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
             focus(ctx, None);
             return;
         }
-    }
+    };
 
     // Focus the window under the cursor, not just the event window
     // This ensures we focus the topmost window when windows overlap
@@ -318,13 +318,13 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                 }
             }
         }
-    }
+    };
 }
 
 pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     if e.count != 0 {
         return;
-    }
+    };
 
     if let Some(mon_id) = win_to_mon(e.window) {
         if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
@@ -333,7 +333,7 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
             }
             draw_bar(mon);
         }
-    }
+    };
 }
 
 pub fn focus_in(ctx: &mut WmCtx, _e: &FocusInEvent) {
@@ -342,7 +342,7 @@ pub fn focus_in(ctx: &mut WmCtx, _e: &FocusInEvent) {
         if let Some(sel_win) = mon.sel {
             crate::client::set_focus(ctx, sel_win);
         }
-    }
+    };
 }
 
 pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
@@ -361,19 +361,19 @@ pub fn map_request(ctx: &mut WmCtx, e: &MapRequestEvent) {
     if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
         systray::update_systray(ctx);
         return;
-    }
+    };
 
     if win_to_client(e.window).is_none() && !is_override_redirect(ctx, e.window) {
         let (geo, border_width) = get_win_geometry(ctx, e.window);
         crate::client::manage(ctx, e.window, geo, border_width);
-    }
+    };
 }
 
 /// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
 pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     if e.event != ctx.g.cfg.root {
         return;
-    }
+    };
 
     let selmon_id = ctx.g.selmon;
     let tagwidth = get_tag_width(ctx);
@@ -402,7 +402,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
                 return;
             }
         }
-    }
+    };
 
     // Early-out: cursor is below the bar area.
     let (monitor_y, bar_height, current_gesture) = {
@@ -410,7 +410,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             return;
         };
         (mon.monitor_rect.y, ctx.g.cfg.bh, mon.gesture)
-    }
+    };
 
     if root_y >= monitor_y + bar_height - 3 {
         if handle_floating_resize_hover(ctx) {
@@ -424,7 +424,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             reset_cursor(ctx);
         }
         return;
-    }
+    };
 
     // Compute the bar position from the cursor's monitor-local x coordinate,
     // then convert to a gesture for hover highlighting.
@@ -443,28 +443,28 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             }
             other => other.to_gesture(),
         }
-    }
+    };
 
     if new_gesture != current_gesture {
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
             draw_bar(mon);
         }
-    }
+    };
 }
 
 pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
     if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
         systray::update_systray(ctx);
         return;
-    }
+    };
 
     if e.window == ctx.g.cfg.root && e.atom == AtomEnum::WM_NAME.into() {
         if x_command(ctx) == 0 {
             crate::bar::x11::update_status(ctx);
         }
         return;
-    }
+    };
 
     if let Some(win) = win_to_client(e.window) {
         match e.atom {
@@ -484,13 +484,13 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
         if e.atom == AtomEnum::WM_NAME.into() || e.atom == net_wm_name {
             update_title(win);
         }
-    }
+    };
 }
 
 pub fn resize_request(ctx: &mut WmCtx, e: &ResizeRequestEvent) {
     if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
         systray::update_systray(ctx);
-    }
+    };
 }
 
 pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
@@ -515,7 +515,7 @@ pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
     } else if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
         // Systray icons sometimes unmap without destroying; re-map them.
         systray::update_systray(ctx);
-    }
+    };
 }
 
 pub fn leave_notify(ctx: &mut WmCtx, e: &LeaveNotifyEvent) {
@@ -532,7 +532,7 @@ pub fn leave_notify(ctx: &mut WmCtx, e: &LeaveNotifyEvent) {
                 if hover_resize_mouse(ctx) {}
             }
         }
-    }
+    };
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
@@ -540,7 +540,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     let icon_win = data[2];
     if icon_win == 0 {
         return;
-    }
+    };
 
     let selmon_id = ctx.g.selmon;
     let systray_win_opt = ctx.g.systray.as_ref().map(|s| s.win);
@@ -554,7 +554,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 
     let Some(systray_win) = systray_win_opt else {
         return;
-    }
+    };
 
     let conn = ctx.x11.conn;
     let (geo, border_width) = conn
@@ -592,14 +592,14 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         tags: 1,
         mon_id: Some(selmon_id),
         ..Default::default()
-    }
+    };
 
     {
         ctx.g.clients.insert(icon_win, client);
         if let Some(ref mut systray) = ctx.g.systray {
             systray.icons.insert(0, icon_win);
         }
-    }
+    };
 
     crate::client::update_size_hints_win(ctx, icon_win);
     systray::update_systray_icon_geom(ctx, icon_win, geo.w, geo.h);
@@ -672,7 +672,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         if let Some(mon) = ctx.g.monitors.get(selmon_id) {
             crate::bar::resize_bar_win_ctx(ctx, mon);
         }
-    }
+    };
 
     systray::update_systray(ctx);
     set_client_state(icon_win, 1);
@@ -686,30 +686,28 @@ fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: Window) {
         set_fullscreen(ctx, win, true);
     } else if fullscreen_action == 0 {
         set_fullscreen(ctx, win, false);
-    }
+    };
 }
 
 fn handle_active_window(ctx: &mut WmCtx, win: Window) {
     let is_hidden = is_hidden(win);
     if is_hidden {
         crate::client::show(ctx, win);
-    }
+    };
 
     if let Some(c) = ctx.g.clients.get(&win) {
         if let Some(mon_id) = c.mon_id {
             focus(ctx, Some(win));
             restack(ctx, mon_id);
         }
-    }
+    };
 }
 
 pub fn run() {
     while RUNNING.load(Ordering::SeqCst) {
         let event = {
             let x11 = get_x11();
-            let Some(ref conn) = x11.conn else {
-                return;
-            };
+            let conn = x11.conn();
             match conn.wait_for_event() {
                 Ok(event) => event,
                 Err(_) => return,
@@ -722,12 +720,8 @@ pub fn run() {
 fn dispatch_event(event: x11rb::protocol::Event) {
     // Create context for this event
     let x11 = get_x11();
-    let Some(_) = x11.conn else {
-        return;
-    }
-
     let globals = get_globals_mut();
-    let mut ctx = WmCtx::new(globals, x11);
+    let mut ctx = WmCtx::new(globals, x11.as_conn());
 
     match event {
         x11rb::protocol::Event::ButtonPress(e) => button_press(&mut ctx, &e),
@@ -749,7 +743,7 @@ fn dispatch_event(event: x11rb::protocol::Event) {
         x11rb::protocol::Event::UnmapNotify(e) => unmap_notify(&mut ctx, &e),
         x11rb::protocol::Event::LeaveNotify(e) => leave_notify(&mut ctx, &e),
         _ => {}
-    }
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -761,17 +755,7 @@ fn dispatch_event(event: x11rb::protocol::Event) {
 /// Returns a sensible fallback (`800×600`, border `1`) when the request fails,
 /// so callers never have to handle `None`.
 fn get_win_geometry(ctx: &WmCtx, win: Window) -> (Rect, u32) {
-    let Some(ref conn) = ctx.x11.conn else {
-        return (
-            Rect {
-                x: 0,
-                y: 0,
-                w: 800,
-                h: 600,
-            },
-            1,
-        );
-    };
+    let conn = ctx.x11.conn;
     conn.get_geometry(win)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
@@ -802,9 +786,7 @@ fn get_win_geometry(ctx: &WmCtx, win: Window) -> (Rect, u32) {
 /// Such windows manage themselves (e.g. tooltips, menus) and must be ignored
 /// by the WM.
 fn is_override_redirect(ctx: &WmCtx, win: Window) -> bool {
-    let Some(ref conn) = ctx.x11.conn else {
-        return false;
-    };
+    let conn = ctx.x11.conn;
     conn.get_window_attributes(win)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
@@ -827,9 +809,7 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<Window>, Vec<Win
     let mut managed = Vec::new();
     let mut transients = Vec::new();
 
-    let Some(ref conn) = ctx.x11.conn else {
-        return (managed, transients);
-    };
+    let conn = ctx.x11.conn;
 
     for win in children {
         if is_override_redirect(ctx, win) {
@@ -865,17 +845,15 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<Window>, Vec<Win
 }
 
 fn is_window_iconic(ctx: &WmCtx, win: Window) -> bool {
-    let Some(ref conn) = ctx.x11.conn else {
-        return false;
-    };
+    let conn = ctx.x11.conn;
 
     let state_atom = ctx.g.cfg.wmatom.state;
     let Ok(cookie) = conn.get_property(false, win, state_atom, state_atom, 0, 2) else {
         return false;
-    }
+    };
     let Ok(reply) = cookie.reply() else {
         return false;
-    }
+    };
 
     reply
         .value32()
@@ -891,11 +869,9 @@ fn is_window_iconic(ctx: &WmCtx, win: Window) -> bool {
 /// in the client list.
 pub fn scan() {
     let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
-        return;
-    }
+    let conn = x11.conn();
     let globals = get_globals_mut();
-    let mut ctx = WmCtx::new(globals, x11);
+    let mut ctx = WmCtx::new(globals, x11.as_conn());
     let root = ctx.g.cfg.root;
 
     let children = {
@@ -906,7 +882,7 @@ pub fn scan() {
             return;
         };
         tree_reply.children
-    }
+    };
 
     let (managed, transients) = classify_windows(&ctx, children);
 
@@ -918,7 +894,7 @@ pub fn scan() {
 
 pub fn check_other_wm() {
     let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let conn = x11.conn();
 
     let root = get_globals().cfg.root;
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
@@ -927,7 +903,7 @@ pub fn check_other_wm() {
 
 pub fn setup() {
     let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let conn = x11.conn();
 
     let screen = conn.setup().roots.get(x11.screen_num).cloned();
     let Some(screen) = screen else { return };
@@ -940,7 +916,7 @@ pub fn setup() {
         globals.cfg.root = root;
         globals.cfg.sw = screen.width_in_pixels as i32;
         globals.cfg.sh = screen.height_in_pixels as i32;
-    }
+    };
 
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
@@ -959,14 +935,14 @@ pub fn setup() {
     update_geom();
     {
         let globals = get_globals_mut();
-        let ctx = WmCtx::new(globals, x11);
+        let ctx = WmCtx::new(globals, x11.as_conn());
         grab_keys(&ctx);
     }
 }
 
 pub fn cleanup() {
     let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let conn = x11.conn();
 
     let _ = conn.grab_server();
 

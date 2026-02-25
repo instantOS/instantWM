@@ -84,65 +84,64 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut cur_y = origin_y;
 
     // ── place every client ────────────────────────────────────────────────
-    if let Some(ref conn) = ctx.x11.conn {
-        let mut c_win = m.clients;
-        while let Some(win) = c_win {
-            let c = match ctx.g.clients.get(&win) {
-                Some(c) => c,
-                None => break,
-            };
+    let conn = ctx.x11.conn;
+    let mut c_win = m.clients;
+    while let Some(win) = c_win {
+        let c = match ctx.g.clients.get(&win) {
+            Some(c) => c,
+            None => break,
+        };
 
-            let is_hidden = c.oldstate != 0;
-            let is_overlay = m.overlay == Some(win);
+        let is_hidden = c.oldstate != 0;
+        let is_overlay = m.overlay == Some(win);
 
-            if is_hidden || is_overlay {
-                c_win = c.next;
-                continue;
-            }
-
-            // Keep the client's own dimensions; only reposition it.
-            let client_w = c.geo.w;
-            let client_h = c.geo.h;
-            let is_floating = c.isfloating;
-            let next_client = c.next;
-
-            // Persist float geometry so restore works after leaving overview.
-            if is_floating {
-                save_floating(ctx, win);
-            }
-
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: cur_x,
-                    y: cur_y,
-                    w: client_w,
-                    h: client_h,
-                },
-                false,
-            );
-
-            // Raise each client above the bar so nothing is obscured.
-            let _ = configure_window(
-                conn,
-                win,
-                &ConfigureWindowAux::new()
-                    .stack_mode(StackMode::ABOVE)
-                    .sibling(barwin),
-            );
-
-            // Advance to the next cell, wrapping to the next row.
-            if cur_x + cell_w < mon_x + work_w {
-                cur_x += cell_w;
-            } else {
-                cur_x = origin_x;
-                cur_y += cell_h;
-            }
-
-            c_win = next_client;
+        if is_hidden || is_overlay {
+            c_win = c.next;
+            continue;
         }
 
-        let _ = conn.flush();
+        // Keep the client's own dimensions; only reposition it.
+        let client_w = c.geo.w;
+        let client_h = c.geo.h;
+        let is_floating = c.isfloating;
+        let next_client = c.next;
+
+        // Persist float geometry so restore works after leaving overview.
+        if is_floating {
+            save_floating(ctx, win);
+        }
+
+        resize(
+            ctx,
+            win,
+            &Rect {
+                x: cur_x,
+                y: cur_y,
+                w: client_w,
+                h: client_h,
+            },
+            false,
+        );
+
+        // Raise each client above the bar so nothing is obscured.
+        let _ = configure_window(
+            conn,
+            win,
+            &ConfigureWindowAux::new()
+                .stack_mode(StackMode::ABOVE)
+                .sibling(barwin),
+        );
+
+        // Advance to the next cell, wrapping to the next row.
+        if cur_x + cell_w < mon_x + work_w {
+            cur_x += cell_w;
+        } else {
+            cur_x = origin_x;
+            cur_y += cell_h;
+        }
+
+        c_win = next_client;
     }
+
+    let _ = conn.flush();
 }

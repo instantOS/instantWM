@@ -57,27 +57,29 @@ pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     // ── apply pending snap positions ──────────────────────────────────────
-    for (win, c) in m.iter_clients(&ctx.g.clients) {
-        if !c.is_visible_on_tags(selected) {
-            continue;
-        }
+    // Collect targets first to avoid borrowing ctx/m/clients immutably while
+    // we mutate state during resize.
+    let snap_targets: Vec<Window> = m
+        .iter_clients(&ctx.g.clients)
+        .filter_map(|(win, c)| {
+            (c.is_visible_on_tags(selected) && c.snapstatus != SnapPosition::None).then_some(win)
+        })
+        .collect();
 
-        if c.snapstatus != SnapPosition::None {
-            apply_snap_for_window(ctx, win, m);
-        }
+    for win in snap_targets {
+        apply_snap_for_window(ctx, win, m);
     }
 
     // Raise the selected window to the top of the Z-order so it is not
     // accidentally obscured by a tiled window placed above it by the compositor.
     if let Some(sel_win) = m.sel {
-        if let Some(ref conn) = ctx.x11.conn {
-            let _ = configure_window(
-                conn,
-                sel_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
-        }
+        let conn = ctx.x11.conn;
+        let _ = configure_window(
+            conn,
+            sel_win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
+        let _ = conn.flush();
     }
 
     // Restore animation flag.
