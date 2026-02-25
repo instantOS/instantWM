@@ -232,11 +232,11 @@ pub fn apply_size_hints(
 
     // Clamp position so the window doesn't escape the usable area.
     if interact {
-        if *x > cfg.sw {
-            *x = cfg.sw - client_w;
+        if *x > cfg.screen_width {
+            *x = cfg.screen_width - client_w;
         }
-        if *y > cfg.sh {
-            *y = cfg.sh - client_h;
+        if *y > cfg.screen_height {
+            *y = cfg.screen_height - client_h;
         }
         if *x + client_w < 0 {
             *x = 0;
@@ -262,7 +262,7 @@ pub fn apply_size_hints(
     }
 
     // Enforce a minimum size of one bar-height in each dimension.
-    let bh = cfg.bh;
+    let bh = cfg.bar_height;
     if *h < bh {
         *h = bh;
     }

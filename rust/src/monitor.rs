@@ -540,7 +540,7 @@ pub fn update_geom() -> bool {
 
     // Fallback to single monitor
     let g = get_globals();
-    let (sw, sh) = (g.cfg.sw, g.cfg.sh);
+    let (sw, sh) = (g.cfg.screen_width, g.cfg.screen_height);
 
     if g.monitors.is_empty() {
         dirty = init_single_monitor(sw, sh);

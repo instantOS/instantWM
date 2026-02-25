@@ -97,7 +97,7 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
     }
 
     let (work_rect, mon_rect, showbar, bh) = match ctx.g.selmon() {
-        Some(m) => (m.work_rect, m.monitor_rect, m.showbar, ctx.g.cfg.bh),
+        Some(m) => (m.work_rect, m.monitor_rect, m.showbar, ctx.g.cfg.bar_height),
         None => return,
     };
 

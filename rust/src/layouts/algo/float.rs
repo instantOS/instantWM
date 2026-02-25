@@ -3,7 +3,7 @@
 //! ## Overview
 //!
 //! In the floating layout every client is responsible for its own position.
-//! The role of [`floatl`] is therefore minimal: it temporarily disables
+//! The role of [`float_left`] is therefore minimal: it temporarily disables
 //! animation, applies any pending *snap positions* (e.g. half-screen left,
 //! quarter top-right) to clients that have one set, restacks the windows in
 //! the correct order, and raises the selected client to the top.
@@ -12,7 +12,7 @@
 //!
 //! A snap position is stored on each client as a [`SnapPosition`] enum
 //! variant.  When a floating client is dragged to a screen edge the WM sets
-//! `client.snapstatus`; [`floatl`] then calls [`apply_snap_for_window`] to
+//! `client.snapstatus`; [`float_left`] then calls [`apply_snap_for_window`] to
 //! compute and apply the corresponding geometry.
 //!
 //! ```text
@@ -38,7 +38,7 @@ use crate::types::{Monitor, Rect, SnapPosition};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-// ── floatl ────────────────────────────────────────────────────────────────────
+// ── float_left ─────────────────────────────────────────────────────────────────
 
 /// Floating layout arrange function.
 ///
@@ -47,7 +47,7 @@ use x11rb::protocol::xproto::*;
 /// [`HorizLayout`](crate::layouts::HorizLayout) impls — all of which leave
 /// clients at their self-managed positions but still need snap geometry
 /// enforced and the window stack sorted.
-pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let selected = m.selected_tags();
     // Disable animation for the duration of this arrange pass — floating
     // windows should snap into their positions instantly.

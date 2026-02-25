@@ -235,7 +235,7 @@ pub fn hide(ctx: &mut WmCtx, win: Window) {
 
     let Rect { x, y, w, h } = client.geo;
     let mon_id = client.mon_id;
-    let bh = globals.cfg.bh;
+    let bh = globals.cfg.bar_height;
     let animated = globals.animated;
 
     if animated {

@@ -106,7 +106,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     }
 
     // ── Shutdown button (only when no client is selected) ─────────────────
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
     if mon.sel.is_none() && local_x < tag_end + blw + bh {
         return BarPosition::ShutDown;
     }

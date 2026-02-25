@@ -171,8 +171,8 @@ fn init_globals(screen_num: usize, root: Window, screen: &x11rb::protocol::xprot
         let globals = get_globals_mut();
         globals.cfg.screen = screen_num as i32;
         globals.cfg.root = root;
-        globals.cfg.sw = screen.width_in_pixels as i32;
-        globals.cfg.sh = screen.height_in_pixels as i32;
+        globals.cfg.screen_width = screen.width_in_pixels as i32;
+        globals.cfg.screen_height = screen.height_in_pixels as i32;
     }
 
     // Update runtime config from config
@@ -229,7 +229,7 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
         let globals = get_globals_mut();
         globals.cfg.xlibdisplay = XlibDisplay(drw.display());
         globals.cfg.drw = Some(drw);
-        globals.cfg.bh = bh as i32;
+        globals.cfg.bar_height = bh as i32;
         globals.cfg.horizontal_padding = font_height as i32;
     }
 

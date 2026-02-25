@@ -59,7 +59,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     let work_rect_w = m_info.1;
     let barwin = m_info.2;
 
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
     get_drw_mut().resize(work_rect_w as u32, bh as u32);
 
     let is_selmon = ctx

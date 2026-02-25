@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-//! Stacking layout algorithms: deck, bstack, and bstackhoriz.
+//! Stacking layout algorithms: deck, bottom_stack, and bstackhoriz.
 //!
 //! All three share a master-area / stack-area split, but differ in orientation
 //! and how the stack area is arranged:
@@ -20,7 +20,7 @@
 //! visible. Useful for tabbed-style workflows where you cycle through stack
 //! clients one at a time.
 //!
-//! ## `bstack` — horizontal master row, vertical stack columns
+//! ## `bottom_stack` — horizontal master row, vertical stack columns
 //!
 //! ```text
 //! ┌──────────────────────────────┐
@@ -132,13 +132,13 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 }
 
-// ── bstack ────────────────────────────────────────────────────────────────────
+// ── bottom_stack ───────────────────────────────────────────────────────────────
 
 /// Bottom-stack layout.
 ///
 /// The first `nmaster` clients share a horizontal master row at the top.
 /// Remaining clients are divided into equal-width vertical columns below.
-pub fn bstack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = {
         if ctx.g.animated && client_count(ctx.g) > 4 {
             4
@@ -241,7 +241,7 @@ pub fn bstack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 /// Horizontal bottom-stack layout.
 ///
-/// Like [`bstack`] but stack clients are arranged as horizontal rows rather
+/// Like [`bottom_stack`] but stack clients are arranged as horizontal rows rather
 /// than vertical columns — each stack client spans the full work width.
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = {

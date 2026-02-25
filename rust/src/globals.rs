@@ -19,8 +19,8 @@ pub struct RuntimeConfig {
     // Screen/Display info
     pub screen: i32,
     pub root: Window,
-    pub sw: i32,
-    pub sh: i32,
+    pub screen_width: i32,
+    pub screen_height: i32,
 
     // Window manager configuration
     pub borderpx: i32,
@@ -87,8 +87,8 @@ impl Default for RuntimeConfig {
         Self {
             screen: 0,
             root: 0,
-            sw: 0,
-            sh: 0,
+            screen_width: 0,
+            screen_height: 0,
             borderpx: 1,
             snap: 32,
             startmenusize: 0,

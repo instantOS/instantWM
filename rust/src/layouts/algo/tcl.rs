@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-//! Three-column layout (TCL).
+//! Three-column layout.
 //!
 //! Arranges tiled clients into three vertical columns:
 //!
@@ -36,7 +36,7 @@ use crate::client::{client_height, next_tiled, resize};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
-pub fn tcl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
     let mut c_win = next_tiled(m.clients);
@@ -112,7 +112,7 @@ pub fn tcl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let right_n = stack_n.div_ceil(2); // ceil(stack_n / 2)
     let left_n = stack_n / 2; // floor(stack_n / 2)
 
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
 
     // ── right column (even stack indices) ─────────────────────────────────
     if right_n > 0 {

@@ -48,7 +48,7 @@ fn raise_window(ctx: &WmCtx, win: Window) {
 
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
     let base_offset = if mon.showbar { bh } else { 0 };
 
     // Check if any visible client is fullscreen

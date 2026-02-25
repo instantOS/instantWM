@@ -42,7 +42,7 @@ pub(super) fn warp_impl(ctx: &WmCtx, win: Window) {
     let conn = ctx.x11.conn;
 
     let root = ctx.g.cfg.root;
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
 
     // No target window – centre on the selected monitor's work area.
     if win == 0 {

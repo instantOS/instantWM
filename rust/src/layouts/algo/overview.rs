@@ -70,7 +70,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         None => return,
     };
 
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
 
     // ── cell dimensions ───────────────────────────────────────────────────
     let cell_w = work_w / gridwidth;

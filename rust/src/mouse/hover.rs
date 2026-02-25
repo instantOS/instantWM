@@ -87,7 +87,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
     let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
     if let Some(mon) = ctx.g.selmon() {
-        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
+        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
             return None;
         }
     }
@@ -122,7 +122,7 @@ pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
     }
 
     if let Some(mon) = ctx.g.selmon() {
-        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
+        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
             return false;
         }
     }
@@ -193,7 +193,7 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     };
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
-        if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.cfg.bh + 60 {
+        if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.cfg.bar_height + 60 {
             set_root_cursor(ctx, 8);
             ctx.g.altcursor = AltCursor::Sidebar;
         }

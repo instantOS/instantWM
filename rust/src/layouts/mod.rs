@@ -85,13 +85,13 @@ impl LayoutKind {
         match self {
             Self::Tile => algo::tile(ctx, m),
             Self::Grid => algo::grid(ctx, m),
-            Self::Floating => algo::floatl(ctx, m),
+            Self::Floating => algo::float_left(ctx, m),
             Self::Monocle => algo::monocle(ctx, m),
-            Self::Vert => algo::floatl(ctx, m),
+            Self::Vert => algo::float_left(ctx, m),
             Self::Deck => algo::deck(ctx, m),
             Self::Overview => algo::overviewlayout(ctx, m),
-            Self::Bstack => algo::bstack(ctx, m),
-            Self::Horiz => algo::floatl(ctx, m),
+            Self::Bstack => algo::bottom_stack(ctx, m),
+            Self::Horiz => algo::float_left(ctx, m),
         }
     }
 
@@ -142,6 +142,6 @@ pub use manager::{
 // ── Re-exports: algorithms (convenience, used by config.rs via `layouts::*`) ──
 #[allow(unused_imports)]
 pub use algo::{
-    bstack, bstackhoriz, deck, dwindle, fibonacci, floatl, gaplessgrid, grid, horizgrid, monocle,
-    overviewlayout, spiral, tcl, tile,
+    bottom_stack, bstackhoriz, deck, dwindle, fibonacci, float_left, gaplessgrid, grid, horizgrid, monocle,
+    overviewlayout, spiral, three_column, tile,
 };

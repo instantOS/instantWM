@@ -166,8 +166,8 @@ pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
         return;
     };
 
-    ctx.g.cfg.sw = e.width as i32;
-    ctx.g.cfg.sh = e.height as i32;
+    ctx.g.cfg.screen_width = e.width as i32;
+    ctx.g.cfg.screen_height = e.height as i32;
 
     update_geom();
     focus(ctx, None);
@@ -408,7 +408,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
         let Some(mon) = ctx.g.selmon() else {
             return;
         };
-        (mon.monitor_rect.y, ctx.g.cfg.bh, mon.gesture)
+        (mon.monitor_rect.y, ctx.g.cfg.bar_height, mon.gesture)
     };
 
     if root_y >= monitor_y + bar_height - 3 {
@@ -919,8 +919,8 @@ pub fn setup() {
         let globals = get_globals_mut();
         globals.cfg.screen = x11.screen_num as i32;
         globals.cfg.root = root;
-        globals.cfg.sw = screen.width_in_pixels as i32;
-        globals.cfg.sh = screen.height_in_pixels as i32;
+        globals.cfg.screen_width = screen.width_in_pixels as i32;
+        globals.cfg.screen_height = screen.height_in_pixels as i32;
     };
 
     let mask = EventMask::SUBSTRUCTURE_REDIRECT

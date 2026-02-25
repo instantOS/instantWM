@@ -382,7 +382,7 @@ pub fn force_warp(ctx: &WmCtx, c_win: Window) {
 pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
     let conn = ctx.x11.conn;
     let root = ctx.g.cfg.root;
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
 
     //TODO: get rid of magic number
     if c_win == 0 {

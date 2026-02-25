@@ -192,7 +192,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
     // Geometry of the target monitor.
     let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.g.monitor(mid) {
         Some(m) => {
-            let mony = m.monitor_rect.y + if m.showbar { ctx.g.cfg.bh } else { 0 };
+            let mony = m.monitor_rect.y + if m.showbar { ctx.g.cfg.bar_height } else { 0 };
             (
                 m.monitor_rect.x,
                 m.monitor_rect.w,

@@ -89,7 +89,7 @@ fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     {
         return Some(SnapPosition::Right);
     }
-    if y <= mon.monitor_rect.y + if mon.showbar { ctx.g.cfg.bh } else { 5 } {
+    if y <= mon.monitor_rect.y + if mon.showbar { ctx.g.cfg.bar_height } else { 5 } {
         return Some(SnapPosition::Top);
     }
     None
@@ -102,7 +102,7 @@ fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
     };
     mon.showbar
         && y >= mon.by
-        && y < mon.by + ctx.g.cfg.bh
+        && y < mon.by + ctx.g.cfg.bar_height
         && x >= mon.monitor_rect.x
         && x < mon.monitor_rect.x + mon.monitor_rect.w
 }
@@ -170,7 +170,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
 
         if !has_tiling {
             if let (Some(c), Some(mon)) = (ctx.g.clients.get(&sel_win), ctx.g.selmon()) {
-                let bh = ctx.g.cfg.bh;
+                let bh = ctx.g.cfg.bar_height;
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.y >= mon.monitor_rect.y + bh - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
@@ -258,7 +258,7 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bh).unwrap_or(new_y);
+        let bar_bottom = ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bar_height).unwrap_or(new_y);
         new_y = bar_bottom;
     }
 
@@ -440,7 +440,7 @@ fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
     //   x = grab_start_x  (original window x at grab time)
     //   y = just below the bar
     if was_floating {
-        let bar_bottom = { ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bh).unwrap_or(0) };
+        let bar_bottom = { ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bar_height).unwrap_or(0) };
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.float_geo.x = grab_start_x;
             client.float_geo.y = bar_bottom;
@@ -720,7 +720,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
                 let bar_bottom = {
                     ctx.g
                         .selmon()
-                        .map(|m| m.by + ctx.g.cfg.bh + 1)
+                        .map(|m| m.by + ctx.g.cfg.bar_height + 1)
                         .unwrap_or(9999)
                 };
                 if m.event_y as i32 > bar_bottom {

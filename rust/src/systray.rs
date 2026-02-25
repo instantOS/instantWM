@@ -48,7 +48,7 @@ pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: Window) {
 
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i32) {
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
 
     // Extract client data first to avoid borrow issues
     let client_data = ctx.g.clients.get(&icon_win).map(|client| {
@@ -259,7 +259,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     if !systray_exists {
         let root = ctx.g.cfg.root;
-        let bh = ctx.g.cfg.bh;
+        let bh = ctx.g.cfg.bar_height;
 
         let net_system_tray = ctx.g.cfg.netatom.system_tray;
         let net_system_tray_horz = ctx.g.cfg.netatom.system_tray_orientation_horz;
@@ -349,7 +349,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
         None => return,
     };
 
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
     let systrayspacing = ctx.g.cfg.systrayspacing;
     let bg_pixel = ctx
         .g

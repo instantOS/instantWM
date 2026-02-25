@@ -154,7 +154,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             .unwrap_or(false)
     };
 
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
     let conn = ctx.x11.conn;
 
     {
@@ -288,7 +288,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             .get(&w)
             .map(|client| {
                 (
-                    ctx.g.cfg.sw,
+                    ctx.g.cfg.screen_width,
                     client.geo.x,
                     client.geo.y,
                     client.geo.w,

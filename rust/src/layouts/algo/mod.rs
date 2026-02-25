@@ -11,9 +11,9 @@
 //! | [`grid`]      | `grid`, `horizgrid`, `gaplessgrid`            |
 //! | [`stack`]     | `deck`, `bstack`, `bstackhoriz`               |
 //! | [`fibonacci`] | `spiral`, `dwindle`, `fibonacci`              |
-//! | [`tcl`]       | `tcl`                                         |
+//! | [`tcl`]       | `three_column`                                 |
 //! | [`overview`]  | `overviewlayout`                              |
-//! | [`float`]     | `floatl`, `apply_snap_for_window`, `save_floating` |
+//! | [`float`]     | `float_left`, `apply_snap_for_window`, `save_floating` |
 
 mod fibonacci;
 mod float;
@@ -34,21 +34,21 @@ pub use monocle::monocle;
 pub use grid::{gaplessgrid, grid, horizgrid};
 
 // ── stack family ─────────────────────────────────────────────────────────────
-pub use stack::{bstack, bstackhoriz, deck};
+pub use stack::{bottom_stack, bstackhoriz, deck};
 
 // ── fibonacci family ─────────────────────────────────────────────────────────
 pub use fibonacci::{dwindle, fibonacci, spiral};
 
 // ── three-column ─────────────────────────────────────────────────────────────
-pub use tcl::tcl;
+pub use tcl::three_column;
 
 // ── overview ─────────────────────────────────────────────────────────────────
 pub use overview::overviewlayout;
 
 // ── floating / snap ──────────────────────────────────────────────────────────
-pub use float::{floatl, save_floating};
+pub use float::{float_left, save_floating};
 
-// `apply_snap_for_window` is used internally by floatl; it is also exported
+// `apply_snap_for_window` is used internally by float_left; it is also exported
 // for any call-site that needs to apply snap geometry directly.
 #[allow(unused_imports)]
 pub use float::apply_snap_for_window;

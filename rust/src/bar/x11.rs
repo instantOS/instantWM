@@ -34,13 +34,13 @@ pub fn update_status(ctx: &mut WmCtx) {
 /// **Note**: This delegates to `m.update_bar_position(bh)`. Prefer using
 /// the method directly on `Monitor` for new code.
 pub fn update_bar_pos(m: &mut Monitor) {
-    let bh = get_globals().cfg.bh;
+    let bh = get_globals().cfg.bar_height;
     m.update_bar_position(bh);
 }
 
 pub fn resize_bar_win(m: &Monitor) {
     let g = get_globals();
-    let bh = g.cfg.bh;
+    let bh = g.cfg.bar_height;
     let showsystray = g.cfg.showsystray;
     let is_selmon = g.selmon().is_some_and(|selmon| selmon.num == m.num);
 
@@ -88,7 +88,7 @@ fn get_systray_width_static() -> u32 {
 
 /// Resize bar window with dependency injection.
 pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
     let showsystray = ctx.g.cfg.showsystray;
     let is_selmon = ctx.g.selmon().is_some_and(|selmon| selmon.num == m.num);
 
@@ -110,7 +110,7 @@ pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
 
 pub fn update_bars(ctx: &mut WmCtx) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bh = ctx.g.cfg.bh;
+        let bh = ctx.g.cfg.bar_height;
         let showsystray = ctx.g.cfg.showsystray;
         let status_bg = parse_color_to_u32(
             ctx.g

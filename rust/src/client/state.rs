@@ -211,7 +211,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
     let special_next = ctx.g.specialnext;
     let rules = ctx.g.cfg.rules.clone();
     let tagmask = ctx.g.tags.mask();
-    let bh = ctx.g.cfg.bh;
+    let bh = ctx.g.cfg.bar_height;
 
     // --- Handle SpecialNext shortcut ------------------------------------------
     if special_next != SpecialNext::None {
