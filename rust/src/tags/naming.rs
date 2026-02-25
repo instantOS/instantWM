@@ -1,10 +1,4 @@
 //! Tag name management.
-//!
-//! Tags can be given custom names at runtime (e.g. by a status bar script or
-//! a keybinding).  The two functions here cover the full lifecycle:
-//!
-//! * [`name_tag`]       – rename the currently active tag(s).
-//! * [`reset_name_tag`] – restore all tag names to their defaults (`"1"`…`"9"`).
 
 use crate::bar::draw_bars;
 use crate::contexts::WmCtx;
@@ -14,15 +8,10 @@ use crate::types::MAX_TAGS;
 /// Maximum byte-length (excluding the NUL terminator) accepted for a tag name.
 const MAX_TAGLEN: usize = 16;
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/// Rename the currently visible tag(s).
+/// Rename the currently visible tag(s) on the selected monitor.
 ///
-/// If the string is empty, the tag name is reset to its default
-/// (`"1"` … `"9"`).  Names longer than [`MAX_TAGLEN`] bytes are silently
-/// ignored.
+/// If the string is empty, the tag name is reset to its default (`"1"` … `"9"`).
+/// Names longer than [`MAX_TAGLEN`] bytes are silently ignored.
 ///
 /// All tags included in the monitor's current tagset are renamed, so the
 /// function works correctly even when multiple tags are visible at once.
@@ -31,34 +20,33 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
 
-    // -----------------------------------------------------------------------
-    // 2. Find which tags are currently selected on the active monitor.
-    // -----------------------------------------------------------------------
-    let (numtags, tagset) = (
-        ctx.g.tags.count(),
-        ctx.g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|m| m.tagset[m.seltags as usize])
-            .unwrap_or(0),
-    );
+    let selmon_id = ctx.g.selmon;
+
+    let (numtags, tagset) = match ctx.g.monitors.get(selmon_id) {
+        Some(mon) => (mon.tags.len(), mon.tagset[mon.seltags as usize]),
+        None => return,
+    };
 
     if tagset == 0 {
         return;
     }
 
-    // -----------------------------------------------------------------------
-    // 3. Apply the new (or default) name to every tag in the current tagset.
-    // -----------------------------------------------------------------------
-    for i in 0..numtags.min(MAX_TAGS) {
-        if (tagset & (1 << i)) == 0 {
-            continue;
-        }
-        if let Some(tag) = ctx.g.tags.tags.get_mut(i) {
-            if !arg.is_empty() {
-                tag.name = arg.to_string();
-            } else {
-                tag.name = default_tag_name(i);
+    // Apply the new (or default) name to every tag in the current tagset
+    // on every monitor, so secondary monitors stay in sync.
+    let mon_count = ctx.g.monitors.len();
+    for mon_idx in 0..mon_count {
+        for i in 0..numtags.min(MAX_TAGS) {
+            if (tagset & (1 << i)) == 0 {
+                continue;
+            }
+            if let Some(mon) = ctx.g.monitors.get_mut(mon_idx) {
+                if let Some(tag) = mon.tags.get_mut(i) {
+                    tag.name = if !arg.is_empty() {
+                        arg.to_string()
+                    } else {
+                        default_tag_name(i)
+                    };
+                }
             }
         }
     }
@@ -67,23 +55,24 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     draw_bars(ctx);
 }
 
-/// Reset every tag's name back to its default (`"1"` … `"9"`, etc.).
+/// Reset every tag's name back to its default (`"1"` … `"9"`, etc.) on all monitors.
 pub fn reset_name_tag(ctx: &mut WmCtx) {
-    let count = ctx.g.tags.count().min(MAX_TAGS);
+    let num_tags = ctx.g.tags.num_tags.min(MAX_TAGS);
+    let mon_count = ctx.g.monitors.len();
 
-    for i in 0..count {
-        if let Some(tag) = ctx.g.tags.tags.get_mut(i) {
-            tag.name = default_tag_name(i);
+    for mon_idx in 0..mon_count {
+        for i in 0..num_tags {
+            if let Some(mon) = ctx.g.monitors.get_mut(mon_idx) {
+                if let Some(tag) = mon.tags.get_mut(i) {
+                    tag.name = default_tag_name(i);
+                }
+            }
         }
     }
 
     ctx.g.tags.width = get_tag_width(ctx);
     draw_bars(ctx);
 }
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
 
 /// Return the default display name for tag index `i` (0-based).
 ///

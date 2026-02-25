@@ -215,8 +215,8 @@ pub fn toggle_bar() {
         selmon.showbar = !selmon.showbar;
 
         let current_tag = selmon.current_tag;
-        if current_tag > 0 && current_tag <= g.tags.tags.len() {
-            g.tags.tags[current_tag - 1].showbar = selmon.showbar;
+        if current_tag > 0 && current_tag <= selmon.tags.len() {
+            selmon.tags[current_tag - 1].showbar = selmon.showbar;
         }
 
         update_bar_pos(selmon);

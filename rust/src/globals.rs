@@ -78,6 +78,8 @@ pub struct RuntimeConfig {
     pub cursors: [Option<Cur>; 10],
     pub bh: i32,
     pub lrpad: i32,
+    /// Template tag list cloned into every new monitor.
+    pub tag_template: Vec<crate::types::Tag>,
 }
 
 impl Default for RuntimeConfig {
@@ -128,6 +130,7 @@ impl Default for RuntimeConfig {
             cursors: [const { None }; 10],
             bh: 0,
             lrpad: 0,
+            tag_template: Vec::new(),
         }
     }
 }
@@ -309,34 +312,53 @@ pub fn update_config_from_config(cfg: &crate::config::Config) {
     g.cfg.resources = cfg.resources.clone();
     g.cfg.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();
+    // Rebuild tag template so monitor creation picks up any config changes.
+    g.cfg.tag_template = build_tag_template(cfg);
 }
 
-/// Initialize tags from config
-pub fn init_tags_from_config(cfg: &crate::config::Config) {
-    let g = get_globals_mut();
-    g.tags.colors = cfg.tag_colors.clone();
-
+/// Build the canonical tag template from config.
+///
+/// Returns a `Vec<Tag>` that every monitor should clone into its own
+/// `tags` field via `Monitor::init_tags`.
+pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag> {
     let num_tags = cfg.num_tags;
-    g.tags.tags = Vec::with_capacity(num_tags);
+    let mut template = Vec::with_capacity(num_tags);
     for i in 0..num_tags {
         let name = if i < cfg.tag_names.len() {
             cfg.tag_names[i].clone()
         } else {
             format!("{}", i + 1)
         };
-
         let alt_name = if i < cfg.tag_alt_names.len() {
             cfg.tag_alt_names[i]
         } else {
             ""
         };
-
-        let mut tag = Tag::default();
+        let mut tag = crate::types::Tag::default();
         tag.name = name;
         tag.alt_name = alt_name;
         tag.nmaster = cfg.nmaster;
         tag.mfact = cfg.mfact;
         tag.showbar = cfg.showbar;
-        g.tags.tags.push(tag);
+        template.push(tag);
+    }
+    template
+}
+
+/// Initialize tags from config.
+///
+/// Stores `num_tags` in `TagSet` for mask/count helpers, then clones the
+/// template into every monitor that has already been created (on first
+/// startup there are none yet; `update_geom` will call `init_tags` on each
+/// monitor as it creates them).
+pub fn init_tags_from_config(cfg: &crate::config::Config) {
+    let template = build_tag_template(cfg);
+    let g = get_globals_mut();
+    g.tags.colors = cfg.tag_colors.clone();
+    g.tags.num_tags = cfg.num_tags;
+    g.cfg.tag_template = template.clone();
+    // Initialise any monitors that already exist (re-init on config reload).
+    for mon in g.monitors.iter_mut() {
+        mon.init_tags(&template);
     }
 }

@@ -171,10 +171,16 @@ impl Default for Tag {
 }
 
 /// All tag-related configuration and runtime state, grouped in one place.
+///
+/// Tag data (names, layouts, nmaster, mfact, showbar) lives on each
+/// `Monitor` in its `tags: Vec<Tag>` field. `TagSet` only holds the
+/// metadata that is shared across all monitors.
 #[derive(Debug, Clone, Default)]
 pub struct TagSet {
-    /// List of tags with their properties.
-    pub tags: Vec<Tag>,
+    /// Number of tags configured. Each monitor owns its own `Vec<Tag>` of
+    /// this length; this value is used for mask/count helpers that don't
+    /// have a monitor reference handy.
+    pub num_tags: usize,
     /// Raw colour strings from config/xresources, indexed [hover_state][type][colour_index].
     pub colors: Vec<Vec<Vec<&'static str>>>,
     /// Compiled colour objects derived from `colors`.
@@ -191,12 +197,12 @@ impl TagSet {
     /// Bitmask covering all active tags: `(1 << count) - 1`.
     #[inline]
     pub fn mask(&self) -> u32 {
-        (1u32 << self.tags.len()).wrapping_sub(1)
+        (1u32 << self.num_tags).wrapping_sub(1)
     }
 
     /// Number of active tags.
     #[inline]
     pub fn count(&self) -> usize {
-        self.tags.len()
+        self.num_tags
     }
 }

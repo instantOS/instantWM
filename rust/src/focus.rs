@@ -363,6 +363,8 @@ pub fn warp(ctx: &WmCtx, c_win: Window) {
     }
 }
 
+//TODO: is this duplicated? Look for other warp functions in this and the C
+//codebase and do what's best
 pub fn force_warp(ctx: &WmCtx, c_win: Window) {
     let conn = ctx.x11.conn;
     if let Some(c) = ctx.g.clients.get(&c_win) {
@@ -385,6 +387,7 @@ pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
     let root = ctx.g.cfg.root;
     let bh = ctx.g.cfg.bh;
 
+    //TODO: get rid of magic number
     if c_win == 0 {
         if !ctx.g.monitors.is_empty() {
             if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
@@ -482,6 +485,7 @@ fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
 }
 
 /// Focus the next or previous client in the stack.
+//TODO: check super + up/down keybinds, shouldn't these use this? Or is this function duplicated? Do what's best
 pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<Window>),
@@ -562,6 +566,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         current_idx - 1
     };
 
+    //TODO: proper error propagation and handling
     focus(ctx, Some(stack[next_idx]));
 }
 

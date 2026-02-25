@@ -79,6 +79,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
 /// # Returns
 /// * `Some(monitor_id)` - The monitor with maximum intersection area
 /// * `None` - If there are no monitors
+//TODO: get rid of this function, use find_monitor_by_rect instead
 pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Option<MonitorId> {
     find_monitor_by_rect(monitors, rect).or(Some(selmon))
 }
@@ -228,6 +229,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorI
 /// # Arguments
 /// * `ctx` - WM context with mutable access to monitor state
 /// * `direction` - Direction (> 0 for next, < 0 for previous)
+//TODO: use enum for direction
 pub fn focus_mon(ctx: &mut WmCtx, direction: i32) {
     if ctx.g.monitors.len() <= 1 {
         return;
@@ -354,9 +356,11 @@ fn ensure_monitor_count(count: usize) {
     let g = get_globals_mut();
     let (mfact, nmaster, showbar, topbar) =
         (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
+    let template = g.cfg.tag_template.clone();
     while g.monitors.len() < count {
-        g.monitors
-            .push(Monitor::new_with_values(mfact, nmaster, showbar, topbar));
+        let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
+        mon.init_tags(&template);
+        g.monitors.push(mon);
     }
 }
 
@@ -430,8 +434,10 @@ fn init_single_monitor(sw: i32, sh: i32) -> bool {
     let g = get_globals_mut();
     let (mfact, nmaster, showbar, topbar) =
         (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
-    g.monitors
-        .push(Monitor::new_with_values(mfact, nmaster, showbar, topbar));
+    let template = g.cfg.tag_template.clone();
+    let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
+    mon.init_tags(&template);
+    g.monitors.push(mon);
     if let Some(ref mut m) = g.monitors.first_mut() {
         m.num = 0;
         m.monitor_rect = Rect {
@@ -530,18 +536,14 @@ fn update_from_xinerama(
 }
 
 pub fn update_geom() -> bool {
-    eprintln!("TRACE: update_geom - start");
     let mut dirty = false;
 
     #[cfg(feature = "xinerama")]
     {
-        eprintln!("TRACE: update_geom - before get_x11");
         let x11 = get_x11();
-        eprintln!("TRACE: update_geom - after get_x11");
 
         if let Some(ref conn) = x11.conn {
             if let Some(result) = update_from_xinerama(x11, conn) {
-                eprintln!("TRACE: update_geom - xinerama result = {}", result);
                 return result;
             }
         }
@@ -557,7 +559,6 @@ pub fn update_geom() -> bool {
         dirty = update_single_monitor(sw, sh);
     }
 
-    eprintln!("TRACE: update_geom - end, dirty = {}", dirty);
     dirty
 }
 

@@ -165,11 +165,16 @@ fn load_color_resources(ctx: &mut WmCtx, resource_str: &str) {
 }
 
 fn load_tag_resources(ctx: &mut WmCtx, resource_str: &str) {
+    let mon_count = ctx.g.monitors.len();
     for i in 0..9 {
         let propname = format!("tag.{}", i + 1);
         if let Some(value) = find_resource(resource_str, &propname) {
-            if i < ctx.g.tags.tags.len() {
-                ctx.g.tags.tags[i].name = value;
+            for mon_idx in 0..mon_count {
+                if let Some(mon) = ctx.g.monitors.get_mut(mon_idx) {
+                    if i < mon.tags.len() {
+                        mon.tags[i].name = value.clone();
+                    }
+                }
             }
         }
     }
@@ -194,11 +199,16 @@ fn find_resource(resource_str: &str, name: &str) -> Option<String> {
 }
 
 pub fn verify_tags_xres(ctx: &mut WmCtx) {
-    for i in 0..9 {
-        if i < ctx.g.tags.tags.len() {
-            let len = ctx.g.tags.tags[i].name.len();
-            if len > MAX_TAGLEN - 1 || len == 0 {
-                ctx.g.tags.tags[i].name = "Xres err".to_string();
+    let mon_count = ctx.g.monitors.len();
+    for mon_idx in 0..mon_count {
+        for i in 0..9 {
+            if let Some(mon) = ctx.g.monitors.get_mut(mon_idx) {
+                if i < mon.tags.len() {
+                    let len = mon.tags[i].name.len();
+                    if len > MAX_TAGLEN - 1 || len == 0 {
+                        mon.tags[i].name = "Xres err".to_string();
+                    }
+                }
             }
         }
     }

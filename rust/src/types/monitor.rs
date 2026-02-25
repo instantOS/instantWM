@@ -322,6 +322,7 @@ impl Monitor {
 }
 
 /// Find a monitor in a given direction from the current one.
+//TODO: use enum for direction
 pub fn find_monitor_by_direction(monitors: &[Monitor], current: usize, dir: i32) -> Option<usize> {
     if monitors.is_empty() {
         return None;

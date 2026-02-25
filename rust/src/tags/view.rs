@@ -383,10 +383,10 @@ pub(super) fn apply_pertag_settings(ctx: &mut WmCtx) {
             return;
         };
         let current_tag = mon.current_tag;
-        if current_tag == 0 || current_tag > ctx.g.tags.tags.len() {
+        if current_tag == 0 || current_tag > mon.tags.len() {
             return;
         }
-        let tag = &ctx.g.tags.tags[current_tag - 1];
+        let tag = &mon.tags[current_tag - 1];
         (tag.nmaster, tag.mfact)
     };
 

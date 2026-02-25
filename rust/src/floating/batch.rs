@@ -63,12 +63,12 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
         return Vec::new();
     };
 
-    let numtags = globals.tags.count();
+    let numtags = mon.tags.len();
     let mut wins = Vec::new();
 
     for tag_idx in 0..numtags {
         // Skip tags that have a tiling layout — only purely-floating tags matter.
-        let tag_is_floating = match globals.tags.tags.get(tag_idx) {
+        let tag_is_floating = match mon.tags.get(tag_idx) {
             Some(tag) => !tag.layouts.is_tiling(),
             _ => false,
         };

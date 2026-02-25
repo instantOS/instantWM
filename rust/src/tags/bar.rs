@@ -35,25 +35,25 @@ pub(crate) struct VisibleTag<'a> {
 /// and alt-name selection. Both rendering and hit-testing consume this.
 pub(crate) fn visible_tags<'a>(
     globals: &'a Globals,
-    monitor: &Monitor,
+    monitor: &'a Monitor,
     occupied: u32,
 ) -> Vec<VisibleTag<'a>> {
     let lrpad = globals.cfg.lrpad;
     let show_alt = globals.tags.show_alt;
-    let slot_count = globals.tags.count().min(MAX_BAR_SLOTS);
+    let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
 
     for slot in 0..slot_count {
         let tag_index = tag_index_for_slot(monitor, slot);
-        if tag_index >= globals.tags.count() {
+        if tag_index >= monitor.tags.len() {
             continue;
         }
         if should_skip(monitor, tag_index, occupied) {
             continue;
         }
 
-        let tag = &globals.tags.tags[tag_index];
+        let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
         let width = text_width(label) + lrpad;
 
@@ -80,6 +80,9 @@ pub fn get_tag_width(ctx: &WmCtx) -> i32 {
     let Some(m) = ctx.g.monitors.get(ctx.g.selmon) else {
         return ctx.g.cfg.startmenusize;
     };
+    if m.tags.is_empty() {
+        return ctx.g.cfg.startmenusize;
+    }
 
     let tags_width: i32 = visible_tags(ctx.g, m, occupied)
         .iter()
@@ -97,6 +100,9 @@ pub fn get_tag_at_x(ctx: &WmCtx, click_x: i32) -> i32 {
     let Some(m) = ctx.g.monitors.get(ctx.g.selmon) else {
         return -1;
     };
+    if m.tags.is_empty() {
+        return -1;
+    }
 
     let mut acc = ctx.g.cfg.startmenusize;
     for t in visible_tags(ctx.g, m, occupied) {

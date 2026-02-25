@@ -225,19 +225,21 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
     let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        for tag in ctx.g.tags.tags.iter_mut() {
-            tag.layouts.set_layout(layout);
+        for mon in ctx.g.monitors.iter_mut() {
+            for tag in mon.tags.iter_mut() {
+                tag.layouts.set_layout(layout);
+            }
         }
         ctx.g.tags.prefix = false;
         finish_layout_change(ctx);
         return;
     }
 
-    if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+    let selmon = ctx.g.selmon;
+    if let Some(m) = ctx.g.monitors.get_mut(selmon) {
         let current_tag = m.current_tag;
-        if current_tag > 0 && current_tag <= ctx.g.tags.tags.len() {
-            let tag = &mut ctx.g.tags.tags[current_tag - 1];
-            tag.layouts.set_layout(layout);
+        if current_tag > 0 && current_tag <= m.tags.len() {
+            m.tags[current_tag - 1].layouts.set_layout(layout);
         }
     }
 
@@ -248,19 +250,21 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        for tag in ctx.g.tags.tags.iter_mut() {
-            tag.layouts.toggle_slot();
+        for mon in ctx.g.monitors.iter_mut() {
+            for tag in mon.tags.iter_mut() {
+                tag.layouts.toggle_slot();
+            }
         }
         ctx.g.tags.prefix = false;
         finish_layout_change(ctx);
         return;
     }
 
-    if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+    let selmon = ctx.g.selmon;
+    if let Some(m) = ctx.g.monitors.get_mut(selmon) {
         let current_tag = m.current_tag;
-        if current_tag > 0 && current_tag <= ctx.g.tags.tags.len() {
-            let tag = &mut ctx.g.tags.tags[current_tag - 1];
-            tag.layouts.toggle_slot();
+        if current_tag > 0 && current_tag <= m.tags.len() {
+            m.tags[current_tag - 1].layouts.toggle_slot();
         }
     }
 
@@ -271,19 +275,21 @@ pub fn restore_last_layout(ctx: &mut WmCtx<'_>) {
     let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        for tag in ctx.g.tags.tags.iter_mut() {
-            tag.layouts.restore_last_layout();
+        for mon in ctx.g.monitors.iter_mut() {
+            for tag in mon.tags.iter_mut() {
+                tag.layouts.restore_last_layout();
+            }
         }
         ctx.g.tags.prefix = false;
         finish_layout_change(ctx);
         return;
     }
 
-    if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+    let selmon = ctx.g.selmon;
+    if let Some(m) = ctx.g.monitors.get_mut(selmon) {
         let current_tag = m.current_tag;
-        if current_tag > 0 && current_tag <= ctx.g.tags.tags.len() {
-            let tag = &mut ctx.g.tags.tags[current_tag - 1];
-            tag.layouts.restore_last_layout();
+        if current_tag > 0 && current_tag <= m.tags.len() {
+            m.tags[current_tag - 1].layouts.restore_last_layout();
         }
     }
 
@@ -365,8 +371,8 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
             m.nmaster = new_nmaster;
 
             let tag = m.current_tag;
-            if tag > 0 && tag <= ctx.g.tags.tags.len() {
-                ctx.g.tags.tags[tag - 1].nmaster = new_nmaster;
+            if tag > 0 && tag <= m.tags.len() {
+                m.tags[tag - 1].nmaster = new_nmaster;
             }
         }
     }
@@ -414,11 +420,12 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     }
 
     {
-        if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        let selmon = ctx.g.selmon;
+        if let Some(m) = ctx.g.monitors.get_mut(selmon) {
             m.mfact = new_mfact;
             let tag = m.current_tag;
-            if tag > 0 && tag <= ctx.g.tags.tags.len() {
-                ctx.g.tags.tags[tag - 1].mfact = new_mfact;
+            if tag > 0 && tag <= m.tags.len() {
+                m.tags[tag - 1].mfact = new_mfact;
             }
         }
     }
