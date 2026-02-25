@@ -672,18 +672,12 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
 
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.
 ///
-/// * Plain click on a different tag  → [`view`] (switch to that tag)
-/// * Plain click on the current tag  → drag to move/follow a window to a tag
-/// * Drag then release with `Shift`   → [`set_client_tag`] (move to tag, stay on view)
-/// * Drag then release with `Control` → [`tag_all`]
-/// * Drag then release (no modifier)  → [`follow_tag`]
+/// * Plain click on a different tag   → [`view`]
+/// * Plain click on the current tag   → drag; release with `Shift` → [`set_client_tag`],
+///   `Control` → [`tag_all`], no modifier → [`follow_tag`]
 ///
-/// Right-clicks on tags are handled entirely in `buttons.rs` via
-/// `toggle_view_tag`, which receives the tag index directly from the
-/// `BarPosition::Tag(idx)` passed to the button action.
-///
-/// If the pointer leaves the bar during the drag the loop exits without action.
-pub fn drag_tag(ctx: &mut WmCtx) {
+/// Exits without action if the pointer leaves the bar during the drag.
+pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, click_root_x: i32) {
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
         let selmon_id = ctx.g.selmon;
         let mon_mx = ctx
@@ -693,22 +687,25 @@ pub fn drag_tag(ctx: &mut WmCtx) {
             .map(|m| m.monitor_rect.x)
             .unwrap_or(0);
 
-        let Some((ptr_x, _)) = get_root_ptr(ctx) else {
-            return;
+        let initial_tag = match bar_pos {
+            BarPosition::Tag(idx) => 1u32 << (idx as u32),
+            _ => {
+                let Some((ptr_x, _)) = get_root_ptr(ctx) else {
+                    return;
+                };
+                ctx.g
+                    .monitors
+                    .get(selmon_id)
+                    .and_then(|mon| {
+                        let local_x = ptr_x - mon.monitor_rect.x;
+                        match bar_position_at_x(mon, ctx, local_x) {
+                            BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or(0)
+            }
         };
-
-        let initial_tag = ctx
-            .g
-            .monitors
-            .get(selmon_id)
-            .and_then(|mon| {
-                let local_x = ptr_x - mon.monitor_rect.x;
-                match bar_position_at_x(mon, ctx, local_x) {
-                    BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
-                    _ => None,
-                }
-            })
-            .unwrap_or(0);
 
         let current_tagset = ctx
             .g
@@ -774,15 +771,12 @@ pub fn drag_tag(ctx: &mut WmCtx) {
                 }
 
                 let local_x = m.event_x as i32 - mon_mx;
-                // Use the canonical hit-test to get the hovered bar position,
-                // then convert to a gesture for tag hover highlighting.
                 let new_gesture = ctx
                     .g
                     .monitors
                     .get(selmon_id)
                     .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x)))
                     .unwrap_or(Gesture::None);
-                // Encode gesture as i32 for change-detection (reuse last_tag slot).
                 let gesture_key = match new_gesture {
                     Gesture::Tag(idx) => idx as i32,
                     _ => -1,
@@ -845,16 +839,14 @@ pub fn drag_tag(ctx: &mut WmCtx) {
 
 /// Left-click / drag handler for a window title bar entry.
 ///
-/// Click (no drag):
-/// * Hidden window → show and focus it.
-/// * Focused window → hide it.
-/// * Otherwise → focus it.
-///
-/// Drag (cursor moves > [`DRAG_THRESHOLD`] px): show, focus, warp, then
-/// hand off to [`move_mouse`].
-pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
-    // Snapshot was_focused and was_hidden before grabbing the pointer so that
-    // the state reflects the moment the user clicked, not after any side-effects.
+/// Click: hidden → show+focus; focused → hide; otherwise → focus.
+/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`move_mouse`].
+pub fn window_title_mouse_handler(
+    ctx: &mut WmCtx,
+    win: Window,
+    click_root_x: i32,
+    click_root_y: i32,
+) {
     let sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
     let was_focused = sel == Some(win);
     let was_hidden = crate::client::is_hidden(win);
@@ -862,10 +854,8 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
     if !grab_pointer(ctx, 0) {
         return;
     }
-    let Some((start_x, start_y)) = get_root_ptr(ctx) else {
-        ungrab_ctx(ctx);
-        return;
-    };
+    let start_x = click_root_x;
+    let start_y = click_root_y;
 
     let mut last_time: u32 = 0;
 
@@ -897,18 +887,14 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
         }
     }
 
-    // Only reached on ButtonRelease (click, not drag).
     ungrab_ctx(ctx);
     if was_hidden {
-        // Unminimize: show the window, focus it, and restack.
         crate::client::show(ctx, win);
         focus(ctx, Some(win));
         restack(ctx, ctx.g.selmon);
     } else if was_focused {
-        // Already focused: minimize it.
         crate::client::hide(ctx, win);
     } else {
-        // Unfocused: focus it and restack.
         focus(ctx, Some(win));
         restack(ctx, ctx.g.selmon);
     }
@@ -918,15 +904,15 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
 
 /// Right-click / drag handler for a window title bar entry.
 ///
-/// Click (no drag):
-/// * Shows and focuses the window if hidden.
-/// * Calls [`crate::client::zoom`] to promote it to the master area.
-///
-/// Drag (cursor moves > [`DRAG_THRESHOLD`] px): shows/focuses if hidden, then
-/// hands off to [`crate::mouse::resize::resize_mouse`].
-///
-/// Does nothing when the window is in true fullscreen.
-pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
+/// Click: show+focus if hidden, otherwise zoom to master.
+/// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, hand off to resize.
+/// No-op when the window is in true fullscreen.
+pub fn window_title_mouse_handler_right(
+    ctx: &mut WmCtx,
+    win: Window,
+    click_root_x: i32,
+    click_root_y: i32,
+) {
     {
         if ctx
             .g
@@ -944,10 +930,8 @@ pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
     if !grab_pointer(ctx, 2) {
         return;
     }
-    let Some((start_x, start_y)) = get_root_ptr(ctx) else {
-        ungrab_ctx(ctx);
-        return;
-    };
+    let start_x = click_root_x;
+    let start_y = click_root_y;
 
     let mut last_time: u32 = 0;
 

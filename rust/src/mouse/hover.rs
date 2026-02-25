@@ -82,19 +82,15 @@ fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
     true
 }
 
-/// Find a visible floating window whose resize border zone contains the cursor.
-/// Returns the window ID if found, or None.
-///
-/// Also checks that the cursor is not on the bar.
-pub fn find_floating_win_at_resize_border(ctx: &WmCtx) -> Option<Window> {
+/// Find a visible floating window whose resize border zone contains (`px`, `py`).
+/// Returns `None` if the cursor is on the bar or no window matches.
+pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Option<Window> {
     let has_tiling = ctx
         .g
         .monitors
         .get(ctx.g.selmon)
         .map(|m| m.is_tiling_layout())
         .unwrap_or(true);
-
-    let (px, py) = get_root_ptr(ctx)?;
 
     if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
         if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
@@ -118,9 +114,8 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx) -> Option<Window> {
     None
 }
 
-/// Return `true` when the pointer is in the resize-border zone of the
-/// currently selected floating window.
-pub fn is_in_resize_border(ctx: &WmCtx) -> bool {
+/// Return `true` when (`px`, `py`) is in the resize-border zone of the selected floating window.
+pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
     let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
         return false;
     };
@@ -137,9 +132,6 @@ pub fn is_in_resize_border(ctx: &WmCtx) -> bool {
         return false;
     }
 
-    let Some((px, py)) = get_root_ptr(ctx) else {
-        return false;
-    };
     if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
         if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
             return false;
@@ -172,26 +164,19 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
 
 // ── Motion-notify hook ───────────────────────────────────────────────────────
 
-/// Called from [`crate::events::motion_notify`] when the cursor is below the
-/// bar (i.e. in the desktop area).
-///
-/// Sets the root cursor to resize and updates `globals.altcursor` when the
-/// pointer is in the border zone of a floating window.  Resets both when the
-/// pointer leaves.
-///
-/// Returns `true` when the hover consumed the event and the caller should
-/// skip further motion handling.
-pub fn handle_floating_resize_hover(ctx: &mut WmCtx) -> bool {
+/// Sets the resize cursor and `altcursor` when the pointer is in a floating
+/// window's border zone; resets both when it leaves.  Returns `true` when the
+/// event is consumed.
+pub fn handle_floating_resize_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     if has_visible_tiled_client(ctx) {
         return false;
     }
 
-    if let Some(win) = find_floating_win_at_resize_border(ctx) {
+    if let Some(win) = find_floating_win_at_resize_border(ctx, root_x, root_y) {
         let (cursor_idx, dir, should_focus) = {
             let (cursor_idx, dir) = if let Some(c) = ctx.g.clients.get(&win) {
-                let (px, py) = get_root_ptr(ctx).unwrap_or_default();
-                let hit_x = px - c.geo.x;
-                let hit_y = py - c.geo.y;
+                let hit_x = root_x - c.geo.x;
+                let hit_y = root_y - c.geo.y;
                 let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
                 (dir.cursor_index(), dir)
             } else {
@@ -256,7 +241,10 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// Returns `true` if the function entered its loop (caller should skip normal
 /// focus/event handling), `false` if the cursor was not in a resize border.
 pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
-    if !is_in_resize_border(ctx) {
+    let Some((px, py)) = get_root_ptr(ctx) else {
+        return false;
+    };
+    if !is_in_resize_border(ctx, px, py) {
         return false;
     }
 
@@ -275,7 +263,10 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
             x11rb::protocol::Event::ButtonRelease(_) => break,
 
             x11rb::protocol::Event::MotionNotify(_) => {
-                if !is_in_resize_border(ctx) {
+                let in_border = get_root_ptr(ctx)
+                    .map(|(px, py)| is_in_resize_border(ctx, px, py))
+                    .unwrap_or(false);
+                if !in_border {
                     // Focus the window under the cursor when leaving.
                     let should_refocus = get_cursor_client_win(ctx).filter(|&hover_win| {
                         ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win)

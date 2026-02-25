@@ -57,9 +57,15 @@ pub struct Button {
     pub button: MouseButton,
     /// Action to execute when button is pressed.
     ///
-    /// The second argument is the full `BarPosition` of the actual click,
-    /// giving the handler access to tag indices, window handles, etc.
-    pub action: Rc<Box<dyn Fn(&mut WmCtx, BarPosition)>>,
+    /// Arguments:
+    /// * `&mut WmCtx` — the window manager context
+    /// * `BarPosition` — the exact bar region that was clicked (tag index,
+    ///   window handle, etc.)
+    /// * `i32, i32` — `root_x`, `root_y` from the `ButtonPressEvent`,
+    ///   available without any extra X11 round-trip.  Drag handlers use
+    ///   these as their initial anchor instead of calling `get_root_ptr`.
+    ///   Handlers that don't need the coordinates use `_`.
+    pub action: Rc<Box<dyn Fn(&mut WmCtx, BarPosition, i32, i32)>>,
 }
 
 impl Button {

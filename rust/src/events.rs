@@ -116,7 +116,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         if clean_mask(button.mask, numlockmask) != clean_state {
             continue;
         }
-        (button.action)(ctx, bar_pos);
+        (button.action)(ctx, bar_pos, e.root_x as i32, e.root_y as i32);
     }
 }
 
@@ -419,7 +419,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     };
 
     if root_y >= monitor_y + bar_height - 3 {
-        if handle_floating_resize_hover(ctx) {
+        if handle_floating_resize_hover(ctx, root_x, root_y) {
             return;
         }
         if handle_sidebar_hover(ctx, root_x, root_y) {
@@ -530,12 +530,20 @@ pub fn leave_notify(ctx: &mut WmCtx, e: &LeaveNotifyEvent) {
     let leaving_client = win_to_client(e.event);
 
     if let Some(leaving_win) = leaving_client {
-        if let Some(hover_win) = find_floating_win_at_resize_border(ctx) {
-            if hover_win == leaving_win {
-                if ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win) {
-                    focus(ctx, Some(hover_win));
+        let conn = ctx.x11.conn;
+        let root = ctx.g.cfg.root;
+        let ptr = x11rb::protocol::xproto::query_pointer(conn, root)
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .map(|r| (r.root_x as i32, r.root_y as i32));
+        if let Some((px, py)) = ptr {
+            if let Some(hover_win) = find_floating_win_at_resize_border(ctx, px, py) {
+                if hover_win == leaving_win {
+                    if ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win) {
+                        focus(ctx, Some(hover_win));
+                    }
+                    if hover_resize_mouse(ctx) {}
                 }
-                if hover_resize_mouse(ctx) {}
             }
         }
     };
