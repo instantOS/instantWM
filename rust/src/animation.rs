@@ -197,11 +197,11 @@ pub fn check_animate(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, res
 }
 
 pub fn up_scale_client(ctx: &mut WmCtx, win: Window) {
-    crate::client::scale_client(ctx, win, 1);
+    crate::client::scale_client(ctx, win, 110);
 }
 
 pub fn down_scale_client(ctx: &mut WmCtx, win: Window) {
-    crate::client::scale_client(ctx, win, 100);
+    crate::client::scale_client(ctx, win, 90);
 }
 
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {

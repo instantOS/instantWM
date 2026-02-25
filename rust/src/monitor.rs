@@ -21,15 +21,20 @@
 //! ```ignore
 //! use crate::contexts::WmCtx;
 //! use crate::globals::{get_globals_mut, get_x11};
-//! use crate::monitor::{create_monitor_with_defaults, focus_mon, dir_to_mon};
+//! use crate::monitor::{create_monitor_with_values, focus_mon, dir_to_mon};
 //!
 //! // Create context from global state
 //! let mut g = get_globals_mut();
 //! let x11 = get_x11();
-//! let mut ctx = WmCtx::new(&mut g, &x11);
+//! let ctx = WmCtx::new(&mut g, &x11);
 //!
 //! // Pass context explicitly
-//! let mon = create_monitor_with_defaults(&mut ctx);
+//! let mon = create_monitor_with_values(
+//!     ctx.g.cfg.mfact,
+//!     ctx.g.cfg.nmaster,
+//!     ctx.g.cfg.showbar,
+//!     ctx.g.cfg.topbar,
+//! );
 //! focus_mon(&mut ctx, 1);  // Focus next monitor
 //! let target = dir_to_mon(&ctx.g.monitors, ctx.g.selmon, 1);
 //! ```
@@ -60,31 +65,6 @@ use x11rb::protocol::xproto::Window;
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
-/// Create a new monitor with default values from the runtime configuration.
-///
-/// This function uses dependency injection by accepting configuration parameters
-/// instead of accessing global state directly.
-pub fn create_monitor_with_defaults(ctx: &WmCtx) -> Monitor {
-    eprintln!("TRACE: create_monitor_with_defaults - start");
-
-    let m = Monitor {
-        tagset: [1, 1],
-        mfact: ctx.g.cfg.mfact,
-        nmaster: ctx.g.cfg.nmaster,
-        showbar: ctx.g.cfg.showbar,
-        topbar: ctx.g.cfg.topbar,
-        clientcount: 0,
-        overlaymode: OverlayMode::Top,
-        current_tag: 1,
-        prev_tag: 1,
-        ..Default::default()
-    };
-    eprintln!("TRACE: create_monitor_with_defaults - after creating Monitor");
-
-    eprintln!("TRACE: create_monitor_with_defaults - returning");
-    m
-}
-
 /// Create a new monitor with explicit values.
 ///
 /// This function is useful when you need to create a monitor with
@@ -95,9 +75,7 @@ pub fn create_monitor_with_values(
     showbar: bool,
     topbar: bool,
 ) -> Monitor {
-    eprintln!("TRACE: create_monitor_with_values - start");
-
-    let m = Monitor {
+    Monitor {
         tagset: [1, 1],
         mfact,
         nmaster,
@@ -108,11 +86,7 @@ pub fn create_monitor_with_values(
         current_tag: 1,
         prev_tag: 1,
         ..Default::default()
-    };
-    eprintln!("TRACE: create_monitor_with_values - after creating Monitor");
-
-    eprintln!("TRACE: create_monitor_with_values - returning");
-    m
+    }
 }
 
 /// Create a new monitor with default values.
