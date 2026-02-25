@@ -139,7 +139,7 @@ fn get_tag_scheme(
 
 pub(crate) fn draw_tag_indicators(
     ctx: &WmCtx,
-    m: &mut Monitor,
+    m: &Monitor,
     mut x: i32,
     occupied_tags: u32,
     urg: u32,
@@ -347,7 +347,7 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
     0
 }
 
-fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
+fn draw_window_title(m: &Monitor, c: &Client, x: i32, width: i32, bh: i32) -> Option<u32> {
     let g = get_globals();
 
     let is_hover = g.monitors.get(g.selmon).is_some_and(|selmon| {
@@ -384,13 +384,16 @@ fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
 
     if is_selected {
         draw_close_button(c, x, bh);
-        m.activeoffset = m.monitor_rect.x as u32 + x as u32;
+        return Some(m.monitor_rect.x as u32 + x as u32);
     }
+
+    None
 }
 
-pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i32) {
+pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -> Option<u32> {
     let g = get_globals();
     let selected = m.selected_tags();
+    let mut new_activeoffset = None;
 
     if n > 0 {
         let total_width = w + 1;
@@ -424,10 +427,12 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
                 each_width
             };
 
-            draw_window_title(m, &c, x, this_width, bh);
+            if let Some(offset) = draw_window_title(m, &c, x, this_width, bh) {
+                new_activeoffset = Some(offset);
+            }
             x += this_width;
         }
-        return;
+        return new_activeoffset;
     }
 
     {
@@ -464,4 +469,5 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
             );
         }
     }
+    None
 }

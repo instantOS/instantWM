@@ -79,9 +79,7 @@ pub fn command_prefix(ctx: &mut WmCtx, value: u32) {
     ctx.g.tags.prefix = value != 0;
 
     let selmon_id = ctx.g.selmon;
-    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-        draw_bar(ctx, mon);
-    }
+    draw_bar(ctx, selmon_id);
 }
 
 pub fn init_commands() -> Vec<XCommand> {

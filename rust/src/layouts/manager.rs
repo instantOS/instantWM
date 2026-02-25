@@ -157,10 +157,9 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     if is_overview {
         return;
     }
+    draw_bar(ctx, mon_id);
+
     let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
-
-    draw_bar(m);
-
     let sel_win = match m.sel {
         Some(w) => w,
         None => return,
@@ -297,8 +296,8 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 
     if sel.is_some() {
         arrange(ctx, Some(selmon));
-    } else if let Some(m) = ctx.g.monitors.get_mut(selmon) {
-        draw_bar(m);
+    } else {
+        draw_bar(ctx, selmon);
     }
 }
 

@@ -183,7 +183,7 @@ pub trait X11ConnExt {
         propagate: bool,
         destination: x11rb::protocol::xproto::Window,
         event_mask: x11rb::protocol::xproto::EventMask,
-        event: impl x11rb::x11_utils::Serialize,
+        event: impl Into<[u8; 32]>,
     ) -> Result<()>;
 
     /// Grab the server with error context.
@@ -286,6 +286,7 @@ impl X11ConnExt for RustConnection {
         time: u32,
     ) -> Result<()> {
         self.set_input_focus(revert_to, window, time)
+            .map(|_| ())
             .context("failed to set input focus")
     }
 
@@ -295,6 +296,7 @@ impl X11ConnExt for RustConnection {
         property: x11rb::protocol::xproto::Atom,
     ) -> Result<()> {
         self.delete_property(window, property)
+            .map(|_| ())
             .context("failed to delete property")
     }
 
@@ -304,6 +306,7 @@ impl X11ConnExt for RustConnection {
         value_list: &x11rb::protocol::xproto::ConfigureWindowAux,
     ) -> Result<()> {
         self.configure_window(window, value_list)
+            .map(|_| ())
             .context("failed to configure window")
     }
 
@@ -313,6 +316,7 @@ impl X11ConnExt for RustConnection {
         value_list: &x11rb::protocol::xproto::ChangeWindowAttributesAux,
     ) -> Result<()> {
         self.change_window_attributes(window, value_list)
+            .map(|_| ())
             .context("failed to change window attributes")
     }
 
@@ -325,15 +329,20 @@ impl X11ConnExt for RustConnection {
         data: &[u32],
     ) -> Result<()> {
         self.change_property32(mode, window, property, type_, data)
+            .map(|_| ())
             .context("failed to change property32")
     }
 
     fn map_window_ctx(&self, window: x11rb::protocol::xproto::Window) -> Result<()> {
-        self.map_window(window).context("failed to map window")
+        self.map_window(window)
+            .map(|_| ())
+            .context("failed to map window")
     }
 
     fn unmap_window_ctx(&self, window: x11rb::protocol::xproto::Window) -> Result<()> {
-        self.unmap_window(window).context("failed to unmap window")
+        self.unmap_window(window)
+            .map(|_| ())
+            .context("failed to unmap window")
     }
 
     fn send_event_ctx(
@@ -341,18 +350,23 @@ impl X11ConnExt for RustConnection {
         propagate: bool,
         destination: x11rb::protocol::xproto::Window,
         event_mask: x11rb::protocol::xproto::EventMask,
-        event: impl x11rb::x11_utils::Serialize,
+        event: impl Into<[u8; 32]>,
     ) -> Result<()> {
         self.send_event(propagate, destination, event_mask, event)
+            .map(|_| ())
             .context("failed to send event")
     }
 
     fn grab_server_ctx(&self) -> Result<()> {
-        self.grab_server().context("failed to grab server")
+        self.grab_server()
+            .map(|_| ())
+            .context("failed to grab server")
     }
 
     fn ungrab_server_ctx(&self) -> Result<()> {
-        self.ungrab_server().context("failed to ungrab server")
+        self.ungrab_server()
+            .map(|_| ())
+            .context("failed to ungrab server")
     }
 
     fn warp_pointer_ctx(
@@ -369,6 +383,7 @@ impl X11ConnExt for RustConnection {
         self.warp_pointer(
             src_window, dst_window, src_x, src_y, src_width, src_height, dst_x, dst_y,
         )
+        .map(|_| ())
         .context("failed to warp pointer")
     }
 
@@ -399,6 +414,7 @@ impl X11ConnExt for RustConnection {
             visual,
             value_list,
         )
+        .map(|_| ())
         .context("failed to create window")
     }
 
@@ -410,15 +426,19 @@ impl X11ConnExt for RustConnection {
         y: i16,
     ) -> Result<()> {
         self.reparent_window(window, parent, x, y)
+            .map(|_| ())
             .context("failed to reparent window")
     }
 
     fn kill_client_ctx(&self, resource: x11rb::protocol::xproto::Window) -> Result<()> {
-        self.kill_client(resource).context("failed to kill client")
+        self.kill_client(resource)
+            .map(|_| ())
+            .context("failed to kill client")
     }
 
     fn allow_events_ctx(&self, mode: x11rb::protocol::xproto::Allow, time: u32) -> Result<()> {
         self.allow_events(mode, time)
+            .map(|_| ())
             .context("failed to allow events")
     }
 
@@ -428,6 +448,7 @@ impl X11ConnExt for RustConnection {
         window: x11rb::protocol::xproto::Window,
     ) -> Result<()> {
         self.change_save_set(mode, window)
+            .map(|_| ())
             .context("failed to change save set")
     }
 
@@ -454,6 +475,7 @@ impl X11ConnExt for RustConnection {
             button,
             modifiers,
         )
+        .map(|_| ())
         .context("failed to grab button")
     }
 
@@ -464,6 +486,7 @@ impl X11ConnExt for RustConnection {
         modifiers: x11rb::protocol::xproto::ModMask,
     ) -> Result<()> {
         self.ungrab_button(button, window, modifiers)
+            .map(|_| ())
             .context("failed to ungrab button")
     }
 
@@ -474,6 +497,7 @@ impl X11ConnExt for RustConnection {
         time: u32,
     ) -> Result<()> {
         self.set_selection_owner(owner, selection, time)
+            .map(|_| ())
             .context("failed to set selection owner")
     }
 }

@@ -325,14 +325,13 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     };
 
     if let Some(mon_id) = win_to_mon_with_ctx(ctx, e.window) {
-        if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
-            if e.window != mon.barwin {
-                return;
-            }
-            // Clone to avoid borrow issues
-            let mut m = mon.clone();
-            draw_bar(ctx, &mut m);
-            *mon = m;
+        let is_barwin = ctx
+            .g
+            .monitors
+            .get(mon_id)
+            .is_some_and(|m| e.window == m.barwin);
+        if is_barwin {
+            draw_bar(ctx, mon_id);
         }
     };
 }
@@ -449,10 +448,8 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     if new_gesture != current_gesture {
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
-            let mut m = mon.clone();
-            draw_bar(ctx, &mut m);
-            *mon = m;
         }
+        draw_bar(ctx, selmon_id);
     };
 }
 

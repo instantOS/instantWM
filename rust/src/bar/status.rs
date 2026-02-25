@@ -23,21 +23,19 @@ struct StatusLayout {
     total_width: i32,
 }
 
-pub(crate) fn draw_status_bar(ctx: &mut WmCtx, m: &mut Monitor, bh: i32) -> i32 {
+pub(crate) fn draw_status_bar(ctx: &WmCtx, m: &Monitor, bh: i32) -> (i32, i32) {
     let stext = ctx.g.status_text.clone();
     if stext.is_empty() {
-        return 0;
+        return (0, 0);
     }
 
     let items = parse_status_items(stext.as_bytes());
     let layout = measure_layout(ctx, m, &items);
 
-    ctx.g.status_text_width = layout.total_width;
-
     let mut drw = get_drw().clone();
     draw_items(&mut drw, m, bh, &items, layout, ctx.g);
 
-    layout.draw_start_x
+    (layout.draw_start_x, layout.total_width)
 }
 
 fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
@@ -143,7 +141,7 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
     }
 }
 
-fn measure_layout(ctx: &mut WmCtx, m: &Monitor, items: &[StatusItem]) -> StatusLayout {
+fn measure_layout(ctx: &WmCtx, m: &Monitor, items: &[StatusItem]) -> StatusLayout {
     let mut width = 0i32;
 
     for item in items {

@@ -64,7 +64,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     }
 
     ctx.g.tags.width = get_tag_width(ctx);
-    draw_bars();
+    draw_bars(ctx);
 }
 
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.).
@@ -78,7 +78,7 @@ pub fn reset_name_tag(ctx: &mut WmCtx) {
     }
 
     ctx.g.tags.width = get_tag_width(ctx);
-    draw_bars();
+    draw_bars(ctx);
 }
 
 // ---------------------------------------------------------------------------

@@ -22,9 +22,7 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     let monitors: Vec<usize> = ctx.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
 
     for i in monitors {
-        if let Some(mon) = ctx.g.monitors.get_mut(i) {
-            draw_bar(mon);
-        }
+        draw_bar(ctx, i);
     }
 
     let tagwidth = get_tag_width(ctx);
@@ -53,9 +51,7 @@ pub fn toggle_prefix(ctx: &mut WmCtx) {
     ctx.g.tags.prefix = !ctx.g.tags.prefix;
 
     let selmon_id = ctx.g.selmon;
-    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-        draw_bar(mon);
-    }
+    draw_bar(ctx, selmon_id);
 }
 
 pub fn toggle_animated(ctx: &mut WmCtx, action: ToggleAction) {
@@ -119,9 +115,7 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: Window) {
     };
 
     let selmon_id = ctx.g.selmon;
-    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-        draw_bar(mon);
-    }
+    draw_bar(ctx, selmon_id);
 }
 
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
@@ -148,9 +142,7 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let tagwidth = get_tag_width(ctx);
     ctx.g.tags.width = tagwidth;
 
-    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-        draw_bar(mon);
-    }
+    draw_bar(ctx, selmon_id);
 }
 
 pub fn hide_window(ctx: &mut WmCtx, win: Window) {
@@ -169,8 +161,6 @@ pub fn redraw_win(ctx: &mut WmCtx) {
     let monitors: Vec<usize> = ctx.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
 
     for i in monitors {
-        if let Some(mon) = ctx.g.monitors.get_mut(i) {
-            draw_bar(mon);
-        }
+        draw_bar(ctx, i);
     }
 }

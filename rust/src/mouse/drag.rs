@@ -233,16 +233,16 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             ctx.g.bar_dragging = true;
             if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
                 mon.gesture = new_gesture;
-                draw_bar(mon);
             }
+            draw_bar(ctx, selmon_id);
         }
     } else if state.cursor_on_bar {
         ctx.g.bar_dragging = false;
         let selmon_id = ctx.g.selmon;
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = Gesture::None;
-            draw_bar(mon);
         }
+        draw_bar(ctx, selmon_id);
     }
 
     on_bar
@@ -376,8 +376,8 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
     let selmon_id = ctx.g.selmon;
     if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
         mon.gesture = Gesture::None;
-        draw_bar(mon);
     }
+    draw_bar(ctx, selmon_id);
 }
 
 /// Handle a drop onto the bar: tile the window, optionally moving it to the
@@ -734,9 +734,7 @@ pub fn drag_tag(ctx: &mut WmCtx) {
 
     {
         ctx.g.bar_dragging = true;
-        if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-            draw_bar(mon);
-        }
+        draw_bar(ctx, selmon_id);
     }
 
     let mut cursor_on_bar = true;
@@ -789,8 +787,8 @@ pub fn drag_tag(ctx: &mut WmCtx) {
                     last_tag = gesture_key;
                     if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
                         mon.gesture = new_gesture;
-                        draw_bar(mon);
                     }
+                    draw_bar(ctx, selmon_id);
                 }
             }
             _ => {}
@@ -833,8 +831,8 @@ pub fn drag_tag(ctx: &mut WmCtx) {
         ctx.g.bar_dragging = false;
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = Gesture::None;
-            draw_bar(mon);
         }
+        draw_bar(ctx, selmon_id);
     }
 }
 
