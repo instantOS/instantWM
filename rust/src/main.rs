@@ -414,15 +414,35 @@ fn init_schemes(drw: &mut Drw) {
         g.cfg.closebuttoncolors.clone()
     };
 
+    // Indices into the bordercolors array, matching the C SchemeBorder* enum.
+    const BORDER_NORMAL: usize = 0;
+    const BORDER_TILE_FOCUS: usize = 1;
+    const BORDER_FLOAT_FOCUS: usize = 2;
+    const BORDER_SNAP: usize = 3;
+
     let borderscheme = drw.scm_create(&bordercolors).ok().map(|clr| {
         if clr.len() >= 4 {
-            // bordercolors order: [normal, tile_focus, float_focus, snap]
-            // Each Color is used as the bg (border pixel) for its variant.
             BorderScheme {
-                normal: ColorScheme::new(clr[0].clone(), clr[0].clone(), clr[0].clone()),
-                tile_focus: ColorScheme::new(clr[1].clone(), clr[1].clone(), clr[1].clone()),
-                float_focus: ColorScheme::new(clr[2].clone(), clr[2].clone(), clr[2].clone()),
-                snap: ColorScheme::new(clr[3].clone(), clr[3].clone(), clr[3].clone()),
+                normal: ColorScheme::new(
+                    clr[BORDER_NORMAL].clone(),
+                    clr[BORDER_NORMAL].clone(),
+                    clr[BORDER_NORMAL].clone(),
+                ),
+                tile_focus: ColorScheme::new(
+                    clr[BORDER_TILE_FOCUS].clone(),
+                    clr[BORDER_TILE_FOCUS].clone(),
+                    clr[BORDER_TILE_FOCUS].clone(),
+                ),
+                float_focus: ColorScheme::new(
+                    clr[BORDER_FLOAT_FOCUS].clone(),
+                    clr[BORDER_FLOAT_FOCUS].clone(),
+                    clr[BORDER_FLOAT_FOCUS].clone(),
+                ),
+                snap: ColorScheme::new(
+                    clr[BORDER_SNAP].clone(),
+                    clr[BORDER_SNAP].clone(),
+                    clr[BORDER_SNAP].clone(),
+                ),
             }
         } else {
             BorderScheme::default()

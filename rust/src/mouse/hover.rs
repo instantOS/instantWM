@@ -108,6 +108,45 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
     None
 }
 
+/// Find a visible tiled window at point (`px`, `py`), skipping `skip_win`.
+///
+/// Unlike [`get_cursor_client_win`] (which uses `query_pointer` and returns the
+/// topmost X11 window), this walks the monitor's client list directly. This is
+/// needed when a floating window is stacked on top: `query_pointer` would return
+/// the floating window, but we want the tiled window *behind* it.
+fn find_tiled_win_at_point(
+    ctx: &WmCtx,
+    px: i32,
+    py: i32,
+    skip_win: Option<Window>,
+) -> Option<Window> {
+    let mon = ctx.g.selmon()?;
+    let selected = mon.selected_tags();
+    let has_tiling = mon.is_tiling_layout();
+    if !has_tiling {
+        return None;
+    }
+
+    for (w, c) in mon.iter_clients(&ctx.g.clients) {
+        if Some(w) == skip_win {
+            continue;
+        }
+        if !c.is_visible_on_tags(selected) || c.is_hidden || c.isfloating {
+            continue;
+        }
+        // Check if the cursor is within the window's geometry (including border).
+        let bw = c.border_width;
+        if px >= c.geo.x - bw
+            && px <= c.geo.x + c.geo.w + bw
+            && py >= c.geo.y - bw
+            && py <= c.geo.y + c.geo.h + bw
+        {
+            return Some(w);
+        }
+    }
+    None
+}
+
 /// Return `true` when (`px`, `py`) is in the resize-border zone of the selected floating window.
 pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
     let Some(win) = ctx.g.selected_win() else {
@@ -243,6 +282,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
 
     if !action_started {
         ungrab_ctx(ctx);
+        crate::mouse::reset_cursor(ctx);
     }
 
     true
@@ -269,11 +309,20 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                     .map(|(px, py)| is_in_resize_border(ctx, px, py))
                     .unwrap_or(false);
                 if !in_border {
-                    // Focus the window under the cursor when leaving.
-                    let should_refocus = get_cursor_client_win(ctx)
-                        .filter(|&hover_win| ctx.g.selected_win() != Some(hover_win));
-                    if let Some(hover_win) = should_refocus {
-                        focus(ctx, Some(hover_win));
+                    // Focus the window under the cursor when leaving the
+                    // resize border zone.  Normally get_cursor_client_win
+                    // returns the correct window (since the cursor is outside
+                    // the floating window).  Fall back to searching the
+                    // client list if it returns the already-selected window.
+                    let sel = ctx.g.selected_win();
+                    let target = get_cursor_client_win(ctx)
+                        .filter(|&w| Some(w) != sel)
+                        .or_else(|| {
+                            let (px, py) = get_root_ptr(ctx)?;
+                            find_tiled_win_at_point(ctx, px, py, sel)
+                        });
+                    if let Some(win) = target {
+                        focus(ctx, Some(win));
                     }
                     break;
                 }
@@ -400,6 +449,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 
     if !action_started {
         ungrab_ctx(ctx);
+        crate::mouse::reset_cursor(ctx);
     }
 
     true
