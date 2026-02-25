@@ -113,7 +113,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
 
     // ── Status text ───────────────────────────────────────────────────────
     let status_hit_x = mon.work_rect.w - get_systray_width(ctx) as i32 - ctx.g.status_text_width
-        + ctx.g.cfg.lrpad
+        + ctx.g.cfg.horizontal_padding
         - 2;
     if local_x > status_hit_x {
         return BarPosition::StatusText;

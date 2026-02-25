@@ -2,29 +2,29 @@
 //!
 //! Types for managing colors in the window manager UI.
 
-use crate::drw::Clr;
+use crate::drw::Color;
 
 /// A color scheme with foreground, background, and detail colors.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ColorScheme {
     /// Foreground color.
-    pub fg: Clr,
+    pub fg: Color,
     /// Background color.
-    pub bg: Clr,
+    pub bg: Color,
     /// Detail/accent color.
-    pub detail: Clr,
+    pub detail: Color,
 }
 
 impl ColorScheme {
     /// Create a new color scheme.
-    pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
+    pub fn new(fg: Color, bg: Color, detail: Color) -> Self {
         Self { fg, bg, detail }
     }
 
     /// Create a color scheme from a vector of colors.
     ///
     /// Returns `None` if the vector has fewer than 3 elements.
-    pub fn from_vec(vec: Vec<Clr>) -> Option<Self> {
+    pub fn from_vec(vec: Vec<Color>) -> Option<Self> {
         if vec.len() >= 3 {
             Some(Self {
                 fg: vec[0].clone(),
@@ -37,7 +37,7 @@ impl ColorScheme {
     }
 
     /// Convert this color scheme to a vector.
-    pub fn as_vec(&self) -> Vec<Clr> {
+    pub fn as_vec(&self) -> Vec<Color> {
         vec![self.fg.clone(), self.bg.clone(), self.detail.clone()]
     }
 }
@@ -59,16 +59,16 @@ pub struct BorderScheme {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct StatusScheme {
     /// Foreground color.
-    pub fg: Clr,
+    pub fg: Color,
     /// Background color.
-    pub bg: Clr,
+    pub bg: Color,
     /// Detail/accent color.
-    pub detail: Clr,
+    pub detail: Color,
 }
 
 impl StatusScheme {
     /// Create a new status scheme.
-    pub fn new(fg: Clr, bg: Clr, detail: Clr) -> Self {
+    pub fn new(fg: Color, bg: Color, detail: Color) -> Self {
         Self { fg, bg, detail }
     }
 

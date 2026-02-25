@@ -140,8 +140,8 @@ pub(crate) fn draw_tag_indicators(
     urg: u32,
     bh: i32,
 ) -> i32 {
-    let lrpad = ctx.g.cfg.lrpad;
-    let lpad = (lrpad / 2) as u32;
+    let horizontal_padding = ctx.g.cfg.horizontal_padding;
+    let lpad = (horizontal_padding / 2) as u32;
     let bar_dragging = ctx.g.bar_dragging;
 
     let tags = crate::tags::bar::visible_tags(ctx.g, m, occupied_tags);
@@ -190,10 +190,10 @@ pub(crate) fn draw_tag_indicators(
 }
 
 pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i32) -> i32 {
-    let lrpad = ctx.g.cfg.lrpad;
+    let horizontal_padding = ctx.g.cfg.horizontal_padding;
     let ltsymbol = super::layout_symbol(m);
     let text_w = super::text_width(&ltsymbol);
-    let w = (text_w + lrpad).max(lrpad);
+    let w = (text_w + horizontal_padding).max(horizontal_padding);
     let lpad = ((w - text_w) / 2).max(0) as u32;
 
     {
@@ -469,7 +469,7 @@ fn draw_window_title(m: &Monitor, c: &Client, x: i32, width: i32, bh: i32) -> Op
         let lpad = if text_w < width - 64 {
             ((width - text_w) as f32 * 0.5) as u32
         } else {
-            (g.cfg.lrpad / 2 + 20) as u32
+            (g.cfg.horizontal_padding / 2 + 20) as u32
         };
 
         drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);

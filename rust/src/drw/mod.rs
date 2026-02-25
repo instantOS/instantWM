@@ -6,7 +6,7 @@
 //! | Sub-module | Contents                                               |
 //! |------------|--------------------------------------------------------|
 //! | [`ffi`]    | Raw `extern "C"` bindings (X11, Xft, Fontconfig)      |
-//! | [`color`]  | [`Clr`] (color) and [`Cur`] (cursor)                   |
+//! | [`color`]  | [`Color`] (color) and [`Cursor`] (cursor)              |
 //! | [`font`]   | [`Fnt`] font / fontset linked-list                     |
 //! | [`utf8`]   | UTF-8 decoding utilities                               |
 //! | [`draw`]   | [`Drw`] drawing context — the main public type         |
@@ -25,7 +25,7 @@
 //! drw.set_scheme(ColorScheme::from_vec(scheme));
 //!
 //! // Draw text into the off-screen pixmap…
-//! drw.text(0, 0, 200, bh, lrpad as u32 / 2, "Hello, world!", false, 0);
+//! drw.text(0, 0, 200, bh, horizontal_padding as u32 / 2, "Hello, world!", false, 0);
 //!
 //! // …then blit it to the bar window.
 //! drw.map(barwin, 0, 0, 200, bh as u16);
@@ -54,7 +54,7 @@ mod utf8;
 
 // Color / cursor types and scheme-index constants.
 #[allow(unused_imports)]
-pub use color::{Clr, Cur, COL_BG, COL_DETAIL, COL_FG, COL_LAST};
+pub use color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG, COL_LAST};
 
 // Font linked-list type and its iterator.
 #[allow(unused_imports)]

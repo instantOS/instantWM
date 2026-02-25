@@ -25,7 +25,7 @@ use crate::util::die;
 
 use std::cmp::min;
 
-use super::color::{Clr, Cur, COL_BG, COL_DETAIL, COL_FG};
+use super::color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG};
 use super::ffi::{
     FcCharSetAddChar, FcCharSetCreate, FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute,
     FcInit, FcNameParse, FcPattern, FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy,
@@ -71,7 +71,7 @@ pub struct Drw {
     pub(super) gc: XlibGc,
 
     /// Active color scheme (`[fg, bg, detail]` slots).
-    scheme: Option<Vec<Clr>>,
+    scheme: Option<Vec<Color>>,
 
     /// Loaded fontset (linked list, head node).
     pub fonts: Option<Box<Fnt>>,
@@ -294,12 +294,12 @@ impl Drw {
     }
 
     /// Read-only access to the active color scheme slice, if one is set.
-    pub fn get_scheme(&self) -> Option<&Vec<Clr>> {
+    pub fn get_scheme(&self) -> Option<&Vec<Color>> {
         self.scheme.as_ref()
     }
 
     /// Allocate a single color by name (e.g. `"#ff0000"` or `"red"`).
-    pub fn clr_create(&self, clrname: &str) -> Result<Clr, String> {
+    pub fn clr_create(&self, clrname: &str) -> Result<Color, String> {
         let c_name = CString::new(clrname).map_err(|_| "Invalid color name")?;
 
         let mut color = XftColor {
@@ -327,13 +327,13 @@ impl Drw {
             color.pixel |= 0xff << 24;
         }
 
-        Ok(Clr { color })
+        Ok(Color { color })
     }
 
     /// Allocate a color scheme from a slice of color name strings.
     ///
     /// The slice must have at least two entries (`[fg, bg, ...]`).
-    pub fn scm_create(&self, clrnames: &[&str]) -> Result<Vec<Clr>, String> {
+    pub fn scm_create(&self, clrnames: &[&str]) -> Result<Vec<Color>, String> {
         if clrnames.len() < 2 {
             return Err("need at least two colors for a scheme".to_string());
         }
@@ -345,13 +345,13 @@ impl Drw {
 
 impl Drw {
     /// Create a cursor from one of the standard X11 cursor shapes.
-    pub fn cur_create(&self, shape: u32) -> Cur {
+    pub fn cur_create(&self, shape: u32) -> Cursor {
         let cursor = unsafe { XCreateFontCursor(self.display, shape) };
-        Cur::new(cursor)
+        Cursor::new(cursor)
     }
 
     /// Free a cursor previously created with [`cur_create`].
-    pub fn cur_free(&self, cursor: &Cur) {
+    pub fn cur_free(&self, cursor: &Cursor) {
         unsafe { XFreeCursor(self.display, cursor.cursor) };
     }
 }

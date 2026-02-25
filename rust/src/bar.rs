@@ -32,7 +32,7 @@ pub(crate) fn layout_symbol(m: &Monitor) -> String {
 }
 
 pub fn get_layout_symbol_width(m: &Monitor) -> i32 {
-    text_width(&layout_symbol(m)) + get_lrpad()
+    text_width(&layout_symbol(m)) + get_horizontal_padding()
 }
 
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
@@ -171,6 +171,6 @@ pub fn reset_bar(ctx: &mut WmCtx) {
     draw_bar(ctx, selmon_idx);
 }
 
-pub(crate) fn get_lrpad() -> i32 {
-    get_globals().cfg.lrpad
+pub(crate) fn get_horizontal_padding() -> i32 {
+    get_globals().cfg.horizontal_padding
 }

@@ -230,7 +230,7 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
         globals.cfg.xlibdisplay = XlibDisplay(drw.display());
         globals.cfg.drw = Some(drw);
         globals.cfg.bh = bh as i32;
-        globals.cfg.lrpad = font_height as i32;
+        globals.cfg.horizontal_padding = font_height as i32;
     }
 
     update_geom();

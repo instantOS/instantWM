@@ -1,5 +1,5 @@
 use crate::config::commands::ExternalCommands;
-use crate::drw::{Cur, Drw};
+use crate::drw::{Cursor, Drw};
 use crate::types::*;
 use once_cell::sync::Lazy;
 use std::cell::UnsafeCell;
@@ -75,9 +75,9 @@ pub struct RuntimeConfig {
     // Drawing context
     pub drw: Option<Drw>,
     pub xlibdisplay: XlibDisplay,
-    pub cursors: [Option<Cur>; 10],
+    pub cursors: [Option<Cursor>; 10],
     pub bh: i32,
-    pub lrpad: i32,
+    pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
 }
@@ -129,7 +129,7 @@ impl Default for RuntimeConfig {
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             cursors: [const { None }; 10],
             bh: 0,
-            lrpad: 0,
+            horizontal_padding: 0,
             tag_template: Vec::new(),
         }
     }
