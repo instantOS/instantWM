@@ -493,12 +493,6 @@ fn get_unique_screens(conn: &x11rb::rust_connection::RustConnection) -> Option<V
     Some(unique)
 }
 
-/// Get monitor configuration values from globals.
-fn get_monitor_config() -> (f32, i32, bool, bool) {
-    let g = get_globals();
-    (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar)
-}
-
 /// Ensure we have at least `count` monitors.
 fn ensure_monitor_count(count: usize) {
     let g = get_globals_mut();
@@ -612,7 +606,7 @@ fn update_single_monitor(sw: i32, sh: i32) -> bool {
 
 /// Update monitor geometries from Xinerama screens.
 #[cfg(feature = "xinerama")]
-fn update_from_xinerama(x11: &crate::globals::X11Globals, conn: &x11rb::rust_connection::RustConnection) -> Option<bool> {
+fn update_from_xinerama(x11: &crate::globals::X11Connection, conn: &x11rb::rust_connection::RustConnection) -> Option<bool> {
     let unique = get_unique_screens(conn)?;
     let new_count = unique.len();
     let old_count = get_globals().monitors.len();

@@ -13,13 +13,198 @@ use x11rb::protocol::xproto::*;
 //TODO: maybe overlay should be a struct with the overlay relevant state kept
 //there
 
-pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    let overlay_win = match ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay) {
-        Some(w) => w,
-        None => return false,
-    };
+/// Information needed to position an overlay window.
+#[derive(Debug, Clone, Copy)]
+struct OverlayPositionInfo {
+    mode: OverlayMode,
+    mon_mx: i32,
+    mon_my: i32,
+    mon_mw: i32,
+    mon_mh: i32,
+    mon_ww: i32,
+    yoffset: i32,
+    client_w: i32,
+    client_h: i32,
+}
 
-    ctx.g.clients.contains_key(&overlay_win)
+/// Get the overlay window for the selected monitor, if it exists.
+fn get_overlay_win(ctx: &WmCtx) -> Option<Window> {
+    ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay)
+}
+
+/// Check if the overlay window exists in the clients map.
+pub fn overlay_exists(ctx: &WmCtx) -> bool {
+    get_overlay_win(ctx).map_or(false, |win| ctx.g.clients.contains_key(&win))
+}
+
+/// Raise a window to the top of the stack.
+fn raise_window(ctx: &WmCtx, win: Window) {
+    if let Some(ref conn) = ctx.x11.conn {
+        let _ = conn.configure_window(
+            win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
+        let _ = conn.flush();
+    }
+}
+
+/// Calculate the y offset based on showbar and fullscreen clients.
+fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
+    let bh = ctx.g.cfg.bh;
+    let base_offset = if mon.showbar { bh } else { 0 };
+
+    // Check if any visible client is fullscreen
+    let mut current = mon.clients;
+    while let Some(c_win) = current {
+        if let Some(c) = ctx.g.clients.get(&c_win) {
+            if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_fullscreen && !c.isfakefullscreen {
+                return 0;
+            }
+            current = c.next;
+        } else {
+            break;
+        }
+    }
+
+    base_offset
+}
+
+/// Get the initial position rect for the overlay (off-screen, for animation start).
+fn get_initial_overlay_rect(info: &OverlayPositionInfo) -> Rect {
+    let OverlayPositionInfo {
+        mode,
+        mon_mx,
+        mon_my,
+        mon_mw,
+        mon_ww,
+        yoffset,
+        client_w,
+        client_h,
+        ..
+    } = *info;
+
+    match mode {
+        OverlayMode::Top => Rect {
+            x: mon_mx + OVERLAY_MARGIN_X,
+            y: mon_my + yoffset - client_h,
+            w: mon_ww - OVERLAY_INSET_X,
+            h: client_h,
+        },
+        OverlayMode::Right => Rect {
+            x: mon_mx + mon_mw - OVERLAY_MARGIN_X,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: client_w,
+            h: info.mon_mh - OVERLAY_INSET_Y,
+        },
+        OverlayMode::Bottom => Rect {
+            x: mon_mx + OVERLAY_MARGIN_X,
+            y: mon_my + info.mon_mh,
+            w: mon_ww - OVERLAY_INSET_X,
+            h: client_h,
+        },
+        OverlayMode::Left => Rect {
+            x: mon_mx - client_w + OVERLAY_MARGIN_X,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: client_w,
+            h: info.mon_mh - OVERLAY_INSET_Y,
+        },
+    }
+}
+
+/// Get the target position rect for the overlay (visible position after animation).
+fn get_target_overlay_rect(info: &OverlayPositionInfo) -> Rect {
+    let OverlayPositionInfo {
+        mode,
+        mon_mx,
+        mon_my,
+        mon_mw,
+        mon_mh,
+        yoffset,
+        client_w,
+        client_h,
+        ..
+    } = *info;
+
+    match mode {
+        OverlayMode::Top => Rect {
+            x: mon_mx + OVERLAY_MARGIN_X,
+            y: mon_my + yoffset,
+            w: info.mon_ww - OVERLAY_INSET_X,
+            h: client_h,
+        },
+        OverlayMode::Right => Rect {
+            x: mon_mx + mon_mw - client_w,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: client_w,
+            h: mon_mh - OVERLAY_INSET_Y,
+        },
+        OverlayMode::Bottom => Rect {
+            x: mon_mx + OVERLAY_MARGIN_X,
+            y: mon_my + mon_mh - client_h,
+            w: info.mon_ww - OVERLAY_INSET_X,
+            h: client_h,
+        },
+        OverlayMode::Left => Rect {
+            x: mon_mx,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: client_w,
+            h: mon_mh - OVERLAY_INSET_Y,
+        },
+    }
+}
+
+/// Information needed for hide animation.
+#[derive(Debug, Clone, Copy)]
+struct HideAnimationInfo {
+    mode: OverlayMode,
+    mon_mx: i32,
+    mon_my: i32,
+    mon_mw: i32,
+    mon_mh: i32,
+    client_x: i32,
+    client_w: i32,
+    client_h: i32,
+}
+
+/// Get the target rect for hiding the overlay (off-screen position).
+fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
+    let HideAnimationInfo {
+        mode,
+        mon_mx,
+        mon_my,
+        mon_mw,
+        mon_mh,
+        client_x,
+        client_w,
+        client_h,
+    } = *info;
+
+    match mode {
+        OverlayMode::Top => Rect {
+            x: client_x,
+            y: -client_h,
+            w: 0,
+            h: 0,
+        },
+        OverlayMode::Right => Rect {
+            x: mon_mx + mon_mw,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: 0,
+            h: 0,
+        },
+        OverlayMode::Bottom => Rect {
+            x: client_x,
+            y: mon_mh + mon_my,
+            w: 0,
+            h: 0,
+        },
+        OverlayMode::Left => Rect {
+            x: mon_mx - client_w,
+            y: OVERLAY_MARGIN_Y,
+            w: 0,
+            h: 0,
+        },
+    }
 }
 
 /// Create overlay with dependency injection.
@@ -119,58 +304,8 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
     focus(ctx, Some(overlay_win));
 }
 
-pub fn show_overlay(ctx: &mut WmCtx) {
-    if !overlay_exists(ctx) {
-        return;
-    }
-
-    if ctx.g.monitors.is_empty() {
-        return;
-    }
-
-    let selmon_id = ctx.g.selmon;
-
-    let (overlaystatus, showbar, overlay_win, current_tag, mut current) = {
-        let mon = match ctx.g.monitors.get(selmon_id) {
-            Some(m) => m,
-            None => return,
-        };
-        let overlay_win = match mon.overlay {
-            Some(w) => w,
-            None => return,
-        };
-        (
-            mon.overlaystatus,
-            mon.showbar,
-            overlay_win,
-            mon.current_tag as u32,
-            mon.clients,
-        )
-    };
-
-    if overlaystatus != 0 {
-        return;
-    }
-
-    let bh = ctx.g.cfg.bh;
-    let mut yoffset = if showbar { bh } else { 0 };
-
-    while let Some(c_win) = current {
-        if let Some(c) = ctx.g.clients.get(&c_win) {
-            if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_fullscreen && !c.isfakefullscreen {
-                yoffset = 0;
-                break;
-            }
-            current = c.next;
-        } else {
-            break;
-        }
-    }
-
-    for mon in &mut ctx.g.monitors {
-        mon.overlaystatus = 1;
-    }
-
+/// Prepare the overlay window for display (detach, update state, reattach).
+fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: Window, selmon_id: MonitorId) {
     detach(overlay_win);
     detach_stack(overlay_win);
 
@@ -181,142 +316,95 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     attach(overlay_win);
     attach_stack(overlay_win);
+}
 
-    let (overlay_mode, mon_mx, mon_my, mon_mw, mon_mh, mon_ww) = {
-        if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-            (
-                mon.overlaymode,
-                mon.monitor_rect.x,
-                mon.monitor_rect.y,
-                mon.monitor_rect.w,
-                mon.monitor_rect.h,
-                mon.work_rect.w,
-            )
-        } else {
-            return;
-        }
-    };
-
-    let (client_w, client_h, is_locked) = {
-        if let Some(c) = ctx.g.clients.get(&overlay_win) {
-            (c.geo.w, c.geo.h, c.islocked)
-        } else {
-            return;
-        }
-    };
-
-    if is_locked {
-        match overlay_mode {
-            OverlayMode::Top => {
-                resize(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: mon_mx + OVERLAY_MARGIN_X,
-                        y: mon_my + yoffset - client_h,
-                        w: mon_ww - OVERLAY_INSET_X,
-                        h: client_h,
-                    },
-                    true,
-                );
-            }
-            OverlayMode::Right => {
-                resize(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: mon_mx + mon_mw - OVERLAY_MARGIN_X,
-                        y: mon_my + OVERLAY_MARGIN_Y,
-                        w: client_w,
-                        h: mon_mh - OVERLAY_INSET_Y,
-                    },
-                    true,
-                );
-            }
-            OverlayMode::Bottom => {
-                resize(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: mon_mx + OVERLAY_MARGIN_X,
-                        y: mon_my + mon_mh,
-                        w: mon_ww - OVERLAY_INSET_X,
-                        h: client_h,
-                    },
-                    true,
-                );
-            }
-            OverlayMode::Left => {
-                resize(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: mon_mx - client_w + OVERLAY_MARGIN_X,
-                        y: mon_my + OVERLAY_MARGIN_Y,
-                        w: client_w,
-                        h: mon_mh - OVERLAY_INSET_Y,
-                    },
-                    true,
-                );
-            }
-        }
-    }
-
-    if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-        if ctx.g.clients.contains_key(&overlay_win) {
-            let tags = mon.tagset[mon.seltags as usize];
-            if let Some(c) = ctx.g.clients.get_mut(&overlay_win) {
-                c.tags = tags;
-            }
-        }
-    }
-
+/// Update overlay client properties for showing.
+fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: Window, tags: u32) {
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         if !client.isfloating {
             client.isfloating = true;
         }
         client.border_width = 0;
+        client.tags = tags;
+    }
+}
+
+pub fn show_overlay(ctx: &mut WmCtx) {
+    if !overlay_exists(ctx) || ctx.g.monitors.is_empty() {
+        return;
     }
 
-    if is_locked {
-        if let Some(ref conn) = ctx.x11.conn {
-            let _ = conn.configure_window(
-                overlay_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
-        }
+    let selmon_id = ctx.g.selmon;
+    let mon = match ctx.g.monitors.get(selmon_id) {
+        Some(m) => m,
+        None => return,
+    };
 
-        let (target_x, target_y) = {
-            if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-                match overlay_mode {
-                    OverlayMode::Top => (overlay_win as i32, mon.monitor_rect.y + yoffset),
-                    OverlayMode::Right => (
-                        mon.monitor_rect.x + mon.monitor_rect.w - client_w,
-                        mon.monitor_rect.y + OVERLAY_MARGIN_Y,
-                    ),
-                    OverlayMode::Bottom => (
-                        mon.monitor_rect.x + OVERLAY_MARGIN_X,
-                        mon.monitor_rect.y + mon.monitor_rect.h - client_h,
-                    ),
-                    OverlayMode::Left => {
-                        (mon.monitor_rect.x, mon.monitor_rect.y + OVERLAY_MARGIN_Y)
-                    }
-                }
-            } else {
-                (0, 0)
-            }
+    if mon.overlaystatus != 0 {
+        return;
+    }
+
+    let overlay_win = match mon.overlay {
+        Some(w) => w,
+        None => return,
+    };
+
+    let current_tag = mon.current_tag as u32;
+    let yoffset = calculate_yoffset(ctx, mon, current_tag);
+
+    // Mark overlay as shown on all monitors
+    for mon in &mut ctx.g.monitors {
+        mon.overlaystatus = 1;
+    }
+
+    prepare_overlay_window(ctx, overlay_win, selmon_id);
+
+    // Gather all needed data in one place
+    let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
+        let mon = ctx.g.monitors.get(selmon_id).unwrap();
+        let client = match ctx.g.clients.get(&overlay_win) {
+            Some(c) => c,
+            None => return,
         };
+        (
+            mon.overlaymode,
+            mon.monitor_rect,
+            mon.work_rect.w,
+            client.islocked,
+            client.geo.w,
+            client.geo.h,
+        )
+    };
 
+    let pos_info = OverlayPositionInfo {
+        mode: overlay_mode,
+        mon_mx: mon_rect.x,
+        mon_my: mon_rect.y,
+        mon_mw: mon_rect.w,
+        mon_mh: mon_rect.h,
+        mon_ww,
+        yoffset,
+        client_w,
+        client_h,
+    };
+
+    if is_locked {
+        let initial_rect = get_initial_overlay_rect(&pos_info);
+        resize(ctx, overlay_win, &initial_rect, true);
+    }
+
+    let tags = ctx.g.monitors.get(selmon_id).unwrap().tagset
+        [ctx.g.monitors.get(selmon_id).unwrap().seltags as usize];
+    update_overlay_client_for_show(ctx, overlay_win, tags);
+
+    if is_locked {
+        raise_window(ctx, overlay_win);
+
+        let target_rect = get_target_overlay_rect(&pos_info);
         animate_client(
             ctx,
             overlay_win,
-            &Rect {
-                x: target_x,
-                y: target_y,
-                w: 0,
-                h: 0,
-            },
+            &target_rect.with_size(0, 0), // animate_client uses size from client, only x/y matter
             OVERLAY_ANIMATION_FRAMES,
             0,
         );
@@ -327,152 +415,87 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     }
 
     focus(ctx, Some(overlay_win));
+    raise_window(ctx, overlay_win);
+}
 
-    if let Some(ref conn) = ctx.x11.conn {
-        let _ = conn.configure_window(
-            overlay_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
-        let _ = conn.flush();
+/// Check if overlay is fullscreen on the given monitor.
+fn is_overlay_fullscreen(ctx: &WmCtx, overlay_win: Window, mon: &Monitor) -> bool {
+    mon.fullscreen == Some(overlay_win)
+}
+
+/// Clear overlay tags and sticky state.
+fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: Window) {
+    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+        client.issticky = false;
+        client.tags = 0;
+    }
+}
+
+/// Reset overlay status on all monitors.
+fn reset_all_overlay_status(monitors: &mut [Monitor]) {
+    for mon in monitors {
+        mon.overlaystatus = 0;
     }
 }
 
 pub fn hide_overlay(ctx: &mut WmCtx) {
-    if !overlay_exists(ctx) {
-        return;
-    }
-
-    if ctx.g.monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.g.monitors.is_empty() {
         return;
     }
 
     let selmon_id = ctx.g.selmon;
-
-    let (overlaystatus, overlay_win) = {
-        let mon = match ctx.g.monitors.get(selmon_id) {
-            Some(m) => m,
-            None => return,
-        };
-        let overlay_win = match mon.overlay {
-            Some(w) => w,
-            None => return,
-        };
-        (mon.overlaystatus, overlay_win)
+    let mon = match ctx.g.monitors.get(selmon_id) {
+        Some(m) => m,
+        None => return,
     };
 
-    if overlaystatus == 0 {
+    if mon.overlaystatus == 0 {
         return;
     }
 
-    let (
-        is_locked,
-        overlay_mode,
-        mon_mx,
-        mon_my,
-        mon_mw,
-        mon_mh,
-        client_x,
-        client_h,
-        client_w,
-        is_fullscreen,
-    ) = {
-        if let Some(c) = ctx.g.clients.get(&overlay_win) {
-            let mon = ctx.g.monitors.get(selmon_id).unwrap();
-            let is_fullscreen = Some(overlay_win) == mon.fullscreen;
-            let is_locked = c.islocked;
-            (
-                is_locked,
-                mon.overlaymode,
-                mon.monitor_rect.x,
-                mon.monitor_rect.y,
-                mon.monitor_rect.w,
-                mon.monitor_rect.h,
-                c.geo.x,
-                c.geo.h,
-                c.geo.w,
-                is_fullscreen,
-            )
-        } else {
-            return;
-        }
+    let overlay_win = match mon.overlay {
+        Some(w) => w,
+        None => return,
+    };
+
+    // Gather all needed data
+    let (is_locked, is_fullscreen, hide_info) = {
+        let client = match ctx.g.clients.get(&overlay_win) {
+            Some(c) => c,
+            None => return,
+        };
+        let mon = ctx.g.monitors.get(selmon_id).unwrap();
+
+        let hide_info = HideAnimationInfo {
+            mode: mon.overlaymode,
+            mon_mx: mon.monitor_rect.x,
+            mon_my: mon.monitor_rect.y,
+            mon_mw: mon.monitor_rect.w,
+            mon_mh: mon.monitor_rect.h,
+            client_x: client.geo.x,
+            client_w: client.geo.w,
+            client_h: client.geo.h,
+        };
+
+        (
+            client.islocked,
+            is_overlay_fullscreen(ctx, overlay_win, mon),
+            hide_info,
+        )
     };
 
     if is_fullscreen {
         crate::floating::temp_fullscreen(ctx);
     }
 
-    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
-        client.issticky = false;
-    }
+    clear_overlay_state(ctx, overlay_win);
 
     if is_locked {
-        match overlay_mode {
-            OverlayMode::Top => {
-                animate_client(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: client_x,
-                        y: 0 - client_h,
-                        w: 0,
-                        h: 0,
-                    },
-                    OVERLAY_ANIMATION_FRAMES,
-                    0,
-                );
-            }
-            OverlayMode::Right => {
-                animate_client(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: mon_mx + mon_mw,
-                        y: mon_mx + mon_mw,
-                        w: 0,
-                        h: 0,
-                    },
-                    OVERLAY_ANIMATION_FRAMES,
-                    0,
-                );
-            }
-            OverlayMode::Bottom => {
-                animate_client(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: client_x,
-                        y: mon_mh + mon_my,
-                        w: 0,
-                        h: 0,
-                    },
-                    OVERLAY_ANIMATION_FRAMES,
-                    0,
-                );
-            }
-            OverlayMode::Left => {
-                animate_client(
-                    ctx,
-                    overlay_win,
-                    &Rect {
-                        x: mon_mx - client_w,
-                        y: OVERLAY_MARGIN_Y,
-                        w: 0,
-                        h: 0,
-                    },
-                    OVERLAY_ANIMATION_FRAMES,
-                    0,
-                );
-            }
-        }
+        let hide_rect = get_hide_animation_rect(&hide_info);
+        animate_client(ctx, overlay_win, &hide_rect, OVERLAY_ANIMATION_FRAMES, 0);
     }
 
-    for mon in &mut ctx.g.monitors {
-        mon.overlaystatus = 0;
-    }
-
-    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
-        client.tags = 0;
-    }
+    reset_all_overlay_status(&mut ctx.g.monitors);
 
     focus(ctx, None);
     arrange(ctx, Some(selmon_id));
@@ -557,118 +580,103 @@ pub fn is_overlay_window(ctx: &WmCtx, win: Window) -> bool {
     false
 }
 
-pub fn reset_overlay_size(ctx: &mut WmCtx) {
-    let (
-        has_overlay,
-        overlay_mode,
+/// Information needed for resetting overlay size.
+#[derive(Debug, Clone, Copy)]
+struct ResetSizeInfo {
+    mode: OverlayMode,
+    mon_mx: i32,
+    mon_my: i32,
+    mon_mw: i32,
+    mon_mh: i32,
+    mon_ww: i32,
+    mon_wh: i32,
+    yoffset: i32,
+    client_w: i32,
+    client_h: i32,
+}
+
+/// Get the resize rect for resetting overlay size based on mode.
+fn get_reset_size_rect(info: &ResetSizeInfo) -> Rect {
+    let ResetSizeInfo {
+        mode,
         mon_mx,
         mon_my,
         mon_mw,
         mon_mh,
         mon_ww,
         mon_wh,
-        mon_showbar,
-        bh,
-    ) = {
-        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
-            let overlay_win = mon.overlay;
-            (
-                overlay_win.is_some(),
-                mon.overlaymode,
-                mon.monitor_rect.x,
-                mon.monitor_rect.y,
-                mon.monitor_rect.w,
-                mon.monitor_rect.h,
-                mon.work_rect.w,
-                mon.work_rect.h,
-                mon.showbar,
-                ctx.g.cfg.bh,
-            )
-        } else {
-            return;
-        }
-    };
+        yoffset,
+        client_w,
+        client_h,
+    } = *info;
 
-    if !has_overlay {
-        return;
+    match mode {
+        OverlayMode::Top => Rect {
+            x: mon_mx + OVERLAY_MARGIN_X,
+            y: mon_my + yoffset,
+            w: mon_ww - OVERLAY_INSET_X,
+            h: mon_wh / 3,
+        },
+        OverlayMode::Right => Rect {
+            x: mon_mx + mon_mw - client_w,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: mon_mw / 3,
+            h: mon_mh - OVERLAY_INSET_Y,
+        },
+        OverlayMode::Bottom => Rect {
+            x: mon_mx + OVERLAY_MARGIN_X,
+            y: mon_my + mon_mh - client_h,
+            w: mon_ww - OVERLAY_INSET_X,
+            h: mon_wh / 3,
+        },
+        OverlayMode::Left => Rect {
+            x: mon_mx,
+            y: mon_my + OVERLAY_MARGIN_Y,
+            w: mon_mw / 3,
+            h: mon_mh - OVERLAY_INSET_Y,
+        },
     }
+}
 
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay) else {
-        return;
+pub fn reset_overlay_size(ctx: &mut WmCtx) {
+    let selmon_id = ctx.g.selmon;
+
+    let mon = match ctx.g.monitors.get(selmon_id) {
+        Some(m) => m,
+        None => return,
     };
 
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    let overlay_win = match mon.overlay {
+        Some(w) => w,
+        None => return,
+    };
+
+    let yoffset = if mon.showbar { ctx.g.cfg.bh } else { 0 };
+
+    // Gather all needed data
+    let (client_w, client_h) = ctx.g
+        .clients
+        .get(&overlay_win)
+        .map(|c| (c.geo.w, c.geo.h))
+        .unwrap_or((mon.work_rect.w / 3, mon.work_rect.h / 3));
+
+    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         client.isfloating = true;
     }
 
-    let yoffset = if mon_showbar { bh } else { 0 };
+    let size_info = ResetSizeInfo {
+        mode: mon.overlaymode,
+        mon_mx: mon.monitor_rect.x,
+        mon_my: mon.monitor_rect.y,
+        mon_mw: mon.monitor_rect.w,
+        mon_mh: mon.monitor_rect.h,
+        mon_ww: mon.work_rect.w,
+        mon_wh: mon.work_rect.h,
+        yoffset,
+        client_w,
+        client_h,
+    };
 
-    match overlay_mode {
-        OverlayMode::Top => {
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: mon_mx + OVERLAY_MARGIN_X,
-                    y: mon_my + yoffset,
-                    w: mon_ww - OVERLAY_INSET_X,
-                    h: mon_wh / 3,
-                },
-                true,
-            );
-        }
-        OverlayMode::Right => {
-            let client_w = {
-                ctx.g
-                    .clients
-                    .get(&win)
-                    .map(|c| c.geo.w)
-                    .unwrap_or(mon_mw / 3)
-            };
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: mon_mx + mon_mw - client_w,
-                    y: mon_my + OVERLAY_MARGIN_Y,
-                    w: mon_mw / 3,
-                    h: mon_mh - OVERLAY_INSET_Y,
-                },
-                true,
-            );
-        }
-        OverlayMode::Bottom => {
-            let client_h = {
-                ctx.g
-                    .clients
-                    .get(&win)
-                    .map(|c| c.geo.h)
-                    .unwrap_or(mon_wh / 3)
-            };
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: mon_mx + OVERLAY_MARGIN_X,
-                    y: mon_my + mon_mh - client_h,
-                    w: mon_ww - OVERLAY_INSET_X,
-                    h: mon_wh / 3,
-                },
-                true,
-            );
-        }
-        OverlayMode::Left => {
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: mon_mx,
-                    y: mon_my + OVERLAY_MARGIN_Y,
-                    w: mon_mw / 3,
-                    h: mon_mh - OVERLAY_INSET_Y,
-                },
-                true,
-            );
-        }
-    }
+    let rect = get_reset_size_rect(&size_info);
+    resize(ctx, overlay_win, &rect, true);
 }
