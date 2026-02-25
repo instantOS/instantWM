@@ -1210,12 +1210,20 @@ impl Monitor {
     }
 
     /// Get the next client in the client list after the given window.
-    pub fn next_client(&self, clients: &std::collections::HashMap<Window, Client>, win: Window) -> Option<Window> {
+    pub fn next_client(
+        &self,
+        clients: &std::collections::HashMap<Window, Client>,
+        win: Window,
+    ) -> Option<Window> {
         clients.get(&win).and_then(|c| c.next)
     }
 
     /// Get the previous client in the client list before the given window.
-    pub fn prev_client(&self, clients: &std::collections::HashMap<Window, Client>, win: Window) -> Option<Window> {
+    pub fn prev_client(
+        &self,
+        clients: &std::collections::HashMap<Window, Client>,
+        win: Window,
+    ) -> Option<Window> {
         let mut current = self.clients;
         let mut prev = None;
         while let Some(c_win) = current {
@@ -1233,9 +1241,7 @@ impl Monitor {
         if !self.showbar {
             return false;
         }
-        self.current_tag(tags)
-            .map(|t| t.showbar)
-            .unwrap_or(true)
+        self.current_tag(tags).map(|t| t.showbar).unwrap_or(true)
     }
 
     /// Get the current tag for this monitor.
@@ -1338,7 +1344,11 @@ impl Monitor {
 }
 
 /// Find a monitor in a given direction from the current one.
-pub fn find_monitor_by_direction(monitors: &[Monitor], current: MonitorId, dir: i32) -> Option<MonitorId> {
+pub fn find_monitor_by_direction(
+    monitors: &[Monitor],
+    current: MonitorId,
+    dir: i32,
+) -> Option<MonitorId> {
     if monitors.is_empty() {
         return None;
     }

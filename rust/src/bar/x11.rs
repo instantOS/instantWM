@@ -31,26 +31,21 @@ pub fn update_status(ctx: &mut WmCtx) {
     crate::systray::update_systray(ctx);
 }
 
+/// Update bar position for a monitor.
+///
+/// **Note**: This delegates to `m.update_bar_position(bh)`. Prefer using
+/// the method directly on `Monitor` for new code.
 pub fn update_bar_pos(m: &mut Monitor) {
     let bh = get_globals().cfg.bh;
-    update_bar_pos_with_bh(m, bh);
+    m.update_bar_position(bh);
 }
 
+/// Update bar position with explicit bar height.
+///
+/// **Note**: This delegates to `m.update_bar_position(bh)`. Prefer using
+/// the method directly on `Monitor` for new code.
 pub(crate) fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
-    m.work_rect.y = m.monitor_rect.y;
-    m.work_rect.h = m.monitor_rect.h;
-
-    if m.showbar {
-        m.work_rect.h -= bh;
-        if m.topbar {
-            m.by = m.work_rect.y;
-            m.work_rect.y += bh;
-        } else {
-            m.by = m.work_rect.y + m.work_rect.h;
-        }
-    } else {
-        m.by = -bh;
-    }
+    m.update_bar_position(bh);
 }
 
 pub fn resize_bar_win(m: &Monitor) {

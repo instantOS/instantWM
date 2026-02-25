@@ -40,10 +40,7 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 /// Raise a window to the top of the stack.
 fn raise_window(ctx: &WmCtx, win: Window) {
     if let Some(ref conn) = ctx.x11.conn {
-        let _ = conn.configure_window(
-            win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
+        let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }
 }
@@ -573,56 +570,50 @@ pub fn is_overlay_window(ctx: &WmCtx, win: Window) -> bool {
 #[derive(Debug, Clone, Copy)]
 struct ResetSizeInfo {
     mode: OverlayMode,
-    mon_mx: i32,
-    mon_my: i32,
-    mon_mw: i32,
-    mon_mh: i32,
-    mon_ww: i32,
-    mon_wh: i32,
+    /// Monitor rectangle (position and total size).
+    monitor_rect: Rect,
+    /// Work area dimensions.
+    work_rect: Rect,
+    /// Y offset from top (accounting for bar height).
     yoffset: i32,
-    client_w: i32,
-    client_h: i32,
+    /// Client size.
+    client_size: Rect,
 }
 
 /// Get the resize rect for resetting overlay size based on mode.
 fn get_reset_size_rect(info: &ResetSizeInfo) -> Rect {
     let ResetSizeInfo {
         mode,
-        mon_mx,
-        mon_my,
-        mon_mw,
-        mon_mh,
-        mon_ww,
-        mon_wh,
+        monitor_rect,
+        work_rect,
         yoffset,
-        client_w,
-        client_h,
+        client_size,
     } = *info;
 
     match mode {
         OverlayMode::Top => Rect {
-            x: mon_mx + OVERLAY_MARGIN_X,
-            y: mon_my + yoffset,
-            w: mon_ww - OVERLAY_INSET_X,
-            h: mon_wh / 3,
+            x: monitor_rect.x + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + yoffset,
+            w: work_rect.w - OVERLAY_INSET_X,
+            h: work_rect.h / 3,
         },
         OverlayMode::Right => Rect {
-            x: mon_mx + mon_mw - client_w,
-            y: mon_my + OVERLAY_MARGIN_Y,
-            w: mon_mw / 3,
-            h: mon_mh - OVERLAY_INSET_Y,
+            x: monitor_rect.x + monitor_rect.w - client_size.w,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
+            w: monitor_rect.w / 3,
+            h: monitor_rect.h - OVERLAY_INSET_Y,
         },
         OverlayMode::Bottom => Rect {
-            x: mon_mx + OVERLAY_MARGIN_X,
-            y: mon_my + mon_mh - client_h,
-            w: mon_ww - OVERLAY_INSET_X,
-            h: mon_wh / 3,
+            x: monitor_rect.x + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + monitor_rect.h - client_size.h,
+            w: work_rect.w - OVERLAY_INSET_X,
+            h: work_rect.h / 3,
         },
         OverlayMode::Left => Rect {
-            x: mon_mx,
-            y: mon_my + OVERLAY_MARGIN_Y,
-            w: mon_mw / 3,
-            h: mon_mh - OVERLAY_INSET_Y,
+            x: monitor_rect.x,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
+            w: monitor_rect.w / 3,
+            h: monitor_rect.h - OVERLAY_INSET_Y,
         },
     }
 }
@@ -643,7 +634,8 @@ pub fn reset_overlay_size(ctx: &mut WmCtx) {
     let yoffset = if mon.showbar { ctx.g.cfg.bh } else { 0 };
 
     // Gather all needed data
-    let (client_w, client_h) = ctx.g
+    let (client_w, client_h) = ctx
+        .g
         .clients
         .get(&overlay_win)
         .map(|c| (c.geo.w, c.geo.h))
@@ -655,15 +647,15 @@ pub fn reset_overlay_size(ctx: &mut WmCtx) {
 
     let size_info = ResetSizeInfo {
         mode: mon.overlaymode,
-        mon_mx: mon.monitor_rect.x,
-        mon_my: mon.monitor_rect.y,
-        mon_mw: mon.monitor_rect.w,
-        mon_mh: mon.monitor_rect.h,
-        mon_ww: mon.work_rect.w,
-        mon_wh: mon.work_rect.h,
+        monitor_rect: mon.monitor_rect,
+        work_rect: mon.work_rect,
         yoffset,
-        client_w,
-        client_h,
+        client_size: Rect {
+            x: 0,
+            y: 0,
+            w: client_w,
+            h: client_h,
+        },
     };
 
     let rect = get_reset_size_rect(&size_info);

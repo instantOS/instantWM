@@ -405,7 +405,9 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
 
 #[cfg(feature = "xinerama")]
 fn is_unique_geom(unique: &[Rect], info: &Rect) -> bool {
-    !unique.iter().any(|u| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
+    !unique
+        .iter()
+        .any(|u| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
 }
 
 /// Get unique screen geometries from Xinerama screens.
@@ -442,9 +444,11 @@ fn get_unique_screens(conn: &x11rb::rust_connection::RustConnection) -> Option<V
 /// Ensure we have at least `count` monitors.
 fn ensure_monitor_count(count: usize) {
     let g = get_globals_mut();
-    let (mfact, nmaster, showbar, topbar) = (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
+    let (mfact, nmaster, showbar, topbar) =
+        (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
     while g.monitors.len() < count {
-        g.monitors.push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
+        g.monitors
+            .push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
     }
 }
 
@@ -519,8 +523,18 @@ fn init_single_monitor(sw: i32, sh: i32) -> bool {
     g.monitors.push(create_monitor());
     if let Some(ref mut m) = g.monitors.first_mut() {
         m.num = 0;
-        m.monitor_rect = Rect { x: 0, y: 0, w: sw, h: sh };
-        m.work_rect = Rect { x: 0, y: 0, w: sw, h: sh };
+        m.monitor_rect = Rect {
+            x: 0,
+            y: 0,
+            w: sw,
+            h: sh,
+        };
+        m.work_rect = Rect {
+            x: 0,
+            y: 0,
+            w: sw,
+            h: sh,
+        };
         update_bar_pos(m);
     }
     g.selmon = 0;
@@ -552,7 +566,10 @@ fn update_single_monitor(sw: i32, sh: i32) -> bool {
 
 /// Update monitor geometries from Xinerama screens.
 #[cfg(feature = "xinerama")]
-fn update_from_xinerama(x11: &crate::globals::X11Connection, conn: &x11rb::rust_connection::RustConnection) -> Option<bool> {
+fn update_from_xinerama(
+    x11: &crate::globals::X11Connection,
+    conn: &x11rb::rust_connection::RustConnection,
+) -> Option<bool> {
     let unique = get_unique_screens(conn)?;
     let new_count = unique.len();
     let old_count = get_globals().monitors.len();
@@ -660,35 +677,35 @@ fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
 }
 
 /// Get the current tag for a monitor.
-/// 
+///
 /// **Deprecated**: Use `mon.current_tag(tags)` instead.
 pub fn get_current_tag<'a>(mon: &Monitor, tags: &'a TagSet) -> Option<&'a Tag> {
     mon.current_tag(tags)
 }
 
 /// Get a mutable reference to the current tag for a monitor.
-/// 
+///
 /// **Deprecated**: Use `mon.current_tag_mut(tags)` instead.
 pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
     mon.current_tag_mut(tags)
 }
 
 /// Get the layout symbol for a monitor.
-/// 
+///
 /// **Deprecated**: Use `mon.layout_symbol(tags)` instead.
 pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet) -> String {
     mon.layout_symbol(tags)
 }
 
 /// Check if the bar should be shown for a monitor.
-/// 
+///
 /// **Deprecated**: Use `mon.shows_bar(tags)` instead.
 pub fn get_current_showbar(mon: &Monitor, tags: &TagSet) -> bool {
     mon.shows_bar(tags)
 }
 
 /// Check if the current layout is a tiling layout.
-/// 
+///
 /// **Deprecated**: Use `mon.is_tiling_layout(tags)` instead.
 pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
     mon.is_tiling_layout(tags)

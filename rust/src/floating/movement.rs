@@ -119,4 +119,3 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
         true,
     );
 }
-
