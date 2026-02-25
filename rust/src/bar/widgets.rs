@@ -383,6 +383,7 @@ fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
 
 pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i32) {
     let g = get_globals();
+    let selected = m.selected_tags();
 
     if n > 0 {
         let total_width = w + 1;
@@ -402,7 +403,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
             };
             current = c.next;
 
-            if !c.is_visible() {
+            if !c.is_visible_on_tags(selected) {
                 continue;
             }
 

@@ -99,12 +99,16 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
         None => return,
     };
 
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&current) else {
+    let Some(c) = ctx.g.clients.get(&current) else {
         return;
     };
 
-    let is_vis = c.is_visible();
+    let selected_tags = c
+        .mon_id
+        .and_then(|mid| ctx.g.monitors.get(mid))
+        .map(|m| m.selected_tags())
+        .unwrap_or(0);
+    let is_vis = c.is_visible_on_tags(selected_tags);
     let snext = c.snext;
 
     let x11 = get_x11();
@@ -112,39 +116,35 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
 
     if is_vis {
         // Move the window to its stored on-screen position.
-        let (x, y) = {
-            let globals = get_globals();
-            globals
-                .clients
-                .get(&current)
-                .map(|c| (c.geo.x, c.geo.y))
-                .unwrap_or((0, 0))
-        };
+        let (x, y) = ctx
+            .g
+            .clients
+            .get(&current)
+            .map(|c| (c.geo.x, c.geo.y))
+            .unwrap_or((0, 0));
         let _ = conn.configure_window(current, &ConfigureWindowAux::new().x(x).y(y));
         let _ = conn.flush();
 
         // For floating or non-tiling windows, also issue a full resize so the
         // stored geometry is reflected in the X server's window extents.
-        let (is_floating, is_fullscreen, is_fake_fullscreen, mon_id, w, h) = {
-            let globals = get_globals();
-            globals
-                .clients
-                .get(&current)
-                .map(|c| {
-                    (
-                        c.isfloating,
-                        c.is_fullscreen,
-                        c.isfakefullscreen,
-                        c.mon_id,
-                        c.geo.w,
-                        c.geo.h,
-                    )
-                })
-                .unwrap_or((false, false, false, None, 0, 0))
-        };
+        let (is_floating, is_fullscreen, is_fake_fullscreen, mon_id, w, h) = ctx
+            .g
+            .clients
+            .get(&current)
+            .map(|c| {
+                (
+                    c.isfloating,
+                    c.is_fullscreen,
+                    c.isfakefullscreen,
+                    c.mon_id,
+                    c.geo.w,
+                    c.geo.h,
+                )
+            })
+            .unwrap_or((false, false, false, None, 0, 0));
 
         let is_tiling = mon_id
-            .and_then(|mid| get_globals().monitors.get(mid))
+            .and_then(|mid| ctx.g.monitors.get(mid))
             .map(|mon| crate::monitor::is_current_layout_tiling(mon))
             .unwrap_or(false);
 
@@ -157,14 +157,8 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
         // Recurse first so children are positioned before we move the parent.
         show_hide(ctx, snext);
 
-        let w_val = {
-            let globals = get_globals();
-            globals.clients.get(&current).map(client_width).unwrap_or(0)
-        };
-        let y = {
-            let globals = get_globals();
-            globals.clients.get(&current).map(|c| c.geo.y).unwrap_or(0)
-        };
+        let w_val = ctx.g.clients.get(&current).map(client_width).unwrap_or(0);
+        let y = ctx.g.clients.get(&current).map(|c| c.geo.y).unwrap_or(0);
 
         let _ = conn.configure_window(current, &ConfigureWindowAux::new().x(-2 * w_val).y(y));
         let _ = conn.flush();

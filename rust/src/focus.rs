@@ -26,11 +26,13 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
             return;
         };
 
+        let selected = mon.selected_tags();
+
         let mut target = win.filter(|w| {
             ctx.g
                 .clients
                 .get(w)
-                .map(|c| c.is_visible() && !c.is_hidden)
+                .map(|c| c.is_visible_on_tags(selected) && !c.is_hidden)
                 .unwrap_or(false)
         });
 
@@ -40,7 +42,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
                 let Some(c) = ctx.g.clients.get(&c_win) else {
                     break;
                 };
-                if c.is_visible() && !c.is_hidden {
+                if c.is_visible_on_tags(selected) && !c.is_hidden {
                     target = Some(c_win);
                     break;
                 }
@@ -132,6 +134,8 @@ where
         return;
     };
 
+    let selected = mon.selected_tags();
+
     let Some(source_win) = mon.sel else {
         focus_fn(None);
         return;
@@ -147,6 +151,7 @@ where
     let candidates = get_directional_candidates(
         mon.clients,
         &ctx.g.clients,
+        selected,
         source_win,
         source_center_x,
         source_center_y,
@@ -159,6 +164,7 @@ where
 fn get_directional_candidates(
     clients: Option<Window>,
     globals_map: &std::collections::HashMap<Window, Client>,
+    selected_tags: u32,
     source_win: Window,
     source_center_x: i32,
     source_center_y: i32,
@@ -173,7 +179,7 @@ fn get_directional_candidates(
             break;
         };
 
-        if !c.is_visible() {
+        if !c.is_visible_on_tags(selected_tags) {
             current = c.next;
             continue;
         }
@@ -510,13 +516,14 @@ fn get_visible_stack(
     clients: &std::collections::HashMap<Window, Client>,
 ) -> Vec<Window> {
     let mut stack = Vec::new();
+    let selected = mon.selected_tags();
 
     let mut current = mon.stack;
     while let Some(c_win) = current {
         let Some(c) = clients.get(&c_win) else {
             break;
         };
-        if c.is_visible() {
+        if c.is_visible_on_tags(selected) {
             stack.push(c_win);
         }
         current = c.snext;

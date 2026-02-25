@@ -139,13 +139,14 @@ pub fn detach_stack(win: Window) {
 
             // If `win` was selected, pick the next visible non-hidden client.
             if globals.monitors[mon_id].sel == Some(win) {
+                let selected = globals.monitors[mon_id].selected_tags();
                 let mut t = globals.monitors[mon_id].stack;
                 while let Some(t_win) = t {
                     let t_snext = globals.clients.get(&t_win).and_then(|tc| tc.snext);
                     let is_vis = globals
                         .clients
                         .get(&t_win)
-                        .map(|tc| tc.is_visible())
+                        .map(|tc| tc.is_visible_on_tags(selected))
                         .unwrap_or(false);
 
                     let is_not_hidden = globals
@@ -175,10 +176,15 @@ pub fn detach_stack(win: Window) {
 pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;
     let globals = get_globals();
+    let selected = globals
+        .monitors
+        .get(globals.selmon)
+        .map(|m| m.selected_tags())
+        .unwrap_or(0);
 
     while let Some(win) = current {
         if let Some(c) = globals.clients.get(&win) {
-            if !c.isfloating && c.is_visible() && !c.is_hidden {
+            if !c.isfloating && c.is_visible_on_tags(selected) && !c.is_hidden {
                 return Some(win);
             }
             current = c.next;

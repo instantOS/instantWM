@@ -18,13 +18,14 @@ impl ClientBarStats {
     /// * `visible_clients` — counted by walking the intrusive linked list so
     ///   the number exactly matches what `draw_window_titles` will draw and
     ///   what `bar_position_at_x` uses for hit-testing.  The draw/hit-test
-    ///   code skips clients that fail `is_visible()`, so we apply the same
+    ///   code skips clients that fail `is_visible_on_tags()`, so we apply the same
     ///   predicate here.
     ///
     /// * `occupied_tags` / `urgent_tags` — accumulated from all clients on the
     ///   monitor regardless of list order; order does not matter for bitmasks.
     pub(crate) fn collect(monitor: &Monitor, globals: &Globals) -> Self {
         let mut stats = Self::default();
+        let selected = monitor.selected_tags();
 
         // ── Pass 1: visible_clients via the linked list ───────────────────
         // Walking the linked list (monitor.clients → client.next) gives the
@@ -38,7 +39,7 @@ impl ClientBarStats {
             };
             current = client.next;
 
-            if client.is_visible() {
+            if client.is_visible_on_tags(selected) {
                 stats.visible_clients += 1;
             }
         }
@@ -189,13 +190,14 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     // does (intrusive linked list walk). draw_window_titles and all click/hover
     // consumers delegate to this function, so the order is always consistent.
     let mut visible_clients: Vec<Window> = Vec::new();
+    let selected = mon.selected_tags();
     let mut current = mon.clients;
     while let Some(c_win) = current {
         let Some(c) = ctx.g.clients.get(&c_win) else {
             break;
         };
         current = c.next;
-        if c.is_visible() {
+        if c.is_visible_on_tags(selected) {
             visible_clients.push(c_win);
         }
     }

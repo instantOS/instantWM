@@ -201,7 +201,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                     None => break,
                     Some(c) => {
                         let is_win_floating = c.isfloating;
-                        let visible = c.is_visible();
+                        let visible = c.is_visible_on_tags(m.selected_tags());
                         let snext = c.snext;
 
                         if !is_win_floating && visible {

@@ -12,7 +12,7 @@ use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::layouts::{arrange, restack};
-use crate::monitor::{is_current_layout_tiling, rect_to_mon, update_geom, win_to_mon};
+use crate::monitor::{rect_to_mon, update_geom, win_to_mon};
 use crate::mouse::{
     find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
     handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse_directional,
@@ -94,7 +94,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                     .get(&sel_win)
                     .map(|c| c.isfloating)
                     .unwrap_or(false);
-                let has_tiling = crate::monitor::is_current_layout_tiling(mon);
+                let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     let dir = ctx.g.resize_direction;
                     reset_cursor(ctx);
@@ -225,7 +225,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
             .g
             .monitors
             .get(selmon_id)
-            .map(|m| is_current_layout_tiling(m))
+            .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
         (selmon_id, sel_win, is_floating || !has_tiling)
     };
@@ -241,11 +241,17 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // Handle floating window focus logic
     if let Some(client_win) = entering_client {
+        let selected = ctx
+            .g
+            .monitors
+            .get(selmon_id)
+            .map(|m| m.selected_tags())
+            .unwrap_or(0);
         let is_visible = ctx
             .g
             .clients
             .get(&client_win)
-            .map(|c| c.is_visible())
+            .map(|c| c.is_visible_on_tags(selected))
             .unwrap_or(false);
 
         // If we have a floating selection and are entering a different client,

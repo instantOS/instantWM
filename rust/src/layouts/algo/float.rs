@@ -48,6 +48,7 @@ use x11rb::protocol::xproto::*;
 /// clients at their self-managed positions but still need snap geometry
 /// enforced and the window stack sorted.
 pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    let selected = m.selected_tags();
     // Disable animation for the duration of this arrange pass — floating
     // windows should snap into their positions instantly.
     let animation_was_on = ctx.g.animated;
@@ -63,7 +64,7 @@ pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             None => break,
         };
 
-        if !c.is_visible() {
+        if !c.is_visible_on_tags(selected) {
             c_win = c.next;
             continue;
         }

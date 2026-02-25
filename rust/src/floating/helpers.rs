@@ -50,10 +50,16 @@ pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
 /// This is a window-ID convenience wrapper around [`Client::is_visible`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
 pub fn visible_client(ctx: &WmCtx, win: Window) -> bool {
+    let selected = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| m.selected_tags())
+        .unwrap_or(0);
     ctx.g
         .clients
         .get(&win)
-        .map(|c| c.is_visible())
+        .map(|c| c.is_visible_on_tags(selected))
         .unwrap_or(false)
 }
 

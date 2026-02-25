@@ -12,10 +12,16 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<Window>, include_floating: bool) -> Opt
     }
 
     let mut current = c_win;
+    let selected = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| m.selected_tags())
+        .unwrap_or(0);
 
     while let Some(win) = current {
         if let Some(c) = ctx.g.clients.get(&win) {
-            if c.is_visible() {
+            if c.is_visible_on_tags(selected) {
                 return Some(win);
             }
             current = c.next;
@@ -32,6 +38,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
     }
 
     let mon = ctx.g.monitors.get(ctx.g.selmon)?;
+    let selected = mon.selected_tags();
 
     let mut p: Option<Window> = None;
     let mut r: Option<Window> = None;
@@ -43,7 +50,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
         }
 
         if let Some(c) = ctx.g.clients.get(&win) {
-            if (include_floating || !c.isfloating) && c.is_visible() {
+            if (include_floating || !c.isfloating) && c.is_visible_on_tags(selected) {
                 r = Some(win);
             }
             p = Some(win);

@@ -412,13 +412,24 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
         (mon.sel, mon.clients)
     };
 
+    let selected = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .map(|m| m.selected_tags())
+        .unwrap_or(0);
+
     let mut next: Option<Window> = None;
     let mut current = clients_head;
     let mut found_current = false;
 
     while let Some(c_win) = current {
         let (next_client, visible, is_floating) = match ctx.g.clients.get(&c_win) {
-            Some(c) => (c.next, c.is_visible() && !c.is_hidden, c.isfloating),
+            Some(c) => (
+                c.next,
+                c.is_visible_on_tags(selected) && !c.is_hidden,
+                c.isfloating,
+            ),
             None => break,
         };
 
@@ -438,7 +449,11 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
         current = clients_head;
         while let Some(c_win) = current {
             let (next_client, visible, is_floating) = match ctx.g.clients.get(&c_win) {
-                Some(c) => (c.next, c.is_visible() && !c.is_hidden, c.isfloating),
+                Some(c) => (
+                    c.next,
+                    c.is_visible_on_tags(selected) && !c.is_hidden,
+                    c.isfloating,
+                ),
                 None => break,
             };
             if visible && !is_floating {

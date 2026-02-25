@@ -1187,11 +1187,12 @@ impl Monitor {
 
     /// Count the number of visible clients on this monitor.
     pub fn client_count(&self, clients: &std::collections::HashMap<Window, Client>) -> usize {
+        let selected = self.selected_tags();
         let mut count = 0;
         let mut current = self.clients;
         while let Some(c_win) = current {
             if let Some(c) = clients.get(&c_win) {
-                if c.is_visible() {
+                if c.is_visible_on_tags(selected) {
                     count += 1;
                 }
                 current = c.next;
@@ -1204,11 +1205,12 @@ impl Monitor {
 
     /// Count the number of tiled (non-floating, non-hidden) clients on this monitor.
     pub fn tiled_client_count(&self, clients: &std::collections::HashMap<Window, Client>) -> usize {
+        let selected = self.selected_tags();
         let mut count = 0;
         let mut current = self.clients;
         while let Some(c_win) = current {
             if let Some(c) = clients.get(&c_win) {
-                if c.is_visible() && !c.isfloating && !c.is_hidden {
+                if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
                     count += 1;
                 }
                 current = c.next;

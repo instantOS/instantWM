@@ -500,7 +500,8 @@ pub fn set_overlay(ctx: &mut WmCtx) {
             };
 
             let visible = if let Some(c) = ctx.g.clients.get(&overlay_win) {
-                c.is_visible() || c.issticky
+                let selected = mon.selected_tags();
+                c.is_visible_on_tags(selected)
             } else {
                 false
             };

@@ -104,13 +104,14 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx) -> Option<Window> {
     }
 
     let mon = ctx.g.monitors.get(ctx.g.selmon)?;
+    let selected = mon.selected_tags();
     let mut win = mon.clients;
     while let Some(w) = win {
         let Some(c) = ctx.g.clients.get(&w) else {
             break;
         };
         win = c.next;
-        if !c.is_visible() {
+        if !c.is_visible_on_tags(selected) {
             continue;
         }
         if !c.isfloating && has_tiling {
@@ -165,13 +166,14 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
         return false;
     };
+    let selected = mon.selected_tags();
 
     let mut win = mon.clients;
     while let Some(w) = win {
         let Some(c) = ctx.g.clients.get(&w) else {
             break;
         };
-        if c.is_visible() && !(c.isfloating || !has_tiling) {
+        if c.is_visible_on_tags(selected) && !(c.isfloating || !has_tiling) {
             return true;
         }
         win = c.next;
