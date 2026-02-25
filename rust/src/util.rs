@@ -234,11 +234,7 @@ pub trait X11ConnExt {
     fn kill_client_ctx(&self, resource: x11rb::protocol::xproto::Window) -> Result<()>;
 
     /// Allow events with error context.
-    fn allow_events_ctx(
-        &self,
-        mode: x11rb::protocol::xproto::Allow,
-        time: u32,
-    ) -> Result<()>;
+    fn allow_events_ctx(&self, mode: x11rb::protocol::xproto::Allow, time: u32) -> Result<()>;
 
     /// Change the save set with error context.
     fn change_save_set_ctx(
@@ -370,8 +366,10 @@ impl X11ConnExt for RustConnection {
         dst_x: i16,
         dst_y: i16,
     ) -> Result<()> {
-        self.warp_pointer(src_window, dst_window, src_x, src_y, src_width, src_height, dst_x, dst_y)
-            .context("failed to warp pointer")
+        self.warp_pointer(
+            src_window, dst_window, src_x, src_y, src_width, src_height, dst_x, dst_y,
+        )
+        .context("failed to warp pointer")
     }
 
     fn create_window_ctx(
@@ -419,12 +417,9 @@ impl X11ConnExt for RustConnection {
         self.kill_client(resource).context("failed to kill client")
     }
 
-    fn allow_events_ctx(
-        &self,
-        mode: x11rb::protocol::xproto::Allow,
-        time: u32,
-    ) -> Result<()> {
-        self.allow_events(mode, time).context("failed to allow events")
+    fn allow_events_ctx(&self, mode: x11rb::protocol::xproto::Allow, time: u32) -> Result<()> {
+        self.allow_events(mode, time)
+            .context("failed to allow events")
     }
 
     fn change_save_set_ctx(

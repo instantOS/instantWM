@@ -127,7 +127,13 @@ fn get_tag_scheme_from_globals(
     schemes.get(SchemeTag::Inactive as usize).cloned()
 }
 
-fn get_tag_scheme(ctx: &WmCtx, m: &Monitor, i: u32, occupied_tags: u32, is_hover: bool) -> Option<ColorScheme> {
+fn get_tag_scheme(
+    ctx: &WmCtx,
+    m: &Monitor,
+    i: u32,
+    occupied_tags: u32,
+    is_hover: bool,
+) -> Option<ColorScheme> {
     get_tag_scheme_from_globals(ctx.g, m, i, occupied_tags, is_hover)
 }
 
@@ -158,7 +164,8 @@ pub(crate) fn draw_tag_indicators(
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
         let is_hover = selmon_gesture == Gesture::Tag(t.slot);
 
-        let Some(scheme) = get_tag_scheme(ctx, m, t.tag_index as u32, occupied_tags, is_hover) else {
+        let Some(scheme) = get_tag_scheme(ctx, m, t.tag_index as u32, occupied_tags, is_hover)
+        else {
             x += t.width;
             continue;
         };

@@ -9,7 +9,7 @@ use crate::contexts::WmCtx;
 use crate::tags::view;
 use crate::types::*;
 use crate::util::X11ConnExt;
-use anyhow::Context as AnyhowContext;
+use anyhow::Context;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -17,14 +17,11 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
-/// Error type for focus operations
-pub type FocusResult = anyhow::Result<()>;
-
 /// Set focus to a window, or to the root if None.
 /// 
 /// # Errors
 /// Returns an error if X11 operations fail (e.g., connection lost).
-pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> FocusResult {
+pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         if ctx.g.monitors.is_empty() {
             return Ok(());

@@ -116,7 +116,7 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
         client.tags = new_tags.bits();
     }
 
-    set_client_tag_prop(win);
+    set_client_tag_prop(ctx, win);
     focus(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
