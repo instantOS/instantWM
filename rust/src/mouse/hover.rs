@@ -206,7 +206,11 @@ pub fn handle_floating_resize_hover(
             } else {
                 (1, ResizeDirection::BottomRight)
             };
-            let should_focus = do_focus && ctx.g.selected_win() != Some(win);
+            // Only focus when: do_focus requested AND no visible tiled clients.
+            // When tiled clients exist, enter_notify handles focus transitions,
+            // so motion_notify must not steal focus back to the floating window.
+            let should_focus =
+                do_focus && ctx.g.selected_win() != Some(win) && !has_visible_tiled_client(ctx);
             (cursor_idx, dir, should_focus)
         };
 
@@ -399,7 +403,9 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         None => return false,
     };
     let sel_geo = match ctx.g.clients.get(&sel_win) {
-        Some(c) if c.isfloating || !ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true) => {
+        Some(c)
+            if c.isfloating || !ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true) =>
+        {
             c.geo
         }
         _ => return false,
@@ -410,11 +416,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         Some(w) if w != sel_win => w,
         _ => return false,
     };
-    let has_tiling = ctx
-        .g
-        .selmon()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
     if !has_tiling {
         return false;
     }

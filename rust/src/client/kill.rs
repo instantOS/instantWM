@@ -175,7 +175,7 @@ fn force_close(ctx: &mut WmCtx, win: Window, wmatom_delete: u32) {
         let conn = ctx.x11.conn;
         let _ = conn.grab_server();
         let _ = conn.kill_client(win);
-        let _ = conn.flush();
         let _ = conn.ungrab_server();
+        let _ = conn.flush();
     }
 }

@@ -444,8 +444,8 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
 
         set_client_state(ctx, win, WM_STATE_WITHDRAWN);
 
-        let _ = conn.flush();
         let _ = conn.ungrab_server();
+        let _ = conn.flush();
     }
 
     // Remove from the global map.

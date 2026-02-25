@@ -14,9 +14,8 @@ use crate::keyboard::{
 use crate::layouts::{arrange, restack};
 use crate::monitor::{rect_to_mon, update_geom, win_to_mon_with_ctx};
 use crate::mouse::{
-    find_floating_win_at_resize_border, floating_to_tiled_hover, get_cursor_client_win,
-    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse, reset_cursor,
-    resize_mouse_directional,
+    get_cursor_client_win, handle_floating_resize_hover, handle_sidebar_hover,
+    hover_resize_mouse, reset_cursor, resize_mouse_directional,
 };
 use crate::systray;
 use crate::tags::get_tag_width;
@@ -227,41 +226,54 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         return;
     }
 
-    // 2. Refresh info about selection and layout
-    let (selmon_id, _sel_win, is_floating_sel) = {
-        let selmon_id = ctx.g.selmon_id();
-        let sel_win = ctx.g.selmon().and_then(|m| m.sel);
+    // 2. Snapshot selection state before any changes
+    let selmon_id = ctx.g.selmon_id();
+    let sel_win = ctx.g.selmon().and_then(|m| m.sel);
+    let is_floating_sel = {
         let is_floating = sel_win
             .and_then(|w| ctx.g.clients.get(&w))
             .map(|c| c.isfloating)
             .unwrap_or(false);
-        // If there's no layout handling tiling, treat everything as floating
         let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
-        (selmon_id, sel_win, is_floating || !has_tiling)
+        is_floating || !has_tiling
     };
+    let entering_client = win_to_client(e.event);
 
-    // 2. Early check for hover resize
-    // We attempt to trigger hover resize if the *selected* window is floating,
-    // or if we're entering a floating window's outer border.
-    if hover_resize_mouse(ctx) {
-        return;
+    // 3. Handle floating focus (matches C handle_floating_focus)
+    //    When the selected window is floating and we enter a different window
+    //    (root or client), offer the resize cursor via hover_resize_mouse.
+    if is_floating_sel {
+        // Case 1: Entering root with floating sel
+        if entering_root {
+            eprintln!("DEBUG enter_notify: CASE1 entering root with floating sel={:?}", sel_win);
+            if hover_resize_mouse(ctx) {
+                return;
+            }
+            // Fall through to normal focus handling
+        }
+        // Case 2: Entering a different client while sel is floating
+        else if let Some(ew) = entering_client {
+            eprintln!("DEBUG enter_notify: CASE2 entering client={} sel={:?} same={}", ew, sel_win, Some(ew) == sel_win);
+            if Some(ew) != sel_win {
+                let resized = hover_resize_mouse(ctx);
+                eprintln!("DEBUG enter_notify: hover_resize_mouse returned {}", resized);
+                if focusfollowsfloatmouse {
+                    if resized {
+                        return;
+                    }
+                    // Use the actual topmost window under cursor for focus
+                    if let Some(newc) = get_cursor_client_win(ctx) {
+                        if Some(newc) != sel_win {
+                            focus(ctx, Some(newc));
+                        }
+                    }
+                }
+                return;
+            }
+        }
     }
 
-    // 3. Handle floating → tiled transition.
-    // When the selected window is floating and the cursor enters a tiled window,
-    // activate the resize offer and wait; if the cursor has already moved past
-    // the border zone, focus the tiled window directly.
-    if is_floating_sel && floating_to_tiled_hover(ctx) {
-        return;
-    }
-
-    // 4. Determine what's actually under the cursor
-    // Since floating windows can overlap (and entering_root means we hit the background),
-    // get the actual topmost window under the cursor.
-    let topmost_win_under_cursor = get_cursor_client_win(ctx);
-
-    // 5. Handle Monitor Switch
-    // For focus-follows-mouse, update monitor immediately
+    // 4. Handle Monitor Switch
     if focusfollowsmouse {
         if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, e.event) {
             if new_mon_id != selmon_id {
@@ -272,11 +284,11 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         }
     }
 
-    let entering_client = win_to_client(e.event);
+    // 5. Determine what's actually under the cursor
+    let topmost_win_under_cursor = get_cursor_client_win(ctx);
 
     // 6. Handle focus switching based on configuration
     if let Some(hovered_win) = topmost_win_under_cursor {
-        // Evaluate the properties of the window we're trying to focus
         let hovered_is_floating = ctx
             .g
             .clients
@@ -285,17 +297,11 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
             .unwrap_or(false);
         let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
-        // If focusfollowsfloatmouse is disabled, we drop the focus request if:
-        // - We're in a tiling layout
-        // - The window we're entering is floating
-        // - We're not entering root
+        // Skip floating focus if focusfollowsfloatmouse is disabled
         if !focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
             return;
         }
 
-        // If focusfollowsmouse is disabled entirely, we drop the focus request completely
-        // UNLESS evaluating floating windows with focusfollowsfloatmouse was intended to bypass it
-        // (usually focusfollowsmouse globally disables all hover focus)
         if !focusfollowsmouse {
             return;
         }
@@ -503,29 +509,8 @@ pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
     };
 }
 
-pub fn leave_notify(ctx: &mut WmCtx, e: &LeaveNotifyEvent) {
+pub fn leave_notify(ctx: &mut WmCtx, _e: &LeaveNotifyEvent) {
     reset_bar(ctx);
-
-    let leaving_client = win_to_client(e.event);
-
-    if let Some(leaving_win) = leaving_client {
-        let conn = ctx.x11.conn;
-        let root = ctx.g.cfg.root;
-        let ptr = x11rb::protocol::xproto::query_pointer(conn, root)
-            .ok()
-            .and_then(|c| c.reply().ok())
-            .map(|r| (r.root_x as i32, r.root_y as i32));
-        if let Some((px, py)) = ptr {
-            if let Some(hover_win) = find_floating_win_at_resize_border(ctx, px, py) {
-                if hover_win == leaving_win {
-                    if ctx.g.selected_win() != Some(hover_win) {
-                        focus(ctx, Some(hover_win));
-                    }
-                    if hover_resize_mouse(ctx) {}
-                }
-            }
-        }
-    };
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {

@@ -55,6 +55,7 @@ static NOMATCHES_IDX: AtomicU32 = AtomicU32::new(0);
 ///
 /// Wraps an Xlib display, a server-side pixmap used as an off-screen buffer,
 /// a graphics context (GC), the active color scheme, and the fontset.
+// TODO: Should this be called Drawable or DrawSurface or something like that?
 pub struct Drw {
     /// Pixmap / drawable width.
     pub w: u32,
@@ -652,6 +653,7 @@ impl Drw {
     /// * In **render** mode (`w > 0`): `x + remaining_width` (the x position
     ///   just past the drawn area, suitable for chaining draw calls).
     /// * In **measure** mode (`w == 0`): total advance width of the text.
+    //TODO: this is too long, refactor
     pub fn text(
         &mut self,
         x: i32,
