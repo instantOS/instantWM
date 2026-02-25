@@ -92,6 +92,48 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
     arrange(ctx, Some(selmon_id));
 }
 
+/// Toggle a single tag in or out of the current view by its 0-based index.
+///
+/// This is the handler for a right-click on a tag indicator in the bar.
+/// The tag index comes directly from `BarPosition::Tag(idx)`, so no extra
+/// lookup is needed.
+///
+/// Rules:
+/// * If the clicked tag is the **only** tag currently visible, do nothing —
+///   we never leave the user with an empty view.
+/// * If the tag is **already** in the current view, remove it (toggle off).
+/// * If the tag is **not** in the current view, add it (toggle on).
+pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
+    // BarPosition uses 0-based indices; TagMask::single() takes 1-based.
+    let clicked_mask = match TagMask::single(tag_idx + 1) {
+        Some(m) => m,
+        None => return,
+    };
+
+    let selmon_id = ctx.g.selmon;
+    let valid_mask = TagMask::from_bits(ctx.g.tags.mask());
+    let clicked_mask = clicked_mask & valid_mask;
+    if clicked_mask.is_empty() {
+        return;
+    }
+
+    let current = ctx
+        .g
+        .monitors
+        .get(selmon_id)
+        .map(|m| TagMask::from_bits(m.tagset[m.seltags as usize]))
+        .unwrap_or(TagMask::EMPTY);
+
+    // If this is the only visible tag, removing it would leave nothing — bail.
+    if current & valid_mask == clicked_mask {
+        return;
+    }
+
+    // toggle_view XORs the mask in/out of the current tagset, which is
+    // exactly add-if-absent / remove-if-present.
+    toggle_view(ctx, clicked_mask);
+}
+
 pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     let selmon_id = ctx.g.selmon;
     let (tagset, numtags) = match ctx.g.monitors.get(selmon_id) {

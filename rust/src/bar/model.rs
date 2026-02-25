@@ -55,81 +55,18 @@ impl ClientBarStats {
     }
 }
 
-/// Describes precisely what the mouse cursor is positioned over in the bar.
+/// Map a `BarPosition` to the `Gesture` used for hover highlighting.
 ///
-/// This enum is the single source of truth for bar hit-testing. All three
-/// consumers — click dispatch (`button_press` via `classify_bar_click`),
-/// hover/gesture detection (`motion_notify`), and drag hover highlighting
-/// (`update_bar_hover` / `handle_bar_drop` / `drag_tag`) — call
-/// `bar_position_at_x` and map the result to a `Click`/`Gesture` as needed.
-/// This guarantees that every code path uses identical geometry, eliminating
-/// the previous duplication where each path reimplemented its own x-coordinate
-/// logic and could silently disagree.
-///
-/// # Variants
-///
-/// | Variant | What the cursor is over |
-/// |---------|------------------------|
-/// | `StartMenu` | The start-menu icon at the left edge |
-/// | `Tag(tag_index)` | A tag indicator button (0-based tag index) |
-/// | `LayoutSymbol` | The layout symbol text next to the tags |
-/// | `ShutDown` | The shutdown button (shown when no window is selected) |
-/// | `WinTitle(win)` | The title area of a specific client window |
-/// | `CloseButton(win)` | The close button of the selected client |
-/// | `ResizeWidget(win)` | The resize widget at the right edge of a selected client |
-/// | `StatusText` | The status text / command area on the right |
-/// | `Root` | Nothing — the cursor is in an unoccupied part of the bar |
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BarPosition {
-    /// The start-menu icon.
-    StartMenu,
-    /// A tag button. The inner value is the **0-based** tag index.
-    Tag(usize),
-    /// The layout symbol indicator (e.g. `[]=`).
-    LayoutSymbol,
-    /// The shutdown/power button visible when no client is selected.
-    ShutDown,
-    /// The title cell of a specific client window.
-    WinTitle(Window),
-    /// The close button that overlays the left edge of the selected client's title.
-    CloseButton(Window),
-    /// The resize widget that overlays the right edge of the selected client's title.
-    ResizeWidget(Window),
-    /// The status-text / command strip on the right side of the bar.
-    StatusText,
-    /// An unoccupied area of the bar (no actionable widget).
-    Root,
-}
-
-impl BarPosition {
-    /// Convert to the `Click` enum used by the button-binding dispatch table.
-    pub fn to_click(self) -> Click {
-        match self {
-            BarPosition::StartMenu => Click::StartMenu,
-            BarPosition::Tag(_) => Click::TagBar,
-            BarPosition::LayoutSymbol => Click::LtSymbol,
-            BarPosition::ShutDown => Click::ShutDown,
-            BarPosition::WinTitle(_) => Click::WinTitle,
-            BarPosition::CloseButton(_) => Click::CloseButton,
-            BarPosition::ResizeWidget(_) => Click::ResizeWidget,
-            BarPosition::StatusText => Click::StatusText,
-            BarPosition::Root => Click::RootWin,
-        }
-    }
-
-    /// Convert to the `Gesture` used for hover highlighting.
-    ///
-    /// Not every `BarPosition` maps to a meaningful gesture; those that don't
-    /// return `Gesture::None`.
-    pub fn to_gesture(self) -> Gesture {
-        match self {
-            BarPosition::StartMenu => Gesture::StartMenu,
-            BarPosition::Tag(idx) => Gesture::Tag(idx),
-            BarPosition::CloseButton(_) => Gesture::CloseButton,
-            // Title hover is tracked via `Gesture::None` (bar redraws handle
-            // highlighting based on `selmon.sel`); other positions also use None.
-            _ => Gesture::None,
-        }
+/// Not every `BarPosition` maps to a meaningful gesture; those that don't
+/// map to `Gesture::None`.
+pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
+    match pos {
+        BarPosition::StartMenu => Gesture::StartMenu,
+        BarPosition::Tag(idx) => Gesture::Tag(idx),
+        BarPosition::CloseButton(_) => Gesture::CloseButton,
+        // Title hover is tracked via `Gesture::None` (bar redraws handle
+        // highlighting based on `selmon.sel`); other positions also use None.
+        _ => Gesture::None,
     }
 }
 
@@ -143,6 +80,9 @@ impl BarPosition {
 /// This function is the **single canonical hit-test** for the bar. Both click
 /// handling and hover-gesture detection should call it rather than reimplementing
 /// the geometry themselves.
+///
+/// Outside-bar cases (`ClientWin`, `SideBar`, `Root`) are set directly by
+/// `button_press`; this function only returns bar-interior variants.
 pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPosition {
     use crate::bar::get_layout_symbol_width;
 
@@ -162,7 +102,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
 
     // ── Layout symbol ─────────────────────────────────────────────────────
     if local_x < tag_end + blw {
-        return BarPosition::LayoutSymbol;
+        return BarPosition::LtSymbol;
     }
 
     // ── Shutdown button (only when no client is selected) ─────────────────

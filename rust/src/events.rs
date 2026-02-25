@@ -1,4 +1,4 @@
-use crate::bar::{bar_position_at_x, BarPosition};
+use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
     configure, get_transient_for_hint, is_hidden, set_client_state, set_fullscreen, unmanage,
@@ -54,10 +54,12 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         }
     };
 
-    let mut click_target = Click::RootWin;
+    // Determine the full bar position — this carries the exact target
+    // (tag index, window handle, etc.) through to the button action.
+    let bar_pos: BarPosition;
 
     if let Some(win) = win_to_client(e.event) {
-        click_target = Click::ClientWin;
+        bar_pos = BarPosition::ClientWin;
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
         // change focus or raise windows - the user explicitly wants to interact
@@ -75,13 +77,17 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
             if position == BarPosition::StartMenu {
                 reset_bar(ctx);
             }
-            click_target = position.to_click();
+            bar_pos = position;
         } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
-            click_target = Click::SideBar;
+            bar_pos = BarPosition::SideBar;
+        } else {
+            bar_pos = BarPosition::Root;
         }
+    } else {
+        bar_pos = BarPosition::Root;
     };
 
-    if click_target == Click::RootWin {
+    if bar_pos == BarPosition::Root {
         if let Some(mon) = ctx.g.monitors.get(selmon_id) {
             if let Some(sel_win) = mon.sel {
                 let is_floating = ctx
@@ -104,13 +110,13 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let clean_state = clean_mask(e.state.into(), numlockmask);
 
     for button in &buttons_clone {
-        if button.click != click_target || button.button.as_u8() != e.detail {
+        if !button.matches(bar_pos) || button.button.as_u8() != e.detail {
             continue;
         }
         if clean_mask(button.mask, numlockmask) != clean_state {
             continue;
         }
-        (button.action)(ctx);
+        (button.action)(ctx, bar_pos);
     }
 }
 
@@ -441,7 +447,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
                 reset_bar(ctx);
                 return;
             }
-            other => other.to_gesture(),
+            other => bar_position_to_gesture(other),
         }
     };
 

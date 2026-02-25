@@ -3,7 +3,7 @@ mod status;
 mod widgets;
 pub mod x11;
 
-pub use model::{bar_position_at_x, BarPosition};
+pub use model::{bar_position_at_x, bar_position_to_gesture};
 pub use x11::{resize_bar_win, resize_bar_win_ctx};
 
 use crate::contexts::WmCtx;

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use x11rb::protocol::xproto::Window;
 
 use crate::contexts::WmCtx;
-use crate::types::input::Click;
+use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
 /// A keyboard binding.
@@ -42,21 +42,40 @@ impl Clone for Key {
 }
 
 /// A mouse button binding.
+///
+/// `target` is the `BarPosition` variant this binding responds to.  For
+/// bindings that fire on any click of a given kind (e.g. any `Tag`, any
+/// `WinTitle`) only the variant discriminant is matched — the inner value
+/// (tag index, window handle) is passed to the action at call time so the
+/// handler always knows the exact target.
 pub struct Button {
-    /// Click target area.
-    pub click: Click,
+    /// Which bar/screen region this binding applies to.
+    pub target: BarPosition,
     /// Modifier mask.
     pub mask: u32,
     /// Mouse button.
     pub button: MouseButton,
     /// Action to execute when button is pressed.
-    pub action: Rc<Box<dyn Fn(&mut WmCtx)>>,
+    ///
+    /// The second argument is the full `BarPosition` of the actual click,
+    /// giving the handler access to tag indices, window handles, etc.
+    pub action: Rc<Box<dyn Fn(&mut WmCtx, BarPosition)>>,
+}
+
+impl Button {
+    /// Returns `true` when `pos` is the same variant as `self.target`.
+    ///
+    /// Inner values (tag index, window handle) are intentionally ignored
+    /// during matching — they are passed to the action instead.
+    pub fn matches(&self, pos: BarPosition) -> bool {
+        std::mem::discriminant(&self.target) == std::mem::discriminant(&pos)
+    }
 }
 
 impl Debug for Button {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Button")
-            .field("click", &self.click)
+            .field("target", &self.target)
             .field("mask", &self.mask)
             .field("button", &self.button)
             .field("action", &"<closure>")
@@ -67,7 +86,7 @@ impl Debug for Button {
 impl Clone for Button {
     fn clone(&self) -> Self {
         Self {
-            click: self.click,
+            target: self.target,
             mask: self.mask,
             button: self.button,
             action: Rc::clone(&self.action),

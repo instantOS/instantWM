@@ -74,31 +74,40 @@ pub enum AltCursor {
     Sidebar,
 }
 
-/// Click target areas in the bar/window manager.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Click {
-    /// Tag bar area.
-    TagBar,
-    /// Layout symbol area.
-    LtSymbol,
-    /// Status text area.
-    StatusText,
-    /// Window title area.
-    WinTitle,
-    /// Client window area.
-    ClientWin,
-    /// Root window area.
-    RootWin,
-    /// Close button area.
-    CloseButton,
-    /// Shutdown button area.
-    ShutDown,
-    /// Sidebar area.
-    SideBar,
-    /// Start menu area.
+/// Describes precisely what the mouse cursor is positioned over in the bar,
+/// or what area of the screen was clicked outside the bar.
+///
+/// This is the single source of truth for all click dispatch. `Button` actions
+/// receive the full `BarPosition` so they can access the exact target (e.g.
+/// which tag index, which window) without any separate lookup.
+///
+/// For clicks outside the bar (`ClientWin`, `SideBar`), the non-bar variants
+/// are used and bar-specific data (tag index, window) is not applicable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BarPosition {
+    /// The start-menu icon at the left edge of the bar.
     StartMenu,
-    /// Resize widget area.
-    ResizeWidget,
+    /// A tag indicator button. The inner value is the **0-based** tag index.
+    Tag(usize),
+    /// The layout symbol indicator (e.g. `[]=`).
+    LtSymbol,
+    /// The shutdown/power button (shown when no client is selected).
+    ShutDown,
+    /// The title cell of a specific client window.
+    WinTitle(x11rb::protocol::xproto::Window),
+    /// The close button overlaying the left edge of the selected client's title.
+    CloseButton(x11rb::protocol::xproto::Window),
+    /// The resize widget overlaying the right edge of the selected client's title.
+    ResizeWidget(x11rb::protocol::xproto::Window),
+    /// The status-text / command strip on the right side of the bar.
+    StatusText,
+    /// A client window (outside the bar entirely).
+    ClientWin,
+    /// The sidebar activation zone.
+    SideBar,
+    /// An unoccupied area of the bar or the root window.
+    #[default]
+    Root,
 }
 
 /// Describes which interactive bar region the cursor is hovering over.

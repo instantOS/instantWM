@@ -16,9 +16,10 @@ use crate::mouse::{
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push_down, push_up};
-use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag, toggle_view};
+use crate::tags::view::toggle_view_tag;
+use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag};
 use crate::toggles::{toggle_locked, toggle_prefix};
-use crate::types::{Button, Click, Direction, MouseButton, StackDirection, TagMask};
+use crate::types::{BarPosition, Button, Direction, MouseButton, StackDirection, TagMask};
 use crate::util::spawn;
 
 const MS: u32 = MODKEY | SHIFT;
@@ -26,9 +27,9 @@ const MC: u32 = MODKEY | CONTROL;
 const MA: u32 = MODKEY | MOD1;
 
 macro_rules! btn {
-    ($click:expr, $mask:expr, button:$btn:expr => $action:expr) => {
+    ($target:expr, $mask:expr, button:$btn:expr => $action:expr) => {
         Button {
-            click: $click,
+            target: $target,
             mask: $mask,
             button: $btn,
             action: Rc::new(Box::new($action)),
@@ -37,122 +38,133 @@ macro_rules! btn {
 }
 
 pub fn get_buttons() -> Vec<Button> {
-    use Click::*;
+    use BarPosition::*;
 
     vec![
-        btn!(LtSymbol, 0,     button:MouseButton::Left => |ctx| cycle_layout_direction(ctx, false)),
-        btn!(LtSymbol, 0,     button:MouseButton::Right => |ctx| cycle_layout_direction(ctx, true)),
-        btn!(LtSymbol, 0,     button:MouseButton::Middle => |ctx| set_layout(ctx, LayoutKind::Tile)),
-        btn!(LtSymbol, MODKEY, button:MouseButton::Left => |ctx| {
+        btn!(LtSymbol, 0,     button:MouseButton::Left   => |ctx, _| cycle_layout_direction(ctx, false)),
+        btn!(LtSymbol, 0,     button:MouseButton::Right  => |ctx, _| cycle_layout_direction(ctx, true)),
+        btn!(LtSymbol, 0,     button:MouseButton::Middle => |ctx, _| set_layout(ctx, LayoutKind::Tile)),
+        btn!(LtSymbol, MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 create_overlay(ctx, win)
             }
         }),
-        btn!(WinTitle, 0,     button:MouseButton::Left => |ctx| {
+        btn!(WinTitle(0), 0,     button:MouseButton::Left => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 window_title_mouse_handler(ctx, win)
             }
         }),
-        btn!(WinTitle, 0,     button:MouseButton::Middle => |ctx| {
+        btn!(WinTitle(0), 0,     button:MouseButton::Middle => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 close_win(ctx, win)
             }
         }),
-        btn!(WinTitle, 0,     button:MouseButton::Right => |ctx| {
+        btn!(WinTitle(0), 0,     button:MouseButton::Right => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 window_title_mouse_handler_right(ctx, win)
             }
         }),
-        btn!(WinTitle, MODKEY, button:MouseButton::Left => set_overlay),
-        btn!(WinTitle, MODKEY, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Notify)),
-        btn!(WinTitle, 0,     button:MouseButton::ScrollUp => |ctx| focus_stack(ctx, StackDirection::Previous)),
-        btn!(WinTitle, 0,     button:MouseButton::ScrollDown => |ctx| focus_stack(ctx, StackDirection::Next)),
-        btn!(WinTitle, SHIFT, button:MouseButton::ScrollUp => |ctx| {
+        btn!(WinTitle(0), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
+        btn!(WinTitle(0), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::Notify)),
+        btn!(WinTitle(0), 0, button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
+        btn!(WinTitle(0), 0, button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
+        btn!(WinTitle(0), SHIFT, button:MouseButton::ScrollUp => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 push_up(ctx, win)
             }
         }),
-        btn!(WinTitle, SHIFT, button:MouseButton::ScrollDown => |ctx| {
+        btn!(WinTitle(0), SHIFT, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 push_down(ctx, win)
             }
         }),
-        btn!(WinTitle, CONTROL, button:MouseButton::ScrollUp => |ctx| {
+        btn!(WinTitle(0), CONTROL, button:MouseButton::ScrollUp => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 up_scale_client(ctx, win)
             }
         }),
-        btn!(WinTitle, CONTROL, button:MouseButton::ScrollDown => |ctx| {
+        btn!(WinTitle(0), CONTROL, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 down_scale_client(ctx, win)
             }
         }),
-        btn!(StatusText, 0,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::Panther)),
-        btn!(StatusText, 0,     button:MouseButton::Middle => |ctx| spawn(ctx, Cmd::Term)),
-        btn!(StatusText, 0,     button:MouseButton::Right => |ctx| spawn(ctx, Cmd::CaretInstantSwitch)),
-        btn!(StatusText, 0,     button:MouseButton::ScrollUp => |ctx| spawn(ctx, Cmd::UpVol)),
-        btn!(StatusText, 0,     button:MouseButton::ScrollDown => |ctx| spawn(ctx, Cmd::DownVol)),
-        btn!(StatusText, MODKEY, button:MouseButton::Left => |ctx| spawn(ctx, Cmd::InstantSettings)),
-        btn!(StatusText, MODKEY, button:MouseButton::Middle => |ctx| spawn(ctx, Cmd::MuteVol)),
-        btn!(StatusText, MODKEY, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Spoticli)),
-        btn!(StatusText, MODKEY, button:MouseButton::ScrollUp => |ctx| spawn(ctx, Cmd::UpBright)),
-        btn!(StatusText, MODKEY, button:MouseButton::ScrollDown => |ctx| spawn(ctx, Cmd::DownBright)),
-        btn!(StatusText, MS,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::PavuControl)),
-        btn!(StatusText, MC,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::Notify)),
-        btn!(TagBar, 0,     button:MouseButton::Left => drag_tag),
-        btn!(TagBar, 0,     button:MouseButton::Right => |ctx| toggle_view(ctx, TagMask::ALL_BITS)),
-        btn!(TagBar, 0,     button:MouseButton::ScrollUp => |ctx| crate::tags::view::scroll_view(ctx, Direction::Left)),
-        btn!(TagBar, 0,     button:MouseButton::ScrollDown => |ctx| crate::tags::view::scroll_view(ctx, Direction::Right)),
-        btn!(TagBar, MODKEY, button:MouseButton::Left => |ctx| {
+        btn!(StatusText, 0,     button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Panther)),
+        btn!(StatusText, 0,     button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::Term)),
+        btn!(StatusText, 0,     button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::CaretInstantSwitch)),
+        btn!(StatusText, 0,     button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, Cmd::UpVol)),
+        btn!(StatusText, 0,     button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, Cmd::DownVol)),
+        btn!(StatusText, MODKEY, button:MouseButton::Left       => |ctx, _| spawn(ctx, Cmd::InstantSettings)),
+        btn!(StatusText, MODKEY, button:MouseButton::Middle     => |ctx, _| spawn(ctx, Cmd::MuteVol)),
+        btn!(StatusText, MODKEY, button:MouseButton::Right      => |ctx, _| spawn(ctx, Cmd::Spoticli)),
+        btn!(StatusText, MODKEY, button:MouseButton::ScrollUp   => |ctx, _| spawn(ctx, Cmd::UpBright)),
+        btn!(StatusText, MODKEY, button:MouseButton::ScrollDown => |ctx, _| spawn(ctx, Cmd::DownBright)),
+        btn!(StatusText, MS, button:MouseButton::Left           => |ctx, _| spawn(ctx, Cmd::PavuControl)),
+        btn!(StatusText, MC, button:MouseButton::Left           => |ctx, _| spawn(ctx, Cmd::Notify)),
+        // ── Tag bar ───────────────────────────────────────────────────────
+        btn!(Tag(0), 0, button:MouseButton::Left => |ctx, _| drag_tag(ctx)),
+        // Right-click: the exact tag index is in the BarPosition — toggle it
+        // in/out of the current view, unless it is the only visible tag.
+        btn!(Tag(0), 0, button:MouseButton::Right => |ctx, pos| {
+            if let BarPosition::Tag(idx) = pos {
+                toggle_view_tag(ctx, idx);
+            }
+        }),
+        btn!(Tag(0), 0, button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Left)),
+        btn!(Tag(0), 0, button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Right)),
+        btn!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 set_client_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        btn!(TagBar, MODKEY, button:MouseButton::Right => |ctx| {
+        btn!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 toggle_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        btn!(TagBar, MOD1,   button:MouseButton::Left => |ctx| {
+        btn!(Tag(0), MOD1, button:MouseButton::Left => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 follow_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        btn!(TagBar, MODKEY, button:MouseButton::ScrollUp => |ctx| shift_view(ctx, Direction::Left)),
-        btn!(TagBar, MODKEY, button:MouseButton::ScrollDown => |ctx| shift_view(ctx, Direction::Right)),
-        btn!(RootWin, 0,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::Panther)),
-        btn!(RootWin, 0,     button:MouseButton::Middle => |ctx| spawn(ctx, Cmd::InstantMenu)),
-        btn!(RootWin, 0,     button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Smart)),
-        btn!(RootWin, 0,     button:MouseButton::ScrollUp => hide_overlay),
-        btn!(RootWin, 0,     button:MouseButton::ScrollDown => show_overlay),
-        btn!(RootWin, MODKEY, button:MouseButton::Left => set_overlay),
-        btn!(RootWin, MODKEY, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Notify)),
-        btn!(ClientWin, MODKEY, button:MouseButton::Left => move_mouse),
-        btn!(ClientWin, MODKEY, button:MouseButton::Middle => toggle_floating),
-        btn!(ClientWin, MODKEY, button:MouseButton::Right => resize_mouse_from_cursor),
-        btn!(ClientWin, MA,     button:MouseButton::Right => resize_mouse_from_cursor),
-        btn!(ClientWin, MS,     button:MouseButton::Right => |ctx| {
+        btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(ctx, Direction::Left)),
+        btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(ctx, Direction::Right)),
+        // ── Root window ───────────────────────────────────────────────────
+        btn!(Root, 0,     button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Panther)),
+        btn!(Root, 0,     button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::InstantMenu)),
+        btn!(Root, 0,     button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::Smart)),
+        btn!(Root, 0,     button:MouseButton::ScrollUp    => |ctx, _| hide_overlay(ctx)),
+        btn!(Root, 0,     button:MouseButton::ScrollDown  => |ctx, _| show_overlay(ctx)),
+        btn!(Root, MODKEY, button:MouseButton::Left       => |ctx, _| set_overlay(ctx)),
+        btn!(Root, MODKEY, button:MouseButton::Right      => |ctx, _| spawn(ctx, Cmd::Notify)),
+        // ── Client window ─────────────────────────────────────────────────
+        btn!(ClientWin, MODKEY, button:MouseButton::Left   => |ctx, _| move_mouse(ctx)),
+        btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx, _| toggle_floating(ctx)),
+        btn!(ClientWin, MODKEY, button:MouseButton::Right  => |ctx, _| resize_mouse_from_cursor(ctx)),
+        btn!(ClientWin, MA,     button:MouseButton::Right  => |ctx, _| resize_mouse_from_cursor(ctx)),
+        btn!(ClientWin, MS,     button:MouseButton::Right  => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 resize_aspect_mouse(ctx, win)
             }
         }),
-        btn!(CloseButton, 0, button:MouseButton::Left => |ctx| {
+        // ── Close button ──────────────────────────────────────────────────
+        btn!(CloseButton(0), 0, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 kill_client(ctx, win)
             }
         }),
-        btn!(CloseButton, 0, button:MouseButton::Right => |ctx| {
+        btn!(CloseButton(0), 0, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 toggle_locked(ctx, win)
             }
         }),
-        btn!(ResizeWidget, 0, button:MouseButton::Left => draw_window),
-        btn!(ShutDown, 0, button:MouseButton::Left => |ctx| spawn(ctx, Cmd::InstantShutdown)),
-        btn!(ShutDown, 0, button:MouseButton::Middle => |ctx| spawn(ctx, Cmd::OsLock)),
-        btn!(ShutDown, 0, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Slock)),
-        btn!(SideBar, 0, button:MouseButton::Left => gesture_mouse),
-        btn!(StartMenu, 0,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::StartMenu)),
-        btn!(StartMenu, 0,     button:MouseButton::Right => |ctx| spawn(ctx, Cmd::QuickMenu)),
-        btn!(StartMenu, SHIFT, button:MouseButton::Left => toggle_prefix),
+        // ── Resize widget / other ─────────────────────────────────────────
+        btn!(ResizeWidget(0), 0, button:MouseButton::Left => |ctx, _| draw_window(ctx)),
+        btn!(ShutDown, 0, button:MouseButton::Left   => |ctx, _| spawn(ctx, Cmd::InstantShutdown)),
+        btn!(ShutDown, 0, button:MouseButton::Middle => |ctx, _| spawn(ctx, Cmd::OsLock)),
+        btn!(ShutDown, 0, button:MouseButton::Right  => |ctx, _| spawn(ctx, Cmd::Slock)),
+        btn!(SideBar, 0,  button:MouseButton::Left   => |ctx, _| gesture_mouse(ctx)),
+        btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, Cmd::StartMenu)),
+        btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::QuickMenu)),
+        btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx)),
     ]
 }

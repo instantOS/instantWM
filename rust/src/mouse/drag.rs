@@ -22,8 +22,8 @@
 //! ```
 
 use crate::bar::bar_position_at_x;
+use crate::bar::bar_position_to_gesture;
 use crate::bar::draw_bar;
-use crate::bar::BarPosition;
 use crate::client::resize;
 use crate::config::commands::Cmd;
 use crate::contexts::WmCtx;
@@ -218,7 +218,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             .get(selmon_id)
             .map(|mon| {
                 let local_x = ptr_x - mon.monitor_rect.x;
-                bar_position_at_x(mon, ctx, local_x).to_gesture()
+                bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x))
             })
             .unwrap_or(Gesture::None);
 
@@ -672,10 +672,15 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
 
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.
 ///
-/// * Plain click on the current tag → [`view`]
-/// * Drag then release with `Shift`   → [`tag`]   (move to tag, stay on view)
+/// * Plain click on a different tag  → [`view`] (switch to that tag)
+/// * Plain click on the current tag  → drag to move/follow a window to a tag
+/// * Drag then release with `Shift`   → [`set_client_tag`] (move to tag, stay on view)
 /// * Drag then release with `Control` → [`tag_all`]
 /// * Drag then release (no modifier)  → [`follow_tag`]
+///
+/// Right-clicks on tags are handled entirely in `buttons.rs` via
+/// `toggle_view_tag`, which receives the tag index directly from the
+/// `BarPosition::Tag(idx)` passed to the button action.
 ///
 /// If the pointer leaves the bar during the drag the loop exits without action.
 pub fn drag_tag(ctx: &mut WmCtx) {
@@ -775,7 +780,7 @@ pub fn drag_tag(ctx: &mut WmCtx) {
                     .g
                     .monitors
                     .get(selmon_id)
-                    .map(|mon| bar_position_at_x(mon, ctx, local_x).to_gesture())
+                    .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x)))
                     .unwrap_or(Gesture::None);
                 // Encode gesture as i32 for change-detection (reuse last_tag slot).
                 let gesture_key = match new_gesture {
