@@ -35,13 +35,12 @@ pub fn get_layout_symbol_width(m: &Monitor) -> i32 {
     text_width(&layout_symbol(m)) + get_lrpad()
 }
 
-pub fn draw_bar(m: &mut Monitor) {
+pub fn draw_bar(ctx: &mut WmCtx, m: &mut Monitor) {
     let count = DRAW_BAR_RECURSION.fetch_add(1, Ordering::SeqCst);
     if count > MAX_BAR_RECURSION {
         std::process::abort();
     }
 
-    let _g = get_globals();
     let showbar = m.shows_bar();
     if PAUSEDRAW.load(Ordering::Relaxed) || !showbar {
         DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
@@ -49,41 +48,36 @@ pub fn draw_bar(m: &mut Monitor) {
     }
 
     {
-        let g = get_globals_mut();
-        let bh = g.cfg.bh;
+        let bh = ctx.g.cfg.bh;
         get_drw_mut().resize(m.work_rect.w as u32, bh as u32);
     }
 
-    let g = get_globals();
-    let bh = g.cfg.bh;
-    let is_selmon = g
+    let bh = ctx.g.cfg.bh;
+    let is_selmon = ctx
+        .g
         .monitors
-        .get(g.selmon)
+        .get(ctx.g.selmon)
         .is_some_and(|selmon| selmon.num == m.num);
 
-    let systray_width = if g.cfg.showsystray && is_selmon {
-        // Create temporary ctx for get_systray_width
-        let mut g = get_globals_mut();
-        let x11 = get_x11();
-        let mut ctx = WmCtx::new(g, x11.as_conn());
-        crate::systray::get_systray_width(&ctx) as i32
+    let systray_width = if ctx.g.cfg.showsystray && is_selmon {
+        crate::systray::get_systray_width(ctx) as i32
     } else {
         0
     };
 
     let status_start_x = if is_selmon {
-        status::draw_status_bar(m, bh, &g.status_text)
+        status::draw_status_bar(ctx, m, bh)
     } else {
         0
     };
 
-    widgets::draw_startmenu_icon(bh);
-    x11::resize_bar_win(m);
+    widgets::draw_startmenu_icon(ctx, bh);
+    x11::resize_bar_win_ctx(ctx, m);
 
-    let stats = ClientBarStats::collect(m, g);
-    let mut x = g.cfg.startmenusize;
-    x = widgets::draw_tag_indicators(m, x, stats.occupied_tags, stats.urgent_tags, bh);
-    x = widgets::draw_layout_indicator(m, x, bh);
+    let stats = ClientBarStats::collect(m, ctx.g);
+    let mut x = ctx.g.cfg.startmenusize;
+    x = widgets::draw_tag_indicators(ctx, m, x, stats.occupied_tags, stats.urgent_tags, bh);
+    x = widgets::draw_layout_indicator(ctx, m, x, bh);
 
     let title_end_x = if is_selmon {
         status_start_x
@@ -104,21 +98,27 @@ pub fn draw_bar(m: &mut Monitor) {
     DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
 }
 
-pub fn draw_bars() {
-    let monitor_count = get_globals().monitors.len();
+pub fn draw_bars(ctx: &mut WmCtx) {
+    let monitor_count = ctx.g.monitors.len();
     for i in 0..monitor_count {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitors.get_mut(i) {
-            draw_bar(m);
+        if let Some(m) = ctx.g.monitors.get_mut(i) {
+            // We need to be careful about borrowing here
+            // For now, create a temporary ctx for each iteration
+            let x11 = get_x11();
+            let g = get_globals_mut();
+            let mut ctx = WmCtx::new(g, x11.as_conn());
+            if let Some(m) = ctx.g.monitors.get_mut(i) {
+                draw_bar(&mut ctx, m);
+            }
         }
     }
 }
 
-pub fn reset_bar() {
-    let g = get_globals_mut();
-    let selmon_idx = g.selmon;
+pub fn reset_bar(ctx: &mut WmCtx) {
+    let selmon_idx = ctx.g.selmon;
 
-    let should_reset = g
+    let should_reset = ctx
+        .g
         .monitors
         .get(selmon_idx)
         .is_some_and(|selmon| selmon.gesture != Gesture::None);
@@ -126,9 +126,9 @@ pub fn reset_bar() {
         return;
     }
 
-    if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
+    if let Some(selmon) = ctx.g.monitors.get_mut(selmon_idx) {
         selmon.gesture = Gesture::None;
-        draw_bar(selmon);
+        draw_bar(ctx, selmon);
     }
 }
 

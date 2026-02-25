@@ -1,5 +1,5 @@
 use crate::contexts::WmCtx;
-use crate::globals::{get_drw, get_globals, get_globals_mut, get_x11};
+use crate::globals::get_drw;
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 use std::sync::atomic::Ordering;
@@ -23,26 +23,19 @@ struct StatusLayout {
     total_width: i32,
 }
 
-pub(crate) fn draw_status_bar(m: &mut Monitor, bh: i32, stext: &str) -> i32 {
+pub(crate) fn draw_status_bar(ctx: &mut WmCtx, m: &mut Monitor, bh: i32) -> i32 {
+    let stext = ctx.g.status_text.clone();
     if stext.is_empty() {
         return 0;
     }
 
     let items = parse_status_items(stext.as_bytes());
+    let layout = measure_layout(ctx, m, &items);
 
-    // Create temporary ctx for measure_layout
-    let mut g = get_globals_mut();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(g, x11.as_conn());
-    let layout = measure_layout(&mut ctx, m, &items);
-
-    {
-        let g = get_globals_mut();
-        g.status_text_width = layout.total_width;
-    }
+    ctx.g.status_text_width = layout.total_width;
 
     let mut drw = get_drw().clone();
-    draw_items(&mut drw, m, bh, &items, layout);
+    draw_items(&mut drw, m, bh, &items, layout, ctx.g);
 
     layout.draw_start_x
 }
@@ -177,8 +170,8 @@ fn draw_items(
     bh: i32,
     items: &[StatusItem],
     layout: StatusLayout,
+    g: &crate::globals::Globals,
 ) {
-    let g = get_globals();
     let mut scheme = g
         .cfg
         .statusscheme

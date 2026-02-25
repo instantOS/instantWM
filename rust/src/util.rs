@@ -5,7 +5,9 @@ use std::ptr;
 
 use anyhow::{Context, Result};
 use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::rust_connection::RustConnection;
+use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 use crate::config::commands::Cmd;
 use crate::contexts::WmCtx;

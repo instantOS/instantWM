@@ -1,4 +1,5 @@
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
+use crate::contexts::WmCtx;
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
 use crate::globals::{get_drw, get_globals, Globals};
 use crate::types::*;
@@ -8,28 +9,28 @@ const DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
 
-pub(crate) fn draw_startmenu_icon(bh: i32) {
-    let g = get_globals();
+pub(crate) fn draw_startmenu_icon(ctx: &WmCtx, bh: i32) {
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
-    let startmenu_invert = g
+    let startmenu_invert = ctx
+        .g
         .monitors
-        .get(g.selmon)
+        .get(ctx.g.selmon)
         .is_some_and(|mon| mon.gesture == Gesture::StartMenu);
 
-    let startmenu_size = g.cfg.startmenusize;
-    let scheme: Option<ColorScheme> = if g.tags.prefix {
-        let schemes = &g.tags.schemes;
+    let startmenu_size = ctx.g.cfg.startmenusize;
+    let scheme: Option<ColorScheme> = if ctx.g.tags.prefix {
+        let schemes = &ctx.g.tags.schemes;
         if !schemes.no_hover.is_empty() {
             schemes.no_hover.get(SchemeTag::Focus as usize).cloned()
         } else {
-            g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
+            ctx.g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
                 fg: s.fg.clone(),
                 bg: s.bg.clone(),
                 detail: s.detail.clone(),
             })
         }
     } else {
-        g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
+        ctx.g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
             fg: s.fg.clone(),
             bg: s.bg.clone(),
             detail: s.detail.clone(),
@@ -126,30 +127,30 @@ fn get_tag_scheme_from_globals(
     schemes.get(SchemeTag::Inactive as usize).cloned()
 }
 
-fn get_tag_scheme(m: &Monitor, i: u32, occupied_tags: u32, is_hover: bool) -> Option<ColorScheme> {
-    let g = get_globals();
-    get_tag_scheme_from_globals(g, m, i, occupied_tags, is_hover)
+fn get_tag_scheme(ctx: &WmCtx, m: &Monitor, i: u32, occupied_tags: u32, is_hover: bool) -> Option<ColorScheme> {
+    get_tag_scheme_from_globals(ctx.g, m, i, occupied_tags, is_hover)
 }
 
 pub(crate) fn draw_tag_indicators(
+    ctx: &WmCtx,
     m: &mut Monitor,
     mut x: i32,
     occupied_tags: u32,
     urg: u32,
     bh: i32,
 ) -> i32 {
-    let g = get_globals();
-    let lrpad = g.cfg.lrpad;
+    let lrpad = ctx.g.cfg.lrpad;
     let lpad = (lrpad / 2) as u32;
-    let bar_dragging = g.bar_dragging;
+    let bar_dragging = ctx.g.bar_dragging;
 
-    let tags = crate::tags::bar::visible_tags(g, m, occupied_tags);
+    let tags = crate::tags::bar::visible_tags(ctx.g, m, occupied_tags);
 
     let mut drw = get_drw().clone();
 
-    let selmon_gesture = g
+    let selmon_gesture = ctx
+        .g
         .monitors
-        .get(g.selmon)
+        .get(ctx.g.selmon)
         .map(|s| s.gesture)
         .unwrap_or_default();
 
@@ -157,14 +158,14 @@ pub(crate) fn draw_tag_indicators(
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
         let is_hover = selmon_gesture == Gesture::Tag(t.slot);
 
-        let Some(scheme) = get_tag_scheme(m, t.tag_index as u32, occupied_tags, is_hover) else {
+        let Some(scheme) = get_tag_scheme(ctx, m, t.tag_index as u32, occupied_tags, is_hover) else {
             x += t.width;
             continue;
         };
 
         let mut draw_scheme = scheme;
         if is_hover && bar_dragging {
-            if let Some(s) = g.tags.schemes.hover.get(SchemeTag::Filled as usize) {
+            if let Some(s) = ctx.g.tags.schemes.hover.get(SchemeTag::Filled as usize) {
                 draw_scheme = s.clone();
             }
         }
@@ -191,9 +192,8 @@ pub(crate) fn draw_tag_indicators(
     x
 }
 
-pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
-    let g = get_globals();
-    let lrpad = g.cfg.lrpad;
+pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i32) -> i32 {
+    let lrpad = ctx.g.cfg.lrpad;
     let ltsymbol = super::layout_symbol(m);
     let text_w = super::text_width(&ltsymbol);
     let w = (text_w + lrpad).max(lrpad);
@@ -201,7 +201,7 @@ pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
 
     {
         let mut drw = get_drw().clone();
-        if let Some(ref ss) = g.cfg.statusscheme {
+        if let Some(ref ss) = ctx.g.cfg.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),
                 bg: ss.bg.clone(),

@@ -40,11 +40,9 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 ///
 /// `state` should be one of the `WM_STATE_*` constants from
 /// [`crate::client::constants`].
-pub fn set_client_state(win: Window, state: i32) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn set_client_state(ctx: &WmCtx, win: Window, state: i32) {
+    let conn = ctx.x11.conn;
 
-    let globals = get_globals();
     // WM_STATE is a pair of CARD32 values: [state, icon_pixmap].
     // ICCCM §4.1.3.1 requires format=32 and a count of 2 items.
     // Using format=8 (the previous code) caused get_property's value32()
@@ -53,8 +51,8 @@ pub fn set_client_state(win: Window, state: i32) {
     let _ = conn.change_property32(
         PropMode::REPLACE,
         win,
-        globals.cfg.wmatom.state,
-        globals.cfg.wmatom.state,
+        ctx.g.cfg.wmatom.state,
+        ctx.g.cfg.wmatom.state,
         &data,
     );
     let _ = conn.flush();
@@ -69,18 +67,15 @@ pub fn set_client_state(win: Window, state: i32) {
 /// This is a two-element `CARDINAL` array: `[tags_mask, monitor_num]`.
 /// External tools (e.g. `instantmenu`) can read this to know which tags and
 /// monitor a window belongs to without querying the WM over IPC.
-pub fn set_client_tag_prop(win: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-
-    let globals = get_globals();
-    let Some(c) = globals.clients.get(&win) else {
+pub fn set_client_tag_prop(ctx: &WmCtx, win: Window) {
+    let conn = ctx.x11.conn;
+    let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
 
     let mon_num = c
         .mon_id
-        .and_then(|mid| globals.monitors.get(mid))
+        .and_then(|mid| ctx.g.monitors.get(mid))
         .map(|m| m.num as u32)
         .unwrap_or(0);
 
@@ -88,7 +83,7 @@ pub fn set_client_tag_prop(win: Window) {
     let _ = conn.change_property(
         PropMode::REPLACE,
         win,
-        globals.cfg.netatom.client_info,
+        ctx.g.cfg.netatom.client_info,
         AtomEnum::CARDINAL,
         8u8,
         data.len() as u32,
@@ -106,26 +101,23 @@ pub fn set_client_tag_prop(win: Window) {
 /// The list is rebuilt by iterating over every monitor's client list in
 /// focus order.  Clients are appended in the order they appear in the list,
 /// which matches the order used by most EWMH-aware taskbars.
-pub fn update_client_list() {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-
-    let globals = get_globals();
+pub fn update_client_list(ctx: &WmCtx) {
+    let conn = ctx.x11.conn;
 
     // Delete the existing property first so we start with a clean slate.
-    let _ = conn.delete_property(globals.cfg.root, globals.cfg.netatom.client_list);
+    let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.client_list);
 
-    for mon in &globals.monitors {
+    for mon in &ctx.g.monitors {
         let mut current = mon.clients;
         while let Some(cur_win) = current {
             let _ = conn.change_property32(
                 PropMode::APPEND,
-                globals.cfg.root,
-                globals.cfg.netatom.client_list,
+                ctx.g.cfg.root,
+                ctx.g.cfg.netatom.client_list,
                 AtomEnum::WINDOW,
                 &[cur_win],
             );
-            current = globals.clients.get(&cur_win).and_then(|c| c.next);
+            current = ctx.g.clients.get(&cur_win).and_then(|c| c.next);
         }
     }
 
@@ -140,10 +132,9 @@ pub fn update_client_list() {
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 /// Falls back to [`BROKEN`] when neither property is readable.
-pub fn update_title(win: Window) {
-    let name = read_window_title(win);
-    let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+pub fn update_title(ctx: &mut WmCtx, win: Window) {
+    let name = read_window_title(ctx, win);
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.name = name;
     }
 }
@@ -152,13 +143,9 @@ pub fn update_title(win: Window) {
 ///
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
 /// or [`BROKEN`] if both are absent / unreadable.
-fn read_window_title(win: Window) -> String {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
-        return BROKEN.to_string();
-    };
-
-    let net_wm_name = get_globals().cfg.netatom.wm_name;
+fn read_window_title(ctx: &WmCtx, win: Window) -> String {
+    let conn = ctx.x11.conn;
+    let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
     for atom in [net_wm_name, AtomEnum::WM_NAME.into()] {
         if atom == 0 {

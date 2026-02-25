@@ -25,7 +25,11 @@ pub fn update_status(ctx: &mut WmCtx) {
 
     let selmon_idx = ctx.g.selmon;
     if let Some(m) = ctx.g.monitors.get_mut(selmon_idx) {
-        super::draw_bar(m);
+        // Need to be careful about borrowing here
+        // Create a temporary copy for the call
+        let mut m_copy = m.clone();
+        super::draw_bar(ctx, &mut m_copy);
+        *m = m_copy;
     }
 
     crate::systray::update_systray(ctx);
