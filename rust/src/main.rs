@@ -284,7 +284,7 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
     {
         let x11 = get_x11();
         let mut globals = get_globals_mut();
-        let ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
         grab_keys(&ctx);
         focus(&mut ctx, None);
     }

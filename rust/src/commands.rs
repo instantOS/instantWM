@@ -294,7 +294,7 @@ pub fn init_commands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "setoverlaymode",
-            action: |_ctx, arg| {
+            action: |ctx, arg| {
                 let mode = if arg.is_empty() {
                     OverlayMode::default()
                 } else {
@@ -303,7 +303,7 @@ pub fn init_commands() -> Vec<XCommand> {
                         .and_then(OverlayMode::from_i32)
                         .unwrap_or_default()
                 };
-                crate::overlay::set_overlay_mode(mode);
+                crate::overlay::set_overlay_mode(ctx, mode);
             },
         },
         XCommand {

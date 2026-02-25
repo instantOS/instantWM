@@ -93,7 +93,7 @@ pub fn is_hidden(win: Window) -> bool {
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide(win: Option<Window>) {
+pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
     let current = match win {
         Some(w) => w,
         None => return,
@@ -149,13 +149,13 @@ pub fn show_hide(win: Option<Window>) {
             .unwrap_or(false);
 
         if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-            resize(current, &Rect { x, y, w, h }, false);
+            resize(ctx, current, &Rect { x, y, w, h }, false);
         }
 
-        show_hide(snext);
+        show_hide(ctx, snext);
     } else {
         // Recurse first so children are positioned before we move the parent.
-        show_hide(snext);
+        show_hide(ctx, snext);
 
         let w_val = {
             let globals = get_globals();
@@ -178,7 +178,7 @@ pub fn show_hide(win: Option<Window>) {
 /// Unminimize `win`: map it, animate it sliding in from above, then arrange.
 ///
 /// Does nothing if `win` is not currently in the iconic state.
-pub fn show(win: Window) {
+pub fn show(ctx: &mut WmCtx, win: Window) {
     let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;
@@ -205,7 +205,7 @@ pub fn show(win: Window) {
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
-    resize(win, &Rect { x, y: -50, w, h }, false);
+    resize(ctx, win, &Rect { x, y: -50, w, h }, false);
 
     if let Some(ref conn) = x11.conn {
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
@@ -213,14 +213,11 @@ pub fn show(win: Window) {
     }
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client(win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
     let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mid) = mon_id {
-        let x11 = get_x11();
-        let mut globals = get_globals_mut();
-        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
-        arrange(&mut ctx, Some(mid));
+        arrange(ctx, Some(mid));
     }
 }
 
@@ -232,7 +229,7 @@ pub fn show(win: Window) {
 /// the next client in the stack.
 ///
 /// Does nothing if `win` is already hidden.
-pub fn hide(win: Window) {
+pub fn hide(ctx: &mut WmCtx, win: Window) {
     let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;
@@ -250,6 +247,7 @@ pub fn hide(win: Window) {
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
         animate_client(
+            ctx,
             win,
             &Rect {
                 x,
@@ -270,7 +268,7 @@ pub fn hide(win: Window) {
     let _ = conn.grab_server();
 
     // Temporarily remove the event mask bits that would trigger an unmanage.
-    let root = get_globals().root;
+    let root = get_globals().cfg.root;
     suppress_unmap_events(conn, root, win);
 
     let _ = conn.unmap_window(win);
@@ -291,16 +289,13 @@ pub fn hide(win: Window) {
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.
-    resize(win, &Rect { x, y, w, h }, false);
+    resize(ctx, win, &Rect { x, y, w, h }, false);
 
     let snext = get_globals().clients.get(&win).and_then(|c| c.snext);
-    let x11 = get_x11();
-    let mut globals = get_globals_mut();
-    let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
-    focus(&mut ctx, snext);
+    focus(ctx, snext);
 
     if let Some(mid) = mon_id {
-        arrange(&mut ctx, Some(mid));
+        arrange(ctx, Some(mid));
     }
 }
 

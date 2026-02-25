@@ -156,11 +156,11 @@ pub fn get_xcommands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "nametag",
-            action: |_ctx, arg| name_tag(arg),
+            action: |ctx, arg| name_tag(ctx, arg),
         },
         XCommand {
             cmd: "resetnametag",
-            action: |_ctx, _arg| reset_name_tag(),
+            action: |ctx, _arg| reset_name_tag(ctx),
         },
         XCommand {
             cmd: "scratchpad-make",

@@ -37,6 +37,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
     }
 
     animate_client(
+        ctx,
         win,
         &Rect {
             x: new_x,
@@ -47,7 +48,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
         5,
         0,
     );
-    warp_cursor_to_client(win);
+    warp_cursor_to_client(ctx, win);
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
@@ -67,7 +68,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
     let nw = geo.w + dw;
     let nh = geo.h + dh;
 
-    warp_cursor_to_client(win);
+    warp_cursor_to_client(ctx, win);
     resize(
         ctx,
         win,
@@ -132,7 +133,7 @@ pub fn downscale_client(ctx: &mut WmCtx, win: Window) {
         .unwrap_or(false);
 
     if !is_floating {
-        crate::focus::focus(Some(win));
+        crate::focus::focus(ctx, Some(win));
         super::state::toggle_floating(ctx);
     }
 
@@ -167,5 +168,5 @@ pub fn scale_client_win(ctx: &mut WmCtx, win: Window, scale: i32) {
     }
     y = y.max(bh);
 
-    animate_client(win, &Rect { x, y, w, h }, 3, 0);
+    animate_client(ctx, win, &Rect { x, y, w, h }, 3, 0);
 }

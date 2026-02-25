@@ -153,15 +153,15 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     }
 }
 
-pub fn hide_window(_ctx: &mut WmCtx, win: Window) {
-    crate::client::hide(win);
+pub fn hide_window(ctx: &mut WmCtx, win: Window) {
+    crate::client::hide(ctx, win);
 }
 
 pub fn unhide_all(ctx: &mut WmCtx) {
     let clients: Vec<x11rb::protocol::xproto::Window> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
-        crate::client::show(win);
+        crate::client::show(ctx, win);
     }
 }
 

@@ -742,6 +742,8 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
 /// Draw window titles with dependency injection
 pub(crate) fn draw_window_titles_ctx(m: &mut Monitor, ctx: &mut WmCtx, x: i32, w: i32, n: i32) {
     let g = &*ctx.g;
+    let bh = ctx.g.cfg.bh;
+
     if n > 0 {
         let total_width = w + 1;
         let each_width = total_width / n;
@@ -772,7 +774,10 @@ pub(crate) fn draw_window_titles_ctx(m: &mut Monitor, ctx: &mut WmCtx, x: i32, w
                 each_width
             };
 
+            // Call draw function - need to release g borrow first
+            drop(g);
             draw_window_title_ctx(m, &c, ctx, x, this_width);
+            g = &*ctx.g; // Re-borrow
             x += this_width;
         }
         return;
@@ -787,7 +792,6 @@ pub(crate) fn draw_window_titles_ctx(m: &mut Monitor, ctx: &mut WmCtx, x: i32, w
         let drw = get_drw_mut();
         drw.set_scheme(scheme);
     }
-    let bh = ctx.g.cfg.bh;
     get_drw_mut().rect(x, 0, w as u32, bh as u32, true, true);
 
     let has_clients = g

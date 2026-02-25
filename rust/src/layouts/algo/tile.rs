@@ -84,6 +84,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let frames = if n == 2 { 0 } else { framecount };
 
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x,
@@ -113,6 +114,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let h = (m.work_rect.h - ty as i32) / (n - i) as i32;
 
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x + mw,

@@ -47,7 +47,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             Direction::Up => OverlayMode::Top,
             Direction::Down => OverlayMode::Bottom,
         };
-        crate::overlay::set_overlay_mode(mode);
+        crate::overlay::set_overlay_mode(ctx, mode);
         return;
     }
 
@@ -109,7 +109,7 @@ fn clear_sticky(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window) {
     }
 }
 
-fn play_slide_animation(ctx: &WmCtx, win: x11rb::protocol::xproto::Window, dir: Direction) {
+fn play_slide_animation(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window, dir: Direction) {
     if let Some(ref conn) = ctx.x11.conn {
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
@@ -137,6 +137,7 @@ fn play_slide_animation(ctx: &WmCtx, win: x11rb::protocol::xproto::Window, dir: 
         };
 
     crate::animation::animate_client(
+        ctx,
         win,
         &Rect {
             x: client_x + anim_dx,
@@ -144,7 +145,7 @@ fn play_slide_animation(ctx: &WmCtx, win: x11rb::protocol::xproto::Window, dir: 
             w: 0,
             h: 0,
         },
-        7,
         0,
+        7,
     );
 }

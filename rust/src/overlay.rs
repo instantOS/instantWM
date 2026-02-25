@@ -209,6 +209,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         match overlay_mode {
             OverlayMode::Top => {
                 resize(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: mon_mx + OVERLAY_MARGIN_X,
@@ -221,6 +222,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             }
             OverlayMode::Right => {
                 resize(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: mon_mx + mon_mw - OVERLAY_MARGIN_X,
@@ -233,6 +235,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             }
             OverlayMode::Bottom => {
                 resize(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: mon_mx + OVERLAY_MARGIN_X,
@@ -245,6 +248,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             }
             OverlayMode::Left => {
                 resize(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: mon_mx - client_w + OVERLAY_MARGIN_X,
@@ -305,6 +309,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         };
 
         animate_client(
+            ctx,
             overlay_win,
             &Rect {
                 x: target_x,
@@ -404,6 +409,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
         match overlay_mode {
             OverlayMode::Top => {
                 animate_client(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: client_x,
@@ -417,6 +423,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             }
             OverlayMode::Right => {
                 animate_client(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: mon_mx + mon_mw,
@@ -430,6 +437,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             }
             OverlayMode::Bottom => {
                 animate_client(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: client_x,
@@ -443,6 +451,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             }
             OverlayMode::Left => {
                 animate_client(
+                    ctx,
                     overlay_win,
                     &Rect {
                         x: mon_mx - client_w,
@@ -597,6 +606,7 @@ pub fn reset_overlay_size(ctx: &mut WmCtx) {
     match overlay_mode {
         OverlayMode::Top => {
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: mon_mx + OVERLAY_MARGIN_X,
@@ -616,6 +626,7 @@ pub fn reset_overlay_size(ctx: &mut WmCtx) {
                     .unwrap_or(mon_mw / 3)
             };
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: mon_mx + mon_mw - client_w,
@@ -635,6 +646,7 @@ pub fn reset_overlay_size(ctx: &mut WmCtx) {
                     .unwrap_or(mon_wh / 3)
             };
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: mon_mx + OVERLAY_MARGIN_X,
@@ -647,6 +659,7 @@ pub fn reset_overlay_size(ctx: &mut WmCtx) {
         }
         OverlayMode::Left => {
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: mon_mx,

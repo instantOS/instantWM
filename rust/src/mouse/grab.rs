@@ -48,10 +48,10 @@ use x11rb::CURRENT_TIME;
 ///
 /// The grab captures `ButtonPress | ButtonRelease | PointerMotion` in async
 /// mode on the root window with no event-window confinement.
-pub fn grab_pointer(
-    ctx: &WmCtx,
+pub fn grab_pointer<'a>(
+    ctx: &'a WmCtx,
     cursor_index: usize,
-) -> Option<&'static x11rb::rust_connection::RustConnection> {
+) -> Option<&'a x11rb::rust_connection::RustConnection> {
     let conn = ctx.x11.conn.as_ref()?;
 
     let root = ctx.g.cfg.root;
@@ -91,10 +91,10 @@ pub fn grab_pointer(
 ///
 /// * `ctx` - The mouse context containing connection and cursor data
 /// * `cursor_index` - Index into cursors array (see [`grab_pointer`])
-pub fn grab_pointer_with_keys(
-    ctx: &WmCtx,
+pub fn grab_pointer_with_keys<'a>(
+    ctx: &'a WmCtx,
     cursor_index: usize,
-) -> Option<&'static x11rb::rust_connection::RustConnection> {
+) -> Option<&'a x11rb::rust_connection::RustConnection> {
     let conn = ctx.x11.conn.as_ref()?;
 
     let root = ctx.g.cfg.root;

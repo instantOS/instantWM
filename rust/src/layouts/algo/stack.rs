@@ -194,6 +194,7 @@ pub fn bstack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             // ── master client — horizontal slice of the top row ───────────
             let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x + master_row_offset,
@@ -212,6 +213,7 @@ pub fn bstack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             // ── stack client — column in the bottom row ───────────────────
             let h = m.work_rect.h - mh;
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: tx,
@@ -297,6 +299,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             // ── master client — horizontal slice of the top row ───────────
             let w = (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i) as i32;
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x + master_row_offset,
@@ -314,6 +317,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         } else {
             // ── stack client — full-width horizontal row ──────────────────
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: tx,

@@ -200,11 +200,11 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     crate::client::focus::configure(ctx, w);
     update_window_type(ctx, w);
-    update_size_hints_win(w);
+    update_size_hints_win(ctx, w);
     update_wm_hints(ctx, w);
     read_client_info(ctx, w);
     set_client_tag_prop(w);
-    update_motif_hints(w);
+    update_motif_hints(ctx, w);
 
     // -------------------------------------------------------------------------
     // 8. Store the floating geometry snapshot.
@@ -356,6 +356,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     if animated && !c.is_fullscreen {
         // Place the window 70 px above its target so the animation slides it down.
         resize_client(
+            ctx,
             w,
             &Rect {
                 x: c.geo.x,
@@ -365,6 +366,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             },
         );
         animate_client(
+            ctx,
             w,
             &Rect {
                 x: c.geo.x,

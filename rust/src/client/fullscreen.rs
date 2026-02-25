@@ -27,6 +27,7 @@ use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::arrange;
 use crate::types::Rect;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
@@ -150,7 +151,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
             if !is_floating {
-                animate_client(win, &mon_rect, 10, 0);
+                animate_client(ctx, win, &mon_rect, 10, 0);
             }
 
             // Position and raise the window.
@@ -192,7 +193,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
-            resize_client(win, &old_geo);
+            resize_client(ctx, win, &old_geo);
 
             if let Some(mid) = mon_id {
                 arrange(ctx, Some(mid));
@@ -246,6 +247,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
                 .unwrap_or_default();
 
             resize_client(
+                ctx,
                 win,
                 &Rect {
                     x: mon_rect.x + borderpx,

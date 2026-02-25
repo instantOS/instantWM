@@ -64,6 +64,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: Window) {
     if animated && win != anim_client && !is_fullscreen {
         ANIM_CLIENT.store(win, Ordering::Relaxed);
         animate_client(
+            ctx,
             win,
             &Rect {
                 x: 0,
@@ -140,6 +141,7 @@ pub fn close_win(ctx: &mut WmCtx, win: Window) {
     }
 
     animate_client(
+        ctx,
         win,
         &Rect {
             x: 0,

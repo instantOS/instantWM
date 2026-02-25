@@ -10,6 +10,7 @@
 
 use crate::contexts::WmCtx;
 use crate::types::Client;
+use x11rb::protocol::xproto::Window;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -33,6 +34,29 @@ pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
     if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
         if mon.current_tag > 0 {
             c.tags = 1 << (mon.current_tag - 1);
+        }
+    }
+}
+
+/// Wrapper around `reset_sticky` that takes a window ID instead of a Client.
+/// This is useful when you need to reset sticky status but only have the window ID
+/// and need to avoid borrow checker issues.
+pub fn reset_sticky_win(ctx: &mut WmCtx, win: Window) {
+    // Extract data first to avoid borrow issues
+    let target_tags = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| {
+        if mon.current_tag > 0 {
+            Some(1 << (mon.current_tag - 1))
+        } else {
+            None
+        }
+    });
+
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        if client.issticky {
+            client.issticky = false;
+            if let Some(tags) = target_tags {
+                client.tags = tags;
+            }
         }
     }
 }

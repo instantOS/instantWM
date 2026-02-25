@@ -117,6 +117,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         };
 
         animate_client(
+            ctx,
             win,
             &Rect {
                 x: cell_x,
@@ -206,6 +207,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 };
 
                 animate_client(
+                    ctx,
                     win,
                     &Rect {
                         x: cell_x,

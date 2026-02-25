@@ -12,6 +12,7 @@
 use crate::client::list::{next_tiled, pop};
 use crate::contexts::WmCtx;
 use crate::globals::get_globals;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 

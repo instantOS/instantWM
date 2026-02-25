@@ -32,7 +32,7 @@ pub use view::{
 
 pub use shift::{move_client, shift_tag_by};
 
-pub use sticky::reset_sticky;
+pub use sticky::{reset_sticky, reset_sticky_win};
 
 pub use tag_mon_impl::tag_mon;
 

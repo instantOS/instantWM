@@ -145,7 +145,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
             return None;
         }
         if Some(sel) == mon.fullscreen {
-            crate::floating::temp_fullscreen();
+            crate::floating::temp_fullscreen(ctx);
             return None;
         }
         sel
@@ -159,7 +159,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
         .map(|c| c.snapstatus != SnapPosition::None)
         .unwrap_or(false);
     if is_snapped {
-        reset_snap(sel_win);
+        reset_snap(ctx, sel_win);
         return None;
     }
 
@@ -196,7 +196,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
         }
     };
     if let Some(geo) = restore_geo {
-        resize(sel_win, &geo, false);
+        resize(ctx, sel_win, &geo, false);
     }
 
     Some(sel_win)
@@ -357,6 +357,7 @@ fn on_motion(
             snap_to_monitor_edges(ctx, client, &mut new_x, &mut new_y);
         }
         resize(
+            ctx,
             win,
             &Rect {
                 x: new_x,
@@ -621,7 +622,7 @@ pub fn move_mouse(ctx: &mut WmCtx) {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse(ctx: &WmCtx) {
+pub fn gesture_mouse(ctx: &mut WmCtx) {
     let Some(conn) = grab_pointer(ctx, 2) else {
         return;
     };
@@ -885,7 +886,7 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
                 {
                     ungrab(conn);
                     if was_hidden {
-                        crate::client::show(win);
+                        crate::client::show(ctx, win);
                     }
                     focus(ctx, Some(win));
                     warp_into(ctx, win);
@@ -901,20 +902,16 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
     ungrab(conn);
     if was_hidden {
         // Unminimize: show the window, focus it, and restack.
-        crate::client::show(win);
+        crate::client::show(ctx, win);
         focus(ctx, Some(win));
-        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
-            restack(ctx, mon);
-        }
+        restack(ctx, ctx.g.selmon);
     } else if was_focused {
         // Already focused: minimize it.
-        crate::client::hide(win);
+        crate::client::hide(ctx, win);
     } else {
         // Unfocused: focus it and restack.
         focus(ctx, Some(win));
-        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
-            restack(ctx, mon);
-        }
+        restack(ctx, ctx.g.selmon);
     }
 }
 
@@ -971,8 +968,8 @@ pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
                 {
                     ungrab(conn);
                     if crate::client::is_hidden(win) {
-                        crate::client::show(win);
-                        focus(&mut ctx, Some(win));
+                        crate::client::show(ctx, win);
+                        focus(ctx, Some(win));
                     }
                     super::resize::resize_mouse_from_cursor(ctx);
                     return;
@@ -985,8 +982,8 @@ pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
     // Only reached on ButtonRelease (click, not drag).
     ungrab(conn);
     if crate::client::is_hidden(win) {
-        crate::client::show(win);
-        focus(&mut ctx, Some(win));
+        crate::client::show(ctx, win);
+        focus(ctx, Some(win));
     }
-    crate::client::zoom(&mut ctx);
+    crate::client::zoom(ctx);
 }

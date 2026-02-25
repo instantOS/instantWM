@@ -41,24 +41,26 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
 
         let matching_key = {
             let numlockmask = ctx.g.cfg.numlockmask;
+            let keys = ctx.g.cfg.keys.clone();
+            let dkeys = ctx.g.cfg.dkeys.clone();
             let mut result = None;
-            for key in &ctx.g.cfg.keys {
+            for key in &keys {
                 if keysym == key.keysym
                     && clean_mask(key.mod_mask as u16, numlockmask)
                         == clean_mask(state.bits(), numlockmask)
                 {
-                    result = Some(key);
+                    result = Some(key.clone());
                     break;
                 }
             }
             let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
             if result.is_none() && sel_win.is_none() {
-                for key in &ctx.g.cfg.dkeys {
+                for key in &dkeys {
                     if keysym == key.keysym
                         && clean_mask(key.mod_mask as u16, numlockmask)
                             == clean_mask(state.bits(), numlockmask)
                     {
-                        result = Some(key);
+                        result = Some(key.clone());
                         break;
                     }
                 }
@@ -226,12 +228,12 @@ pub fn up_press(ctx: &mut WmCtx) {
     }
 
     if let Some(win) = sel_win {
-        crate::client::hide(win);
+        crate::client::hide(ctx, win);
     }
 }
 
 pub fn down_press(ctx: &mut WmCtx) {
-    if unhide_one() {
+    if unhide_one(ctx) {
         return;
     }
 
@@ -278,7 +280,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: i32) {
     };
 
     if is_overview {
-        direction_focus(Direction::Up);
+        direction_focus(ctx, Direction::Up);
         return;
     }
 
@@ -322,7 +324,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: i32) {
     };
 
     if is_overview {
-        direction_focus(Direction::Down);
+        direction_focus(ctx, Direction::Down);
         return;
     }
 

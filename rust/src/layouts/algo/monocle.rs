@@ -64,6 +64,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         };
 
         animate_client(
+            ctx,
             win,
             &Rect {
                 x: m.work_rect.x,

@@ -171,8 +171,8 @@ pub fn change_snap(ctx: &mut WmCtx, win: Window, direction: SnapDir) {
     };
 
     apply_snap(ctx, win, mon_id);
-    warp_cursor_to_client(win);
-    crate::focus::focus(Some(win));
+    warp_cursor_to_client(ctx, win);
+    crate::focus::focus(ctx, Some(win));
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the
@@ -212,6 +212,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
     match snapstatus {
         SnapPosition::None => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: saved_geo.x,
@@ -225,6 +226,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::Top => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx,
@@ -238,6 +240,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::TopRight => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -251,6 +254,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::Right => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -264,6 +268,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::BottomRight => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -277,6 +282,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::Bottom => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx,
@@ -290,6 +296,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::BottomLeft => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx,
@@ -303,6 +310,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::Left => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx,
@@ -316,6 +324,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
         }
         SnapPosition::TopLeft => {
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx,
@@ -333,6 +342,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
                 client.border_width = 0;
             }
             check_animate(
+                ctx,
                 win,
                 &Rect {
                     x: m_mx,

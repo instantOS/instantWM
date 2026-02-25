@@ -22,6 +22,7 @@ use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::clean_mask;
 use std::sync::atomic::Ordering;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
@@ -42,7 +43,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let _ = conn.flush();
 
     let numlockmask = ctx.g.cfg.numlockmask;
-    let buttons = ctx.g.cfg.buttons.as_slice();
+    let buttons_clone = ctx.g.cfg.buttons.clone();
     let altcursor = ctx.g.altcursor;
     let mut selmon_id = ctx.g.selmon;
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
@@ -67,9 +68,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         if focusfollowsmouse && e.detail > 3 {
             focus(ctx, Some(win));
             if let Some(mon_id) = ctx.g.clients.get(&win).and_then(|c| c.mon_id) {
-                if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
-                    restack(ctx, mon);
-                }
+                restack(ctx, mon_id);
             }
         }
     } else {
@@ -108,7 +107,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
 
     let clean_state = clean_mask(e.state.into(), numlockmask);
 
-    for button in buttons {
+    for button in &buttons_clone {
         if button.click != click_target || button.button.as_u8() != e.detail {
             continue;
         }
@@ -160,7 +159,7 @@ pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
 
 pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
     if let Some(win) = win_to_client(e.window) {
-        configure(win);
+        configure(ctx, win);
     } else {
         let Some(ref conn) = ctx.x11.conn else {
             return;
@@ -188,11 +187,10 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
         // the bar and redraw the systray — matching the C code's sequence of
         // removesystrayicon(c) → resizebarwin(selmon) → updatesystray().
         systray::remove_systray_icon(ctx, icon);
-        {
-            let selmon_idx = ctx.g.selmon;
-            if let Some(mon) = ctx.g.monitors.get(selmon_idx) {
-                crate::bar::resize_bar_win_ctx(ctx, mon);
-            }
+        // Get monitor reference for resize_bar_win
+        let selmon_idx = ctx.g.selmon;
+        if let Some(mon) = ctx.g.monitors.get(selmon_idx) {
+            crate::bar::resize_bar_win(mon);
         }
         systray::update_systray(ctx);
     }
@@ -386,12 +384,16 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
 
     // Handle focus-follows-mouse monitor switching
     if ctx.g.focusfollowsmouse {
-        if let Some(new_mon) = rect_to_mon(&Rect {
-            x: root_x,
-            y: root_y,
-            w: 1,
-            h: 1,
-        }) {
+        if let Some(new_mon) = rect_to_mon(
+            &ctx.g.monitors,
+            ctx.g.selmon,
+            &Rect {
+                x: root_x,
+                y: root_y,
+                w: 1,
+                h: 1,
+            },
+        ) {
             if new_mon != selmon_id {
                 ctx.g.selmon = new_mon;
                 focus(ctx, None);
@@ -599,7 +601,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         }
     }
 
-    crate::client::update_size_hints_win(icon_win);
+    crate::client::update_size_hints_win(ctx, icon_win);
     systray::update_systray_icon_geom(ctx, icon_win, geo.w, geo.h);
 
     let _ = conn.change_save_set(SetMode::INSERT, icon_win);
@@ -620,6 +622,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
 
     crate::client::send_event(
+        ctx,
         icon_win,
         xembed_atom,
         structure_notify_mask,
@@ -630,6 +633,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         XEMBED_EMBEDDED_VERSION as i64,
     );
     crate::client::send_event(
+        ctx,
         icon_win,
         xembed_atom,
         structure_notify_mask,
@@ -640,6 +644,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         XEMBED_EMBEDDED_VERSION as i64,
     );
     crate::client::send_event(
+        ctx,
         icon_win,
         xembed_atom,
         structure_notify_mask,
@@ -650,6 +655,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         XEMBED_EMBEDDED_VERSION as i64,
     );
     crate::client::send_event(
+        ctx,
         icon_win,
         xembed_atom,
         structure_notify_mask,
@@ -686,15 +692,13 @@ fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: Window) {
 fn handle_active_window(ctx: &mut WmCtx, win: Window) {
     let is_hidden = is_hidden(win);
     if is_hidden {
-        crate::client::show(win);
+        crate::client::show(ctx, win);
     }
 
     if let Some(c) = ctx.g.clients.get(&win) {
         if let Some(mon_id) = c.mon_id {
             focus(ctx, Some(win));
-            if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
-                restack(ctx, mon);
-            }
+            restack(ctx, mon_id);
         }
     }
 }

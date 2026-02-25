@@ -74,6 +74,7 @@ pub fn apply_float_change(
 
         if animate {
             animate_client(
+                ctx,
                 win,
                 &Rect {
                     x: saved_geo.x,

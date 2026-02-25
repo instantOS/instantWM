@@ -82,9 +82,7 @@ pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── restack and raise selected client ─────────────────────────────────
     // `restack` uses a mutable Monitor reference so we call it here after the
     // immutable client loop above is finished.
-    if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
-        restack(ctx, mon);
-    }
+    restack(ctx, ctx.g.selmon);
 
     // Raise the selected window to the top of the Z-order so it is not
     // accidentally obscured by a tiled window placed above it by the compositor.

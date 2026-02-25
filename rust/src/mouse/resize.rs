@@ -33,7 +33,7 @@ use crate::types::ResizeDirection;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-pub fn resize_mouse_from_cursor(ctx: &WmCtx) {
+pub fn resize_mouse_from_cursor(ctx: &mut WmCtx) {
     let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
         return;
     };

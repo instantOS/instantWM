@@ -9,12 +9,12 @@ use x11rb::protocol::xproto::*;
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
 
-pub fn unhide_one(ctx: &WmCtx) -> bool {
+pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     let clients: Vec<Window> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
         if crate::client::is_hidden(win) {
-            crate::client::show(win);
+            crate::client::show(ctx, win);
             return true;
         }
     }

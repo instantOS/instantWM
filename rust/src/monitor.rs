@@ -232,7 +232,7 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
 
     if w == g.cfg.root {
         if let Some((x, y)) = get_root_ptr() {
-            return rect_to_mon(&Rect { x, y, w: 1, h: 1 });
+            return rect_to_mon(&g.monitors, g.selmon, &Rect { x, y, w: 1, h: 1 });
         }
         return if g.monitors.is_empty() {
             None
@@ -259,7 +259,7 @@ pub fn win_to_mon(w: Window) -> Option<MonitorId> {
     }
 }
 
-pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
+pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     let g = get_globals_mut();
 
     let current_mon_id = g.selmon;
@@ -286,7 +286,10 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
     };
 
     if let Some(_win) = get_win_to_client(c_win) {
-        unfocus_win(c_win, true);
+        let x11 = get_x11();
+        let mut g = get_globals_mut();
+        let mut ctx = WmCtx::new(&mut g, x11);
+        unfocus_win(&mut ctx, c_win, true);
     }
 
     detach(c_win);
@@ -299,7 +302,24 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
 
             if !is_scratchpad {
                 client.tags = target_tags;
-                reset_sticky(client);
+            }
+        }
+    }
+
+    if !is_scratchpad {
+        let x11 = get_x11();
+        let mut g = get_globals_mut();
+        let mut ctx = WmCtx::new(&mut g, x11);
+        // Get client data first, then call reset_sticky
+        let mon_id = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id);
+        if mon_id.is_some() {
+            // Create a temporary client reference for reset_sticky
+            let client_opt = ctx.g.clients.get_mut(&c_win);
+            if client_opt.is_some() {
+                // We need to get the window and call reset_sticky on it directly
+                drop(client_opt);
+                // Call reset_sticky with just the window
+                crate::tags::reset_sticky_win(&mut ctx, c_win);
             }
         }
     }
@@ -332,12 +352,14 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
         if let Some(c) = g.clients.get(&c_win) {
             if c.is_scratchpad() && !c.issticky {
                 {
-                    let g = get_globals_mut();
-                    let sel = g.selmon;
+                    let x11 = get_x11();
+                    let mut g = get_globals_mut();
+                    let mut ctx = WmCtx::new(&mut g, x11);
+                    let sel = ctx.g.selmon;
                     if let Some(win) = get_selected_client_win(sel) {
-                        unfocus_win(win, false);
+                        unfocus_win(&mut ctx, win, false);
                     }
-                    g.selmon = target_mon_id;
+                    ctx.g.selmon = target_mon_id;
                 }
 
                 let sp_name = {
@@ -353,12 +375,14 @@ pub fn send_mon(c_win: Window, target_mon_id: MonitorId) {
                 }
 
                 {
-                    let g = get_globals_mut();
-                    let sel = g.selmon;
+                    let x11 = get_x11();
+                    let mut g = get_globals_mut();
+                    let mut ctx = WmCtx::new(&mut g, x11);
+                    let sel = ctx.g.selmon;
                     if let Some(win) = get_selected_client_win(sel) {
-                        unfocus_win(win, false);
+                        unfocus_win(&mut ctx, win, false);
                     }
-                    g.selmon = current_mon_id;
+                    ctx.g.selmon = current_mon_id;
                 }
 
                 let x11 = get_x11();

@@ -233,7 +233,7 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     };
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
-        if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.bh + 60 {
+        if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.cfg.bh + 60 {
             set_root_cursor(ctx, 8);
             ctx.g.altcursor = AltCursor::Sidebar;
         }
@@ -290,7 +290,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
                         ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win)
                     });
                     if let Some(hover_win) = should_refocus {
-                        focus(&mut ctx, Some(hover_win));
+                        focus(ctx, Some(hover_win));
                     }
                     break;
                 }

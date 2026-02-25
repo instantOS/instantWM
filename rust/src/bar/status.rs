@@ -1,5 +1,5 @@
 use crate::contexts::WmCtx;
-use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut};
+use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut, get_x11};
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 use std::sync::atomic::Ordering;
@@ -29,7 +29,12 @@ pub(crate) fn draw_status_bar(m: &mut Monitor, bh: i32, stext: &str) -> i32 {
     }
 
     let items = parse_status_items(stext.as_bytes());
-    let layout = measure_layout(m, &items);
+
+    // Create temporary ctx for measure_layout
+    let mut g = get_globals_mut();
+    let x11 = get_x11();
+    let mut ctx = WmCtx::new(&mut g, x11);
+    let layout = measure_layout(&mut ctx, m, &items);
 
     {
         let g = get_globals_mut();
@@ -49,7 +54,7 @@ pub(crate) fn draw_status_bar_ctx(ctx: &mut WmCtx, m: &Monitor, stext: &str) -> 
     }
 
     let items = parse_status_items(stext.as_bytes());
-    let layout = measure_layout(m, &items);
+    let layout = measure_layout(ctx, m, &items);
 
     ctx.g.status_text_width = layout.total_width;
 
@@ -161,7 +166,7 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
     }
 }
 
-fn measure_layout(m: &Monitor, items: &[StatusItem]) -> StatusLayout {
+fn measure_layout(ctx: &mut WmCtx, m: &Monitor, items: &[StatusItem]) -> StatusLayout {
     let mut width = 0i32;
 
     for item in items {
@@ -173,7 +178,7 @@ fn measure_layout(m: &Monitor, items: &[StatusItem]) -> StatusLayout {
     }
 
     let draw_width = (width + 2).max(0);
-    let systray_w = get_systray_width() as i32;
+    let systray_w = get_systray_width(ctx) as i32;
     let draw_start_x = m.work_rect.w - draw_width - systray_w;
 
     StatusLayout {

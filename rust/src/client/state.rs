@@ -540,7 +540,7 @@ pub fn set_urgent(win: Window, urg: bool) {
 /// global `borderpx` value is used.
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
-pub fn update_motif_hints(win: Window) {
+pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
     let globals = get_globals();
     if globals.cfg.decorhints == 0 {
         return;
@@ -607,6 +607,7 @@ pub fn update_motif_hints(win: Window) {
     // Resize to account for the changed border (total size stays the same;
     // the content area grows or shrinks by the border delta).
     resize(
+        ctx,
         win,
         &Rect {
             x: c_x,

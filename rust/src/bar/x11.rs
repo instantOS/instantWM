@@ -10,7 +10,6 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn update_status(ctx: &mut WmCtx) {
     let root = ctx.g.cfg.root;
-    let selmon_idx = ctx.g.selmon;
 
     let text = get_text_prop(ctx, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
     match text {
@@ -25,8 +24,10 @@ pub fn update_status(ctx: &mut WmCtx) {
         }
     }
 
-    if let Some(m) = ctx.g.monitors.get_mut(selmon_idx) {
-        super::draw_bar_ctx(ctx, m);
+    // Get a copy of the monitor to avoid borrow issues
+    let selmon_idx = ctx.g.selmon;
+    if let Some(m) = ctx.g.monitors.get(selmon_idx).cloned() {
+        super::draw_bar(ctx, &m);
     }
 
     crate::systray::update_systray(ctx);
@@ -65,10 +66,8 @@ pub fn resize_bar_win(m: &Monitor) {
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
-        let mut globals = get_globals();
-        let x11 = get_x11();
-        let ctx = WmCtx::new(&mut globals, x11);
-        w = w.saturating_sub(get_systray_width(&mut ctx));
+        // Use global-based systray width calculation
+        w = w.saturating_sub(get_systray_width_static());
     }
 
     let x11 = get_x11();
@@ -81,6 +80,29 @@ pub fn resize_bar_win(m: &Monitor) {
                 .width(w)
                 .height(bh as u32),
         );
+    }
+}
+
+/// Get systray width using global state (for use when ctx is not available)
+fn get_systray_width_static() -> u32 {
+    let g = get_globals();
+    if !g.cfg.showsystray {
+        return 1;
+    }
+
+    let mut w: u32 = 0;
+    if let Some(ref systray) = g.systray {
+        for &icon_win in &systray.icons {
+            if let Some(c) = g.clients.get(&icon_win) {
+                w += c.geo.w as u32 + g.cfg.systrayspacing as u32;
+            }
+        }
+    }
+
+    if w > 0 {
+        w + g.cfg.systrayspacing as u32
+    } else {
+        1
     }
 }
 
@@ -125,6 +147,18 @@ pub fn update_bars(ctx: &mut WmCtx) {
         );
         let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
         let root = ctx.g.cfg.root;
+        let selmon = ctx.g.selmon;
+
+        // Collect systray widths first to avoid borrow issues
+        let mut systray_widths: std::collections::HashMap<usize, u32> =
+            std::collections::HashMap::new();
+        if showsystray {
+            for i in 0..ctx.g.monitors.len() {
+                if selmon == i {
+                    systray_widths.insert(i, crate::systray::get_systray_width(ctx));
+                }
+            }
+        }
 
         let mut bar_configs = Vec::new();
         for (i, m) in ctx.g.monitors.iter().enumerate() {
@@ -133,8 +167,8 @@ pub fn update_bars(ctx: &mut WmCtx) {
             }
 
             let mut w = m.work_rect.w as u32;
-            if showsystray && ctx.g.selmon == i {
-                w = w.saturating_sub(crate::systray::get_systray_width(ctx));
+            if showsystray && selmon == i {
+                w = w.saturating_sub(*systray_widths.get(&i).unwrap_or(&0));
             }
             bar_configs.push((i, m.work_rect.x, m.by, w, bh));
         }

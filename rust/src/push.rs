@@ -58,7 +58,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
 }
 
 pub fn push_up(ctx: &mut WmCtx, win: Window) {
-    if client_count() < 2 {
+    if client_count(ctx.g) < 2 {
         return;
     }
 
@@ -143,7 +143,7 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
 }
 
 pub fn push_down(ctx: &mut WmCtx, win: Window) {
-    if client_count() < 2 {
+    if client_count(ctx.g) < 2 {
         return;
     }
 

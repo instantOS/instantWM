@@ -50,36 +50,105 @@ pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: Window) {
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i32) {
     let bh = ctx.g.cfg.bh;
-    if let Some(client) = ctx.g.clients.get_mut(&icon_win) {
-        client.geo.h = bh;
-        if w == h {
-            client.geo.w = bh;
-        } else if h == bh {
-            client.geo.w = w;
-        } else {
-            client.geo.w = (bh as f32 * (w as f32 / h as f32)) as i32;
-        }
 
-        let mut x = client.geo.x;
-        let mut y = client.geo.y;
-        let mut client_width = client.geo.w;
-        let mut client_height = client.geo.h;
+    // Extract client data first to avoid borrow issues
+    let client_data = ctx.g.clients.get(&icon_win).map(|client| {
+        (
+            client.geo.x,
+            client.geo.y,
+            client.geo.w,
+            client.geo.h,
+            client.base_width,
+            client.base_height,
+            client.min_width,
+            client.min_height,
+            client.max_width,
+            client.max_height,
+            client.inc_width,
+            client.inc_height,
+            client.base_aspect_n,
+            client.base_aspect_d,
+            client.min_aspect_n,
+            client.min_aspect_d,
+            client.max_aspect_n,
+            client.max_aspect_d,
+        )
+    });
+
+    if let Some((
+        geo_x,
+        geo_y,
+        geo_w,
+        geo_h,
+        base_w,
+        base_h,
+        min_w,
+        min_h,
+        max_w,
+        max_h,
+        inc_w,
+        inc_h,
+        base_an,
+        base_ad,
+        min_an,
+        min_ad,
+        max_an,
+        max_ad,
+    )) = client_data
+    {
+        let mut new_geo_h = bh;
+        let mut new_geo_w = if w == h {
+            bh
+        } else if h == bh {
+            w
+        } else {
+            (bh as f32 * (w as f32 / h as f32)) as i32
+        };
+
+        let mut x = geo_x;
+        let mut y = geo_y;
+        let mut client_width = new_geo_w;
+        let mut client_height = new_geo_h;
+
         let _ = apply_size_hints(
-            client,
+            ctx,
+            icon_win,
             &mut x,
             &mut y,
             &mut client_width,
             &mut client_height,
             false,
+            base_w,
+            base_h,
+            min_w,
+            min_h,
+            max_w,
+            max_h,
+            inc_w,
+            inc_h,
+            base_an,
+            base_ad,
+            min_an,
+            min_ad,
+            max_an,
+            max_ad,
         );
 
-        if client.geo.h > bh {
-            if client.geo.w == client.geo.h {
-                client.geo.w = bh;
-            } else {
-                client.geo.w = (bh as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
+        // Now update the client with the computed values
+        if let Some(client) = ctx.g.clients.get_mut(&icon_win) {
+            client.geo.x = x;
+            client.geo.y = y;
+            client.geo.w = client_width;
+            client.geo.h = client_height;
+
+            if client.geo.h > bh {
+                if client.geo.w == client.geo.h {
+                    client.geo.w = bh;
+                } else {
+                    client.geo.w = (bh as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
+                }
+                client.geo.h = bh;
             }
-            client.geo.h = bh;
         }
     }
 }
@@ -166,7 +235,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
     unsafe {
-        crate::drw::XFlush(ctx.g.xlibdisplay.0);
+        crate::drw::XFlush(ctx.g.cfg.xlibdisplay.0);
     }
 
     let (x, by, _showbar, barwin) = {
@@ -410,7 +479,17 @@ fn get_atom_prop(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
 }
 
 /// Send X event using dependency injection.
-fn send_event(ctx: &mut WmCtx, win: Window, proto: u32, mask: u32, d0: i64, d1: i64, d2: i64, d3: i64, d4: i64) {
+fn send_event(
+    ctx: &mut WmCtx,
+    win: Window,
+    proto: u32,
+    mask: u32,
+    d0: i64,
+    d1: i64,
+    d2: i64,
+    d3: i64,
+    d4: i64,
+) {
     if let Some(ref conn) = ctx.x11.conn {
         let event = ClientMessageEvent {
             response_type: CLIENT_MESSAGE_EVENT,

@@ -125,7 +125,7 @@ pub fn apply_window_resize(
         toggle_floating(ctx);
     }
 
-    resize(c_win, &rect, true);
+    resize(ctx, c_win, &rect, true);
 }
 
 /// Rect-typed convenience wrapper around [`apply_window_resize`].
@@ -178,7 +178,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     }
 
     // Migrate to the correct monitor if the rect crosses a boundary.
-    handle_monitor_switch(&mut ctx, win, &rect);
+    handle_monitor_switch(ctx, win, &rect);
 
     // Promote to floating if needed, then apply.
     let is_floating = ctx
@@ -192,5 +192,5 @@ pub fn draw_window(ctx: &mut WmCtx) {
         toggle_floating(ctx);
     }
 
-    resize(win, &rect, true);
+    resize(ctx, win, &rect, true);
 }

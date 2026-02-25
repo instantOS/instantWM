@@ -86,7 +86,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
         if is_urgent {
             set_urgent(w, false);
         }
-        set_focus(w);
+        set_focus(ctx, w);
     } else if let Some(ref conn) = ctx.x11.conn {
         let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
         let _ = conn.delete_property(root, net_active_window);

@@ -7,7 +7,7 @@ pub use model::{bar_position_at_x, BarPosition};
 pub use x11::{resize_bar_win, resize_bar_win_ctx};
 
 use crate::contexts::WmCtx;
-use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut};
+use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use model::ClientBarStats;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
@@ -62,7 +62,11 @@ pub fn draw_bar(m: &mut Monitor) {
         .is_some_and(|selmon| selmon.num == m.num);
 
     let systray_width = if g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width() as i32
+        // Create temporary ctx for get_systray_width
+        let mut g = get_globals_mut();
+        let x11 = get_x11();
+        let mut ctx = WmCtx::new(&mut g, x11);
+        crate::systray::get_systray_width(&mut ctx) as i32
     } else {
         0
     };
@@ -154,7 +158,7 @@ pub fn draw_bar_ctx(ctx: &mut WmCtx, m: &mut Monitor) {
     let title_width = (title_end_x - x).max(0);
 
     if title_width > bh {
-        widgets::draw_window_titles_ctx(ctx, m, x, title_width, stats.visible_clients);
+        widgets::draw_window_titles_ctx(m, ctx, x, title_width, stats.visible_clients);
     }
 
     m.bt = stats.visible_clients;

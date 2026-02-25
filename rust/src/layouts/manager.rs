@@ -19,7 +19,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
         // First pass: show/hide stack
         let stack = ctx.g.monitors.get(id).map(|m| m.stack);
         if let Some(stack) = stack {
-            crate::client::show_hide(stack);
+            crate::client::show_hide(ctx, stack);
         }
         // Second pass: arrange and restack
         // Use MonitorId to avoid borrow conflicts
@@ -31,15 +31,13 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
         let stacks: Vec<Option<Window>> = ctx.g.monitors.iter().map(|m| m.stack).collect();
 
         for stack in stacks {
-            crate::client::show_hide(stack);
+            crate::client::show_hide(ctx, stack);
         }
 
         // Collect monitor indices first to avoid borrow issues
         let mon_indices: Vec<usize> = (0..ctx.g.monitors.len()).collect();
         for idx in mon_indices {
-            if let Some(m) = ctx.g.monitors.get_mut(idx) {
-                arrange_monitor(ctx, m);
-            }
+            arrange_monitor(ctx, idx);
         }
     }
 }
@@ -100,8 +98,16 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    if let Some(m) = ctx.g.monitors.get(mon_id) {
-        get_current_layout(ctx.g, m).arrange(ctx, mon_id);
+    // Clone the layout to avoid borrow issues
+    let layout = ctx
+        .g
+        .monitors
+        .get(mon_id)
+        .map(|m| get_current_layout(ctx.g, m));
+    if let Some(layout) = layout {
+        if let Some(m) = ctx.g.monitors.get_mut(mon_id) {
+            layout.arrange(ctx, m);
+        }
     }
 }
 
@@ -138,10 +144,16 @@ fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 }
 
 pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
-    if get_current_layout(ctx.g, m).is_overview() {
+    let is_overview = ctx
+        .g
+        .monitors
+        .get(mon_id)
+        .map(|m| get_current_layout(ctx.g, m).is_overview())
+        .unwrap_or(false);
+    if is_overview {
         return;
     }
+    let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
 
     draw_bar(m);
 
@@ -150,8 +162,14 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         None => return,
     };
 
-    let is_tiling = get_current_layout(ctx.g, m).is_tiling();
+    let is_tiling = ctx
+        .g
+        .monitors
+        .get(mon_id)
+        .map(|mon| get_current_layout(ctx.g, mon).is_tiling())
+        .unwrap_or(true);
 
+    let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
     if let Some(ref conn) = ctx.x11.conn {
         let is_floating = ctx
             .g
