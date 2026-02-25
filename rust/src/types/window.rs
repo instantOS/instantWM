@@ -27,7 +27,7 @@ pub struct Key {
     /// Keysym value.
     pub keysym: u32,
     /// Action to execute when key is pressed.
-    pub action: Rc<Box<dyn Fn(&mut WmCtx)>>,
+    pub action: Rc<dyn Fn(&mut WmCtx)>,
 }
 
 impl Debug for Key {
@@ -69,7 +69,7 @@ pub struct Button {
     /// Arguments:
     /// * `&mut WmCtx` — the window manager context
     /// * `ButtonArg` — The exact bar region that was clicked, the mouse button that was pressed, and the x/y coordinates.
-    pub action: Rc<Box<dyn Fn(&mut WmCtx, ButtonArg)>>,
+    pub action: Rc<dyn Fn(&mut WmCtx, ButtonArg)>,
 }
 
 impl Button {

@@ -39,7 +39,7 @@ macro_rules! key {
         Key {
             mod_mask: $mods,
             keysym: $sym,
-            action: Rc::new(Box::new($action)),
+            action: Rc::new($action),
         }
     };
 }

@@ -25,7 +25,7 @@ pub(crate) struct VisibleTag<'a> {
     pub tag_index: usize,
     /// Display label (regular or alt name).
     pub label: &'a str,
-    /// Total pixel width of this tag cell (text width + lrpad).
+    /// Total pixel width of this tag cell (text width + horizontal_padding).
     pub width: i32,
 }
 
@@ -38,7 +38,7 @@ pub(crate) fn visible_tags<'a>(
     monitor: &'a Monitor,
     occupied: u32,
 ) -> Vec<VisibleTag<'a>> {
-    let lrpad = globals.cfg.lrpad;
+    let horizontal_padding = globals.cfg.horizontal_padding;
     let show_alt = globals.tags.show_alt;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
@@ -55,7 +55,7 @@ pub(crate) fn visible_tags<'a>(
 
         let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
-        let width = text_width(label) + lrpad;
+        let width = text_width(label) + horizontal_padding;
 
         out.push(VisibleTag {
             slot,

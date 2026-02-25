@@ -32,7 +32,7 @@ macro_rules! btn {
             target: $target,
             mask: $mask,
             button: $btn,
-            action: Rc::new(Box::new($action)),
+            action: Rc::new($action),
         }
     };
 }
