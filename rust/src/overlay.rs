@@ -17,14 +17,14 @@ use x11rb::protocol::xproto::*;
 #[derive(Debug, Clone, Copy)]
 struct OverlayPositionInfo {
     mode: OverlayMode,
-    mon_mx: i32,
-    mon_my: i32,
-    mon_mw: i32,
-    mon_mh: i32,
-    mon_ww: i32,
+    /// Monitor rectangle (position and total size).
+    monitor_rect: Rect,
+    /// Work area width (excluding bars/padding).
+    work_width: i32,
+    /// Y offset from top (accounting for bar height).
     yoffset: i32,
-    client_w: i32,
-    client_h: i32,
+    /// Client size.
+    client_size: Rect,
 }
 
 /// Get the overlay window for the selected monitor, if it exists.
@@ -73,40 +73,36 @@ fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
 fn get_initial_overlay_rect(info: &OverlayPositionInfo) -> Rect {
     let OverlayPositionInfo {
         mode,
-        mon_mx,
-        mon_my,
-        mon_mw,
-        mon_ww,
+        monitor_rect,
+        work_width,
         yoffset,
-        client_w,
-        client_h,
-        ..
+        client_size,
     } = *info;
 
     match mode {
         OverlayMode::Top => Rect {
-            x: mon_mx + OVERLAY_MARGIN_X,
-            y: mon_my + yoffset - client_h,
-            w: mon_ww - OVERLAY_INSET_X,
-            h: client_h,
+            x: monitor_rect.x + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + yoffset - client_size.h,
+            w: work_width - OVERLAY_INSET_X,
+            h: client_size.h,
         },
         OverlayMode::Right => Rect {
-            x: mon_mx + mon_mw - OVERLAY_MARGIN_X,
-            y: mon_my + OVERLAY_MARGIN_Y,
-            w: client_w,
-            h: info.mon_mh - OVERLAY_INSET_Y,
+            x: monitor_rect.x + monitor_rect.w - OVERLAY_MARGIN_X,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
+            w: client_size.w,
+            h: monitor_rect.h - OVERLAY_INSET_Y,
         },
         OverlayMode::Bottom => Rect {
-            x: mon_mx + OVERLAY_MARGIN_X,
-            y: mon_my + info.mon_mh,
-            w: mon_ww - OVERLAY_INSET_X,
-            h: client_h,
+            x: monitor_rect.x + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + monitor_rect.h,
+            w: work_width - OVERLAY_INSET_X,
+            h: client_size.h,
         },
         OverlayMode::Left => Rect {
-            x: mon_mx - client_w + OVERLAY_MARGIN_X,
-            y: mon_my + OVERLAY_MARGIN_Y,
-            w: client_w,
-            h: info.mon_mh - OVERLAY_INSET_Y,
+            x: monitor_rect.x - client_size.w + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
+            w: client_size.w,
+            h: monitor_rect.h - OVERLAY_INSET_Y,
         },
     }
 }
@@ -115,40 +111,36 @@ fn get_initial_overlay_rect(info: &OverlayPositionInfo) -> Rect {
 fn get_target_overlay_rect(info: &OverlayPositionInfo) -> Rect {
     let OverlayPositionInfo {
         mode,
-        mon_mx,
-        mon_my,
-        mon_mw,
-        mon_mh,
+        monitor_rect,
+        work_width,
         yoffset,
-        client_w,
-        client_h,
-        ..
+        client_size,
     } = *info;
 
     match mode {
         OverlayMode::Top => Rect {
-            x: mon_mx + OVERLAY_MARGIN_X,
-            y: mon_my + yoffset,
-            w: info.mon_ww - OVERLAY_INSET_X,
-            h: client_h,
+            x: monitor_rect.x + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + yoffset,
+            w: work_width - OVERLAY_INSET_X,
+            h: client_size.h,
         },
         OverlayMode::Right => Rect {
-            x: mon_mx + mon_mw - client_w,
-            y: mon_my + OVERLAY_MARGIN_Y,
-            w: client_w,
-            h: mon_mh - OVERLAY_INSET_Y,
+            x: monitor_rect.x + monitor_rect.w - client_size.w,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
+            w: client_size.w,
+            h: monitor_rect.h - OVERLAY_INSET_Y,
         },
         OverlayMode::Bottom => Rect {
-            x: mon_mx + OVERLAY_MARGIN_X,
-            y: mon_my + mon_mh - client_h,
-            w: info.mon_ww - OVERLAY_INSET_X,
-            h: client_h,
+            x: monitor_rect.x + OVERLAY_MARGIN_X,
+            y: monitor_rect.y + monitor_rect.h - client_size.h,
+            w: work_width - OVERLAY_INSET_X,
+            h: client_size.h,
         },
         OverlayMode::Left => Rect {
-            x: mon_mx,
-            y: mon_my + OVERLAY_MARGIN_Y,
-            w: client_w,
-            h: mon_mh - OVERLAY_INSET_Y,
+            x: monitor_rect.x,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
+            w: client_size.w,
+            h: monitor_rect.h - OVERLAY_INSET_Y,
         },
     }
 }
@@ -157,49 +149,44 @@ fn get_target_overlay_rect(info: &OverlayPositionInfo) -> Rect {
 #[derive(Debug, Clone, Copy)]
 struct HideAnimationInfo {
     mode: OverlayMode,
-    mon_mx: i32,
-    mon_my: i32,
-    mon_mw: i32,
-    mon_mh: i32,
+    /// Monitor rectangle (position and total size).
+    monitor_rect: Rect,
+    /// Client position x (for Top/Bottom animation).
     client_x: i32,
-    client_w: i32,
-    client_h: i32,
+    /// Client size.
+    client_size: Rect,
 }
 
 /// Get the target rect for hiding the overlay (off-screen position).
 fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
     let HideAnimationInfo {
         mode,
-        mon_mx,
-        mon_my,
-        mon_mw,
-        mon_mh,
+        monitor_rect,
         client_x,
-        client_w,
-        client_h,
+        client_size,
     } = *info;
 
     match mode {
         OverlayMode::Top => Rect {
             x: client_x,
-            y: -client_h,
+            y: -client_size.h,
             w: 0,
             h: 0,
         },
         OverlayMode::Right => Rect {
-            x: mon_mx + mon_mw,
-            y: mon_my + OVERLAY_MARGIN_Y,
+            x: monitor_rect.x + monitor_rect.w,
+            y: monitor_rect.y + OVERLAY_MARGIN_Y,
             w: 0,
             h: 0,
         },
         OverlayMode::Bottom => Rect {
             x: client_x,
-            y: mon_mh + mon_my,
+            y: monitor_rect.y + monitor_rect.h,
             w: 0,
             h: 0,
         },
         OverlayMode::Left => Rect {
-            x: mon_mx - client_w,
+            x: monitor_rect.x - client_size.w,
             y: OVERLAY_MARGIN_Y,
             w: 0,
             h: 0,
@@ -378,14 +365,15 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     let pos_info = OverlayPositionInfo {
         mode: overlay_mode,
-        mon_mx: mon_rect.x,
-        mon_my: mon_rect.y,
-        mon_mw: mon_rect.w,
-        mon_mh: mon_rect.h,
-        mon_ww,
+        monitor_rect: mon_rect,
+        work_width: mon_ww,
         yoffset,
-        client_w,
-        client_h,
+        client_size: Rect {
+            x: 0,
+            y: 0,
+            w: client_w,
+            h: client_h,
+        },
     };
 
     if is_locked {
@@ -468,13 +456,14 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
         let hide_info = HideAnimationInfo {
             mode: mon.overlaymode,
-            mon_mx: mon.monitor_rect.x,
-            mon_my: mon.monitor_rect.y,
-            mon_mw: mon.monitor_rect.w,
-            mon_mh: mon.monitor_rect.h,
+            monitor_rect: mon.monitor_rect,
             client_x: client.geo.x,
-            client_w: client.geo.w,
-            client_h: client.geo.h,
+            client_size: Rect {
+                x: 0,
+                y: 0,
+                w: client.geo.w,
+                h: client.geo.h,
+            },
         };
 
         (

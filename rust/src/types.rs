@@ -1118,6 +1118,267 @@ impl Default for Monitor {
     }
 }
 
+impl Monitor {
+    /// Create a new monitor with specific configuration values.
+    pub fn new_with_values(mfact: f32, nmaster: i32, showbar: bool, topbar: bool) -> Self {
+        Self {
+            mfact,
+            nmaster,
+            showbar,
+            topbar,
+            tagset: [1, 1],
+            clientcount: 0,
+            overlaymode: OverlayMode::Top,
+            current_tag: 1,
+            prev_tag: 1,
+            ..Default::default()
+        }
+    }
+
+    /// Get the currently selected tags for this monitor.
+    #[inline]
+    pub fn selected_tags(&self) -> u32 {
+        self.tagset[self.seltags as usize]
+    }
+
+    /// Check if a point is within this monitor's work area.
+    pub fn contains_point(&self, x: i32, y: i32) -> bool {
+        self.work_rect.contains_point(x, y)
+    }
+
+    /// Calculate the intersection area between a rectangle and this monitor's work area.
+    pub fn intersect_area(&self, rect: &Rect) -> i32 {
+        let x1 = rect.x.max(self.work_rect.x);
+        let y1 = rect.y.max(self.work_rect.y);
+        let x2 = (rect.x + rect.w).min(self.work_rect.x + self.work_rect.w);
+        let y2 = (rect.y + rect.h).min(self.work_rect.y + self.work_rect.h);
+        (x2 - x1).max(0) * (y2 - y1).max(0)
+    }
+
+    /// Get the center point of this monitor's work area.
+    pub fn center(&self) -> (i32, i32) {
+        self.work_rect.center()
+    }
+
+    /// Count the number of visible clients on this monitor.
+    pub fn client_count(&self, clients: &std::collections::HashMap<Window, Client>) -> usize {
+        let mut count = 0;
+        let mut current = self.clients;
+        while let Some(c_win) = current {
+            if let Some(c) = clients.get(&c_win) {
+                if c.is_visible() {
+                    count += 1;
+                }
+                current = c.next;
+            } else {
+                break;
+            }
+        }
+        count
+    }
+
+    /// Count the number of tiled (non-floating, non-hidden) clients on this monitor.
+    pub fn tiled_client_count(&self, clients: &std::collections::HashMap<Window, Client>) -> usize {
+        let mut count = 0;
+        let mut current = self.clients;
+        while let Some(c_win) = current {
+            if let Some(c) = clients.get(&c_win) {
+                if c.is_visible() && !c.isfloating && !c.is_hidden {
+                    count += 1;
+                }
+                current = c.next;
+            } else {
+                break;
+            }
+        }
+        count
+    }
+
+    /// Get the currently selected client window, if any.
+    pub fn selected_client(&self) -> Option<Window> {
+        self.sel
+    }
+
+    /// Check if this monitor has a selected client.
+    pub fn has_selection(&self) -> bool {
+        self.sel.is_some()
+    }
+
+    /// Set the selected client for this monitor.
+    pub fn set_selected(&mut self, win: Option<Window>) {
+        self.sel = win;
+    }
+
+    /// Get the next client in the client list after the given window.
+    pub fn next_client(&self, clients: &std::collections::HashMap<Window, Client>, win: Window) -> Option<Window> {
+        clients.get(&win).and_then(|c| c.next)
+    }
+
+    /// Get the previous client in the client list before the given window.
+    pub fn prev_client(&self, clients: &std::collections::HashMap<Window, Client>, win: Window) -> Option<Window> {
+        let mut current = self.clients;
+        let mut prev = None;
+        while let Some(c_win) = current {
+            if c_win == win {
+                return prev;
+            }
+            prev = current;
+            current = clients.get(&c_win).and_then(|c| c.next);
+        }
+        None
+    }
+
+    /// Check if this monitor shows the bar (considering both monitor and tag settings).
+    pub fn shows_bar(&self, tags: &TagSet) -> bool {
+        if !self.showbar {
+            return false;
+        }
+        self.current_tag(tags)
+            .map(|t| t.showbar)
+            .unwrap_or(true)
+    }
+
+    /// Get the current tag for this monitor.
+    pub fn current_tag<'a>(&self, tags: &'a TagSet) -> Option<&'a Tag> {
+        if self.current_tag > 0 && self.current_tag <= tags.tags.len() {
+            Some(&tags.tags[self.current_tag - 1])
+        } else {
+            None
+        }
+    }
+
+    /// Get a mutable reference to the current tag for this monitor.
+    pub fn current_tag_mut<'a>(&self, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
+        if self.current_tag > 0 && self.current_tag <= tags.tags.len() {
+            Some(&mut tags.tags[self.current_tag - 1])
+        } else {
+            None
+        }
+    }
+
+    /// Get the current layout symbol for this monitor.
+    pub fn layout_symbol(&self, tags: &TagSet) -> String {
+        self.current_tag(tags)
+            .map(|t| t.layouts.symbol().to_string())
+            .unwrap_or_else(|| "[]=".to_string())
+    }
+
+    /// Check if the current layout is a tiling layout.
+    pub fn is_tiling_layout(&self, tags: &TagSet) -> bool {
+        self.current_tag(tags)
+            .map(|t| t.layouts.is_tiling())
+            .unwrap_or(true)
+    }
+
+    /// Check if the current layout is a monocle layout.
+    pub fn is_monocle_layout(&self, tags: &TagSet) -> bool {
+        self.current_tag(tags)
+            .map(|t| t.layouts.is_monocle())
+            .unwrap_or(false)
+    }
+
+    /// Get the current layout kind for this monitor.
+    pub fn current_layout(&self, tags: &TagSet) -> crate::layouts::LayoutKind {
+        self.current_tag(tags)
+            .map(|t| t.layouts.get_layout())
+            .unwrap_or(crate::layouts::LayoutKind::Tile)
+    }
+
+    /// Toggle between primary and secondary layout slots for the current tag.
+    pub fn toggle_layout_slot(&self, tags: &mut TagSet) {
+        if let Some(tag) = self.current_tag_mut(tags) {
+            tag.layouts.toggle_slot();
+        }
+    }
+
+    /// Update the bar position based on monitor geometry and configuration.
+    pub fn update_bar_position(&mut self, bar_height: i32) {
+        if self.showbar {
+            self.work_rect.y = if self.topbar {
+                self.monitor_rect.y + bar_height
+            } else {
+                self.monitor_rect.y
+            };
+            self.work_rect.h = self.monitor_rect.h - bar_height;
+            self.by = if self.topbar {
+                self.monitor_rect.y
+            } else {
+                self.monitor_rect.y + self.monitor_rect.h - bar_height
+            };
+        } else {
+            self.work_rect.y = self.monitor_rect.y;
+            self.work_rect.h = self.monitor_rect.h;
+            self.by = if self.topbar {
+                -bar_height
+            } else {
+                self.monitor_rect.h
+            };
+        }
+    }
+
+    /// Get the width of the monitor's work area.
+    pub fn width(&self) -> i32 {
+        self.work_rect.w
+    }
+
+    /// Get the height of the monitor's work area.
+    pub fn height(&self) -> i32 {
+        self.work_rect.h
+    }
+
+    /// Get the monitor's work area as a rectangle.
+    pub fn work_area(&self) -> Rect {
+        self.work_rect
+    }
+
+    /// Get the monitor's full geometry (including bar).
+    pub fn monitor_area(&self) -> Rect {
+        self.monitor_rect
+    }
+}
+
+/// Find a monitor in a given direction from the current one.
+pub fn find_monitor_by_direction(monitors: &[Monitor], current: MonitorId, dir: i32) -> Option<MonitorId> {
+    if monitors.is_empty() {
+        return None;
+    }
+    if monitors.len() <= 1 {
+        return Some(current);
+    }
+
+    if dir > 0 {
+        if current + 1 >= monitors.len() {
+            Some(0)
+        } else {
+            Some(current + 1)
+        }
+    } else if current == 0 {
+        Some(monitors.len() - 1)
+    } else {
+        Some(current - 1)
+    }
+}
+
+/// Find the monitor that contains the given rectangle (by maximum intersection area).
+pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<MonitorId> {
+    if monitors.is_empty() {
+        return None;
+    }
+
+    let mut best_idx = 0;
+    let mut max_area = 0;
+
+    for (i, m) in monitors.iter().enumerate() {
+        let area = m.intersect_area(rect);
+        if area > max_area {
+            max_area = area;
+            best_idx = i;
+        }
+    }
+
+    Some(best_idx)
+}
+
 #[derive(Debug, Clone)]
 pub struct Rule {
     pub class: Option<&'static str>,

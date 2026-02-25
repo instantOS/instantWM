@@ -75,36 +75,14 @@ pub fn create_monitor_with_values(
     showbar: bool,
     topbar: bool,
 ) -> Monitor {
-    Monitor {
-        tagset: [1, 1],
-        mfact,
-        nmaster,
-        showbar,
-        topbar,
-        clientcount: 0,
-        overlaymode: OverlayMode::Top,
-        current_tag: 1,
-        prev_tag: 1,
-        ..Default::default()
-    }
+    Monitor::new_with_values(mfact, nmaster, showbar, topbar)
 }
 
 /// Create a new monitor with default values.
 /// This is a convenience function that uses global state.
 pub fn create_monitor() -> Monitor {
     let g = get_globals();
-    Monitor {
-        tagset: [1, 1],
-        mfact: g.cfg.mfact,
-        nmaster: g.cfg.nmaster,
-        showbar: g.cfg.showbar,
-        topbar: g.cfg.topbar,
-        clientcount: 0,
-        overlaymode: OverlayMode::Top,
-        current_tag: 1,
-        prev_tag: 1,
-        ..Default::default()
-    }
+    Monitor::new_with_values(g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar)
 }
 
 /// Remove a monitor and clean up its resources.
@@ -148,25 +126,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
 /// * `Some(monitor_id)` - The target monitor ID
 /// * `None` - If there are no monitors
 pub fn dir_to_mon(monitors: &[Monitor], selmon: MonitorId, dir: i32) -> Option<MonitorId> {
-    if monitors.is_empty() {
-        return None;
-    }
-
-    if monitors.len() <= 1 {
-        return Some(selmon);
-    }
-
-    if dir > 0 {
-        if selmon + 1 >= monitors.len() {
-            Some(0)
-        } else {
-            Some(selmon + 1)
-        }
-    } else if selmon == 0 {
-        Some(monitors.len() - 1)
-    } else {
-        Some(selmon - 1)
-    }
+    find_monitor_by_direction(monitors, selmon, dir)
 }
 
 /// Find which monitor a rectangle intersects with the most.
@@ -183,21 +143,7 @@ pub fn dir_to_mon(monitors: &[Monitor], selmon: MonitorId, dir: i32) -> Option<M
 /// * `Some(monitor_id)` - The monitor with maximum intersection area
 /// * `None` - If there are no monitors
 pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Option<MonitorId> {
-    if monitors.is_empty() {
-        return None;
-    }
-    let mut result = selmon;
-    let mut max_area = 0;
-
-    for (i, m) in monitors.iter().enumerate() {
-        let area = intersect(rect, m);
-        if area > max_area {
-            max_area = area;
-            result = i;
-        }
-    }
-
-    Some(result)
+    find_monitor_by_rect(monitors, rect).or(Some(selmon))
 }
 
 pub fn win_to_mon(w: Window) -> Option<MonitorId> {
@@ -713,38 +659,37 @@ fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
     g.monitors.get(mon_id).and_then(|m| m.sel)
 }
 
+/// Get the current tag for a monitor.
+/// 
+/// **Deprecated**: Use `mon.current_tag(tags)` instead.
 pub fn get_current_tag<'a>(mon: &Monitor, tags: &'a TagSet) -> Option<&'a Tag> {
-    if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
-        Some(&tags.tags[mon.current_tag - 1])
-    } else {
-        None
-    }
+    mon.current_tag(tags)
 }
 
+/// Get a mutable reference to the current tag for a monitor.
+/// 
+/// **Deprecated**: Use `mon.current_tag_mut(tags)` instead.
 pub fn get_current_tag_mut<'a>(mon: &Monitor, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
-    if mon.current_tag > 0 && mon.current_tag <= tags.tags.len() {
-        Some(&mut tags.tags[mon.current_tag - 1])
-    } else {
-        None
-    }
+    mon.current_tag_mut(tags)
 }
 
+/// Get the layout symbol for a monitor.
+/// 
+/// **Deprecated**: Use `mon.layout_symbol(tags)` instead.
 pub fn get_current_ltsymbol(mon: &Monitor, tags: &TagSet) -> String {
-    if let Some(tag) = get_current_tag(mon, tags) {
-        tag.layouts.symbol().to_string()
-    } else {
-        "[]=".to_string()
-    }
+    mon.layout_symbol(tags)
 }
 
+/// Check if the bar should be shown for a monitor.
+/// 
+/// **Deprecated**: Use `mon.shows_bar(tags)` instead.
 pub fn get_current_showbar(mon: &Monitor, tags: &TagSet) -> bool {
-    get_current_tag(mon, tags)
-        .map(|t| t.showbar)
-        .unwrap_or(true)
+    mon.shows_bar(tags)
 }
 
+/// Check if the current layout is a tiling layout.
+/// 
+/// **Deprecated**: Use `mon.is_tiling_layout(tags)` instead.
 pub fn is_current_layout_tiling(mon: &Monitor, tags: &TagSet) -> bool {
-    get_current_tag(mon, tags)
-        .map(|t| t.layouts.is_tiling())
-        .unwrap_or(true)
+    mon.is_tiling_layout(tags)
 }
