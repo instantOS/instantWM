@@ -135,7 +135,7 @@ pub trait X11ConnExt {
         &self,
         revert_to: x11rb::protocol::xproto::InputFocus,
         window: x11rb::protocol::xproto::Window,
-        time: x11rb::CURRENT_TIME,
+        time: u32,
     ) -> Result<()>;
 
     /// Delete a property with error context.
@@ -158,18 +158,6 @@ pub trait X11ConnExt {
         window: x11rb::protocol::xproto::Window,
         value_list: &x11rb::protocol::xproto::ChangeWindowAttributesAux,
     ) -> Result<()>;
-
-    /// Change a property with error context.
-    fn change_property_ctx<T>(
-        &self,
-        mode: x11rb::protocol::xproto::PropMode,
-        window: x11rb::protocol::xproto::Window,
-        property: x11rb::protocol::xproto::Atom,
-        type_: x11rb::protocol::xproto::Atom,
-        data: &[T],
-    ) -> Result<()>
-    where
-        T: x11rb::x11_utils::X11Size;
 
     /// Change a 32-bit property with error context.
     fn change_property32_ctx(
@@ -247,7 +235,7 @@ pub trait X11ConnExt {
     fn allow_events_ctx(
         &self,
         mode: x11rb::protocol::xproto::Allow,
-        time: x11rb::CURRENT_TIME,
+        time: u32,
     ) -> Result<()>;
 
     /// Change the save set with error context.
@@ -284,7 +272,7 @@ pub trait X11ConnExt {
         &self,
         owner: x11rb::protocol::xproto::Window,
         selection: x11rb::protocol::xproto::Atom,
-        time: x11rb::CURRENT_TIME,
+        time: u32,
     ) -> Result<()>;
 }
 
@@ -297,7 +285,7 @@ impl X11ConnExt for RustConnection {
         &self,
         revert_to: x11rb::protocol::xproto::InputFocus,
         window: x11rb::protocol::xproto::Window,
-        time: x11rb::CURRENT_TIME,
+        time: u32,
     ) -> Result<()> {
         self.set_input_focus(revert_to, window, time)
             .context("failed to set input focus")
@@ -328,21 +316,6 @@ impl X11ConnExt for RustConnection {
     ) -> Result<()> {
         self.change_window_attributes(window, value_list)
             .context("failed to change window attributes")
-    }
-
-    fn change_property_ctx<T>(
-        &self,
-        mode: x11rb::protocol::xproto::PropMode,
-        window: x11rb::protocol::xproto::Window,
-        property: x11rb::protocol::xproto::Atom,
-        type_: x11rb::protocol::xproto::Atom,
-        data: &[T],
-    ) -> Result<()>
-    where
-        T: x11rb::x11_utils::X11Size,
-    {
-        self.change_property(mode, window, property, type_, data)
-            .context("failed to change property")
     }
 
     fn change_property32_ctx(
@@ -447,7 +420,7 @@ impl X11ConnExt for RustConnection {
     fn allow_events_ctx(
         &self,
         mode: x11rb::protocol::xproto::Allow,
-        time: x11rb::CURRENT_TIME,
+        time: u32,
     ) -> Result<()> {
         self.allow_events(mode, time).context("failed to allow events")
     }
@@ -501,7 +474,7 @@ impl X11ConnExt for RustConnection {
         &self,
         owner: x11rb::protocol::xproto::Window,
         selection: x11rb::protocol::xproto::Atom,
-        time: x11rb::CURRENT_TIME,
+        time: u32,
     ) -> Result<()> {
         self.set_selection_owner(owner, selection, time)
             .context("failed to set selection owner")
