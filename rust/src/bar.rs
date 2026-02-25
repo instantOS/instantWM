@@ -4,7 +4,7 @@ mod widgets;
 pub mod x11;
 
 pub use model::{bar_position_at_x, BarPosition};
-pub use x11::resize_bar_win;
+pub use x11::{resize_bar_win, resize_bar_win_ctx};
 
 use crate::contexts::WmCtx;
 use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut};
@@ -126,7 +126,7 @@ pub fn draw_bar_ctx(ctx: &mut WmCtx, m: &mut Monitor) {
         .is_some_and(|selmon| selmon.num == m.num);
 
     let systray_width = if ctx.g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width() as i32
+        crate::systray::get_systray_width(ctx) as i32
     } else {
         0
     };
@@ -139,7 +139,7 @@ pub fn draw_bar_ctx(ctx: &mut WmCtx, m: &mut Monitor) {
     };
 
     widgets::draw_startmenu_icon_ctx(ctx);
-    x11::resize_bar_win(m);
+    x11::resize_bar_win_ctx(ctx, m);
 
     let stats = ClientBarStats::collect(m, ctx.g);
     let mut x = ctx.g.cfg.startmenusize;

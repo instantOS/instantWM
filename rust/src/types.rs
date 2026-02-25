@@ -839,6 +839,10 @@ pub struct SizeHints {
     pub maxh: i32,
     pub minw: i32,
     pub minh: i32,
+    pub min_aspect_n: i32,
+    pub min_aspect_d: i32,
+    pub max_aspect_n: i32,
+    pub max_aspect_d: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -960,6 +964,22 @@ pub struct Client {
     pub old_geo: Rect,
     /// Size hints from WM_NORMAL_HINTS property
     pub size_hints: SizeHints,
+
+    /// Size hint fields for backward compatibility (access via size_hints)
+    pub base_width: i32,
+    pub base_height: i32,
+    pub min_width: i32,
+    pub min_height: i32,
+    pub max_width: i32,
+    pub max_height: i32,
+    pub inc_width: i32,
+    pub inc_height: i32,
+    pub base_aspect_n: i32,
+    pub base_aspect_d: i32,
+    pub min_aspect_n: i32,
+    pub min_aspect_d: i32,
+    pub max_aspect_n: i32,
+    pub max_aspect_d: i32,
 
     pub hintsvalid: i32,
     pub border_width: i32,

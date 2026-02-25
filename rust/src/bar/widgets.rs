@@ -17,20 +17,20 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
         .get(g.selmon)
         .is_some_and(|mon| mon.gesture == Gesture::StartMenu);
 
-    let startmenu_size = g.startmenusize;
+    let startmenu_size = g.cfg.startmenusize;
     let scheme: Option<ColorScheme> = if g.tags.prefix {
         let schemes = &g.tags.schemes;
         if !schemes.no_hover.is_empty() {
             schemes.no_hover.get(SchemeTag::Focus as usize).cloned()
         } else {
-            g.statusscheme.as_ref().map(|s| ColorScheme {
+            g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
                 fg: s.fg.clone(),
                 bg: s.bg.clone(),
                 detail: s.detail.clone(),
             })
         }
     } else {
-        g.statusscheme.as_ref().map(|s| ColorScheme {
+        g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
             fg: s.fg.clone(),
             bg: s.bg.clone(),
             detail: s.detail.clone(),
@@ -79,7 +79,7 @@ pub(crate) fn draw_startmenu_icon(bh: i32) {
 /// Draw start menu icon with dependency injection
 pub(crate) fn draw_startmenu_icon_ctx(ctx: &mut WmCtx) {
     let g = &*ctx.g;
-    let bh = ctx.g.bh;
+    let bh = ctx.g.cfg.bh;
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
 
     // Check if start menu is hovered by looking at the selected monitor's gesture
@@ -88,20 +88,20 @@ pub(crate) fn draw_startmenu_icon_ctx(ctx: &mut WmCtx) {
         .get(g.selmon)
         .is_some_and(|mon| mon.gesture == Gesture::StartMenu);
 
-    let startmenu_size = g.startmenusize;
+    let startmenu_size = g.cfg.startmenusize;
     let scheme: Option<ColorScheme> = if g.tags.prefix {
         let schemes = &g.tags.schemes;
         if !schemes.no_hover.is_empty() {
             schemes.no_hover.get(SchemeTag::Focus as usize).cloned()
         } else {
-            g.statusscheme.as_ref().map(|s| ColorScheme {
+            g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
                 fg: s.fg.clone(),
                 bg: s.bg.clone(),
                 detail: s.detail.clone(),
             })
         }
     } else {
-        g.statusscheme.as_ref().map(|s| ColorScheme {
+        g.cfg.statusscheme.as_ref().map(|s| ColorScheme {
             fg: s.fg.clone(),
             bg: s.bg.clone(),
             detail: s.detail.clone(),
@@ -222,7 +222,7 @@ pub(crate) fn draw_tag_indicators(
     bh: i32,
 ) -> i32 {
     let g = get_globals();
-    let lrpad = g.lrpad;
+    let lrpad = g.cfg.lrpad;
     let lpad = (lrpad / 2) as u32;
     let bar_dragging = g.bar_dragging;
 
@@ -283,8 +283,8 @@ pub(crate) fn draw_tag_indicators_ctx(
     urg: u32,
 ) -> i32 {
     let g = &*ctx.g;
-    let bh = ctx.g.bh;
-    let lrpad = ctx.g.lrpad;
+    let bh = ctx.g.cfg.bh;
+    let lrpad = ctx.g.cfg.lrpad;
     let lpad = (lrpad / 2) as u32;
     let bar_dragging = g.bar_dragging;
 
@@ -338,7 +338,7 @@ pub(crate) fn draw_tag_indicators_ctx(
 
 pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
     let g = get_globals();
-    let lrpad = g.lrpad;
+    let lrpad = g.cfg.lrpad;
     let ltsymbol = super::layout_symbol(m);
     let text_w = super::text_width(&ltsymbol);
     let w = (text_w + lrpad).max(lrpad);
@@ -346,7 +346,7 @@ pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
 
     {
         let mut drw = get_drw().clone();
-        if let Some(ref ss) = g.statusscheme {
+        if let Some(ref ss) = g.cfg.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),
                 bg: ss.bg.clone(),
@@ -363,14 +363,14 @@ pub(crate) fn draw_layout_indicator(m: &Monitor, mut x: i32, bh: i32) -> i32 {
 /// Draw layout indicator with dependency injection
 pub(crate) fn draw_layout_indicator_ctx(ctx: &mut WmCtx, m: &Monitor, mut x: i32) -> i32 {
     let g = &*ctx.g;
-    let lrpad = ctx.g.lrpad;
+    let lrpad = ctx.g.cfg.lrpad;
     let ltsymbol = super::layout_symbol(m);
     let text_w = super::text_width(&ltsymbol);
     let w = (text_w + lrpad).max(lrpad);
     let lpad = ((w - text_w) / 2).max(0) as u32;
-    let bh = ctx.g.bh;
+    let bh = ctx.g.cfg.bh;
 
-    if let Some(ref ss) = g.statusscheme {
+    if let Some(ref ss) = g.cfg.statusscheme {
         let scheme = ColorScheme {
             fg: ss.fg.clone(),
             bg: ss.bg.clone(),
@@ -386,9 +386,9 @@ pub(crate) fn draw_layout_indicator_ctx(ctx: &mut WmCtx, m: &Monitor, mut x: i32
 
 fn get_window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<ColorScheme> {
     let schemes = if is_hover {
-        &g.windowschemes.hover
+        &g.cfg.windowschemes.hover
     } else {
-        &g.windowschemes.no_hover
+        &g.cfg.windowschemes.no_hover
     };
 
     if schemes.is_empty() {
@@ -436,9 +436,9 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
         .is_some_and(|selmon| selmon.gesture == Gesture::CloseButton);
 
     let schemes = if close_hovered {
-        &g.closebuttonschemes.hover
+        &g.cfg.closebuttonschemes.hover
     } else {
-        &g.closebuttonschemes.no_hover
+        &g.cfg.closebuttonschemes.no_hover
     };
 
     {
@@ -503,16 +503,16 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
 /// Draw close button with dependency injection
 pub(crate) fn draw_close_button_ctx(c: &Client, ctx: &mut WmCtx, x: i32) {
     let g = &*ctx.g;
-    let bh = ctx.g.bh;
+    let bh = ctx.g.cfg.bh;
     let close_hovered = g
         .monitors
         .get(g.selmon)
         .is_some_and(|selmon| selmon.gesture == Gesture::CloseButton);
 
     let schemes = if close_hovered {
-        &g.closebuttonschemes.hover
+        &g.cfg.closebuttonschemes.hover
     } else {
-        &g.closebuttonschemes.no_hover
+        &g.cfg.closebuttonschemes.no_hover
     };
 
     let scheme_idx = if c.islocked {
@@ -605,7 +605,7 @@ fn draw_window_title(m: &mut Monitor, c: &Client, x: i32, width: i32, bh: i32) {
         let lpad = if text_w < width - 64 {
             ((width - text_w) as f32 * 0.5) as u32
         } else {
-            (g.lrpad / 2 + 20) as u32
+            (g.cfg.lrpad / 2 + 20) as u32
         };
 
         drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
@@ -636,7 +636,7 @@ fn draw_window_title_ctx(m: &mut Monitor, c: &Client, ctx: &mut WmCtx, x: i32, w
 
     let client_name = c.name.as_str();
     let text_w = super::text_width(client_name);
-    let bh = ctx.g.bh;
+    let bh = ctx.g.cfg.bh;
 
     {
         if let Some(scheme) = get_window_scheme(g, c, is_hover) {
@@ -647,7 +647,7 @@ fn draw_window_title_ctx(m: &mut Monitor, c: &Client, ctx: &mut WmCtx, x: i32, w
         let lpad = if text_w < width - 64 {
             ((width - text_w) as f32 * 0.5) as u32
         } else {
-            (g.lrpad / 2 + 20) as u32
+            (g.cfg.lrpad / 2 + 20) as u32
         };
 
         get_drw_mut().text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
@@ -705,7 +705,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
 
     {
         let mut drw = get_drw().clone();
-        if let Some(ref ss) = g.statusscheme {
+        if let Some(ref ss) = g.cfg.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),
                 bg: ss.bg.clone(),
@@ -778,7 +778,7 @@ pub(crate) fn draw_window_titles_ctx(m: &mut Monitor, ctx: &mut WmCtx, x: i32, w
         return;
     }
 
-    if let Some(ref ss) = g.statusscheme {
+    if let Some(ref ss) = g.cfg.statusscheme {
         let scheme = ColorScheme {
             fg: ss.fg.clone(),
             bg: ss.bg.clone(),
@@ -787,7 +787,7 @@ pub(crate) fn draw_window_titles_ctx(m: &mut Monitor, ctx: &mut WmCtx, x: i32, w
         let drw = get_drw_mut();
         drw.set_scheme(scheme);
     }
-    let bh = ctx.g.bh;
+    let bh = ctx.g.cfg.bh;
     get_drw_mut().rect(x, 0, w as u32, bh as u32, true, true);
 
     let has_clients = g

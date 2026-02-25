@@ -70,10 +70,10 @@ pub fn create_monitor_with_defaults(ctx: &WmCtx) -> Monitor {
 
     let m = Monitor {
         tagset: [1, 1],
-        mfact: ctx.g.mfact,
-        nmaster: ctx.g.nmaster,
-        showbar: ctx.g.showbar,
-        topbar: ctx.g.topbar,
+        mfact: ctx.g.cfg.mfact,
+        nmaster: ctx.g.cfg.nmaster,
+        showbar: ctx.g.cfg.showbar,
+        topbar: ctx.g.cfg.topbar,
         clientcount: 0,
         overlaymode: OverlayMode::Top,
         current_tag: 1,
@@ -114,6 +114,24 @@ pub fn create_monitor_with_values(
 
     eprintln!("TRACE: create_monitor_with_values - returning");
     m
+}
+
+/// Create a new monitor with default values.
+/// This is a convenience function that uses global state.
+pub fn create_monitor() -> Monitor {
+    let g = get_globals();
+    Monitor {
+        tagset: [1, 1],
+        mfact: g.cfg.mfact,
+        nmaster: g.cfg.nmaster,
+        showbar: g.cfg.showbar,
+        topbar: g.cfg.topbar,
+        clientcount: 0,
+        overlaymode: OverlayMode::Top,
+        current_tag: 1,
+        prev_tag: 1,
+        ..Default::default()
+    }
 }
 
 /// Remove a monitor and clean up its resources.
@@ -212,7 +230,7 @@ pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Opti
 pub fn win_to_mon(w: Window) -> Option<MonitorId> {
     let g = get_globals();
 
-    if w == g.root {
+    if w == g.cfg.root {
         if let Some((x, y)) = get_root_ptr() {
             return rect_to_mon(&Rect { x, y, w: 1, h: 1 });
         }
@@ -503,10 +521,10 @@ pub fn update_geom() -> bool {
                                 {
                                     eprintln!("TRACE: update_geom - before create_monitor loop");
                                     let g = get_globals_mut();
-                                    let mfact = g.mfact;
-                                    let nmaster = g.nmaster;
-                                    let showbar = g.showbar;
-                                    let topbar = g.topbar;
+                                    let mfact = g.cfg.mfact;
+                                    let nmaster = g.cfg.nmaster;
+                                    let showbar = g.cfg.showbar;
+                                    let topbar = g.cfg.topbar;
                                     while g.monitors.len() < nn {
                                         g.monitors.push(create_monitor_with_values(
                                             mfact, nmaster, showbar, topbar,
@@ -612,7 +630,7 @@ pub fn update_geom() -> bool {
 
     let g = get_globals();
     if g.monitors.is_empty() {
-        let (sw, sh) = (g.sw, g.sh);
+        let (sw, sh) = (g.cfg.sw, g.cfg.sh);
         let g = get_globals_mut();
         g.monitors.push(create_monitor());
         if let Some(ref mut m) = g.monitors.first_mut() {
@@ -630,8 +648,8 @@ pub fn update_geom() -> bool {
         g.selmon = 0;
         dirty = true;
     } else {
-        let sw = g.sw;
-        let sh = g.sh;
+        let sw = g.cfg.sw;
+        let sh = g.cfg.sh;
         let needs_update = g
             .monitors
             .first()
@@ -658,7 +676,7 @@ fn get_root_ptr() -> Option<(i32, i32)> {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
         let g = get_globals();
-        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, g.root) {
+        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, g.cfg.root) {
             if let Ok(reply) = cookie.reply() {
                 return Some((reply.root_x as i32, reply.root_y as i32));
             }

@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::Window;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn update_status(ctx: &mut WmCtx) {
-    let root = ctx.g.root;
+    let root = ctx.g.cfg.root;
     let selmon_idx = ctx.g.selmon;
 
     let text = get_text_prop(ctx, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
@@ -29,7 +29,7 @@ pub fn update_status(ctx: &mut WmCtx) {
         super::draw_bar_ctx(ctx, m);
     }
 
-    crate::systray::update_systray();
+    crate::systray::update_systray(ctx);
 }
 
 pub fn update_bar_pos(m: &mut Monitor) {
@@ -65,7 +65,10 @@ pub fn resize_bar_win(m: &Monitor) {
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
-        w = w.saturating_sub(get_systray_width());
+        let mut globals = get_globals();
+        let x11 = get_x11();
+        let ctx = WmCtx::new(&mut globals, x11);
+        w = w.saturating_sub(get_systray_width(&mut ctx));
     }
 
     let x11 = get_x11();
@@ -81,14 +84,47 @@ pub fn resize_bar_win(m: &Monitor) {
     }
 }
 
+/// Resize bar window with dependency injection.
+pub fn resize_bar_win_ctx(ctx: &mut WmCtx, m: &Monitor) {
+    let bh = ctx.g.cfg.bh;
+    let showsystray = ctx.g.cfg.showsystray;
+    let is_selmon = ctx
+        .g
+        .monitors
+        .get(ctx.g.selmon)
+        .is_some_and(|selmon| selmon.num == m.num);
+
+    let mut w = m.work_rect.w as u32;
+    if showsystray && is_selmon {
+        w = w.saturating_sub(crate::systray::get_systray_width(ctx));
+    }
+
+    if let Some(ref conn) = ctx.x11.conn {
+        let _ = conn.configure_window(
+            m.barwin,
+            &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                .x(m.work_rect.x)
+                .y(m.by)
+                .width(w)
+                .height(bh as u32),
+        );
+    }
+}
+
 pub fn update_bars(ctx: &mut WmCtx) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bh = ctx.g.cfg.bh;
         let showsystray = ctx.g.cfg.showsystray;
-        let status_bg =
-            parse_color_to_u32(ctx.g.statusbarcolors.get(1).copied().unwrap_or("#121212"));
-        let xlibdisplay = ctx.g.xlibdisplay.0;
-        let root = ctx.g.root;
+        let status_bg = parse_color_to_u32(
+            ctx.g
+                .cfg
+                .statusbarcolors
+                .get(1)
+                .copied()
+                .unwrap_or("#121212"),
+        );
+        let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
+        let root = ctx.g.cfg.root;
 
         let mut bar_configs = Vec::new();
         for (i, m) in ctx.g.monitors.iter().enumerate() {
@@ -98,7 +134,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
             let mut w = m.work_rect.w as u32;
             if showsystray && ctx.g.selmon == i {
-                w = w.saturating_sub(crate::systray::get_systray_width());
+                w = w.saturating_sub(crate::systray::get_systray_width(ctx));
             }
             bar_configs.push((i, m.work_rect.x, m.by, w, bh));
         }

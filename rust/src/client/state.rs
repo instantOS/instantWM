@@ -226,7 +226,7 @@ pub fn apply_rules(win: Window) {
     }
 
     let special_next = globals.specialnext;
-    let rules = globals.rules.clone();
+    let rules = globals.cfg.rules.clone();
     let tagmask = globals.tags.mask();
     let bh = globals.cfg.bh;
 
@@ -546,7 +546,7 @@ pub fn update_motif_hints(win: Window) {
         return;
     }
 
-    let motif_atom = globals.motifatom;
+    let motif_atom = globals.cfg.motifatom;
     let borderpx = globals.cfg.borderpx;
 
     let x11 = get_x11();

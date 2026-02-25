@@ -2,7 +2,7 @@ use crate::client::resize_client;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
-use crate::globals::get_globals;
+use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::monitor::is_current_layout_tiling;
 use crate::tags::view::scroll_view;
 use crate::types::*;
@@ -71,13 +71,13 @@ fn final_rect(
     }
 }
 
-fn try_resize(win: Window, rect: &Rect) {
+fn try_resize(ctx: &mut WmCtx, win: Window, rect: &Rect) {
     if rect.is_valid() {
-        resize_client(win, rect);
+        crate::client::resize_client(ctx, win, rect);
     }
 }
 
-pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
+pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     if frames <= 0 {
         return;
     }
@@ -90,16 +90,16 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
     let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
-    let Some(ref conn) = crate::globals::get_x11().conn else {
+    let Some(ref conn) = ctx.x11.conn else {
         return;
     };
 
     let (mon_w, mon_h) = get_monitor_size(win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
-    let globals = get_globals();
-    if !globals.animated {
+    if !ctx.g.animated {
         try_resize(
+            ctx,
             win,
             &Rect {
                 x: rect.x,
@@ -113,7 +113,7 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
 
     let queued_events = unsafe {
         crate::drw::XEventsQueued(
-            globals.xlibdisplay.0 as *mut std::os::raw::c_void,
+            ctx.g.cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
             QUEUED_ALREADY,
         )
     };
@@ -128,7 +128,7 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     let final_rect = final_rect(rect, &start_rect, actual_w, actual_h, reset_pos);
 
     if effective_frames == 0 {
-        try_resize(win, &final_rect);
+        try_resize(ctx, win, &final_rect);
         return;
     }
 
@@ -149,6 +149,7 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
             let delta_h = actual_h - start_rect.h;
             if delta_w != 0 || delta_h != 0 {
                 animate_client(
+                    ctx,
                     win,
                     &Rect {
                         x: start_rect.x + delta_w,
@@ -166,6 +167,7 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
                 let step_x = (start_rect.x as f64 + progress * dx) as i32;
                 let step_y = (start_rect.y as f64 + progress * dy) as i32;
                 try_resize(
+                    ctx,
                     win,
                     &Rect {
                         x: step_x,
@@ -180,28 +182,27 @@ pub fn animate_client(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
         }
     }
 
-    try_resize(win, &final_rect);
+    try_resize(ctx, win, &final_rect);
 }
 
-pub fn check_animate(win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
-    let globals = get_globals();
-    if let Some(client) = globals.clients.get(&win) {
+pub fn check_animate(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
+    if let Some(client) = ctx.g.clients.get(&win) {
         let should_animate = client.geo.x != rect.x
             || client.geo.y != rect.y
             || client.geo.w != rect.w
             || client.geo.h != rect.h;
         if should_animate {
-            animate_client(win, rect, frames, reset_pos);
+            animate_client(ctx, win, rect, frames, reset_pos);
         }
     }
 }
 
-pub fn up_scale_client(_ctx: &mut WmCtx, win: Window) {
-    crate::client::scale_client(win, 1);
+pub fn up_scale_client(ctx: &mut WmCtx, win: Window) {
+    crate::client::scale_client(ctx, win, 1);
 }
 
-pub fn down_scale_client(_ctx: &mut WmCtx, win: Window) {
-    crate::client::scale_client(win, 100);
+pub fn down_scale_client(ctx: &mut WmCtx, win: Window) {
+    crate::client::scale_client(ctx, win, 100);
 }
 
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
@@ -244,7 +245,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
                 Direction::Up => SnapDir::Up,
                 Direction::Down => SnapDir::Down,
             };
-            change_snap(sel_win, snap_dir);
+            change_snap(ctx, sel_win, snap_dir);
         }
         return;
     }

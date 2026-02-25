@@ -190,7 +190,12 @@ fn draw_items(
     layout: StatusLayout,
 ) {
     let g = get_globals();
-    let mut scheme = g.statusscheme.clone().unwrap_or_default().as_color_scheme();
+    let mut scheme = g
+        .cfg
+        .statusscheme
+        .clone()
+        .unwrap_or_default()
+        .as_color_scheme();
     let base_scheme = scheme.clone();
 
     drw.set_scheme(scheme.clone());
@@ -266,13 +271,18 @@ fn draw_items(
 /// Draw status items with dependency injection
 fn draw_items_ctx(ctx: &mut WmCtx, m: &Monitor, items: &[StatusItem], layout: StatusLayout) {
     let g = &*ctx.g;
-    let mut scheme = g.statusscheme.clone().unwrap_or_default().as_color_scheme();
+    let mut scheme = g
+        .cfg
+        .statusscheme
+        .clone()
+        .unwrap_or_default()
+        .as_color_scheme();
     let base_scheme = scheme.clone();
 
     let drw = get_drw_mut();
     drw.set_scheme(scheme.clone());
 
-    let bh = ctx.g.bh;
+    let bh = ctx.g.cfg.bh;
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
         drw.rect(

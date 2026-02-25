@@ -219,7 +219,7 @@ pub fn grab_buttons(ctx: &mut WmCtx, win: Window, focused: bool) {
     let _ = ungrab_button(conn, ButtonIndex::from(0u8), win, ModMask::from(0u16));
 
     if !focused {
-        let numlockmask = ctx.g.numlockmask;
+        let numlockmask = ctx.g.cfg.numlockmask;
         let lock_mask = ModMask::LOCK.bits() as u32;
         let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
 

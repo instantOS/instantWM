@@ -47,33 +47,42 @@ pub fn client_height(c: &Client) -> i32 {
 /// single client we always apply the resize so the window fills its space.
 pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
     // Extract needed data first to avoid borrow conflict
-    let (base_width, base_height) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.base_width, client.base_height)
-    };
-    let (min_width, min_height) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.min_width, client.min_height)
-    };
-    let (max_width, max_height) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.max_width, client.max_height)
-    };
-    let (inc_width, inc_height) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.inc_width, client.inc_height)
-    };
-    let (base_aspect_n, base_aspect_d) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.base_aspect_n, client.base_aspect_d)
-    };
-    let (min_aspect_n, min_aspect_d) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.min_aspect_n, client.min_aspect_d)
-    };
-    let (max_aspect_n, max_aspect_d) = {
-        let client = ctx.g.clients.get(&win)?;
-        (client.max_aspect_n, client.max_aspect_d)
+    let (
+        base_width,
+        base_height,
+        min_width,
+        min_height,
+        max_width,
+        max_height,
+        inc_width,
+        inc_height,
+        base_aspect_n,
+        base_aspect_d,
+        min_aspect_n,
+        min_aspect_d,
+        max_aspect_n,
+        max_aspect_d,
+    ) = {
+        let client = match ctx.g.clients.get(&win) {
+            Some(c) => c,
+            None => return,
+        };
+        (
+            client.base_width,
+            client.base_height,
+            client.min_width,
+            client.min_height,
+            client.max_width,
+            client.max_height,
+            client.inc_width,
+            client.inc_height,
+            client.base_aspect_n,
+            client.base_aspect_d,
+            client.min_aspect_n,
+            client.min_aspect_d,
+            client.max_aspect_n,
+            client.max_aspect_d,
+        )
     };
 
     let mut new_x = rect.x;
@@ -236,7 +245,7 @@ pub fn apply_size_hints(
             *y = 0;
         }
     } else if let Some(mon_id) = mon_id {
-        if let Some(m) = monitors.get(&mon_id) {
+        if let Some(m) = monitors.get(mon_id) {
             if *x >= m.work_rect.x + m.work_rect.w {
                 *x = m.work_rect.x + m.work_rect.w - client_w;
             }
@@ -263,7 +272,7 @@ pub fn apply_size_hints(
 
     let resizehints = cfg.resizehints;
     let is_tiling = mon_id
-        .and_then(|mid| monitors.get(&mid))
+        .and_then(|mid| monitors.get(mid))
         .map(|mon| crate::monitor::is_current_layout_tiling(mon, &tags))
         .unwrap_or(true);
 
@@ -526,7 +535,7 @@ pub fn scale_client(ctx: &mut WmCtx, win: Window, scale: i32) {
     // Determine the reference rectangle (monitor bounds, or fall back to the
     // client's own geometry when no monitor is assigned).
     let mon_rect = mon_id
-        .and_then(|mid| ctx.g.monitors.get(&mid).map(|m| m.monitor_rect))
+        .and_then(|mid| ctx.g.monitors.get(mid).map(|m| m.monitor_rect))
         .unwrap_or(old_geo);
 
     let new_w = old_geo.w * scale / 100;

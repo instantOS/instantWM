@@ -1,6 +1,5 @@
 use crate::client::{apply_size_hints, set_client_state};
 use crate::contexts::WmCtx;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -14,7 +13,7 @@ const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 /// Get systray width using dependency injection.
-pub fn get_systray_width_ctx(ctx: &mut WmCtx) -> u32 {
+pub fn get_systray_width(ctx: &mut WmCtx) -> u32 {
     if !ctx.g.cfg.showsystray {
         return 1;
     }
@@ -35,16 +34,8 @@ pub fn get_systray_width_ctx(ctx: &mut WmCtx) -> u32 {
     }
 }
 
-/// Get systray width (wrapper for backward compatibility).
-pub fn get_systray_width() -> u32 {
-    let mut globals = get_globals();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    get_systray_width_ctx(&mut ctx)
-}
-
 /// Remove systray icon using dependency injection.
-pub fn remove_systray_icon_ctx(ctx: &mut WmCtx, icon_win: Window) {
+pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: Window) {
     if !ctx.g.cfg.showsystray {
         return;
     }
@@ -56,16 +47,8 @@ pub fn remove_systray_icon_ctx(ctx: &mut WmCtx, icon_win: Window) {
     ctx.g.clients.remove(&icon_win);
 }
 
-/// Remove systray icon (wrapper for backward compatibility).
-pub fn remove_systray_icon(icon_win: Window) {
-    let mut globals = get_globals_mut();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    remove_systray_icon_ctx(&mut ctx, icon_win);
-}
-
 /// Update systray icon geometry using dependency injection.
-pub fn update_systray_icon_geom_ctx(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i32) {
+pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i32) {
     let bh = ctx.g.cfg.bh;
     if let Some(client) = ctx.g.clients.get_mut(&icon_win) {
         client.geo.h = bh;
@@ -101,16 +84,8 @@ pub fn update_systray_icon_geom_ctx(ctx: &mut WmCtx, icon_win: Window, w: i32, h
     }
 }
 
-/// Update systray icon geometry (wrapper for backward compatibility).
-pub fn update_systray_icon_geom(icon_win: Window, w: i32, h: i32) {
-    let mut globals = get_globals_mut();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    update_systray_icon_geom_ctx(&mut ctx, icon_win, w, h);
-}
-
 /// Update systray icon state using dependency injection.
-pub fn update_systray_icon_state_ctx(ctx: &mut WmCtx, icon_win: Window, ev: &PropertyNotifyEvent) {
+pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &PropertyNotifyEvent) {
     if !ctx.g.cfg.showsystray {
         return;
     }
@@ -122,7 +97,7 @@ pub fn update_systray_icon_state_ctx(ctx: &mut WmCtx, icon_win: Window, ev: &Pro
 
     let Some(ref conn) = ctx.x11.conn else { return };
 
-    let flags = get_atom_prop_ctx(ctx, icon_win, xembed_info_atom);
+    let flags = get_atom_prop(ctx, icon_win, xembed_info_atom);
 
     if flags == 0 {
         return;
@@ -149,7 +124,7 @@ pub fn update_systray_icon_state_ctx(ctx: &mut WmCtx, icon_win: Window, ev: &Pro
         set_client_state(icon_win, 1);
 
         let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
-        send_event_ctx(
+        send_event(
             ctx,
             icon_win,
             xembed_info_atom,
@@ -169,7 +144,7 @@ pub fn update_systray_icon_state_ctx(ctx: &mut WmCtx, icon_win: Window, ev: &Pro
         set_client_state(icon_win, 0);
 
         let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
-        send_event_ctx(
+        send_event(
             ctx,
             icon_win,
             xembed_info_atom,
@@ -183,16 +158,8 @@ pub fn update_systray_icon_state_ctx(ctx: &mut WmCtx, icon_win: Window, ev: &Pro
     }
 }
 
-/// Update systray icon state (wrapper for backward compatibility).
-pub fn update_systray_icon_state(icon_win: Window, ev: &PropertyNotifyEvent) {
-    let mut globals = get_globals();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    update_systray_icon_state_ctx(&mut ctx, icon_win, ev);
-}
-
 /// Update systray using dependency injection.
-pub fn update_systray_ctx(ctx: &mut WmCtx) {
+pub fn update_systray(ctx: &mut WmCtx) {
     if !ctx.g.cfg.showsystray {
         return;
     }
@@ -203,7 +170,7 @@ pub fn update_systray_ctx(ctx: &mut WmCtx) {
     }
 
     let (x, by, _showbar, barwin) = {
-        let m = systray_to_mon_ctx(ctx, None);
+        let m = systray_to_mon(ctx, None);
         let mon = match ctx.g.monitors.get(m) {
             Some(mon) => mon,
             None => return,
@@ -387,16 +354,8 @@ pub fn update_systray_ctx(ctx: &mut WmCtx) {
     let _ = conn.flush();
 }
 
-/// Update systray (wrapper for backward compatibility).
-pub fn update_systray() {
-    let mut globals = get_globals();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    update_systray_ctx(&mut ctx);
-}
-
 /// Convert window to systray icon using dependency injection.
-pub fn win_to_systray_icon_ctx(ctx: &mut WmCtx, win: Window) -> Option<Window> {
+pub fn win_to_systray_icon(ctx: &mut WmCtx, win: Window) -> Option<Window> {
     if !ctx.g.cfg.showsystray {
         return None;
     }
@@ -411,16 +370,8 @@ pub fn win_to_systray_icon_ctx(ctx: &mut WmCtx, win: Window) -> Option<Window> {
     None
 }
 
-/// Convert window to systray icon (wrapper for backward compatibility).
-pub fn win_to_systray_icon(win: Window) -> Option<Window> {
-    let mut globals = get_globals();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    win_to_systray_icon_ctx(&mut ctx, win)
-}
-
 /// Get monitor for systray using dependency injection.
-pub fn systray_to_mon_ctx(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
+pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
     if ctx.g.cfg.systraypinning == 0 {
         return match m {
             Some(id) => {
@@ -444,16 +395,8 @@ pub fn systray_to_mon_ctx(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
     }
 }
 
-/// Get monitor for systray (wrapper for backward compatibility).
-pub fn systray_to_mon(m: Option<MonitorId>) -> MonitorId {
-    let mut globals = get_globals();
-    let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut globals, x11);
-    systray_to_mon_ctx(&mut ctx, m)
-}
-
 /// Get atom property using dependency injection.
-fn get_atom_prop_ctx(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
+fn get_atom_prop(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
     if let Some(ref conn) = ctx.x11.conn {
         if let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::CARDINAL, 0, 2) {
             if let Ok(reply) = cookie.reply() {
@@ -467,7 +410,7 @@ fn get_atom_prop_ctx(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
 }
 
 /// Send X event using dependency injection.
-fn send_event_ctx(ctx: &mut WmCtx, win: Window, proto: u32, mask: u32, d0: i64, d1: i64, d2: i64, d3: i64, d4: i64) {
+fn send_event(ctx: &mut WmCtx, win: Window, proto: u32, mask: u32, d0: i64, d1: i64, d2: i64, d3: i64, d4: i64) {
     if let Some(ref conn) = ctx.x11.conn {
         let event = ClientMessageEvent {
             response_type: CLIENT_MESSAGE_EVENT,
