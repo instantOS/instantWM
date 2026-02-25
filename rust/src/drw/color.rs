@@ -1,6 +1,6 @@
 //! Color and cursor types used by the drawing context.
 //!
-//! [`Clr`] wraps an `XftColor` (a pixel value + 16-bit RGBA components).
+//! [`Color`] wraps an `XftColor` (a pixel value + 16-bit RGBA components).
 //! [`Cur`] wraps an X11 cursor id created via `XCreateFontCursor`.
 
 use super::ffi::{XRenderColor, XftColor};

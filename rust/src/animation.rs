@@ -76,9 +76,8 @@ fn try_resize(ctx: &mut WmCtx, win: Window, rect: &Rect) {
 }
 
 pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
-    if frames <= 0 {
-        return;
-    }
+    // Handled below by !ctx.g.animated or frames <= 0 check.
+
 
     let start_rect = match get_start_rect(win, reset_pos) {
         Some(r) => r,
@@ -93,7 +92,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, re
     let (mon_w, mon_h) = get_monitor_size(win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
-    if !ctx.g.animated {
+    if !ctx.g.animated || frames <= 0 {
         try_resize(
             ctx,
             win,
