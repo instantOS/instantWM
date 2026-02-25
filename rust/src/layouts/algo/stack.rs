@@ -98,6 +98,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let h = (m.work_rect.h - master_column_offset as i32)
                 / (min(n, m.nmaster as u32) - i) as i32;
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x,
@@ -114,6 +115,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         } else {
             // ── stack client — all overlap in the same rect ───────────────
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x + mw as i32,

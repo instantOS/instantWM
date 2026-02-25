@@ -16,13 +16,16 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
     crate::mouse::reset_cursor(ctx);
 
     if let Some(id) = mon_id {
-        if let Some(m) = ctx.g.monitors.get_mut(id) {
-            let stack = m.stack;
+        // First pass: show/hide stack
+        let stack = ctx.g.monitors.get(id).map(|m| m.stack);
+        if let Some(stack) = stack {
             crate::client::show_hide(stack);
         }
-        if let Some(m) = ctx.g.monitors.get_mut(id) {
-            arrange_monitor(ctx, m);
-            restack(ctx, m);
+        // Second pass: arrange and restack
+        // Use MonitorId to avoid borrow conflicts
+        if let Some(id) = mon_id {
+            arrange_monitor(ctx, id);
+            restack(ctx, id);
         }
     } else {
         let stacks: Vec<Option<Window>> = ctx.g.monitors.iter().map(|m| m.stack).collect();
@@ -31,20 +34,44 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
             crate::client::show_hide(stack);
         }
 
-        for m in ctx.g.monitors.iter_mut() {
-            arrange_monitor(ctx, m);
+        // Collect monitor indices first to avoid borrow issues
+        let mon_indices: Vec<usize> = (0..ctx.g.monitors.len()).collect();
+        for idx in mon_indices {
+            if let Some(m) = ctx.g.monitors.get_mut(idx) {
+                arrange_monitor(ctx, m);
+            }
         }
     }
 }
 
-pub fn arrange_monitor(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    m.clientcount = client_count_mon(ctx.g, m) as u32;
-    apply_border_widths(ctx, m);
-    run_layout(ctx, m);
-    place_overlay(ctx, m);
+pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+    // Get client count first
+    let clientcount = {
+        let m = ctx.g.monitors.get(mon_id).expect("invalid monitor");
+        client_count_mon(ctx.g, m) as u32
+    };
+
+    // Apply border widths
+    apply_border_widths(ctx, mon_id);
+
+    // Run layout
+    run_layout(ctx, mon_id);
+
+    // Place overlay
+    place_overlay(ctx, mon_id);
+
+    // Update client count
+    if let Some(m) = ctx.g.monitors.get_mut(mon_id) {
+        m.clientcount = clientcount;
+    }
 }
 
-fn apply_border_widths(ctx: &mut WmCtx<'_>, m: &Monitor) {
+fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+    let m = match ctx.g.monitors.get(mon_id) {
+        Some(m) => m,
+        None => return,
+    };
+
     let is_tiling = get_current_layout(ctx.g, m).is_tiling();
     let is_monocle = get_current_layout(ctx.g, m).is_monocle();
     let clientcount = m.clientcount;
@@ -72,12 +99,14 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, m: &Monitor) {
     }
 }
 
-fn run_layout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    get_current_layout(ctx.g, m).arrange(ctx, m);
+fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+    if let Some(m) = ctx.g.monitors.get(mon_id) {
+        get_current_layout(ctx.g, m).arrange(ctx, mon_id);
+    }
 }
 
-fn place_overlay(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let overlay_win = match m.overlay {
+fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+    let overlay_win = match ctx.g.monitors.get(mon_id).and_then(|m| m.overlay) {
         Some(w) => w,
         None => return,
     };
@@ -93,17 +122,23 @@ fn place_overlay(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .get(&overlay_win)
         .map_or(0, |c| c.border_width);
-    let geo = Rect {
-        x: m.work_rect.x,
-        y: m.work_rect.y,
-        w: m.work_rect.w - 2 * bw,
-        h: m.work_rect.h - 2 * bw,
+
+    let geo = if let Some(m) = ctx.g.monitors.get(mon_id) {
+        Rect {
+            x: m.work_rect.x,
+            y: m.work_rect.y,
+            w: m.work_rect.w - 2 * bw,
+            h: m.work_rect.h - 2 * bw,
+        }
+    } else {
+        return;
     };
 
     resize(ctx, overlay_win, &geo, false);
 }
 
-pub fn restack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+    let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
     if get_current_layout(ctx.g, m).is_overview() {
         return;
     }

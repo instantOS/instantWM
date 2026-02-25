@@ -84,6 +84,7 @@ pub fn tcl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     resize(
+        ctx,
         first_win,
         &Rect {
             x: master_x,
@@ -145,6 +146,7 @@ pub fn tcl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             };
 
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: col_x,
@@ -215,6 +217,7 @@ pub fn tcl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             };
 
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: col_x,

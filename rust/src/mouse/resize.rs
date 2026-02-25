@@ -34,14 +34,16 @@ use crate::types::ResizeDirection;
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 pub fn resize_mouse_from_cursor(ctx: &WmCtx) {
-    let win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
-    let Some(win) = win.filter(|&win| {
-        ctx.g
-            .clients
-            .get(&win)
-            .map(|c| !(c.is_fullscreen && !c.isfakefullscreen))
-            .unwrap_or(false)
-    }) else {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+        return;
+    };
+    let is_blocked = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .unwrap_or(false);
+    if is_blocked {
         return;
     };
 
@@ -63,13 +65,6 @@ pub fn resize_mouse_from_cursor(ctx: &WmCtx) {
     };
 
     resize_mouse_directional(ctx, Some(dir));
-}
-
-pub fn resize_aspect_mouse_with_selection(ctx: &mut WmCtx) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
-        return;
-    };
-    resize_aspect_mouse_for_window(ctx, win);
 }
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.
@@ -94,14 +89,16 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
 pub fn resize_mouse(ctx: &mut WmCtx) {
-    let win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
-    let Some(win) = win.filter(|&win| {
-        ctx.g
-            .clients
-            .get(&win)
-            .map(|c| !(c.is_fullscreen && !c.isfakefullscreen))
-            .unwrap_or(false)
-    }) else {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+        return;
+    };
+    let is_blocked = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .unwrap_or(false);
+    if is_blocked {
         return;
     };
 
@@ -183,14 +180,16 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
 pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirection>) {
-    let win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
-    let Some(win) = win.filter(|&win| {
-        ctx.g
-            .clients
-            .get(&win)
-            .map(|c| !(c.is_fullscreen && !c.isfakefullscreen))
-            .unwrap_or(false)
-    }) else {
+    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+        return;
+    };
+    let is_blocked = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .unwrap_or(false);
+    if is_blocked {
         return;
     };
 
@@ -321,7 +320,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
 ///
 /// Exists to match the C API where `force_resize_mouse` was a separate symbol
 /// that bypassed an additional fullscreen guard.  The Rust version already
-/// handles this cleanly in [`selected_resizable_window`].
+/// handles this cleanly in [`resize_mouse`].
 #[inline]
 pub fn force_resize_mouse(ctx: &mut WmCtx) {
     resize_mouse(ctx);
@@ -414,6 +413,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
                     }
 
                     resize(
+                        ctx,
                         win,
                         &Rect {
                             x: client.geo.x,

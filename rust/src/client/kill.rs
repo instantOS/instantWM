@@ -102,7 +102,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
         .is_some_and(|m| m.clients.is_some());
 
     if has_clients {
-        if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel) {
+        if let Some(win) = selected_window(ctx) {
             kill_client(ctx, win);
         }
     } else {

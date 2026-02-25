@@ -170,9 +170,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         let mid = ctx.g.selmon;
         focus(ctx, Some(found));
         arrange(ctx, Some(mid));
-        if let Some(mon) = ctx.g.monitors.get_mut(mid) {
-            restack(ctx, mon);
-        }
+        restack(ctx, mid);
         if focusfollowsmouse {
             warp_cursor_to_client(ctx, found);
         }

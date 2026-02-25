@@ -135,6 +135,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         }
 
         resize(
+            ctx,
             win,
             &Rect {
                 x,

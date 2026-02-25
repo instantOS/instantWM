@@ -112,6 +112,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
 
             resize(
+                ctx,
                 win,
                 &Rect {
                     x: cur_x,

@@ -46,33 +46,75 @@ pub fn client_height(c: &Client) -> i32 {
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
 pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
-        let mut new_x = rect.x;
-        let mut new_y = rect.y;
-        let mut new_width = rect.w;
-        let mut new_height = rect.h;
-        let changed = apply_size_hints(
+    // Extract needed data first to avoid borrow conflict
+    let (base_width, base_height) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.base_width, client.base_height)
+    };
+    let (min_width, min_height) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.min_width, client.min_height)
+    };
+    let (max_width, max_height) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.max_width, client.max_height)
+    };
+    let (inc_width, inc_height) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.inc_width, client.inc_height)
+    };
+    let (base_aspect_n, base_aspect_d) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.base_aspect_n, client.base_aspect_d)
+    };
+    let (min_aspect_n, min_aspect_d) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.min_aspect_n, client.min_aspect_d)
+    };
+    let (max_aspect_n, max_aspect_d) = {
+        let client = ctx.g.clients.get(&win)?;
+        (client.max_aspect_n, client.max_aspect_d)
+    };
+
+    let mut new_x = rect.x;
+    let mut new_y = rect.y;
+    let mut new_width = rect.w;
+    let mut new_height = rect.h;
+    let changed = apply_size_hints(
+        ctx,
+        win,
+        &mut new_x,
+        &mut new_y,
+        &mut new_width,
+        &mut new_height,
+        interact,
+        base_width,
+        base_height,
+        min_width,
+        min_height,
+        max_width,
+        max_height,
+        inc_width,
+        inc_height,
+        base_aspect_n,
+        base_aspect_d,
+        min_aspect_n,
+        min_aspect_d,
+        max_aspect_n,
+        max_aspect_d,
+    );
+    let client_count = ctx.g.clients.len();
+    if changed || client_count == 1 {
+        resize_client(
             ctx,
             win,
-            &mut new_x,
-            &mut new_y,
-            &mut new_width,
-            &mut new_height,
-            interact,
+            &Rect {
+                x: new_x,
+                y: new_y,
+                w: new_width,
+                h: new_height,
+            },
         );
-        let client_count = ctx.g.clients.len();
-        if changed || client_count == 1 {
-            resize_client(
-                ctx,
-                win,
-                &Rect {
-                    x: new_x,
-                    y: new_y,
-                    w: new_width,
-                    h: new_height,
-                },
-            );
-        }
     }
 }
 
@@ -130,6 +172,7 @@ pub fn resize_client(ctx: &mut WmCtx, win: Window, rect: &Rect) {
 ///
 /// Returns `true` if the resulting geometry differs from the client's current
 /// stored geometry (i.e. an actual change would occur).
+#[allow(clippy::too_many_arguments)]
 pub fn apply_size_hints(
     ctx: &mut WmCtx,
     win: Window,
@@ -138,6 +181,20 @@ pub fn apply_size_hints(
     w: &mut i32,
     h: &mut i32,
     interact: bool,
+    base_width: i32,
+    base_height: i32,
+    min_width: i32,
+    min_height: i32,
+    max_width: i32,
+    max_height: i32,
+    inc_width: i32,
+    inc_height: i32,
+    base_aspect_n: i32,
+    base_aspect_d: i32,
+    min_aspect_n: i32,
+    min_aspect_d: i32,
+    max_aspect_n: i32,
+    max_aspect_d: i32,
 ) -> bool {
     let Some(c) = ctx.g.clients.get_mut(&win) else {
         return false;

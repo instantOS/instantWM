@@ -4,6 +4,7 @@ use crate::contexts::WmCtx;
 use crate::keyboard::grab_keys;
 use crate::tags::get_tag_width;
 use crate::types::*;
+use x11rb::protocol::xproto::Window;
 
 pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
     action.apply(value);
@@ -61,11 +62,7 @@ pub fn toggle_animated(ctx: &mut WmCtx, action: ToggleAction) {
     ctrl_toggle(&mut ctx.g.animated, action);
 }
 
-pub fn set_border_width(ctx: &mut WmCtx, width: i32) {
-    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
-
-    let Some(win) = sel_win else { return };
-
+pub fn set_border_width(ctx: &mut WmCtx, win: Window, width: i32) {
     let (old_bw, _mon_id) = {
         if let Some(c) = ctx.g.clients.get(&win) {
             (c.border_width, c.mon_id)

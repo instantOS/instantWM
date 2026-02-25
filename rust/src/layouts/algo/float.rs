@@ -117,7 +117,7 @@ pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 ///
 /// Returns immediately if `snapstatus` is [`SnapPosition::None`] or the
 /// client window is not found.
-pub fn apply_snap_for_window(ctx: &WmCtx<'_>, win: Window, m: &Monitor) {
+pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: Window, m: &Monitor) {
     let c = match ctx.g.clients.get(&win) {
         Some(c) => c,
         None => return,
@@ -153,7 +153,7 @@ pub fn apply_snap_for_window(ctx: &WmCtx<'_>, win: Window, m: &Monitor) {
         SnapPosition::None => return,
     };
 
-    resize(win, &Rect { x, y, w, h }, false);
+    resize(ctx, win, &Rect { x, y, w, h }, false);
 }
 
 // ── save_floating ─────────────────────────────────────────────────────────────
