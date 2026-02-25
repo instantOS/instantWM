@@ -45,8 +45,8 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let sel_win = ctx.g.selected_win();
 
     // ── resize every tiled client to fill the work area ───────────────────
-    let mut c_win = next_tiled(m.clients);
-    while let Some(win) = c_win {
+    let mut current_window = next_tiled(m.clients);
+    while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
             .clients
@@ -75,6 +75,6 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             0,
         );
 
-        c_win = next_tiled(next_client);
+        current_window = next_tiled(next_client);
     }
 }

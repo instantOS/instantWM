@@ -116,7 +116,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     let borderpx = ctx.g.cfg.borderpx;
     if let Some(client) = ctx.g.clients.get_mut(&w) {
         client.border_width = borderpx;
-        client.old_border_width = borderpx as i32;
+        client.old_border_width = borderpx;
     }
 
     // -------------------------------------------------------------------------
@@ -367,7 +367,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             w,
             &Rect {
                 x: c.geo.x,
-                y: c.geo.y + 70,
+                y: c.geo.y,
                 w: 0,
                 h: 0,
             },

@@ -258,7 +258,11 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bar_height).unwrap_or(new_y);
+        let bar_bottom = ctx
+            .g
+            .selmon()
+            .map(|m| m.by + ctx.g.cfg.bar_height)
+            .unwrap_or(new_y);
         new_y = bar_bottom;
     }
 
@@ -440,7 +444,12 @@ fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
     //   x = grab_start_x  (original window x at grab time)
     //   y = just below the bar
     if was_floating {
-        let bar_bottom = { ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bar_height).unwrap_or(0) };
+        let bar_bottom = {
+            ctx.g
+                .selmon()
+                .map(|m| m.by + ctx.g.cfg.bar_height)
+                .unwrap_or(0)
+        };
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.float_geo.x = grab_start_x;
             client.float_geo.y = bar_bottom;

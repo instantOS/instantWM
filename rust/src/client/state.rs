@@ -269,18 +269,19 @@ pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
             let cur_mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
-            let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) = cur_mon_id
-                .and_then(|mid| ctx.g.monitor(mid))
-                .map(|m| {
-                    (
-                        m.monitor_rect.w,
-                        m.work_rect.h,
-                        m.showbar,
-                        m.monitor_rect.y,
-                        m.monitor_rect.x,
-                    )
-                })
-                .unwrap_or((0, 0, false, 0, 0));
+            let (monitor_width, monitor_work_height, monitor_shows_bar, monitor_y, monitor_x) =
+                cur_mon_id
+                    .and_then(|mid| ctx.g.monitor(mid))
+                    .map(|m| {
+                        (
+                            m.monitor_rect.w,
+                            m.work_rect.h,
+                            m.showbar,
+                            m.monitor_rect.y,
+                            m.monitor_rect.x,
+                        )
+                    })
+                    .unwrap_or((0, 0, false, 0, 0));
 
             if let Some(c) = ctx.g.clients.get_mut(&win) {
                 match rule.isfloating {
@@ -289,20 +290,20 @@ pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
                     }
                     RuleFloat::FloatFullscreen => {
                         c.isfloating = true;
-                        c.geo.w = mon_mw;
-                        c.geo.h = mon_wh;
-                        if mon_showbar {
-                            c.geo.y = mon_my + bh;
+                        c.geo.w = monitor_width;
+                        c.geo.h = monitor_work_height;
+                        if monitor_shows_bar {
+                            c.geo.y = monitor_y + bh;
                         }
-                        c.geo.x = mon_mx;
+                        c.geo.x = monitor_x;
                     }
                     RuleFloat::Scratchpad => {
                         c.isfloating = true;
                     }
                     RuleFloat::Float => {
                         c.isfloating = true;
-                        if mon_showbar {
-                            c.geo.y = mon_my + bh;
+                        if monitor_shows_bar {
+                            c.geo.y = monitor_y + bh;
                         }
                     }
                     RuleFloat::Tiled => {
@@ -542,7 +543,7 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
         .map(|chunk| u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect();
 
-    if motif.len() <= MWM_HINTS_FLAGS_FIELD
+    if motif.len() == MWM_HINTS_FLAGS_FIELD
         || (motif[MWM_HINTS_FLAGS_FIELD] & MWM_HINTS_DECORATIONS) == 0
     {
         return;

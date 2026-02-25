@@ -329,7 +329,7 @@ pub fn force_resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 
 /// Interactive resize that respects the window's declared aspect-ratio hints.
 ///
-/// Reads `client.mina`, `client.maxa`, and `client.size_hints` to clamp the
+/// Reads `client.min_aspect`, `client.max_aspect`, and `client.size_hints` to clamp the
 /// new dimensions so the window's aspect ratio stays within the range it
 /// advertised via `WM_NORMAL_HINTS`.
 ///
@@ -389,7 +389,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window, btn: MouseButton) {
 
                 if let Some(client) = ctx.g.clients.get(&win) {
                     let sh = &client.size_hints;
-                    let (mina, maxa) = (client.mina, client.maxa);
+                    let (min_aspect, max_aspect) = (client.min_aspect, client.max_aspect);
 
                     let mut nw = raw_nw;
                     let mut nh = raw_nh;
@@ -409,11 +409,11 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window, btn: MouseButton) {
                     }
 
                     // Clamp to declared aspect-ratio range.
-                    if mina > 0.0 && maxa > 0.0 {
-                        if maxa < nw as f32 / nh as f32 {
-                            nw = (nh as f32 * maxa) as i32;
-                        } else if mina < nh as f32 / nw as f32 {
-                            nh = (nw as f32 * mina) as i32;
+                    if min_aspect > 0.0 && max_aspect > 0.0 {
+                        if max_aspect < nw as f32 / nh as f32 {
+                            nw = (nh as f32 * max_aspect) as i32;
+                        } else if min_aspect < nh as f32 / nw as f32 {
+                            nh = (nw as f32 * min_aspect) as i32;
                         }
                     }
 

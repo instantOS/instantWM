@@ -56,12 +56,12 @@ pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
         max_height,
         inc_width,
         inc_height,
-        base_aspect_n,
-        base_aspect_d,
-        min_aspect_n,
-        min_aspect_d,
-        max_aspect_n,
-        max_aspect_d,
+        base_aspect_num,
+        base_aspect_denom,
+        min_aspect_num,
+        min_aspect_denom,
+        max_aspect_num,
+        max_aspect_denom,
     ) = {
         let client = match ctx.g.clients.get(&win) {
             Some(c) => c,
@@ -76,12 +76,12 @@ pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
             client.max_height,
             client.inc_width,
             client.inc_height,
-            client.base_aspect_n,
-            client.base_aspect_d,
-            client.min_aspect_n,
-            client.min_aspect_d,
-            client.max_aspect_n,
-            client.max_aspect_d,
+            client.base_aspect_num,
+            client.base_aspect_denom,
+            client.min_aspect_num,
+            client.min_aspect_denom,
+            client.max_aspect_num,
+            client.max_aspect_denom,
         )
     };
 
@@ -105,12 +105,12 @@ pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
         max_height,
         inc_width,
         inc_height,
-        base_aspect_n,
-        base_aspect_d,
-        min_aspect_n,
-        min_aspect_d,
-        max_aspect_n,
-        max_aspect_d,
+        base_aspect_num,
+        base_aspect_denom,
+        min_aspect_num,
+        min_aspect_denom,
+        max_aspect_num,
+        max_aspect_denom,
     );
     let client_count = ctx.g.clients.len();
     if changed || client_count == 1 {
@@ -198,12 +198,12 @@ pub fn apply_size_hints(
     _max_height: i32,
     _inc_width: i32,
     _inc_height: i32,
-    _base_aspect_n: i32,
-    _base_aspect_d: i32,
-    _min_aspect_n: i32,
-    _min_aspect_d: i32,
-    _max_aspect_n: i32,
-    _max_aspect_d: i32,
+    _base_aspect_num: i32,
+    _base_aspect_denom: i32,
+    _min_aspect_num: i32,
+    _min_aspect_denom: i32,
+    _max_aspect_num: i32,
+    _max_aspect_denom: i32,
 ) -> bool {
     let Some(c) = ctx.g.clients.get_mut(&win) else {
         return false;
@@ -299,11 +299,11 @@ pub fn apply_size_hints(
             }
 
             // Step 2: enforce aspect ratio.
-            if c.mina > 0.0 && c.maxa > 0.0 {
-                if c.maxa < (*w as f32) / (*h as f32) {
-                    *w = (*h as f32 * c.maxa + 0.5) as i32;
-                } else if c.mina < (*h as f32) / (*w as f32) {
-                    *h = (*w as f32 * c.mina + 0.5) as i32;
+            if c.min_aspect > 0.0 && c.max_aspect > 0.0 {
+                if c.max_aspect < (*w as f32) / (*h as f32) {
+                    *w = (*h as f32 * c.max_aspect + 0.5) as i32;
+                } else if c.min_aspect < (*h as f32) / (*w as f32) {
+                    *h = (*w as f32 * c.min_aspect + 0.5) as i32;
                 }
             }
 
@@ -343,11 +343,11 @@ pub fn apply_size_hints(
             }
 
             // Step 2: enforce aspect ratio.
-            if c.mina > 0.0 && c.maxa > 0.0 {
-                if c.maxa < (*w as f32) / (*h as f32) {
-                    *w = (*h as f32 * c.maxa + 0.5) as i32;
-                } else if c.mina < (*h as f32) / (*w as f32) {
-                    *h = (*w as f32 * c.mina + 0.5) as i32;
+            if c.min_aspect > 0.0 && c.max_aspect > 0.0 {
+                if c.max_aspect < (*w as f32) / (*h as f32) {
+                    *w = (*h as f32 * c.max_aspect + 0.5) as i32;
+                } else if c.min_aspect < (*h as f32) / (*w as f32) {
+                    *h = (*w as f32 * c.min_aspect + 0.5) as i32;
                 }
             }
 
@@ -386,7 +386,7 @@ pub fn apply_size_hints(
 // ---------------------------------------------------------------------------
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
-/// `mina`, `maxa`, and `isfixed`.
+/// `min_aspect`, `max_aspect`, and `isfixed`.
 ///
 /// The raw property is a packed C struct; we read individual 4-byte integers
 /// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
@@ -477,23 +477,23 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
     // --- aspect ratio (indices 11 / 12 / 13 / 14) ---
     if flags & SIZE_HINTS_P_ASPECT != 0 && data.len() > 14 {
         let min_aspect_num = read_i32(11);
-        let min_aspect_den = read_i32(12);
+        let min_aspect_denom = read_i32(12);
         let max_aspect_num = read_i32(13);
-        let max_aspect_den = read_i32(14);
+        let max_aspect_denom = read_i32(14);
 
-        c.mina = if min_aspect_den != 0 {
-            min_aspect_num as f32 / min_aspect_den as f32
+        c.min_aspect = if min_aspect_denom != 0 {
+            min_aspect_num as f32 / min_aspect_denom as f32
         } else {
             0.0
         };
-        c.maxa = if max_aspect_den != 0 {
-            max_aspect_num as f32 / max_aspect_den as f32
+        c.max_aspect = if max_aspect_denom != 0 {
+            max_aspect_num as f32 / max_aspect_denom as f32
         } else {
             0.0
         };
     } else {
-        c.mina = 0.0;
-        c.maxa = 0.0;
+        c.min_aspect = 0.0;
+        c.max_aspect = 0.0;
     }
 
     // A client is "fixed size" when its max and min dimensions are identical

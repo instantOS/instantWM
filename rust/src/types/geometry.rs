@@ -139,11 +139,11 @@ pub struct SizeHints {
     /// Minimum allowed height.
     pub minh: i32,
     /// Minimum aspect ratio numerator.
-    pub min_aspect_n: i32,
+    pub min_aspect_num: i32,
     /// Minimum aspect ratio denominator.
-    pub min_aspect_d: i32,
+    pub min_aspect_denom: i32,
     /// Maximum aspect ratio numerator.
-    pub max_aspect_n: i32,
+    pub max_aspect_num: i32,
     /// Maximum aspect ratio denominator.
-    pub max_aspect_d: i32,
+    pub max_aspect_denom: i32,
 }

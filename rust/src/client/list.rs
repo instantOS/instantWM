@@ -187,10 +187,14 @@ pub fn detach_stack(win: Window) {
 pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;
     let globals = get_globals();
-    let selected = globals.selmon().map(|m| m.selected_tags()).unwrap_or(0);
 
     while let Some(win) = current {
         if let Some(c) = globals.clients.get(&win) {
+            let selected = c
+                .mon_id
+                .and_then(|mid| globals.monitor(mid))
+                .map(|m| m.selected_tags())
+                .unwrap_or(0);
             if !c.isfloating && c.is_visible_on_tags(selected) && !c.is_hidden {
                 return Some(win);
             }

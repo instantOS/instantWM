@@ -78,7 +78,6 @@ fn try_resize(ctx: &mut WmCtx, win: Window, rect: &Rect) {
 pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
     // Handled below by !ctx.g.animated or frames <= 0 check.
 
-
     let start_rect = match get_start_rect(win, reset_pos) {
         Some(r) => r,
         None => return,

@@ -110,10 +110,6 @@ pub fn grab_keys(ctx: &WmCtx) {
     };
 
     for keycode in keycode_min..=keycode_max {
-        if keycode > 255 {
-            continue;
-        }
-
         for key in keys {
             let keysym = get_keysym(keycode);
             if keysym == key.keysym {

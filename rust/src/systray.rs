@@ -65,12 +65,12 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i3
             client.max_height,
             client.inc_width,
             client.inc_height,
-            client.base_aspect_n,
-            client.base_aspect_d,
-            client.min_aspect_n,
-            client.min_aspect_d,
-            client.max_aspect_n,
-            client.max_aspect_d,
+            client.base_aspect_num,
+            client.base_aspect_denom,
+            client.min_aspect_num,
+            client.min_aspect_denom,
+            client.max_aspect_num,
+            client.max_aspect_denom,
         )
     });
 
@@ -87,12 +87,12 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i3
         max_h,
         inc_w,
         inc_h,
-        base_an,
-        base_ad,
-        min_an,
-        min_ad,
-        max_an,
-        max_ad,
+        base_aspect_num,
+        base_aspect_denom,
+        min_aspect_num,
+        min_aspect_denom,
+        max_aspect_num,
+        max_aspect_denom,
     )) = client_data
     {
         let new_geo_h = bh;
@@ -125,12 +125,12 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i3
             max_h,
             inc_w,
             inc_h,
-            base_an,
-            base_ad,
-            min_an,
-            min_ad,
-            max_an,
-            max_ad,
+            base_aspect_num,
+            base_aspect_denom,
+            min_aspect_num,
+            min_aspect_denom,
+            max_aspect_num,
+            max_aspect_denom,
         );
 
         // Now update the client with the computed values

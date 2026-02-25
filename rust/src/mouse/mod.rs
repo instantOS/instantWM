@@ -67,8 +67,8 @@ pub use crate::floating::moveresize;
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{
-    find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
-    handle_sidebar_hover, hover_resize_mouse,
+    find_floating_win_at_resize_border, floating_to_tiled_hover, get_cursor_client_win,
+    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse,
 };
 
 // ── resize ────────────────────────────────────────────────────────────────────

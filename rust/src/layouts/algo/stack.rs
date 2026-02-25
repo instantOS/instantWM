@@ -83,9 +83,9 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── place each client ─────────────────────────────────────────────────
     let mut master_column_offset: u32 = 0; // running y-offset inside master column
     let mut i: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut current_window = next_tiled(m.clients);
 
-    while let Some(win) = c_win {
+    while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
             .clients
@@ -128,7 +128,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        c_win = next_tiled(next_client);
+        current_window = next_tiled(next_client);
     }
 }
 
@@ -162,16 +162,16 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── geometry ──────────────────────────────────────────────────────────
     // mh  — master row height
     // tw  — width of each stack column
-    // ty  — top-y of the stack row
-    let (mh, tw, ty) = if n > m.nmaster as u32 {
+    // stack_y_offset  — top-y of the stack row
+    let (mh, tw, stack_y_offset) = if n > m.nmaster as u32 {
         let mh = if m.nmaster > 0 {
             (m.mfact * m.work_rect.h as f32) as i32
         } else {
             0
         };
         let tw = m.work_rect.w / (n - m.nmaster as u32) as i32;
-        let ty = m.work_rect.y + mh;
-        (mh, tw, ty)
+        let stack_y_offset = m.work_rect.y + mh;
+        (mh, tw, stack_y_offset)
     } else {
         (m.work_rect.h, m.work_rect.w, m.work_rect.y)
     };
@@ -180,9 +180,9 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let mut tx: i32 = m.work_rect.x; // running x-offset inside stack row
     let mut i: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut current_window = next_tiled(m.clients);
 
-    while let Some(win) = c_win {
+    while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
             .clients
@@ -217,7 +217,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 win,
                 &Rect {
                     x: tx,
-                    y: ty,
+                    y: stack_y_offset,
                     w: tw - 2 * border_width,
                     h: h - 2 * border_width,
                 },
@@ -233,7 +233,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        c_win = next_tiled(next_client);
+        current_window = next_tiled(next_client);
     }
 }
 
@@ -267,16 +267,16 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── geometry ──────────────────────────────────────────────────────────
     // mh  — master row height
     // th  — height of each stack row
-    // ty  — top-y of the first stack row (mutable, advances per client)
-    let (mh, th, mut ty) = if n > m.nmaster as u32 {
+    // stack_y_offset  — top-y of the first stack row (mutable, advances per client)
+    let (mh, th, mut stack_y_offset) = if n > m.nmaster as u32 {
         let mh = if m.nmaster > 0 {
             (m.mfact * m.work_rect.h as f32) as i32
         } else {
             0
         };
         let th = (m.work_rect.h - mh) / (n - m.nmaster as u32) as i32;
-        let ty = m.work_rect.y + mh;
-        (mh, th, ty)
+        let stack_y_offset = m.work_rect.y + mh;
+        (mh, th, stack_y_offset)
     } else {
         (m.work_rect.h, m.work_rect.h, m.work_rect.y)
     };
@@ -285,9 +285,9 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let tx: i32 = m.work_rect.x;
     let mut i: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut current_window = next_tiled(m.clients);
 
-    while let Some(win) = c_win {
+    while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
             .clients
@@ -321,7 +321,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 win,
                 &Rect {
                     x: tx,
-                    y: ty,
+                    y: stack_y_offset,
                     w: m.work_rect.w - 2 * border_width,
                     h: th - 2 * border_width,
                 },
@@ -329,16 +329,16 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            // Advance ty only when stack rows don't fill the whole height
+            // Advance stack_y_offset only when stack rows don't fill the whole height
             // (i.e. there are multiple stack clients).
             if let Some(c) = ctx.g.clients.get(&win) {
                 if th != m.work_rect.h {
-                    ty += client_height(c);
+                    stack_y_offset += client_height(c);
                 }
             }
         }
 
         i += 1;
-        c_win = next_tiled(next_client);
+        current_window = next_tiled(next_client);
     }
 }

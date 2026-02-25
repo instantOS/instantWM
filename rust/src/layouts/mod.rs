@@ -142,6 +142,6 @@ pub use manager::{
 // ── Re-exports: algorithms (convenience, used by config.rs via `layouts::*`) ──
 #[allow(unused_imports)]
 pub use algo::{
-    bottom_stack, bstackhoriz, deck, dwindle, fibonacci, float_left, gaplessgrid, grid, horizgrid, monocle,
-    overviewlayout, spiral, three_column, tile,
+    bottom_stack, bstackhoriz, deck, dwindle, fibonacci, float_left, gaplessgrid, grid, horizgrid,
+    monocle, overviewlayout, spiral, three_column, tile,
 };

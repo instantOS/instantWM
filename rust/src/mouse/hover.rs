@@ -151,11 +151,12 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
 /// Sets the resize cursor and `altcursor` when the pointer is in a floating
 /// window's border zone; resets both when it leaves.  Returns `true` when the
 /// event is consumed.
-pub fn handle_floating_resize_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if has_visible_tiled_client(ctx) {
-        return false;
-    }
-
+pub fn handle_floating_resize_hover(
+    ctx: &mut WmCtx,
+    root_x: i32,
+    root_y: i32,
+    do_focus: bool,
+) -> bool {
     if let Some(win) = find_floating_win_at_resize_border(ctx, root_x, root_y) {
         let (cursor_idx, dir, should_focus) = {
             let (cursor_idx, dir) = if let Some(c) = ctx.g.clients.get(&win) {
@@ -166,7 +167,7 @@ pub fn handle_floating_resize_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -
             } else {
                 (1, ResizeDirection::BottomRight)
             };
-            let should_focus = ctx.g.selected_win() != Some(win);
+            let should_focus = do_focus && ctx.g.selected_win() != Some(win);
             (cursor_idx, dir, should_focus)
         };
 
@@ -175,7 +176,7 @@ pub fn handle_floating_resize_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -
         ctx.g.resize_direction = Some(dir);
 
         if should_focus {
-            focus(ctx, Some(win));
+            let _ = focus(ctx, Some(win));
         }
         return true;
     }
@@ -236,6 +237,23 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
         return false;
     }
 
+    crate::mouse::handle_floating_resize_hover(ctx, px, py, false);
+
+    let action_started = run_hover_resize_loop(ctx);
+
+    if !action_started {
+        ungrab_ctx(ctx);
+    }
+
+    true
+}
+
+/// Shared modal grab loop for hover-resize operations.
+///
+/// Waits for the user to either click (starting resize/move), move the cursor
+/// outside the resize border (focusing the window under cursor), or press
+/// Escape (aborting). Returns `true` if a resize/move action was started.
+fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
     let mut action_started = false;
 
     loop {
@@ -311,6 +329,74 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
             _ => {}
         }
     }
+
+    action_started
+}
+
+/// Handle the transition from a floating window to a tiled window.
+///
+/// When the selected window is floating and the cursor enters a tiled window,
+/// this activates the resize offer cursor.  If the cursor is in the floating
+/// window's resize border zone, a modal grab loop waits for the user to either
+/// click (resize/move) or move far enough away (deactivate + focus tiled).
+/// If the cursor has already moved past the border zone, the tiled window is
+/// focused immediately.
+///
+/// Returns `true` if the transition was handled.
+pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
+    // Selected window must be floating in a tiling layout
+    let sel_win = match ctx.g.selected_win() {
+        Some(w) => w,
+        None => return false,
+    };
+    let sel_geo = match ctx.g.clients.get(&sel_win) {
+        Some(c) if c.isfloating || !ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true) => {
+            c.geo
+        }
+        _ => return false,
+    };
+
+    // Must have a different, tiled window under the cursor
+    let hovered_win = match get_cursor_client_win(ctx) {
+        Some(w) if w != sel_win => w,
+        _ => return false,
+    };
+    let has_tiling = ctx
+        .g
+        .selmon()
+        .map(|m| m.is_tiling_layout())
+        .unwrap_or(true);
+    if !has_tiling {
+        return false;
+    }
+    let hovered_is_tiled = ctx
+        .g
+        .clients
+        .get(&hovered_win)
+        .map(|c| !c.isfloating)
+        .unwrap_or(false);
+    if !hovered_is_tiled {
+        return false;
+    }
+
+    let Some((px, py)) = get_root_ptr(ctx) else {
+        return false;
+    };
+
+    // If cursor is already outside the resize border, just focus the tiled window
+    if !is_point_in_resize_border(&sel_geo, px, py) {
+        focus(ctx, Some(hovered_win));
+        return true;
+    }
+
+    // Activate resize cursor and enter the grab loop
+    handle_floating_resize_hover(ctx, px, py, false);
+
+    if !grab_pointer_with_keys(ctx, 1) {
+        return false;
+    }
+
+    let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
         ungrab_ctx(ctx);

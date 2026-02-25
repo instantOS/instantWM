@@ -34,10 +34,11 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
-    while c_win.is_some() {
+    let mut current_window = next_tiled(m.clients);
+    while let Some(win) = current_window {
         n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
+        let next_client = ctx.g.clients.get(&win).and_then(|c| c.next);
+        current_window = next_tiled(next_client);
     }
 
     if n == 0 {
@@ -63,11 +64,11 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place each client ─────────────────────────────────────────────────
     let mut master_y_offset: u32 = 0; // running y-offset inside master column
-    let mut ty: u32 = 0; // running y-offset inside stack  column
+    let mut stack_y_offset: u32 = 0; // running y-offset inside stack column
     let mut i: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut current_window = next_tiled(m.clients);
 
-    while let Some(win) = c_win {
+    while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
             .clients
@@ -111,14 +112,14 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
         } else {
             // ── stack client ──────────────────────────────────────────────
-            let h = (m.work_rect.h - ty as i32) / (n - i) as i32;
+            let h = (m.work_rect.h - stack_y_offset as i32) / (n - i) as i32;
 
             animate_client(
                 ctx,
                 win,
                 &Rect {
                     x: m.work_rect.x + mw,
-                    y: m.work_rect.y + ty as i32,
+                    y: m.work_rect.y + stack_y_offset as i32,
                     w: m.work_rect.w - mw - 2 * border_width,
                     h: h - 2 * border_width,
                 },
@@ -127,13 +128,13 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if let Some(c) = ctx.g.clients.get(&win) {
-                if ty as i32 + client_height(c) < m.work_rect.h {
-                    ty += client_height(c) as u32;
+                if stack_y_offset as i32 + client_height(c) < m.work_rect.h {
+                    stack_y_offset += client_height(c) as u32;
                 }
             }
         }
 
         i += 1;
-        c_win = next_tiled(next_client);
+        current_window = next_tiled(next_client);
     }
 }

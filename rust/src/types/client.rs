@@ -19,9 +19,9 @@ pub struct Client {
     /// Window title/name displayed in the bar.
     pub name: String,
     /// Minimum aspect ratio constraint from WM_NORMAL_HINTS.
-    pub mina: f32,
+    pub min_aspect: f32,
     /// Maximum aspect ratio constraint from WM_NORMAL_HINTS.
-    pub maxa: f32,
+    pub max_aspect: f32,
     /// Current geometry.
     pub geo: Rect,
     /// Geometry when floating.
@@ -49,17 +49,17 @@ pub struct Client {
     /// Height increment.
     pub inc_height: i32,
     /// Base aspect numerator.
-    pub base_aspect_n: i32,
+    pub base_aspect_num: i32,
     /// Base aspect denominator.
-    pub base_aspect_d: i32,
+    pub base_aspect_denom: i32,
     /// Minimum aspect numerator.
-    pub min_aspect_n: i32,
+    pub min_aspect_num: i32,
     /// Minimum aspect denominator.
-    pub min_aspect_d: i32,
+    pub min_aspect_denom: i32,
     /// Maximum aspect numerator.
-    pub max_aspect_n: i32,
+    pub max_aspect_num: i32,
     /// Maximum aspect denominator.
-    pub max_aspect_d: i32,
+    pub max_aspect_denom: i32,
 
     /// Whether size hints are valid.
     pub hintsvalid: i32,
