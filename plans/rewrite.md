@@ -19,5 +19,11 @@ Search this codebase for AI hallucinated nonsense that was generated because of
 lazily porting C to unidiomatic Rust
 
 
+If a window closes by itself (like typing exit into xterm) the window manager
+does not deal with that appropriately. It can close windows gracefully if I
+press the close button, but if the window disappears on its own, a ghost stays
+in the stack and its title is in the top bar
+
+
 
 

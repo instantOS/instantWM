@@ -416,11 +416,13 @@ fn init_schemes(drw: &mut Drw) {
 
     let borderscheme = drw.scm_create(&bordercolors).ok().map(|clr| {
         if clr.len() >= 4 {
+            // bordercolors order: [normal, tile_focus, float_focus, snap]
+            // Each Color is used as the bg (border pixel) for its variant.
             BorderScheme {
-                normal: ColorScheme::new(clr[0].clone(), clr[1].clone(), clr[1].clone()),
-                tile_focus: ColorScheme::new(clr[0].clone(), clr[1].clone(), clr[1].clone()),
-                float_focus: ColorScheme::new(clr[0].clone(), clr[2].clone(), clr[2].clone()),
-                snap: ColorScheme::new(clr[0].clone(), clr[3].clone(), clr[3].clone()),
+                normal: ColorScheme::new(clr[0].clone(), clr[0].clone(), clr[0].clone()),
+                tile_focus: ColorScheme::new(clr[1].clone(), clr[1].clone(), clr[1].clone()),
+                float_focus: ColorScheme::new(clr[2].clone(), clr[2].clone(), clr[2].clone()),
+                snap: ColorScheme::new(clr[3].clone(), clr[3].clone(), clr[3].clone()),
             }
         } else {
             BorderScheme::default()
