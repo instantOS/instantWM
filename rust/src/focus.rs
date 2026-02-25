@@ -15,8 +15,6 @@ use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
-======= REPLACE
-
 
 /// Set focus to a window, or to the root if None.
 pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
@@ -73,8 +71,6 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
             let _ = conn.flush_ctx();
         }
         return;
-======= REPLACE
-
     }
 
     if let Some(cur_win) = current_sel {
@@ -121,8 +117,6 @@ pub fn set_focus_win(ctx: &WmCtx, win: Window) {
         let _ = conn.flush_ctx();
     }
 }
-======= REPLACE
-
 
 /// Focus a client in the given direction.
 ///

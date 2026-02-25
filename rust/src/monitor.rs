@@ -45,6 +45,7 @@ use x11rb::protocol::xinerama;
 ///
 /// This function is useful when you need to create a monitor with
 /// specific configuration values different from the defaults.
+/// TODO: this is a very thin wrapper, remove, look for general structural improvements
 pub fn create_monitor_with_values(
     mfact: f32,
     nmaster: i32,
@@ -57,6 +58,7 @@ pub fn create_monitor_with_values(
 /// Create a new monitor with default values from context.
 ///
 /// This is the dependency-injected version that accepts a `WmCtx`.
+/// TODO: this is a very thin wrapper, remove
 pub fn create_monitor_with_ctx(ctx: &WmCtx) -> Monitor {
     Monitor::new_with_values(
         ctx.g.cfg.mfact,
@@ -107,6 +109,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
 /// # Returns
 /// * `Some(monitor_id)` - The target monitor ID
 /// * `None` - If there are no monitors
+//TODO: this is a very thin wrapper, remove
 pub fn dir_to_mon(monitors: &[Monitor], selmon: MonitorId, dir: i32) -> Option<MonitorId> {
     find_monitor_by_direction(monitors, selmon, dir)
 }
