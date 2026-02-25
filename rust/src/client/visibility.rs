@@ -195,7 +195,7 @@ pub fn show(ctx: &mut WmCtx, win: Window) {
         let _ = conn.flush();
     }
 
-    set_client_state(win, WM_STATE_NORMAL);
+    set_client_state(ctx, win, WM_STATE_NORMAL);
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
@@ -268,7 +268,7 @@ pub fn hide(ctx: &mut WmCtx, win: Window) {
     let _ = conn.unmap_window(win);
     let _ = conn.flush();
 
-    set_client_state(win, WM_STATE_ICONIC);
+    set_client_state(ctx, win, WM_STATE_ICONIC);
 
     // Set the cached flag now that WM_STATE is committed.
     if let Some(c) = get_globals_mut().clients.get_mut(&win) {

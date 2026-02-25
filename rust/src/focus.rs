@@ -9,6 +9,7 @@ use crate::contexts::WmCtx;
 use crate::tags::view;
 use crate::types::*;
 use crate::util::X11ConnExt;
+use anyhow::Context as AnyhowContext;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -16,15 +17,21 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
+/// Error type for focus operations
+pub type FocusResult = anyhow::Result<()>;
+
 /// Set focus to a window, or to the root if None.
-pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
+/// 
+/// # Errors
+/// Returns an error if X11 operations fail (e.g., connection lost).
+pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> FocusResult {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         if ctx.g.monitors.is_empty() {
-            return;
+            return Ok(());
         }
         let sel_mon_id = ctx.g.selmon;
         let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
-            return;
+            return Ok(());
         };
 
         let selected = mon.selected_tags();
@@ -65,12 +72,12 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
             set_focus(ctx, w);
         } else {
             let conn = ctx.x11.conn;
-            // Use the _ctx methods for operations that should report errors
-            let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-            let _ = conn.delete_property_ctx(root, net_active_window);
-            let _ = conn.flush_ctx();
+            // Propagate X11 errors instead of ignoring them
+            conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME)?;
+            conn.delete_property_ctx(root, net_active_window)?;
+            conn.flush_ctx()?;
         }
-        return;
+        return Ok(());
     }
 
     if let Some(cur_win) = current_sel {
@@ -89,7 +96,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
     if let Some(w) = target.take() {
         let is_urgent = ctx.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
         if is_urgent {
-            set_urgent(w, false);
+            set_urgent(ctx, w, false);
         }
         set_focus(ctx, w);
     } else {

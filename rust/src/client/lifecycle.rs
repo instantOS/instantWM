@@ -108,7 +108,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 
     ctx.g.clients.insert(w, c.clone());
 
-    apply_rules(w);
+    apply_rules(ctx, w);
 
     // -------------------------------------------------------------------------
     // 4. Apply the global default border width.
@@ -203,7 +203,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     update_size_hints_win(ctx, w);
     update_wm_hints(ctx, w);
     read_client_info(ctx, w);
-    set_client_tag_prop(w);
+    set_client_tag_prop(ctx, w);
     update_motif_hints(ctx, w);
 
     // -------------------------------------------------------------------------
@@ -312,7 +312,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     let initially_hidden = ctx.g.clients.get(&w).map(|c| c.is_hidden).unwrap_or(false);
 
     if !initially_hidden {
-        set_client_state(w, WM_STATE_NORMAL);
+        set_client_state(ctx, w, WM_STATE_NORMAL);
     }
 
     // Unfocus the previously selected window before reassigning sel.
@@ -443,7 +443,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
         // Release button grabs.
         let _ = conn.ungrab_button(ButtonIndex::from(0u8), win, ModMask::from(0u16));
 
-        set_client_state(win, WM_STATE_WITHDRAWN);
+        set_client_state(ctx, win, WM_STATE_WITHDRAWN);
 
         let _ = conn.flush();
         let _ = conn.ungrab_server();
@@ -453,7 +453,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
     ctx.g.clients.remove(&win);
 
     focus(ctx, None);
-    update_client_list();
+    update_client_list(ctx);
 
     if let Some(mid) = mon_id {
         arrange(ctx, Some(mid));

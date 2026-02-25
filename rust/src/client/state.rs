@@ -25,7 +25,6 @@ use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen;
 use crate::client::geometry::{client_height, client_width, resize};
 use crate::contexts::WmCtx;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -193,41 +192,39 @@ fn read_window_title(ctx: &WmCtx, win: Window) -> String {
 /// After rule matching, the final tag mask is clamped to the current tag set.
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
-pub fn apply_rules(win: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
+    let conn = ctx.x11.conn;
 
     // --- Read WM_CLASS -------------------------------------------------------
     let (class_bytes, instance_bytes) = read_wm_class(conn, win);
 
     // --- Initialise fields we are about to set -------------------------------
-    let globals = get_globals_mut();
-
-    if !globals.clients.contains_key(&win) {
+    if !ctx.g.clients.contains_key(&win) {
         return;
     }
 
-    if let Some(c) = globals.clients.get_mut(&win) {
+    if let Some(c) = ctx.g.clients.get_mut(&win) {
         c.isfloating = false;
         c.tags = 0;
     }
 
-    let special_next = globals.specialnext;
-    let rules = globals.cfg.rules.clone();
-    let tagmask = globals.tags.mask();
-    let bh = globals.cfg.bh;
+    let special_next = ctx.g.specialnext;
+    let rules = ctx.g.cfg.rules.clone();
+    let tagmask = ctx.g.tags.mask();
+    let bh = ctx.g.cfg.bh;
 
     // --- Handle SpecialNext shortcut ------------------------------------------
     if special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next {
-            if let Some(c) = globals.clients.get_mut(&win) {
+            if let Some(c) = ctx.g.clients.get_mut(&win) {
                 c.isfloating = true;
             }
         }
-        globals.specialnext = SpecialNext::None;
+        ctx.g.specialnext = SpecialNext::None;
     } else {
         // --- Normal rule matching ---------------------------------------------
-        let client_name = globals
+        let client_name = ctx
+            .g
             .clients
             .get(&win)
             .map(|c| c.name.clone())
@@ -265,15 +262,15 @@ pub fn apply_rules(win: Window) {
 
             // Special case: Onboard (on-screen keyboard) is always sticky.
             if rule.class == Some("Onboard") {
-                if let Some(c) = globals.clients.get_mut(&win) {
+                if let Some(c) = ctx.g.clients.get_mut(&win) {
                     c.issticky = true;
                 }
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
-            let cur_mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
+            let cur_mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
             let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) = cur_mon_id
-                .and_then(|mid| globals.monitors.get(mid))
+                .and_then(|mid| ctx.g.monitors.get(mid))
                 .map(|m| {
                     (
                         m.monitor_rect.w,
@@ -285,7 +282,7 @@ pub fn apply_rules(win: Window) {
                 })
                 .unwrap_or((0, 0, false, 0, 0));
 
-            if let Some(c) = globals.clients.get_mut(&win) {
+            if let Some(c) = ctx.g.clients.get_mut(&win) {
                 match rule.isfloating {
                     RuleFloat::FloatCenter => {
                         c.isfloating = true;
@@ -318,12 +315,13 @@ pub fn apply_rules(win: Window) {
 
             // Optionally move the client to a specific monitor.
             if let MonitorRule::Index(target_num) = rule.monitor {
-                if let Some(target_mid) = globals
+                if let Some(target_mid) = ctx
+                    .g
                     .monitors
                     .iter()
                     .position(|m| m.num == target_num as i32)
                 {
-                    if let Some(c) = globals.clients.get_mut(&win) {
+                    if let Some(c) = ctx.g.clients.get_mut(&win) {
                         c.mon_id = Some(target_mid);
                     }
                 }
@@ -332,16 +330,17 @@ pub fn apply_rules(win: Window) {
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
-    let (client_mon_id, client_tags) = globals
+    let (client_mon_id, client_tags) = ctx
+        .g
         .clients
         .get(&win)
         .map(|c| (c.mon_id, c.tags))
         .unwrap_or((None, 0));
 
     if let Some(mid) = client_mon_id {
-        if let Some(mon) = globals.monitors.get(mid) {
+        if let Some(mon) = ctx.g.monitors.get(mid) {
             let active_tags = mon.tagset[mon.seltags as usize];
-            if let Some(c) = globals.clients.get_mut(&win) {
+            if let Some(c) = ctx.g.clients.get_mut(&win) {
                 c.tags = if client_tags & tagmask != 0 {
                     client_tags & tagmask
                 } else {
@@ -387,23 +386,19 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
 pub fn update_window_type(ctx: &mut WmCtx, win: Window) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let conn = ctx.x11.conn;
+    let state = get_atom_prop(conn, win, ctx.g.cfg.netatom.wm_state);
+    let wtype = get_atom_prop(conn, win, ctx.g.cfg.netatom.wm_window_type);
 
-    let globals = get_globals();
-    let state = get_atom_prop(conn, win, globals.cfg.netatom.wm_state);
-    let wtype = get_atom_prop(conn, win, globals.cfg.netatom.wm_window_type);
-
-    let atom_fullscreen = globals.cfg.netatom.wm_fullscreen;
-    let atom_dialog = globals.cfg.netatom.wm_window_type_dialog;
+    let atom_fullscreen = ctx.g.cfg.netatom.wm_fullscreen;
+    let atom_dialog = ctx.g.cfg.netatom.wm_window_type_dialog;
 
     if state == Some(atom_fullscreen) {
         set_fullscreen(ctx, win, true);
     }
 
     if wtype == Some(atom_dialog) {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
+        if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.isfloating = true;
         }
     }
@@ -466,16 +461,12 @@ pub fn update_wm_hints(ctx: &mut WmCtx, win: Window) {
 ///
 /// This function is currently reserved for future EWMH compliance use but is
 /// kept here so the property plumbing is in one place.
-pub fn set_urgent(win: Window, urg: bool) {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+pub fn set_urgent(ctx: &mut WmCtx, win: Window, urg: bool) {
+    let conn = ctx.x11.conn;
 
     // Update the internal flag first.
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            client.isurgent = urg;
-        }
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        client.isurgent = urg;
     }
 
     // Read the current WM_HINTS so we only modify the urgency bit.
@@ -528,16 +519,13 @@ pub fn set_urgent(win: Window, urg: bool) {
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
 pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
-    let globals = get_globals();
-    if globals.cfg.decorhints == 0 {
+    if ctx.g.cfg.decorhints == 0 {
         return;
     }
 
-    let motif_atom = globals.cfg.motifatom;
-    let borderpx = globals.cfg.borderpx;
-
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    let motif_atom = ctx.g.cfg.motifatom;
+    let borderpx = ctx.g.cfg.borderpx;
+    let conn = ctx.x11.conn;
 
     let Ok(cookie) = conn.get_property(false, win, motif_atom, motif_atom, 0, 5) else {
         return;
@@ -561,14 +549,12 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
         return;
     }
 
-    let (c_w, c_h, c_x, c_y) = {
-        let globals = get_globals();
-        globals
-            .clients
-            .get(&win)
-            .map(|c| (client_width(c), client_height(c), c.geo.x, c.geo.y))
-            .unwrap_or((0, 0, 0, 0))
-    };
+    let (c_w, c_h, c_x, c_y) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (client_width(c), client_height(c), c.geo.x, c.geo.y))
+        .unwrap_or((0, 0, 0, 0));
 
     let decorations = motif.get(MWM_HINTS_DECORATIONS_FIELD).copied().unwrap_or(0);
 
@@ -583,12 +569,9 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
         0
     };
 
-    {
-        let globals = get_globals_mut();
-        if let Some(client) = globals.clients.get_mut(&win) {
-            client.border_width = new_bw;
-            client.old_border_width = new_bw;
-        }
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        client.border_width = new_bw;
+        client.old_border_width = new_bw;
     }
 
     // Resize to account for the changed border (total size stays the same;

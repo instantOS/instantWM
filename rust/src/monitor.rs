@@ -219,7 +219,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
 
     attach(win);
     attach_stack(win);
-    set_client_tag_prop(win);
+    set_client_tag_prop(ctx, win);
 
     focus(ctx, None);
 

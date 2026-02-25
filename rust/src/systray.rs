@@ -190,7 +190,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
             icon_win,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
-        set_client_state(icon_win, 1);
+        set_client_state(ctx, icon_win, 1);
 
         let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
         send_event(
@@ -210,7 +210,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
         }
 
         let _ = conn.unmap_window(icon_win);
-        set_client_state(icon_win, 0);
+        set_client_state(ctx, icon_win, 0);
 
         let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
         send_event(

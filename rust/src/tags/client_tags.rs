@@ -26,7 +26,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
         client.tags = effective_mask.bits();
     }
 
-    set_client_tag_prop(win);
+    set_client_tag_prop(ctx, win);
     focus(ctx, None);
     arrange(ctx, Some(selmon_id));
 }

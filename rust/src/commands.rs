@@ -80,7 +80,7 @@ pub fn command_prefix(ctx: &mut WmCtx, value: u32) {
 
     let selmon_id = ctx.g.selmon;
     if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-        draw_bar(mon);
+        draw_bar(ctx, mon);
     }
 }
 

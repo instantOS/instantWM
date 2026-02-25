@@ -73,7 +73,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         if e.event == mon.barwin {
             let position = bar_position_at_x(mon, ctx, e.event_x as i32);
             if position == BarPosition::StartMenu {
-                reset_bar();
+                reset_bar(ctx);
             }
             click_target = position.to_click();
         } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
@@ -329,7 +329,10 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
             if e.window != mon.barwin {
                 return;
             }
-            draw_bar(mon);
+            // Clone to avoid borrow issues
+            let mut m = mon.clone();
+            draw_bar(ctx, &mut m);
+            *mon = m;
         }
     };
 }
@@ -436,7 +439,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             // The status-text and root areas don't produce a hover gesture —
             // reset the bar and bail out so we don't light up anything.
             BarPosition::StatusText | BarPosition::Root => {
-                reset_bar();
+                reset_bar(ctx);
                 return;
             }
             other => other.to_gesture(),
@@ -480,7 +483,7 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
 
         let net_wm_name = ctx.g.cfg.netatom.wm_name;
         if e.atom == AtomEnum::WM_NAME.into() || e.atom == net_wm_name {
-            update_title(win);
+            update_title(ctx, win);
         }
     };
 }
@@ -503,7 +506,7 @@ pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
         //   else                unmanage(c, 0);
         if e.response_type & 0x80 != 0 {
             // Synthetic unmap — client is withdrawing; just record state.
-            set_client_state(win, WM_STATE_WITHDRAWN);
+            set_client_state(ctx, win, WM_STATE_WITHDRAWN);
         } else {
             // Real unmap — window is going away; remove from management.
             // unmanage(win, false) already calls set_client_state(WITHDRAWN)
@@ -671,7 +674,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     };
 
     systray::update_systray(ctx);
-    set_client_state(icon_win, 1);
+    set_client_state(ctx, icon_win, 1);
 }
 
 fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: Window) {
