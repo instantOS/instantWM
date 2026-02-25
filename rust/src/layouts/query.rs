@@ -73,7 +73,7 @@ pub fn find_visible_client(g: &Globals, start_win: Option<Window>) -> Option<Win
 ///
 /// Reads from the monitor's own `tags` list. Falls back to `Tile` when the
 /// tag index is out of range (e.g. monitor not yet fully initialised).
-pub fn get_current_layout(g: &Globals, m: &Monitor) -> LayoutKind {
+pub fn get_current_layout(_g: &Globals, m: &Monitor) -> LayoutKind {
     let tag = m.current_tag;
 
     if tag > 0 && tag <= m.tags.len() {

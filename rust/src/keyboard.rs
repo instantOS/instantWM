@@ -4,8 +4,8 @@ use crate::focus::direction_focus;
 use crate::layouts::arrange;
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::unhide_one;
-use crate::types::Direction;
 use crate::types::*;
+use crate::types::{Direction, MonitorDirection, StackDirection};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -265,7 +265,7 @@ pub fn down_press(ctx: &mut WmCtx) {
     }
 }
 
-pub fn up_key(ctx: &mut WmCtx, direction: i32) {
+pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx
         .g
         .selmon()
@@ -302,8 +302,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: i32) {
     focus_stack(ctx, direction);
 }
 
-//TODO: this should use the direction enum
-pub fn down_key(ctx: &mut WmCtx, direction: i32) {
+pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx
         .g
         .selmon()
@@ -385,7 +384,7 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
     crate::floating::center_window(ctx, win);
 }
 
-pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
+pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     let (sel_win, selected, clients_head) = {
         let Some(mon) = ctx.g.selmon() else {
             return;
@@ -410,7 +409,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
         }
     }
 
-    if next.is_none() && direction > 0 {
+    if next.is_none() && direction.is_forward() {
         for (c_win, c) in crate::types::ClientListIter::new(clients_head, &ctx.g.clients) {
             let visible = c.is_visible_on_tags(selected) && !c.is_hidden;
             let is_floating = c.isfloating;
@@ -426,7 +425,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
     }
 }
 
-pub fn focus_mon(ctx: &mut WmCtx, direction: i32) {
+pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     crate::monitor::focus_mon(ctx, direction);
 }
 
@@ -434,6 +433,6 @@ pub fn focus_nmon(ctx: &mut WmCtx, index: i32) {
     crate::monitor::focus_n_mon(ctx, index);
 }
 
-pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
+pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     crate::monitor::follow_mon(ctx, direction);
 }

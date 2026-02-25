@@ -14,7 +14,8 @@
 //! let target = win_to_mon_with_ctx(&ctx, some_window);
 //!
 //! // Focus next/previous monitor
-//! focus_mon(&mut ctx, 1);  // Focus next monitor
+//! use crate::types::MonitorDirection;
+//! focus_mon(&mut ctx, MonitorDirection::NEXT);  // Focus next monitor
 //! ```
 //!
 //! # Benefits of Dependency Injection
@@ -226,9 +227,8 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorI
 ///
 /// # Arguments
 /// * `ctx` - WM context with mutable access to monitor state
-/// * `direction` - Direction (> 0 for next, < 0 for previous)
-//TODO: use enum for direction
-pub fn focus_mon(ctx: &mut WmCtx, direction: i32) {
+/// * `direction` - Direction to move (Next or Previous monitor)
+pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     if ctx.g.monitors.len() <= 1 {
         return;
     }
@@ -277,7 +277,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
     focus(ctx, None);
 }
 
-pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
+pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     let c_win = match ctx.g.selmon().and_then(|m| m.sel) {
         Some(w) => w,
         None => return,
@@ -525,7 +525,7 @@ fn update_from_xinerama(
 }
 
 pub fn update_geom() -> bool {
-    let mut dirty = false;
+    let dirty;
 
     #[cfg(feature = "xinerama")]
     {

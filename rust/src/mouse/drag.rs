@@ -646,7 +646,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 ///   `Control` → [`tag_all`], no modifier → [`follow_tag`]
 ///
 /// Exits without action if the pointer leaves the bar during the drag.
-pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, click_root_x: i32) {
+pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
         let selmon_id = ctx.g.selmon_id();
         let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);

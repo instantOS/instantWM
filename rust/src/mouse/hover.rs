@@ -20,7 +20,6 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
-use super::drag::move_mouse;
 use super::grab::{grab_pointer_with_keys, ungrab_ctx, wait_event};
 use super::warp::get_root_ptr;
 

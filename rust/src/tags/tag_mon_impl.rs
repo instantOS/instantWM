@@ -15,6 +15,7 @@ use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
 use crate::types::monitor::find_monitor_by_direction;
+use crate::types::MonitorDirection;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -22,18 +23,17 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Send the selected client to the monitor in direction `direction`.
+/// Send the selected client to the monitor in the given direction.
 ///
-/// `direction` is passed directly to [`find_monitor_by_direction`] which
-/// resolves it to an absolute monitor index.  Positive values mean "next
-/// monitor", negative values mean "previous monitor" (matching the dwm
-/// convention).
+/// The `direction` is passed to [`find_monitor_by_direction`] which resolves
+/// it to an absolute monitor index. Use `MonitorDirection::NEXT` for the next
+/// monitor or `MonitorDirection::PREV` for the previous monitor.
 ///
 /// # Floating client repositioning
 ///
 /// When the client is floating its (x, y) position is converted to a fraction
 /// of the *work area* of the source monitor, then mapped onto the work area of
-/// the target monitor.  This keeps the window at roughly the same place on
+/// the target monitor. This keeps the window at roughly the same place on
 /// screen even when the monitors have different resolutions.
 ///
 /// After the move the window is raised to the top of the stacking order so it
@@ -42,8 +42,8 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 /// # No-ops
 /// - No client is currently selected.
 /// - Only one monitor is connected.
-/// - [`find_monitor_by_direction`] returns `None` (direction is out of range).
-pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
+/// - [`find_monitor_by_direction`] returns `None`.
+pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------

@@ -20,7 +20,6 @@ pub struct ButtonArg {
     pub ry: i32,
 }
 
-
 /// A keyboard binding.
 pub struct Key {
     /// Modifier mask (e.g., Mod1Mask, ControlMask).

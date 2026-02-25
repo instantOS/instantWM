@@ -225,7 +225,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         view(ctx, tag_mask);
     }
 
-    focus(ctx, Some(win));
+    let _ = focus(ctx, Some(win));
 }
 
 pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
@@ -287,7 +287,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
         mon.current_tag = target_idx;
     }
 
-    focus(ctx, None);
+    let _ = focus(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 
@@ -312,7 +312,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
     }
 
     view(ctx, target_mask);
-    focus(ctx, Some(win));
+    let _ = focus(ctx, Some(win));
     arrange(ctx, Some(selmon_id));
 }
 
@@ -439,7 +439,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
         mon.current_tag = new_mask.first_tag().unwrap_or(0);
     }
     apply_pertag_settings(ctx);
-    focus(ctx, None);
+    let _ = focus(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 

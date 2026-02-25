@@ -129,8 +129,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
-        key!(MODKEY, XK_DOWN => |ctx| down_key(ctx, 1)),
-        key!(MODKEY, XK_UP   => |ctx| up_key(ctx, -1)),
+        key!(MODKEY, XK_DOWN => |ctx| down_key(ctx, StackDirection::Next)),
+        key!(MODKEY, XK_UP   => |ctx| up_key(ctx, StackDirection::Previous)),
         key!(MS,     XK_DOWN => down_press),
         key!(MS,     XK_UP   => up_press),
         key!(MC, XK_J => |ctx| {

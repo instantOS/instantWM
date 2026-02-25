@@ -1,7 +1,7 @@
 //! Layout manager — the stateful half of the layout system.
 
 use crate::bar::draw_bar;
-use crate::client::{next_tiled, resize, restore_border_width, save_border_width};
+use crate::client::{resize, restore_border_width, save_border_width};
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
@@ -76,27 +76,44 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     let is_tiling = get_current_layout(ctx.g, m).is_tiling();
     let is_monocle = get_current_layout(ctx.g, m).is_monocle();
     let clientcount = m.clientcount;
+    let selected_tags = m.selected_tags();
 
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = m.clients;
     while let Some(win) = c_win {
-        let (is_floating, is_fullscreen) = match ctx.g.clients.get(&win) {
+        let (is_floating, is_fullscreen, is_visible, is_hidden) = match ctx.g.clients.get(&win) {
             None => break,
-            Some(c) => (c.isfloating, c.is_fullscreen),
+            Some(c) => (
+                c.isfloating,
+                c.is_fullscreen,
+                c.is_visible_on_tags(selected_tags),
+                c.is_hidden,
+            ),
         };
 
-        let strip_border =
-            !is_floating && !is_fullscreen && ((clientcount == 1 && is_tiling) || is_monocle);
+        if is_visible && !is_hidden {
+            let strip_border =
+                !is_floating && !is_fullscreen && ((clientcount == 1 && is_tiling) || is_monocle);
 
-        if strip_border {
-            save_border_width(win);
-            if let Some(c) = ctx.g.clients.get_mut(&win) {
-                c.border_width = 0;
+            if strip_border {
+                save_border_width(win);
+                if let Some(c) = ctx.g.clients.get_mut(&win) {
+                    c.border_width = 0;
+                }
+            } else {
+                let old_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+                restore_border_width(win);
+                let new_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+
+                if old_bw != new_bw && (is_floating || is_fullscreen) {
+                    let _ = ctx.x11.conn.configure_window(
+                        win,
+                        &ConfigureWindowAux::new().border_width(new_bw as u32),
+                    );
+                }
             }
-        } else {
-            restore_border_width(win);
         }
 
-        c_win = ctx.g.clients.get(&win).and_then(|c| next_tiled(c.next));
+        c_win = ctx.g.clients.get(&win).and_then(|c| c.next);
     }
 }
 

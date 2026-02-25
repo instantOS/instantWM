@@ -35,7 +35,6 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
     let mon = ctx.g.selmon()?;
     let selected = mon.selected_tags();
 
-    let mut p: Option<Window> = None;
     let mut r: Option<Window> = None;
 
     let mut current = mon.clients;
@@ -48,7 +47,6 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
             if (include_floating || !c.isfloating) && c.is_visible_on_tags(selected) {
                 r = Some(win);
             }
-            p = Some(win);
             current = c.next;
         } else {
             break;

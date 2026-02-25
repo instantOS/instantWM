@@ -12,6 +12,7 @@ use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
+use crate::types::tag_types::MonitorDirection;
 
 /// Internal state of a monitor (screen) in the window manager.
 ///
@@ -339,8 +340,11 @@ impl Monitor {
 }
 
 /// Find a monitor in a given direction from the current one.
-//TODO: use enum for direction
-pub fn find_monitor_by_direction(monitors: &[Monitor], current: usize, dir: i32) -> Option<usize> {
+pub fn find_monitor_by_direction(
+    monitors: &[Monitor],
+    current: usize,
+    direction: MonitorDirection,
+) -> Option<usize> {
     if monitors.is_empty() {
         return None;
     }
@@ -348,7 +352,7 @@ pub fn find_monitor_by_direction(monitors: &[Monitor], current: usize, dir: i32)
         return Some(current);
     }
 
-    if dir > 0 {
+    if direction.is_next() {
         if current + 1 >= monitors.len() {
             Some(0)
         } else {

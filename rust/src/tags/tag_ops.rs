@@ -42,15 +42,15 @@ pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
 
 /// Focus a monitor using type-safe direction.
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    super::super::monitor::focus_mon(ctx, direction.value());
+    super::super::monitor::focus_mon(ctx, direction);
 }
 
 /// Move client to a monitor using type-safe direction.
 pub fn tag_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    super::tag_mon(ctx, direction.value());
+    super::tag_mon(ctx, direction);
 }
 
 /// Follow client to a monitor using type-safe direction.
 pub fn follow_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    super::super::monitor::follow_mon(ctx, direction.value());
+    super::super::monitor::follow_mon(ctx, direction);
 }

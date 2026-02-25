@@ -178,7 +178,11 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 ///
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
-pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirection>, btn: MouseButton) {
+pub fn resize_mouse_directional(
+    ctx: &mut WmCtx,
+    direction: Option<ResizeDirection>,
+    btn: MouseButton,
+) {
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
