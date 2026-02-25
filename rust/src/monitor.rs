@@ -459,9 +459,204 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
 
 #[cfg(feature = "xinerama")]
 fn is_unique_geom(unique: &[Rect], info: &Rect) -> bool {
-    !unique
+    !unique.iter().any(|u| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
+}
+
+/// Get unique screen geometries from Xinerama screens.
+#[cfg(feature = "xinerama")]
+fn get_unique_screens(conn: &x11rb::rust_connection::RustConnection) -> Option<Vec<Rect>> {
+    let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
+    if is_active.state == 0 {
+        return None;
+    }
+
+    let screens = xinerama::query_screens(conn).ok()?.reply().ok()?;
+
+    let screen_info: Vec<Rect> = screens
+        .screen_info
         .iter()
-        .any(|u| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
+        .map(|s| Rect {
+            x: s.x_org as i32,
+            y: s.y_org as i32,
+            w: s.width as i32,
+            h: s.height as i32,
+        })
+        .collect();
+
+    let mut unique = Vec::new();
+    for info in &screen_info {
+        if is_unique_geom(&unique, info) {
+            unique.push(*info);
+        }
+    }
+
+    Some(unique)
+}
+
+/// Get monitor configuration values from globals.
+fn get_monitor_config() -> (f32, i32, bool, bool) {
+    let g = get_globals();
+    (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar)
+}
+
+/// Ensure we have at least `count` monitors.
+fn ensure_monitor_count(count: usize) {
+    let g = get_globals_mut();
+    let (mfact, nmaster, showbar, topbar) = (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
+    while g.monitors.len() < count {
+        g.monitors.push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
+    }
+}
+
+/// Update monitor geometry if changed. Returns true if updated.
+fn update_monitor_geometry(mon: &mut Monitor, idx: usize, new_rect: &Rect) -> bool {
+    let needs_update = mon.monitor_rect.x != new_rect.x
+        || mon.monitor_rect.y != new_rect.y
+        || mon.monitor_rect.w != new_rect.w
+        || mon.monitor_rect.h != new_rect.h;
+
+    if needs_update {
+        mon.num = idx as i32;
+        mon.monitor_rect = *new_rect;
+        mon.work_rect = *new_rect;
+        true
+    } else {
+        false
+    }
+}
+
+/// Move clients from a removed monitor to monitor 0.
+fn move_clients_to_mon0(removed_mon_id: usize) -> bool {
+    let clients_to_move: Vec<Window> = {
+        let g = get_globals();
+        g.clients
+            .values()
+            .filter(|c| c.mon_id == Some(removed_mon_id))
+            .map(|c| c.win)
+            .collect()
+    };
+
+    let mut dirty = false;
+    for win in clients_to_move {
+        dirty = true;
+        detach(win);
+        detach_stack(win);
+
+        let g = get_globals_mut();
+        if let Some(ref mut c) = g.clients.get_mut(&win) {
+            c.mon_id = Some(0);
+        }
+
+        attach(win);
+        attach_stack(win);
+    }
+
+    dirty
+}
+
+/// Handle removal of monitors that are no longer present.
+fn cleanup_removed_monitors(start_idx: usize, x11: &crate::globals::X11Connection) -> bool {
+    let mut dirty = false;
+
+    for i in (start_idx..get_globals().monitors.len()).rev() {
+        dirty = move_clients_to_mon0(i) || dirty;
+
+        let g = get_globals_mut();
+        if g.selmon == i {
+            g.selmon = 0;
+        }
+
+        let mut ctx = WmCtx::new(g, x11);
+        cleanup_monitor(&mut ctx, i);
+    }
+
+    dirty
+}
+
+/// Initialize a single monitor with the given dimensions.
+fn init_single_monitor(sw: i32, sh: i32) -> bool {
+    let g = get_globals_mut();
+    g.monitors.push(create_monitor());
+    if let Some(ref mut m) = g.monitors.first_mut() {
+        m.num = 0;
+        m.monitor_rect = Rect { x: 0, y: 0, w: sw, h: sh };
+        m.work_rect = Rect { x: 0, y: 0, w: sw, h: sh };
+        update_bar_pos(m);
+    }
+    g.selmon = 0;
+    true
+}
+
+/// Update single monitor dimensions if changed.
+fn update_single_monitor(sw: i32, sh: i32) -> bool {
+    let needs_update = get_globals()
+        .monitors
+        .first()
+        .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
+        .unwrap_or(false);
+
+    if !needs_update {
+        return false;
+    }
+
+    let g = get_globals_mut();
+    if let Some(ref mut m) = g.monitors.first_mut() {
+        m.monitor_rect.w = sw;
+        m.monitor_rect.h = sh;
+        m.work_rect.w = sw;
+        m.work_rect.h = sh;
+        update_bar_pos(m);
+    }
+    true
+}
+
+/// Update monitor geometries from Xinerama screens.
+#[cfg(feature = "xinerama")]
+fn update_from_xinerama(x11: &crate::globals::X11Globals, conn: &x11rb::rust_connection::RustConnection) -> Option<bool> {
+    let unique = get_unique_screens(conn)?;
+    let new_count = unique.len();
+    let old_count = get_globals().monitors.len();
+
+    // Add new monitors if needed
+    ensure_monitor_count(new_count);
+
+    // Update existing monitor geometries
+    let mut dirty = new_count > old_count;
+    let mut monitors_need_bar_update: Vec<usize> = Vec::new();
+
+    for (i, info) in unique.iter().enumerate() {
+        let g = get_globals_mut();
+        if let Some(ref mut m) = g.monitors.get_mut(i) {
+            if update_monitor_geometry(m, i, info) {
+                dirty = true;
+                monitors_need_bar_update.push(i);
+            }
+        }
+    }
+
+    // Update bar positions for changed monitors
+    for idx in &monitors_need_bar_update {
+        let g = get_globals_mut();
+        if let Some(ref mut m) = g.monitors.get_mut(*idx) {
+            update_bar_pos(m);
+        }
+    }
+
+    // Cleanup removed monitors
+    if new_count < old_count {
+        dirty = cleanup_removed_monitors(new_count, x11) || dirty;
+    }
+
+    // Reset selection to first monitor and try to find better one
+    if dirty {
+        let g = get_globals_mut();
+        g.selmon = 0;
+        if let Some(m) = win_to_mon(x11.screen_num as u32) {
+            g.selmon = m;
+        }
+    }
+
+    Some(dirty)
 }
 
 pub fn update_geom() -> bool {
@@ -473,199 +668,26 @@ pub fn update_geom() -> bool {
         eprintln!("TRACE: update_geom - before get_x11");
         let x11 = get_x11();
         eprintln!("TRACE: update_geom - after get_x11");
+
         if let Some(ref conn) = x11.conn {
-            eprintln!("TRACE: update_geom - before is_active");
-            if let Ok(is_active_cookie) = xinerama::is_active(conn) {
-                eprintln!("TRACE: update_geom - before reply");
-                if let Ok(is_active) = is_active_cookie.reply() {
-                    eprintln!("TRACE: update_geom - is_active.state = {}", is_active.state);
-                    if is_active.state != 0 {
-                        eprintln!("TRACE: update_geom - before query_screens");
-                        if let Ok(screens_cookie) = xinerama::query_screens(conn) {
-                            eprintln!("TRACE: update_geom - before query_screens.reply");
-                            if let Ok(screens) = screens_cookie.reply() {
-                                eprintln!(
-                                    "TRACE: update_geom - got screens, len = {}",
-                                    screens.screen_info.len()
-                                );
-                                let screen_info: Vec<Rect> = screens
-                                    .screen_info
-                                    .iter()
-                                    .map(|s| Rect {
-                                        x: s.x_org as i32,
-                                        y: s.y_org as i32,
-                                        w: s.width as i32,
-                                        h: s.height as i32,
-                                    })
-                                    .collect();
-
-                                eprintln!("TRACE: update_geom - screen_info = {:?}", screen_info);
-                                let mut unique: Vec<Rect> = Vec::new();
-                                for info in &screen_info {
-                                    if is_unique_geom(&unique, info) {
-                                        unique.push(*info);
-                                    }
-                                }
-
-                                let nn = unique.len();
-                                eprintln!("TRACE: update_geom - unique.len = {}", nn);
-                                let n = {
-                                    let g = get_globals();
-                                    g.monitors.len()
-                                };
-                                eprintln!("TRACE: update_geom - current monitors.len = {}", n);
-
-                                {
-                                    eprintln!("TRACE: update_geom - before create_monitor loop");
-                                    let g = get_globals_mut();
-                                    let mfact = g.cfg.mfact;
-                                    let nmaster = g.cfg.nmaster;
-                                    let showbar = g.cfg.showbar;
-                                    let topbar = g.cfg.topbar;
-                                    while g.monitors.len() < nn {
-                                        g.monitors.push(create_monitor_with_values(
-                                            mfact, nmaster, showbar, topbar,
-                                        ));
-                                    }
-                                    eprintln!("TRACE: update_geom - after create_monitor loop");
-                                }
-
-                                eprintln!("TRACE: update_geom - before unique.iter().enumerate");
-                                let mut monitors_need_bar_update: Vec<usize> = Vec::new();
-
-                                for (i, info) in unique.iter().enumerate() {
-                                    eprintln!("TRACE: update_geom - iter i = {}", i);
-                                    let g = get_globals_mut();
-                                    if i >= n {
-                                        dirty = true;
-                                    }
-
-                                    if let Some(ref mut m) = g.monitors.get_mut(i) {
-                                        eprintln!("TRACE: update_geom - got monitor {}", i);
-                                        if i >= n
-                                            || m.monitor_rect.x != info.x
-                                            || m.monitor_rect.y != info.y
-                                            || m.monitor_rect.w != info.w
-                                            || m.monitor_rect.h != info.h
-                                        {
-                                            eprintln!(
-                                                "TRACE: update_geom - updating monitor {}",
-                                                i
-                                            );
-                                            dirty = true;
-                                            m.num = i as i32;
-                                            m.monitor_rect = *info;
-                                            m.work_rect = *info;
-                                            monitors_need_bar_update.push(i);
-                                        }
-                                    }
-                                }
-
-                                for idx in &monitors_need_bar_update {
-                                    let g = get_globals_mut();
-                                    if let Some(ref mut m) = g.monitors.get_mut(*idx) {
-                                        update_bar_pos(m);
-                                    }
-                                }
-                                eprintln!(
-                                    "TRACE: update_geom - {} monitors had bar update",
-                                    monitors_need_bar_update.len()
-                                );
-
-                                for i in nn..n {
-                                    let clients_to_move: Vec<Window> = {
-                                        let g = get_globals();
-                                        g.clients
-                                            .values()
-                                            .filter(|c| c.mon_id == Some(i))
-                                            .map(|c| c.win)
-                                            .collect()
-                                    };
-
-                                    for win in clients_to_move {
-                                        dirty = true;
-                                        detach(win);
-                                        detach_stack(win);
-
-                                        let g = get_globals_mut();
-                                        if let Some(ref mut c) = g.clients.get_mut(&win) {
-                                            c.mon_id = Some(0);
-                                        }
-
-                                        attach(win);
-                                        attach_stack(win);
-                                    }
-
-                                    let x11 = get_x11();
-                                    let g = get_globals_mut();
-                                    if g.selmon == i {
-                                        g.selmon = 0;
-                                    }
-
-                                    let mut ctx = WmCtx::new(g, &x11);
-                                    cleanup_monitor(&mut ctx, i);
-                                }
-
-                                if dirty {
-                                    let g = get_globals_mut();
-                                    g.selmon = 0;
-
-                                    if let Some(m) = win_to_mon(x11.screen_num as u32) {
-                                        let g = get_globals_mut();
-                                        g.selmon = m;
-                                    }
-                                }
-
-                                return dirty;
-                            }
-                        }
-                    }
-                }
+            if let Some(result) = update_from_xinerama(&x11, conn) {
+                eprintln!("TRACE: update_geom - xinerama result = {}", result);
+                return result;
             }
         }
     }
 
+    // Fallback to single monitor
     let g = get_globals();
-    if g.monitors.is_empty() {
-        let (sw, sh) = (g.cfg.sw, g.cfg.sh);
-        let g = get_globals_mut();
-        g.monitors.push(create_monitor());
-        if let Some(ref mut m) = g.monitors.first_mut() {
-            m.num = 0;
-            m.monitor_rect.x = 0;
-            m.monitor_rect.y = 0;
-            m.monitor_rect.w = sw;
-            m.monitor_rect.h = sh;
-            m.work_rect.x = 0;
-            m.work_rect.y = 0;
-            m.work_rect.w = sw;
-            m.work_rect.h = sh;
-            update_bar_pos(m);
-        }
-        g.selmon = 0;
-        dirty = true;
-    } else {
-        let sw = g.cfg.sw;
-        let sh = g.cfg.sh;
-        let needs_update = g
-            .monitors
-            .first()
-            .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
-            .unwrap_or(false);
+    let (sw, sh) = (g.cfg.sw, g.cfg.sh);
 
-        if needs_update {
-            dirty = true;
-            let g = get_globals_mut();
-            if let Some(ref mut m) = g.monitors.first_mut() {
-                m.monitor_rect.w = sw;
-                m.monitor_rect.h = sh;
-                m.work_rect.w = sw;
-                m.work_rect.h = sh;
-                update_bar_pos(m);
-            }
-        }
+    if g.monitors.is_empty() {
+        dirty = init_single_monitor(sw, sh);
+    } else {
+        dirty = update_single_monitor(sw, sh);
     }
 
+    eprintln!("TRACE: update_geom - end, dirty = {}", dirty);
     dirty
 }
 
