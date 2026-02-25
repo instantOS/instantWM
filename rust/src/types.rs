@@ -747,7 +747,7 @@ impl ToggleAction {
     }
 }
 
-/// Direction for focus movement and similar operations.
+/// Direction for focus movement, keyboard-driven window movement/resize, and similar operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Up,
@@ -756,43 +756,8 @@ pub enum Direction {
     Right,
 }
 
-/// Direction for stack-based focus movement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum StackDirection {
-    /// Move to the next (forward) item in the stack.
-    #[default]
-    Next,
-    /// Move to the previous (backward) item in the stack.
-    Previous,
-}
-
-impl StackDirection {
-    /// Returns true if this is the Next direction.
-    pub fn is_forward(self) -> bool {
-        matches!(self, Self::Next)
-    }
-
-    /// Parse from i32 (for command compatibility): positive = Next, negative/zero = Previous.
-    pub fn from_i32(v: i32) -> Self {
-        if v > 0 {
-            Self::Next
-        } else {
-            Self::Previous
-        }
-    }
-}
-
-/// Cardinal direction for keyboard-driven window movement/resize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CardinalDirection {
-    #[default]
-    Down,
-    Up,
-    Right,
-    Left,
-}
-
-impl CardinalDirection {
+/// Cardinal direction for navigation (alias for Direction).
+impl Direction {
     /// Convert from integer (for backward compat with config files if needed).
     pub fn from_i32(i: i32) -> Option<Self> {
         match i {
@@ -821,6 +786,32 @@ impl CardinalDirection {
             Self::Up => (0, -step),
             Self::Right => (step, 0),
             Self::Left => (-step, 0),
+        }
+    }
+}
+
+/// Direction for stack-based focus movement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StackDirection {
+    /// Move to the next (forward) item in the stack.
+    #[default]
+    Next,
+    /// Move to the previous (backward) item in the stack.
+    Previous,
+}
+
+impl StackDirection {
+    /// Returns true if this is the Next direction.
+    pub fn is_forward(self) -> bool {
+        matches!(self, Self::Next)
+    }
+
+    /// Parse from i32 (for command compatibility): positive = Next, negative/zero = Previous.
+    pub fn from_i32(v: i32) -> Self {
+        if v > 0 {
+            Self::Next
+        } else {
+            Self::Previous
         }
     }
 }

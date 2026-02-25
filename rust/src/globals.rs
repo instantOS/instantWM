@@ -225,7 +225,7 @@ pub struct X11Connection {
 }
 
 /// A guaranteed X11 connection reference for use after initialization.
-/// 
+///
 /// This type ensures at compile time that the X11 connection is available.
 /// If X11 is not reachable, the window manager cannot function and should crash.
 pub struct X11Conn<'a> {
@@ -242,21 +242,22 @@ impl<'a> X11Conn<'a> {
 
 impl X11Connection {
     /// Get a guaranteed X11 connection reference.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the connection is not available. This should only happen
     /// during initialization before the connection is established, or after
     /// cleanup when the connection has been closed.
     pub fn conn(&self) -> &x11rb::rust_connection::RustConnection {
-        self.conn.as_ref()
+        self.conn
+            .as_ref()
             .expect("X11 connection not available - this is a fatal error for a window manager")
     }
 
     /// Create an X11Conn from this connection.
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if the connection is not available.
     pub fn as_conn(&self) -> X11Conn<'_> {
         X11Conn {

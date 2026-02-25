@@ -27,7 +27,7 @@ pub fn text_width(text: &str) -> i32 {
 }
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
-    let g = get_globals();
+    let _g = get_globals();
     m.layout_symbol()
 }
 
@@ -41,7 +41,7 @@ pub fn draw_bar(m: &mut Monitor) {
         std::process::abort();
     }
 
-    let g = get_globals();
+    let _g = get_globals();
     let showbar = m.shows_bar();
     if PAUSEDRAW.load(Ordering::Relaxed) || !showbar {
         DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
@@ -65,8 +65,8 @@ pub fn draw_bar(m: &mut Monitor) {
         // Create temporary ctx for get_systray_width
         let mut g = get_globals_mut();
         let x11 = get_x11();
-        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
-        crate::systray::get_systray_width(&mut ctx) as i32
+        let mut ctx = WmCtx::new(g, x11.as_conn());
+        crate::systray::get_systray_width(&ctx) as i32
     } else {
         0
     };

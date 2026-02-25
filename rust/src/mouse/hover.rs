@@ -256,7 +256,7 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// Returns `true` if the function entered its loop (caller should skip normal
 /// focus/event handling), `false` if the cursor was not in a resize border.
 pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
-    if !is_in_resize_border(&ctx) {
+    if !is_in_resize_border(ctx) {
         return false;
     }
 
@@ -275,7 +275,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
             x11rb::protocol::Event::ButtonRelease(_) => break,
 
             x11rb::protocol::Event::MotionNotify(_) => {
-                if !is_in_resize_border(&ctx) {
+                if !is_in_resize_border(ctx) {
                     // Focus the window under the cursor when leaving.
                     let should_refocus = get_cursor_client_win(ctx).filter(|&hover_win| {
                         ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win)

@@ -4,18 +4,18 @@ use crate::commands::{command_prefix, set_special_next};
 use crate::focus::warp_to_focus;
 use crate::keyboard::focus_nmon;
 use crate::layouts::command_layout;
-use crate::tags::tag_ops;
-use crate::types::MonitorDirection;
 use crate::overlay::set_overlay;
 use crate::scratchpad::{
     scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_status,
     scratchpad_toggle, scratchpad_unmake,
 };
+use crate::tags::tag_ops;
 use crate::tags::{name_tag, reset_name_tag, view};
 use crate::toggles::{
     alt_tab_free, set_border_width, toggle_alt_tag, toggle_animated,
     toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_show_tags,
 };
+use crate::types::MonitorDirection;
 use crate::types::TagMask;
 use crate::types::{ToggleAction, XCommand};
 
@@ -135,21 +135,30 @@ pub fn get_xcommands() -> Vec<XCommand> {
         XCommand {
             cmd: "tagmon",
             action: |ctx, arg| {
-                let direction = arg.parse::<i32>().map(MonitorDirection::from).unwrap_or(MonitorDirection::NEXT);
+                let direction = arg
+                    .parse::<i32>()
+                    .map(MonitorDirection::from)
+                    .unwrap_or(MonitorDirection::NEXT);
                 tag_ops::tag_monitor(ctx, direction);
             },
         },
         XCommand {
             cmd: "followmon",
             action: |ctx, arg| {
-                let direction = arg.parse::<i32>().map(MonitorDirection::from).unwrap_or(MonitorDirection::NEXT);
+                let direction = arg
+                    .parse::<i32>()
+                    .map(MonitorDirection::from)
+                    .unwrap_or(MonitorDirection::NEXT);
                 tag_ops::follow_monitor(ctx, direction);
             },
         },
         XCommand {
             cmd: "focusmon",
             action: |ctx, arg| {
-                let direction = arg.parse::<i32>().map(MonitorDirection::from).unwrap_or(MonitorDirection::NEXT);
+                let direction = arg
+                    .parse::<i32>()
+                    .map(MonitorDirection::from)
+                    .unwrap_or(MonitorDirection::NEXT);
                 tag_ops::focus_monitor(ctx, direction);
             },
         },

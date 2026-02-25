@@ -62,7 +62,8 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
     if current_sel == target {
         if let Some(w) = target {
             set_focus(ctx, w);
-        } else if true { let conn = ctx.x11.conn;
+        } else {
+            let conn = ctx.x11.conn;
             let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
             let _ = conn.delete_property(root, net_active_window);
             let _ = conn.flush();
@@ -89,7 +90,8 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
             set_urgent(w, false);
         }
         set_focus(ctx, w);
-    } else if true { let conn = ctx.x11.conn;
+    } else {
+        let conn = ctx.x11.conn;
         let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
         let _ = conn.delete_property(root, net_active_window);
         let _ = conn.flush();
@@ -97,20 +99,19 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
 }
 
 pub fn set_focus_win(ctx: &WmCtx, win: Window) {
-    if true { let conn = ctx.x11.conn;
-        if let Some(c) = ctx.g.clients.get(&win) {
-            if !c.neverfocus {
-                let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
-                let _ = conn.change_property32(
-                    PropMode::REPLACE,
-                    ctx.g.cfg.root,
-                    ctx.g.cfg.netatom.active_window,
-                    AtomEnum::WINDOW,
-                    &[win],
-                );
-            }
-            let _ = conn.flush();
+    let conn = ctx.x11.conn;
+    if let Some(c) = ctx.g.clients.get(&win) {
+        if !c.neverfocus {
+            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
+            let _ = conn.change_property32(
+                PropMode::REPLACE,
+                ctx.g.cfg.root,
+                ctx.g.cfg.netatom.active_window,
+                AtomEnum::WINDOW,
+                &[win],
+            );
         }
+        let _ = conn.flush();
     }
 }
 
@@ -331,28 +332,9 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
 }
 
 pub fn warp(ctx: &WmCtx, c_win: Window) {
-    if true { let conn = ctx.x11.conn;
-        if let Some(c) = ctx.g.clients.get(&c_win) {
-            if let Some(_cursor_x) = get_root_ptr(ctx) {
-                let _ = conn.warp_pointer(
-                    CURRENT_TIME,
-                    c.win,
-                    0,
-                    0,
-                    0,
-                    0,
-                    (c.geo.w / 2) as i16,
-                    (c.geo.h / 2) as i16,
-                );
-                let _ = conn.flush();
-            }
-        }
-    }
-}
-
-pub fn force_warp(ctx: &WmCtx, c_win: Window) {
-    if true { let conn = ctx.x11.conn;
-        if let Some(c) = ctx.g.clients.get(&c_win) {
+    let conn = ctx.x11.conn;
+    if let Some(c) = ctx.g.clients.get(&c_win) {
+        if let Some(_cursor_x) = get_root_ptr(ctx) {
             let _ = conn.warp_pointer(
                 CURRENT_TIME,
                 c.win,
@@ -361,96 +343,111 @@ pub fn force_warp(ctx: &WmCtx, c_win: Window) {
                 0,
                 0,
                 (c.geo.w / 2) as i16,
-                10_i16,
+                (c.geo.h / 2) as i16,
             );
             let _ = conn.flush();
         }
     }
 }
 
+pub fn force_warp(ctx: &WmCtx, c_win: Window) {
+    let conn = ctx.x11.conn;
+    if let Some(c) = ctx.g.clients.get(&c_win) {
+        let _ = conn.warp_pointer(
+            CURRENT_TIME,
+            c.win,
+            0,
+            0,
+            0,
+            0,
+            (c.geo.w / 2) as i16,
+            10_i16,
+        );
+        let _ = conn.flush();
+    }
+}
+
 pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
-    if true { let conn = ctx.x11.conn;
-        let root = ctx.g.cfg.root;
-        let bh = ctx.g.cfg.bh;
+    let conn = ctx.x11.conn;
+    let root = ctx.g.cfg.root;
+    let bh = ctx.g.cfg.bh;
 
-        if c_win == 0 {
-            if !ctx.g.monitors.is_empty() {
-                if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
-                    let _ = conn.warp_pointer(
-                        CURRENT_TIME,
-                        root,
-                        0,
-                        0,
-                        0,
-                        0,
-                        (mon.work_rect.x + mon.work_rect.w / 2) as i16,
-                        (mon.work_rect.y + mon.work_rect.h / 2) as i16,
-                    );
-                    let _ = conn.flush();
-                }
-            }
-            return;
-        }
-
-        if let Some(c) = ctx.g.clients.get(&c_win) {
-            if let Some((x, y)) = get_root_ptr(ctx) {
-                let in_window = c.geo.contains_point(x, y)
-                    || (x > c.geo.x - c.border_width
-                        && y > c.geo.y - c.border_width
-                        && x < c.geo.x + c.geo.w + c.border_width * 2
-                        && y < c.geo.y + c.geo.h + c.border_width * 2);
-
-                let on_bar = if let Some(mon_id) = c.mon_id {
-                    if let Some(mon) = ctx.g.monitors.get(mon_id) {
-                        (y > mon.by && y < mon.by + bh) || (mon.topbar && y == 0)
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if in_window || on_bar {
-                    return;
-                }
-
+    if c_win == 0 {
+        if !ctx.g.monitors.is_empty() {
+            if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
                 let _ = conn.warp_pointer(
                     CURRENT_TIME,
-                    c.win,
+                    root,
                     0,
                     0,
                     0,
                     0,
-                    (c.geo.w / 2) as i16,
-                    (c.geo.h / 2) as i16,
+                    (mon.work_rect.x + mon.work_rect.w / 2) as i16,
+                    (mon.work_rect.y + mon.work_rect.h / 2) as i16,
                 );
                 let _ = conn.flush();
             }
+        }
+        return;
+    }
+
+    if let Some(c) = ctx.g.clients.get(&c_win) {
+        if let Some((x, y)) = get_root_ptr(ctx) {
+            let in_window = c.geo.contains_point(x, y)
+                || (x > c.geo.x - c.border_width
+                    && y > c.geo.y - c.border_width
+                    && x < c.geo.x + c.geo.w + c.border_width * 2
+                    && y < c.geo.y + c.geo.h + c.border_width * 2);
+
+            let on_bar = if let Some(mon_id) = c.mon_id {
+                if let Some(mon) = ctx.g.monitors.get(mon_id) {
+                    (y > mon.by && y < mon.by + bh) || (mon.topbar && y == 0)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if in_window || on_bar {
+                return;
+            }
+
+            let _ = conn.warp_pointer(
+                CURRENT_TIME,
+                c.win,
+                0,
+                0,
+                0,
+                0,
+                (c.geo.w / 2) as i16,
+                (c.geo.h / 2) as i16,
+            );
+            let _ = conn.flush();
         }
     }
 }
 
 pub fn warp_into(ctx: &WmCtx, c_win: Window) {
-    if true { let conn = ctx.x11.conn;
-        let root = ctx.g.cfg.root;
+    let conn = ctx.x11.conn;
+    let root = ctx.g.cfg.root;
 
-        if let Some(c) = ctx.g.clients.get(&c_win) {
-            if let Some((mut x, mut y)) = get_root_ptr(ctx) {
-                if x < c.geo.x {
-                    x = c.geo.x + 10;
-                } else if x > c.geo.x + c.geo.w {
-                    x = c.geo.x + c.geo.w - 10;
-                }
-
-                if y < c.geo.y {
-                    y = c.geo.y + 10;
-                } else if y > c.geo.y + c.geo.h {
-                    y = c.geo.y + c.geo.h - 10;
-                }
-
-                let _ = conn.warp_pointer(CURRENT_TIME, root, 0, 0, 0, 0, x as i16, y as i16);
-                let _ = conn.flush();
+    if let Some(c) = ctx.g.clients.get(&c_win) {
+        if let Some((mut x, mut y)) = get_root_ptr(ctx) {
+            if x < c.geo.x {
+                x = c.geo.x + 10;
+            } else if x > c.geo.x + c.geo.w {
+                x = c.geo.x + c.geo.w - 10;
             }
+
+            if y < c.geo.y {
+                y = c.geo.y + 10;
+            } else if y > c.geo.y + c.geo.h {
+                y = c.geo.y + c.geo.h - 10;
+            }
+
+            let _ = conn.warp_pointer(CURRENT_TIME, root, 0, 0, 0, 0, x as i16, y as i16);
+            let _ = conn.flush();
         }
     }
 }
@@ -462,11 +459,10 @@ pub fn warp_to_focus(ctx: &WmCtx) {
 }
 
 fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    if true { let conn = ctx.x11.conn;
-        if let Ok(cookie) = query_pointer(conn, ctx.g.cfg.root) {
-            if let Ok(reply) = cookie.reply() {
-                return Some((reply.root_x as i32, reply.root_y as i32));
-            }
+    let conn = ctx.x11.conn;
+    if let Ok(cookie) = query_pointer(conn, ctx.g.cfg.root) {
+        if let Ok(reply) = cookie.reply() {
+            return Some((reply.root_x as i32, reply.root_y as i32));
         }
     }
     None

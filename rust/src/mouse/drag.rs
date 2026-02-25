@@ -822,10 +822,8 @@ pub fn drag_tag(ctx: &mut WmCtx) {
                     }
                 } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
                     tag_all(ctx, tag_mask);
-                } else {
-                    if let Some(win) = ctx.g.monitors.get(selmon_id).and_then(|m| m.sel) {
-                        follow_tag(ctx, win, tag_mask);
-                    }
+                } else if let Some(win) = ctx.g.monitors.get(selmon_id).and_then(|m| m.sel) {
+                    follow_tag(ctx, win, tag_mask);
                 }
             }
         }

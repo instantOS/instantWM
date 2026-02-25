@@ -78,8 +78,8 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i3
     if let Some((
         geo_x,
         geo_y,
-        geo_w,
-        geo_h,
+        _geo_w,
+        _geo_h,
         base_w,
         base_h,
         min_w,
@@ -96,8 +96,8 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i3
         max_ad,
     )) = client_data
     {
-        let mut new_geo_h = bh;
-        let mut new_geo_w = if w == h {
+        let new_geo_h = bh;
+        let new_geo_w = if w == h {
             bh
         } else if h == bh {
             w
@@ -334,23 +334,15 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
         // Send MANAGER event to root window to announce systray
         // Use non-blocking approach
-        if true { let conn = ctx.x11.conn;
-            let event = ClientMessageEvent {
-                response_type: CLIENT_MESSAGE_EVENT,
-                format: 32,
-                sequence: 0,
-                window: root,
-                type_: manager_atom,
-                data: ClientMessageData::from([
-                    CURRENT_TIME,
-                    net_system_tray as u32,
-                    systray_win,
-                    0,
-                    0,
-                ]),
-            };
-            let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
-        }
+        let event = ClientMessageEvent {
+            response_type: CLIENT_MESSAGE_EVENT,
+            format: 32,
+            sequence: 0,
+            window: root,
+            type_: manager_atom,
+            data: ClientMessageData::from([CURRENT_TIME, net_system_tray, systray_win, 0, 0]),
+        };
+        let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
     }
 
     let systray = match &ctx.g.systray {
@@ -464,12 +456,11 @@ pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
 
 /// Get atom property using dependency injection.
 fn get_atom_prop(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
-    if true { let conn = ctx.x11.conn;
-        if let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::CARDINAL, 0, 2) {
-            if let Ok(reply) = cookie.reply() {
-                if let Some(val) = reply.value32().and_then(|mut v| v.next()) {
-                    return val;
-                }
+    let conn = ctx.x11.conn;
+    if let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::CARDINAL, 0, 2) {
+        if let Ok(reply) = cookie.reply() {
+            if let Some(val) = reply.value32().and_then(|mut v| v.next()) {
+                return val;
             }
         }
     }
@@ -488,15 +479,14 @@ fn send_event(
     d3: i64,
     d4: i64,
 ) {
-    if true { let conn = ctx.x11.conn;
-        let event = ClientMessageEvent {
-            response_type: CLIENT_MESSAGE_EVENT,
-            format: 32,
-            sequence: 0,
-            window: win,
-            type_: proto,
-            data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
-        };
-        let _ = conn.send_event(false, win, EventMask::from(mask), event);
-    }
+    let conn = ctx.x11.conn;
+    let event = ClientMessageEvent {
+        response_type: CLIENT_MESSAGE_EVENT,
+        format: 32,
+        sequence: 0,
+        window: win,
+        type_: proto,
+        data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
+    };
+    let _ = conn.send_event(false, win, EventMask::from(mask), event);
 }

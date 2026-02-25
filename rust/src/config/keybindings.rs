@@ -24,7 +24,7 @@ use crate::toggles::{
     alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
     toggle_prefix, toggle_show_tags, toggle_sticky, unhide_all,
 };
-use crate::types::{CardinalDirection, Direction, Key, StackDirection, ToggleAction};
+use crate::types::{Direction, Key, StackDirection, ToggleAction};
 use crate::util::spawn;
 
 use super::keysyms::*;
@@ -98,22 +98,22 @@ pub fn get_keys() -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         key!(MA, XK_J => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                key_resize(ctx, win, CardinalDirection::Down)
+                key_resize(ctx, win, Direction::Down)
             }
         }),
         key!(MA, XK_K => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                key_resize(ctx, win, CardinalDirection::Up)
+                key_resize(ctx, win, Direction::Up)
             }
         }),
         key!(MA, XK_L => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                key_resize(ctx, win, CardinalDirection::Right)
+                key_resize(ctx, win, Direction::Right)
             }
         }),
         key!(MA, XK_H => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                key_resize(ctx, win, CardinalDirection::Left)
+                key_resize(ctx, win, Direction::Left)
             }
         }),
         key!(MODKEY, XK_I => |ctx| inc_nmaster_by(ctx, 1)),
@@ -124,15 +124,15 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,    XK_C => |ctx| set_layout(ctx, LayoutKind::Grid)),
         key!(MODKEY,    XK_F => |ctx| set_layout(ctx, LayoutKind::Floating)),
         key!(MODKEY,    XK_M => |ctx| set_layout(ctx, LayoutKind::Monocle)),
-        key!(MODKEY,    XK_P => |ctx| toggle_layout(ctx)),
+        key!(MODKEY,    XK_P => toggle_layout),
         key!(MC,        XK_COMMA  => |ctx| cycle_layout_direction(ctx, false)),
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
         key!(MODKEY, XK_DOWN => |ctx| down_key(ctx, 1)),
         key!(MODKEY, XK_UP   => |ctx| up_key(ctx, -1)),
-        key!(MS,     XK_DOWN => |ctx| down_press(ctx)),
-        key!(MS,     XK_UP   => |ctx| up_press(ctx)),
+        key!(MS,     XK_DOWN => down_press),
+        key!(MS,     XK_UP   => up_press),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 push_down(ctx, win)
@@ -147,9 +147,9 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC, XK_RIGHT => |ctx| direction_focus(ctx, Direction::Right)),
         key!(MC, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
         key!(MC, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
-        key!(MODKEY,  XK_TAB     => |ctx| last_view(ctx)),
-        key!(MS,      XK_TAB     => |ctx| focus_last_client(ctx)),
-        key!(MA,      XK_TAB     => |ctx| follow_view(ctx)),
+        key!(MODKEY,  XK_TAB     => last_view),
+        key!(MS,      XK_TAB     => focus_last_client),
+        key!(MA,      XK_TAB     => follow_view),
         key!(MODKEY,  XK_LEFT    => |ctx| animation::anim_scroll(ctx, Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),
         key!(MA,      XK_LEFT    => |ctx| move_client(ctx, Direction::Left)),
@@ -169,16 +169,16 @@ pub fn get_keys() -> Vec<Key> {
                 crate::tags::set_client_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        key!(MODKEY,  XK_O       => |ctx| win_view(ctx)),
+        key!(MODKEY,  XK_O       => win_view),
         key!(MODKEY, XK_COMMA  => |ctx| tag_ops::focus_monitor(ctx, MonitorDirection::PREV)),
         key!(MODKEY, XK_PERIOD => |ctx| tag_ops::focus_monitor(ctx, MonitorDirection::NEXT)),
         key!(MS,     XK_COMMA  => |ctx| tag_ops::tag_monitor(ctx, MonitorDirection::PREV)),
         key!(MS,     XK_PERIOD => |ctx| tag_ops::tag_monitor(ctx, MonitorDirection::NEXT)),
         key!(MA,     XK_COMMA  => |ctx| tag_ops::follow_monitor(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| tag_ops::follow_monitor(ctx, MonitorDirection::NEXT)),
-        key!(MS,   XK_RETURN => |ctx| zoom(ctx)),
-        key!(MC,   XK_D      => |ctx| distribute_clients(ctx)),
-        key!(MS,   XK_D      => |ctx| draw_window(ctx)),
+        key!(MS,   XK_RETURN => zoom),
+        key!(MC,   XK_D      => distribute_clients),
+        key!(MS,   XK_D      => draw_window),
         key!(MA,   XK_W      => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 center_window(ctx, win)
@@ -187,26 +187,26 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,   XK_W      => |ctx| warp_to_focus(ctx)),
         key!(MS,   XK_J      => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                moveresize(ctx, win, CardinalDirection::Down)
+                moveresize(ctx, win, Direction::Down)
             }
         }),
         key!(MS,   XK_K      => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                moveresize(ctx, win, CardinalDirection::Up)
+                moveresize(ctx, win, Direction::Up)
             }
         }),
         key!(MS,   XK_L      => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                moveresize(ctx, win, CardinalDirection::Right)
+                moveresize(ctx, win, Direction::Right)
             }
         }),
         key!(MS,   XK_H      => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
-                moveresize(ctx, win, CardinalDirection::Left)
+                moveresize(ctx, win, Direction::Left)
             }
         }),
-        key!(MS,   XK_M      => |ctx| move_mouse(ctx)),
-        key!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx)),
+        key!(MS,   XK_M      => move_mouse),
+        key!(MA,   XK_M      => resize_mouse_from_cursor),
         key!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_overview(ctx, TagMask::ALL_BITS)
@@ -216,7 +216,7 @@ pub fn get_keys() -> Vec<Key> {
             toggle_fullscreen_overview(ctx, TagMask::ALL_BITS)
         }),
         key!(MC,     XK_E  => |ctx| spawn(ctx, Cmd::InstantSkippy)),
-        key!(MODKEY, XK_W  => |ctx| set_overlay(ctx)),
+        key!(MODKEY, XK_W  => set_overlay),
         key!(MC,     XK_W  => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 create_overlay(ctx, win)
@@ -225,8 +225,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
         key!(MODKEY, XK_B  => |_| toggle_bar()),
-        key!(MS,     XK_F  => |ctx| toggle_fake_fullscreen(ctx)),
-        key!(MC,     XK_F  => |ctx| temp_fullscreen(ctx)),
+        key!(MS,     XK_F  => toggle_fake_fullscreen),
+        key!(MC,     XK_F  => temp_fullscreen),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 toggle_sticky(ctx, win)
@@ -235,17 +235,17 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,     XK_S  => |ctx| toggle_alt_tag(ctx, ToggleAction::Toggle)),
         key!(MSA,    XK_S  => |ctx| toggle_animated(ctx, ToggleAction::Toggle)),
         key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
-        key!(MSA,    XK_D  => |ctx| toggle_double_draw(ctx)),
-        key!(MS,     XK_SPACE => |ctx| space_toggle(ctx)),
+        key!(MSA,    XK_D  => toggle_double_draw),
+        key!(MS,     XK_SPACE => space_toggle),
         key!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, ToggleAction::Toggle)),
-        key!(MC,     XK_R     => |ctx| redraw_win(ctx)),
+        key!(MC,     XK_R     => redraw_win),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 hide_window(ctx, win)
             }
         }),
-        key!(MCA, XK_H => |ctx| unhide_all(ctx)),
-        key!(MODKEY, XK_Q   => |ctx| shut_kill(ctx)),
+        key!(MCA, XK_H => unhide_all),
+        key!(MODKEY, XK_Q   => shut_kill),
         key!(MOD1,   XK_F4  => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 kill_client(ctx, win)
@@ -253,7 +253,7 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MSC,    XK_Q   => |_| quit()),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, Cmd::Help)),
-        key!(MODKEY,  XK_F2 => |ctx| toggle_prefix(ctx)),
+        key!(MODKEY,  XK_F2 => toggle_prefix),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, Cmd::Term)),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, Cmd::Smart)),
         key!(MC,     XK_SPACE           => |ctx| spawn(ctx, Cmd::InstantMenu)),

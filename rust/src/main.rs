@@ -115,7 +115,7 @@ fn main() {
     {
         let mut globals = get_globals_mut();
         let x11 = get_x11().as_conn();
-        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        let mut ctx = crate::contexts::WmCtx::new(globals, x11);
         load_xresources(&mut ctx);
     }
     setup(screen_num, root, &screen);
@@ -237,7 +237,7 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
     {
         let mut globals = get_globals_mut();
         let x11 = get_x11().as_conn();
-        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        let mut ctx = crate::contexts::WmCtx::new(globals, x11);
         verify_tags_xres(&mut ctx);
         update_bars(&mut ctx);
         update_status(&mut ctx);
@@ -284,7 +284,7 @@ fn setup(screen_num: usize, root: Window, _screen: &x11rb::protocol::xproto::Scr
     {
         let mut globals = get_globals_mut();
         let x11 = get_x11().as_conn();
-        let mut ctx = crate::contexts::WmCtx::new(&mut globals, x11);
+        let mut ctx = crate::contexts::WmCtx::new(globals, x11);
         grab_keys(&ctx);
         focus(&mut ctx, None);
     }

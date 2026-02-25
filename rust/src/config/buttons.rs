@@ -63,7 +63,7 @@ pub fn get_buttons() -> Vec<Button> {
                 window_title_mouse_handler_right(ctx, win)
             }
         }),
-        btn!(WinTitle, MODKEY, button:MouseButton::Left => |ctx| set_overlay(ctx)),
+        btn!(WinTitle, MODKEY, button:MouseButton::Left => set_overlay),
         btn!(WinTitle, MODKEY, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Notify)),
         btn!(WinTitle, 0,     button:MouseButton::ScrollUp => |ctx| focus_stack(ctx, StackDirection::Previous)),
         btn!(WinTitle, 0,     button:MouseButton::ScrollDown => |ctx| focus_stack(ctx, StackDirection::Next)),
@@ -99,7 +99,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(StatusText, MODKEY, button:MouseButton::ScrollDown => |ctx| spawn(ctx, Cmd::DownBright)),
         btn!(StatusText, MS,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::PavuControl)),
         btn!(StatusText, MC,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::Notify)),
-        btn!(TagBar, 0,     button:MouseButton::Left => |ctx| drag_tag(ctx)),
+        btn!(TagBar, 0,     button:MouseButton::Left => drag_tag),
         btn!(TagBar, 0,     button:MouseButton::Right => |ctx| toggle_view(ctx, TagMask::ALL_BITS)),
         btn!(TagBar, 0,     button:MouseButton::ScrollUp => |ctx| crate::tags::view::scroll_view(ctx, Direction::Left)),
         btn!(TagBar, 0,     button:MouseButton::ScrollDown => |ctx| crate::tags::view::scroll_view(ctx, Direction::Right)),
@@ -123,14 +123,14 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(RootWin, 0,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::Panther)),
         btn!(RootWin, 0,     button:MouseButton::Middle => |ctx| spawn(ctx, Cmd::InstantMenu)),
         btn!(RootWin, 0,     button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Smart)),
-        btn!(RootWin, 0,     button:MouseButton::ScrollUp => |ctx| hide_overlay(ctx)),
-        btn!(RootWin, 0,     button:MouseButton::ScrollDown => |ctx| show_overlay(ctx)),
-        btn!(RootWin, MODKEY, button:MouseButton::Left => |ctx| set_overlay(ctx)),
+        btn!(RootWin, 0,     button:MouseButton::ScrollUp => hide_overlay),
+        btn!(RootWin, 0,     button:MouseButton::ScrollDown => show_overlay),
+        btn!(RootWin, MODKEY, button:MouseButton::Left => set_overlay),
         btn!(RootWin, MODKEY, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Notify)),
-        btn!(ClientWin, MODKEY, button:MouseButton::Left => |ctx| move_mouse(ctx)),
-        btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx| toggle_floating(ctx)),
-        btn!(ClientWin, MODKEY, button:MouseButton::Right => |ctx| resize_mouse_from_cursor(ctx)),
-        btn!(ClientWin, MA,     button:MouseButton::Right => |ctx| resize_mouse_from_cursor(ctx)),
+        btn!(ClientWin, MODKEY, button:MouseButton::Left => move_mouse),
+        btn!(ClientWin, MODKEY, button:MouseButton::Middle => toggle_floating),
+        btn!(ClientWin, MODKEY, button:MouseButton::Right => resize_mouse_from_cursor),
+        btn!(ClientWin, MA,     button:MouseButton::Right => resize_mouse_from_cursor),
         btn!(ClientWin, MS,     button:MouseButton::Right => |ctx| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 resize_aspect_mouse(ctx, win)
@@ -146,13 +146,13 @@ pub fn get_buttons() -> Vec<Button> {
                 toggle_locked(ctx, win)
             }
         }),
-        btn!(ResizeWidget, 0, button:MouseButton::Left => |ctx| draw_window(ctx)),
+        btn!(ResizeWidget, 0, button:MouseButton::Left => draw_window),
         btn!(ShutDown, 0, button:MouseButton::Left => |ctx| spawn(ctx, Cmd::InstantShutdown)),
         btn!(ShutDown, 0, button:MouseButton::Middle => |ctx| spawn(ctx, Cmd::OsLock)),
         btn!(ShutDown, 0, button:MouseButton::Right => |ctx| spawn(ctx, Cmd::Slock)),
-        btn!(SideBar, 0, button:MouseButton::Left => |ctx| gesture_mouse(ctx)),
+        btn!(SideBar, 0, button:MouseButton::Left => gesture_mouse),
         btn!(StartMenu, 0,     button:MouseButton::Left => |ctx| spawn(ctx, Cmd::StartMenu)),
         btn!(StartMenu, 0,     button:MouseButton::Right => |ctx| spawn(ctx, Cmd::QuickMenu)),
-        btn!(StartMenu, SHIFT, button:MouseButton::Left => |ctx| toggle_prefix(ctx)),
+        btn!(StartMenu, SHIFT, button:MouseButton::Left => toggle_prefix),
     ]
 }

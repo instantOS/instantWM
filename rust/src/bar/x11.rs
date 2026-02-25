@@ -114,16 +114,15 @@ pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
         w = w.saturating_sub(crate::systray::get_systray_width(ctx));
     }
 
-    if true { let conn = ctx.x11.conn;
-        let _ = conn.configure_window(
-            m.barwin,
-            &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                .x(m.work_rect.x)
-                .y(m.by)
-                .width(w)
-                .height(bh as u32),
-        );
-    }
+    let conn = ctx.x11.conn;
+    let _ = conn.configure_window(
+        m.barwin,
+        &x11rb::protocol::xproto::ConfigureWindowAux::new()
+            .x(m.work_rect.x)
+            .y(m.by)
+            .width(w)
+            .height(bh as u32),
+    );
 }
 
 pub fn update_bars(ctx: &mut WmCtx) {

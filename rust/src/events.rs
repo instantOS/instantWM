@@ -12,7 +12,7 @@ use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::layouts::{arrange, restack};
-use crate::monitor::{rect_to_mon, update_geom, win_to_mon};
+use crate::monitor::{rect_to_mon, update_geom, win_to_mon_with_ctx};
 use crate::mouse::{
     find_floating_win_at_resize_border, get_cursor_client_win, handle_floating_resize_hover,
     handle_sidebar_hover, hover_resize_mouse, reset_cursor, resize_mouse_directional,
@@ -46,7 +46,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.g.selmon;
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) = win_to_mon(e.event) {
+    if let Some(clicked_mon) = win_to_mon_with_ctx(ctx, e.event) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.selmon = clicked_mon;
             selmon_id = clicked_mon;
@@ -69,17 +69,15 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                 restack(ctx, mon_id);
             }
         }
-    } else {
-        if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-            if e.event == mon.barwin {
-                let position = bar_position_at_x(mon, ctx, e.event_x as i32);
-                if position == BarPosition::StartMenu {
-                    reset_bar();
-                }
-                click_target = position.to_click();
-            } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
-                click_target = Click::SideBar;
+    } else if let Some(mon) = ctx.g.monitors.get(selmon_id) {
+        if e.event == mon.barwin {
+            let position = bar_position_at_x(mon, ctx, e.event_x as i32);
+            if position == BarPosition::StartMenu {
+                reset_bar();
             }
+            click_target = position.to_click();
+        } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
+            click_target = Click::SideBar;
         }
     };
 
@@ -299,7 +297,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     };
 
     // Handle monitor switching
-    if let Some(new_mon_id) = win_to_mon(e.event) {
+    if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, e.event) {
         if new_mon_id != selmon_id {
             ctx.g.selmon = new_mon_id;
             focus(ctx, None);
@@ -326,7 +324,7 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
         return;
     };
 
-    if let Some(mon_id) = win_to_mon(e.window) {
+    if let Some(mon_id) = win_to_mon_with_ctx(ctx, e.window) {
         if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
             if e.window != mon.barwin {
                 return;
@@ -668,10 +666,8 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 
     let _ = conn.flush();
 
-    {
-        if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-            crate::bar::resize_bar_win_ctx(ctx, mon);
-        }
+    if let Some(mon) = ctx.g.monitors.get(selmon_id) {
+        crate::bar::resize_bar_win_ctx(ctx, mon);
     };
 
     systray::update_systray(ctx);

@@ -174,7 +174,8 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         .unwrap_or(true);
 
     let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
-    if true { let conn = ctx.x11.conn;
+    {
+        let conn = ctx.x11.conn;
         let is_floating = ctx
             .g
             .clients
@@ -296,10 +297,8 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 
     if sel.is_some() {
         arrange(ctx, Some(selmon));
-    } else {
-        if let Some(m) = ctx.g.monitors.get_mut(selmon) {
-            draw_bar(m);
-        }
+    } else if let Some(m) = ctx.g.monitors.get_mut(selmon) {
+        draw_bar(m);
     }
 }
 

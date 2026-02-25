@@ -1,42 +1,23 @@
 //! Monitor management with dependency injection support.
 //!
-//! This module provides monitor management functionality that supports both
-//! the legacy global-state-based API and a new dependency-injected API.
+//! This module provides monitor management functionality using a dependency-injected
+//! API via the `WmCtx` context type. All public functions accept explicit context
+//! rather than accessing global state directly.
 //!
-//! # Migration Guide
+//! # API Usage
 //!
-//! The module provides versions of functions that accept a unified `WmCtx`
-//! instead of accessing global state.
-//!
-//! ## Legacy API (uses global state)
-//! ```ignore
-//! use crate::monitor::{create_monitor, win_to_mon};
-//!
-//! // These functions access global state internally
-//! let mon = create_monitor();
-//! let target = win_to_mon(some_window);
-//! ```
-//!
-//! ## New API (uses dependency injection)
 //! ```ignore
 //! use crate::contexts::WmCtx;
-//! use crate::globals::{get_globals_mut, get_x11};
-//! use crate::monitor::{create_monitor_with_values, focus_mon, dir_to_mon};
+//! use crate::monitor::{create_monitor_with_ctx, win_to_mon_with_ctx, focus_mon};
 //!
-//! // Create context from global state
-//! let mut g = get_globals_mut();
-//! let x11 = get_x11();
-//! let ctx = WmCtx::new(&mut g, &x11);
+//! // Create a monitor from context
+//! let mon = create_monitor_with_ctx(&ctx);
 //!
-//! // Pass context explicitly
-//! let mon = create_monitor_with_values(
-//!     ctx.g.cfg.mfact,
-//!     ctx.g.cfg.nmaster,
-//!     ctx.g.cfg.showbar,
-//!     ctx.g.cfg.topbar,
-//! );
+//! // Find which monitor a window belongs to
+//! let target = win_to_mon_with_ctx(&ctx, some_window);
+//!
+//! // Focus next/previous monitor
 //! focus_mon(&mut ctx, 1);  // Focus next monitor
-//! let target = find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon, 1);
 //! ```
 //!
 //! # Benefits of Dependency Injection
@@ -45,11 +26,6 @@
 //! - **Reduced coupling**: No hidden dependencies on global state
 //! - **Thread safety**: Easier to reason about with explicit state passing
 //! - **Flexibility**: Can work with temporary state without affecting globals
-//!
-//! # Backward Compatibility
-//!
-//! All legacy functions are marked with `#[deprecated]` but remain functional
-//! to avoid breaking existing code. New code should prefer the `WmCtx` versions.
 
 use crate::bar::x11::update_bar_pos;
 use crate::client::{
@@ -78,11 +54,16 @@ pub fn create_monitor_with_values(
     Monitor::new_with_values(mfact, nmaster, showbar, topbar)
 }
 
-/// Create a new monitor with default values.
-/// This is a convenience function that uses global state.
-pub fn create_monitor() -> Monitor {
-    let g = get_globals();
-    Monitor::new_with_values(g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar)
+/// Create a new monitor with default values from context.
+///
+/// This is the dependency-injected version that accepts a `WmCtx`.
+pub fn create_monitor_with_ctx(ctx: &WmCtx) -> Monitor {
+    Monitor::new_with_values(
+        ctx.g.cfg.mfact,
+        ctx.g.cfg.nmaster,
+        ctx.g.cfg.showbar,
+        ctx.g.cfg.topbar,
+    )
 }
 
 /// Remove a monitor and clean up its resources.
@@ -105,7 +86,8 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
     }
 
     if barwin != 0 {
-        if true { let conn = ctx.x11.conn;
+        {
+            let conn = ctx.x11.conn;
             let _ = x11rb::protocol::xproto::unmap_window(conn, barwin);
             let _ = x11rb::protocol::xproto::destroy_window(conn, barwin);
         }
@@ -146,39 +128,47 @@ pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Opti
     find_monitor_by_rect(monitors, rect).or(Some(selmon))
 }
 
-pub fn win_to_mon(w: Window) -> Option<MonitorId> {
-    let g = get_globals();
-
-    if w == g.cfg.root {
-        if let Some((x, y)) = get_root_ptr() {
-            return rect_to_mon(&g.monitors, g.selmon, &Rect { x, y, w: 1, h: 1 });
+/// Find which monitor a window belongs to, using explicit context.
+///
+/// This is the dependency-injected version that accepts a `WmCtx`.
+///
+/// # Arguments
+/// * `ctx` - WM context with access to monitors, clients, and X11 connection
+/// * `w` - The window to find the monitor for
+///
+/// # Returns
+/// * `Some(monitor_id)` - The monitor ID the window belongs to
+/// * `None` - If no monitor could be determined
+pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
+    if w == ctx.g.cfg.root {
+        if let Some((x, y)) = get_root_ptr_with_conn(ctx.x11.conn) {
+            return rect_to_mon(&ctx.g.monitors, ctx.g.selmon, &Rect { x, y, w: 1, h: 1 });
         }
-        return if g.monitors.is_empty() {
+        return if ctx.g.monitors.is_empty() {
             None
         } else {
-            Some(g.selmon)
+            Some(ctx.g.selmon)
         };
     }
 
-    for (i, m) in g.monitors.iter().enumerate() {
+    for (i, m) in ctx.g.monitors.iter().enumerate() {
         if w == m.barwin {
             return Some(i);
         }
     }
 
     if let Some(win) = get_win_to_client(w) {
-        let g = get_globals();
-        return g.clients.get(&win).and_then(|c| c.mon_id);
+        return ctx.g.clients.get(&win).and_then(|c| c.mon_id);
     }
 
-    if g.monitors.is_empty() {
+    if ctx.g.monitors.is_empty() {
         None
     } else {
-        Some(g.selmon)
+        Some(ctx.g.selmon)
     }
 }
 
-pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
+pub fn send_mon(_ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     let g = get_globals_mut();
 
     let current_mon_id = g.selmon;
@@ -207,7 +197,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     if let Some(_win) = get_win_to_client(c_win) {
         let x11 = get_x11();
         let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+        let mut ctx = WmCtx::new(g, x11.as_conn());
         unfocus_win(&mut ctx, c_win, true);
     }
 
@@ -228,7 +218,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     if !is_scratchpad {
         let x11 = get_x11();
         let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+        let mut ctx = WmCtx::new(g, x11.as_conn());
         // Get client data first, then call reset_sticky
         let mon_id = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id);
         if mon_id.is_some() {
@@ -250,7 +240,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     {
         let x11 = get_x11();
         let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+        let mut ctx = WmCtx::new(g, x11.as_conn());
         focus(&mut ctx, None);
     }
 
@@ -260,7 +250,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
             if !c.isfloating {
                 let x11 = get_x11();
                 let mut g = get_globals_mut();
-                let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+                let mut ctx = WmCtx::new(g, x11.as_conn());
                 crate::layouts::arrange(&mut ctx, None);
             }
         }
@@ -273,7 +263,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
                 {
                     let x11 = get_x11();
                     let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+                    let mut ctx = WmCtx::new(g, x11.as_conn());
                     let sel = ctx.g.selmon;
                     if let Some(win) = get_selected_client_win(sel) {
                         unfocus_win(&mut ctx, win, false);
@@ -289,14 +279,14 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
                 if let Some(name) = sp_name {
                     let x11 = get_x11();
                     let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+                    let mut ctx = WmCtx::new(g, x11.as_conn());
                     crate::scratchpad::scratchpad_show_name(&mut ctx, &name);
                 }
 
                 {
                     let x11 = get_x11();
                     let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+                    let mut ctx = WmCtx::new(g, x11.as_conn());
                     let sel = ctx.g.selmon;
                     if let Some(win) = get_selected_client_win(sel) {
                         unfocus_win(&mut ctx, win, false);
@@ -306,7 +296,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
 
                 let x11 = get_x11();
                 let mut g = get_globals_mut();
-                let mut ctx = WmCtx::new(&mut g, x11.as_conn());
+                let mut ctx = WmCtx::new(g, x11.as_conn());
                 focus(&mut ctx, None);
             }
         }
@@ -391,7 +381,8 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
 
     focus(ctx, Some(c_win));
 
-    if true { let conn = ctx.x11.conn;
+    {
+        let conn = ctx.x11.conn;
         let _ = x11rb::protocol::xproto::configure_window(
             conn,
             c_win,
@@ -520,7 +511,10 @@ fn cleanup_removed_monitors(start_idx: usize, x11: &crate::globals::X11Connectio
 /// Initialize a single monitor with the given dimensions.
 fn init_single_monitor(sw: i32, sh: i32) -> bool {
     let g = get_globals_mut();
-    g.monitors.push(create_monitor());
+    let (mfact, nmaster, showbar, topbar) =
+        (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
+    g.monitors
+        .push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
     if let Some(ref mut m) = g.monitors.first_mut() {
         m.num = 0;
         m.monitor_rect = Rect {
@@ -608,8 +602,10 @@ fn update_from_xinerama(
     if dirty {
         let g = get_globals_mut();
         g.selmon = 0;
-        if let Some(m) = win_to_mon(x11.screen_num as u32) {
-            g.selmon = m;
+        // Create a temporary context to find the monitor for the root window
+        let ctx = WmCtx::new(g, x11.as_conn());
+        if let Some(m) = win_to_mon_with_ctx(&ctx, x11.screen_num as u32) {
+            ctx.g.selmon = m;
         }
     }
 
@@ -627,7 +623,7 @@ pub fn update_geom() -> bool {
         eprintln!("TRACE: update_geom - after get_x11");
 
         if let Some(ref conn) = x11.conn {
-            if let Some(result) = update_from_xinerama(&x11, conn) {
+            if let Some(result) = update_from_xinerama(x11, conn) {
                 eprintln!("TRACE: update_geom - xinerama result = {}", result);
                 return result;
             }
@@ -648,15 +644,23 @@ pub fn update_geom() -> bool {
     dirty
 }
 
+/// Get the root pointer position using an explicit connection.
+///
+/// This is the dependency-injected version that accepts an X11 connection.
+fn get_root_ptr_with_conn(conn: &x11rb::rust_connection::RustConnection) -> Option<(i32, i32)> {
+    let g = get_globals();
+    if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, g.cfg.root) {
+        if let Ok(reply) = cookie.reply() {
+            return Some((reply.root_x as i32, reply.root_y as i32));
+        }
+    }
+    None
+}
+
 fn get_root_ptr() -> Option<(i32, i32)> {
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let g = get_globals();
-        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, g.cfg.root) {
-            if let Ok(reply) = cookie.reply() {
-                return Some((reply.root_x as i32, reply.root_y as i32));
-            }
-        }
+        return get_root_ptr_with_conn(conn);
     }
     None
 }

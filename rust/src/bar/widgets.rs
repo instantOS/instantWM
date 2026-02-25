@@ -1,4 +1,3 @@
-use x11rb::protocol::xproto::Window;
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
 use crate::globals::{get_drw, get_globals, Globals};

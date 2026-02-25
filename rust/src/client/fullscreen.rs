@@ -257,11 +257,10 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
                 },
             );
 
-            if true { let conn = ctx.x11.conn;
-                let _ = conn
-                    .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
-                let _ = conn.flush();
-            }
+            let conn = ctx.x11.conn;
+            let _ =
+                conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+            let _ = conn.flush();
         }
     }
 

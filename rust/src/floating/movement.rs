@@ -7,7 +7,7 @@ use crate::focus::warp_cursor_to_client;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
 
-pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
+pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: Direction) {
     let (is_floating, geo, border_width) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.geo, c.border_width),
         None => return,
@@ -51,7 +51,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
     warp_cursor_to_client(ctx, win);
 }
 
-pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: CardinalDirection) {
+pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: Direction) {
     let (is_floating, geo) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.geo),
         None => return,

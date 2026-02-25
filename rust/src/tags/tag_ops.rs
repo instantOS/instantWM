@@ -46,18 +46,6 @@ pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
     super::view(ctx, mask);
 }
 
-/// Shift the current view in a direction.
-pub fn shift_view_direction(ctx: &mut WmCtx, direction: super::shift::ShiftDirection) {
-    use super::shift::ShiftDirection;
-    use crate::types::Direction;
-
-    let dir = match direction {
-        ShiftDirection::Left => Direction::Left,
-        ShiftDirection::Right => Direction::Right,
-    };
-    super::shift_view(ctx, dir);
-}
-
 /// Focus a monitor using type-safe direction.
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     super::super::monitor::focus_mon(ctx, direction.value());

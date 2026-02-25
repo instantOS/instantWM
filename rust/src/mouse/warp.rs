@@ -123,19 +123,18 @@ pub fn warp_cursor_to_client_win(ctx: &WmCtx, c: &Client) {
 /// Used after operations that deliberately reposition the window (e.g. after
 /// an animated move) where the old cursor position is no longer meaningful.
 pub fn force_warp(ctx: &WmCtx, c: &Client) {
-    if true { let conn = ctx.x11.conn;
-        let _ = conn.warp_pointer(
-            x11rb::NONE,
-            c.win,
-            0i16,
-            0i16,
-            0u16,
-            0u16,
-            (c.geo.w / 2) as i16,
-            10i16,
-        );
-        let _ = conn.flush();
-    }
+    let conn = ctx.x11.conn;
+    let _ = conn.warp_pointer(
+        x11rb::NONE,
+        c.win,
+        0i16,
+        0i16,
+        0u16,
+        0u16,
+        (c.geo.w / 2) as i16,
+        10i16,
+    );
+    let _ = conn.flush();
 }
 
 /// Keybinding handler: warp the cursor to the currently focused window.
@@ -158,14 +157,13 @@ pub fn reset_cursor(ctx: &mut WmCtx) {
     }
     ctx.g.altcursor = AltCursor::None;
 
-    if true { let conn = ctx.x11.conn;
-        if let Some(ref cursor) = ctx.g.cfg.cursors[0] {
-            let _ = change_window_attributes(
-                conn,
-                ctx.g.cfg.root,
-                &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
-            );
-            let _ = conn.flush();
-        }
+    let conn = ctx.x11.conn;
+    if let Some(ref cursor) = ctx.g.cfg.cursors[0] {
+        let _ = change_window_attributes(
+            conn,
+            ctx.g.cfg.root,
+            &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
+        );
+        let _ = conn.flush();
     }
 }

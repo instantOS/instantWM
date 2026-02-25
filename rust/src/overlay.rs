@@ -34,12 +34,13 @@ fn get_overlay_win(ctx: &WmCtx) -> Option<Window> {
 
 /// Check if the overlay window exists in the clients map.
 pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    get_overlay_win(ctx).map_or(false, |win| ctx.g.clients.contains_key(&win))
+    get_overlay_win(ctx).is_some_and(|win| ctx.g.clients.contains_key(&win))
 }
 
 /// Raise a window to the top of the stack.
 fn raise_window(ctx: &WmCtx, win: Window) {
-    if true { let conn = ctx.x11.conn;
+    {
+        let conn = ctx.x11.conn;
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }
@@ -247,7 +248,8 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: Window) {
         }
     }
 
-    if true { let conn = ctx.x11.conn;
+    {
+        let conn = ctx.x11.conn;
         let _ = conn.configure_window(
             temp_client,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
@@ -398,7 +400,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 }
 
 /// Check if overlay is fullscreen on the given monitor.
-fn is_overlay_fullscreen(ctx: &WmCtx, overlay_win: Window, mon: &Monitor) -> bool {
+fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: Window, mon: &Monitor) -> bool {
     mon.fullscreen == Some(overlay_win)
 }
 

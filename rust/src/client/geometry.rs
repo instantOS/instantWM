@@ -190,20 +190,20 @@ pub fn apply_size_hints(
     w: &mut i32,
     h: &mut i32,
     interact: bool,
-    base_width: i32,
-    base_height: i32,
-    min_width: i32,
-    min_height: i32,
-    max_width: i32,
-    max_height: i32,
-    inc_width: i32,
-    inc_height: i32,
-    base_aspect_n: i32,
-    base_aspect_d: i32,
-    min_aspect_n: i32,
-    min_aspect_d: i32,
-    max_aspect_n: i32,
-    max_aspect_d: i32,
+    _base_width: i32,
+    _base_height: i32,
+    _min_width: i32,
+    _min_height: i32,
+    _max_width: i32,
+    _max_height: i32,
+    _inc_width: i32,
+    _inc_height: i32,
+    _base_aspect_n: i32,
+    _base_aspect_d: i32,
+    _min_aspect_n: i32,
+    _min_aspect_d: i32,
+    _max_aspect_n: i32,
+    _max_aspect_d: i32,
 ) -> bool {
     let Some(c) = ctx.g.clients.get_mut(&win) else {
         return false;
@@ -214,7 +214,7 @@ pub fn apply_size_hints(
     let old_y = c.geo.y;
     let old_w = c.geo.w;
     let old_h = c.geo.h;
-    let border_width = c.border_width;
+    let _border_width = c.border_width;
     let client_w = c.geo.w + 2 * c.border_width;
     let client_h = c.geo.h + 2 * c.border_width;
     let mon_id = c.mon_id;
@@ -222,7 +222,7 @@ pub fn apply_size_hints(
     let isfloating = c.isfloating;
 
     // Release the mutable borrow of ctx.g before we might need to call update_size_hints.
-    let (cfg, monitors, tags) = {
+    let (cfg, monitors, _tags) = {
         let g = &*ctx.g;
         (g.cfg.clone(), g.monitors.clone(), g.tags.clone())
     };

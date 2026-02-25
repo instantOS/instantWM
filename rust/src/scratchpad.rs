@@ -257,19 +257,17 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
 
-        if true {
-            let conn = ctx.x11.conn;
-            let _ = conn.change_property(
-                x11rb::protocol::xproto::PropMode::REPLACE,
-                root,
-                AtomEnum::WM_NAME,
-                AtomEnum::STRING,
-                8u8,
-                status.len() as u32,
-                status.as_bytes(),
-            );
-            let _ = conn.flush();
-        }
+        let conn = ctx.x11.conn;
+        let _ = conn.change_property(
+            x11rb::protocol::xproto::PropMode::REPLACE,
+            root,
+            AtomEnum::WM_NAME,
+            AtomEnum::STRING,
+            8u8,
+            status.len() as u32,
+            status.as_bytes(),
+        );
+        let _ = conn.flush();
         return;
     }
 
@@ -296,19 +294,17 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
         status.push_str("none");
     }
 
-    if true {
-        let conn = ctx.x11.conn;
-        let _ = conn.change_property(
-            x11rb::protocol::xproto::PropMode::REPLACE,
-            root,
-            AtomEnum::WM_NAME,
-            AtomEnum::STRING,
-            8u8,
-            status.len() as u32,
-            status.as_bytes(),
-        );
-        let _ = conn.flush();
-    }
+    let conn = ctx.x11.conn;
+    let _ = conn.change_property(
+        x11rb::protocol::xproto::PropMode::REPLACE,
+        root,
+        AtomEnum::WM_NAME,
+        AtomEnum::STRING,
+        8u8,
+        status.len() as u32,
+        status.as_bytes(),
+    );
+    let _ = conn.flush();
 }
 
 fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<Window> {

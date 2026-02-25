@@ -15,16 +15,15 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: Window) {
 
     restore_border_width(win);
 
-    if true { let conn = ctx.x11.conn;
-        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let pixel = scheme.float_focus.bg.color.pixel;
-            let _ = change_window_attributes(
-                conn,
-                win,
-                &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
-            );
-            let _ = conn.flush();
-        }
+    let conn = ctx.x11.conn;
+    if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+        let pixel = scheme.float_focus.bg.color.pixel;
+        let _ = change_window_attributes(
+            conn,
+            win,
+            &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+        );
+        let _ = conn.flush();
     }
 }
 
@@ -56,16 +55,15 @@ pub fn apply_float_change(
         if update_borders {
             restore_border_width(win);
 
-            if true { let conn = ctx.x11.conn;
-                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                    let pixel = scheme.float_focus.bg.color.pixel;
-                    let _ = change_window_attributes(
-                        conn,
-                        win,
-                        &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
-                    );
-                    let _ = conn.flush();
-                }
+            let conn = ctx.x11.conn;
+            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                let pixel = scheme.float_focus.bg.color.pixel;
+                let _ = change_window_attributes(
+                    conn,
+                    win,
+                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+                );
+                let _ = conn.flush();
             }
         }
 
@@ -238,13 +236,12 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
     }
 
     if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.fullscreen) {
-        if true { let conn = ctx.x11.conn;
-            let _ = configure_window(
-                conn,
-                win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
-        }
+        let conn = ctx.x11.conn;
+        let _ = configure_window(
+            conn,
+            win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
+        let _ = conn.flush();
     }
 }

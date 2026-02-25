@@ -3,12 +3,6 @@
 use crate::contexts::WmCtx;
 use crate::focus::focus;
 
-/// Direction for shifting/tagging operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShiftDirection {
-    Left,
-    Right,
-}
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect};
 use x11rb::connection::Connection;
@@ -110,7 +104,8 @@ fn clear_sticky(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window) {
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window, dir: Direction) {
-    if true { let conn = ctx.x11.conn;
+    {
+        let conn = ctx.x11.conn;
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }
