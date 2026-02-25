@@ -64,7 +64,6 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
     let mut c = Client::default();
-    c.win = w;
     c.geo = wa_geo;
     c.old_geo = c.geo;
     c.old_border_width = wa_border_width as i32;

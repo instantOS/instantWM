@@ -15,7 +15,7 @@ use x11rb::protocol::xproto::Window;
 /// explicitly floating.
 pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
     if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
-        return mon.is_tiling_layout(&ctx.g.tags);
+        return mon.is_tiling_layout();
     }
     true
 }
@@ -34,7 +34,7 @@ pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
             return true;
         }
         if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
-            if !mon.is_tiling_layout(&ctx.g.tags) {
+            if !mon.is_tiling_layout() {
                 return true;
             }
         }

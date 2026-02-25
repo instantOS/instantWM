@@ -1008,7 +1008,6 @@ pub struct Client {
     pub scratchpad_name: String,
     pub scratchpad_restore_tags: u32,
     pub mon_id: Option<MonitorId>,
-    pub win: Window,
     pub next: Option<Window>,
     pub snext: Option<Window>,
 }
@@ -1026,18 +1025,13 @@ impl Client {
         !self.scratchpad_name.is_empty()
     }
 
-    pub fn is_visible(&self) -> bool {
-        if self.issticky {
-            return true;
-        }
-        if let Some(mon_id) = self.mon_id {
-            let globals = crate::globals::get_globals();
-            if let Some(mon) = globals.monitors.get(mon_id) {
-                let tags = mon.tagset[mon.seltags as usize];
-                return (self.tags & tags) != 0;
-            }
-        }
-        false
+    /// True when the client should be treated as visible for a given tag-set.
+    ///
+    /// This is intentionally pure: callers provide the currently selected
+    /// tag-mask for the monitor the client is on.
+    #[inline]
+    pub fn is_visible_on_tags(&self, selected_tags: u32) -> bool {
+        self.issticky || (self.tags & selected_tags) != 0
     }
 }
 
@@ -1077,6 +1071,8 @@ pub struct Monitor {
     pub showtags: u32,
     pub current_tag: usize,
     pub prev_tag: usize,
+    /// Tags owned by this monitor - each monitor has its own independent tag set.
+    pub tags: Vec<Tag>,
     pub clients: Option<Window>,
     pub sel: Option<Window>,
     pub overlay: Option<Window>,
@@ -1109,6 +1105,7 @@ impl Default for Monitor {
             showtags: 0,
             current_tag: 0,
             prev_tag: 0,
+            tags: Vec::new(),
             clients: None,
             sel: None,
             overlay: None,
@@ -1120,6 +1117,7 @@ impl Default for Monitor {
 
 impl Monitor {
     /// Create a new monitor with specific configuration values.
+    /// Note: tags must be initialized separately via `init_tags()`.
     pub fn new_with_values(mfact: f32, nmaster: i32, showbar: bool, topbar: bool) -> Self {
         Self {
             mfact,
@@ -1131,8 +1129,14 @@ impl Monitor {
             overlaymode: OverlayMode::Top,
             current_tag: 1,
             prev_tag: 1,
+            tags: Vec::new(),
             ..Default::default()
         }
+    }
+
+    /// Initialize tags from a template (e.g., from global config).
+    pub fn init_tags(&mut self, template: &[Tag]) {
+        self.tags = template.to_vec();
     }
 
     /// Get the currently selected tags for this monitor.
@@ -1237,62 +1241,63 @@ impl Monitor {
     }
 
     /// Check if this monitor shows the bar (considering both monitor and tag settings).
-    pub fn shows_bar(&self, tags: &TagSet) -> bool {
+    pub fn shows_bar(&self) -> bool {
         if !self.showbar {
             return false;
         }
-        self.current_tag(tags).map(|t| t.showbar).unwrap_or(true)
+        self.current_tag().map(|t| t.showbar).unwrap_or(true)
     }
 
     /// Get the current tag for this monitor.
-    pub fn current_tag<'a>(&self, tags: &'a TagSet) -> Option<&'a Tag> {
-        if self.current_tag > 0 && self.current_tag <= tags.tags.len() {
-            Some(&tags.tags[self.current_tag - 1])
+    pub fn current_tag(&self) -> Option<&Tag> {
+        if self.current_tag > 0 && self.current_tag <= self.tags.len() {
+            Some(&self.tags[self.current_tag - 1])
         } else {
             None
         }
     }
 
     /// Get a mutable reference to the current tag for this monitor.
-    pub fn current_tag_mut<'a>(&self, tags: &'a mut TagSet) -> Option<&'a mut Tag> {
-        if self.current_tag > 0 && self.current_tag <= tags.tags.len() {
-            Some(&mut tags.tags[self.current_tag - 1])
+    pub fn current_tag_mut(&mut self) -> Option<&mut Tag> {
+        let idx = self.current_tag;
+        if idx > 0 && idx <= self.tags.len() {
+            Some(&mut self.tags[idx - 1])
         } else {
             None
         }
     }
 
     /// Get the current layout symbol for this monitor.
-    pub fn layout_symbol(&self, tags: &TagSet) -> String {
-        self.current_tag(tags)
+    pub fn layout_symbol(&self) -> String {
+        self.current_tag()
             .map(|t| t.layouts.symbol().to_string())
             .unwrap_or_else(|| "[]=".to_string())
     }
 
     /// Check if the current layout is a tiling layout.
-    pub fn is_tiling_layout(&self, tags: &TagSet) -> bool {
-        self.current_tag(tags)
+    pub fn is_tiling_layout(&self) -> bool {
+        self.current_tag()
             .map(|t| t.layouts.is_tiling())
             .unwrap_or(true)
     }
 
     /// Check if the current layout is a monocle layout.
-    pub fn is_monocle_layout(&self, tags: &TagSet) -> bool {
-        self.current_tag(tags)
+    pub fn is_monocle_layout(&self) -> bool {
+        self.current_tag()
             .map(|t| t.layouts.is_monocle())
             .unwrap_or(false)
     }
 
     /// Get the current layout kind for this monitor.
-    pub fn current_layout(&self, tags: &TagSet) -> crate::layouts::LayoutKind {
-        self.current_tag(tags)
+    pub fn current_layout(&self) -> crate::layouts::LayoutKind {
+        self.current_tag()
             .map(|t| t.layouts.get_layout())
             .unwrap_or(crate::layouts::LayoutKind::Tile)
     }
 
     /// Toggle between primary and secondary layout slots for the current tag.
-    pub fn toggle_layout_slot(&self, tags: &mut TagSet) {
-        if let Some(tag) = self.current_tag_mut(tags) {
+    pub fn toggle_layout_slot(&mut self) {
+        if let Some(tag) = self.current_tag_mut() {
             tag.layouts.toggle_slot();
         }
     }

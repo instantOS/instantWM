@@ -275,7 +275,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: i32) {
         ctx.g
             .monitors
             .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout(&ctx.g.tags))
+            .map(|mon| mon.is_tiling_layout())
             .unwrap_or(false)
     };
 
@@ -288,7 +288,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: i32) {
         ctx.g
             .monitors
             .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout(&ctx.g.tags))
+            .map(|mon| mon.is_tiling_layout())
             .unwrap_or(true)
     };
 
@@ -319,7 +319,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: i32) {
         ctx.g
             .monitors
             .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout(&ctx.g.tags))
+            .map(|mon| mon.is_tiling_layout())
             .unwrap_or(false)
     };
 
@@ -332,7 +332,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: i32) {
         ctx.g
             .monitors
             .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout(&ctx.g.tags))
+            .map(|mon| mon.is_tiling_layout())
             .unwrap_or(true)
     };
 
@@ -351,7 +351,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         ctx.g
             .monitors
             .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout(&ctx.g.tags))
+            .map(|mon| mon.is_tiling_layout())
             .unwrap_or(true)
     };
 

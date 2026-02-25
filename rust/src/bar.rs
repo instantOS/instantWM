@@ -28,7 +28,7 @@ pub fn text_width(text: &str) -> i32 {
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
     let g = get_globals();
-    crate::monitor::get_current_ltsymbol(m, &g.tags)
+    m.layout_symbol()
 }
 
 pub fn get_layout_symbol_width(m: &Monitor) -> i32 {
@@ -42,7 +42,7 @@ pub fn draw_bar(m: &mut Monitor) {
     }
 
     let g = get_globals();
-    let showbar = crate::monitor::get_current_showbar(m, &g.tags);
+    let showbar = m.shows_bar();
     if PAUSEDRAW.load(Ordering::Relaxed) || !showbar {
         DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
         return;
