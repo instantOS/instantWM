@@ -87,7 +87,7 @@ pub fn restore_border_width(win: Window) {
 /// skipped – only the EWMH property is toggled so the application remains happy
 /// while the window keeps participating in the tiling layout.
 pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let (net_wm_fullscreen, net_wm_state) = {
         let globals = get_globals();
@@ -257,7 +257,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
                 },
             );
 
-            if let Some(ref conn) = ctx.x11.conn {
+            if true { let conn = ctx.x11.conn;
                 let _ = conn
                     .configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
                 let _ = conn.flush();

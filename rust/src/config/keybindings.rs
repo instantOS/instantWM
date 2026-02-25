@@ -12,13 +12,12 @@ use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
-use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_client, quit, shift_tag_by, shift_view, tag_mon,
+    follow_view, last_view, move_client, quit, shift_tag_by, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -46,7 +45,7 @@ macro_rules! key {
 }
 
 use crate::tags::tag_ops;
-use crate::types::{TagMask, TagSelection};
+use crate::types::{MonitorDirection, TagMask, TagSelection};
 
 fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     // Use type-safe TagMask - unwrap is safe here as tag_idx < 9
@@ -59,7 +58,8 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
         }),
         // Toggle view: MOD+Ctrl+num
         key!(MODKEY | CONTROL, keysym => move |ctx| {
-            crate::tags::toggle_view(ctx, TagMask::single(tag_idx + 1).unwrap())
+            let mask = TagMask::single(tag_idx + 1).unwrap();
+            tag_ops::view_selection(ctx, TagSelection::Toggle(mask))
         }),
         // Set client tag: MOD+Shift+num
         key!(MODKEY | SHIFT, keysym => move |ctx| {
@@ -160,8 +160,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSC,     XK_LEFT    => |ctx| shift_view(ctx, Direction::Left)),
         // View all tags (overview mode)
         key!(MODKEY,  XK_0       => |ctx| {
-            use crate::types::TagMask;
-            crate::tags::view(ctx, TagMask::ALL_BITS)
+            tag_ops::view_selection(ctx, TagSelection::All)
         }),
         // Move client to all tags
         key!(MS,      XK_0       => |ctx| {
@@ -171,12 +170,12 @@ pub fn get_keys() -> Vec<Key> {
             }
         }),
         key!(MODKEY,  XK_O       => |ctx| win_view(ctx)),
-        key!(MODKEY, XK_COMMA  => |ctx| focus_mon(ctx, -1)),
-        key!(MODKEY, XK_PERIOD => |ctx| focus_mon(ctx, 1)),
-        key!(MS,     XK_COMMA  => |ctx| tag_mon(ctx, -1)),
-        key!(MS,     XK_PERIOD => |ctx| tag_mon(ctx, 1)),
-        key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, -1)),
-        key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, 1)),
+        key!(MODKEY, XK_COMMA  => |ctx| tag_ops::focus_monitor(ctx, MonitorDirection::PREV)),
+        key!(MODKEY, XK_PERIOD => |ctx| tag_ops::focus_monitor(ctx, MonitorDirection::NEXT)),
+        key!(MS,     XK_COMMA  => |ctx| tag_ops::tag_monitor(ctx, MonitorDirection::PREV)),
+        key!(MS,     XK_PERIOD => |ctx| tag_ops::tag_monitor(ctx, MonitorDirection::NEXT)),
+        key!(MA,     XK_COMMA  => |ctx| tag_ops::follow_monitor(ctx, MonitorDirection::PREV)),
+        key!(MA,     XK_PERIOD => |ctx| tag_ops::follow_monitor(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => |ctx| zoom(ctx)),
         key!(MC,   XK_D      => |ctx| distribute_clients(ctx)),
         key!(MS,   XK_D      => |ctx| draw_window(ctx)),

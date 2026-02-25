@@ -161,7 +161,7 @@ pub fn last_view(ctx: &mut WmCtx) {
 
 pub fn win_view(ctx: &mut WmCtx) {
     let selmon_id = ctx.g.selmon;
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Ok(cookie) = conn.get_input_focus() else {
         return;

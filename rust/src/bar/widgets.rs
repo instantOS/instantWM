@@ -396,13 +396,7 @@ pub(crate) fn draw_window_titles(m: &mut Monitor, x: i32, w: i32, n: i32, bh: i3
         // and would cause click regions to map to the wrong window titles.
         // Use the passed monitor `m` (not selmon) so that secondary monitors
         // draw their own clients, not the selected monitor's clients.
-        let mut current = m.clients;
-        while let Some(c_win) = current {
-            let Some(c) = g.clients.get(&c_win) else {
-                break;
-            };
-            current = c.next;
-
+        for (_c_win, c) in m.iter_clients(&g.clients) {
             if !c.is_visible_on_tags(selected) {
                 continue;
             }

@@ -138,7 +138,7 @@ pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
 pub fn resize_client(ctx: &mut WmCtx, win: Window, rect: &Rect) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         // Snapshot old geometry before overwriting.
@@ -391,7 +391,7 @@ pub fn apply_size_hints(
 /// The raw property is a packed C struct; we read individual 4-byte integers
 /// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
 pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Some(c) = ctx.g.clients.get_mut(&win) else {
         return;

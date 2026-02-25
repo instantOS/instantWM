@@ -97,19 +97,13 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
                 if mon.clients == Some(prev) {
                     mon.clients = Some(win);
                 } else {
-                    let mut current = mon.clients;
-                    let mut target_c_win = None;
-                    while let Some(c_win) = current {
-                        if let Some(c) = clients.get(&c_win) {
-                            if c.next == Some(prev) {
-                                target_c_win = Some(c_win);
-                                break;
-                            }
-                            current = c.next;
+                    let target_c_win = mon.iter_clients(clients).find_map(|(c_win, c)| {
+                        if c.next == Some(prev) {
+                            Some(c_win)
                         } else {
-                            break;
+                            None
                         }
-                    }
+                    });
                     if let Some(t_win) = target_c_win {
                         if let Some(c) = clients.get_mut(&t_win) {
                             c.next = Some(win);
@@ -121,14 +115,8 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
     } else {
         let mut last: Option<Window> = None;
         if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-            let mut current = mon.clients;
-            while let Some(c_win) = current {
-                if let Some(c) = ctx.g.clients.get(&c_win) {
-                    last = Some(c_win);
-                    current = c.next;
-                } else {
-                    break;
-                }
+            for (c_win, _c) in mon.iter_clients(&ctx.g.clients) {
+                last = Some(c_win);
             }
         }
 

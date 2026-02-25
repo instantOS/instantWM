@@ -36,7 +36,8 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true {
+        let conn = ctx.x11.conn;
         let keysym = keycode_to_keysym(conn, keycode, 0);
 
         let matching_key = {
@@ -77,7 +78,8 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
 pub fn key_release(_ctx: &mut WmCtx, _e: &KeyReleaseEvent) {}
 
 pub fn grab_keys(ctx: &WmCtx) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true {
+        let conn = ctx.x11.conn;
         let root = ctx.g.cfg.root;
         let numlockmask = ctx.g.cfg.numlockmask;
         let keys = ctx.g.cfg.keys.as_slice();
@@ -162,7 +164,8 @@ pub fn grab_keys(ctx: &WmCtx) {
 }
 
 pub fn update_num_lock_mask(ctx: &mut WmCtx) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true {
+        let conn = ctx.x11.conn;
         let modmap = conn.get_modifier_mapping();
         if let Ok(cookie) = modmap {
             if let Ok(reply) = cookie.reply() {
@@ -294,7 +297,8 @@ pub fn up_key(ctx: &mut WmCtx, direction: i32) {
 
     if !has_tiling {
         if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
-            if let Some(ref conn) = ctx.x11.conn {
+            if true {
+                let conn = ctx.x11.conn;
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                     let _ = change_window_attributes(
                         conn,
@@ -371,7 +375,8 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snapstatus != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            if let Some(ref conn) = ctx.x11.conn {
+            if true {
+                let conn = ctx.x11.conn;
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                     let _ = change_window_attributes(
                         conn,
@@ -405,33 +410,19 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
-    let (sel_win, clients_head) = {
+    let (sel_win, selected, clients_head) = {
         let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
             return;
         };
-        (mon.sel, mon.clients)
+        (mon.sel, mon.selected_tags(), mon.clients)
     };
 
-    let selected = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
-
     let mut next: Option<Window> = None;
-    let mut current = clients_head;
     let mut found_current = false;
 
-    while let Some(c_win) = current {
-        let (next_client, visible, is_floating) = match ctx.g.clients.get(&c_win) {
-            Some(c) => (
-                c.next,
-                c.is_visible_on_tags(selected) && !c.is_hidden,
-                c.isfloating,
-            ),
-            None => break,
-        };
+    for (c_win, c) in crate::types::ClientListIter::new(clients_head, &ctx.g.clients) {
+        let visible = c.is_visible_on_tags(selected) && !c.is_hidden;
+        let is_floating = c.isfloating;
 
         if found_current && visible && !is_floating {
             next = Some(c_win);
@@ -441,26 +432,16 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
         if Some(c_win) == sel_win {
             found_current = true;
         }
-
-        current = next_client;
     }
 
     if next.is_none() && direction > 0 {
-        current = clients_head;
-        while let Some(c_win) = current {
-            let (next_client, visible, is_floating) = match ctx.g.clients.get(&c_win) {
-                Some(c) => (
-                    c.next,
-                    c.is_visible_on_tags(selected) && !c.is_hidden,
-                    c.isfloating,
-                ),
-                None => break,
-            };
+        for (c_win, c) in crate::types::ClientListIter::new(clients_head, &ctx.g.clients) {
+            let visible = c.is_visible_on_tags(selected) && !c.is_hidden;
+            let is_floating = c.isfloating;
             if visible && !is_floating {
                 next = Some(c_win);
                 break;
             }
-            current = next_client;
         }
     }
 

@@ -33,7 +33,7 @@ pub(crate) fn draw_status_bar(m: &mut Monitor, bh: i32, stext: &str) -> i32 {
     // Create temporary ctx for measure_layout
     let mut g = get_globals_mut();
     let x11 = get_x11();
-    let mut ctx = WmCtx::new(&mut g, x11);
+    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
     let layout = measure_layout(&mut ctx, m, &items);
 
     {

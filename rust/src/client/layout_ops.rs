@@ -40,7 +40,7 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Raise the window immediately so it appears on top while the layout
     // catches up on the next arrange pass.
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }

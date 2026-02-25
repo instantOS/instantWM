@@ -62,7 +62,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
     if current_sel == target {
         if let Some(w) = target {
             set_focus(ctx, w);
-        } else if let Some(ref conn) = ctx.x11.conn {
+        } else if true { let conn = ctx.x11.conn;
             let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
             let _ = conn.delete_property(root, net_active_window);
             let _ = conn.flush();
@@ -89,7 +89,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
             set_urgent(w, false);
         }
         set_focus(ctx, w);
-    } else if let Some(ref conn) = ctx.x11.conn {
+    } else if true { let conn = ctx.x11.conn;
         let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
         let _ = conn.delete_property(root, net_active_window);
         let _ = conn.flush();
@@ -97,7 +97,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
 }
 
 pub fn set_focus_win(ctx: &WmCtx, win: Window) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Some(c) = ctx.g.clients.get(&win) {
             if !c.neverfocus {
                 let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
@@ -162,7 +162,7 @@ where
 }
 
 fn get_directional_candidates(
-    clients: Option<Window>,
+    head: Option<Window>,
     globals_map: &std::collections::HashMap<Window, Client>,
     selected_tags: u32,
     source_win: Window,
@@ -173,14 +173,8 @@ fn get_directional_candidates(
     let mut out_client: Option<Window> = None;
     let mut min_score: i32 = 0;
 
-    let mut current = clients;
-    while let Some(c_win) = current {
-        let Some(c) = globals_map.get(&c_win) else {
-            break;
-        };
-
+    for (c_win, c) in crate::types::ClientListIter::new(head, globals_map) {
         if !c.is_visible_on_tags(selected_tags) {
-            current = c.next;
             continue;
         }
 
@@ -208,8 +202,6 @@ fn get_directional_candidates(
                 min_score = score;
             }
         }
-
-        current = c.next;
     }
 
     out_client
@@ -339,7 +331,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
 }
 
 pub fn warp(ctx: &WmCtx, c_win: Window) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Some(c) = ctx.g.clients.get(&c_win) {
             if let Some(_cursor_x) = get_root_ptr(ctx) {
                 let _ = conn.warp_pointer(
@@ -359,7 +351,7 @@ pub fn warp(ctx: &WmCtx, c_win: Window) {
 }
 
 pub fn force_warp(ctx: &WmCtx, c_win: Window) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Some(c) = ctx.g.clients.get(&c_win) {
             let _ = conn.warp_pointer(
                 CURRENT_TIME,
@@ -377,7 +369,7 @@ pub fn force_warp(ctx: &WmCtx, c_win: Window) {
 }
 
 pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let root = ctx.g.cfg.root;
         let bh = ctx.g.cfg.bh;
 
@@ -439,7 +431,7 @@ pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
 }
 
 pub fn warp_into(ctx: &WmCtx, c_win: Window) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let root = ctx.g.cfg.root;
 
         if let Some(c) = ctx.g.clients.get(&c_win) {
@@ -470,7 +462,7 @@ pub fn warp_to_focus(ctx: &WmCtx) {
 }
 
 fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Ok(cookie) = query_pointer(conn, ctx.g.cfg.root) {
             if let Ok(reply) = cookie.reply() {
                 return Some((reply.root_x as i32, reply.root_y as i32));
@@ -521,15 +513,10 @@ fn get_visible_stack(
     let mut stack = Vec::new();
     let selected = mon.selected_tags();
 
-    let mut current = mon.stack;
-    while let Some(c_win) = current {
-        let Some(c) = clients.get(&c_win) else {
-            break;
-        };
+    for (c_win, c) in mon.iter_stack(clients) {
         if c.is_visible_on_tags(selected) {
             stack.push(c_win);
         }
-        current = c.snext;
     }
 
     stack

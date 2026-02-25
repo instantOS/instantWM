@@ -164,7 +164,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
         return;
     }
 
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let flags = get_atom_prop(ctx, icon_win, xembed_info_atom);
 
@@ -256,9 +256,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     let systray_exists = ctx.g.systray.is_some();
 
-    let Some(ref conn) = ctx.x11.conn else {
-        return;
-    };
+    let conn = ctx.x11.conn;
 
     if !systray_exists {
         let root = ctx.g.cfg.root;
@@ -336,7 +334,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
         // Send MANAGER event to root window to announce systray
         // Use non-blocking approach
-        if let Some(ref conn) = ctx.x11.conn {
+        if true { let conn = ctx.x11.conn;
             let event = ClientMessageEvent {
                 response_type: CLIENT_MESSAGE_EVENT,
                 format: 32,
@@ -466,7 +464,7 @@ pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
 
 /// Get atom property using dependency injection.
 fn get_atom_prop(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::CARDINAL, 0, 2) {
             if let Ok(reply) = cookie.reply() {
                 if let Some(val) = reply.value32().and_then(|mut v| v.next()) {
@@ -490,7 +488,7 @@ fn send_event(
     d3: i64,
     d4: i64,
 ) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let event = ClientMessageEvent {
             response_type: CLIENT_MESSAGE_EVENT,
             format: 32,

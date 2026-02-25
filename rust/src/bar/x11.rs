@@ -114,7 +114,7 @@ pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
         w = w.saturating_sub(crate::systray::get_systray_width(ctx));
     }
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.configure_window(
             m.barwin,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
@@ -241,7 +241,7 @@ pub fn toggle_bar() {
 }
 
 fn get_text_prop(ctx: &WmCtx, win: Window, atom: u32) -> Option<String> {
-    let conn = ctx.x11.conn.as_ref()?;
+    let conn = ctx.x11.conn;
     let reply = conn
         .get_property(
             false,

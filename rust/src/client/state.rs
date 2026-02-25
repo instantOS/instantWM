@@ -432,7 +432,7 @@ pub fn update_window_type(ctx: &mut WmCtx, win: Window) {
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
 pub fn update_wm_hints(ctx: &mut WmCtx, win: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Ok(cookie) = conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
     else {

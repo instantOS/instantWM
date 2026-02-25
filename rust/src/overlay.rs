@@ -39,7 +39,7 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 
 /// Raise a window to the top of the stack.
 fn raise_window(ctx: &WmCtx, win: Window) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }
@@ -51,15 +51,9 @@ fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
     let base_offset = if mon.showbar { bh } else { 0 };
 
     // Check if any visible client is fullscreen
-    let mut current = mon.clients;
-    while let Some(c_win) = current {
-        if let Some(c) = ctx.g.clients.get(&c_win) {
-            if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_fullscreen && !c.isfakefullscreen {
-                return 0;
-            }
-            current = c.next;
-        } else {
-            break;
+    for (_win, c) in mon.iter_clients(&ctx.g.clients) {
+        if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_fullscreen && !c.isfakefullscreen {
+            return 0;
         }
     }
 
@@ -253,7 +247,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: Window) {
         }
     }
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.configure_window(
             temp_client,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),

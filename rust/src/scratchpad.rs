@@ -257,7 +257,8 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
 
-        if let Some(ref conn) = ctx.x11.conn {
+        if true {
+            let conn = ctx.x11.conn;
             let _ = conn.change_property(
                 x11rb::protocol::xproto::PropMode::REPLACE,
                 root,
@@ -276,23 +277,17 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let mut first = true;
 
     for mon in &ctx.g.monitors {
-        let mut current = mon.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = ctx.g.clients.get(&c_win) {
-                if c.is_scratchpad() {
-                    if !first {
-                        status.push(',');
-                    }
-                    status.push_str(&format!(
-                        "{}={}",
-                        c.scratchpad_name,
-                        if c.issticky { 1 } else { 0 }
-                    ));
-                    first = false;
+        for (_c_win, c) in mon.iter_clients(&ctx.g.clients) {
+            if c.is_scratchpad() {
+                if !first {
+                    status.push(',');
                 }
-                current = c.next;
-            } else {
-                break;
+                status.push_str(&format!(
+                    "{}={}",
+                    c.scratchpad_name,
+                    if c.issticky { 1 } else { 0 }
+                ));
+                first = false;
             }
         }
     }
@@ -301,7 +296,8 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
         status.push_str("none");
     }
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true {
+        let conn = ctx.x11.conn;
         let _ = conn.change_property(
             x11rb::protocol::xproto::PropMode::REPLACE,
             root,
@@ -321,15 +317,9 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<Window> {
     }
 
     for mon in &ctx.g.monitors {
-        let mut current = mon.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = ctx.g.clients.get(&c_win) {
-                if c.is_scratchpad() && c.scratchpad_name == name {
-                    return Some(c_win);
-                }
-                current = c.next;
-            } else {
-                break;
+        for (c_win, c) in mon.iter_clients(&ctx.g.clients) {
+            if c.is_scratchpad() && c.scratchpad_name == name {
+                return Some(c_win);
             }
         }
     }
@@ -337,22 +327,16 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<Window> {
 }
 
 pub fn scratchpad_any_visible(ctx: &WmCtx, mon: &Monitor) -> bool {
-    let mut current = mon.clients;
-    while let Some(c_win) = current {
-        if let Some(c) = ctx.g.clients.get(&c_win) {
-            if c.is_scratchpad() && c.issticky {
-                return true;
-            }
-            current = c.next;
-        } else {
-            break;
+    for (_c_win, c) in mon.iter_clients(&ctx.g.clients) {
+        if c.is_scratchpad() && c.issticky {
+            return true;
         }
     }
     false
 }
 
 pub fn scratchpad_identify_client(ctx: &WmCtx, c: &mut Client) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let class_hint = conn.get_property(false, c.win, AtomEnum::WM_CLASS, AtomEnum::STRING, 0, 1024);
 

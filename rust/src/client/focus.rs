@@ -43,7 +43,7 @@ pub static LAST_CLIENT: AtomicU32 = AtomicU32::new(0);
 /// `ConfigureRequest`.  We send it after every [`super::geometry::resize_client`]
 /// call.
 pub fn configure(ctx: &mut WmCtx, win: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
@@ -90,9 +90,7 @@ pub fn send_event(
     d3: i64,
     d4: i64,
 ) -> bool {
-    let Some(ref conn) = ctx.x11.conn else {
-        return false;
-    };
+    let conn = ctx.x11.conn;
 
     let wmatom_protocols = ctx.g.cfg.wmatom.protocols;
     let wmatom_take_focus = ctx.g.cfg.wmatom.take_focus;
@@ -134,7 +132,7 @@ pub fn send_event(
 /// `_NET_ACTIVE_WINDOW` on the root.  Also sends `WM_TAKE_FOCUS` so that
 /// clients using the "locally active" input model receive focus correctly.
 pub fn set_focus(ctx: &mut WmCtx, win: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
@@ -183,7 +181,7 @@ pub fn unfocus_win(ctx: &mut WmCtx, win: Window, redirect_to_root: bool) {
     LAST_CLIENT.store(win, Ordering::Relaxed);
     grab_buttons(ctx, win, false);
 
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     // Reset the border to the normal (unfocused) colour.
     if let Some(ref scheme) = ctx.g.cfg.borderscheme {
@@ -213,7 +211,7 @@ pub fn unfocus_win(ctx: &mut WmCtx, win: Window, redirect_to_root: bool) {
 /// When `focused` is `true`, all button grabs are released so the client
 /// receives button events directly.
 pub fn grab_buttons(ctx: &mut WmCtx, win: Window, focused: bool) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     // Always start clean.
     let _ = ungrab_button(conn, ButtonIndex::from(0u8), win, ModMask::from(0u16));
@@ -298,7 +296,7 @@ fn ungrab_button(
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
 pub fn clear_urgency_hint(ctx: &mut WmCtx, win: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Ok(cookie) = conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
     else {

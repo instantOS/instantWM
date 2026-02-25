@@ -105,7 +105,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
     }
 
     if barwin != 0 {
-        if let Some(ref conn) = ctx.x11.conn {
+        if true { let conn = ctx.x11.conn;
             let _ = x11rb::protocol::xproto::unmap_window(conn, barwin);
             let _ = x11rb::protocol::xproto::destroy_window(conn, barwin);
         }
@@ -207,7 +207,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     if let Some(_win) = get_win_to_client(c_win) {
         let x11 = get_x11();
         let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(&mut g, x11);
+        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
         unfocus_win(&mut ctx, c_win, true);
     }
 
@@ -228,7 +228,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     if !is_scratchpad {
         let x11 = get_x11();
         let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(&mut g, x11);
+        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
         // Get client data first, then call reset_sticky
         let mon_id = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id);
         if mon_id.is_some() {
@@ -250,7 +250,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
     {
         let x11 = get_x11();
         let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(&mut g, x11);
+        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
         focus(&mut ctx, None);
     }
 
@@ -260,7 +260,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
             if !c.isfloating {
                 let x11 = get_x11();
                 let mut g = get_globals_mut();
-                let mut ctx = WmCtx::new(&mut g, x11);
+                let mut ctx = WmCtx::new(&mut g, x11.as_conn());
                 crate::layouts::arrange(&mut ctx, None);
             }
         }
@@ -273,7 +273,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
                 {
                     let x11 = get_x11();
                     let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(&mut g, x11);
+                    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
                     let sel = ctx.g.selmon;
                     if let Some(win) = get_selected_client_win(sel) {
                         unfocus_win(&mut ctx, win, false);
@@ -289,14 +289,14 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
                 if let Some(name) = sp_name {
                     let x11 = get_x11();
                     let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(&mut g, x11);
+                    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
                     crate::scratchpad::scratchpad_show_name(&mut ctx, &name);
                 }
 
                 {
                     let x11 = get_x11();
                     let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(&mut g, x11);
+                    let mut ctx = WmCtx::new(&mut g, x11.as_conn());
                     let sel = ctx.g.selmon;
                     if let Some(win) = get_selected_client_win(sel) {
                         unfocus_win(&mut ctx, win, false);
@@ -306,7 +306,7 @@ pub fn send_mon(ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
 
                 let x11 = get_x11();
                 let mut g = get_globals_mut();
-                let mut ctx = WmCtx::new(&mut g, x11);
+                let mut ctx = WmCtx::new(&mut g, x11.as_conn());
                 focus(&mut ctx, None);
             }
         }
@@ -391,7 +391,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
 
     focus(ctx, Some(c_win));
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = x11rb::protocol::xproto::configure_window(
             conn,
             c_win,

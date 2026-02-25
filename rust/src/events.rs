@@ -36,9 +36,7 @@ pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
-    let Some(ref conn) = ctx.x11.conn else {
-        return;
-    };
+    let conn = ctx.x11.conn;
     let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
     let _ = conn.flush();
 
@@ -135,7 +133,7 @@ pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 
     let Some(win) = win_to_client(e.window) else {
         return;
-    };
+    }
 
     if e.type_ == net_wm_state {
         handle_net_wm_state(ctx, e, win);
@@ -161,9 +159,7 @@ pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
     if let Some(win) = win_to_client(e.window) {
         configure(ctx, win);
     } else {
-        let Some(ref conn) = ctx.x11.conn else {
-            return;
-        };
+        let conn = ctx.x11.conn;
         let _ = conn.configure_window(
             e.window,
             &ConfigureWindowAux::new()
@@ -228,7 +224,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
             .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
         (selmon_id, sel_win, is_floating || !has_tiling)
-    };
+    }
 
     // Handle entering root window with a floating selection: try resize mode
     if entering_root && is_floating_sel && hover_resize_mouse(ctx) {
@@ -414,7 +410,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             return;
         };
         (mon.monitor_rect.y, ctx.g.cfg.bh, mon.gesture)
-    };
+    }
 
     if root_y >= monitor_y + bar_height - 3 {
         if handle_floating_resize_hover(ctx) {
@@ -447,7 +443,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             }
             other => other.to_gesture(),
         }
-    };
+    }
 
     if new_gesture != current_gesture {
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
@@ -558,11 +554,9 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 
     let Some(systray_win) = systray_win_opt else {
         return;
-    };
+    }
 
-    let Some(ref conn) = ctx.x11.conn else {
-        return;
-    };
+    let conn = ctx.x11.conn;
     let (geo, border_width) = conn
         .get_geometry(icon_win)
         .ok()
@@ -598,7 +592,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         tags: 1,
         mon_id: Some(selmon_id),
         ..Default::default()
-    };
+    }
 
     {
         ctx.g.clients.insert(icon_win, client);
@@ -730,7 +724,7 @@ fn dispatch_event(event: x11rb::protocol::Event) {
     let x11 = get_x11();
     let Some(_) = x11.conn else {
         return;
-    };
+    }
 
     let globals = get_globals_mut();
     let mut ctx = WmCtx::new(globals, x11);
@@ -838,14 +832,7 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<Window>, Vec<Win
     };
 
     for win in children {
-        // Skip self-managing windows.
-        let is_override_redirect_win = conn
-            .get_window_attributes(win)
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-            .map(|wa| wa.override_redirect)
-            .unwrap_or(false);
-        if is_override_redirect_win {
+        if is_override_redirect(ctx, win) {
             continue;
         }
 
@@ -885,10 +872,10 @@ fn is_window_iconic(ctx: &WmCtx, win: Window) -> bool {
     let state_atom = ctx.g.cfg.wmatom.state;
     let Ok(cookie) = conn.get_property(false, win, state_atom, state_atom, 0, 2) else {
         return false;
-    };
+    }
     let Ok(reply) = cookie.reply() else {
         return false;
-    };
+    }
 
     reply
         .value32()
@@ -906,7 +893,7 @@ pub fn scan() {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
         return;
-    };
+    }
     let globals = get_globals_mut();
     let mut ctx = WmCtx::new(globals, x11);
     let root = ctx.g.cfg.root;
@@ -919,7 +906,7 @@ pub fn scan() {
             return;
         };
         tree_reply.children
-    };
+    }
 
     let (managed, transients) = classify_windows(&ctx, children);
 

@@ -50,7 +50,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx) {
             return;
         };
 
-        let Some(ref conn) = ctx.x11.conn else { return };
+        let conn = ctx.x11.conn;
         let Ok(cookie) = conn.query_pointer(win) else {
             return;
         };

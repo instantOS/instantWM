@@ -57,26 +57,14 @@ pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     // ── apply pending snap positions ──────────────────────────────────────
-    let mut c_win = m.clients;
-    while let Some(win) = c_win {
-        let c = match ctx.g.clients.get(&win) {
-            Some(c) => c,
-            None => break,
-        };
-
+    for (win, c) in m.iter_clients(&ctx.g.clients) {
         if !c.is_visible_on_tags(selected) {
-            c_win = c.next;
             continue;
         }
 
-        let snapstatus = c.snapstatus;
-        let next_client = c.next;
-
-        if snapstatus != SnapPosition::None {
+        if c.snapstatus != SnapPosition::None {
             apply_snap_for_window(ctx, win, m);
         }
-
-        c_win = next_client;
     }
 
     // Raise the selected window to the top of the Z-order so it is not

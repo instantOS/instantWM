@@ -42,7 +42,7 @@ fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 
 /// Change the root window cursor to the shape at `cursor_index`.
 fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
     if let Some(ref cur) = ctx.g.cfg.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
@@ -55,7 +55,7 @@ fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &WmCtx, win: Window, dir: ResizeDirection) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
@@ -104,12 +104,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx) -> Option<Window> {
 
     let mon = ctx.g.monitors.get(ctx.g.selmon)?;
     let selected = mon.selected_tags();
-    let mut win = mon.clients;
-    while let Some(w) = win {
-        let Some(c) = ctx.g.clients.get(&w) else {
-            break;
-        };
-        win = c.next;
+    for (w, c) in mon.iter_clients(&ctx.g.clients) {
         if !c.is_visible_on_tags(selected) {
             continue;
         }
@@ -167,15 +162,10 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     };
     let selected = mon.selected_tags();
 
-    let mut win = mon.clients;
-    while let Some(w) = win {
-        let Some(c) = ctx.g.clients.get(&w) else {
-            break;
-        };
+    for (_w, c) in mon.iter_clients(&ctx.g.clients) {
         if c.is_visible_on_tags(selected) && !(c.isfloating || !has_tiling) {
             return true;
         }
-        win = c.next;
     }
     false
 }
@@ -363,7 +353,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
 /// overlap, the topmost (visible) one is returned, not just any window whose
 /// geometry contains the cursor.
 pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<Window> {
-    let conn = ctx.x11.conn.as_ref()?;
+    let conn = ctx.x11.conn;
 
     // Query pointer on root to get the actual child window under cursor
     let reply = conn.query_pointer(ctx.g.cfg.root).ok()?.reply().ok()?;
@@ -379,7 +369,7 @@ pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<Window> {
 
 /// Query the pointer position in both root and window-local coordinates.
 fn query_pointer_on_win(ctx: &WmCtx, win: Window) -> Option<(i32, i32, i32, i32)> {
-    let conn = ctx.x11.conn.as_ref()?;
+    let conn = ctx.x11.conn;
     let reply = conn.query_pointer(win).ok()?.reply().ok()?;
     Some((
         reply.root_x as i32,

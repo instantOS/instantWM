@@ -430,7 +430,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
     detach_stack(win);
 
     if !destroyed {
-        if let Some(ref conn) = ctx.x11.conn {
+        if true { let conn = ctx.x11.conn;
             let old_bw = ctx
                 .g
                 .clients
@@ -481,10 +481,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 fn read_title_from_x(ctx: &WmCtx, win: Window) -> String {
-    let Some(ref conn) = ctx.x11.conn else {
-        return BROKEN.to_string();
-    };
-
+    let conn = ctx.x11.conn;
     let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
     for atom in [
@@ -547,7 +544,7 @@ pub fn get_transient_for_hint(w: Window) -> Option<Window> {
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
 fn read_client_info(ctx: &mut WmCtx, w: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let client_info_atom = ctx.g.cfg.netatom.client_info;
 
@@ -573,9 +570,7 @@ fn read_client_info(ctx: &mut WmCtx, w: Window) {
 }
 
 fn get_transient_for_hint_ctx(ctx: &WmCtx, w: Window) -> Option<Window> {
-    let Some(ref conn) = ctx.x11.conn else {
-        return None;
-    };
+    let conn = ctx.x11.conn;
 
     conn.get_property(false, w, AtomEnum::WM_TRANSIENT_FOR, AtomEnum::WINDOW, 0, 1)
         .ok()

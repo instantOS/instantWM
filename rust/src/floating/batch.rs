@@ -78,17 +78,9 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
         }
 
         let tag_mask = 1u32 << tag_idx;
-        let mut current = mon.clients;
-
-        while let Some(c_win) = current {
-            match globals.clients.get(&c_win) {
-                Some(c) => {
-                    if (c.tags & tag_mask) != 0 && c.snapstatus == SnapPosition::None {
-                        wins.push(c_win);
-                    }
-                    current = c.next;
-                }
-                None => break,
+        for (c_win, c) in mon.iter_clients(&globals.clients) {
+            if (c.tags & tag_mask) != 0 && c.snapstatus == SnapPosition::None {
+                wins.push(c_win);
             }
         }
     }
@@ -166,21 +158,13 @@ fn collect_distribute_targets(
     let work_rect = mon.work_rect;
 
     let mut wins = Vec::new();
-    let mut current = mon.clients;
-
-    while let Some(c_win) = current {
-        match globals.clients.get(&c_win) {
-            Some(c) => {
-                if c.isfloating
-                    && !c.isfixed
-                    && (c.tags & tagset) != 0
-                    && c.snapstatus == SnapPosition::None
-                {
-                    wins.push(c_win);
-                }
-                current = c.next;
-            }
-            None => break,
+    for (c_win, c) in mon.iter_clients(&globals.clients) {
+        if c.isfloating
+            && !c.isfixed
+            && (c.tags & tagset) != 0
+            && c.snapstatus == SnapPosition::None
+        {
+            wins.push(c_win);
         }
     }
 

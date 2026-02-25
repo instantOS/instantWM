@@ -32,13 +32,7 @@ impl ClientBarStats {
         // same iteration order as draw_window_titles and bar_position_at_x,
         // so the count is guaranteed to be consistent with what is drawn and
         // what click regions are calculated for.
-        let mut current = monitor.clients;
-        while let Some(c_win) = current {
-            let Some(client) = globals.clients.get(&c_win) else {
-                break;
-            };
-            current = client.next;
-
+        for (_win, client) in monitor.iter_clients(&globals.clients) {
             if client.is_visible_on_tags(selected) {
                 stats.visible_clients += 1;
             }
@@ -191,12 +185,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     // consumers delegate to this function, so the order is always consistent.
     let mut visible_clients: Vec<Window> = Vec::new();
     let selected = mon.selected_tags();
-    let mut current = mon.clients;
-    while let Some(c_win) = current {
-        let Some(c) = ctx.g.clients.get(&c_win) else {
-            break;
-        };
-        current = c.next;
+    for (c_win, c) in mon.iter_clients(&ctx.g.clients) {
         if c.is_visible_on_tags(selected) {
             visible_clients.push(c_win);
         }

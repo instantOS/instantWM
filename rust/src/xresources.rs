@@ -64,7 +64,7 @@ pub fn list_xresources() {
 /// Load xresources and update the runtime configuration
 /// This should be called after init_globals but before setup
 pub fn load_xresources(ctx: &mut WmCtx) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let Ok(res_cookie) = conn.get_property(
         false,

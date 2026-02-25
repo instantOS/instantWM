@@ -357,7 +357,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
             // Raise the window if it is the focused one.
             let is_sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) == Some(win);
             if is_sel {
-                if let Some(ref conn) = ctx.x11.conn {
+                if true { let conn = ctx.x11.conn;
                     let _ = configure_window(
                         conn,
                         win,

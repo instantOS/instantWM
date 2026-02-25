@@ -1038,21 +1038,73 @@ impl Client {
     pub fn is_visible_on_tags(&self, selected_tags: u32) -> bool {
         self.issticky || (self.tags & selected_tags) != 0
     }
+}
 
-    /// Backward-compatible convenience wrapper.
-    ///
-    /// Prefer `is_visible_on_tags` when you can supply the tag-set explicitly.
-    pub fn is_visible(&self) -> bool {
-        if self.issticky {
-            return true;
+/// Iterator over a monitor's client list (focus order).
+///
+/// Yields `(Window, &Client)` pairs so call-sites keep the window id and the
+/// corresponding client tightly coupled.
+pub struct ClientListIter<'a> {
+    next: Option<Window>,
+    clients: &'a std::collections::HashMap<Window, Client>,
+}
+
+impl<'a> ClientListIter<'a> {
+    #[inline]
+    pub fn new(
+        head: Option<Window>,
+        clients: &'a std::collections::HashMap<Window, Client>,
+    ) -> Self {
+        Self {
+            next: head,
+            clients,
         }
-        if let Some(mon_id) = self.mon_id {
-            let globals = crate::globals::get_globals();
-            if let Some(mon) = globals.monitors.get(mon_id) {
-                return (self.tags & mon.selected_tags()) != 0;
-            }
+    }
+}
+
+impl<'a> Iterator for ClientListIter<'a> {
+    type Item = (Window, &'a Client);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let win = self.next?;
+        let clients = self.clients;
+        let c = clients.get(&win)?;
+        self.next = c.next;
+        Some((win, c))
+    }
+}
+
+/// Iterator over a monitor's stack list (stacking order).
+///
+/// Yields `(Window, &Client)` pairs so restack/showhide style logic can use the
+/// correct ordering while keeping the window id available.
+pub struct ClientStackIter<'a> {
+    next: Option<Window>,
+    clients: &'a std::collections::HashMap<Window, Client>,
+}
+
+impl<'a> ClientStackIter<'a> {
+    #[inline]
+    pub fn new(
+        head: Option<Window>,
+        clients: &'a std::collections::HashMap<Window, Client>,
+    ) -> Self {
+        Self {
+            next: head,
+            clients,
         }
-        false
+    }
+}
+
+impl<'a> Iterator for ClientStackIter<'a> {
+    type Item = (Window, &'a Client);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let win = self.next?;
+        let clients = self.clients;
+        let c = clients.get(&win)?;
+        self.next = c.snext;
+        Some((win, c))
     }
 }
 
@@ -1166,6 +1218,24 @@ impl Monitor {
         self.tagset[self.seltags as usize]
     }
 
+    /// Iterate the monitor's client list (focus order) as `(Window, &Client)`.
+    #[inline]
+    pub fn iter_clients<'a>(
+        &'a self,
+        clients: &'a std::collections::HashMap<Window, Client>,
+    ) -> ClientListIter<'a> {
+        ClientListIter::new(self.clients, clients)
+    }
+
+    /// Iterate the monitor's stack list (stacking order) as `(Window, &Client)`.
+    #[inline]
+    pub fn iter_stack<'a>(
+        &'a self,
+        clients: &'a std::collections::HashMap<Window, Client>,
+    ) -> ClientStackIter<'a> {
+        ClientStackIter::new(self.stack, clients)
+    }
+
     /// Check if a point is within this monitor's work area.
     pub fn contains_point(&self, x: i32, y: i32) -> bool {
         self.work_rect.contains_point(x, y)
@@ -1189,15 +1259,9 @@ impl Monitor {
     pub fn client_count(&self, clients: &std::collections::HashMap<Window, Client>) -> usize {
         let selected = self.selected_tags();
         let mut count = 0;
-        let mut current = self.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = clients.get(&c_win) {
-                if c.is_visible_on_tags(selected) {
-                    count += 1;
-                }
-                current = c.next;
-            } else {
-                break;
+        for (_win, c) in self.iter_clients(clients) {
+            if c.is_visible_on_tags(selected) {
+                count += 1;
             }
         }
         count
@@ -1207,15 +1271,9 @@ impl Monitor {
     pub fn tiled_client_count(&self, clients: &std::collections::HashMap<Window, Client>) -> usize {
         let selected = self.selected_tags();
         let mut count = 0;
-        let mut current = self.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = clients.get(&c_win) {
-                if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
-                    count += 1;
-                }
-                current = c.next;
-            } else {
-                break;
+        for (_win, c) in self.iter_clients(clients) {
+            if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
+                count += 1;
             }
         }
         count
@@ -1251,14 +1309,12 @@ impl Monitor {
         clients: &std::collections::HashMap<Window, Client>,
         win: Window,
     ) -> Option<Window> {
-        let mut current = self.clients;
         let mut prev = None;
-        while let Some(c_win) = current {
+        for (c_win, _c) in self.iter_clients(clients) {
             if c_win == win {
                 return prev;
             }
-            prev = current;
-            current = clients.get(&c_win).and_then(|c| c.next);
+            prev = Some(c_win);
         }
         None
     }

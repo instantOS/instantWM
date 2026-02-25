@@ -174,7 +174,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         .unwrap_or(true);
 
     let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let is_floating = ctx
             .g
             .clients

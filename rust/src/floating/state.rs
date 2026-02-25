@@ -15,7 +15,7 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: Window) {
 
     restore_border_width(win);
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Some(ref scheme) = ctx.g.cfg.borderscheme {
             let pixel = scheme.float_focus.bg.color.pixel;
             let _ = change_window_attributes(
@@ -56,7 +56,7 @@ pub fn apply_float_change(
         if update_borders {
             restore_border_width(win);
 
-            if let Some(ref conn) = ctx.x11.conn {
+            if true { let conn = ctx.x11.conn;
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                     let pixel = scheme.float_focus.bg.color.pixel;
                     let _ = change_window_attributes(
@@ -238,7 +238,7 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
     }
 
     if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.fullscreen) {
-        if let Some(ref conn) = ctx.x11.conn {
+        if true { let conn = ctx.x11.conn;
             let _ = configure_window(
                 conn,
                 win,

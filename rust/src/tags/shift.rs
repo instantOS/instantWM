@@ -110,7 +110,7 @@ fn clear_sticky(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window) {
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window, dir: Direction) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }

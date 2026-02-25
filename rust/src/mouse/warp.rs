@@ -26,7 +26,7 @@ use x11rb::CURRENT_TIME;
 ///
 /// Returns `None` when the X11 connection is unavailable or the request fails.
 pub(super) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    let conn = ctx.x11.conn.as_ref()?;
+    let conn = ctx.x11.conn;
     let cookie = query_pointer(conn, ctx.g.cfg.root).ok()?;
     let reply = cookie.reply().ok()?;
     Some((reply.root_x as i32, reply.root_y as i32))
@@ -39,7 +39,7 @@ pub(super) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
 pub(super) fn warp_impl(ctx: &WmCtx, win: Window) {
-    let Some(ref conn) = ctx.x11.conn else { return };
+    let conn = ctx.x11.conn;
 
     let root = ctx.g.cfg.root;
     let bh = ctx.g.cfg.bh;
@@ -123,7 +123,7 @@ pub fn warp_cursor_to_client_win(ctx: &WmCtx, c: &Client) {
 /// Used after operations that deliberately reposition the window (e.g. after
 /// an animated move) where the old cursor position is no longer meaningful.
 pub fn force_warp(ctx: &WmCtx, c: &Client) {
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.warp_pointer(
             x11rb::NONE,
             c.win,
@@ -158,7 +158,7 @@ pub fn reset_cursor(ctx: &mut WmCtx) {
     }
     ctx.g.altcursor = AltCursor::None;
 
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         if let Some(ref cursor) = ctx.g.cfg.cursors[0] {
             let _ = change_window_attributes(
                 conn,

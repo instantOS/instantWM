@@ -65,7 +65,7 @@ pub fn draw_bar(m: &mut Monitor) {
         // Create temporary ctx for get_systray_width
         let mut g = get_globals_mut();
         let x11 = get_x11();
-        let mut ctx = WmCtx::new(&mut g, x11);
+        let mut ctx = WmCtx::new(&mut g, x11.as_conn());
         crate::systray::get_systray_width(&mut ctx) as i32
     } else {
         0

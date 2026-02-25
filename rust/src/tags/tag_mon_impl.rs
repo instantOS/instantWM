@@ -167,7 +167,7 @@ fn move_floating(
     arrange(ctx, Some(ctx.g.selmon));
 
     // Raise so the window is immediately visible on the new monitor.
-    if let Some(ref conn) = ctx.x11.conn {
+    if true { let conn = ctx.x11.conn;
         let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
         let _ = conn.flush();
     }

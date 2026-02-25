@@ -88,9 +88,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, re
     let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
     let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
-    let Some(ref conn) = ctx.x11.conn else {
-        return;
-    };
+    let conn = ctx.x11.conn;
 
     let (mon_w, mon_h) = get_monitor_size(win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
@@ -283,14 +281,8 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
 fn check_client_on_target_tag(sel_mon: MonitorId, target: u32) {
     let globals = get_globals();
     if let Some(mon) = globals.monitors.get(sel_mon) {
-        let mut current = mon.clients;
-        while let Some(c_win) = current {
-            if let Some(c) = globals.clients.get(&c_win) {
-                let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
-                current = c.next;
-            } else {
-                break;
-            }
+        for (_c_win, c) in mon.iter_clients(&globals.clients) {
+            let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
         }
     }
 }

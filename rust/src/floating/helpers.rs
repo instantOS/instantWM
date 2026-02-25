@@ -47,7 +47,7 @@ pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
 /// A client is visible when it belongs to the currently selected tagset of
 /// the monitor it is assigned to.
 ///
-/// This is a window-ID convenience wrapper around [`Client::is_visible`] for
+/// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
 pub fn visible_client(ctx: &WmCtx, win: Window) -> bool {
     let selected = ctx

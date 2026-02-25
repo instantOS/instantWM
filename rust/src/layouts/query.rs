@@ -18,7 +18,7 @@ use super::LayoutKind;
 /// Number of tiled, visible clients on the *selected* monitor.
 ///
 /// A client is counted only when it is:
-/// - visible (passes [`Client::is_visible`]), and
+/// - visible (passes [`Client::is_visible_on_tags`]), and
 /// - not floating (`!c.isfloating`).
 ///
 /// This is the count used to tune animation frame-rates and decide whether
@@ -34,18 +34,11 @@ pub fn client_count(g: &Globals) -> i32 {
     // and on-screen.  Using is_hidden here avoids inflating clientcount when
     // windows are minimized, which would break single-client border-stripping
     // and layout frame-rate heuristics.
-    let mut count = 0;
     let selected = mon.selected_tags();
-    let mut c_win = mon.clients;
-    while let Some(win) = c_win {
-        match g.clients.get(&win) {
-            Some(c) => {
-                if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
-                    count += 1;
-                }
-                c_win = c.next;
-            }
-            None => break,
+    let mut count = 0;
+    for (_win, c) in mon.iter_clients(&g.clients) {
+        if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
+            count += 1;
         }
     }
 
@@ -60,22 +53,15 @@ pub fn client_count(g: &Globals) -> i32 {
 ///
 /// [`arrange_monitor`]: crate::layouts::manager::arrange_monitor
 pub fn client_count_mon(g: &Globals, m: &Monitor) -> i32 {
-    let mut count = 0;
     let selected = m.selected_tags();
+    let mut count = 0;
 
     // Mirror C's nexttiled-based clientcountmon: skip floating AND hidden clients
     // so that m.clientcount only reflects windows that the tiling layout will
     // actually place on screen.
-    let mut c_win = m.clients;
-    while let Some(win) = c_win {
-        match g.clients.get(&win) {
-            Some(c) => {
-                if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
-                    count += 1;
-                }
-                c_win = c.next;
-            }
-            None => break,
+    for (_win, c) in m.iter_clients(&g.clients) {
+        if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
+            count += 1;
         }
     }
 
@@ -93,7 +79,7 @@ pub fn all_client_count(g: &Globals) -> i32 {
 // ── visibility walk ───────────────────────────────────────────────────────────
 
 /// Walk the client linked-list starting at `start_win` and return the first
-/// client that passes [`Client::is_visible`].
+/// client that passes [`Client::is_visible_on_tags`].
 ///
 /// Returns `None` if the list is exhausted without finding a visible client.
 pub fn find_visible_client(g: &Globals, start_win: Option<Window>) -> Option<Window> {
@@ -102,17 +88,9 @@ pub fn find_visible_client(g: &Globals, start_win: Option<Window>) -> Option<Win
         .get(g.selmon)
         .map(|m| m.selected_tags())
         .unwrap_or(0);
-    let mut current = start_win;
-
-    while let Some(win) = current {
-        match g.clients.get(&win) {
-            Some(c) => {
-                if c.is_visible_on_tags(selected) {
-                    return Some(win);
-                }
-                current = c.next;
-            }
-            None => break,
+    for (win, c) in crate::types::ClientListIter::new(start_win, &g.clients) {
+        if c.is_visible_on_tags(selected) {
+            return Some(win);
         }
     }
 
