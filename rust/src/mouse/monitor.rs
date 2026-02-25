@@ -1,7 +1,7 @@
 //! Monitor-switch helpers for interactive mouse operations.
 //!
 //! When the user drags or resizes a window across a monitor boundary these
-//! functions detect the crossing and call [`send_mon`] + [`focus`] so the
+//! functions detect the crossing and call [`transfer_client`] + [`focus`] so the
 //! window is correctly adopted by the new monitor.
 //!
 //! # Typical call flow
@@ -11,15 +11,15 @@
 //!   └─► handle_client_monitor_switch(win)
 //!             └─► reads client.geo
 //!                   └─► handle_monitor_switch(win, &rect)
-//!                             ├─► rect_to_mon  → target monitor index
-//!                             ├─► send_mon          → reassigns client
+//!                             ├─► rect_to_mon       → target monitor index
+//!                             ├─► transfer_client   → reassigns client
 //!                             └─► focus(None)       → re-focus on new monitor
 //! ```
 
 use crate::client::unfocus_win;
 use crate::contexts::WmCtx;
 use crate::focus::focus;
-use crate::monitor::{rect_to_mon, send_mon};
+use crate::monitor::{rect_to_mon, transfer_client};
 use crate::types::*;
 use x11rb::protocol::xproto::*;
 
@@ -48,7 +48,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
         unfocus_win(ctx, cur_sel, false);
     }
 
-    send_mon(ctx, c_win, target);
+    transfer_client(ctx, c_win, target);
 
     ctx.g.selmon = target;
     focus(ctx, None);

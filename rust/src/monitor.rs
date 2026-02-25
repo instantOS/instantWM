@@ -168,24 +168,26 @@ pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
     }
 }
 
-pub fn send_mon(_ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
-    let g = get_globals_mut();
-
-    let current_mon_id = g.selmon;
-
-    if current_mon_id == target_mon_id {
+/// Transfer a client to a different monitor.
+///
+/// Detaches the client from its current monitor, updates its monitor
+/// assignment and tags, then reattaches it to the target monitor.
+/// Handles special cases like scratchpads and sticky windows.
+pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
+    if ctx.g.selmon == target_mon {
         return;
     }
 
     let (is_scratchpad, target_tags) = {
-        let client = match g.clients.get(&c_win) {
+        let client = match ctx.g.clients.get(&win) {
             Some(c) => c,
             None => return,
         };
         let is_sp = client.tags == SCRATCHPAD_MASK;
         let tags = if !is_sp {
-            g.monitors
-                .get(target_mon_id)
+            ctx.g
+                .monitors
+                .get(target_mon)
                 .map(|m| m.tagset[m.seltags as usize])
                 .unwrap_or(1)
         } else {
@@ -194,113 +196,73 @@ pub fn send_mon(_ctx: &mut WmCtx, c_win: Window, target_mon_id: MonitorId) {
         (is_sp, tags)
     };
 
-    if let Some(_win) = get_win_to_client(c_win) {
-        let x11 = get_x11();
-        let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(g, x11.as_conn());
-        unfocus_win(&mut ctx, c_win, true);
+    if get_win_to_client(win).is_some() {
+        unfocus_win(ctx, win, true);
     }
 
-    detach(c_win);
-    detach_stack(c_win);
+    detach(win);
+    detach_stack(win);
 
-    {
-        let g = get_globals_mut();
-        if let Some(client) = g.clients.get_mut(&c_win) {
-            client.mon_id = Some(target_mon_id);
-
-            if !is_scratchpad {
-                client.tags = target_tags;
-            }
+    if let Some(client) = ctx.g.clients.get_mut(&win) {
+        client.mon_id = Some(target_mon);
+        if !is_scratchpad {
+            client.tags = target_tags;
         }
     }
 
     if !is_scratchpad {
-        let x11 = get_x11();
-        let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(g, x11.as_conn());
-        // Get client data first, then call reset_sticky
-        let mon_id = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id);
-        if mon_id.is_some() {
-            // Create a temporary client reference for reset_sticky
-            let client_opt = ctx.g.clients.get_mut(&c_win);
-            if client_opt.is_some() {
-                // We need to get the window and call reset_sticky on it directly
-                drop(client_opt);
-                // Call reset_sticky with just the window
-                crate::tags::reset_sticky_win(&mut ctx, c_win);
-            }
-        }
+        crate::tags::reset_sticky_win(ctx, win);
     }
 
-    attach(c_win);
-    attach_stack(c_win);
-    set_client_tag_prop(c_win);
+    attach(win);
+    attach_stack(win);
+    set_client_tag_prop(win);
 
-    {
-        let x11 = get_x11();
-        let mut g = get_globals_mut();
-        let mut ctx = WmCtx::new(g, x11.as_conn());
-        focus(&mut ctx, None);
-    }
+    focus(ctx, None);
 
-    {
-        let g = get_globals();
-        if let Some(c) = g.clients.get(&c_win) {
-            if !c.isfloating {
-                let x11 = get_x11();
-                let mut g = get_globals_mut();
-                let mut ctx = WmCtx::new(g, x11.as_conn());
-                crate::layouts::arrange(&mut ctx, None);
-            }
-        }
+    let needs_arrange = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| !c.isfloating)
+        .unwrap_or(false);
+    if needs_arrange {
+        crate::layouts::arrange(ctx, None);
     }
 
     if is_scratchpad {
-        let g = get_globals();
-        if let Some(c) = g.clients.get(&c_win) {
-            if c.is_scratchpad() && !c.issticky {
-                {
-                    let x11 = get_x11();
-                    let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(g, x11.as_conn());
-                    let sel = ctx.g.selmon;
-                    if let Some(win) = get_selected_client_win(sel) {
-                        unfocus_win(&mut ctx, win, false);
-                    }
-                    ctx.g.selmon = target_mon_id;
-                }
-
-                let sp_name = {
-                    let g = get_globals();
-                    g.clients.get(&c_win).map(|c| c.scratchpad_name.clone())
-                };
-
-                if let Some(name) = sp_name {
-                    let x11 = get_x11();
-                    let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(g, x11.as_conn());
-                    crate::scratchpad::scratchpad_show_name(&mut ctx, &name);
-                }
-
-                {
-                    let x11 = get_x11();
-                    let mut g = get_globals_mut();
-                    let mut ctx = WmCtx::new(g, x11.as_conn());
-                    let sel = ctx.g.selmon;
-                    if let Some(win) = get_selected_client_win(sel) {
-                        unfocus_win(&mut ctx, win, false);
-                    }
-                    ctx.g.selmon = current_mon_id;
-                }
-
-                let x11 = get_x11();
-                let mut g = get_globals_mut();
-                let mut ctx = WmCtx::new(g, x11.as_conn());
-                focus(&mut ctx, None);
-            }
-        }
+        handle_scratchpad_transfer(ctx, win, target_mon);
     }
+}
+
+/// Handle scratchpad-specific logic during monitor transfer.
+fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
+    let Some(client) = ctx.g.clients.get(&win) else {
+        return;
+    };
+    if !client.is_scratchpad() || client.issticky {
+        return;
+    }
+
+    let sp_name = client.scratchpad_name.clone();
+    let current_mon = ctx.g.selmon;
+
+    // Unfocus on current monitor and switch to target
+    if let Some(sel_win) = get_selected_client_win(current_mon) {
+        unfocus_win(ctx, sel_win, false);
+    }
+    ctx.g.selmon = target_mon;
+
+    // Show the scratchpad on the target monitor
+    crate::scratchpad::scratchpad_show_name(ctx, &sp_name);
+
+    // Unfocus on target monitor and switch back
+    if let Some(sel_win) = get_selected_client_win(target_mon) {
+        unfocus_win(ctx, sel_win, false);
+    }
+    ctx.g.selmon = current_mon;
+
+    focus(ctx, None);
 }
 
 /// Change focus to the next or previous monitor.

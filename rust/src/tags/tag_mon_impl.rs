@@ -4,7 +4,7 @@
 //! `tags.rs`.  It lives under `tags/` because the operation is semantically a
 //! tag action (the client's tag membership changes when it crosses monitors),
 //! but the heavy lifting — detach/attach, geometry update, restack — is
-//! delegated to `monitor::send_mon`.
+//! delegated to `monitor::transfer_client`.
 //!
 //! For floating clients the window is repositioned so that its relative
 //! position on the target monitor mirrors its position on the source monitor.
@@ -13,7 +13,7 @@
 
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
-use crate::monitor::{dir_to_mon, send_mon};
+use crate::monitor::{dir_to_mon, transfer_client};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -73,7 +73,7 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
     if is_floating {
         move_floating(ctx, win, target_id);
     } else {
-        send_mon(ctx, win, target_id);
+        transfer_client(ctx, win, target_id);
     }
 }
 
@@ -87,7 +87,7 @@ fn move_floating(
     win: x11rb::protocol::xproto::Window,
     target_id: crate::types::MonitorId,
 ) {
-    // Snapshot source geometry before send_mon() transfers ownership.
+    // Snapshot source geometry before transfer_client() transfers ownership.
     let (
         client_x,
         client_y,
@@ -156,7 +156,7 @@ fn move_floating(
         .unwrap_or((0, 0, 0, 0));
 
     // Transfer the client to the target monitor.
-    send_mon(ctx, win, target_id);
+    transfer_client(ctx, win, target_id);
 
     // Apply proportional position on the new monitor.
     if let Some(client) = ctx.g.clients.get_mut(&win) {
