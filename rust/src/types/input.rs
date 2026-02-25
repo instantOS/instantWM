@@ -70,7 +70,6 @@ pub enum AltCursor {
     /// Resize cursor.
     Resize,
     /// Sidebar cursor.
-    // TODO: Port over sidebar from C codebase
     Sidebar,
 }
 

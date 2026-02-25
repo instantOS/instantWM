@@ -323,7 +323,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     }
 
     // Re-snapshot c from the map (apply_rules / hints may have changed it).
-    let c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
+    let mut c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
 
     let animated = ctx.g.animated;
     if let Some(mon_id) = c.mon_id {
@@ -342,6 +342,9 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     }
 
     focus(ctx, None);
+
+    // Re-snapshot c again after arrange has modified its geometry in X and WM state.
+    c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
 
     // -------------------------------------------------------------------------
     // 13. Entrance animation.

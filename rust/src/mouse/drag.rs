@@ -149,6 +149,8 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
         sel
     };
 
+    crate::layouts::restack(ctx, ctx.g.selmon_id());
+
     // Un-snap: surface the real window first; the user re-drags after.
     let is_snapped = ctx
         .g

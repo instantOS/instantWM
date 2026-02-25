@@ -100,6 +100,8 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
+    crate::layouts::restack(ctx, ctx.g.selmon_id());
+
     if !grab_pointer(ctx, 1) {
         return;
     }
@@ -189,6 +191,8 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
     if is_blocked {
         return;
     };
+
+    crate::layouts::restack(ctx, ctx.g.selmon_id());
 
     if !grab_pointer(ctx, 1) {
         return;
@@ -338,6 +342,8 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window, btn: MouseButton) {
     if is_fullscreen {
         return;
     };
+
+    crate::layouts::restack(ctx, ctx.g.selmon_id());
 
     if !grab_pointer(ctx, 1) {
         return;
