@@ -28,7 +28,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let is_animated = ctx.g.animated && !ctx.g.monitors.is_empty();
 
     if is_animated {
-        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if let Some(mon) = ctx.g.selmon() {
             if let Some(sel_win) = mon.sel {
                 let conn = ctx.x11.conn;
                 let _ = configure_window(
@@ -42,7 +42,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     // ── snapshot selected window before the loop ────────
-    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+    let sel_win = ctx.g.selected_win();
 
     // ── resize every tiled client to fill the work area ───────────────────
     let mut c_win = next_tiled(m.clients);

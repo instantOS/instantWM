@@ -46,7 +46,7 @@ pub(super) fn warp_impl(ctx: &WmCtx, win: Window) {
 
     // No target window – centre on the selected monitor's work area.
     if win == 0 {
-        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if let Some(mon) = ctx.g.selmon() {
             let _ = conn.warp_pointer(
                 CURRENT_TIME,
                 root,
@@ -80,7 +80,7 @@ pub(super) fn warp_impl(ctx: &WmCtx, win: Window) {
     // Skip if the pointer is on the bar belonging to this client's monitor.
     let on_bar = c
         .mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
+        .and_then(|mid| ctx.g.monitor(mid))
         .is_some_and(|mon| (ptr_y > mon.by && ptr_y < mon.by + bh) || (mon.topbar && ptr_y == 0));
 
     if in_window || on_bar {
@@ -142,7 +142,7 @@ pub fn force_warp(ctx: &WmCtx, c: &Client) {
 /// Reads `selmon → sel` and delegates to [`warp_impl`].  Does nothing when no
 /// window is selected.
 pub fn warp_to_focus(ctx: &WmCtx) {
-    if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
+    if let Some(win) = ctx.g.selected_win() {
         warp_impl(ctx, win);
     }
 }

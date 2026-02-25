@@ -25,7 +25,7 @@ pub use client_tags::{follow_tag, set_client_tag, tag_all, toggle_tag};
 
 pub use view::{
     follow_view, last_view, shift_view, swap_tags, toggle_fullscreen_overview, toggle_overview,
-    toggle_view, view, win_view,
+    view, win_view,
 };
 
 // Re-export TagMask for convenience

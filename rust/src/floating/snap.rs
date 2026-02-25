@@ -190,7 +190,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
     let Some(mid) = mon_id else { return };
 
     // Geometry of the target monitor.
-    let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.g.monitors.get(mid) {
+    let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.g.monitor(mid) {
         Some(m) => {
             let mony = m.monitor_rect.y + if m.showbar { ctx.g.cfg.bh } else { 0 };
             (
@@ -355,7 +355,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: Window, mon_id: Option<usize>) {
             );
 
             // Raise the window if it is the focused one.
-            let is_sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) == Some(win);
+            let is_sel = ctx.g.selected_win() == Some(win);
             if is_sel {
                 let conn = ctx.x11.conn;
                 let _ = configure_window(

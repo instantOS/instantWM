@@ -54,7 +54,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: Window) {
     let is_fullscreen = client.is_fullscreen;
     let mon_mh = client
         .mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
+        .and_then(|mid| ctx.g.monitor(mid))
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 
@@ -83,7 +83,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: Window) {
 
 /// Return the selected window for the current monitor.
 pub fn selected_window(ctx: &WmCtx) -> Option<Window> {
-    ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel)
+    ctx.g.selected_win()
 }
 
 // ---------------------------------------------------------------------------
@@ -96,11 +96,7 @@ pub fn selected_window(ctx: &WmCtx) -> Option<Window> {
 /// an orderly system shutdown; pressing it when windows are open closes the
 /// focused window instead.
 pub fn shut_kill(ctx: &mut WmCtx) {
-    let has_clients = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .is_some_and(|m| m.clients.is_some());
+    let has_clients = ctx.g.selmon().is_some_and(|m| m.clients.is_some());
 
     if has_clients {
         if let Some(win) = selected_window(ctx) {
@@ -129,7 +125,7 @@ pub fn close_win(ctx: &mut WmCtx, win: Window) {
         .map(|c| {
             let mh = c
                 .mon_id
-                .and_then(|mid| ctx.g.monitors.get(mid))
+                .and_then(|mid| ctx.g.monitor(mid))
                 .map(|m| m.monitor_rect.h)
                 .unwrap_or(0);
             (c.islocked, mh)

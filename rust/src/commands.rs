@@ -78,6 +78,6 @@ pub fn set_special_next(ctx: &mut WmCtx, value: u32) {
 pub fn command_prefix(ctx: &mut WmCtx, value: u32) {
     ctx.g.tags.prefix = value != 0;
 
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
     draw_bar(ctx, selmon_id);
 }

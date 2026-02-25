@@ -59,7 +59,7 @@ pub fn restore_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
 ///
 /// This is the shared selection logic for both save and restore.
 fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<Window> {
-    let Some(mon) = globals.monitors.get(mid) else {
+    let Some(mon) = globals.monitor(mid) else {
         return Vec::new();
     };
 
@@ -148,7 +148,7 @@ fn collect_distribute_targets(
 ) -> (Vec<Window>, Rect) {
     let empty = (Vec::new(), Rect::default());
 
-    let Some(mon) = globals.monitors.get(sel_mon_id) else {
+    let Some(mon) = globals.monitor(sel_mon_id) else {
         return empty;
     };
 

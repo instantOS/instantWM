@@ -22,7 +22,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: Direction) {
     let mut new_x = geo.x + dx;
     let mut new_y = geo.y + dy;
 
-    let mon_rect = match ctx.g.monitors.get(ctx.g.selmon) {
+    let mon_rect = match ctx.g.selmon() {
         Some(m) => m.monitor_rect,
         None => return,
     };
@@ -83,7 +83,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: Window) {
-    let is_overlay = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay) == Some(win);
+    let is_overlay = ctx.g.selmon().and_then(|m| m.overlay) == Some(win);
     if is_overlay {
         return;
     }
@@ -96,7 +96,7 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
         return;
     }
 
-    let (work_rect, mon_rect, showbar, bh) = match ctx.g.monitors.get(ctx.g.selmon) {
+    let (work_rect, mon_rect, showbar, bh) = match ctx.g.selmon() {
         Some(m) => (m.work_rect, m.monitor_rect, m.showbar, ctx.g.cfg.bh),
         None => return,
     };

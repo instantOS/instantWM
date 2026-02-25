@@ -74,7 +74,7 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: Window) {
 
     let mon_num = c
         .mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
+        .and_then(|mid| ctx.g.monitor(mid))
         .map(|m| m.num as u32)
         .unwrap_or(0);
 
@@ -106,7 +106,7 @@ pub fn update_client_list(ctx: &WmCtx) {
     // Delete the existing property first so we start with a clean slate.
     let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.client_list);
 
-    for mon in &ctx.g.monitors {
+    for (_id, mon) in ctx.g.monitors_iter() {
         let mut current = mon.clients;
         while let Some(cur_win) = current {
             let _ = conn.change_property32(
@@ -270,7 +270,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
             // Look up monitor geometry for FloatFullscreen / Float rules.
             let cur_mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
             let (mon_mw, mon_wh, mon_showbar, mon_my, mon_mx) = cur_mon_id
-                .and_then(|mid| ctx.g.monitors.get(mid))
+                .and_then(|mid| ctx.g.monitor(mid))
                 .map(|m| {
                     (
                         m.monitor_rect.w,
@@ -315,12 +315,15 @@ pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
 
             // Optionally move the client to a specific monitor.
             if let MonitorRule::Index(target_num) = rule.monitor {
-                if let Some(target_mid) = ctx
+                // Resolve the monitor id first so that the borrow on
+                // `ctx.g.monitors` (via `monitors_iter`) is fully dropped
+                // before we take a mutable borrow on `ctx.g.clients`.
+                let target_mid: Option<usize> = ctx
                     .g
-                    .monitors
-                    .iter()
-                    .position(|m| m.num == target_num as i32)
-                {
+                    .monitors_iter()
+                    .find(|(_i, m)| m.num == target_num as i32)
+                    .map(|(i, _)| i);
+                if let Some(target_mid) = target_mid {
                     if let Some(c) = ctx.g.clients.get_mut(&win) {
                         c.mon_id = Some(target_mid);
                     }
@@ -338,7 +341,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
         .unwrap_or((None, 0));
 
     if let Some(mid) = client_mon_id {
-        if let Some(mon) = ctx.g.monitors.get(mid) {
+        if let Some(mon) = ctx.g.monitor(mid) {
             let active_tags = mon.tagset[mon.seltags as usize];
             if let Some(c) = ctx.g.clients.get_mut(&win) {
                 c.tags = if client_tags & tagmask != 0 {
@@ -434,11 +437,7 @@ pub fn update_wm_hints(ctx: &mut WmCtx, win: Window) {
 
     let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
-    let is_selected = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .is_some_and(|mon| mon.sel == Some(win));
+    let is_selected = ctx.g.selmon().is_some_and(|mon| mon.sel == Some(win));
 
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.

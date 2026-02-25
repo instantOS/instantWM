@@ -17,7 +17,7 @@ use super::LayoutKind;
 
 /// Number of tiled, visible clients on the *selected* monitor.
 pub fn client_count(g: &Globals) -> i32 {
-    let mon = match g.monitors.get(g.selmon) {
+    let mon = match g.selmon() {
         Some(m) => m,
         None => return 0,
     };
@@ -57,11 +57,7 @@ pub fn all_client_count(g: &Globals) -> i32 {
 /// Walk the client linked-list starting at `start_win` and return the first
 /// client that passes [`Client::is_visible_on_tags`].
 pub fn find_visible_client(g: &Globals, start_win: Option<Window>) -> Option<Window> {
-    let selected = g
-        .monitors
-        .get(g.selmon)
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
+    let selected = g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
     for (win, c) in crate::types::ClientListIter::new(start_win, &g.clients) {
         if c.is_visible_on_tags(selected) {
             return Some(win);
@@ -89,7 +85,7 @@ pub fn get_current_layout(g: &Globals, m: &Monitor) -> LayoutKind {
 
 /// Return the active layout symbol string for the *selected* monitor.
 pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
-    if let Some(m) = g.monitors.get(g.selmon) {
+    if let Some(m) = g.selmon() {
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             return Some(m.tags[tag - 1].layouts.symbol());
@@ -102,7 +98,7 @@ pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
 /// Returns `true` when the active layout for the *selected* monitor is
 /// a tiling layout.
 pub fn selmon_has_tiling_layout(g: &Globals) -> bool {
-    match g.monitors.get(g.selmon) {
+    match g.selmon() {
         Some(m) => {
             let tag = m.current_tag;
             if tag > 0 && tag <= m.tags.len() {

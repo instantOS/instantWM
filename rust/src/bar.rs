@@ -7,7 +7,7 @@ pub use model::{bar_position_at_x, bar_position_to_gesture};
 pub use x11::{resize_bar_win, resize_bar_win_ctx};
 
 use crate::contexts::WmCtx;
-use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut, get_x11};
+use crate::globals::{get_drw, get_drw_mut, get_globals};
 use crate::types::*;
 use model::ClientBarStats;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
@@ -41,7 +41,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         std::process::abort();
     }
 
-    let m_info = match ctx.g.monitors.get(mon_idx) {
+    let m_info = match ctx.g.monitor(mon_idx) {
         Some(m) => {
             if !m.shows_bar() || PAUSEDRAW.load(Ordering::Relaxed) {
                 DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
@@ -64,8 +64,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     let is_selmon = ctx
         .g
-        .monitors
-        .get(ctx.g.selmon)
+        .selmon()
         .is_some_and(|selmon| selmon.num == monitor_num);
 
     let systray_width = if ctx.g.cfg.showsystray && is_selmon {
@@ -76,7 +75,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     let (status_start_x, status_width) = if is_selmon {
         let ctx_imm = &*ctx;
-        let m = ctx_imm.g.monitors.get(mon_idx).unwrap();
+        let m = ctx_imm.g.monitor(mon_idx).unwrap();
         status::draw_status_bar(ctx_imm, m, bh)
     } else {
         (0, 0)
@@ -90,12 +89,12 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     {
         let ctx_imm = &*ctx;
-        let m = ctx_imm.g.monitors.get(mon_idx).unwrap();
+        let m = ctx_imm.g.monitor(mon_idx).unwrap();
         x11::resize_bar_win_ctx(ctx_imm, m);
     }
 
     let (occupied_tags, urgent_tags, visible_clients) = {
-        let m = ctx.g.monitors.get(mon_idx).unwrap();
+        let m = ctx.g.monitor(mon_idx).unwrap();
         let stats = ClientBarStats::collect(m, ctx.g);
         (
             stats.occupied_tags,
@@ -106,11 +105,11 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     let mut x = ctx.g.cfg.startmenusize;
 
-    let mon_has_sel = ctx.g.monitors.get(mon_idx).is_some_and(|m| m.sel.is_some());
+    let mon_has_sel = ctx.g.monitor(mon_idx).is_some_and(|m| m.sel.is_some());
 
     {
         let ctx_imm = &*ctx;
-        let m = ctx_imm.g.monitors.get(mon_idx).unwrap();
+        let m = ctx_imm.g.monitor(mon_idx).unwrap();
         x = widgets::draw_tag_indicators(ctx_imm, m, x, occupied_tags, urgent_tags, bh);
         x = widgets::draw_layout_indicator(ctx_imm, m, x, bh);
     }
@@ -130,11 +129,11 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     let mut new_activeoffset = None;
     if title_width > bh {
-        let m = ctx.g.monitors.get(mon_idx).unwrap();
+        let m = ctx.g.monitor(mon_idx).unwrap();
         new_activeoffset = widgets::draw_window_titles(m, x, title_width, visible_clients, bh);
     }
 
-    if let Some(m) = ctx.g.monitors.get_mut(mon_idx) {
+    if let Some(m) = ctx.g.monitor_mut(mon_idx) {
         m.bt = visible_clients;
         m.bar_clients_width = title_width;
         if let Some(offset) = new_activeoffset {
@@ -148,25 +147,24 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {
-    let monitor_count = ctx.g.monitors.len();
-    for i in 0..monitor_count {
+    let indices: Vec<usize> = ctx.g.monitors_iter().map(|(i, _)| i).collect();
+    for i in indices {
         draw_bar(ctx, i);
     }
 }
 
 pub fn reset_bar(ctx: &mut WmCtx) {
-    let selmon_idx = ctx.g.selmon;
+    let selmon_idx = ctx.g.selmon_id();
 
     let should_reset = ctx
         .g
-        .monitors
-        .get(selmon_idx)
+        .selmon()
         .is_some_and(|selmon| selmon.gesture != Gesture::None);
     if !should_reset {
         return;
     }
 
-    if let Some(selmon) = ctx.g.monitors.get_mut(selmon_idx) {
+    if let Some(selmon) = ctx.g.selmon_mut() {
         selmon.gesture = Gesture::None;
     }
 

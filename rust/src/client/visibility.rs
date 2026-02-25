@@ -105,7 +105,7 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
 
     let selected_tags = c
         .mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
+        .and_then(|mid| ctx.g.monitor(mid))
         .map(|m| m.selected_tags())
         .unwrap_or(0);
     let is_vis = c.is_visible_on_tags(selected_tags);
@@ -144,7 +144,7 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
             .unwrap_or((false, false, false, None, 0, 0));
 
         let is_tiling = mon_id
-            .and_then(|mid| ctx.g.monitors.get(mid))
+            .and_then(|mid| ctx.g.monitor(mid))
             .map(|mon| mon.is_tiling_layout())
             .unwrap_or(false);
 

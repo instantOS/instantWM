@@ -9,12 +9,10 @@ use crate::contexts::WmCtx;
 use crate::tags::view;
 use crate::types::*;
 use crate::util::X11ConnExt;
-use anyhow::Context;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
-use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
 /// Set focus to a window, or to the root if None.
@@ -26,8 +24,8 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
         if ctx.g.monitors.is_empty() {
             return Ok(());
         }
-        let sel_mon_id = ctx.g.selmon;
-        let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
+        let sel_mon_id = ctx.g.selmon_id();
+        let Some(mon) = ctx.g.selmon() else {
             return Ok(());
         };
 
@@ -81,7 +79,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
         unfocus_win(ctx, cur_win, false);
     }
 
-    if let Some(mon) = ctx.g.monitors.get_mut(sel_mon_id) {
+    if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
         if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
             mon.gesture = Gesture::None;
@@ -139,7 +137,7 @@ pub fn focus_direction<F>(ctx: &WmCtx, direction: Direction, focus_fn: F)
 where
     F: FnOnce(Option<Window>),
 {
-    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+    let Some(mon) = ctx.g.selmon() else {
         focus_fn(None);
         return;
     };
@@ -270,8 +268,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
         if ctx.g.monitors.is_empty() {
             return;
         }
-        let sel_mon_id = ctx.g.selmon;
-        let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         let Some(source_win) = mon.sel else {
@@ -321,11 +318,11 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_mon_id = last_client.mon_id;
 
     if let Some(last_mid) = last_mon_id {
-        let sel_mon_id = ctx.g.selmon;
+        let sel_mon_id = ctx.g.selmon_id();
         if !ctx.g.monitors.is_empty() && sel_mon_id != last_mid {
-            if let Some(sel) = ctx.g.monitors.get(sel_mon_id).and_then(|m| m.sel) {
+            if let Some(sel) = ctx.g.monitor(sel_mon_id).and_then(|m| m.sel) {
                 unfocus_win(ctx, sel, false);
-                ctx.g.selmon = last_mid;
+                ctx.g.set_selmon(last_mid);
             }
         }
     }
@@ -338,7 +335,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     //TODO: do error propagation
     focus(ctx, Some(last_win));
 
-    let mon_id = ctx.g.selmon;
+    let mon_id = ctx.g.selmon_id();
     crate::layouts::arrange(ctx, Some(mon_id));
 }
 
@@ -390,7 +387,7 @@ pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
     //TODO: get rid of magic number
     if c_win == 0 {
         if !ctx.g.monitors.is_empty() {
-            if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+            if let Some(mon) = ctx.g.selmon() {
                 let _ = conn.warp_pointer(
                     CURRENT_TIME,
                     root,
@@ -416,7 +413,7 @@ pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
                     && y < c.geo.y + c.geo.h + c.border_width * 2);
 
             let on_bar = if let Some(mon_id) = c.mon_id {
-                if let Some(mon) = ctx.g.monitors.get(mon_id) {
+                if let Some(mon) = ctx.g.monitor(mon_id) {
                     (y > mon.by && y < mon.by + bh) || (mon.topbar && y == 0)
                 } else {
                     false
@@ -490,7 +487,7 @@ pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<Window>),
 {
-    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+    let Some(mon) = ctx.g.selmon() else {
         focus_fn(None);
         return;
     };
@@ -542,8 +539,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         if ctx.g.monitors.is_empty() {
             return;
         }
-        let sel_mon_id = ctx.g.selmon;
-        let Some(mon) = ctx.g.monitors.get(sel_mon_id) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         get_visible_stack(mon, &ctx.g.clients)
@@ -571,5 +567,5 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 fn get_selected_window(ctx: &WmCtx) -> Option<Window> {
-    ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel)
+    ctx.g.selected_win()
 }

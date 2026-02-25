@@ -14,7 +14,7 @@ use x11rb::protocol::xproto::Window;
 /// should be no-ops when a tiling layout is active and the window is not
 /// explicitly floating.
 pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
-    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+    if let Some(mon) = ctx.g.selmon() {
         return mon.is_tiling_layout();
     }
     true
@@ -33,7 +33,7 @@ pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
         if client.isfloating {
             return true;
         }
-        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if let Some(mon) = ctx.g.selmon() {
             if !mon.is_tiling_layout() {
                 return true;
             }
@@ -50,12 +50,7 @@ pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
 /// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
 pub fn visible_client(ctx: &WmCtx, win: Window) -> bool {
-    let selected = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
+    let selected = ctx.g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
     ctx.g
         .clients
         .get(&win)

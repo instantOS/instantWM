@@ -30,7 +30,7 @@ fn get_monitor_size(win: Window) -> (i32, i32) {
         .clients
         .get(&win)
         .and_then(|c| c.mon_id)
-        .and_then(|mon_id| globals.monitors.get(mon_id))
+        .and_then(|mon_id| globals.monitor(mon_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
         .unwrap_or((0, 0))
 }
@@ -202,10 +202,10 @@ pub fn down_scale_client(ctx: &mut WmCtx, win: Window) {
 }
 
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
-    let sel_mon = ctx.g.selmon;
+    let sel_mon = ctx.g.selmon_id();
 
     let (_is_floating, has_tiling, current_tag) = {
-        let mon = match ctx.g.monitors.get(sel_mon) {
+        let mon = match ctx.g.selmon() {
             Some(m) => m,
             None => return,
         };
@@ -234,7 +234,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 
     if !has_tiling {
-        if let Some(sel_win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
+        if let Some(sel_win) = ctx.g.selected_win() {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,
@@ -280,7 +280,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
 
 fn check_client_on_target_tag(sel_mon: MonitorId, target: u32) {
     let globals = get_globals();
-    if let Some(mon) = globals.monitors.get(sel_mon) {
+    if let Some(mon) = globals.monitor(sel_mon) {
         for (_c_win, c) in mon.iter_clients(&globals.clients) {
             let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
         }

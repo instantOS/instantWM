@@ -23,7 +23,7 @@ pub fn update_status(ctx: &mut WmCtx) {
         }
     }
 
-    let selmon_idx = ctx.g.selmon;
+    let selmon_idx = ctx.g.selmon_id();
     super::draw_bar(ctx, selmon_idx);
 
     crate::systray::update_systray(ctx);
@@ -42,10 +42,7 @@ pub fn resize_bar_win(m: &Monitor) {
     let g = get_globals();
     let bh = g.cfg.bh;
     let showsystray = g.cfg.showsystray;
-    let is_selmon = g
-        .monitors
-        .get(g.selmon)
-        .is_some_and(|selmon| selmon.num == m.num);
+    let is_selmon = g.selmon().is_some_and(|selmon| selmon.num == m.num);
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
@@ -93,11 +90,7 @@ fn get_systray_width_static() -> u32 {
 pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
     let bh = ctx.g.cfg.bh;
     let showsystray = ctx.g.cfg.showsystray;
-    let is_selmon = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .is_some_and(|selmon| selmon.num == m.num);
+    let is_selmon = ctx.g.selmon().is_some_and(|selmon| selmon.num == m.num);
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
@@ -129,21 +122,17 @@ pub fn update_bars(ctx: &mut WmCtx) {
         );
         let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
         let root = ctx.g.cfg.root;
-        let selmon = ctx.g.selmon;
+        let selmon = ctx.g.selmon_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<usize, u32> =
             std::collections::HashMap::new();
         if showsystray {
-            for i in 0..ctx.g.monitors.len() {
-                if selmon == i {
-                    systray_widths.insert(i, crate::systray::get_systray_width(ctx));
-                }
-            }
+            systray_widths.insert(selmon, crate::systray::get_systray_width(ctx));
         }
 
         let mut bar_configs = Vec::new();
-        for (i, m) in ctx.g.monitors.iter().enumerate() {
+        for (i, m) in ctx.g.monitors_iter() {
             if m.barwin != 0 {
                 continue;
             }
@@ -192,7 +181,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
             let _ = conn.map_window(win_id);
             let _ = conn.flush();
 
-            if let Some(mon) = ctx.g.monitors.get_mut(i) {
+            if let Some(mon) = ctx.g.monitor_mut(i) {
                 mon.barwin = win_id;
             }
         }
@@ -210,8 +199,7 @@ pub fn toggle_bar() {
         tmp_no_anim = true;
     }
 
-    let selmon_idx = g.selmon;
-    if let Some(selmon) = g.monitors.get_mut(selmon_idx) {
+    if let Some(selmon) = g.selmon_mut() {
         selmon.showbar = !selmon.showbar;
 
         let current_tag = selmon.current_tag;

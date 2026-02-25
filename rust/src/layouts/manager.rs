@@ -17,7 +17,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
 
     if let Some(id) = mon_id {
         // First pass: show/hide stack
-        let stack = ctx.g.monitors.get(id).map(|m| m.stack);
+        let stack = ctx.g.monitor(id).map(|m| m.stack);
         if let Some(stack) = stack {
             crate::client::show_hide(ctx, stack);
         }
@@ -39,13 +39,16 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
             arrange_monitor(ctx, idx);
             restack(ctx, idx);
         }
+        // NOTE: arrange(None) intentionally uses a raw index loop because it
+        // needs to call mutable methods between iterations; monitors_iter_mut
+        // cannot be used here without borrow conflicts.
     }
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     // Get client count first
     let clientcount = {
-        let m = ctx.g.monitors.get(mon_id).expect("invalid monitor");
+        let m = ctx.g.monitor(mon_id).expect("invalid monitor");
         client_count_mon(ctx.g, m) as u32
     };
 
@@ -59,13 +62,13 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     place_overlay(ctx, mon_id);
 
     // Update client count
-    if let Some(m) = ctx.g.monitors.get_mut(mon_id) {
+    if let Some(m) = ctx.g.monitor_mut(mon_id) {
         m.clientcount = clientcount;
     }
 }
 
 fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let m = match ctx.g.monitors.get(mon_id) {
+    let m = match ctx.g.monitor(mon_id) {
         Some(m) => m,
         None => return,
     };
@@ -98,17 +101,13 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let layout = ctx
-        .g
-        .monitors
-        .get(mon_id)
-        .map(|m| get_current_layout(ctx.g, m));
+    let layout = ctx.g.monitor(mon_id).map(|m| get_current_layout(ctx.g, m));
     if let Some(layout) = layout {
         // Clone the monitor so that `layout.arrange` can receive both
         // `&mut WmCtx` and `&mut Monitor` without a split-borrow conflict.
         // Layout algorithms only modify clients via `ctx.g.clients` and read
         // monitor data from `m`; restack is handled by the caller.
-        if let Some(mut m) = ctx.g.monitors.get(mon_id).cloned() {
+        if let Some(mut m) = ctx.g.monitor(mon_id).cloned() {
             layout.arrange(ctx, &mut m);
             ctx.g.monitors[mon_id] = m;
         }
@@ -116,7 +115,7 @@ fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 }
 
 fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let overlay_win = match ctx.g.monitors.get(mon_id).and_then(|m| m.overlay) {
+    let overlay_win = match ctx.g.monitor(mon_id).and_then(|m| m.overlay) {
         Some(w) => w,
         None => return,
     };
@@ -133,7 +132,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         .get(&overlay_win)
         .map_or(0, |c| c.border_width);
 
-    let geo = if let Some(m) = ctx.g.monitors.get(mon_id) {
+    let geo = if let Some(m) = ctx.g.monitor(mon_id) {
         Rect {
             x: m.work_rect.x,
             y: m.work_rect.y,
@@ -150,8 +149,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     let is_overview = ctx
         .g
-        .monitors
-        .get(mon_id)
+        .monitor(mon_id)
         .map(|m| get_current_layout(ctx.g, m).is_overview())
         .unwrap_or(false);
     if is_overview {
@@ -159,7 +157,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     }
     draw_bar(ctx, mon_id);
 
-    let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
+    let m = ctx.g.monitor_mut(mon_id).expect("invalid monitor");
     let sel_win = match m.sel {
         Some(w) => w,
         None => return,
@@ -167,12 +165,17 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 
     let is_tiling = ctx
         .g
-        .monitors
-        .get(mon_id)
+        .monitor(mon_id)
         .map(|mon| get_current_layout(ctx.g, mon).is_tiling())
         .unwrap_or(true);
 
-    let m = ctx.g.monitors.get_mut(mon_id).expect("invalid monitor");
+    // Extract the fields we need from the monitor before we start borrowing
+    // `ctx.g.clients`, since holding a `&mut Monitor` and a `&clients` at the
+    // same time would be a simultaneous mutable + immutable borrow of `ctx.g`.
+    let (barwin, stack_head, selected_tags) = {
+        let m = ctx.g.monitor_mut(mon_id).expect("invalid monitor");
+        (m.barwin, m.stack, m.selected_tags())
+    };
     {
         let conn = ctx.x11.conn;
         let is_floating = ctx
@@ -193,15 +196,15 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         if is_tiling {
             let mut wc = ConfigureWindowAux::new()
                 .stack_mode(StackMode::BELOW)
-                .sibling(m.barwin);
+                .sibling(barwin);
 
-            let mut s_win = m.stack;
+            let mut s_win = stack_head;
             while let Some(win) = s_win {
                 match ctx.g.clients.get(&win) {
                     None => break,
                     Some(c) => {
                         let is_win_floating = c.isfloating;
-                        let visible = c.is_visible_on_tags(m.selected_tags());
+                        let visible = c.is_visible_on_tags(selected_tags);
                         let snext = c.snext;
 
                         if !is_win_floating && visible {
@@ -235,8 +238,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
         return;
     }
 
-    let selmon = ctx.g.selmon;
-    if let Some(m) = ctx.g.monitors.get_mut(selmon) {
+    if let Some(m) = ctx.g.selmon_mut() {
         let current_tag = m.current_tag;
         if current_tag > 0 && current_tag <= m.tags.len() {
             m.tags[current_tag - 1].layouts.set_layout(layout);
@@ -260,8 +262,7 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
         return;
     }
 
-    let selmon = ctx.g.selmon;
-    if let Some(m) = ctx.g.monitors.get_mut(selmon) {
+    if let Some(m) = ctx.g.selmon_mut() {
         let current_tag = m.current_tag;
         if current_tag > 0 && current_tag <= m.tags.len() {
             m.tags[current_tag - 1].layouts.toggle_slot();
@@ -285,8 +286,7 @@ pub fn restore_last_layout(ctx: &mut WmCtx<'_>) {
         return;
     }
 
-    let selmon = ctx.g.selmon;
-    if let Some(m) = ctx.g.monitors.get_mut(selmon) {
+    if let Some(m) = ctx.g.selmon_mut() {
         let current_tag = m.current_tag;
         if current_tag > 0 && current_tag <= m.tags.len() {
             m.tags[current_tag - 1].layouts.restore_last_layout();
@@ -297,8 +297,8 @@ pub fn restore_last_layout(ctx: &mut WmCtx<'_>) {
 }
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selmon = ctx.g.selmon;
-    let sel = ctx.g.monitors.get(selmon).and_then(|m| m.sel);
+    let selmon = ctx.g.selmon_id();
+    let sel = ctx.g.selmon().and_then(|m| m.sel);
 
     if sel.is_some() {
         arrange(ctx, Some(selmon));
@@ -308,11 +308,7 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| get_current_layout(ctx.g, m));
+    let current_layout = ctx.g.selmon().map(|m| get_current_layout(ctx.g, m));
 
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
@@ -361,7 +357,7 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = client_count(ctx.g);
 
     {
-        if let Some(m) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        if let Some(m) = ctx.g.selmon_mut() {
             if delta > 0 && m.nmaster >= ccount {
                 m.nmaster = ccount;
                 return;
@@ -377,7 +373,7 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
         }
     }
 
-    let selmon = ctx.g.selmon;
+    let selmon = ctx.g.selmon_id();
     arrange(ctx, Some(selmon));
 }
 
@@ -388,8 +384,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
 
     let is_tiling = ctx
         .g
-        .monitors
-        .get(ctx.g.selmon)
+        .selmon()
         .map(|m| get_current_layout(ctx.g, m).is_tiling())
         .unwrap_or(false);
 
@@ -397,12 +392,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let current_mfact = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.mfact)
-        .unwrap_or(0.55);
+    let current_mfact = ctx.g.selmon().map(|m| m.mfact).unwrap_or(0.55);
 
     let new_mfact = if mfact_val < 1.0 {
         mfact_val + current_mfact
@@ -420,8 +410,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     }
 
     {
-        let selmon = ctx.g.selmon;
-        if let Some(m) = ctx.g.monitors.get_mut(selmon) {
+        if let Some(m) = ctx.g.selmon_mut() {
             m.mfact = new_mfact;
             let tag = m.current_tag;
             if tag > 0 && tag <= m.tags.len() {
@@ -430,7 +419,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         }
     }
 
-    let selmon = ctx.g.selmon;
+    let selmon = ctx.g.selmon_id();
     arrange(ctx, Some(selmon));
 
     if animation_on {

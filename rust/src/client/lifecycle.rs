@@ -92,7 +92,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
                 c.tags = tc.tags;
             }
         } else {
-            c.mon_id = Some(ctx.g.selmon);
+            c.mon_id = Some(ctx.g.selmon_id());
         }
     }
 
@@ -124,7 +124,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     let (_mon_showbar, mon_work_rect, mon_monitor_rect) = {
         let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
         mon_id
-            .and_then(|mid| ctx.g.monitors.get(mid))
+            .and_then(|mid| ctx.g.monitor(mid))
             .map(|m| (m.showbar, m.work_rect, m.monitor_rect))
             .unwrap_or((false, Rect::default(), Rect::default()))
     };
@@ -148,7 +148,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     let is_monocle = {
         let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
         mon_id
-            .and_then(|mid| ctx.g.monitors.get(mid))
+            .and_then(|mid| ctx.g.monitor(mid))
             .map(|mon| !mon.is_tiling_layout())
             .unwrap_or(false)
     };
@@ -316,7 +316,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     }
 
     // Unfocus the previously selected window before reassigning sel.
-    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+    let sel_win = ctx.g.selected_win();
 
     if let Some(sel_win) = sel_win {
         unfocus_win(ctx, sel_win, false);
@@ -327,7 +327,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 
     let animated = ctx.g.animated;
     if let Some(mon_id) = c.mon_id {
-        if let Some(mon) = ctx.g.monitors.get_mut(mon_id) {
+        if let Some(mon) = ctx.g.monitor_mut(mon_id) {
             mon.sel = Some(w);
         }
     }
@@ -373,7 +373,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 
         let is_tiling = c
             .mon_id
-            .and_then(|mid| ctx.g.monitors.get(mid))
+            .and_then(|mid| ctx.g.monitor(mid))
             .map(|mon| mon.is_tiling_layout())
             .unwrap_or(false);
 
@@ -407,7 +407,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
     // Clear overlay and fullscreen references so those code paths don't hold
     // dangling window IDs after the client is gone.
     {
-        for mon in &mut ctx.g.monitors {
+        for (_id, mon) in ctx.g.monitors_iter_mut() {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
             }
@@ -548,7 +548,11 @@ fn read_client_info(ctx: &mut WmCtx, w: Window) {
     let tags = data.next().unwrap_or(0);
     let mon_num = data.next().unwrap_or(0);
 
-    let target_mon = ctx.g.monitors.iter().position(|m| m.num as u32 == mon_num);
+    let target_mon = ctx
+        .g
+        .monitors_iter()
+        .find(|(_i, m)| m.num as u32 == mon_num)
+        .map(|(i, _)| i);
 
     if let Some(client) = ctx.g.clients.get_mut(&w) {
         client.tags = tags;

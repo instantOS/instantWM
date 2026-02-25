@@ -19,6 +19,12 @@ use crate::types::tag::Tag;
 /// geometry, tag state, client lists, and UI configuration.
 #[derive(Debug, Clone)]
 pub struct Monitor {
+    /// Position of this monitor in the global monitors Vec (its `MonitorId`).
+    ///
+    /// This is set by `Globals` whenever the monitor is inserted or the vec is
+    /// compacted after a removal.  Code should read it via `Monitor::id()`
+    /// rather than accessing the field directly.
+    pub(crate) monitor_id: usize,
     /// Master factor for tiling layouts (0.0 to 1.0).
     pub mfact: f32,
     /// Number of clients in the master area for tiling layouts.
@@ -80,6 +86,7 @@ pub struct Monitor {
 impl Default for Monitor {
     fn default() -> Self {
         Self {
+            monitor_id: 0,
             mfact: 0.55,
             nmaster: 1,
             num: 0,
@@ -128,8 +135,18 @@ impl Monitor {
             current_tag: 1,
             prev_tag: 1,
             tags: Vec::new(),
+            monitor_id: 0,
             ..Default::default()
         }
+    }
+
+    /// Return the `MonitorId` (index into `Globals::monitors`) of this monitor.
+    ///
+    /// This is kept in sync by `Globals` whenever monitors are added or removed,
+    /// so it is always valid for the lifetime of the monitor.
+    #[inline]
+    pub fn id(&self) -> usize {
+        self.monitor_id
     }
 
     /// Initialize tags from a template.

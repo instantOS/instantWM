@@ -53,7 +53,7 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
                 break;
             }
         }
-        let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+        let sel_win = ctx.g.selected_win();
         if result.is_none() && sel_win.is_none() {
             for key in &dkeys {
                 if keysym == key.keysym
@@ -134,7 +134,7 @@ pub fn grab_keys(ctx: &WmCtx) {
             }
         }
 
-        let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+        let sel_win = ctx.g.selected_win();
         if sel_win.is_none() {
             for key in dkeys {
                 let keysym = get_keysym(keycode);
@@ -197,7 +197,7 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
 
 pub fn up_press(ctx: &mut WmCtx) {
     let (sel_win, overlay_win, is_floating) = {
-        let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         let sel = mon.sel;
@@ -233,7 +233,7 @@ pub fn down_press(ctx: &mut WmCtx) {
     }
 
     let (sel_win, overlay_win, snapstatus, is_floating) = {
-        let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         let sel = mon.sel;
@@ -266,29 +266,25 @@ pub fn down_press(ctx: &mut WmCtx) {
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: i32) {
-    let is_overview = {
-        ctx.g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(false)
-    };
+    let is_overview = ctx
+        .g
+        .selmon()
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(false);
 
     if is_overview {
         direction_focus(ctx, Direction::Up);
         return;
     }
 
-    let has_tiling = {
-        ctx.g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(true)
-    };
+    let has_tiling = ctx
+        .g
+        .selmon()
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(true);
 
     if !has_tiling {
-        if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
+        if let Some(win) = ctx.g.selected_win() {
             let conn = ctx.x11.conn;
             if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                 let _ = change_window_attributes(
@@ -308,29 +304,25 @@ pub fn up_key(ctx: &mut WmCtx, direction: i32) {
 
 //TODO: this should use the direction enum
 pub fn down_key(ctx: &mut WmCtx, direction: i32) {
-    let is_overview = {
-        ctx.g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(false)
-    };
+    let is_overview = ctx
+        .g
+        .selmon()
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(false);
 
     if is_overview {
         direction_focus(ctx, Direction::Down);
         return;
     }
 
-    let has_tiling = {
-        ctx.g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(true)
-    };
+    let has_tiling = ctx
+        .g
+        .selmon()
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(true);
 
     if !has_tiling {
-        if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
+        if let Some(win) = ctx.g.selected_win() {
             change_snap(ctx, win, SnapDir::Down);
         }
         return;
@@ -340,16 +332,14 @@ pub fn down_key(ctx: &mut WmCtx, direction: i32) {
 }
 
 pub fn space_toggle(ctx: &mut WmCtx) {
-    let has_tiling = {
-        ctx.g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(true)
-    };
+    let has_tiling = ctx
+        .g
+        .selmon()
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(true);
 
     if !has_tiling {
-        let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+        let Some(win) = ctx.g.selected_win() else {
             return;
         };
 
@@ -380,7 +370,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
                 client.snapstatus = SnapPosition::Maximized;
             }
 
-            arrange(ctx, Some(ctx.g.selmon));
+            arrange(ctx, Some(ctx.g.selmon_id()));
         }
     } else {
         toggle_floating(ctx);
@@ -397,7 +387,7 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: i32) {
     let (sel_win, selected, clients_head) = {
-        let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         (mon.sel, mon.selected_tags(), mon.clients)

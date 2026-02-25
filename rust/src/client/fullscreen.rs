@@ -145,7 +145,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
             }
 
             let mon_rect = mon_id
-                .and_then(|mid| get_globals().monitors.get(mid).map(|m| m.monitor_rect))
+                .and_then(|mid| get_globals().monitor(mid).map(|m| m.monitor_rect))
                 .unwrap_or_default();
 
             // Animate the expansion only for non-floating clients (floating
@@ -215,7 +215,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
 /// The `isfakefullscreen` flag itself is flipped at the end regardless of the
 /// current state.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return;
     };
 
@@ -241,8 +241,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
         if let Some(mid) = mon_id {
             let mon_rect = ctx
                 .g
-                .monitors
-                .get(mid)
+                .monitor(mid)
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
 

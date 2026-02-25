@@ -535,7 +535,7 @@ pub fn scale_client(ctx: &mut WmCtx, win: Window, scale: i32) {
     // Determine the reference rectangle (monitor bounds, or fall back to the
     // client's own geometry when no monitor is assigned).
     let mon_rect = mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid).map(|m| m.monitor_rect))
+        .and_then(|mid| ctx.g.monitor(mid).map(|m| m.monitor_rect))
         .unwrap_or(old_geo);
 
     let new_w = old_geo.w * scale / 100;

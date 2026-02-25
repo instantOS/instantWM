@@ -43,12 +43,12 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let numlockmask = ctx.g.cfg.numlockmask;
     let buttons_clone = ctx.g.cfg.buttons.clone();
     let altcursor = ctx.g.altcursor;
-    let mut selmon_id = ctx.g.selmon;
+    let mut selmon_id = ctx.g.selmon_id();
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
     if let Some(clicked_mon) = win_to_mon_with_ctx(ctx, e.event) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
-            ctx.g.selmon = clicked_mon;
+            ctx.g.set_selmon(clicked_mon);
             selmon_id = clicked_mon;
             focus(ctx, None);
         }
@@ -71,7 +71,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                 restack(ctx, mon_id);
             }
         }
-    } else if let Some(mon) = ctx.g.monitors.get(selmon_id) {
+    } else if let Some(mon) = ctx.g.monitor(selmon_id) {
         if e.event == mon.barwin {
             let position = bar_position_at_x(mon, ctx, e.event_x as i32);
             if position == BarPosition::StartMenu {
@@ -88,7 +88,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     };
 
     if bar_pos == BarPosition::Root {
-        if let Some(mon) = ctx.g.monitors.get(selmon_id) {
+        if let Some(mon) = ctx.g.monitor(selmon_id) {
             if let Some(sel_win) = mon.sel {
                 let is_floating = ctx
                     .g
@@ -188,8 +188,7 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
         // removesystrayicon(c) → resizebarwin(selmon) → updatesystray().
         systray::remove_systray_icon(ctx, icon);
         // Get monitor reference for resize_bar_win
-        let selmon_idx = ctx.g.selmon;
-        if let Some(mon) = ctx.g.monitors.get(selmon_idx) {
+        if let Some(mon) = ctx.g.selmon() {
             crate::bar::resize_bar_win(mon);
         }
         systray::update_systray(ctx);
@@ -215,18 +214,13 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // Get current selection info
     let (selmon_id, sel_win, is_floating_sel) = {
-        let selmon_id = ctx.g.selmon;
-        let sel_win = ctx.g.monitors.get(selmon_id).and_then(|m| m.sel);
+        let selmon_id = ctx.g.selmon_id();
+        let sel_win = ctx.g.selmon().and_then(|m| m.sel);
         let is_floating = sel_win
             .and_then(|w| ctx.g.clients.get(&w))
             .map(|c| c.isfloating)
             .unwrap_or(false);
-        let has_tiling = ctx
-            .g
-            .monitors
-            .get(selmon_id)
-            .map(|m| m.is_tiling_layout())
-            .unwrap_or(true);
+        let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
         (selmon_id, sel_win, is_floating || !has_tiling)
     };
 
@@ -241,12 +235,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // Handle floating window focus logic
     if let Some(client_win) = entering_client {
-        let selected = ctx
-            .g
-            .monitors
-            .get(selmon_id)
-            .map(|m| m.selected_tags())
-            .unwrap_or(0);
+        let selected = ctx.g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
         let is_visible = ctx
             .g
             .clients
@@ -283,12 +272,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                 .get(&client_win)
                 .map(|c| c.isfloating)
                 .unwrap_or(false);
-            let has_tiling = ctx
-                .g
-                .monitors
-                .get(selmon_id)
-                .map(|m| m.is_tiling_layout())
-                .unwrap_or(true);
+            let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
             // Skip focus for floating windows when not in floating layout
             if e.event != root && sel_win.is_some() && is_floating && has_tiling {
@@ -305,7 +289,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     // Handle monitor switching
     if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, e.event) {
         if new_mon_id != selmon_id {
-            ctx.g.selmon = new_mon_id;
+            ctx.g.set_selmon(new_mon_id);
             focus(ctx, None);
             return;
         }
@@ -315,11 +299,8 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     // This ensures we focus the topmost window when windows overlap
     if entering_client.is_some() || entering_root {
         if let Some(win) = get_cursor_client_win(ctx) {
-            let sel_id = ctx.g.selmon;
-            if let Some(mon) = ctx.g.monitors.get(sel_id) {
-                if mon.sel != Some(win) {
-                    focus(ctx, Some(win));
-                }
+            if ctx.g.selmon().map(|m| m.sel) != Some(Some(win)) {
+                focus(ctx, Some(win));
             }
         }
     };
@@ -343,11 +324,8 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
 }
 
 pub fn focus_in(ctx: &mut WmCtx, _e: &FocusInEvent) {
-    let sel_id = ctx.g.selmon;
-    if let Some(mon) = ctx.g.monitors.get(sel_id) {
-        if let Some(sel_win) = mon.sel {
-            crate::client::set_focus(ctx, sel_win);
-        }
+    if let Some(sel_win) = ctx.g.selected_win() {
+        crate::client::set_focus(ctx, sel_win);
     };
 }
 
@@ -381,7 +359,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
         return;
     };
 
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
     let tagwidth = get_tag_width(ctx);
 
     // Update cached tag width
@@ -394,7 +372,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     if ctx.g.focusfollowsmouse {
         if let Some(new_mon) = rect_to_mon(
             &ctx.g.monitors,
-            ctx.g.selmon,
+            ctx.g.selmon_id(),
             &Rect {
                 x: root_x,
                 y: root_y,
@@ -403,7 +381,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             },
         ) {
             if new_mon != selmon_id {
-                ctx.g.selmon = new_mon;
+                ctx.g.set_selmon(new_mon);
                 focus(ctx, None);
                 return;
             }
@@ -412,7 +390,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
 
     // Early-out: cursor is below the bar area.
     let (monitor_y, bar_height, current_gesture) = {
-        let Some(mon) = ctx.g.monitors.get(selmon_id) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         (mon.monitor_rect.y, ctx.g.cfg.bh, mon.gesture)
@@ -435,7 +413,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     // Compute the bar position from the cursor's monitor-local x coordinate,
     // then convert to a gesture for hover highlighting.
     let new_gesture = {
-        let Some(mon) = ctx.g.monitors.get(selmon_id) else {
+        let Some(mon) = ctx.g.selmon() else {
             return;
         };
         let local_x = root_x - mon.monitor_rect.x;
@@ -452,7 +430,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     };
 
     if new_gesture != current_gesture {
-        if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
+        if let Some(mon) = ctx.g.selmon_mut() {
             mon.gesture = new_gesture;
         }
         draw_bar(ctx, selmon_id);
@@ -539,7 +517,7 @@ pub fn leave_notify(ctx: &mut WmCtx, e: &LeaveNotifyEvent) {
         if let Some((px, py)) = ptr {
             if let Some(hover_win) = find_floating_win_at_resize_border(ctx, px, py) {
                 if hover_win == leaving_win {
-                    if ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win) {
+                    if ctx.g.selected_win() != Some(hover_win) {
                         focus(ctx, Some(hover_win));
                     }
                     if hover_resize_mouse(ctx) {}
@@ -556,7 +534,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         return;
     };
 
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
     let systray_win_opt = ctx.g.systray.as_ref().map(|s| s.win);
     let statusescheme_bg_pixel = ctx
         .g
@@ -682,7 +660,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 
     let _ = conn.flush();
 
-    if let Some(mon) = ctx.g.monitors.get(selmon_id) {
+    if let Some(mon) = ctx.g.monitor(selmon_id) {
         crate::bar::resize_bar_win_ctx(ctx, mon);
     };
 
@@ -959,7 +937,7 @@ pub fn cleanup() {
     let _ = conn.grab_server();
 
     let globals = get_globals();
-    for mon in &globals.monitors {
+    for (_id, mon) in globals.monitors_iter() {
         let mut current = mon.clients;
         while let Some(win) = current {
             if let Some(c) = globals.clients.get(&win) {

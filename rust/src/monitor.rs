@@ -47,15 +47,9 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
         return;
     }
 
-    let barwin = ctx.g.monitors[mon_id].barwin;
+    let barwin = ctx.g.monitor(mon_id).map(|m| m.barwin).unwrap_or(0);
 
-    ctx.g.monitors.remove(mon_id);
-
-    if ctx.g.selmon == mon_id {
-        ctx.g.selmon = 0;
-    } else if ctx.g.selmon > mon_id {
-        ctx.g.selmon -= 1;
-    }
+    ctx.g.remove_monitor(mon_id);
 
     if barwin != 0 {
         {
@@ -98,16 +92,20 @@ pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Opti
 pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
     if w == ctx.g.cfg.root {
         if let Some((x, y)) = get_root_ptr_with_conn(ctx.x11.conn) {
-            return rect_to_mon(&ctx.g.monitors, ctx.g.selmon, &Rect { x, y, w: 1, h: 1 });
+            return rect_to_mon(
+                &ctx.g.monitors,
+                ctx.g.selmon_id(),
+                &Rect { x, y, w: 1, h: 1 },
+            );
         }
         return if ctx.g.monitors.is_empty() {
             None
         } else {
-            Some(ctx.g.selmon)
+            Some(ctx.g.selmon_id())
         };
     }
 
-    for (i, m) in ctx.g.monitors.iter().enumerate() {
+    for (i, m) in ctx.g.monitors_iter() {
         if w == m.barwin {
             return Some(i);
         }
@@ -120,7 +118,7 @@ pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
     if ctx.g.monitors.is_empty() {
         None
     } else {
-        Some(ctx.g.selmon)
+        Some(ctx.g.selmon_id())
     }
 }
 
@@ -130,7 +128,7 @@ pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
 /// assignment and tags, then reattaches it to the target monitor.
 /// Handles special cases like scratchpads and sticky windows.
 pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
-    if ctx.g.selmon == target_mon {
+    if ctx.g.selmon_id() == target_mon {
         return;
     }
 
@@ -201,13 +199,13 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorI
     }
 
     let sp_name = client.scratchpad_name.clone();
-    let current_mon = ctx.g.selmon;
+    let current_mon = ctx.g.selmon_id();
 
     // Unfocus on current monitor and switch to target
     if let Some(sel_win) = get_selected_client_win(current_mon) {
         unfocus_win(ctx, sel_win, false);
     }
-    ctx.g.selmon = target_mon;
+    ctx.g.set_selmon(target_mon);
 
     // Show the scratchpad on the target monitor
     crate::scratchpad::scratchpad_show_name(ctx, &sp_name);
@@ -216,7 +214,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorI
     if let Some(sel_win) = get_selected_client_win(target_mon) {
         unfocus_win(ctx, sel_win, false);
     }
-    ctx.g.selmon = current_mon;
+    ctx.g.set_selmon(current_mon);
 
     focus(ctx, None);
 }
@@ -235,21 +233,21 @@ pub fn focus_mon(ctx: &mut WmCtx, direction: i32) {
         return;
     }
 
-    let target = match find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon, direction) {
+    let target = match find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon_id(), direction) {
         Some(id) => id,
         None => return,
     };
 
-    if target == ctx.g.selmon {
+    if target == ctx.g.selmon_id() {
         return;
     }
 
-    let old_id = ctx.g.selmon;
-    if let Some(win) = ctx.g.monitors.get(old_id).and_then(|m| m.sel) {
+    let old_id = ctx.g.selmon_id();
+    if let Some(win) = ctx.g.monitor(old_id).and_then(|m| m.sel) {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.g.selmon = target;
+    ctx.g.set_selmon(target);
 
     focus(ctx, None);
 }
@@ -267,27 +265,20 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
         return;
     }
 
-    let mut target = 0;
-    for i in 0..index as usize {
-        if i + 1 < ctx.g.monitors.len() {
-            target = i + 1;
-        } else {
-            break;
-        }
-    }
+    let target = (index as usize).min(ctx.g.monitors.len() - 1);
 
-    let old_id = ctx.g.selmon;
-    if let Some(win) = ctx.g.monitors.get(old_id).and_then(|m| m.sel) {
+    let old_id = ctx.g.selmon_id();
+    if let Some(win) = ctx.g.monitor(old_id).and_then(|m| m.sel) {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.g.selmon = target;
+    ctx.g.set_selmon(target);
 
     focus(ctx, None);
 }
 
 pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
-    let c_win = match ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) {
+    let c_win = match ctx.g.selmon().and_then(|m| m.sel) {
         Some(w) => w,
         None => return,
     };
@@ -295,7 +286,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: i32) {
     crate::tags::tag_mon(ctx, direction);
 
     if let Some(mon_id) = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id) {
-        ctx.g.selmon = mon_id;
+        ctx.g.set_selmon(mon_id);
     }
 
     focus(ctx, Some(c_win));
@@ -415,6 +406,7 @@ fn cleanup_removed_monitors(start_idx: usize, x11: &crate::globals::X11Connectio
     let mut dirty = false;
 
     for i in (start_idx..get_globals().monitors.len()).rev() {
+        // NOTE: monitors.len() is re-evaluated each iteration as cleanup_monitor shrinks the vec
         dirty = move_clients_to_mon0(i) || dirty;
 
         let g = get_globals_mut();
@@ -500,7 +492,7 @@ fn update_from_xinerama(
 
     for (i, info) in unique.iter().enumerate() {
         let g = get_globals_mut();
-        if let Some(ref mut m) = g.monitors.get_mut(i) {
+        if let Some(m) = g.monitor_mut(i) {
             if update_monitor_geometry(m, i, info) {
                 dirty = true;
                 monitors_need_bar_update.push(i);
@@ -511,7 +503,7 @@ fn update_from_xinerama(
     // Update bar positions for changed monitors
     for idx in &monitors_need_bar_update {
         let g = get_globals_mut();
-        if let Some(ref mut m) = g.monitors.get_mut(*idx) {
+        if let Some(m) = g.monitor_mut(*idx) {
             update_bar_pos(m);
         }
     }
@@ -528,7 +520,7 @@ fn update_from_xinerama(
         // Create a temporary context to find the monitor for the root window
         let ctx = WmCtx::new(g, x11.as_conn());
         if let Some(m) = win_to_mon_with_ctx(&ctx, x11.screen_num as u32) {
-            ctx.g.selmon = m;
+            ctx.g.set_selmon(m);
         }
     }
 
@@ -585,15 +577,11 @@ fn get_root_ptr() -> Option<(i32, i32)> {
 
 fn get_selected_client(mon_id: MonitorId) -> Option<Client> {
     let g = get_globals();
-    if let Some(mon) = g.monitors.get(mon_id) {
-        if let Some(win) = mon.sel {
-            return g.clients.get(&win).cloned();
-        }
-    }
-    None
+    g.monitor(mon_id)
+        .and_then(|mon| mon.sel)
+        .and_then(|win| g.clients.get(&win).cloned())
 }
 
 fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
-    let g = get_globals();
-    g.monitors.get(mon_id).and_then(|m| m.sel)
+    get_globals().monitor(mon_id).and_then(|m| m.sel)
 }

@@ -58,7 +58,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if ctx.g.monitors.is_empty() {
         return;
     }
-    let (mon_x, mon_y, work_h, work_w, showbar, barwin) = match ctx.g.monitors.get(ctx.g.selmon) {
+    let (mon_x, mon_y, work_h, work_w, showbar, barwin) = match ctx.g.selmon() {
         Some(mon) => (
             mon.monitor_rect.x,
             mon.monitor_rect.y,

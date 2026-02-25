@@ -13,8 +13,7 @@ pub(crate) fn draw_startmenu_icon(ctx: &WmCtx, bh: i32) {
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
     let startmenu_invert = ctx
         .g
-        .monitors
-        .get(ctx.g.selmon)
+        .selmon()
         .is_some_and(|mon| mon.gesture == Gesture::StartMenu);
 
     let startmenu_size = ctx.g.cfg.startmenusize;
@@ -95,8 +94,7 @@ fn get_tag_scheme_from_globals(
 
     if occupied_tags & (1 << i) != 0 {
         let sel_has_tag = g
-            .monitors
-            .get(g.selmon)
+            .selmon()
             .and_then(|selmon| {
                 selmon
                     .sel
@@ -104,10 +102,7 @@ fn get_tag_scheme_from_globals(
             })
             .unwrap_or(false);
 
-        let is_selected = g
-            .monitors
-            .get(g.selmon)
-            .is_some_and(|selmon| selmon.num == m.num);
+        let is_selected = g.selmon().is_some_and(|selmon| selmon.num == m.num);
 
         if is_selected && sel_has_tag {
             return schemes.get(SchemeTag::Focus as usize).cloned();
@@ -153,12 +148,7 @@ pub(crate) fn draw_tag_indicators(
 
     let mut drw = get_drw().clone();
 
-    let selmon_gesture = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|s| s.gesture)
-        .unwrap_or_default();
+    let selmon_gesture = ctx.g.selmon().map(|s| s.gesture).unwrap_or_default();
 
     for t in &tags {
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
@@ -347,14 +337,10 @@ fn get_window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<ColorSch
         return None;
     }
 
-    let is_selected = g
-        .monitors
-        .get(g.selmon)
-        .is_some_and(|selmon| selmon.sel == Some(c.win));
+    let is_selected = g.selmon().is_some_and(|selmon| selmon.sel == Some(c.win));
 
     let is_overlay = g
-        .monitors
-        .get(g.selmon)
+        .selmon()
         .is_some_and(|selmon| selmon.overlay == Some(c.win));
 
     if is_selected {
@@ -383,8 +369,7 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
     let g = get_globals();
 
     let close_hovered = g
-        .monitors
-        .get(g.selmon)
+        .selmon()
         .is_some_and(|selmon| selmon.gesture == Gesture::CloseButton);
 
     let schemes = if close_hovered {
@@ -399,8 +384,7 @@ pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
         let scheme_idx = if c.islocked {
             SchemeClose::Locked as usize
         } else if g
-            .monitors
-            .get(g.selmon)
+            .selmon()
             .and_then(|selmon| {
                 selmon.sel.and_then(|sel_win| {
                     g.clients
@@ -464,7 +448,7 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
 fn draw_window_title(m: &Monitor, c: &Client, x: i32, width: i32, bh: i32) -> Option<u32> {
     let g = get_globals();
 
-    let is_hover = g.monitors.get(g.selmon).is_some_and(|selmon| {
+    let is_hover = g.selmon().is_some_and(|selmon| {
         selmon.gesture == Gesture::None
             && selmon.sel.is_some_and(|sel_win| {
                 g.clients
@@ -491,10 +475,7 @@ fn draw_window_title(m: &Monitor, c: &Client, x: i32, width: i32, bh: i32) -> Op
         drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
     }
 
-    let is_selected = g
-        .monitors
-        .get(g.selmon)
-        .is_some_and(|selmon| selmon.sel == Some(c.win));
+    let is_selected = g.selmon().is_some_and(|selmon| selmon.sel == Some(c.win));
 
     if is_selected {
         draw_close_button(c, x, bh);
@@ -561,10 +542,7 @@ pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -
         }
         drw.rect(x, 0, w as u32, bh as u32, true, true);
 
-        let has_clients = g
-            .monitors
-            .get(g.selmon)
-            .is_some_and(|selmon| selmon.clients.is_some());
+        let has_clients = g.selmon().is_some_and(|selmon| selmon.clients.is_some());
 
         if !has_clients {
             let help_text = "Press space to launch an application";

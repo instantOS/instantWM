@@ -104,7 +104,7 @@ pub fn apply_float_change(
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
     let sel_win = {
-        let mon = match ctx.g.monitors.get(ctx.g.selmon) {
+        let mon = match ctx.g.selmon() {
             Some(m) => m,
             None => return,
         };
@@ -132,7 +132,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let new_state = !is_floating || is_fixed;
     apply_float_change(ctx, win, new_state, true, true);
-    arrange(ctx, Some(ctx.g.selmon));
+    arrange(ctx, Some(ctx.g.selmon_id()));
 }
 
 pub fn change_floating_win(ctx: &mut WmCtx, win: Window) {
@@ -147,7 +147,7 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: Window) {
 
     let new_state = !is_floating || is_fixed;
     apply_float_change(ctx, win, new_state, false, false);
-    arrange(ctx, Some(ctx.g.selmon));
+    arrange(ctx, Some(ctx.g.selmon_id()));
 }
 
 pub fn set_floating(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
@@ -166,7 +166,7 @@ pub fn set_floating(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
     apply_float_change(ctx, win, true, false, false);
 
     if should_arrange {
-        arrange(ctx, Some(ctx.g.selmon));
+        arrange(ctx, Some(ctx.g.selmon_id()));
     }
 }
 
@@ -186,13 +186,13 @@ pub fn set_tiled(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
     apply_float_change(ctx, win, false, false, false);
 
     if should_arrange {
-        arrange(ctx, Some(ctx.g.selmon));
+        arrange(ctx, Some(ctx.g.selmon_id()));
     }
 }
 
 pub fn temp_fullscreen(ctx: &mut WmCtx) {
     let (fullscreen_win, sel_win, animated) = {
-        let mon = match ctx.g.monitors.get(ctx.g.selmon) {
+        let mon = match ctx.g.selmon() {
             Some(m) => m,
             None => return,
         };
@@ -212,13 +212,13 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
             super::helpers::apply_size(ctx, win);
         }
 
-        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        if let Some(mon) = ctx.g.selmon_mut() {
             mon.fullscreen = None;
         }
     } else {
         let Some(win) = sel_win else { return };
 
-        if let Some(mon) = ctx.g.monitors.get_mut(ctx.g.selmon) {
+        if let Some(mon) = ctx.g.selmon_mut() {
             mon.fullscreen = Some(win);
         }
 
@@ -229,13 +229,13 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
 
     if animated {
         ctx.g.animated = false;
-        arrange(ctx, Some(ctx.g.selmon));
+        arrange(ctx, Some(ctx.g.selmon_id()));
         ctx.g.animated = true;
     } else {
-        arrange(ctx, Some(ctx.g.selmon));
+        arrange(ctx, Some(ctx.g.selmon_id()));
     }
 
-    if let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.fullscreen) {
+    if let Some(win) = ctx.g.selmon().and_then(|m| m.fullscreen) {
         let conn = ctx.x11.conn;
         let _ = configure_window(
             conn,

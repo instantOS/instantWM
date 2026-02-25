@@ -12,7 +12,6 @@ const XEMBED_WINDOW_ACTIVATE: u32 = 1;
 const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
-/// Get systray width using dependency injection.
 pub fn get_systray_width(ctx: &WmCtx) -> u32 {
     if !ctx.g.cfg.showsystray {
         return 1;

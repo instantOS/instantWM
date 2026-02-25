@@ -27,11 +27,11 @@ pub fn attach(win: Window) {
     let globals = get_globals_mut();
     let mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mon_id) = mon_id {
-        let old_head = globals.monitors.get(mon_id).and_then(|m| m.clients);
+        let old_head = globals.monitor(mon_id).and_then(|m| m.clients);
         if let Some(client) = globals.clients.get_mut(&win) {
             client.next = old_head;
         }
-        if let Some(mon) = globals.monitors.get_mut(mon_id) {
+        if let Some(mon) = globals.monitor_mut(mon_id) {
             mon.clients = Some(win);
         }
     }
@@ -52,7 +52,7 @@ pub fn detach(win: Window) {
 
     // Collect the traversal snapshot to avoid aliasing `clients` while mutating.
     let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
-    let mut current = globals.monitors[mon_id].clients;
+    let mut current = globals.monitor(mon_id).and_then(|m| m.clients);
     let mut prev: Option<Window> = None;
 
     while let Some(cur_win) = current {
@@ -71,7 +71,9 @@ pub fn detach(win: Window) {
                     }
                 }
                 None => {
-                    globals.monitors[mon_id].clients = client_next;
+                    if let Some(mon) = globals.monitor_mut(mon_id) {
+                        mon.clients = client_next;
+                    }
                 }
             }
             return;
@@ -88,11 +90,11 @@ pub fn attach_stack(win: Window) {
     let globals = get_globals_mut();
     let mon_id = globals.clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mon_id) = mon_id {
-        let old_stack = globals.monitors.get(mon_id).and_then(|m| m.stack);
+        let old_stack = globals.monitor(mon_id).and_then(|m| m.stack);
         if let Some(client) = globals.clients.get_mut(&win) {
             client.snext = old_stack;
         }
-        if let Some(mon) = globals.monitors.get_mut(mon_id) {
+        if let Some(mon) = globals.monitor_mut(mon_id) {
             mon.stack = Some(win);
         }
     }
@@ -114,7 +116,7 @@ pub fn detach_stack(win: Window) {
 
     // Snapshot the traversal to avoid aliasing.
     let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
-    let mut current = globals.monitors[mon_id].stack;
+    let mut current = globals.monitor(mon_id).and_then(|m| m.stack);
     let mut prev: Option<Window> = None;
 
     while let Some(cur_win) = current {
@@ -133,14 +135,19 @@ pub fn detach_stack(win: Window) {
                     }
                 }
                 None => {
-                    globals.monitors[mon_id].stack = client_snext;
+                    if let Some(mon) = globals.monitor_mut(mon_id) {
+                        mon.stack = client_snext;
+                    }
                 }
             }
 
             // If `win` was selected, pick the next visible non-hidden client.
-            if globals.monitors[mon_id].sel == Some(win) {
-                let selected = globals.monitors[mon_id].selected_tags();
-                let mut t = globals.monitors[mon_id].stack;
+            if globals.monitor(mon_id).and_then(|m| m.sel) == Some(win) {
+                let selected = globals
+                    .monitor(mon_id)
+                    .map(|m| m.selected_tags())
+                    .unwrap_or(0);
+                let mut t = globals.monitor(mon_id).and_then(|m| m.stack);
                 while let Some(t_win) = t {
                     let t_snext = globals.clients.get(&t_win).and_then(|tc| tc.snext);
                     let is_vis = globals
@@ -155,12 +162,16 @@ pub fn detach_stack(win: Window) {
                         .map(|tc| !tc.is_hidden)
                         .unwrap_or(true);
                     if is_vis && is_not_hidden {
-                        globals.monitors[mon_id].sel = Some(t_win);
+                        if let Some(mon) = globals.monitor_mut(mon_id) {
+                            mon.sel = Some(t_win);
+                        }
                         return;
                     }
                     t = t_snext;
                 }
-                globals.monitors[mon_id].sel = None;
+                if let Some(mon) = globals.monitor_mut(mon_id) {
+                    mon.sel = None;
+                }
             }
             return;
         }
@@ -176,11 +187,7 @@ pub fn detach_stack(win: Window) {
 pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
     let mut current = start_win;
     let globals = get_globals();
-    let selected = globals
-        .monitors
-        .get(globals.selmon)
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
+    let selected = globals.selmon().map(|m| m.selected_tags()).unwrap_or(0);
 
     while let Some(win) = current {
         if let Some(c) = globals.clients.get(&win) {

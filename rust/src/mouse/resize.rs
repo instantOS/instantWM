@@ -32,7 +32,7 @@ use crate::types::ResizeDirection;
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return;
     };
     let is_blocked = ctx
@@ -87,7 +87,7 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
 pub fn resize_mouse(ctx: &mut WmCtx) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return;
     };
     let is_blocked = ctx
@@ -137,12 +137,7 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
                 let snap = ctx.g.cfg.snap;
 
                 if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx
-                        .g
-                        .monitors
-                        .get(ctx.g.selmon)
-                        .map(|m| m.is_tiling_layout())
-                        .unwrap_or(true);
+                    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
                     if !client.isfloating
                         && has_tiling
@@ -178,7 +173,7 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
 pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirection>) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return;
     };
     let is_blocked = ctx
@@ -259,12 +254,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                 let snap = ctx.g.cfg.snap;
 
                 let should_toggle = if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx
-                        .g
-                        .monitors
-                        .get(ctx.g.selmon)
-                        .map(|m| m.is_tiling_layout())
-                        .unwrap_or(true);
+                    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
                     !client.isfloating
                         && has_tiling
@@ -283,12 +273,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                         .get(&win)
                         .map(|c| c.isfloating)
                         .unwrap_or(false);
-                    let has_tiling = ctx
-                        .g
-                        .monitors
-                        .get(ctx.g.selmon)
-                        .map(|m| m.is_tiling_layout())
-                        .unwrap_or(true);
+                    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
                     if !has_tiling || is_floating {
                         resize(

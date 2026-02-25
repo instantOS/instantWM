@@ -85,20 +85,15 @@ fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
 /// Find a visible floating window whose resize border zone contains (`px`, `py`).
 /// Returns `None` if the cursor is on the bar or no window matches.
 pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Option<Window> {
-    let has_tiling = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
-    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+    if let Some(mon) = ctx.g.selmon() {
         if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
             return None;
         }
     }
 
-    let mon = ctx.g.monitors.get(ctx.g.selmon)?;
+    let mon = ctx.g.selmon()?;
     let selected = mon.selected_tags();
     for (w, c) in mon.iter_clients(&ctx.g.clients) {
         if !c.is_visible_on_tags(selected) {
@@ -116,23 +111,18 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
 
 /// Return `true` when (`px`, `py`) is in the resize-border zone of the selected floating window.
 pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return false;
     };
     let Some(c) = ctx.g.clients.get(&win) else {
         return false;
     };
-    let has_tiling = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
     if !c.isfloating && has_tiling {
         return false;
     }
 
-    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+    if let Some(mon) = ctx.g.selmon() {
         if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bh {
             return false;
         }
@@ -142,14 +132,9 @@ pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
 
 /// Check whether any visible client on the current monitor is tiled.
 fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
-    let has_tiling = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
-    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+    let Some(mon) = ctx.g.selmon() else {
         return false;
     };
     let selected = mon.selected_tags();
@@ -182,7 +167,7 @@ pub fn handle_floating_resize_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -
             } else {
                 (1, ResizeDirection::BottomRight)
             };
-            let should_focus = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(win);
+            let should_focus = ctx.g.selected_win() != Some(win);
             (cursor_idx, dir, should_focus)
         };
 
@@ -204,7 +189,7 @@ pub fn handle_floating_resize_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -
 }
 
 pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {
+    let Some(mon) = ctx.g.selmon() else {
         return false;
     };
 
@@ -268,9 +253,8 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
                     .unwrap_or(false);
                 if !in_border {
                     // Focus the window under the cursor when leaving.
-                    let should_refocus = get_cursor_client_win(ctx).filter(|&hover_win| {
-                        ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) != Some(hover_win)
-                    });
+                    let should_refocus = get_cursor_client_win(ctx)
+                        .filter(|&hover_win| ctx.g.selected_win() != Some(hover_win));
                     if let Some(hover_win) = should_refocus {
                         focus(ctx, Some(hover_win));
                     }
@@ -288,7 +272,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
                 action_started = true;
                 ungrab_ctx(ctx);
 
-                let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+                let Some(win) = ctx.g.selected_win() else {
                     break;
                 };
                 let (geo, w, h) = {

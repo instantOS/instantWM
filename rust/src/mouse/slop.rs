@@ -145,7 +145,7 @@ pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
 pub fn draw_window(ctx: &mut WmCtx) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return;
     };
 

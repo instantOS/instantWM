@@ -34,7 +34,7 @@ use x11rb::protocol::xproto::*;
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
+    let Some(win) = ctx.g.selected_win() else {
         return;
     };
 
@@ -55,7 +55,7 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Only meaningful in a tiling layout with a non-floating window.
     let is_tiling = mon_id
-        .and_then(|mid| get_globals().monitors.get(mid))
+        .and_then(|mid| get_globals().monitor(mid))
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -65,7 +65,7 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Find the current master (first tiled client on the monitor).
     let first_tiled = mon_id
-        .and_then(|mid| get_globals().monitors.get(mid))
+        .and_then(|mid| get_globals().monitor(mid))
         .and_then(|mon| next_tiled(mon.clients));
 
     if first_tiled == Some(win) {
