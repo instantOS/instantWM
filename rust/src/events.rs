@@ -420,7 +420,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
         if handle_sidebar_hover(ctx, root_x, root_y) {
             return;
         }
-        reset_bar();
+        reset_bar(ctx);
         if ctx.g.altcursor == AltCursor::Sidebar {
             reset_cursor(ctx);
         }
@@ -449,7 +449,9 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     if new_gesture != current_gesture {
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
-            draw_bar(mon);
+            let mut m = mon.clone();
+            draw_bar(ctx, &mut m);
+            *mon = m;
         }
     };
 }
@@ -476,7 +478,7 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
             }
             x if x == AtomEnum::WM_HINTS.into() => {
                 update_wm_hints(ctx, win);
-                draw_bars();
+                draw_bars(ctx);
             }
             _ => {}
         }
@@ -520,7 +522,7 @@ pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtx, e: &LeaveNotifyEvent) {
-    reset_bar();
+    reset_bar(ctx);
 
     let leaving_client = win_to_client(e.event);
 

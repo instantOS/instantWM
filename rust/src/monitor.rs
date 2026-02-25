@@ -8,10 +8,7 @@
 //!
 //! ```ignore
 //! use crate::contexts::WmCtx;
-//! use crate::monitor::{create_monitor_with_ctx, win_to_mon_with_ctx, focus_mon};
-//!
-//! // Create a monitor from context
-//! let mon = create_monitor_with_ctx(&ctx);
+//! use crate::monitor::{win_to_mon_with_ctx, focus_mon};
 //!
 //! // Find which monitor a window belongs to
 //! let target = win_to_mon_with_ctx(&ctx, some_window);
@@ -41,33 +38,6 @@ use x11rb::protocol::xproto::Window;
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
-/// Create a new monitor with explicit values.
-///
-/// This function is useful when you need to create a monitor with
-/// specific configuration values different from the defaults.
-/// TODO: this is a very thin wrapper, remove, look for general structural improvements
-pub fn create_monitor_with_values(
-    mfact: f32,
-    nmaster: i32,
-    showbar: bool,
-    topbar: bool,
-) -> Monitor {
-    Monitor::new_with_values(mfact, nmaster, showbar, topbar)
-}
-
-/// Create a new monitor with default values from context.
-///
-/// This is the dependency-injected version that accepts a `WmCtx`.
-/// TODO: this is a very thin wrapper, remove
-pub fn create_monitor_with_ctx(ctx: &WmCtx) -> Monitor {
-    Monitor::new_with_values(
-        ctx.g.cfg.mfact,
-        ctx.g.cfg.nmaster,
-        ctx.g.cfg.showbar,
-        ctx.g.cfg.topbar,
-    )
-}
-
 /// Remove a monitor and clean up its resources.
 ///
 /// This function uses dependency injection by accepting a WmCtx
@@ -94,24 +64,6 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
             let _ = x11rb::protocol::xproto::destroy_window(conn, barwin);
         }
     }
-}
-
-/// Get the monitor ID in the given direction from the selected monitor.
-///
-/// This function uses dependency injection by accepting references to
-/// monitor state instead of accessing global state.
-///
-/// # Arguments
-/// * `monitors` - Slice of all monitors
-/// * `selmon` - Currently selected monitor ID
-/// * `dir` - Direction (> 0 for next, < 0 for previous)
-///
-/// # Returns
-/// * `Some(monitor_id)` - The target monitor ID
-/// * `None` - If there are no monitors
-//TODO: this is a very thin wrapper, remove
-pub fn dir_to_mon(monitors: &[Monitor], selmon: MonitorId, dir: i32) -> Option<MonitorId> {
-    find_monitor_by_direction(monitors, selmon, dir)
 }
 
 /// Find which monitor a rectangle intersects with the most.
@@ -404,7 +356,7 @@ fn ensure_monitor_count(count: usize) {
         (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
     while g.monitors.len() < count {
         g.monitors
-            .push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
+            .push(Monitor::new_with_values(mfact, nmaster, showbar, topbar));
     }
 }
 
@@ -479,7 +431,7 @@ fn init_single_monitor(sw: i32, sh: i32) -> bool {
     let (mfact, nmaster, showbar, topbar) =
         (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
     g.monitors
-        .push(create_monitor_with_values(mfact, nmaster, showbar, topbar));
+        .push(Monitor::new_with_values(mfact, nmaster, showbar, topbar));
     if let Some(ref mut m) = g.monitors.first_mut() {
         m.num = 0;
         m.monitor_rect = Rect {

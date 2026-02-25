@@ -18,7 +18,7 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
 /// Set focus to a window, or to the root if None.
-/// 
+///
 /// # Errors
 /// Returns an error if X11 operations fail (e.g., connection lost).
 pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
@@ -88,7 +88,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
         }
     }
 
-    draw_bars();
+    draw_bars(ctx);
 
     if let Some(w) = target.take() {
         let is_urgent = ctx.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
@@ -96,12 +96,14 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
             set_urgent(ctx, w, false);
         }
         set_focus(ctx, w);
+        Ok(())
     } else {
         let conn = ctx.x11.conn;
         // Use the _ctx methods for operations that should report errors
-        let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-        let _ = conn.delete_property_ctx(root, net_active_window);
-        let _ = conn.flush_ctx();
+        conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME)?;
+        conn.delete_property_ctx(root, net_active_window)?;
+        conn.flush_ctx()?;
+        Ok(())
     }
 }
 

@@ -13,7 +13,8 @@
 
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
-use crate::monitor::{dir_to_mon, transfer_client};
+use crate::monitor::transfer_client;
+use crate::types::monitor::find_monitor_by_direction;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -23,9 +24,10 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
 /// Send the selected client to the monitor in direction `direction`.
 ///
-/// `direction` is passed directly to [`dir_to_mon`] which resolves it to an
-/// absolute monitor index.  Positive values mean "next monitor", negative
-/// values mean "previous monitor" (matching the dwm convention).
+/// `direction` is passed directly to [`find_monitor_by_direction`] which
+/// resolves it to an absolute monitor index.  Positive values mean "next
+/// monitor", negative values mean "previous monitor" (matching the dwm
+/// convention).
 ///
 /// # Floating client repositioning
 ///
@@ -40,7 +42,7 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 /// # No-ops
 /// - No client is currently selected.
 /// - Only one monitor is connected.
-/// - [`dir_to_mon`] returns `None` (direction is out of range).
+/// - [`find_monitor_by_direction`] returns `None` (direction is out of range).
 pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
@@ -55,7 +57,8 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
         return;
     }
 
-    let Some(target_id) = dir_to_mon(&ctx.g.monitors, ctx.g.selmon, direction) else {
+    let Some(target_id) = find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon, direction)
+    else {
         return;
     };
 
