@@ -17,7 +17,7 @@
 //!     MotionNotify  → throttle → update
 //!     _             → ignore
 //! }
-//! ungrab(conn)
+//! ungrab_ctx(ctx)
 //! post-loop cleanup (bar drop, monitor switch, bar redraw, …)
 //! ```
 
@@ -34,13 +34,12 @@ use crate::monitor::is_current_layout_tiling;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
 use crate::types::SnapPosition;
 use crate::types::*;
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{
     DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH, REFRESH_RATE_HI, REFRESH_RATE_LO,
 };
-use super::grab::{grab_pointer, ungrab};
+use super::grab::{grab_pointer, ungrab_ctx, wait_event};
 use super::monitor::handle_client_monitor_switch;
 use super::warp::get_root_ptr;
 
@@ -556,11 +555,11 @@ pub fn move_mouse(ctx: &mut WmCtx) {
         return;
     };
 
-    let Some(conn) = grab_pointer(ctx, 2) else {
+    if !grab_pointer(ctx, 2) {
         return;
-    };
+    }
     let Some((start_x, start_y)) = get_root_ptr(ctx) else {
-        ungrab(conn);
+        ungrab_ctx(ctx);
         return;
     };
 
@@ -583,7 +582,7 @@ pub fn move_mouse(ctx: &mut WmCtx) {
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
         match &event {
@@ -607,7 +606,7 @@ pub fn move_mouse(ctx: &mut WmCtx) {
         }
     }
 
-    ungrab(conn);
+    ungrab_ctx(ctx);
     clear_bar_hover(ctx);
 
     if !apply_edge_drop(ctx, win, state.edge_snap_indicator) {
@@ -623,11 +622,11 @@ pub fn move_mouse(ctx: &mut WmCtx) {
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
 pub fn gesture_mouse(ctx: &mut WmCtx) {
-    let Some(conn) = grab_pointer(ctx, 2) else {
+    if !grab_pointer(ctx, 2) {
         return;
-    };
+    }
     let Some((_, start_y)) = get_root_ptr(ctx) else {
-        ungrab(conn);
+        ungrab_ctx(ctx);
         return;
     };
 
@@ -635,7 +634,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
         match &event {
@@ -667,7 +666,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
         }
     }
 
-    ungrab(conn);
+    ungrab_ctx(ctx);
 }
 
 // ── drag_tag ──────────────────────────────────────────────────────────────────
@@ -730,9 +729,9 @@ pub fn drag_tag(ctx: &mut WmCtx) {
         return;
     }
 
-    let Some(conn) = grab_pointer(ctx, 2) else {
+    if !grab_pointer(ctx, 2) {
         return;
-    };
+    }
 
     {
         ctx.g.bar_dragging = true;
@@ -747,7 +746,7 @@ pub fn drag_tag(ctx: &mut WmCtx) {
     let mut last_motion: Option<(i32, i32, u16)> = None;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
         match &event {
@@ -799,7 +798,7 @@ pub fn drag_tag(ctx: &mut WmCtx) {
         }
     }
 
-    ungrab(conn);
+    ungrab_ctx(ctx);
 
     if cursor_on_bar {
         if let Some((x, _, state)) = last_motion {
@@ -860,18 +859,18 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
     let was_focused = sel == Some(win);
     let was_hidden = crate::client::is_hidden(win);
 
-    let Some(conn) = grab_pointer(ctx, 0) else {
+    if !grab_pointer(ctx, 0) {
         return;
-    };
+    }
     let Some((start_x, start_y)) = get_root_ptr(ctx) else {
-        ungrab(conn);
+        ungrab_ctx(ctx);
         return;
     };
 
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
         match &event {
@@ -884,7 +883,7 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
                 if (m.event_x as i32 - start_x).abs() > DRAG_THRESHOLD
                     || (m.event_y as i32 - start_y).abs() > DRAG_THRESHOLD
                 {
-                    ungrab(conn);
+                    ungrab_ctx(ctx);
                     if was_hidden {
                         crate::client::show(ctx, win);
                     }
@@ -899,7 +898,7 @@ pub fn window_title_mouse_handler(ctx: &mut WmCtx, win: Window) {
     }
 
     // Only reached on ButtonRelease (click, not drag).
-    ungrab(conn);
+    ungrab_ctx(ctx);
     if was_hidden {
         // Unminimize: show the window, focus it, and restack.
         crate::client::show(ctx, win);
@@ -942,18 +941,18 @@ pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
 
     focus(ctx, Some(win));
 
-    let Some(conn) = grab_pointer(ctx, 2) else {
+    if !grab_pointer(ctx, 2) {
         return;
-    };
+    }
     let Some((start_x, start_y)) = get_root_ptr(ctx) else {
-        ungrab(conn);
+        ungrab_ctx(ctx);
         return;
     };
 
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
         match &event {
@@ -966,7 +965,7 @@ pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
                 if (m.event_x as i32 - start_x).abs() > DRAG_THRESHOLD
                     || (m.event_y as i32 - start_y).abs() > DRAG_THRESHOLD
                 {
-                    ungrab(conn);
+                    ungrab_ctx(ctx);
                     if crate::client::is_hidden(win) {
                         crate::client::show(ctx, win);
                         focus(ctx, Some(win));
@@ -980,7 +979,7 @@ pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: Window) {
     }
 
     // Only reached on ButtonRelease (click, not drag).
-    ungrab(conn);
+    ungrab_ctx(ctx);
     if crate::client::is_hidden(win) {
         crate::client::show(ctx, win);
         focus(ctx, Some(win));

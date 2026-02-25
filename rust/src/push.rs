@@ -4,7 +4,6 @@ use crate::contexts::WmCtx;
 use crate::focus::focus;
 use crate::layouts::arrange;
 pub use crate::layouts::query::client_count;
-use crate::types::*;
 use x11rb::protocol::xproto::Window;
 
 pub fn next_c(ctx: &WmCtx, c_win: Option<Window>, include_floating: bool) -> Option<Window> {

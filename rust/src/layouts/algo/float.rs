@@ -34,7 +34,6 @@
 
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::layouts::manager::restack;
 use crate::types::{Monitor, Rect, SnapPosition};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -79,23 +78,16 @@ pub fn floatl(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         c_win = next_client;
     }
 
-    // ── restack and raise selected client ─────────────────────────────────
-    // `restack` uses a mutable Monitor reference so we call it here after the
-    // immutable client loop above is finished.
-    restack(ctx, ctx.g.selmon);
-
     // Raise the selected window to the top of the Z-order so it is not
     // accidentally obscured by a tiled window placed above it by the compositor.
-    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
-        if let Some(sel_win) = mon.sel {
-            if let Some(ref conn) = ctx.x11.conn {
-                let _ = configure_window(
-                    conn,
-                    sel_win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                );
-                let _ = conn.flush();
-            }
+    if let Some(sel_win) = m.sel {
+        if let Some(ref conn) = ctx.x11.conn {
+            let _ = configure_window(
+                conn,
+                sel_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
+            let _ = conn.flush();
         }
     }
 

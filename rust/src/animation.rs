@@ -1,8 +1,7 @@
-use crate::client::resize_client;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::get_globals;
 use crate::monitor::is_current_layout_tiling;
 use crate::tags::view::scroll_view;
 use crate::types::*;

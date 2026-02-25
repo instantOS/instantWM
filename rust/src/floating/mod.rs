@@ -19,26 +19,19 @@ mod state;
 
 /// `SnapDir` is the typed direction enum.
 pub use snap::SnapDir;
-pub use snap::{apply_snap, change_snap, reset_snap};
+pub use snap::{change_snap, reset_snap};
 
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{
-    center_window, downscale_client, key_resize, moveresize, scale_client_win, upscale_client,
-};
+pub use movement::{center_window, key_resize, moveresize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
 pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-pub use helpers::{apply_size, check_floating, has_tiling_layout, visible_client};
-
 // ── state ────────────────────────────────────────────────────────────────────
 
 pub use state::{
-    apply_float_change, change_floating_win, restore_floating_win, save_floating_win, set_floating,
-    set_floating_in_place, set_tiled, temp_fullscreen, toggle_floating,
+    save_floating_win, set_floating_in_place, set_tiled, temp_fullscreen, toggle_floating,
 };

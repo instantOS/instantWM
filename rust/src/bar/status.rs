@@ -1,5 +1,5 @@
 use crate::contexts::WmCtx;
-use crate::globals::{get_drw, get_drw_mut, get_globals, get_globals_mut, get_x11};
+use crate::globals::{get_drw, get_globals, get_globals_mut, get_x11};
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 use std::sync::atomic::Ordering;
@@ -43,22 +43,6 @@ pub(crate) fn draw_status_bar(m: &mut Monitor, bh: i32, stext: &str) -> i32 {
 
     let mut drw = get_drw().clone();
     draw_items(&mut drw, m, bh, &items, layout);
-
-    layout.draw_start_x
-}
-
-/// Draw status bar with dependency injection
-pub(crate) fn draw_status_bar_ctx(ctx: &mut WmCtx, m: &Monitor, stext: &str) -> i32 {
-    if stext.is_empty() {
-        return 0;
-    }
-
-    let items = parse_status_items(stext.as_bytes());
-    let layout = measure_layout(ctx, m, &items);
-
-    ctx.g.status_text_width = layout.total_width;
-
-    draw_items_ctx(ctx, m, &items, layout);
 
     layout.draw_start_x
 }
@@ -205,89 +189,6 @@ fn draw_items(
 
     drw.set_scheme(scheme.clone());
 
-    let draw_width = (layout.total_width + 2).max(0);
-    if draw_width > 0 {
-        drw.rect(
-            layout.draw_start_x,
-            0,
-            draw_width as u32,
-            bh as u32,
-            true,
-            true,
-        );
-    }
-
-    for idx in 0..MAX_COMMAND_OFFSETS {
-        super::COMMANDOFFSETS[idx].store(-1, Ordering::Relaxed);
-    }
-
-    let mut x = layout.draw_start_x + 1;
-    let mut marker_idx = 0usize;
-
-    for item in items {
-        match item {
-            StatusItem::Text(text) => {
-                let seg_w = super::text_width(text);
-                if seg_w > 0 {
-                    drw.text(x, 0, seg_w as u32, bh as u32, 0, text, false, 0);
-                }
-                x += seg_w;
-            }
-            StatusItem::Offset(offset) => x += *offset,
-            StatusItem::SetBg(color) => {
-                if let Ok(clr) = drw.clr_create(color) {
-                    scheme.bg = clr;
-                    drw.set_scheme(scheme.clone());
-                }
-            }
-            StatusItem::SetFg(color) => {
-                if let Ok(clr) = drw.clr_create(color) {
-                    scheme.fg = clr;
-                    drw.set_scheme(scheme.clone());
-                }
-            }
-            StatusItem::ResetColors => {
-                scheme = base_scheme.clone();
-                drw.set_scheme(scheme.clone());
-            }
-            StatusItem::Rect(r) => {
-                let rw = (r.w).max(0) as u32;
-                let rh = (r.h).max(0) as u32;
-                if rw > 0 && rh > 0 {
-                    drw.rect(x + r.x, r.y, rw, rh, true, false);
-                }
-            }
-            StatusItem::CommandOffset => {
-                if marker_idx < MAX_COMMAND_OFFSETS {
-                    super::COMMANDOFFSETS[marker_idx].store(x, Ordering::Relaxed);
-                    marker_idx += 1;
-                }
-            }
-        }
-    }
-
-    if marker_idx < MAX_COMMAND_OFFSETS {
-        super::COMMANDOFFSETS[marker_idx].store(-1, Ordering::Relaxed);
-    }
-
-    let _ = m;
-}
-
-/// Draw status items with dependency injection
-fn draw_items_ctx(ctx: &mut WmCtx, m: &Monitor, items: &[StatusItem], layout: StatusLayout) {
-    let g = &*ctx.g;
-    let mut scheme = g
-        .cfg
-        .statusscheme
-        .clone()
-        .unwrap_or_default()
-        .as_color_scheme();
-    let base_scheme = scheme.clone();
-
-    let drw = get_drw_mut();
-    drw.set_scheme(scheme.clone());
-
-    let bh = ctx.g.cfg.bh;
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
         drw.rect(

@@ -148,7 +148,7 @@ impl BarPosition {
 /// This function is the **single canonical hit-test** for the bar. Both click
 /// handling and hover-gesture detection should call it rather than reimplementing
 /// the geometry themselves.
-pub fn bar_position_at_x(mon: &Monitor, ctx: &mut WmCtx, local_x: i32) -> BarPosition {
+pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPosition {
     use crate::bar::get_layout_symbol_width;
 
     let start_menu_size = ctx.g.cfg.startmenusize;

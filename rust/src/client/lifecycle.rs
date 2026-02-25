@@ -33,7 +33,7 @@ use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
 use crate::client::geometry::{client_height, client_width, resize_client, update_size_hints_win};
-use crate::client::list::{attach, attach_stack, detach, detach_stack, win_to_client};
+use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::state::set_client_state;
 use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,

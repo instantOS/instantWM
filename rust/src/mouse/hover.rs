@@ -22,7 +22,7 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::drag::move_mouse;
-use super::grab::{grab_pointer_with_keys, ungrab};
+use super::grab::{grab_pointer_with_keys, ungrab_ctx, wait_event};
 use super::warp::get_root_ptr;
 
 use super::resize::resize_mouse_directional;
@@ -269,14 +269,14 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
         return false;
     }
 
-    let Some(conn) = grab_pointer_with_keys(ctx, 1) else {
+    if !grab_pointer_with_keys(ctx, 1) {
         return false;
-    };
+    }
 
     let mut action_started = false;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
 
@@ -304,7 +304,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
 
             x11rb::protocol::Event::ButtonPress(bp) => {
                 action_started = true;
-                ungrab(conn);
+                ungrab_ctx(ctx);
 
                 let Some(win) = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel) else {
                     break;
@@ -347,7 +347,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     }
 
     if !action_started {
-        ungrab(conn);
+        ungrab_ctx(ctx);
     }
 
     true

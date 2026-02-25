@@ -5,7 +5,7 @@ use crate::client::{next_tiled, resize, restore_border_width, save_border_width}
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
-use crate::types::{Monitor, MonitorId, Rect};
+use crate::types::{MonitorId, Rect};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -34,10 +34,10 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
             crate::client::show_hide(ctx, stack);
         }
 
-        // Collect monitor indices first to avoid borrow issues
         let mon_indices: Vec<usize> = (0..ctx.g.monitors.len()).collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
+            restack(ctx, idx);
         }
     }
 }
@@ -98,15 +98,19 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    // Clone the layout to avoid borrow issues
     let layout = ctx
         .g
         .monitors
         .get(mon_id)
         .map(|m| get_current_layout(ctx.g, m));
     if let Some(layout) = layout {
-        if let Some(m) = ctx.g.monitors.get_mut(mon_id) {
-            layout.arrange(ctx, m);
+        // Clone the monitor so that `layout.arrange` can receive both
+        // `&mut WmCtx` and `&mut Monitor` without a split-borrow conflict.
+        // Layout algorithms only modify clients via `ctx.g.clients` and read
+        // monitor data from `m`; restack is handled by the caller.
+        if let Some(mut m) = ctx.g.monitors.get(mon_id).cloned() {
+            layout.arrange(ctx, &mut m);
+            ctx.g.monitors[mon_id] = m;
         }
     }
 }

@@ -1,6 +1,5 @@
 use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::systray::get_systray_width;
 use crate::types::Monitor;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -24,10 +23,9 @@ pub fn update_status(ctx: &mut WmCtx) {
         }
     }
 
-    // Get a copy of the monitor to avoid borrow issues
     let selmon_idx = ctx.g.selmon;
-    if let Some(m) = ctx.g.monitors.get(selmon_idx).cloned() {
-        super::draw_bar(ctx, &m);
+    if let Some(m) = ctx.g.monitors.get_mut(selmon_idx) {
+        super::draw_bar(m);
     }
 
     crate::systray::update_systray(ctx);
@@ -107,7 +105,7 @@ fn get_systray_width_static() -> u32 {
 }
 
 /// Resize bar window with dependency injection.
-pub fn resize_bar_win_ctx(ctx: &mut WmCtx, m: &Monitor) {
+pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
     let bh = ctx.g.cfg.bh;
     let showsystray = ctx.g.cfg.showsystray;
     let is_selmon = ctx

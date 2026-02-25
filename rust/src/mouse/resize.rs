@@ -23,11 +23,10 @@ use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
 use crate::monitor::is_current_layout_tiling;
 use crate::types::*;
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
-use super::grab::{grab_pointer, ungrab};
+use super::grab::{grab_pointer, ungrab_ctx, wait_event};
 use super::monitor::handle_client_monitor_switch;
 use crate::types::ResizeDirection;
 
@@ -102,15 +101,15 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
         return;
     };
 
-    let Some(conn) = grab_pointer(ctx, 1) else {
+    if !grab_pointer(ctx, 1) {
         return;
-    };
+    }
 
     let (orig_left, orig_top) = {
         match ctx.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
-                ungrab(conn);
+                ungrab_ctx(ctx);
                 return;
             }
         }
@@ -120,7 +119,7 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
 
@@ -171,7 +170,7 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
         }
     }
 
-    ungrab(conn);
+    ungrab_ctx(ctx);
     handle_client_monitor_switch(ctx, win);
 }
 
@@ -193,9 +192,9 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
         return;
     };
 
-    let Some(conn) = grab_pointer(ctx, 1) else {
+    if !grab_pointer(ctx, 1) {
         return;
-    };
+    }
 
     let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
         match ctx.g.clients.get(&win) {
@@ -207,7 +206,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                 c.border_width,
             ),
             None => {
-                ungrab(conn);
+                ungrab_ctx(ctx);
                 return;
             }
         }
@@ -220,7 +219,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
 
@@ -312,7 +311,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
         }
     }
 
-    ungrab(conn);
+    ungrab_ctx(ctx);
     handle_client_monitor_switch(ctx, win);
 }
 
@@ -348,15 +347,15 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
         return;
     };
 
-    let Some(conn) = grab_pointer(ctx, 1) else {
+    if !grab_pointer(ctx, 1) {
         return;
-    };
+    }
 
     let (orig_left, orig_top) = {
         match ctx.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
-                ungrab(conn);
+                ungrab_ctx(ctx);
                 return;
             }
         }
@@ -366,7 +365,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
     let mut last_time: u32 = 0;
 
     loop {
-        let Ok(event) = conn.wait_for_event() else {
+        let Some(event) = wait_event(ctx) else {
             break;
         };
 
@@ -430,7 +429,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
         }
     }
 
-    ungrab(conn);
+    ungrab_ctx(ctx);
     handle_client_monitor_switch(ctx, win);
 }
 
