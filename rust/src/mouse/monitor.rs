@@ -35,8 +35,8 @@ use x11rb::protocol::xproto::*;
 /// * `c_win` - The client window to potentially move
 /// * `rect` - The window's geometry to check against monitor boundaries
 pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
-    let new_mon = rect_to_mon(&ctx.g.monitors, ctx.g.selmon, rect);
-    let current_mon = ctx.g.selmon;
+    let new_mon = rect_to_mon(&ctx.g.monitors, ctx.g.selmon_id(), rect);
+    let current_mon = ctx.g.selmon_id();
 
     let Some(target) = new_mon else { return };
     if target == current_mon {
@@ -50,7 +50,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
 
     transfer_client(ctx, c_win, target);
 
-    ctx.g.selmon = target;
+    ctx.g.set_selmon(target);
     focus(ctx, None);
 }
 

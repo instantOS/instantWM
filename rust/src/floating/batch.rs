@@ -99,7 +99,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 ///
 /// Does nothing when there are no qualifying windows.
 pub fn distribute_clients(ctx: &mut WmCtx) {
-    let sel_mon_id = ctx.g.selmon;
+    let sel_mon_id = ctx.g.selmon_id();
 
     let (floating_wins, work_rect) = collect_distribute_targets(ctx.g, sel_mon_id);
 

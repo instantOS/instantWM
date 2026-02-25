@@ -256,22 +256,12 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx
-            .g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|m| m.by + ctx.g.cfg.bh)
-            .unwrap_or(new_y);
+        let bar_bottom = ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bh).unwrap_or(new_y);
         new_y = bar_bottom;
     }
 
     let snap = ctx.g.cfg.snap;
-    let has_tiling = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
     let (mut is_floating, mut drag_geo) = ctx
         .g
@@ -317,8 +307,7 @@ fn on_motion(
         set_floating_in_place(ctx, win);
 
         // Re-tile the remaining windows (touches only the other clients).
-        let selmon = ctx.g.selmon;
-        arrange(ctx, Some(selmon));
+        arrange(ctx, Some(ctx.g.selmon_id()));
 
         // The window's width is changing (tiled → floating), so the old
         // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
@@ -363,8 +352,8 @@ fn on_motion(
 /// Called once the drag loop exits so that hover state is always cleaned up.
 fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g.bar_dragging = false;
-    let selmon_id = ctx.g.selmon;
-    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
+    let selmon_id = ctx.g.selmon_id();
+    if let Some(mon) = ctx.g.selmon_mut() {
         mon.gesture = Gesture::None;
     }
     draw_bar(ctx, selmon_id);
@@ -392,10 +381,8 @@ fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
     }
 
     let position = {
-        let selmon_id = ctx.g.selmon;
         ctx.g
-            .monitors
-            .get(selmon_id)
+            .selmon()
             .map(|mon| {
                 let local_x = ptr_x - mon.monitor_rect.x;
                 bar_position_at_x(mon, ctx, local_x)
@@ -451,13 +438,7 @@ fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
     //   x = grab_start_x  (original window x at grab time)
     //   y = just below the bar
     if was_floating {
-        let bar_bottom = {
-            ctx.g
-                .monitors
-                .get(ctx.g.selmon)
-                .map(|m| m.by + ctx.g.cfg.bh)
-                .unwrap_or(0)
-        };
+        let bar_bottom = { ctx.g.selmon().map(|m| m.by + ctx.g.cfg.bh).unwrap_or(0) };
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.float_geo.x = grab_start_x;
             client.float_geo.y = bar_bottom;
@@ -489,18 +470,12 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> 
         return false;
     }
 
-    let is_tiling = ctx
-        .g
-        .monitors
-        .get(ctx.g.selmon)
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let is_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
     if is_tiling {
         let (mon_my, mon_mh) = ctx
             .g
-            .monitors
-            .get(ctx.g.selmon)
+            .selmon()
             .map(|m| (m.monitor_rect.y, m.monitor_rect.h))
             .unwrap_or((0, 1));
 
@@ -520,8 +495,7 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> 
         if let Some(c) = ctx.g.clients.get_mut(&win) {
             c.isfloating = false;
         }
-        let selmon_id = ctx.g.selmon;
-        arrange(ctx, Some(selmon_id));
+        arrange(ctx, Some(ctx.g.selmon_id()));
     } else {
         let dir = if at_left {
             SnapDir::Left
@@ -634,12 +608,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
                 }
                 last_time = m.time;
 
-                let threshold = ctx
-                    .g
-                    .monitors
-                    .get(ctx.g.selmon)
-                    .map(|m| m.monitor_rect.h / 30)
-                    .unwrap_or(0);
+                let threshold = ctx.g.selmon().map(|m| m.monitor_rect.h / 30).unwrap_or(0);
                 if (last_y - m.event_y as i32).abs() > threshold {
                     let event_y = m.event_y as i32;
                     let cmd = if event_y < last_y {
@@ -669,13 +638,8 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
 /// Exits without action if the pointer leaves the bar during the drag.
 pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, click_root_x: i32) {
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
-        let selmon_id = ctx.g.selmon;
-        let mon_mx = ctx
-            .g
-            .monitors
-            .get(selmon_id)
-            .map(|m| m.monitor_rect.x)
-            .unwrap_or(0);
+        let selmon_id = ctx.g.selmon_id();
+        let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
 
         let initial_tag = match bar_pos {
             BarPosition::Tag(idx) => 1u32 << (idx as u32),
@@ -697,18 +661,9 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, click_root_x: i32) {
             }
         };
 
-        let current_tagset = ctx
-            .g
-            .monitors
-            .get(ctx.g.selmon)
-            .map(|m| m.tagset[m.seltags as usize]);
+        let current_tagset = ctx.g.selmon().map(|m| m.tagset[m.seltags as usize]);
         let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset.unwrap_or(0);
-        let has_sel = ctx
-            .g
-            .monitors
-            .get(ctx.g.selmon)
-            .and_then(|m| m.sel)
-            .is_some();
+        let has_sel = ctx.g.selmon().and_then(|m| m.sel).is_some();
         (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx)
     };
 
@@ -750,8 +705,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, click_root_x: i32) {
 
                 let bar_bottom = {
                     ctx.g
-                        .monitors
-                        .get(ctx.g.selmon)
+                        .selmon()
                         .map(|m| m.by + ctx.g.cfg.bh + 1)
                         .unwrap_or(9999)
                 };
@@ -789,10 +743,8 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, click_root_x: i32) {
     if cursor_on_bar {
         if let Some((x, _, state)) = last_motion {
             let position = {
-                let selmon_id = ctx.g.selmon;
                 ctx.g
-                    .monitors
-                    .get(selmon_id)
+                    .selmon()
                     .map(|mon| {
                         let local_x = x - mon.monitor_rect.x;
                         bar_position_at_x(mon, ctx, local_x)
@@ -881,12 +833,12 @@ pub fn window_title_mouse_handler(
     if was_hidden {
         crate::client::show(ctx, win);
         focus(ctx, Some(win));
-        restack(ctx, ctx.g.selmon);
+        restack(ctx, ctx.g.selmon_id());
     } else if was_focused {
         crate::client::hide(ctx, win);
     } else {
         focus(ctx, Some(win));
-        restack(ctx, ctx.g.selmon);
+        restack(ctx, ctx.g.selmon_id());
     }
 }
 

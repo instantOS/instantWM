@@ -29,7 +29,7 @@ struct OverlayPositionInfo {
 
 /// Get the overlay window for the selected monitor, if it exists.
 fn get_overlay_win(ctx: &WmCtx) -> Option<Window> {
-    ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay)
+    ctx.g.selmon().and_then(|m| m.overlay)
 }
 
 /// Check if the overlay window exists in the clients map.
@@ -190,7 +190,7 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 pub fn create_overlay(ctx: &mut WmCtx, sel_win: Window) {
     let (sel_overlay, sel_fullscreen) = {
         let g = &*ctx.g;
-        let mon = match g.monitors.get(g.selmon) {
+        let mon = match g.selmon() {
             Some(m) => m,
             None => return,
         };
@@ -235,7 +235,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: Window) {
         }
     }
 
-    let (overlay_mode, mon_ww, mon_wh) = match ctx.g.monitors.get(ctx.g.selmon) {
+    let (overlay_mode, mon_ww, mon_wh) = match ctx.g.selmon() {
         Some(mon) => (mon.overlaymode, mon.work_rect.w, mon.work_rect.h),
         None => (OverlayMode::default(), 0, 0),
     };
@@ -265,12 +265,12 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         return;
     }
 
-    let overlay_win = match ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.overlay) {
+    let overlay_win = match ctx.g.selmon().and_then(|m| m.overlay) {
         Some(w) => w,
         None => return,
     };
 
-    let selmon = ctx.g.selmon;
+    let selmon = ctx.g.selmon_id();
 
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         client.border_width = client.old_border_width;
@@ -314,8 +314,8 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         return;
     }
 
-    let selmon_id = ctx.g.selmon;
-    let mon = match ctx.g.monitors.get(selmon_id) {
+    let selmon_id = ctx.g.selmon_id();
+    let mon = match ctx.g.selmon() {
         Some(m) => m,
         None => return,
     };
@@ -374,8 +374,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         resize(ctx, overlay_win, &initial_rect, true);
     }
 
-    let tags = ctx.g.monitors.get(selmon_id).unwrap().tagset
-        [ctx.g.monitors.get(selmon_id).unwrap().seltags as usize];
+    let tags = ctx.g.selmon().unwrap().tagset[ctx.g.selmon().unwrap().seltags as usize];
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
@@ -424,8 +423,8 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
         return;
     }
 
-    let selmon_id = ctx.g.selmon;
-    let mon = match ctx.g.monitors.get(selmon_id) {
+    let selmon_id = ctx.g.selmon_id();
+    let mon = match ctx.g.selmon() {
         Some(m) => m,
         None => return,
     };
@@ -445,7 +444,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             Some(c) => c,
             None => return,
         };
-        let mon = ctx.g.monitors.get(selmon_id).unwrap();
+        let mon = ctx.g.selmon().unwrap();
 
         let hide_info = HideAnimationInfo {
             mode: mon.overlaymode,
@@ -489,7 +488,7 @@ pub fn set_overlay(ctx: &mut WmCtx) {
     }
 
     let (overlaystatus, overlay_visible, _mon_tags) = {
-        if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+        if let Some(mon) = ctx.g.selmon() {
             let overlay_win = match mon.overlay {
                 Some(w) => w,
                 None => return,
@@ -523,7 +522,7 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
     }
 
     let (has_overlay, mon_wh, mon_ww, overlaystatus) = {
-        let mon = ctx.g.monitors.get(ctx.g.selmon);
+        let mon = ctx.g.selmon();
         (
             mon.and_then(|m| m.overlay).is_some(),
             mon.map(|m| m.work_rect.h).unwrap_or(0),
@@ -536,7 +535,7 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
         return;
     }
 
-    if let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) {
+    if let Some(mon) = ctx.g.selmon() {
         if let Some(overlay_win) = mon.overlay {
             if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
                 if mode.is_vertical() {
