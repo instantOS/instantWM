@@ -1008,6 +1008,11 @@ pub struct Client {
     pub scratchpad_name: String,
     pub scratchpad_restore_tags: u32,
     pub mon_id: Option<MonitorId>,
+    /// X11 window id for this client.
+    ///
+    /// Kept for backward-compatibility during refactors; in most call-sites the
+    /// `Window` key used to look up the `Client` is the same value.
+    pub win: Window,
     pub next: Option<Window>,
     pub snext: Option<Window>,
 }
@@ -1033,13 +1038,29 @@ impl Client {
     pub fn is_visible_on_tags(&self, selected_tags: u32) -> bool {
         self.issticky || (self.tags & selected_tags) != 0
     }
+
+    /// Backward-compatible convenience wrapper.
+    ///
+    /// Prefer `is_visible_on_tags` when you can supply the tag-set explicitly.
+    pub fn is_visible(&self) -> bool {
+        if self.issticky {
+            return true;
+        }
+        if let Some(mon_id) = self.mon_id {
+            let globals = crate::globals::get_globals();
+            if let Some(mon) = globals.monitors.get(mon_id) {
+                return (self.tags & mon.selected_tags()) != 0;
+            }
+        }
+        false
+    }
 }
 
 /// Internal state of a monitor (screen) in the window manager.
 ///
 /// This struct holds all runtime state for a monitor, including
 /// geometry, tag state, client lists, and UI configuration.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Monitor {
     /// Master factor for tiling layouts (0.0 to 1.0).
     /// Controls the proportion of screen given to the master area.

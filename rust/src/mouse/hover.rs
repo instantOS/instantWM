@@ -92,7 +92,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx) -> Option<Window> {
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .map(|m| is_current_layout_tiling(m))
         .unwrap_or(true);
 
     let (px, py) = get_root_ptr(ctx)?;
@@ -136,7 +136,7 @@ pub fn is_in_resize_border(ctx: &WmCtx) -> bool {
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .map(|m| is_current_layout_tiling(m))
         .unwrap_or(true);
     if !c.isfloating && has_tiling {
         return false;
@@ -159,7 +159,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .map(|m| is_current_layout_tiling(m))
         .unwrap_or(true);
 
     let Some(mon) = ctx.g.monitors.get(ctx.g.selmon) else {

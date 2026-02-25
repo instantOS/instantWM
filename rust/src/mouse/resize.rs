@@ -142,7 +142,7 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
                         .g
                         .monitors
                         .get(ctx.g.selmon)
-                        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+                        .map(|m| is_current_layout_tiling(m))
                         .unwrap_or(true);
 
                     if !client.isfloating
@@ -264,7 +264,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                         .g
                         .monitors
                         .get(ctx.g.selmon)
-                        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+                        .map(|m| is_current_layout_tiling(m))
                         .unwrap_or(true);
 
                     !client.isfloating
@@ -288,7 +288,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                         .g
                         .monitors
                         .get(ctx.g.selmon)
-                        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+                        .map(|m| is_current_layout_tiling(m))
                         .unwrap_or(true);
 
                     if !has_tiling || is_floating {

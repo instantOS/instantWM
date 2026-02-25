@@ -94,7 +94,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                     .get(&sel_win)
                     .map(|c| c.isfloating)
                     .unwrap_or(false);
-                let has_tiling = crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags);
+                let has_tiling = crate::monitor::is_current_layout_tiling(mon);
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     let dir = ctx.g.resize_direction;
                     reset_cursor(ctx);
@@ -225,7 +225,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
             .g
             .monitors
             .get(selmon_id)
-            .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+            .map(|m| is_current_layout_tiling(m))
             .unwrap_or(true);
         (selmon_id, sel_win, is_floating || !has_tiling)
     };
@@ -281,7 +281,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                 .g
                 .monitors
                 .get(selmon_id)
-                .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+                .map(|m| is_current_layout_tiling(m))
                 .unwrap_or(true);
 
             // Skip focus for floating windows when not in floating layout

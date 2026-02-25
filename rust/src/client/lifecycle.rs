@@ -64,6 +64,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
     let mut c = Client::default();
+    c.win = w;
     c.geo = wa_geo;
     c.old_geo = c.geo;
     c.old_border_width = wa_border_width as i32;
@@ -148,7 +149,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
         let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
         mon_id
             .and_then(|mid| ctx.g.monitors.get(mid))
-            .map(|mon| !crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags))
+            .map(|mon| !crate::monitor::is_current_layout_tiling(mon))
             .unwrap_or(false)
     };
 
@@ -380,7 +381,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
         let is_tiling = c
             .mon_id
             .and_then(|mid| ctx.g.monitors.get(mid))
-            .map(|mon| crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags))
+            .map(|mon| crate::monitor::is_current_layout_tiling(mon))
             .unwrap_or(false);
 
         if !is_tiling {

@@ -169,7 +169,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
             .g
             .monitors
             .get(ctx.g.selmon)
-            .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+            .map(|m| is_current_layout_tiling(m))
             .unwrap_or(true);
 
         if !has_tiling {
@@ -281,7 +281,7 @@ fn on_motion(
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .map(|m| is_current_layout_tiling(m))
         .unwrap_or(true);
 
     let (mut is_floating, mut drag_geo) = ctx
@@ -504,7 +504,7 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> 
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m, &ctx.g.tags))
+        .map(|m| is_current_layout_tiling(m))
         .unwrap_or(true);
 
     if is_tiling {

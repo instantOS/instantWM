@@ -57,7 +57,7 @@ pub fn zoom(ctx: &mut WmCtx) {
     // Only meaningful in a tiling layout with a non-floating window.
     let is_tiling = mon_id
         .and_then(|mid| get_globals().monitors.get(mid))
-        .map(|mon| crate::monitor::is_current_layout_tiling(mon, &get_globals().tags))
+        .map(|mon| crate::monitor::is_current_layout_tiling(mon))
         .unwrap_or(false);
 
     if !is_tiling || is_floating {

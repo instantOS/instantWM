@@ -216,7 +216,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             .sel
             .and_then(|w| ctx.g.clients.get(&w).map(|c| c.isfloating))
             .unwrap_or(false);
-        let has_tiling = is_current_layout_tiling(mon, &ctx.g.tags);
+        let has_tiling = is_current_layout_tiling(mon);
         let current_tag = mon.current_tag as u32;
         (is_floating, has_tiling, current_tag)
     };

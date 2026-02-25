@@ -273,7 +273,7 @@ pub fn apply_size_hints(
     let resizehints = cfg.resizehints;
     let is_tiling = mon_id
         .and_then(|mid| monitors.get(mid))
-        .map(|mon| crate::monitor::is_current_layout_tiling(mon, &tags))
+        .map(|mon| crate::monitor::is_current_layout_tiling(mon))
         .unwrap_or(true);
 
     // Need to get mutable client again for the size hints section.
