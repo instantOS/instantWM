@@ -48,7 +48,7 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
     let (sel_win, has_multiple_mons) = {
-        let sel = ctx.g.monitors.get(ctx.g.selmon).and_then(|mon| mon.sel);
+        let sel = ctx.g.selmon().and_then(|mon| mon.sel);
         (sel, ctx.g.monitors.len() > 1)
     };
 
@@ -57,7 +57,7 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: i32) {
         return;
     }
 
-    let Some(target_id) = find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon, direction)
+    let Some(target_id) = find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon_id(), direction)
     else {
         return;
     };
@@ -101,8 +101,7 @@ fn move_floating(
     ) = {
         let (monitor_x, monitor_y, work_area_width, work_area_height) = ctx
             .g
-            .monitors
-            .get(ctx.g.selmon)
+            .selmon()
             .map(|m| {
                 (
                     m.monitor_rect.x,
@@ -167,7 +166,7 @@ fn move_floating(
         client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }
 
-    arrange(ctx, Some(ctx.g.selmon));
+    arrange(ctx, Some(ctx.g.selmon_id()));
 
     // Raise so the window is immediately visible on the new monitor.
     let conn = ctx.x11.conn;

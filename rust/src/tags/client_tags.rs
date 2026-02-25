@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::Window;
 
 /// Set the selected client's tags using type-safe mask.
 pub fn set_client_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let effective_mask = mask & tagmask;
 
@@ -33,7 +33,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
 
 /// Tag all clients on current tag with the given mask.
 pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let effective_mask = mask & tagmask;
 
@@ -41,12 +41,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let current_tag = ctx
-        .g
-        .monitors
-        .get(selmon_id)
-        .map(|m| m.current_tag)
-        .unwrap_or(0);
+    let current_tag = ctx.g.selmon().map(|m| m.current_tag).unwrap_or(0);
 
     if current_tag == 0 {
         return;
@@ -57,7 +52,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
     let clients_on_tag: Vec<_> = {
         let mut result = Vec::new();
-        let mut cursor = ctx.g.monitors.get(selmon_id).and_then(|m| m.clients);
+        let mut cursor = ctx.g.selmon().and_then(|m| m.clients);
 
         while let Some(win) = cursor {
             match ctx.g.clients.get(&win) {
@@ -88,7 +83,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
 /// Toggle tags on the selected client.
 pub fn toggle_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
 
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let _scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);

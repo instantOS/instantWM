@@ -20,9 +20,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
 
-    let selmon_id = ctx.g.selmon;
-
-    let (numtags, tagset) = match ctx.g.monitors.get(selmon_id) {
+    let (numtags, tagset) = match ctx.g.selmon() {
         Some(mon) => (mon.tags.len(), mon.tagset[mon.seltags as usize]),
         None => return,
     };

@@ -107,7 +107,7 @@ pub fn get_sel_mon(ctx: &WmCtx) -> Option<MonitorId> {
     if ctx.g.monitors.is_empty() {
         None
     } else {
-        Some(ctx.g.selmon)
+        Some(ctx.g.selmon_id())
     }
 }
 

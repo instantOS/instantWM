@@ -351,7 +351,7 @@ fn ensure_monitor_count(count: usize) {
     while g.monitors.len() < count {
         let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
         mon.init_tags(&template);
-        g.monitors.push(mon);
+        g.push_monitor(mon);
     }
 }
 
@@ -410,10 +410,7 @@ fn cleanup_removed_monitors(start_idx: usize, x11: &crate::globals::X11Connectio
         dirty = move_clients_to_mon0(i) || dirty;
 
         let g = get_globals_mut();
-        if g.selmon == i {
-            g.selmon = 0;
-        }
-
+        // selmon fixup is handled inside cleanup_monitor → remove_monitor
         let mut ctx = WmCtx::new(g, x11.as_conn());
         cleanup_monitor(&mut ctx, i);
     }
@@ -429,7 +426,7 @@ fn init_single_monitor(sw: i32, sh: i32) -> bool {
     let template = g.cfg.tag_template.clone();
     let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
     mon.init_tags(&template);
-    g.monitors.push(mon);
+    g.push_monitor(mon);
     if let Some(ref mut m) = g.monitors.first_mut() {
         m.num = 0;
         m.monitor_rect = Rect {
@@ -446,7 +443,7 @@ fn init_single_monitor(sw: i32, sh: i32) -> bool {
         };
         update_bar_pos(m);
     }
-    g.selmon = 0;
+    g.set_selmon(0);
     true
 }
 
@@ -516,7 +513,7 @@ fn update_from_xinerama(
     // Reset selection to first monitor and try to find better one
     if dirty {
         let g = get_globals_mut();
-        g.selmon = 0;
+        g.set_selmon(0);
         // Create a temporary context to find the monitor for the root window
         let ctx = WmCtx::new(g, x11.as_conn());
         if let Some(m) = win_to_mon_with_ctx(&ctx, x11.screen_num as u32) {

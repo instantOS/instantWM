@@ -77,7 +77,7 @@ pub(crate) fn visible_tags<'a>(
 pub fn get_tag_width(ctx: &WmCtx) -> i32 {
     let occupied = occupied_tags_on_selmon(ctx.g);
 
-    let Some(m) = ctx.g.monitors.get(ctx.g.selmon) else {
+    let Some(m) = ctx.g.selmon() else {
         return ctx.g.cfg.startmenusize;
     };
     if m.tags.is_empty() {
@@ -97,7 +97,7 @@ pub fn get_tag_width(ctx: &WmCtx) -> i32 {
 pub fn get_tag_at_x(ctx: &WmCtx, click_x: i32) -> i32 {
     let occupied = occupied_tags_on_selmon(ctx.g);
 
-    let Some(m) = ctx.g.monitors.get(ctx.g.selmon) else {
+    let Some(m) = ctx.g.selmon() else {
         return -1;
     };
     if m.tags.is_empty() {
@@ -156,7 +156,7 @@ fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
 fn occupied_tags_on_selmon(globals: &Globals) -> u32 {
     let mut occupied: u32 = 0;
 
-    let mut current = globals.monitors.get(globals.selmon).and_then(|m| m.clients);
+    let mut current = globals.selmon().and_then(|m| m.clients);
 
     while let Some(win) = current {
         match globals.clients.get(&win) {

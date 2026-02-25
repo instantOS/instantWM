@@ -31,7 +31,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
+    let sel_win = ctx.g.selmon().and_then(|m| m.sel);
 
     let sel_win = match sel_win {
         Some(w) => w,
@@ -69,7 +69,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         }
     }
 
-    let selmon = ctx.g.selmon;
+    let selmon = ctx.g.selmon_id();
     focus(ctx, None);
     if !ctx.g.monitors.is_empty() {
         arrange(ctx, Some(selmon));
@@ -77,7 +77,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let sel_win = ctx.g.monitors.get(ctx.g.selmon).and_then(|m| m.sel);
+    let sel_win = ctx.g.selmon().and_then(|m| m.sel);
 
     let sel_win = match sel_win {
         Some(w) => w,
@@ -85,11 +85,9 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     };
 
     let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
-        let selmon_id = ctx.g.selmon;
         let mon_tags = ctx
             .g
-            .monitors
-            .get(selmon_id)
+            .selmon()
             .map(|m| m.tagset[m.seltags as usize])
             .unwrap_or(1);
 
@@ -134,7 +132,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     };
 
     let (current_mon, target_mon) = {
-        let current_mon = ctx.g.selmon;
+        let current_mon = ctx.g.selmon_id();
         let target_mon = ctx
             .g
             .clients
@@ -167,7 +165,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
     if !ctx.g.monitors.is_empty() {
-        let mid = ctx.g.selmon;
+        let mid = ctx.g.selmon_id();
         focus(ctx, Some(found));
         arrange(ctx, Some(mid));
         restack(ctx, mid);
@@ -215,12 +213,10 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     };
 
     let is_overview = {
-        let selmon_id = ctx.g.selmon;
-        if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-            !mon.is_tiling_layout()
-        } else {
-            false
-        }
+        ctx.g
+            .selmon()
+            .map(|m| !m.is_tiling_layout())
+            .unwrap_or(false)
     };
 
     if is_overview {

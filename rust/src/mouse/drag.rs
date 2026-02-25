@@ -199,7 +199,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
 fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
 
-    let selmon_id = ctx.g.selmon;
+    let selmon_id = ctx.g.selmon_id();
 
     if on_bar {
         // Use the canonical bar hit-test so that tag hover highlighting during
@@ -513,7 +513,7 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> 
 /// Interactively drag the focused window with the mouse.
 ///
 /// Grab → event loop → release handling. See helpers above for each phase.
-pub fn move_mouse(ctx: &mut WmCtx) {
+pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(win) = prepare_drag_target(ctx) else {
         return;
     };
@@ -584,7 +584,7 @@ pub fn move_mouse(ctx: &mut WmCtx) {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse(ctx: &mut WmCtx) {
+pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     if !grab_pointer(ctx, 2) {
         return;
     }
@@ -636,7 +636,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx) {
 ///   `Control` → [`tag_all`], no modifier → [`follow_tag`]
 ///
 /// Exits without action if the pointer leaves the bar during the drag.
-pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, click_root_x: i32) {
+pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, click_root_x: i32) {
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
         let selmon_id = ctx.g.selmon_id();
         let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
