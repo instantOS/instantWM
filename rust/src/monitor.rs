@@ -36,7 +36,7 @@
 //!     ctx.g.cfg.topbar,
 //! );
 //! focus_mon(&mut ctx, 1);  // Focus next monitor
-//! let target = dir_to_mon(&ctx.g.monitors, ctx.g.selmon, 1);
+//! let target = find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon, 1);
 //! ```
 //!
 //! # Benefits of Dependency Injection
@@ -326,7 +326,7 @@ pub fn focus_mon(ctx: &mut WmCtx, direction: i32) {
         return;
     }
 
-    let target = match dir_to_mon(&ctx.g.monitors, ctx.g.selmon, direction) {
+    let target = match find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon, direction) {
         Some(id) => id,
         None => return,
     };

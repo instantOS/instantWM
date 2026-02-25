@@ -217,7 +217,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     let is_overview = {
         let selmon_id = ctx.g.selmon;
         if let Some(mon) = ctx.g.monitors.get(selmon_id) {
-            !crate::monitor::is_current_layout_tiling(mon, &ctx.g.tags)
+            !mon.is_tiling_layout(&ctx.g.tags)
         } else {
             false
         }
