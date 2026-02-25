@@ -15,6 +15,8 @@ gets far enough away fromt the floating window, deactivate the resize thingy,
 and then switch focus to the tiled window
 
 
+Search this codebase for AI hallucinated nonsense that was generated because of
+lazily porting C to unidiomatic Rust
 
 
 

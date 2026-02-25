@@ -79,11 +79,17 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
         unfocus_win(ctx, cur_win, false);
     }
 
+    let selection_state_changed = current_sel.is_none() != target.is_none();
+
     if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
         if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
             mon.gesture = Gesture::None;
         }
+    }
+
+    if selection_state_changed {
+        crate::keyboard::grab_keys(ctx);
     }
 
     draw_bars(ctx);
