@@ -1,4 +1,4 @@
-//! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_dkeys`).
+//! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
 use std::rc::Rc;
 
@@ -302,7 +302,7 @@ pub fn get_keys() -> Vec<Key> {
     keys
 }
 
-pub fn get_dkeys() -> Vec<Key> {
+pub fn get_desktop_keybinds() -> Vec<Key> {
     vec![
         key!(0, XK_RETURN => |ctx| spawn(ctx, Cmd::Term)),
         key!(0, XK_R      => |ctx| spawn(ctx, Cmd::Yazi)),

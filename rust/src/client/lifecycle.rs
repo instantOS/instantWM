@@ -327,11 +327,6 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     let mut c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
 
     let animated = ctx.g.animated;
-    if let Some(mon_id) = c.mon_id {
-        if let Some(mon) = ctx.g.monitor_mut(mon_id) {
-            mon.sel = Some(w);
-        }
-    }
 
     if let Some(mon_id) = c.mon_id {
         arrange(ctx, Some(mon_id));

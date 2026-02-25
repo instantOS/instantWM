@@ -7,7 +7,7 @@
 //! |-------------------|---------------------------------------------------------|
 //! | [`appearance`]    | Color palette, per-scheme color tables, font list       |
 //! | [`commands`]      | External commands (`ExternalCommands`, `Cmd` enum)      |
-//! | [`keybindings`]   | Normal-mode key bindings (`get_keys`, `get_dkeys`)      |
+//! | [`keybindings`]   | Normal-mode key bindings (`get_keys`, `get_desktop_keybinds`)      |
 //! | [`buttons`]       | Mouse button bindings (`get_buttons`)                   |
 //! | [`rules`]         | Window placement rules (`get_rules`)                    |
 //! | [`xcommands`]     | IPC socket command dispatch (`get_xcommands`)           |
@@ -44,7 +44,7 @@ pub use appearance::{
 #[allow(unused_imports)]
 pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};
 #[allow(unused_imports)]
-pub use keybindings::{get_dkeys, get_keys, CONTROL, MOD1, MODKEY, SHIFT};
+pub use keybindings::{get_desktop_keybinds, get_keys, CONTROL, MOD1, MODKEY, SHIFT};
 
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -216,7 +216,7 @@ pub struct Config {
 
     // --- Bindings ---
     pub keys: Vec<Key>,
-    pub dkeys: Vec<Key>,
+    pub desktop_keybinds: Vec<Key>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub commands: Vec<XCommand>,
@@ -271,7 +271,7 @@ pub fn init_config() -> Config {
 
         // --- Bindings ---
         keys: get_keys(),
-        dkeys: get_dkeys(),
+        desktop_keybinds: get_desktop_keybinds(),
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
         commands: xcommands::get_xcommands(),

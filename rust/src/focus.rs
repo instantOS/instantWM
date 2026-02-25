@@ -62,21 +62,10 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
         )
     };
 
-    if current_sel == target {
-        if let Some(w) = target {
-            set_focus(ctx, w);
-        } else {
-            let conn = ctx.x11.conn;
-            // Propagate X11 errors instead of ignoring them
-            conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME)?;
-            conn.delete_property_ctx(root, net_active_window)?;
-            conn.flush_ctx()?;
+    if current_sel != target {
+        if let Some(cur_win) = current_sel {
+            unfocus_win(ctx, cur_win, false);
         }
-        return Ok(());
-    }
-
-    if let Some(cur_win) = current_sel {
-        unfocus_win(ctx, cur_win, false);
     }
 
     let selection_state_changed = current_sel.is_none() != target.is_none();

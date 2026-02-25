@@ -149,6 +149,19 @@ pub fn set_focus(ctx: &mut WmCtx, win: Window) {
         );
     }
 
+    if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+        let isfloating = c.isfloating;
+        let pixel = if isfloating {
+            scheme.float_focus.bg.pixel()
+        } else {
+            scheme.tile_focus.bg.pixel()
+        };
+        let _ = conn
+            .change_window_attributes(win, &ChangeWindowAttributesAux::new().border_pixel(pixel));
+    }
+
+    grab_buttons(ctx, win, true);
+
     send_event(
         ctx,
         win,

@@ -58,7 +58,7 @@ pub struct RuntimeConfig {
 
     // Bindings
     pub keys: Vec<Key>,
-    pub dkeys: Vec<Key>,
+    pub desktop_keybinds: Vec<Key>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub commands: Vec<XCommand>,
@@ -116,7 +116,7 @@ impl Default for RuntimeConfig {
             bordercolors: Vec::new(),
             statusbarcolors: Vec::new(),
             keys: Vec::new(),
-            dkeys: Vec::new(),
+            desktop_keybinds: Vec::new(),
             buttons: Vec::new(),
             rules: Vec::new(),
             commands: Vec::new(),
@@ -427,7 +427,7 @@ pub fn update_config_from_config(cfg: &crate::config::Config) {
     g.cfg.statusbarcolors = cfg.statusbarcolors.clone();
 
     g.cfg.keys = cfg.keys.clone();
-    g.cfg.dkeys = cfg.dkeys.clone();
+    g.cfg.desktop_keybinds = cfg.desktop_keybinds.clone();
     g.cfg.buttons = cfg.buttons.clone();
     g.cfg.rules = cfg.rules.clone();
     g.cfg.commands = cfg.commands.clone();

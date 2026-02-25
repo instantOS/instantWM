@@ -42,7 +42,7 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
     let matching_key = {
         let numlockmask = ctx.g.cfg.numlockmask;
         let keys = ctx.g.cfg.keys.clone();
-        let dkeys = ctx.g.cfg.dkeys.clone();
+        let desktop_keybinds = ctx.g.cfg.desktop_keybinds.clone();
         let mut result = None;
         for key in &keys {
             if keysym == key.keysym
@@ -55,7 +55,7 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
         }
         let sel_win = ctx.g.selected_win();
         if result.is_none() && sel_win.is_none() {
-            for key in &dkeys {
+            for key in &desktop_keybinds {
                 if keysym == key.keysym
                     && clean_mask(key.mod_mask as u16, numlockmask)
                         == clean_mask(state.bits(), numlockmask)
@@ -80,7 +80,7 @@ pub fn grab_keys(ctx: &WmCtx) {
     let root = ctx.g.cfg.root;
     let numlockmask = ctx.g.cfg.numlockmask;
     let keys = ctx.g.cfg.keys.as_slice();
-    let dkeys = ctx.g.cfg.dkeys.as_slice();
+    let desktop_keybinds = ctx.g.cfg.desktop_keybinds.as_slice();
     let free_alt_tab = true;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
@@ -132,7 +132,7 @@ pub fn grab_keys(ctx: &WmCtx) {
 
         let sel_win = ctx.g.selected_win();
         if sel_win.is_none() {
-            for key in dkeys {
+            for key in desktop_keybinds {
                 let keysym = get_keysym(keycode);
                 if keysym == key.keysym {
                     for &modif in &modifiers {
