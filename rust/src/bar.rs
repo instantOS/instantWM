@@ -106,11 +106,19 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     let mut x = ctx.g.cfg.startmenusize;
 
+    let mon_has_sel = ctx.g.monitors.get(mon_idx).is_some_and(|m| m.sel.is_some());
+
     {
         let ctx_imm = &*ctx;
         let m = ctx_imm.g.monitors.get(mon_idx).unwrap();
         x = widgets::draw_tag_indicators(ctx_imm, m, x, occupied_tags, urgent_tags, bh);
         x = widgets::draw_layout_indicator(ctx_imm, m, x, bh);
+    }
+
+    // Draw the shutdown/power button directly after the layout indicator
+    // when there is no selected client on this monitor (mirrors C behaviour).
+    if !mon_has_sel {
+        x = widgets::draw_shutdown_button(ctx, x, bh);
     }
 
     let title_end_x = if is_selmon {

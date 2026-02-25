@@ -174,6 +174,7 @@ where
 fn get_directional_candidates(
     head: Option<Window>,
     globals_map: &std::collections::HashMap<Window, Client>,
+    //TODO: there is a struct/enum which abstracts this better, use it
     selected_tags: u32,
     source_win: Window,
     source_center_x: i32,
@@ -334,12 +335,15 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
 
     view(ctx, TagMask::from_bits(tags));
+    //TODO: do error propagation
     focus(ctx, Some(last_win));
 
     let mon_id = ctx.g.selmon;
     crate::layouts::arrange(ctx, Some(mon_id));
 }
 
+//TODO: is this duplicated? Look for other warp functions in this and the C
+//codebase and do what's best
 pub fn warp(ctx: &WmCtx, c_win: Window) {
     let conn = ctx.x11.conn;
     if let Some(c) = ctx.g.clients.get(&c_win) {

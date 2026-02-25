@@ -101,7 +101,7 @@ pub fn get_tag_at_x(ctx: &WmCtx, click_x: i32) -> i32 {
     let mut acc = ctx.g.cfg.startmenusize;
     for t in visible_tags(ctx.g, m, occupied) {
         acc += t.width;
-        if acc >= click_x {
+        if acc > click_x {
             return t.tag_index as i32;
         }
     }

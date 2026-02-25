@@ -222,6 +222,120 @@ pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i3
     x
 }
 
+/// Draw the shutdown/power-off button that appears after the layout indicator
+/// when no client is selected on the monitor.
+///
+/// The button is `bh` pixels wide and renders a small power-icon made from
+/// filled rectangles so it is visible without a font glyph.  Returns the new
+/// x offset (i.e. `x + bh`).
+pub(crate) fn draw_shutdown_button(ctx: &WmCtx, x: i32, bh: i32) -> i32 {
+    let mut drw = get_drw().clone();
+
+    // Use the status scheme as the base colours.
+    if let Some(ref ss) = ctx.g.cfg.statusscheme {
+        let scheme = ColorScheme {
+            fg: ss.fg.clone(),
+            bg: ss.bg.clone(),
+            detail: ss.detail.clone(),
+        };
+        drw.set_scheme(scheme);
+    }
+
+    // Background fill for the button cell.
+    drw.rect(x, 0, bh as u32, bh as u32, true, true);
+
+    // Draw a simple power icon using raw X11 rectangles so we don't need a
+    // special font glyph.  The icon is centred inside the `bh × bh` cell.
+    //
+    //  Layout (all values relative to cell origin `x, 0`):
+    //    • A vertical "stem" bar:  2 px wide, upper-centre of the icon.
+    //    • A "C"-shaped arc approximated by three rectangles that form the
+    //      left, bottom and right sides of a circle outline.
+    //
+    //  We keep the icon proportional to bh so it looks right at any bar height.
+
+    let icon_size = bh * 5 / 8; // overall icon bounding box
+    let icon_x = x + (bh - icon_size) / 2;
+    let icon_y = (bh - icon_size) / 2;
+
+    let stroke = (icon_size / 6).max(2); // stroke thickness
+    let gap = stroke; // gap at the top for the stem notch
+
+    // Stem: centred horizontally, sits in the top portion of the icon.
+    let stem_w = stroke;
+    let stem_h = icon_size / 2;
+    let stem_x = icon_x + (icon_size - stem_w) / 2;
+    let stem_y = icon_y;
+
+    // Arc approximation – three sides of a hollow circle:
+    //   left bar, right bar, bottom bar.
+    let arc_x = icon_x;
+    let arc_y = icon_y + gap + stroke; // start below the stem gap
+    let arc_w = stroke;
+    let arc_h = icon_size - gap - stroke; // height of side bars
+    let bot_x = icon_x + stroke;
+    let bot_y = icon_y + icon_size - stroke;
+    let bot_w = (icon_size - stroke * 2).max(0);
+    let bot_h = stroke;
+
+    unsafe {
+        let display = drw.display();
+        let drawable = drw.drawable();
+        let gc = drw.gc();
+
+        // Retrieve the foreground (fg) pixel from the current scheme.
+        let fg_pixel = get_scheme_pixel(&drw, crate::drw::COL_FG);
+
+        crate::drw::XSetForeground(display, gc, fg_pixel);
+
+        // Stem
+        crate::drw::XFillRectangle(
+            display,
+            drawable,
+            gc,
+            stem_x,
+            stem_y,
+            stem_w as u32,
+            stem_h as u32,
+        );
+
+        // Left side of arc
+        crate::drw::XFillRectangle(
+            display,
+            drawable,
+            gc,
+            arc_x,
+            arc_y,
+            arc_w as u32,
+            arc_h as u32,
+        );
+
+        // Right side of arc
+        crate::drw::XFillRectangle(
+            display,
+            drawable,
+            gc,
+            arc_x + icon_size - stroke,
+            arc_y,
+            arc_w as u32,
+            arc_h as u32,
+        );
+
+        // Bottom of arc
+        crate::drw::XFillRectangle(
+            display,
+            drawable,
+            gc,
+            bot_x,
+            bot_y,
+            bot_w as u32,
+            bot_h as u32,
+        );
+    }
+
+    x + bh
+}
+
 fn get_window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<ColorScheme> {
     let schemes = if is_hover {
         &g.cfg.windowschemes.hover
