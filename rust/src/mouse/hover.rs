@@ -286,21 +286,22 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
                 let (root_x, root_y, win_x, win_y) =
                     query_pointer_on_win(ctx, win).unwrap_or((0, 0, 0, 0));
 
+                let btn = MouseButton::from_u8(bp.detail).unwrap_or(MouseButton::Left);
                 match bp.detail {
                     // Right-click → move
                     3 => {
                         warp_into(ctx, win);
-                        move_mouse(ctx);
+                        crate::mouse::move_mouse(ctx, btn);
                     }
                     // Left-click
                     1 => {
                         if is_at_top_middle_edge(&geo, root_x, root_y) {
                             warp_into(ctx, win);
-                            move_mouse(ctx);
+                            crate::mouse::move_mouse(ctx, btn);
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
                             warp_pointer_resize(ctx, win, dir);
-                            resize_mouse_directional(ctx, Some(dir));
+                            resize_mouse_directional(ctx, Some(dir), btn);
                         }
                     }
                     _ => {}

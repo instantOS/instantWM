@@ -100,7 +100,16 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     let dir = ctx.g.resize_direction;
                     reset_cursor(ctx);
-                    resize_mouse_directional(ctx, dir);
+                    let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
+                    if btn == MouseButton::Right {
+                        crate::mouse::move_mouse(ctx, btn);
+                    } else if btn == MouseButton::Left {
+                        if dir == Some(crate::types::ResizeDirection::Top) {
+                            crate::mouse::move_mouse(ctx, btn);
+                        } else {
+                            resize_mouse_directional(ctx, dir, btn);
+                        }
+                    }
                     return;
                 }
             }
@@ -116,7 +125,13 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         if clean_mask(button.mask, numlockmask) != clean_state {
             continue;
         }
-        (button.action)(ctx, bar_pos, e.root_x as i32, e.root_y as i32);
+        let arg = ButtonArg {
+            pos: bar_pos,
+            btn: button.button,
+            rx: e.root_x as i32,
+            ry: e.root_y as i32,
+        };
+        (button.action)(ctx, arg);
     }
 }
 

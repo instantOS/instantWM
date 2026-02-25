@@ -31,7 +31,7 @@ use crate::types::ResizeDirection;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-pub fn resize_mouse_from_cursor(ctx: &mut WmCtx) {
+pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
@@ -62,7 +62,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx) {
         get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
     };
 
-    resize_mouse_directional(ctx, Some(dir));
+    resize_mouse_directional(ctx, Some(dir), btn);
 }
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.
@@ -86,7 +86,7 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// The loop ends on `ButtonRelease`.  After the grab is released,
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
-pub fn resize_mouse(ctx: &mut WmCtx) {
+pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
@@ -123,7 +123,11 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
         };
 
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
 
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / rate {
@@ -172,7 +176,7 @@ pub fn resize_mouse(ctx: &mut WmCtx) {
 ///
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
-pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirection>) {
+pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirection>, btn: MouseButton) {
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
@@ -218,7 +222,11 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
         };
 
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
 
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / rate {
@@ -305,8 +313,8 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
 /// that bypassed an additional fullscreen guard.  The Rust version already
 /// handles this cleanly in [`resize_mouse`].
 #[inline]
-pub fn force_resize_mouse(ctx: &mut WmCtx) {
-    resize_mouse(ctx);
+pub fn force_resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
+    resize_mouse(ctx, btn);
 }
 
 // ── resize_aspect_mouse ───────────────────────────────────────────────────────
@@ -320,7 +328,7 @@ pub fn force_resize_mouse(ctx: &mut WmCtx) {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
+pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window, btn: MouseButton) {
     let is_fullscreen = ctx
         .g
         .clients
@@ -354,7 +362,11 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window) {
         };
 
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
 
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / rate {

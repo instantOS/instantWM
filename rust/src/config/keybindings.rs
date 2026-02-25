@@ -205,8 +205,8 @@ pub fn get_keys() -> Vec<Key> {
                 moveresize(ctx, win, Direction::Left)
             }
         }),
-        key!(MS,   XK_M      => move_mouse),
-        key!(MA,   XK_M      => resize_mouse_from_cursor),
+        key!(MS,   XK_M      => |ctx| move_mouse(ctx, crate::types::MouseButton::Left)),
+        key!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
         key!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_overview(ctx, TagMask::ALL_BITS)

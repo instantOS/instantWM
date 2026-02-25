@@ -549,7 +549,11 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
             break;
         };
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / rate {
                     continue;
@@ -601,7 +605,11 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
             break;
         };
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                     continue;
@@ -694,7 +702,11 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, click_r
             break;
         };
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                     continue;
@@ -786,6 +798,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, click_r
 pub fn window_title_mouse_handler(
     ctx: &mut WmCtx,
     win: Window,
+    btn: MouseButton,
     click_root_x: i32,
     click_root_y: i32,
 ) {
@@ -806,7 +819,11 @@ pub fn window_title_mouse_handler(
             break;
         };
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                     continue;
@@ -821,7 +838,7 @@ pub fn window_title_mouse_handler(
                     }
                     focus(ctx, Some(win));
                     warp_into(ctx, win);
-                    move_mouse(ctx);
+                    move_mouse(ctx, btn);
                     return;
                 }
             }
@@ -852,6 +869,7 @@ pub fn window_title_mouse_handler(
 pub fn window_title_mouse_handler_right(
     ctx: &mut WmCtx,
     win: Window,
+    btn: MouseButton,
     click_root_x: i32,
     click_root_y: i32,
 ) {
@@ -882,7 +900,11 @@ pub fn window_title_mouse_handler_right(
             break;
         };
         match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
             x11rb::protocol::Event::MotionNotify(m) => {
                 if m.time - last_time <= 1000 / REFRESH_RATE_LO {
                     continue;
@@ -896,7 +918,7 @@ pub fn window_title_mouse_handler_right(
                         crate::client::show(ctx, win);
                         focus(ctx, Some(win));
                     }
-                    super::resize::resize_mouse_from_cursor(ctx);
+                    super::resize::resize_mouse_from_cursor(ctx, btn);
                     return;
                 }
             }

@@ -11,6 +11,16 @@ use crate::contexts::WmCtx;
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
+/// Arguments passed to a button action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ButtonArg {
+    pub pos: BarPosition,
+    pub btn: MouseButton,
+    pub rx: i32,
+    pub ry: i32,
+}
+
+
 /// A keyboard binding.
 pub struct Key {
     /// Modifier mask (e.g., Mod1Mask, ControlMask).
@@ -59,13 +69,8 @@ pub struct Button {
     ///
     /// Arguments:
     /// * `&mut WmCtx` — the window manager context
-    /// * `BarPosition` — the exact bar region that was clicked (tag index,
-    ///   window handle, etc.)
-    /// * `i32, i32` — `root_x`, `root_y` from the `ButtonPressEvent`,
-    ///   available without any extra X11 round-trip.  Drag handlers use
-    ///   these as their initial anchor instead of calling `get_root_ptr`.
-    ///   Handlers that don't need the coordinates use `_`.
-    pub action: Rc<Box<dyn Fn(&mut WmCtx, BarPosition, i32, i32)>>,
+    /// * `ButtonArg` — The exact bar region that was clicked, the mouse button that was pressed, and the x/y coordinates.
+    pub action: Rc<Box<dyn Fn(&mut WmCtx, ButtonArg)>>,
 }
 
 impl Button {
