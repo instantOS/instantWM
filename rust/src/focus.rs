@@ -8,12 +8,15 @@ use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::contexts::WmCtx;
 use crate::tags::view;
 use crate::types::*;
+use crate::util::X11ConnExt;
 use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
+======= REPLACE
+
 
 /// Set focus to a window, or to the root if None.
 pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
@@ -64,11 +67,14 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
             set_focus(ctx, w);
         } else {
             let conn = ctx.x11.conn;
-            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-            let _ = conn.delete_property(root, net_active_window);
-            let _ = conn.flush();
+            // Use the _ctx methods for operations that should report errors
+            let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+            let _ = conn.delete_property_ctx(root, net_active_window);
+            let _ = conn.flush_ctx();
         }
         return;
+======= REPLACE
+
     }
 
     if let Some(cur_win) = current_sel {
@@ -92,9 +98,10 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) {
         set_focus(ctx, w);
     } else {
         let conn = ctx.x11.conn;
-        let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-        let _ = conn.delete_property(root, net_active_window);
-        let _ = conn.flush();
+        // Use the _ctx methods for operations that should report errors
+        let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+        let _ = conn.delete_property_ctx(root, net_active_window);
+        let _ = conn.flush_ctx();
     }
 }
 
@@ -102,8 +109,8 @@ pub fn set_focus_win(ctx: &WmCtx, win: Window) {
     let conn = ctx.x11.conn;
     if let Some(c) = ctx.g.clients.get(&win) {
         if !c.neverfocus {
-            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
-            let _ = conn.change_property32(
+            let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
+            let _ = conn.change_property32_ctx(
                 PropMode::REPLACE,
                 ctx.g.cfg.root,
                 ctx.g.cfg.netatom.active_window,
@@ -111,9 +118,11 @@ pub fn set_focus_win(ctx: &WmCtx, win: Window) {
                 &[win],
             );
         }
-        let _ = conn.flush();
+        let _ = conn.flush_ctx();
     }
 }
+======= REPLACE
+
 
 /// Focus a client in the given direction.
 ///
