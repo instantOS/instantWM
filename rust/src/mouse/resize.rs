@@ -259,12 +259,12 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                 let snap = ctx.g.cfg.snap;
 
                 let should_toggle = if let Some(client) = ctx.g.clients.get(&win) {
-                let has_tiling = ctx
-                    .g
-                    .monitors
-                    .get(ctx.g.selmon)
-                    .map(|m| m.is_tiling_layout())
-                    .unwrap_or(true);
+                    let has_tiling = ctx
+                        .g
+                        .monitors
+                        .get(ctx.g.selmon)
+                        .map(|m| m.is_tiling_layout())
+                        .unwrap_or(true);
 
                     !client.isfloating
                         && has_tiling
@@ -287,7 +287,7 @@ pub fn resize_mouse_directional(ctx: &mut WmCtx, direction: Option<ResizeDirecti
                         .g
                         .monitors
                         .get(ctx.g.selmon)
-                        .map(|m| is_current_layout_tiling(m))
+                        .map(|m| m.is_tiling_layout())
                         .unwrap_or(true);
 
                     if !has_tiling || is_floating {

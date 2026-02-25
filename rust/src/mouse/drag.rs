@@ -30,7 +30,6 @@ use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 use crate::focus::{focus, warp_into};
 use crate::layouts::{arrange, restack};
-use crate::monitor::is_current_layout_tiling;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
 use crate::types::SnapPosition;
 use crate::types::*;
@@ -169,7 +168,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
             .g
             .monitors
             .get(ctx.g.selmon)
-            .map(|m| is_current_layout_tiling(m))
+            .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
 
         if !has_tiling {
@@ -281,7 +280,7 @@ fn on_motion(
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m))
+        .map(|m| m.is_tiling_layout())
         .unwrap_or(true);
 
     let (mut is_floating, mut drag_geo) = ctx
@@ -504,7 +503,7 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> 
         .g
         .monitors
         .get(ctx.g.selmon)
-        .map(|m| is_current_layout_tiling(m))
+        .map(|m| m.is_tiling_layout())
         .unwrap_or(true);
 
     if is_tiling {

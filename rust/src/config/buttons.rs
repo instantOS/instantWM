@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 //! Mouse button bindings.
 
 use std::rc::Rc;

@@ -287,7 +287,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                 .g
                 .monitors
                 .get(selmon_id)
-                .map(|m| is_current_layout_tiling(m))
+                .map(|m| m.is_tiling_layout())
                 .unwrap_or(true);
 
             // Skip focus for floating windows when not in floating layout

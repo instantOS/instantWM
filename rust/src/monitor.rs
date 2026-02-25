@@ -675,38 +675,3 @@ fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
     let g = get_globals();
     g.monitors.get(mon_id).and_then(|m| m.sel)
 }
-
-/// Get the current tag for a monitor.
-///
-/// **Deprecated**: Use `mon.current_tag()` instead.
-pub fn get_current_tag(mon: &Monitor) -> Option<&Tag> {
-    mon.current_tag()
-}
-
-/// Get a mutable reference to the current tag for a monitor.
-///
-/// **Deprecated**: Use `mon.current_tag_mut()` instead.
-pub fn get_current_tag_mut(mon: &mut Monitor) -> Option<&mut Tag> {
-    mon.current_tag_mut()
-}
-
-/// Get the layout symbol for a monitor.
-///
-/// **Deprecated**: Use `mon.layout_symbol()` instead.
-pub fn get_current_ltsymbol(mon: &Monitor) -> String {
-    mon.layout_symbol()
-}
-
-/// Check if the bar should be shown for a monitor.
-///
-/// **Deprecated**: Use `mon.shows_bar()` instead.
-pub fn get_current_showbar(mon: &Monitor) -> bool {
-    mon.shows_bar()
-}
-
-/// Check if the current layout is a tiling layout.
-///
-/// **Deprecated**: Use `mon.is_tiling_layout()` instead.
-pub fn is_current_layout_tiling(mon: &Monitor) -> bool {
-    mon.is_tiling_layout()
-}

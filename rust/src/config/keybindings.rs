@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_dkeys`).
 
 use std::rc::Rc;

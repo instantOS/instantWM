@@ -279,9 +279,12 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
         };
         let (source_center_x, source_center_y) = source_client.geo.center();
 
+        let selected = mon.selected_tags();
+
         get_directional_candidates(
             mon.clients,
             &ctx.g.clients,
+            selected,
             source_win,
             source_center_x,
             source_center_y,

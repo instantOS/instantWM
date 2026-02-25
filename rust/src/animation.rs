@@ -2,7 +2,6 @@ use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
 use crate::globals::get_globals;
-use crate::monitor::is_current_layout_tiling;
 use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::thread;
@@ -216,7 +215,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             .sel
             .and_then(|w| ctx.g.clients.get(&w).map(|c| c.isfloating))
             .unwrap_or(false);
-        let has_tiling = is_current_layout_tiling(mon);
+        let has_tiling = mon.is_tiling_layout();
         let current_tag = mon.current_tag as u32;
         (is_floating, has_tiling, current_tag)
     };
