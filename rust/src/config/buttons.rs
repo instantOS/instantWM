@@ -19,9 +19,7 @@ use crate::push::{push_down, push_up};
 use crate::tags::view::toggle_view_tag;
 use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag};
 use crate::toggles::{toggle_locked, toggle_prefix};
-use crate::types::{
-    BarPosition, Button, Direction, MouseButton, StackDirection, TagMask,
-};
+use crate::types::{BarPosition, Button, Direction, MouseButton, StackDirection, TagMask};
 use crate::util::spawn;
 
 const MS: u32 = MODKEY | SHIFT;

@@ -411,22 +411,18 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
 
     let Ok(reply) = cookie.reply() else { return };
 
-    let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
+    let data: Vec<u32> = reply.value32().map(|v| v.collect()).unwrap_or_default();
 
-    // Helper: read a little-endian i32 at byte offset `off`, or 0 if out of range.
-    let read_i32 = |off: usize| -> i32 {
-        if data.len() >= off + 4 {
-            i32::from_ne_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]])
+    // Helper: read a u32 at index `idx`, or 0 if out of range.
+    let read_i32 = |idx: usize| -> i32 {
+        if data.len() > idx {
+            data[idx] as i32
         } else {
             0
         }
     };
 
-    let flags = if data.len() >= 4 {
-        u32::from_ne_bytes([data[0], data[1], data[2], data[3]])
-    } else {
-        0
-    };
+    let flags = if !data.is_empty() { data[0] } else { 0 };
 
     // Re-acquire mutable reference.
     let c = match ctx.g.clients.get_mut(&win) {
@@ -434,42 +430,42 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
         None => return,
     };
 
-    // --- base size (byte offset 60) / min size (byte offset 20) ---
-    if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() >= 68 {
-        c.size_hints.basew = read_i32(60);
-        c.size_hints.baseh = read_i32(64);
-    } else if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() >= 28 {
+    // --- base size (index 15) / min size (index 5) ---
+    if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() > 16 {
+        c.size_hints.basew = read_i32(15);
+        c.size_hints.baseh = read_i32(16);
+    } else if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
         // Fall back to min size when base size is absent.
-        c.size_hints.basew = read_i32(20);
-        c.size_hints.baseh = read_i32(24);
+        c.size_hints.basew = read_i32(5);
+        c.size_hints.baseh = read_i32(6);
     } else {
         c.size_hints.basew = 0;
         c.size_hints.baseh = 0;
     }
 
-    // --- resize increments (byte offset 36) ---
-    if flags & SIZE_HINTS_P_RESIZE_INC != 0 && data.len() >= 44 {
-        c.size_hints.incw = read_i32(36);
-        c.size_hints.inch = read_i32(40);
+    // --- resize increments (index 9) ---
+    if flags & SIZE_HINTS_P_RESIZE_INC != 0 && data.len() > 10 {
+        c.size_hints.incw = read_i32(9);
+        c.size_hints.inch = read_i32(10);
     } else {
         c.size_hints.incw = 0;
         c.size_hints.inch = 0;
     }
 
-    // --- max size (byte offset 28) ---
-    if flags & SIZE_HINTS_P_MAX_SIZE != 0 && data.len() >= 36 {
-        c.size_hints.maxw = read_i32(28);
-        c.size_hints.maxh = read_i32(32);
+    // --- max size (index 7) ---
+    if flags & SIZE_HINTS_P_MAX_SIZE != 0 && data.len() > 8 {
+        c.size_hints.maxw = read_i32(7);
+        c.size_hints.maxh = read_i32(8);
     } else {
         c.size_hints.maxw = 0;
         c.size_hints.maxh = 0;
     }
 
-    // --- min size (byte offset 20) ---
-    if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() >= 28 {
-        c.size_hints.minw = read_i32(20);
-        c.size_hints.minh = read_i32(24);
-    } else if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() >= 68 {
+    // --- min size (index 5) ---
+    if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
+        c.size_hints.minw = read_i32(5);
+        c.size_hints.minh = read_i32(6);
+    } else if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() > 16 {
         // Fall back to base size when min size is absent.
         c.size_hints.minw = c.size_hints.basew;
         c.size_hints.minh = c.size_hints.baseh;
@@ -478,12 +474,12 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
         c.size_hints.minh = 0;
     }
 
-    // --- aspect ratio (byte offsets 44 / 48 / 52 / 56) ---
-    if flags & SIZE_HINTS_P_ASPECT != 0 && data.len() >= 60 {
-        let min_aspect_num = read_i32(44);
-        let min_aspect_den = read_i32(48);
-        let max_aspect_num = read_i32(52);
-        let max_aspect_den = read_i32(56);
+    // --- aspect ratio (indices 11 / 12 / 13 / 14) ---
+    if flags & SIZE_HINTS_P_ASPECT != 0 && data.len() > 14 {
+        let min_aspect_num = read_i32(11);
+        let min_aspect_den = read_i32(12);
+        let max_aspect_num = read_i32(13);
+        let max_aspect_den = read_i32(14);
 
         c.mina = if min_aspect_den != 0 {
             min_aspect_num as f32 / min_aspect_den as f32

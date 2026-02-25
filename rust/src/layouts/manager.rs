@@ -52,6 +52,11 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         client_count_mon(ctx.g, m) as u32
     };
 
+    // Update client count
+    if let Some(m) = ctx.g.monitor_mut(mon_id) {
+        m.clientcount = clientcount;
+    }
+
     // Apply border widths
     apply_border_widths(ctx, mon_id);
 
@@ -60,11 +65,6 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
 
     // Place overlay
     place_overlay(ctx, mon_id);
-
-    // Update client count
-    if let Some(m) = ctx.g.monitor_mut(mon_id) {
-        m.clientcount = clientcount;
-    }
 }
 
 fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
