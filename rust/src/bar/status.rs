@@ -22,6 +22,9 @@ struct StatusLayout {
 }
 
 pub(crate) fn draw_status_bar(ctx: &mut WmCtx, m: &Monitor, bh: i32) -> (i32, i32) {
+    if ctx.x11_conn().is_none() {
+        return (0, 0);
+    }
     let stext = ctx.g.status_text.clone();
     if stext.is_empty() {
         return (0, 0);
@@ -30,13 +33,15 @@ pub(crate) fn draw_status_bar(ctx: &mut WmCtx, m: &Monitor, bh: i32) -> (i32, i3
     let items = parse_status_items(stext.as_bytes());
     let layout = measure_layout(ctx, m, &items);
 
-    let mut drw = ctx
+    let Some(mut drw) = ctx
         .g
         .cfg
         .drw
         .as_ref()
-        .expect("draw_status_bar called before drw initialised")
-        .clone();
+        .and_then(|drw| drw.has_display().then(|| drw.clone()))
+    else {
+        return (0, 0);
+    };
     draw_items(&mut drw, m, bh, &items, layout, ctx.g, ctx.bar);
 
     (layout.draw_start_x, layout.total_width)

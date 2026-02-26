@@ -32,6 +32,7 @@
 //! used here to checkpoint a floating client's position before the overview
 //! layout moves it, so the original position can be restored later.
 
+use crate::backend::BackendOps;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect, SnapPosition, WindowId};

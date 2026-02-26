@@ -143,4 +143,9 @@ pub use ffi::{
     FC_TRUE,
 };
 
+#[inline]
+pub(crate) fn x11_supported() -> bool {
+    cfg!(feature = "x11_backend")
+}
+
 // ── Compatibility helpers ─────────────────────────────────────────────────────

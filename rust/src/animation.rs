@@ -1,4 +1,4 @@
-use crate::backend::BackendKind;
+use crate::backend::{BackendKind, BackendOps};
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
@@ -102,24 +102,23 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
         return;
     }
 
-    let effective_frames =
-        if ctx.backend_kind() == BackendKind::X11 && !ctx.g.cfg.xlibdisplay.0.is_null() {
-            let queued_events = unsafe {
-                crate::drw::XEventsQueued(
-                    ctx.g.cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
-                    QUEUED_ALREADY,
-                )
-            };
-            if queued_events > QUEUE_SKIP_THRESHOLD {
-                0
-            } else if queued_events > QUEUE_REDUCE_THRESHOLD {
-                (frames / 2).max(1)
-            } else {
-                frames
-            }
+    let effective_frames = if ctx.x11_conn().is_some() && !ctx.g.cfg.xlibdisplay.0.is_null() {
+        let queued_events = unsafe {
+            crate::drw::XEventsQueued(
+                ctx.g.cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
+                QUEUED_ALREADY,
+            )
+        };
+        if queued_events > QUEUE_SKIP_THRESHOLD {
+            0
+        } else if queued_events > QUEUE_REDUCE_THRESHOLD {
+            (frames / 2).max(1)
         } else {
             frames
-        };
+        }
+    } else {
+        frames
+    };
 
     let final_rect = final_rect(rect, &start_rect, actual_w, actual_h, reset_pos);
 

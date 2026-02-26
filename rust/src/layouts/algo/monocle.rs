@@ -17,6 +17,7 @@
 //! windows appearing during the animation.
 
 use crate::animation::animate_client;
+use crate::backend::BackendOps;
 use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};

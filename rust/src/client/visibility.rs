@@ -15,7 +15,7 @@
 //! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
 use crate::animation::animate_client;
-use crate::backend::BackendKind;
+use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;

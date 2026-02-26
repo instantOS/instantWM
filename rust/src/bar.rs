@@ -44,14 +44,19 @@ impl BarState {
 }
 
 pub fn text_width_ctx(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
+    if ctx.x11_conn().is_none() {
+        return 0;
+    }
     // Transitional helper: avoid going through get_drw() when ctx is available.
-    let mut drw = ctx
+    let Some(mut drw) = ctx
         .g
         .cfg
         .drw
         .as_ref()
-        .expect("text_width_ctx called before drw initialised")
-        .clone();
+        .and_then(|drw| drw.has_display().then(|| drw.clone()))
+    else {
+        return 0;
+    };
     drw.fontset_getwidth(text) as i32
 }
 
@@ -65,6 +70,9 @@ pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
 
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
+    if ctx.x11_conn().is_none() {
         return;
     }
     ctx.bar.recursion_enter();
@@ -181,13 +189,16 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         .drw
         .as_ref()
         .expect("draw_bar called before drw initialised")
-        .map(barwin, 0, 0, work_rect_w as u16, bh as u16);
+        .map(barwin.into(), 0, 0, work_rect_w as u16, bh as u16);
 
     ctx.bar.recursion_exit();
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
+    if ctx.x11_conn().is_none() {
         return;
     }
     let indices: Vec<usize> = ctx.g.monitors_iter().map(|(i, _)| i).collect();
@@ -198,6 +209,9 @@ pub fn draw_bars(ctx: &mut WmCtx) {
 
 pub fn reset_bar(ctx: &mut WmCtx) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
+    if ctx.x11_conn().is_none() {
         return;
     }
     let selmon_idx = ctx.g.selmon_id();

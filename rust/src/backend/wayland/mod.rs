@@ -50,7 +50,6 @@
 //! need a Wayland-native renderer path (layer-shell surface or custom
 //! rendering).
 
-#[cfg(feature = "wayland_backend")]
 pub mod compositor;
 
 use crate::backend::{BackendKind, BackendOps};
@@ -90,27 +89,27 @@ impl BackendOps for WaylandBackend {
     }
 
     fn resize_window(&self, window: WindowId, rect: Rect) {
-        let _ = self.with_state(|state| state.resize_window(window, rect));
+        let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }
 
     fn raise_window(&self, window: WindowId) {
-        let _ = self.with_state(|state| state.raise_window(window));
+        let _ = self.with_state(|state: &mut WaylandState| state.raise_window(window));
     }
 
     fn restack(&self, windows: &[WindowId]) {
-        let _ = self.with_state(|state| state.restack(windows));
+        let _ = self.with_state(|state: &mut WaylandState| state.restack(windows));
     }
 
     fn set_focus(&self, window: WindowId) {
-        let _ = self.with_state(|state| state.set_focus(window));
+        let _ = self.with_state(|state: &mut WaylandState| state.set_focus(window));
     }
 
     fn map_window(&self, window: WindowId) {
-        let _ = self.with_state(|state| state.map_window(window));
+        let _ = self.with_state(|state: &mut WaylandState| state.map_window(window));
     }
 
     fn unmap_window(&self, window: WindowId) {
-        let _ = self.with_state(|state| state.unmap_window(window));
+        let _ = self.with_state(|state: &mut WaylandState| state.unmap_window(window));
     }
 
     fn flush(&self) {

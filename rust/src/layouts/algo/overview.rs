@@ -24,6 +24,7 @@
 //! - After placement every client is raised above the bar window so the
 //!   overview is fully visible even on monitors with topbar enabled.
 
+use crate::backend::BackendOps;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::layouts::query::all_client_count;

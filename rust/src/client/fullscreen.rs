@@ -91,9 +91,6 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
     let x11_win: Window = win.into();
 
     let (net_wm_fullscreen, net_wm_state) = {
@@ -124,13 +121,15 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
         // ---- Enter fullscreen -----------------------------------------------
 
         // Advertise the new state via EWMH.
-        let _ = conn.change_property32(
-            PropMode::REPLACE,
-            x11_win,
-            net_wm_state,
-            AtomEnum::ATOM,
-            &[net_wm_fullscreen],
-        );
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.change_property32(
+                PropMode::REPLACE,
+                x11_win,
+                net_wm_state,
+                AtomEnum::ATOM,
+                &[net_wm_fullscreen],
+            );
+        }
 
         {
             let globals = get_globals_mut();
@@ -162,19 +161,21 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             }
 
             // Position and raise the window.
-            let _ = conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new()
-                    .x(mon_rect.x)
-                    .y(mon_rect.y)
-                    .width(mon_rect.w as u32)
-                    .height(mon_rect.h as u32),
-            );
-            let _ = conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
+            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+                let _ = conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new()
+                        .x(mon_rect.x)
+                        .y(mon_rect.y)
+                        .width(mon_rect.w as u32)
+                        .height(mon_rect.h as u32),
+                );
+                let _ = conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                );
+                let _ = conn.flush();
+            }
         }
 
         // Mark as floating so the layout engine leaves it alone.
@@ -188,13 +189,15 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
         // ---- Exit fullscreen ------------------------------------------------
 
         // Clear the EWMH state property.
-        let _ = conn.change_property32(
-            PropMode::REPLACE,
-            x11_win,
-            net_wm_state,
-            AtomEnum::ATOM,
-            &[],
-        );
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.change_property32(
+                PropMode::REPLACE,
+                x11_win,
+                net_wm_state,
+                AtomEnum::ATOM,
+                &[],
+            );
+        }
 
         {
             let globals = get_globals_mut();

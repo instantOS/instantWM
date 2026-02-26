@@ -46,21 +46,25 @@ use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
 use crate::types::*;
+use crate::util::die;
 use crate::wm::Wm;
 use crate::xresources::list_xresources;
 use crate::{keyboard, monitor};
-use smithay::backend::input::InputEvent;
+use smithay::backend::input::{
+    InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionAbsoluteEvent,
+};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::desktop::render_output;
+use smithay::desktop::render::render_output;
 use smithay::input::keyboard::FilterResult;
 use smithay::output::Mode as OutputMode;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Point, Transform, SERIAL_COUNTER};
+use smithay::wayland::compositor::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::wayland::socket::ListeningSocketSource;
-use winit::platform::pump_events::PumpStatus;
+use winit::event_loop::PumpStatus;
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -203,7 +207,9 @@ fn run_wayland() -> ! {
                             event.state(),
                             serial,
                             event.time() as u32,
-                            |_, modifiers, keysym| {
+                            |_data: &mut WaylandState,
+                             modifiers: &smithay::input::keyboard::ModifiersState,
+                             keysym: smithay::input::keyboard::KeysymHandle<'_>| {
                                 if event.state() == smithay::backend::input::KeyState::Pressed {
                                     let mod_mask = modifiers_to_x11_mask(modifiers);
                                     let mut ctx = wm.ctx();
@@ -318,12 +324,12 @@ fn run_wayland() -> ! {
             let time = start_time.elapsed();
             for window in state.space.elements() {
                 if let Some(surface) = window.wl_surface() {
-                    smithay::desktop::wayland::utils::send_frames_surface_tree(
+                    send_frames_surface_tree(
                         &surface,
                         &output,
                         time,
                         Some(Duration::from_millis(16)),
-                        smithay::desktop::wayland::utils::surface_primary_scanout_output,
+                        surface_primary_scanout_output,
                     );
                 }
             }

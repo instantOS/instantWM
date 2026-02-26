@@ -39,6 +39,7 @@ use super::ffi::{
 };
 use super::font::Fnt;
 use super::utf8::utf8decode;
+use super::x11_supported;
 use crate::types::ColorScheme;
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
@@ -139,6 +140,9 @@ impl Drw {
     ///
     /// `display_name` overrides `$DISPLAY` when `Some`.
     pub fn new(display_name: Option<&str>) -> Result<Self, String> {
+        if !x11_supported() {
+            return Err("X11 backend disabled".to_string());
+        }
         unsafe {
             FcInit();
             XftInit();
@@ -229,6 +233,12 @@ impl Drw {
         self.display
     }
 
+    /// True when the X11 display pointer is valid.
+    #[inline]
+    pub fn has_display(&self) -> bool {
+        !self.display.is_null()
+    }
+
     /// X screen number.
     #[inline]
     pub fn screen(&self) -> i32 {
@@ -259,6 +269,9 @@ impl Drw {
 impl Drw {
     /// Resize the off-screen pixmap to `w × h` pixels.
     pub fn resize(&mut self, w: u32, h: u32) {
+        if self.display.is_null() {
+            return;
+        }
         self.w = w;
         self.h = h;
         unsafe {
@@ -269,6 +282,9 @@ impl Drw {
 
     /// Blit the off-screen pixmap to `win` at position `(x, y)` with size `w × h`.
     pub fn map(&self, win: Window, x: i16, y: i16, w: u16, h: u16) {
+        if self.display.is_null() {
+            return;
+        }
         unsafe {
             XCopyArea(
                 self.display,
@@ -302,6 +318,9 @@ impl Drw {
 
     /// Allocate a single color by name (e.g. `"#ff0000"` or `"red"`).
     pub fn clr_create(&self, clrname: &str) -> Result<Color, String> {
+        if self.display.is_null() {
+            return Err("X11 display not available".to_string());
+        }
         let c_name = CString::new(clrname).map_err(|_| "Invalid color name")?;
 
         let mut color = XftColor {
@@ -348,12 +367,18 @@ impl Drw {
 impl Drw {
     /// Create a cursor from one of the standard X11 cursor shapes.
     pub fn cur_create(&self, shape: u32) -> Cursor {
+        if self.display.is_null() {
+            return Cursor::new(0);
+        }
         let cursor = unsafe { XCreateFontCursor(self.display, shape) };
         Cursor::new(cursor)
     }
 
     /// Free a cursor previously created with [`cur_create`].
     pub fn cur_free(&self, cursor: &Cursor) {
+        if self.display.is_null() || cursor.cursor == 0 {
+            return;
+        }
         unsafe { XFreeCursor(self.display, cursor.cursor) };
     }
 }
@@ -371,6 +396,9 @@ impl Drw {
     /// Fonts are stored in the order given; the first font is tried first when
     /// rendering each glyph.  Returns a clone of `self.fonts` for convenience.
     pub fn fontset_create(&mut self, fonts: &[&str]) -> Result<Option<Box<Fnt>>, String> {
+        if self.display.is_null() {
+            return Ok(None);
+        }
         // Load in reverse so prepending produces the correct order.
         let mut head: Option<Box<Fnt>> = None;
         for &name in fonts.iter().rev() {
@@ -396,6 +424,9 @@ impl Drw {
         fontname: Option<&str>,
         fontpattern: Option<*mut FcPattern>,
     ) -> Result<Option<Box<Fnt>>, String> {
+        if self.display.is_null() {
+            return Ok(None);
+        }
         let xfont: *mut XftFont;
         let pattern: *mut FcPattern;
 
@@ -464,6 +495,9 @@ impl Drw {
         if text.is_empty() {
             return 0;
         }
+        if self.display.is_null() {
+            return 0;
+        }
         let mut ext = zero_glyph_info();
         unsafe {
             XftTextExtentsUtf8(
@@ -480,6 +514,9 @@ impl Drw {
     /// Return `(advance_width, line_height)` for `text` with `font`.
     pub fn font_getexts_h(&self, font: &Fnt, text: &[u8]) -> (u32, u32) {
         if text.is_empty() {
+            return (0, font.h);
+        }
+        if self.display.is_null() {
             return (0, font.h);
         }
         let mut ext = zero_glyph_info();
@@ -504,6 +541,9 @@ impl Drw {
     /// * `filled` — fill if `true`, stroke outline if `false`.
     /// * `invert` — swap fg/bg colors.
     pub fn rect(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
+        if self.display.is_null() {
+            return;
+        }
         let Some(ref scheme) = self.scheme else {
             return;
         };
@@ -537,6 +577,9 @@ impl Drw {
     /// * `filled` — fill if `true`, stroke if `false`.
     /// * `invert` — swap fg/bg colors.
     pub fn circ(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
+        if self.display.is_null() {
+            return;
+        }
         let Some(ref scheme) = self.scheme else {
             return;
         };
@@ -589,6 +632,9 @@ impl Drw {
     /// * `slash`     — if `true` the trailing edge is a vertical slash rather
     ///                 than a horizontal midpoint.
     pub fn arrow(&self, x: i16, y: i16, w: u16, h: u16, direction: bool, slash: bool) {
+        if self.display.is_null() {
+            return;
+        }
         let Some(ref scheme) = self.scheme else {
             return;
         };
@@ -648,6 +694,9 @@ impl Drw {
         bg_pixel: u32,
         detail_pixel: u32,
     ) -> (bool, i32, u32, *mut XftDraw) {
+        if self.display.is_null() {
+            return (false, x, w, ptr::null_mut());
+        }
         // Lazy-initialise ellipsis width.
         // Skip when `detail_height < 0` — that signals we are *drawing* the
         // ellipsis itself and must not recurse.
@@ -731,7 +780,7 @@ impl Drw {
         invert: bool,
         detail_height: i32,
     ) -> i32 {
-        if self.fonts.is_none() || text.is_empty() {
+        if self.display.is_null() || self.fonts.is_none() || text.is_empty() {
             return 0;
         }
 
@@ -822,6 +871,9 @@ impl Drw {
         fg_color: Option<&XftColor>,
         bg_color: Option<&XftColor>,
     ) -> (i32, u32) {
+        if self.display.is_null() {
+            return (x, w);
+        }
         let text_bytes = text.as_bytes();
         let mut text_pos: usize = 0;
 
@@ -980,6 +1032,9 @@ impl Drw {
     /// is updated to point at it.  On failure the codepoint is recorded in the
     /// no-match cache and `usedfont_idx` is reset to 0.
     fn try_load_fallback_font(&mut self, codepoint: u32, usedfont_idx: &mut usize) {
+        if self.display.is_null() {
+            return;
+        }
         unsafe {
             let fccharset = FcCharSetCreate();
             FcCharSetAddChar(fccharset, codepoint);

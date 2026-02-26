@@ -9,16 +9,21 @@ const DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
 
-fn drw_clone(ctx: &WmCtx) -> Drw {
+fn drw_clone(ctx: &WmCtx) -> Option<Drw> {
+    if ctx.x11_conn().is_none() {
+        return None;
+    }
     ctx.g
         .cfg
         .drw
         .as_ref()
-        .expect("bar draw called before drw initialised")
-        .clone()
+        .and_then(|drw| drw.has_display().then(|| drw.clone()))
 }
 
 pub(crate) fn draw_startmenu_icon(ctx: &WmCtx, bh: i32) {
+    let Some(mut drw) = drw_clone(ctx) else {
+        return;
+    };
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
     let startmenu_invert = ctx
         .g
@@ -47,7 +52,6 @@ pub(crate) fn draw_startmenu_icon(ctx: &WmCtx, bh: i32) {
 
     let Some(ref scheme) = scheme else { return };
 
-    let mut drw = drw_clone(ctx);
     drw.set_scheme(scheme.clone());
 
     drw.rect(
@@ -155,7 +159,9 @@ pub(crate) fn draw_tag_indicators(
 
     let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 
-    let mut drw = drw_clone(ctx);
+    let Some(mut drw) = drw_clone(ctx) else {
+        return x;
+    };
 
     let selmon_gesture = ctx.g.selmon().map(|s| s.gesture).unwrap_or_default();
 
@@ -205,18 +211,18 @@ pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i3
     let w = (text_w + horizontal_padding).max(horizontal_padding);
     let lpad = ((w - text_w) / 2).max(0) as u32;
 
-    {
-        let mut drw = drw_clone(ctx);
-        if let Some(ref ss) = ctx.g.cfg.statusscheme {
-            let scheme = ColorScheme {
-                fg: ss.fg.clone(),
-                bg: ss.bg.clone(),
-                detail: ss.detail.clone(),
-            };
-            drw.set_scheme(scheme);
-        }
-        x = drw.text(x, 0, w as u32, bh as u32, lpad, &ltsymbol, false, 0);
+    let Some(mut drw) = drw_clone(ctx) else {
+        return x;
+    };
+    if let Some(ref ss) = ctx.g.cfg.statusscheme {
+        let scheme = ColorScheme {
+            fg: ss.fg.clone(),
+            bg: ss.bg.clone(),
+            detail: ss.detail.clone(),
+        };
+        drw.set_scheme(scheme);
     }
+    x = drw.text(x, 0, w as u32, bh as u32, lpad, &ltsymbol, false, 0);
 
     x
 }
@@ -228,7 +234,9 @@ pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i3
 /// filled rectangles so it is visible without a font glyph.  Returns the new
 /// x offset (i.e. `x + bh`).
 pub(crate) fn draw_shutdown_button(ctx: &WmCtx, x: i32, bh: i32) -> i32 {
-    let mut drw = drw_clone(ctx);
+    let Some(mut drw) = drw_clone(ctx) else {
+        return x + bh;
+    };
 
     // Use the status scheme as the base colours.
     if let Some(ref ss) = ctx.g.cfg.statusscheme {
@@ -387,7 +395,9 @@ pub(crate) fn draw_close_button(ctx: &WmCtx, c: &Client, x: i32, bh: i32) {
     };
 
     {
-        let mut drw = drw_clone(ctx);
+        let Some(mut drw) = drw_clone(ctx) else {
+            return;
+        };
 
         let scheme_idx = if c.islocked {
             SchemeClose::Locked as usize
@@ -471,20 +481,20 @@ fn draw_window_title(
     let client_name = c.name.as_str();
     let text_w = super::text_width_ctx(ctx, client_name);
 
-    {
-        let mut drw = drw_clone(ctx);
-        if let Some(scheme) = get_window_scheme(ctx.g, c, is_hover) {
-            drw.set_scheme(scheme);
-        }
-
-        let lpad = if text_w < width - 64 {
-            ((width - text_w) as f32 * 0.5) as u32
-        } else {
-            (ctx.g.cfg.horizontal_padding / 2 + 20) as u32
-        };
-
-        drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
+    let Some(mut drw) = drw_clone(ctx) else {
+        return None;
+    };
+    if let Some(scheme) = get_window_scheme(ctx.g, c, is_hover) {
+        drw.set_scheme(scheme);
     }
+
+    let lpad = if text_w < width - 64 {
+        ((width - text_w) as f32 * 0.5) as u32
+    } else {
+        (ctx.g.cfg.horizontal_padding / 2 + 20) as u32
+    };
+
+    drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
 
     let is_selected = ctx
         .g
@@ -550,39 +560,39 @@ pub(crate) fn draw_window_titles(
         return new_activeoffset;
     }
 
-    {
-        let mut drw = drw_clone(ctx);
-        if let Some(ref ss) = ctx.g.cfg.statusscheme {
-            let scheme = ColorScheme {
-                fg: ss.fg.clone(),
-                bg: ss.bg.clone(),
-                detail: ss.detail.clone(),
-            };
-            drw.set_scheme(scheme);
-        }
-        drw.rect(x, 0, w as u32, bh as u32, true, true);
+    let Some(mut drw) = drw_clone(ctx) else {
+        return None;
+    };
+    if let Some(ref ss) = ctx.g.cfg.statusscheme {
+        let scheme = ColorScheme {
+            fg: ss.fg.clone(),
+            bg: ss.bg.clone(),
+            detail: ss.detail.clone(),
+        };
+        drw.set_scheme(scheme);
+    }
+    drw.rect(x, 0, w as u32, bh as u32, true, true);
 
-        let has_clients = ctx
-            .g
-            .selmon()
-            .is_some_and(|selmon| selmon.clients.is_some());
+    let has_clients = ctx
+        .g
+        .selmon()
+        .is_some_and(|selmon| selmon.clients.is_some());
 
-        if !has_clients {
-            let help_text = "Press space to launch an application";
-            let text_w = super::text_width_ctx(ctx, help_text);
-            let avail = w - bh;
-            let title_width = text_w.min(avail);
-            drw.text(
-                x + bh + ((avail - title_width + 1) / 2),
-                0,
-                title_width as u32,
-                bh as u32,
-                0,
-                help_text,
-                false,
-                0,
-            );
-        }
+    if !has_clients {
+        let help_text = "Press space to launch an application";
+        let text_w = super::text_width_ctx(ctx, help_text);
+        let avail = w - bh;
+        let title_width = text_w.min(avail);
+        drw.text(
+            x + bh + ((avail - title_width + 1) / 2),
+            0,
+            title_width as u32,
+            bh as u32,
+            0,
+            help_text,
+            false,
+            0,
+        );
     }
     None
 }

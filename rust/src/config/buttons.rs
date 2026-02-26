@@ -19,7 +19,9 @@ use crate::push::{push_down, push_up};
 use crate::tags::view::toggle_view_tag;
 use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag};
 use crate::toggles::{toggle_locked, toggle_prefix};
-use crate::types::{BarPosition, Button, Direction, MouseButton, StackDirection, TagMask};
+use crate::types::{
+    BarPosition, Button, Direction, MouseButton, StackDirection, TagMask, WindowId,
+};
 use crate::util::spawn;
 
 const MS: u32 = MODKEY | SHIFT;
@@ -53,41 +55,41 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Window title ──────────────────────────────────────────────────
         // Left/right title clicks pass the event coordinates so the drag
         // handlers can use them as the anchor without a redundant round-trip.
-        btn!(WinTitle(0), 0, button:MouseButton::Left => |ctx, arg| {
+        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
             window_title_mouse_handler(ctx, win, arg.btn, arg.rx, arg.ry)
         }),
-        btn!(WinTitle(0), 0, button:MouseButton::Middle => |ctx, arg| {
+        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Middle => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
             close_win(ctx, win)
         }),
-        btn!(WinTitle(0), 0, button:MouseButton::Right => |ctx, arg| {
+        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
             window_title_mouse_handler_right(ctx, win, arg.btn, arg.rx, arg.ry)
         }),
-        btn!(WinTitle(0), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
-        btn!(WinTitle(0), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::Notify)),
-        btn!(WinTitle(0), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
-        btn!(WinTitle(0), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
-        btn!(WinTitle(0), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
+        btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
+        btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::Notify)),
+        btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
+        btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
+        btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 push_up(ctx, win)
             }
         }),
-        btn!(WinTitle(0), SHIFT, button:MouseButton::ScrollDown => |ctx, _| {
+        btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 push_down(ctx, win)
             }
         }),
-        btn!(WinTitle(0), CONTROL, button:MouseButton::ScrollUp   => |ctx, _| {
+        btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollUp   => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 up_scale_client(ctx, win)
             }
         }),
-        btn!(WinTitle(0), CONTROL, button:MouseButton::ScrollDown => |ctx, _| {
+        btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 down_scale_client(ctx, win)
             }
@@ -156,18 +158,18 @@ pub fn get_buttons() -> Vec<Button> {
             }
         }),
         // ── Close button ──────────────────────────────────────────────────
-        btn!(CloseButton(0), 0, button:MouseButton::Left  => |ctx, _| {
+        btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 kill_client(ctx, win)
             }
         }),
-        btn!(CloseButton(0), 0, button:MouseButton::Right => |ctx, _| {
+        btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = crate::client::selected_window(ctx) {
                 toggle_locked(ctx, win)
             }
         }),
         // ── Resize widget ─────────────────────────────────────────────────
-        btn!(ResizeWidget(0), 0, button:MouseButton::Left => |ctx, _| draw_window(ctx)),
+        btn!(ResizeWidget(WindowId(0)), 0, button:MouseButton::Left => |ctx, _| draw_window(ctx)),
         // ── Shutdown button ───────────────────────────────────────────────
         btn!(ShutDown, 0, button:MouseButton::Left   => |ctx, _| spawn(ctx, Cmd::InstantShutdown)),
         btn!(ShutDown, 0, button:MouseButton::Middle => |ctx, _| spawn(ctx, Cmd::OsLock)),

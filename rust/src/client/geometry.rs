@@ -9,7 +9,7 @@
 //! * [`update_size_hints`] / [`update_size_hints_win`] – read `WM_NORMAL_HINTS` from X.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
 
-use crate::backend::BackendKind;
+use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,

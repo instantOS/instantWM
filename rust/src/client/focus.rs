@@ -13,7 +13,7 @@
 //! * [`grab_buttons`]  – (un)grab mouse buttons on a client depending on
 //!                       whether it is currently focused.
 
-use crate::backend::BackendKind;
+use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::WmCtx;
 use crate::types::WindowId;

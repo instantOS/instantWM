@@ -500,7 +500,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     // Reset selection to first monitor and try to find better one
     if dirty {
         ctx.g.set_selmon(0);
-        if let Some(m) = win_to_mon_with_ctx(ctx, ctx.g.cfg.root) {
+        if let Some(m) = win_to_mon_with_ctx(ctx, WindowId::from(ctx.g.cfg.root)) {
             ctx.g.set_selmon(m);
         }
     }
