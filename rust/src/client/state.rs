@@ -25,7 +25,7 @@ use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen;
 use crate::client::geometry::{client_height, client_width, resize};
 use crate::contexts::WmCtx;
-use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext};
+use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -39,8 +39,9 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 ///
 /// `state` should be one of the `WM_STATE_*` constants from
 /// [`crate::client::constants`].
-pub fn set_client_state(ctx: &WmCtx, win: Window, state: i32) {
+pub fn set_client_state(ctx: &WmCtx, win: WindowId, state: i32) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
     // WM_STATE is a pair of CARD32 values: [state, icon_pixmap].
     // ICCCM §4.1.3.1 requires format=32 and a count of 2 items.
@@ -49,7 +50,7 @@ pub fn set_client_state(ctx: &WmCtx, win: Window, state: i32) {
     let data: [u32; 2] = [state as u32, 0u32];
     let _ = conn.change_property32(
         PropMode::REPLACE,
-        win,
+        x11_win,
         ctx.g.cfg.wmatom.state,
         ctx.g.cfg.wmatom.state,
         &data,
@@ -66,8 +67,9 @@ pub fn set_client_state(ctx: &WmCtx, win: Window, state: i32) {
 /// This is a two-element `CARDINAL` array: `[tags_mask, monitor_num]`.
 /// External tools (e.g. `instantmenu`) can read this to know which tags and
 /// monitor a window belongs to without querying the WM over IPC.
-pub fn set_client_tag_prop(ctx: &WmCtx, win: Window) {
+pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
@@ -81,7 +83,7 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: Window) {
     let data: [u8; 8] = unsafe { std::mem::transmute([c.tags, mon_num]) };
     let _ = conn.change_property(
         PropMode::REPLACE,
-        win,
+        x11_win,
         ctx.g.cfg.netatom.client_info,
         AtomEnum::CARDINAL,
         8u8,
@@ -109,12 +111,13 @@ pub fn update_client_list(ctx: &WmCtx) {
     for (_id, mon) in ctx.g.monitors_iter() {
         let mut current = mon.clients;
         while let Some(cur_win) = current {
+            let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(
                 PropMode::APPEND,
                 ctx.g.cfg.root,
                 ctx.g.cfg.netatom.client_list,
                 AtomEnum::WINDOW,
-                &[cur_win],
+                &[x11_win],
             );
             current = ctx.g.clients.get(&cur_win).and_then(|c| c.next);
         }
@@ -131,7 +134,7 @@ pub fn update_client_list(ctx: &WmCtx) {
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 /// Falls back to [`BROKEN`] when neither property is readable.
-pub fn update_title(ctx: &mut WmCtx, win: Window) {
+pub fn update_title(ctx: &mut WmCtx, win: WindowId) {
     let name = read_window_title(ctx, win);
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.name = name;
@@ -142,8 +145,9 @@ pub fn update_title(ctx: &mut WmCtx, win: Window) {
 ///
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
 /// or [`BROKEN`] if both are absent / unreadable.
-fn read_window_title(ctx: &WmCtx, win: Window) -> String {
+fn read_window_title(ctx: &WmCtx, win: WindowId) -> String {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
     for atom in [net_wm_name, AtomEnum::WM_NAME.into()] {
@@ -151,7 +155,7 @@ fn read_window_title(ctx: &WmCtx, win: Window) -> String {
             continue;
         }
 
-        let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::ANY, 0, 1024) else {
+        let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::ANY, 0, 1024) else {
             continue;
         };
         let Ok(reply) = cookie.reply() else { continue };
@@ -192,11 +196,12 @@ fn read_window_title(ctx: &WmCtx, win: Window) -> String {
 /// After rule matching, the final tag mask is clamped to the current tag set.
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
-pub fn apply_rules(ctx: &mut WmCtx, win: Window) {
+pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
     // --- Read WM_CLASS -------------------------------------------------------
-    let (class_bytes, instance_bytes) = read_wm_class(conn, win);
+    let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
 
     // --- Initialise fields we are about to set -------------------------------
     if !ctx.g.clients.contains_key(&win) {
@@ -389,10 +394,11 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 ///   [`set_fullscreen`] to enter fullscreen immediately.
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
-pub fn update_window_type(ctx: &mut WmCtx, win: Window) {
+pub fn update_window_type(ctx: &mut WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
-    let state = get_atom_prop(conn, win, ctx.g.cfg.netatom.wm_state);
-    let wtype = get_atom_prop(conn, win, ctx.g.cfg.netatom.wm_window_type);
+    let x11_win: Window = win.into();
+    let state = get_atom_prop(conn, x11_win, ctx.g.cfg.netatom.wm_state);
+    let wtype = get_atom_prop(conn, x11_win, ctx.g.cfg.netatom.wm_window_type);
 
     let atom_fullscreen = ctx.g.cfg.netatom.wm_fullscreen;
     let atom_dialog = ctx.g.cfg.netatom.wm_window_type_dialog;
@@ -417,10 +423,12 @@ pub fn update_window_type(ctx: &mut WmCtx, win: Window) {
 /// * If the urgency hint is set on the *currently selected* window, the hint is
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
-pub fn update_wm_hints(ctx: &mut WmCtx, win: Window) {
+pub fn update_wm_hints(ctx: &mut WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
-    let Ok(cookie) = conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
+    let Ok(cookie) =
+        conn.get_property(false, x11_win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
     else {
         return;
     };
@@ -461,8 +469,9 @@ pub fn update_wm_hints(ctx: &mut WmCtx, win: Window) {
 ///
 /// This function is currently reserved for future EWMH compliance use but is
 /// kept here so the property plumbing is in one place.
-pub fn set_urgent(ctx: &mut WmCtx, win: Window, urg: bool) {
+pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
     // Update the internal flag first.
     if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -470,7 +479,8 @@ pub fn set_urgent(ctx: &mut WmCtx, win: Window, urg: bool) {
     }
 
     // Read the current WM_HINTS so we only modify the urgency bit.
-    let Ok(cookie) = conn.get_property(false, win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
+    let Ok(cookie) =
+        conn.get_property(false, x11_win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
     else {
         return;
     };
@@ -497,7 +507,7 @@ pub fn set_urgent(ctx: &mut WmCtx, win: Window, urg: bool) {
 
     let _ = conn.change_property(
         PropMode::REPLACE,
-        win,
+        x11_win,
         AtomEnum::WM_HINTS,
         AtomEnum::WM_HINTS,
         8u8,
@@ -518,7 +528,7 @@ pub fn set_urgent(ctx: &mut WmCtx, win: Window, urg: bool) {
 /// global `borderpx` value is used.
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
-pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
+pub fn update_motif_hints(ctx: &mut WmCtx, win: WindowId) {
     if ctx.g.cfg.decorhints == 0 {
         return;
     }
@@ -526,8 +536,9 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: Window) {
     let motif_atom = ctx.g.cfg.motifatom;
     let borderpx = ctx.g.cfg.borderpx;
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
-    let Ok(cookie) = conn.get_property(false, win, motif_atom, motif_atom, 0, 5) else {
+    let Ok(cookie) = conn.get_property(false, x11_win, motif_atom, motif_atom, 0, 5) else {
         return;
     };
     let Ok(reply) = cookie.reply() else { return };

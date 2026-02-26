@@ -34,7 +34,7 @@ pub fn get_systray_width(ctx: &WmCtx) -> u32 {
 }
 
 /// Remove systray icon using dependency injection.
-pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: Window) {
+pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: WindowId) {
     if !ctx.g.cfg.showsystray {
         return;
     }
@@ -47,7 +47,7 @@ pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: Window) {
 }
 
 /// Update systray icon geometry using dependency injection.
-pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i32) {
+pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: WindowId, w: i32, h: i32) {
     let bh = ctx.g.cfg.bar_height;
 
     // Extract client data first to avoid borrow issues
@@ -153,7 +153,7 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: Window, w: i32, h: i3
 }
 
 /// Update systray icon state using dependency injection.
-pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &PropertyNotifyEvent) {
+pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: WindowId, ev: &PropertyNotifyEvent) {
     if !ctx.g.cfg.showsystray {
         return;
     }
@@ -164,6 +164,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
     }
 
     let conn = ctx.x11.conn;
+    let x11_icon_win: Window = icon_win.into();
 
     let flags = get_atom_prop(ctx, icon_win, xembed_info_atom);
 
@@ -184,14 +185,14 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
             client.tags = 1;
         }
 
-        let _ = conn.map_window(icon_win);
+        let _ = conn.map_window(x11_icon_win);
         let _ = conn.configure_window(
-            icon_win,
+            x11_icon_win,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
         set_client_state(ctx, icon_win, 1);
 
-        let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
+        let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or_default();
         send_event(
             ctx,
             icon_win,
@@ -200,7 +201,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
             CURRENT_TIME as i64,
             XEMBED_WINDOW_ACTIVATE as i64,
             0,
-            systray_win as i64,
+            u32::from(systray_win) as i64,
             XEMBED_EMBEDDED_VERSION as i64,
         );
     } else if (flags & XEMBED_MAPPED) == 0 && current_tags != 0 {
@@ -208,10 +209,10 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
             client.tags = 0;
         }
 
-        let _ = conn.unmap_window(icon_win);
+        let _ = conn.unmap_window(x11_icon_win);
         set_client_state(ctx, icon_win, 0);
 
-        let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
+        let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or_default();
         send_event(
             ctx,
             icon_win,
@@ -220,7 +221,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: Window, ev: &Propert
             CURRENT_TIME as i64,
             XEMBED_WINDOW_DEACTIVATE as i64,
             0,
-            systray_win as i64,
+            u32::from(systray_win) as i64,
             XEMBED_EMBEDDED_VERSION as i64,
         );
     }
@@ -325,7 +326,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
         let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
 
         ctx.g.systray = Some(Systray {
-            win: systray_win,
+            win: WindowId::from(systray_win),
             icons: Vec::new(),
         });
 
@@ -361,11 +362,12 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     w = 0;
     for &icon_win in &systray.icons {
+        let x11_icon_win: Window = icon_win.into();
         let _ = conn.change_window_attributes(
-            icon_win,
+            x11_icon_win,
             &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
         );
-        let _ = conn.map_window(icon_win);
+        let _ = conn.map_window(x11_icon_win);
 
         w += systrayspacing as u32;
 
@@ -374,7 +376,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
             let icon_h = client.geo.h;
 
             let _ = conn.configure_window(
-                icon_win,
+                x11_icon_win,
                 &ConfigureWindowAux::new()
                     .x(w as i32)
                     .y(0)
@@ -387,12 +389,14 @@ pub fn update_systray(ctx: &mut WmCtx) {
     }
 
     let systray_win = systray.win;
+    let x11_systray_win: Window = systray_win.into();
+    let x11_barwin: Window = barwin.into();
 
     w = if w > 0 { w + systrayspacing as u32 } else { 1 };
     let x = x - w as i32;
 
     let _ = conn.configure_window(
-        systray_win,
+        x11_systray_win,
         &ConfigureWindowAux::new()
             .x(x)
             .y(by)
@@ -401,19 +405,19 @@ pub fn update_systray(ctx: &mut WmCtx) {
     );
 
     let _ = conn.configure_window(
-        systray_win,
+        x11_systray_win,
         &ConfigureWindowAux::new()
             .stack_mode(StackMode::ABOVE)
-            .sibling(barwin),
+            .sibling(x11_barwin),
     );
 
-    let _ = conn.map_window(systray_win);
+    let _ = conn.map_window(x11_systray_win);
 
     let _ = conn.flush();
 }
 
 /// Convert window to systray icon using dependency injection.
-pub fn win_to_systray_icon(ctx: &mut WmCtx, win: Window) -> Option<Window> {
+pub fn win_to_systray_icon(ctx: &mut WmCtx, win: WindowId) -> Option<WindowId> {
     if !ctx.g.cfg.showsystray {
         return None;
     }
@@ -454,9 +458,10 @@ pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
 }
 
 /// Get atom property using dependency injection.
-fn get_atom_prop(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
+fn get_atom_prop(ctx: &mut WmCtx, win: WindowId, atom: u32) -> u32 {
     let conn = ctx.x11.conn;
-    if let Ok(cookie) = conn.get_property(false, win, atom, AtomEnum::CARDINAL, 0, 2) {
+    let x11_win: Window = win.into();
+    if let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 2) {
         if let Ok(reply) = cookie.reply() {
             if let Some(val) = reply.value32().and_then(|mut v| v.next()) {
                 return val;
@@ -469,7 +474,7 @@ fn get_atom_prop(ctx: &mut WmCtx, win: Window, atom: u32) -> u32 {
 /// Send X event using dependency injection.
 fn send_event(
     ctx: &mut WmCtx,
-    win: Window,
+    win: WindowId,
     proto: u32,
     mask: u32,
     d0: i64,
@@ -479,13 +484,14 @@ fn send_event(
     d4: i64,
 ) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     let event = ClientMessageEvent {
         response_type: CLIENT_MESSAGE_EVENT,
         format: 32,
         sequence: 0,
-        window: win,
+        window: x11_win,
         type_: proto,
         data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
     };
-    let _ = conn.send_event(false, win, EventMask::from(mask), event);
+    let _ = conn.send_event(false, x11_win, EventMask::from(mask), event);
 }

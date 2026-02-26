@@ -41,14 +41,14 @@ pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
 /// work area instead.  The warp is skipped when the pointer is already inside
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
-pub(crate) fn warp_impl(ctx: &WmCtx, win: Window) {
+pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
 
     let root = ctx.g.cfg.root;
     let bh = ctx.g.cfg.bar_height;
 
     // No target window – centre on the selected monitor's work area.
-    if win == 0 {
+    if win == WindowId::default() {
         if let Some(mon) = ctx.g.selmon() {
             let _ = conn.warp_pointer(
                 CURRENT_TIME,
@@ -90,9 +90,10 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: Window) {
         return;
     }
 
+    let x11_win: Window = c.win.into();
     let _ = conn.warp_pointer(
         CURRENT_TIME,
-        c.win,
+        x11_win,
         0,
         0,
         0,
@@ -127,9 +128,10 @@ pub fn warp_cursor_to_client_win(ctx: &WmCtx, c: &Client) {
 /// an animated move) where the old cursor position is no longer meaningful.
 pub fn force_warp(ctx: &WmCtx, c: &Client) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = c.win.into();
     let _ = conn.warp_pointer(
         x11rb::NONE,
-        c.win,
+        x11_win,
         0i16,
         0i16,
         0u16,
@@ -144,8 +146,8 @@ pub fn force_warp(ctx: &WmCtx, c: &Client) {
 ///
 /// This clamps the pointer into the window rect with a small padding so
 /// subsequent drags/resizes start from inside the client.
-pub fn warp_into(ctx: &WmCtx, win: Window) {
-    if win == 0 {
+pub fn warp_into(ctx: &WmCtx, win: WindowId) {
+    if win == WindowId::default() {
         return;
     }
 

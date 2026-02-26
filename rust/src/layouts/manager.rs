@@ -5,7 +5,7 @@ use crate::client::{resize, restore_border_width, save_border_width};
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
-use crate::types::{MonitorId, Rect};
+use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -28,7 +28,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
             restack(ctx, id);
         }
     } else {
-        let stacks: Vec<Option<Window>> = ctx.g.monitors.iter().map(|m| m.stack).collect();
+        let stacks: Vec<Option<WindowId>> = ctx.g.monitors.iter().map(|m| m.stack).collect();
 
         for stack in stacks {
             crate::client::show_hide(ctx, stack);
@@ -105,8 +105,9 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                 let new_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
 
                 if old_bw != new_bw && (is_floating || is_fullscreen) {
+                    let x11_win: Window = win.into();
                     let _ = ctx.x11.conn.configure_window(
-                        win,
+                        x11_win,
                         &ConfigureWindowAux::new().border_width(new_bw as u32),
                     );
                 }
@@ -203,17 +204,19 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
             .unwrap_or(false);
 
         if is_floating || !is_tiling {
+            let x11_sel_win: Window = sel_win.into();
             let _ = configure_window(
                 conn,
-                sel_win,
+                x11_sel_win,
                 &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
             );
         }
 
         if is_tiling {
+            let x11_barwin: Window = barwin.into();
             let mut wc = ConfigureWindowAux::new()
                 .stack_mode(StackMode::BELOW)
-                .sibling(barwin);
+                .sibling(x11_barwin);
 
             let mut s_win = stack_head;
             while let Some(win) = s_win {
@@ -225,10 +228,11 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                         let snext = c.snext;
 
                         if !is_win_floating && visible {
-                            let _ = configure_window(conn, win, &wc);
+                            let x11_win: Window = win.into();
+                            let _ = configure_window(conn, x11_win, &wc);
                             wc = ConfigureWindowAux::new()
                                 .stack_mode(StackMode::ABOVE)
-                                .sibling(win);
+                                .sibling(x11_win);
                         }
 
                         s_win = snext;

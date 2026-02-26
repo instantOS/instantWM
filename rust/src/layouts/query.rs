@@ -8,8 +8,7 @@
 //! creating circular imports.
 
 use crate::globals::Globals;
-use crate::types::Monitor;
-use x11rb::protocol::xproto::Window;
+use crate::types::{Monitor, WindowId};
 
 use super::LayoutKind;
 
@@ -56,7 +55,7 @@ pub fn all_client_count(g: &Globals) -> i32 {
 
 /// Walk the client linked-list starting at `start_win` and return the first
 /// client that passes [`Client::is_visible_on_tags`].
-pub fn find_visible_client(g: &Globals, start_win: Option<Window>) -> Option<Window> {
+pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
     let selected = g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
     for (win, c) in crate::types::ClientListIter::new(start_win, &g.clients) {
         if c.is_visible_on_tags(selected) {

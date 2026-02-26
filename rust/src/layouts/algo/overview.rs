@@ -27,7 +27,7 @@
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::layouts::query::all_client_count;
-use crate::types::{Monitor, Rect};
+use crate::types::{Monitor, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -35,7 +35,7 @@ use x11rb::protocol::xproto::*;
 ///
 /// Called before repositioning a floating client so that its position can be
 /// restored when leaving overview mode.
-fn save_floating(ctx: &mut WmCtx<'_>, win: Window) {
+fn save_floating(ctx: &mut WmCtx<'_>, win: WindowId) {
     if let Some(c) = ctx.g.clients.get_mut(&win) {
         c.float_geo = c.geo;
     }
@@ -85,6 +85,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place every client ────────────────────────────────────────────────
     let conn = ctx.x11.conn;
+    let x11_barwin: Window = barwin.into();
     let mut c_win = m.clients;
     while let Some(win) = c_win {
         let c = match ctx.g.clients.get(&win) {
@@ -124,12 +125,13 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         // Raise each client above the bar so nothing is obscured.
+        let x11_win: Window = win.into();
         let _ = configure_window(
             conn,
-            win,
+            x11_win,
             &ConfigureWindowAux::new()
                 .stack_mode(StackMode::ABOVE)
-                .sibling(barwin),
+                .sibling(x11_barwin),
         );
 
         // Advance to the next cell, wrapping to the next row.

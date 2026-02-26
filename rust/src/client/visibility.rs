@@ -22,7 +22,7 @@ use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
-use crate::types::Rect;
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -35,16 +35,17 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state(win: Window) -> i32 {
+pub fn get_state(win: WindowId) -> i32 {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
         return WM_STATE_NORMAL;
     };
+    let x11_win: Window = win.into();
 
     let globals = get_globals();
     let Ok(cookie) = conn.get_property(
         false,
-        win,
+        x11_win,
         globals.cfg.wmatom.state,
         globals.cfg.wmatom.state,
         0,
@@ -73,7 +74,7 @@ pub fn get_state(win: Window) -> i32 {
 /// If you need the live X11 value (e.g. before the client is fully managed),
 /// call [`get_state`] directly.
 #[inline]
-pub fn is_hidden(win: Window) -> bool {
+pub fn is_hidden(win: WindowId) -> bool {
     get_globals()
         .clients
         .get(&win)
@@ -93,7 +94,7 @@ pub fn is_hidden(win: Window) -> bool {
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
+pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
     let current = match win {
         Some(w) => w,
         None => return,
@@ -113,6 +114,8 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
 
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else { return };
+    let x11_win: Window = win.into();
+    let x11_win: Window = current.into();
 
     if is_vis {
         // Move the window to its stored on-screen position.
@@ -122,7 +125,7 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
             .get(&current)
             .map(|c| (c.geo.x, c.geo.y))
             .unwrap_or((0, 0));
-        let _ = conn.configure_window(current, &ConfigureWindowAux::new().x(x).y(y));
+        let _ = conn.configure_window(x11_win, &ConfigureWindowAux::new().x(x).y(y));
         let _ = conn.flush();
 
         // For floating or non-tiling windows, also issue a full resize so the
@@ -160,7 +163,7 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
         let w_val = ctx.g.clients.get(&current).map(client_width).unwrap_or(0);
         let y = ctx.g.clients.get(&current).map(|c| c.geo.y).unwrap_or(0);
 
-        let _ = conn.configure_window(current, &ConfigureWindowAux::new().x(-2 * w_val).y(y));
+        let _ = conn.configure_window(x11_win, &ConfigureWindowAux::new().x(-2 * w_val).y(y));
         let _ = conn.flush();
     }
 }
@@ -172,7 +175,7 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<Window>) {
 /// Unminimize `win`: map it, animate it sliding in from above, then arrange.
 ///
 /// Does nothing if `win` is not currently in the iconic state.
-pub fn show(ctx: &mut WmCtx, win: Window) {
+pub fn show(ctx: &mut WmCtx, win: WindowId) {
     let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;
@@ -191,7 +194,8 @@ pub fn show(ctx: &mut WmCtx, win: Window) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
-        let _ = conn.map_window(win);
+        let x11_win: Window = win.into();
+        let _ = conn.map_window(x11_win);
         let _ = conn.flush();
     }
 
@@ -202,7 +206,11 @@ pub fn show(ctx: &mut WmCtx, win: Window) {
     resize(ctx, win, &Rect { x, y: -50, w, h }, false);
 
     if let Some(ref conn) = x11.conn {
-        let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        let x11_win: Window = win.into();
+        let _ = conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
         let _ = conn.flush();
     }
 
@@ -223,7 +231,7 @@ pub fn show(ctx: &mut WmCtx, win: Window) {
 /// the next client in the stack.
 ///
 /// Does nothing if `win` is already hidden.
-pub fn hide(ctx: &mut WmCtx, win: Window) {
+pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;
@@ -263,9 +271,9 @@ pub fn hide(ctx: &mut WmCtx, win: Window) {
 
     // Temporarily remove the event mask bits that would trigger an unmanage.
     let root = get_globals().cfg.root;
-    suppress_unmap_events(conn, root, win);
+    suppress_unmap_events(conn, root, x11_win);
 
-    let _ = conn.unmap_window(win);
+    let _ = conn.unmap_window(x11_win);
     let _ = conn.flush();
 
     set_client_state(ctx, win, WM_STATE_ICONIC);
@@ -276,7 +284,7 @@ pub fn hide(ctx: &mut WmCtx, win: Window) {
     }
 
     // Restore event masks.
-    restore_event_masks(conn, root, win);
+    restore_event_masks(conn, root, x11_win);
 
     let _ = conn.ungrab_server();
     let _ = conn.flush();

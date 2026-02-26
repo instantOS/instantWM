@@ -61,8 +61,9 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
     if barwin != 0 {
         {
             let conn = ctx.x11.conn;
-            let _ = x11rb::protocol::xproto::unmap_window(conn, barwin);
-            let _ = x11rb::protocol::xproto::destroy_window(conn, barwin);
+            let x11_barwin: Window = barwin.into();
+            let _ = x11rb::protocol::xproto::unmap_window(conn, x11_barwin);
+            let _ = x11rb::protocol::xproto::destroy_window(conn, x11_barwin);
         }
     }
 }
@@ -78,8 +79,9 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
 /// # Returns
 /// * `Some(monitor_id)` - The monitor ID the window belongs to
 /// * `None` - If no monitor could be determined
-pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
-    if w == ctx.g.cfg.root {
+pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: WindowId) -> Option<MonitorId> {
+    let root_win = WindowId::from(ctx.g.cfg.root);
+    if w == root_win {
         if let Some((x, y)) = get_root_ptr_with_conn_and_root(ctx.x11.conn, ctx.g.cfg.root) {
             let rect = Rect { x, y, w: 1, h: 1 };
             return crate::types::find_monitor_by_rect(&ctx.g.monitors, &rect)
@@ -114,7 +116,7 @@ pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
 /// Detaches the client from its current monitor, updates its monitor
 /// assignment and tags, then reattaches it to the target monitor.
 /// Handles special cases like scratchpads and sticky windows.
-pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
+pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if ctx.g.selmon_id() == target_mon {
         return;
     }
@@ -177,7 +179,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
 }
 
 /// Handle scratchpad-specific logic during monitor transfer.
-fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
+fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
@@ -363,7 +365,7 @@ fn update_monitor_geometry(mon: &mut Monitor, idx: usize, new_rect: &Rect) -> bo
 
 /// Move clients from a removed monitor to monitor 0.
 fn move_clients_to_mon0_ctx(ctx: &mut WmCtx, removed_mon_id: usize) -> bool {
-    let clients_to_move: Vec<Window> = ctx
+    let clients_to_move: Vec<WindowId> = ctx
         .g
         .clients
         .values()
@@ -558,6 +560,6 @@ fn get_root_ptr_with_conn_and_root(
     None
 }
 
-fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {
+fn get_selected_client_win(mon_id: MonitorId) -> Option<WindowId> {
     get_globals().monitor(mon_id).and_then(|m| m.sel)
 }

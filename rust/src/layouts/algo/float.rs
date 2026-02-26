@@ -34,7 +34,7 @@
 
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::types::{Monitor, Rect, SnapPosition};
+use crate::types::{Monitor, Rect, SnapPosition, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -59,7 +59,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── apply pending snap positions ──────────────────────────────────────
     // Collect targets first to avoid borrowing ctx/m/clients immutably while
     // we mutate state during resize.
-    let snap_targets: Vec<Window> = m
+    let snap_targets: Vec<WindowId> = m
         .iter_clients(&ctx.g.clients)
         .filter_map(|(win, c)| {
             (c.is_visible_on_tags(selected) && c.snapstatus != SnapPosition::None).then_some(win)
@@ -74,9 +74,10 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // accidentally obscured by a tiled window placed above it by the compositor.
     if let Some(sel_win) = m.sel {
         let conn = ctx.x11.conn;
+        let x11_win: Window = sel_win.into();
         let _ = configure_window(
             conn,
-            sel_win,
+            x11_win,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
         let _ = conn.flush();
@@ -98,7 +99,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 ///
 /// Returns immediately if `snapstatus` is [`SnapPosition::None`] or the
 /// client window is not found.
-pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: Window, m: &Monitor) {
+pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
     let c = match ctx.g.clients.get(&win) {
         Some(c) => c,
         None => return,
@@ -144,7 +145,7 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: Window, m: &Monitor) {
 /// Called before any operation that will move a floating client (such as the
 /// overview layout), so the original position can be restored afterwards via
 /// `restore_floating_win`.
-pub fn save_floating(ctx: &mut WmCtx<'_>, win: Window) {
+pub fn save_floating(ctx: &mut WmCtx<'_>, win: WindowId) {
     if let Some(c) = ctx.g.clients.get_mut(&win) {
         c.float_geo = c.geo;
     }

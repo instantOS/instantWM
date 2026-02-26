@@ -27,6 +27,7 @@
 //! ```
 
 use crate::contexts::WmCtx;
+use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -146,11 +147,12 @@ pub fn ungrab_ctx(ctx: &WmCtx) {
 /// * When `focused` is **`true`**: all existing grabs are removed.
 /// * When `focused` is **`false`**: grabs are installed for buttons 1 and 3
 ///   with every combination of NumLock and CapsLock modifiers.
-pub fn grab_buttons(ctx: &WmCtx, c_win: Window, focused: bool) {
+pub fn grab_buttons(ctx: &WmCtx, c_win: WindowId, focused: bool) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = c_win.into();
 
     // Always start clean.
-    let _ = conn.ungrab_button(0u8.into(), c_win, ModMask::from(0u16));
+    let _ = conn.ungrab_button(0u8.into(), x11_win, ModMask::from(0u16));
 
     if focused {
         let _ = conn.flush();
@@ -170,7 +172,7 @@ pub fn grab_buttons(ctx: &WmCtx, c_win: Window, focused: bool) {
         for &button in &[1u8, 3u8] {
             let _ = conn.grab_button(
                 false,
-                c_win,
+                x11_win,
                 EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
                 GrabMode::SYNC,
                 GrabMode::SYNC,

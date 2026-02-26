@@ -3,7 +3,6 @@ use crate::globals::Globals;
 use crate::systray::get_systray_width;
 use crate::tags::{get_tag_at_x, get_tag_width};
 use crate::types::*;
-use x11rb::protocol::xproto::Window;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientBarStats {
@@ -123,7 +122,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     // Build the ordered list of visible clients exactly as draw_window_titles
     // does (intrusive linked list walk). draw_window_titles and all click/hover
     // consumers delegate to this function, so the order is always consistent.
-    let mut visible_clients: Vec<Window> = Vec::new();
+    let mut visible_clients: Vec<WindowId> = Vec::new();
     let selected = mon.selected_tags();
     for (c_win, c) in mon.iter_clients(&ctx.g.clients) {
         if c.is_visible_on_tags(selected) {

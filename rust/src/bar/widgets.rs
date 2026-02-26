@@ -521,7 +521,7 @@ pub(crate) fn draw_window_titles(
         // and would cause click regions to map to the wrong window titles.
         // Use the passed monitor `m` (not selmon) so that secondary monitors
         // draw their own clients, not the selected monitor's clients.
-        let wins: Vec<x11rb::protocol::xproto::Window> = m
+        let wins: Vec<WindowId> = m
             .iter_clients(&ctx.g.clients)
             .filter_map(|(c_win, c)| c.is_visible_on_tags(selected).then_some(c_win))
             .collect();

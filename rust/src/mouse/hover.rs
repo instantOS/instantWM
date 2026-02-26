@@ -54,13 +54,14 @@ fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
 }
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
-fn warp_pointer_resize(ctx: &WmCtx, win: Window, dir: ResizeDirection) {
+fn warp_pointer_resize(ctx: &WmCtx, win: WindowId, dir: ResizeDirection) {
     let conn = ctx.x11.conn;
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
-    let _ = conn.warp_pointer(x11rb::NONE, win, 0, 0, 0, 0, x_off as i16, y_off as i16);
+    let x11_win: Window = win.into();
+    let _ = conn.warp_pointer(x11rb::NONE, x11_win, 0, 0, 0, 0, x_off as i16, y_off as i16);
     let _ = conn.flush();
 }
 
@@ -84,7 +85,7 @@ fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
 
 /// Find a visible floating window whose resize border zone contains (`px`, `py`).
 /// Returns `None` if the cursor is on the bar or no window matches.
-pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Option<Window> {
+pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Option<WindowId> {
     let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
     if let Some(mon) = ctx.g.selmon() {
@@ -119,8 +120,8 @@ fn find_tiled_win_at_point(
     ctx: &WmCtx,
     px: i32,
     py: i32,
-    skip_win: Option<Window>,
-) -> Option<Window> {
+    skip_win: Option<WindowId>,
+) -> Option<WindowId> {
     let mon = ctx.g.selmon()?;
     let selected = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
@@ -468,7 +469,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 /// cursor, respecting stacking order. This ensures that if multiple windows
 /// overlap, the topmost (visible) one is returned, not just any window whose
 /// geometry contains the cursor.
-pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<Window> {
+pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
     let conn = ctx.x11.conn;
 
     // Query pointer on root to get the actual child window under cursor
@@ -480,13 +481,14 @@ pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<Window> {
     }
 
     // Convert the window under cursor to a client
-    crate::client::win_to_client(reply.child)
+    crate::client::win_to_client(WindowId::from(reply.child))
 }
 
 /// Query the pointer position in both root and window-local coordinates.
-fn query_pointer_on_win(ctx: &WmCtx, win: Window) -> Option<(i32, i32, i32, i32)> {
+fn query_pointer_on_win(ctx: &WmCtx, win: WindowId) -> Option<(i32, i32, i32, i32)> {
     let conn = ctx.x11.conn;
-    let reply = conn.query_pointer(win).ok()?.reply().ok()?;
+    let x11_win: Window = win.into();
+    let reply = conn.query_pointer(x11_win).ok()?.reply().ok()?;
     Some((
         reply.root_x as i32,
         reply.root_y as i32,

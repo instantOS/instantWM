@@ -4,7 +4,6 @@ use crate::contexts::WmCtx;
 use crate::keyboard::grab_keys;
 use crate::tags::get_tag_width;
 use crate::types::*;
-use x11rb::protocol::xproto::Window;
 
 pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
     action.apply(value);
@@ -34,7 +33,7 @@ pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
     grab_keys(ctx);
 }
 
-pub fn toggle_sticky(ctx: &mut WmCtx, win: Window) {
+pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     let mon_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.issticky = !client.issticky;
         client.mon_id
@@ -58,7 +57,7 @@ pub fn toggle_animated(ctx: &mut WmCtx, action: ToggleAction) {
     ctrl_toggle(&mut ctx.g.animated, action);
 }
 
-pub fn set_border_width(ctx: &mut WmCtx, win: Window, width: i32) {
+pub fn set_border_width(ctx: &mut WmCtx, win: WindowId, width: i32) {
     let (old_bw, _mon_id) = {
         if let Some(c) = ctx.g.clients.get(&win) {
             (c.border_width, c.mon_id)
@@ -104,7 +103,7 @@ pub fn toggle_double_draw(ctx: &mut WmCtx) {
     ctx.g.doubledraw = !ctx.g.doubledraw;
 }
 
-pub fn toggle_locked(ctx: &mut WmCtx, win: Window) {
+pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     let _mon_id = {
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.islocked = !client.islocked;
@@ -145,12 +144,12 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     draw_bar(ctx, selmon_id);
 }
 
-pub fn hide_window(ctx: &mut WmCtx, win: Window) {
+pub fn hide_window(ctx: &mut WmCtx, win: WindowId) {
     crate::client::hide(ctx, win);
 }
 
 pub fn unhide_all(ctx: &mut WmCtx) {
-    let clients: Vec<x11rb::protocol::xproto::Window> = ctx.g.clients.keys().copied().collect();
+    let clients: Vec<WindowId> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
         crate::client::show(ctx, win);

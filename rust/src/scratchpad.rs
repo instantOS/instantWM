@@ -10,7 +10,7 @@ const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
 
 pub fn unhide_one(ctx: &mut WmCtx) -> bool {
-    let clients: Vec<Window> = ctx.g.clients.keys().copied().collect();
+    let clients: Vec<WindowId> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
         if crate::client::is_hidden(win) {
@@ -303,7 +303,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let _ = conn.flush();
 }
 
-fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<Window> {
+fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
     if name.is_empty() {
         return None;
     }

@@ -1,6 +1,6 @@
 use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
-use crate::types::Monitor;
+use crate::types::{Monitor, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
@@ -52,8 +52,9 @@ pub fn resize_bar_win(m: &Monitor) {
 
     let x11 = get_x11();
     if let Some(ref conn) = x11.conn {
+        let x11_barwin: Window = m.barwin.into();
         let _ = conn.configure_window(
-            m.barwin,
+            x11_barwin,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .x(m.work_rect.x)
                 .y(m.by)
@@ -98,8 +99,9 @@ pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
     }
 
     let conn = ctx.x11.conn;
+    let x11_barwin: Window = m.barwin.into();
     let _ = conn.configure_window(
-        m.barwin,
+        x11_barwin,
         &x11rb::protocol::xproto::ConfigureWindowAux::new()
             .x(m.work_rect.x)
             .y(m.by)
@@ -133,7 +135,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
         let mut bar_configs = Vec::new();
         for (i, m) in ctx.g.monitors_iter() {
-            if m.barwin != 0 {
+            if m.barwin != WindowId::default() {
                 continue;
             }
 
@@ -182,7 +184,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
             let _ = conn.flush();
 
             if let Some(mon) = ctx.g.monitor_mut(i) {
-                mon.barwin = win_id;
+                mon.barwin = WindowId::from(win_id);
             }
         }
     }

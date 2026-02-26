@@ -14,7 +14,7 @@ pub struct OverlayController;
 
 impl OverlayController {
     #[inline]
-    pub fn create(ctx: &mut WmCtx, sel_win: Window) {
+    pub fn create(ctx: &mut WmCtx, sel_win: WindowId) {
         create_overlay(ctx, sel_win)
     }
 
@@ -64,7 +64,7 @@ struct OverlayPositionInfo {
 }
 
 /// Get the overlay window for the selected monitor, if it exists.
-fn get_overlay_win(ctx: &WmCtx) -> Option<Window> {
+fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
     ctx.g.selmon().and_then(|m| m.overlay)
 }
 
@@ -74,10 +74,14 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 }
 
 /// Raise a window to the top of the stack.
-fn raise_window(ctx: &WmCtx, win: Window) {
+fn raise_window(ctx: &WmCtx, win: WindowId) {
     {
         let conn = ctx.x11.conn;
-        let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        let x11_win: Window = win.into();
+        let _ = conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
         let _ = conn.flush();
     }
 }
@@ -223,7 +227,7 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 }
 
 /// Create overlay with dependency injection.
-pub fn create_overlay(ctx: &mut WmCtx, sel_win: Window) {
+pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
     let (sel_overlay, sel_fullscreen) = {
         let g = &*ctx.g;
         let mon = match g.selmon() {
@@ -286,8 +290,9 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: Window) {
 
     {
         let conn = ctx.x11.conn;
+        let x11_win: Window = temp_client.into();
         let _ = conn.configure_window(
-            temp_client,
+            x11_win,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
         let _ = conn.flush();
@@ -321,7 +326,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 }
 
 /// Prepare the overlay window for display (detach, update state, reattach).
-fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: Window, selmon_id: MonitorId) {
+fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: MonitorId) {
     detach_ctx(ctx, overlay_win);
     detach_stack_ctx(ctx, overlay_win);
 
@@ -335,7 +340,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: Window, selmon_id: Monit
 }
 
 /// Update overlay client properties for showing.
-fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: Window, tags: u32) {
+fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: u32) {
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         if !client.isfloating {
             client.isfloating = true;
@@ -435,12 +440,12 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 }
 
 /// Check if overlay is fullscreen on the given monitor.
-fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: Window, mon: &Monitor) -> bool {
+fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: WindowId, mon: &Monitor) -> bool {
     mon.fullscreen == Some(overlay_win)
 }
 
 /// Clear overlay tags and sticky state.
-fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: Window) {
+fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         client.issticky = false;
         client.tags = 0;

@@ -5,9 +5,8 @@ use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
 use crate::types::*;
-use x11rb::protocol::xproto::Window;
 
-pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: Direction) {
+pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let (is_floating, geo, border_width) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.geo, c.border_width),
         None => return,
@@ -51,7 +50,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: Window, dir: Direction) {
     warp_cursor_to_client(ctx, win);
 }
 
-pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: Direction) {
+pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let (is_floating, geo) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.geo),
         None => return,
@@ -82,7 +81,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: Direction) {
     );
 }
 
-pub fn center_window(ctx: &mut WmCtx, win: Window) {
+pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     let is_overlay = ctx.g.selmon().and_then(|m| m.overlay) == Some(win);
     if is_overlay {
         return;

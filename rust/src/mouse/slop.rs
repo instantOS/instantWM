@@ -23,7 +23,6 @@ use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
-use x11rb::protocol::xproto::*;
 
 use super::constants::{MIN_WINDOW_SIZE, SLOP_MARGIN};
 
@@ -70,7 +69,7 @@ pub fn is_valid_window_size(
     y: i32,
     width: i32,
     height: i32,
-    c_win: Window,
+    c_win: WindowId,
 ) -> bool {
     let Some(c) = ctx.g.clients.get(&c_win) else {
         return false;
@@ -88,7 +87,7 @@ pub fn is_valid_window_size(
 
 /// Rect-typed convenience wrapper around [`is_valid_window_size`].
 #[inline]
-pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: Window) -> bool {
+pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: WindowId) -> bool {
     is_valid_window_size(ctx, rect.x, rect.y, rect.w, rect.h, c_win)
 }
 
@@ -101,7 +100,7 @@ pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: Window) -> boo
 /// requests should funnel.
 pub fn apply_window_resize(
     ctx: &mut WmCtx,
-    c_win: Window,
+    c_win: WindowId,
     x: i32,
     y: i32,
     width: i32,
@@ -130,7 +129,7 @@ pub fn apply_window_resize(
 
 /// Rect-typed convenience wrapper around [`apply_window_resize`].
 #[inline]
-pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
+pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     apply_window_resize(ctx, c_win, rect.x, rect.y, rect.w, rect.h);
 }
 

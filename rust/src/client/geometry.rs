@@ -14,7 +14,7 @@ use crate::client::constants::{
     SIZE_HINTS_P_RESIZE_INC,
 };
 use crate::contexts::WmCtx;
-use crate::types::{Client, Rect};
+use crate::types::{Client, Rect, WindowId};
 use std::cmp::{max, min};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -45,7 +45,7 @@ pub fn client_height(c: &Client) -> i32 {
 /// If the size-hint check determines that nothing changed *and* there is more
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
-pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
+pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
     // Extract needed data first to avoid borrow conflict
     let (
         base_width,
@@ -137,8 +137,9 @@ pub fn resize(ctx: &mut WmCtx, win: Window, rect: &Rect, interact: bool) {
 /// level.  Always call [`resize`] from layout code so that size hints are
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
-pub fn resize_client(ctx: &mut WmCtx, win: Window, rect: &Rect) {
+pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         // Snapshot old geometry before overwriting.
@@ -155,7 +156,7 @@ pub fn resize_client(ctx: &mut WmCtx, win: Window, rect: &Rect) {
         let border_width = client.border_width;
 
         let _ = conn.configure_window(
-            win,
+            x11_win,
             &ConfigureWindowAux::new()
                 .x(rect.x)
                 .y(rect.y)
@@ -184,7 +185,7 @@ pub fn resize_client(ctx: &mut WmCtx, win: Window, rect: &Rect) {
 #[allow(clippy::too_many_arguments)]
 pub fn apply_size_hints(
     ctx: &mut WmCtx,
-    win: Window,
+    win: WindowId,
     x: &mut i32,
     y: &mut i32,
     w: &mut i32,
@@ -390,17 +391,18 @@ pub fn apply_size_hints(
 ///
 /// The raw property is a packed C struct; we read individual 4-byte integers
 /// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
-pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
+pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
 
     let Some(c) = ctx.g.clients.get_mut(&win) else {
         return;
     };
     let cwin = c.win;
+    let x11_win: Window = cwin.into();
 
     let Ok(cookie) = conn.get_property(
         false,
-        cwin,
+        x11_win,
         AtomEnum::WM_NORMAL_HINTS,
         AtomEnum::WM_SIZE_HINTS,
         0,
@@ -508,7 +510,7 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: Window) {
 
 /// Convenience wrapper: look up `win` in the global client map and call
 /// [`update_size_hints`] on the found [`Client`].
-pub fn update_size_hints_win(ctx: &mut WmCtx, win: Window) {
+pub fn update_size_hints_win(ctx: &mut WmCtx, win: WindowId) {
     update_size_hints(ctx, win);
 }
 
@@ -519,7 +521,7 @@ pub fn update_size_hints_win(ctx: &mut WmCtx, win: Window) {
 /// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
-pub fn scale_client(ctx: &mut WmCtx, win: Window, scale: i32) {
+pub fn scale_client(ctx: &mut WmCtx, win: WindowId, scale: i32) {
     let (mon_id, old_geo, border_width) = {
         let c = match ctx.g.clients.get(&win) {
             Some(c) => c,

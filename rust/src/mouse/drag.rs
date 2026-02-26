@@ -131,7 +131,7 @@ struct MoveState {
 /// * exits fake-fullscreen and returns `None` so the caller re-enters after the transition
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
-fn prepare_drag_target(ctx: &mut WmCtx) -> Option<Window> {
+fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let sel_win = {
         let mon = ctx.g.selmon()?;
         let sel = mon.sel?;
@@ -244,7 +244,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
 /// Process a single throttled `MotionNotify` event during `move_mouse`.
 fn on_motion(
     ctx: &mut WmCtx,
-    win: Window,
+    win: WindowId,
     event_x: i32,
     event_y: i32,
     root_x: i32,
@@ -379,7 +379,7 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
 /// was floating, this is the true pre-drag origin; we save it into
 /// `float_geo.x` so that un-tiling later restores the window to where it was
 /// before the user dragged it onto the bar.
-fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
+fn handle_bar_drop(ctx: &mut WmCtx, win: WindowId, grab_start_x: i32) {
     let Some((ptr_x, ptr_y)) = get_root_ptr(ctx) else {
         return;
     };
@@ -465,7 +465,7 @@ fn handle_bar_drop(ctx: &mut WmCtx, win: Window, grab_start_x: i32) {
 ///
 /// Returns `true` if the drop was fully handled (the caller should skip
 /// `handle_bar_drop` and `handle_client_monitor_switch`).
-fn apply_edge_drop(ctx: &mut WmCtx, win: Window, edge: Option<SnapPosition>) -> bool {
+fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>) -> bool {
     let edge = match edge {
         Some(e) => e,
         None => return false,
@@ -809,7 +809,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
 /// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`move_mouse`].
 pub fn window_title_mouse_handler(
     ctx: &mut WmCtx,
-    win: Window,
+    win: WindowId,
     btn: MouseButton,
     click_root_x: i32,
     click_root_y: i32,
@@ -880,7 +880,7 @@ pub fn window_title_mouse_handler(
 /// No-op when the window is in true fullscreen.
 pub fn window_title_mouse_handler_right(
     ctx: &mut WmCtx,
-    win: Window,
+    win: WindowId,
     btn: MouseButton,
     click_root_x: i32,
     click_root_y: i32,

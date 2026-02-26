@@ -4,9 +4,9 @@ use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 pub use crate::layouts::query::client_count;
-use x11rb::protocol::xproto::Window;
+use crate::types::WindowId;
 
-pub fn next_c(ctx: &WmCtx, c_win: Option<Window>, include_floating: bool) -> Option<Window> {
+pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> Option<WindowId> {
     if !include_floating {
         return next_tiled_ctx(ctx, c_win);
     }
@@ -27,7 +27,7 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<Window>, include_floating: bool) -> Opt
     None
 }
 
-pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Window> {
+pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<WindowId> {
     if ctx.g.monitors.is_empty() {
         return None;
     }
@@ -35,7 +35,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
     let mon = ctx.g.selmon()?;
     let selected = mon.selected_tags();
 
-    let mut r: Option<Window> = None;
+    let mut r: Option<WindowId> = None;
 
     let mut current = mon.clients;
     while let Some(win) = current {
@@ -56,7 +56,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: Window, include_floating: bool) -> Option<Wind
     r
 }
 
-pub fn push_up(ctx: &mut WmCtx, win: Window) {
+pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
     if client_count(ctx.g) < 2 {
         return;
     }
@@ -107,7 +107,7 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
             }
         }
     } else {
-        let mut last: Option<Window> = None;
+        let mut last: Option<WindowId> = None;
         if let Some(mon) = ctx.g.selmon() {
             for (c_win, _c) in mon.iter_clients(&ctx.g.clients) {
                 last = Some(c_win);
@@ -130,7 +130,7 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
     arrange(ctx, Some(selmon_id));
 }
 
-pub fn push_down(ctx: &mut WmCtx, win: Window) {
+pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
     if client_count(ctx.g) < 2 {
         return;
     }

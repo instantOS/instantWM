@@ -34,6 +34,7 @@ pub const XEMBED_MODALITY_ON: u32 = 10;
 pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
+    let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
     let conn = ctx.x11.conn;
     let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
@@ -45,7 +46,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.g.selmon_id();
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) = win_to_mon_with_ctx(ctx, e.event) {
+    if let Some(clicked_mon) = win_to_mon_with_ctx(ctx, event_win) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selmon(clicked_mon);
             selmon_id = clicked_mon;
@@ -57,7 +58,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     // (tag index, window handle, etc.) through to the button action.
     let bar_pos: BarPosition;
 
-    if let Some(win) = win_to_client(e.event) {
+    if let Some(win) = win_to_client(event_win) {
         bar_pos = BarPosition::ClientWin;
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
@@ -71,7 +72,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
             }
         }
     } else if let Some(mon) = ctx.g.monitor(selmon_id) {
-        if e.event == mon.barwin {
+        if event_win == mon.barwin {
             let position = bar_position_at_x(mon, ctx, e.event_x as i32);
             if position == BarPosition::StartMenu {
                 reset_bar(ctx);
@@ -136,12 +137,13 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
 
 pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     let showsystray = ctx.g.cfg.showsystray;
-    let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or(0);
+    let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or_default();
     let net_system_tray_op = ctx.g.cfg.netatom.system_tray_op;
     let net_wm_state = ctx.g.cfg.netatom.wm_state;
     let net_active_window = ctx.g.cfg.netatom.active_window;
+    let event_win = WindowId::from(e.window);
 
-    if showsystray && e.window == systray_win && e.type_ == net_system_tray_op {
+    if showsystray && event_win == systray_win && e.type_ == net_system_tray_op {
         let data = e.data.as_data32();
         if data[1] == SYSTEM_TRAY_REQUEST_DOCK {
             handle_systray_dock_request(ctx, e);
@@ -149,7 +151,7 @@ pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         return;
     };
 
-    let Some(win) = win_to_client(e.window) else {
+    let Some(win) = win_to_client(event_win) else {
         return;
     };
 
@@ -161,7 +163,9 @@ pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 }
 
 pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
-    if e.window != ctx.g.cfg.root {
+    let event_win = WindowId::from(e.window);
+    let root_win = WindowId::from(ctx.g.cfg.root);
+    if event_win != root_win {
         return;
     };
 
@@ -174,7 +178,8 @@ pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
 }
 
 pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
-    if let Some(win) = win_to_client(e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(win) = win_to_client(event_win) {
         configure(ctx, win);
     } else {
         let conn = ctx.x11.conn;
@@ -194,9 +199,10 @@ pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
 pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
-    if let Some(win) = win_to_client(e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(win) = win_to_client(event_win) {
         unmanage(ctx, win, true);
-    } else if let Some(icon) = systray::win_to_systray_icon(ctx, e.window) {
+    } else if let Some(icon) = systray::win_to_systray_icon(ctx, event_win) {
         // Remove the icon from the systray list and client map, then resize
         // the bar and redraw the systray — matching the C code's sequence of
         // removesystrayicon(c) → resizebarwin(selmon) → updatesystray().
@@ -218,7 +224,8 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
 pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
     let focusfollowsfloatmouse = ctx.g.focusfollowsfloatmouse;
-    let entering_root = e.event == ctx.g.cfg.root;
+    let event_win = WindowId::from(e.event);
+    let entering_root = event_win == WindowId::from(ctx.g.cfg.root);
 
     // 1. Filter out invalid crossing events (grab/ungrab, inferior notify)
     if (e.mode != NotifyMode::NORMAL || e.detail == NotifyDetail::INFERIOR) && !entering_root {
@@ -236,7 +243,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
         is_floating || !has_tiling
     };
-    let entering_client = win_to_client(e.event);
+    let entering_client = win_to_client(event_win);
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
@@ -280,7 +287,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 4. Handle Monitor Switch
     if focusfollowsmouse {
-        if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, e.event) {
+        if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, event_win) {
             if new_mon_id != selmon_id {
                 ctx.g.set_selmon(new_mon_id);
                 crate::focus::focus_soft(ctx, None);
@@ -323,12 +330,13 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
         return;
     };
 
-    if let Some(mon_id) = win_to_mon_with_ctx(ctx, e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(mon_id) = win_to_mon_with_ctx(ctx, event_win) {
         let is_barwin = ctx
             .g
             .monitors
             .get(mon_id)
-            .is_some_and(|m| e.window == m.barwin);
+            .is_some_and(|m| event_win == m.barwin);
         if is_barwin {
             draw_bar(ctx, mon_id);
         }
@@ -354,20 +362,22 @@ pub fn mapping_notify(ctx: &mut WmCtx, _e: &MappingNotifyEvent) {
 }
 
 pub fn map_request(ctx: &mut WmCtx, e: &MapRequestEvent) {
-    if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(_icon) = systray::win_to_systray_icon(ctx, event_win) {
         systray::update_systray(ctx);
         return;
     };
 
-    if win_to_client(e.window).is_none() && !is_override_redirect(ctx, e.window) {
-        let (geo, border_width) = get_win_geometry(ctx, e.window);
-        crate::client::manage(ctx, e.window, geo, border_width);
+    if win_to_client(event_win).is_none() && !is_override_redirect(ctx, event_win) {
+        let (geo, border_width) = get_win_geometry(ctx, event_win);
+        crate::client::manage(ctx, event_win, geo, border_width);
     };
 }
 
 /// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
 pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
-    if e.event != ctx.g.cfg.root {
+    let event_win = WindowId::from(e.event);
+    if event_win != WindowId::from(ctx.g.cfg.root) {
         return;
     };
 
@@ -449,19 +459,20 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
 }
 
 pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
-    if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(_icon) = systray::win_to_systray_icon(ctx, event_win) {
         systray::update_systray(ctx);
         return;
     };
 
-    if e.window == ctx.g.cfg.root && e.atom == AtomEnum::WM_NAME.into() {
+    if event_win == WindowId::from(ctx.g.cfg.root) && e.atom == AtomEnum::WM_NAME.into() {
         if x_command(ctx) == 0 {
             crate::bar::x11::update_status(ctx);
         }
         return;
     };
 
-    if let Some(win) = win_to_client(e.window) {
+    if let Some(win) = win_to_client(event_win) {
         match e.atom {
             x if x == AtomEnum::WM_NORMAL_HINTS.into() => {
                 if let Some(c) = ctx.g.clients.get_mut(&win) {
@@ -483,13 +494,15 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
 }
 
 pub fn resize_request(ctx: &mut WmCtx, e: &ResizeRequestEvent) {
-    if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(_icon) = systray::win_to_systray_icon(ctx, event_win) {
         systray::update_systray(ctx);
     };
 }
 
 pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
-    if let Some(win) = win_to_client(e.window) {
+    let event_win = WindowId::from(e.window);
+    if let Some(win) = win_to_client(event_win) {
         // Bit 7 of response_type is the X11 "send_event" flag.  When set the
         // UnmapNotify was generated synthetically (e.g. a client withdrawing
         // itself) rather than by a real XUnmapWindow call.  In that case we
@@ -507,7 +520,7 @@ pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
             // internally, so we must not call it here first.
             unmanage(ctx, win, false);
         }
-    } else if let Some(_icon) = systray::win_to_systray_icon(ctx, e.window) {
+    } else if let Some(_icon) = systray::win_to_systray_icon(ctx, event_win) {
         // Systray icons sometimes unmap without destroying; re-map them.
         systray::update_systray(ctx);
     };
@@ -519,8 +532,8 @@ pub fn leave_notify(ctx: &mut WmCtx, _e: &LeaveNotifyEvent) {
 
 fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     let data = e.data.as_data32();
-    let icon_win = data[2];
-    if icon_win == 0 {
+    let icon_win = WindowId::from(data[2]);
+    if icon_win == WindowId::default() {
         return;
     };
 
@@ -539,8 +552,10 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     };
 
     let conn = ctx.x11.conn;
+    let x11_icon_win: Window = icon_win.into();
+    let x11_systray_win: Window = systray_win.into();
     let (geo, border_width) = conn
-        .get_geometry(icon_win)
+        .get_geometry(x11_icon_win)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
         .map(|wa| {
@@ -586,17 +601,19 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     crate::client::update_size_hints_win(ctx, icon_win);
     systray::update_systray_icon_geom(ctx, icon_win, geo.w, geo.h);
 
-    let _ = conn.change_save_set(SetMode::INSERT, icon_win);
+    let _ = conn.change_save_set(SetMode::INSERT, x11_icon_win);
 
     let mask =
         EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE | EventMask::RESIZE_REDIRECT;
-    let _ =
-        conn.change_window_attributes(icon_win, &ChangeWindowAttributesAux::new().event_mask(mask));
+    let _ = conn.change_window_attributes(
+        x11_icon_win,
+        &ChangeWindowAttributesAux::new().event_mask(mask),
+    );
 
-    let _ = conn.reparent_window(icon_win, systray_win, 0, 0);
+    let _ = conn.reparent_window(x11_icon_win, x11_systray_win, 0, 0);
 
     let _ = conn.change_window_attributes(
-        icon_win,
+        x11_icon_win,
         &ChangeWindowAttributesAux::new().background_pixel(statusescheme_bg_pixel),
     );
 
@@ -611,7 +628,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         CURRENT_TIME as i64,
         XEMBED_EMBEDDED_NOTIFY as i64,
         0,
-        systray_win as i64,
+        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
     crate::client::send_event(
@@ -622,7 +639,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         CURRENT_TIME as i64,
         XEMBED_FOCUS_IN as i64,
         0,
-        systray_win as i64,
+        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
     crate::client::send_event(
@@ -633,7 +650,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         CURRENT_TIME as i64,
         XEMBED_WINDOW_ACTIVATE as i64,
         0,
-        systray_win as i64,
+        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
     crate::client::send_event(
@@ -644,7 +661,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         CURRENT_TIME as i64,
         XEMBED_MODALITY_ON as i64,
         0,
-        systray_win as i64,
+        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
 
@@ -658,7 +675,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     set_client_state(ctx, icon_win, 1);
 }
 
-fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: Window) {
+fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: WindowId) {
     let data = e.data.as_data32();
     let fullscreen_action = data[0];
 
@@ -669,7 +686,7 @@ fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: Window) {
     };
 }
 
-fn handle_active_window(ctx: &mut WmCtx, win: Window) {
+fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
     let is_hidden = is_hidden(win);
     if is_hidden {
         crate::client::show(ctx, win);
@@ -727,9 +744,10 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
 ///
 /// Returns a sensible fallback (`800×600`, border `1`) when the request fails,
 /// so callers never have to handle `None`.
-fn get_win_geometry(ctx: &WmCtx, win: Window) -> (Rect, u32) {
+fn get_win_geometry(ctx: &WmCtx, win: WindowId) -> (Rect, u32) {
     let conn = ctx.x11.conn;
-    conn.get_geometry(win)
+    let x11_win: Window = win.into();
+    conn.get_geometry(x11_win)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
         .map(|geo| {
@@ -758,9 +776,10 @@ fn get_win_geometry(ctx: &WmCtx, win: Window) -> (Rect, u32) {
 ///
 /// Such windows manage themselves (e.g. tooltips, menus) and must be ignored
 /// by the WM.
-fn is_override_redirect(ctx: &WmCtx, win: Window) -> bool {
+fn is_override_redirect(ctx: &WmCtx, win: WindowId) -> bool {
     let conn = ctx.x11.conn;
-    conn.get_window_attributes(win)
+    let x11_win: Window = win.into();
+    conn.get_window_attributes(x11_win)
         .ok()
         .and_then(|cookie| cookie.reply().ok())
         .map(|wa| wa.override_redirect)
@@ -778,14 +797,15 @@ fn is_override_redirect(ctx: &WmCtx, win: Window) -> bool {
 /// Eligible windows whose `WM_TRANSIENT_FOR` hint names an owner go into
 /// `transients`; all others go into `managed`.  The caller should manage the
 /// `managed` slice first so that owner windows exist before their transients.
-fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<Window>, Vec<Window>) {
+fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<WindowId>, Vec<WindowId>) {
     let mut managed = Vec::new();
     let mut transients = Vec::new();
 
     let conn = ctx.x11.conn;
 
     for win in children {
-        if is_override_redirect(ctx, win) {
+        let win_id = WindowId::from(win);
+        if is_override_redirect(ctx, win_id) {
             continue;
         }
 
@@ -796,32 +816,33 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<Window>, Vec<Win
             .and_then(|cookie| cookie.reply().ok())
             .map(|wa| wa.map_state == MapState::VIEWABLE)
             .unwrap_or(false);
-        let is_iconic = is_window_iconic(ctx, win);
+        let is_iconic = is_window_iconic(ctx, win_id);
 
         if !is_viewable && !is_iconic {
             continue;
         }
 
         // Skip already-managed windows.
-        if win_to_client(win).is_some() {
+        if win_to_client(win_id).is_some() {
             continue;
         }
 
-        if get_transient_for_hint(win).is_some() {
-            transients.push(win);
+        if get_transient_for_hint(win_id).is_some() {
+            transients.push(win_id);
         } else {
-            managed.push(win);
+            managed.push(win_id);
         }
     }
 
     (managed, transients)
 }
 
-fn is_window_iconic(ctx: &WmCtx, win: Window) -> bool {
+fn is_window_iconic(ctx: &WmCtx, win: WindowId) -> bool {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
     let state_atom = ctx.g.cfg.wmatom.state;
-    let Ok(cookie) = conn.get_property(false, win, state_atom, state_atom, 0, 2) else {
+    let Ok(cookie) = conn.get_property(false, x11_win, state_atom, state_atom, 0, 2) else {
         return false;
     };
     let Ok(reply) = cookie.reply() else {

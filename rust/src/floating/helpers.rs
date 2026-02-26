@@ -4,7 +4,7 @@
 
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use x11rb::protocol::xproto::Window;
+use crate::types::WindowId;
 
 // ── Layout query ─────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
 /// - its `isfloating` flag is set, or
 /// - no tiling layout is active on the selected monitor (all windows float in
 ///   floating-only layouts).
-pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
+pub fn check_floating(ctx: &WmCtx, win: WindowId) -> bool {
     if let Some(client) = ctx.g.clients.get(&win) {
         if client.isfloating {
             return true;
@@ -49,7 +49,7 @@ pub fn check_floating(ctx: &WmCtx, win: Window) -> bool {
 ///
 /// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
-pub fn visible_client(ctx: &WmCtx, win: Window) -> bool {
+pub fn visible_client(ctx: &WmCtx, win: WindowId) -> bool {
     let selected = ctx.g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
     ctx.g
         .clients
@@ -66,7 +66,7 @@ pub fn visible_client(ctx: &WmCtx, win: Window) -> bool {
 /// repaint the window frame without triggering a full `arrange()` pass.  It is
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
-pub fn apply_size(ctx: &mut WmCtx, win: Window) {
+pub fn apply_size(ctx: &mut WmCtx, win: WindowId) {
     let geo = ctx.g.clients.get(&win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;

@@ -76,7 +76,7 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     if is_floating {
         move_floating(ctx, win, target_id);
     } else {
-        transfer_client(ctx, u32::from(win), target_id);
+        transfer_client(ctx, win, target_id);
     }
 }
 
@@ -154,7 +154,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         .unwrap_or((0, 0, 0, 0));
 
     // Transfer the client to the target monitor.
-    transfer_client(ctx, u32::from(win), target_id);
+    transfer_client(ctx, win, target_id);
 
     // Apply proportional position on the new monitor.
     if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -166,8 +166,9 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
 
     // Raise so the window is immediately visible on the new monitor.
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     let _ = conn.configure_window(
-        u32::from(win),
+        x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
     let _ = conn.flush();

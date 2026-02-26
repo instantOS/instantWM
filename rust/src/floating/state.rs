@@ -8,7 +8,7 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-pub fn set_floating_in_place(ctx: &mut WmCtx, win: Window) {
+pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.isfloating = true;
     }
@@ -16,24 +16,25 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: Window) {
     restore_border_width(win);
 
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     if let Some(ref scheme) = ctx.g.cfg.borderscheme {
         let pixel = scheme.float_focus.bg.color.pixel;
         let _ = change_window_attributes(
             conn,
-            win,
+            x11_win,
             &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
         );
         let _ = conn.flush();
     }
 }
 
-pub fn save_floating_win(ctx: &mut WmCtx, win: Window) {
+pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.float_geo = client.geo;
     }
 }
 
-pub fn restore_floating_win(ctx: &mut WmCtx, win: Window) {
+pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
     let float_geo = ctx.g.clients.get(&win).map(|c| c.float_geo);
     if let Some(rect) = float_geo {
         resize(ctx, win, &rect, false);
@@ -42,7 +43,7 @@ pub fn restore_floating_win(ctx: &mut WmCtx, win: Window) {
 
 pub fn apply_float_change(
     ctx: &mut WmCtx,
-    win: Window,
+    win: WindowId,
     floating: bool,
     animate: bool,
     update_borders: bool,
@@ -56,11 +57,12 @@ pub fn apply_float_change(
             restore_border_width(win);
 
             let conn = ctx.x11.conn;
+            let x11_win: Window = win.into();
             if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                 let pixel = scheme.float_focus.bg.color.pixel;
                 let _ = change_window_attributes(
                     conn,
-                    win,
+                    x11_win,
                     &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
                 );
                 let _ = conn.flush();
@@ -135,7 +137,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     arrange(ctx, Some(ctx.g.selmon_id()));
 }
 
-pub fn change_floating_win(ctx: &mut WmCtx, win: Window) {
+pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
     let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
         Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
         None => return,
@@ -150,7 +152,7 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: Window) {
     arrange(ctx, Some(ctx.g.selmon_id()));
 }
 
-pub fn set_floating(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
+pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
     let (is_fullscreen, is_fake_fullscreen, is_floating) = match ctx.g.clients.get(&win) {
         Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating),
         None => return,
@@ -170,7 +172,7 @@ pub fn set_floating(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
     }
 }
 
-pub fn set_tiled(ctx: &mut WmCtx, win: Window, should_arrange: bool) {
+pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
     let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
         Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
         None => return,

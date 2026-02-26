@@ -7,7 +7,6 @@ use crate::types::*;
 use std::thread;
 use std::time::Duration;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::Window;
 
 const QUEUED_ALREADY: std::os::raw::c_int = 0;
 
@@ -16,7 +15,7 @@ pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 + t * t * t
 }
 
-fn get_start_rect(win: Window, reset_pos: i32) -> Option<Rect> {
+fn get_start_rect(win: WindowId, reset_pos: i32) -> Option<Rect> {
     let globals = get_globals();
     globals
         .clients
@@ -24,7 +23,7 @@ fn get_start_rect(win: Window, reset_pos: i32) -> Option<Rect> {
         .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
 }
 
-fn get_monitor_size(win: Window) -> (i32, i32) {
+fn get_monitor_size(win: WindowId) -> (i32, i32) {
     let globals = get_globals();
     globals
         .clients
@@ -69,13 +68,13 @@ fn final_rect(
     }
 }
 
-fn try_resize(ctx: &mut WmCtx, win: Window, rect: &Rect) {
+fn try_resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
     if rect.is_valid() {
         crate::client::resize_client(ctx, win, rect);
     }
 }
 
-pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
+pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     // Handled below by !ctx.g.animated or frames <= 0 check.
 
     let start_rect = match get_start_rect(win, reset_pos) {
@@ -179,7 +178,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, re
     try_resize(ctx, win, &final_rect);
 }
 
-pub fn check_animate(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, reset_pos: i32) {
+pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     if let Some(client) = ctx.g.clients.get(&win) {
         let should_animate = client.geo.x != rect.x
             || client.geo.y != rect.y
@@ -191,11 +190,11 @@ pub fn check_animate(ctx: &mut WmCtx, win: Window, rect: &Rect, frames: i32, res
     }
 }
 
-pub fn up_scale_client(ctx: &mut WmCtx, win: Window) {
+pub fn up_scale_client(ctx: &mut WmCtx, win: WindowId) {
     crate::client::scale_client(ctx, win, 110);
 }
 
-pub fn down_scale_client(ctx: &mut WmCtx, win: Window) {
+pub fn down_scale_client(ctx: &mut WmCtx, win: WindowId) {
     crate::client::scale_client(ctx, win, 90);
 }
 

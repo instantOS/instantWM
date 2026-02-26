@@ -43,7 +43,7 @@ use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::globals::get_x11;
 use crate::layouts::arrange;
-use crate::types::{Client, Rect};
+use crate::types::{Client, Rect, WindowId};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -59,7 +59,8 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `wa_*` arguments come directly from the `GetWindowAttributesReply` /
 /// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
 ///
-pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
+pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
+    let x11_win: Window = w.into();
     // -------------------------------------------------------------------------
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
@@ -182,14 +183,14 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
         }
 
         let _ = conn.configure_window(
-            w,
+            x11_win,
             &ConfigureWindowAux::new().border_width(border_width as u32),
         );
 
         if let Some(ref scheme) = ctx.g.cfg.borderscheme {
             let pixel = scheme.normal.bg.pixel();
             let _ = conn.change_window_attributes(
-                w,
+                x11_win,
                 &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
             );
         }
@@ -233,8 +234,8 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             | EventMask::FOCUS_CHANGE
             | EventMask::PROPERTY_CHANGE
             | EventMask::STRUCTURE_NOTIFY;
-        let _ =
-            conn.change_window_attributes(w, &ChangeWindowAttributesAux::new().event_mask(mask));
+        let _ = conn
+            .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
     }
 
     grab_buttons(ctx, w, false);
@@ -257,7 +258,10 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 
     // Floating windows start on top.
     if should_raise {
-        let _ = conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        let _ = conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
         let _ = conn.flush();
     }
 
@@ -273,7 +277,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             ctx.g.cfg.root,
             ctx.g.cfg.netatom.client_list,
             AtomEnum::WINDOW,
-            &[w],
+            &[x11_win],
         );
         let _ = conn.flush();
     }
@@ -300,7 +304,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 
     {
         let _ = conn.configure_window(
-            w,
+            x11_win,
             &ConfigureWindowAux::new()
                 .x(client_x + 2 * screen_width)
                 .y(client_y)
@@ -333,7 +337,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     }
 
     if !initially_hidden {
-        let _ = conn.map_window(w);
+        let _ = conn.map_window(x11_win);
         let _ = conn.flush();
     }
 
@@ -377,8 +381,10 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
             .unwrap_or(false);
 
         if !is_tiling {
-            let _ =
-                conn.configure_window(w, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+            let _ = conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
             let _ = conn.flush();
         } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
             if let Some(mon_id) = c.mon_id {
@@ -400,7 +406,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
 /// from a deliberately withdrawn window) we restore the border width and clear
 /// the event mask / WM_STATE.
 ///
-pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
+pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
     let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
 
     // Clear overlay and fullscreen references so those code paths don't hold
@@ -421,6 +427,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
 
     if !destroyed {
         let conn = ctx.x11.conn;
+        let x11_win: Window = win.into();
         let old_bw = ctx
             .g
             .clients
@@ -432,15 +439,18 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
 
         // Stop receiving events so we don't get confused during cleanup.
         let _ = conn.change_window_attributes(
-            win,
+            x11_win,
             &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
         );
 
         // Restore the original border width the application expects.
-        let _ = conn.configure_window(win, &ConfigureWindowAux::new().border_width(old_bw as u32));
+        let _ = conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().border_width(old_bw as u32),
+        );
 
         // Release button grabs.
-        let _ = conn.ungrab_button(ButtonIndex::from(0u8), win, ModMask::from(0u16));
+        let _ = conn.ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
 
         set_client_state(ctx, win, WM_STATE_WITHDRAWN);
 
@@ -468,8 +478,9 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
 /// [`Client`] has been inserted.
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
-fn read_title_from_x(ctx: &WmCtx, win: Window) -> String {
+fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
     for atom in [
@@ -481,7 +492,7 @@ fn read_title_from_x(ctx: &WmCtx, win: Window) -> String {
         }
         let Ok(cookie) = conn.get_property(
             false,
-            win,
+            x11_win,
             atom,
             x11rb::protocol::xproto::AtomEnum::ANY,
             0,
@@ -514,16 +525,25 @@ fn read_title_from_x(ctx: &WmCtx, win: Window) -> String {
 ///
 /// Returns the parent window ID, or `None` when the property is absent or
 /// the window is not a transient.
-pub fn get_transient_for_hint(w: Window) -> Option<Window> {
+pub fn get_transient_for_hint(w: WindowId) -> Option<WindowId> {
     let x11 = get_x11();
     let Some(ref conn) = x11.conn else {
         return None;
     };
+    let x11_win: Window = w.into();
 
-    conn.get_property(false, w, AtomEnum::WM_TRANSIENT_FOR, AtomEnum::WINDOW, 0, 1)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+    conn.get_property(
+        false,
+        x11_win,
+        AtomEnum::WM_TRANSIENT_FOR,
+        AtomEnum::WINDOW,
+        0,
+        1,
+    )
+    .ok()
+    .and_then(|cookie| cookie.reply().ok())
+    .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+    .map(WindowId::from)
 }
 
 /// Read the `_NET_CLIENT_INFO` property from `w` and restore tags / monitor.
@@ -531,12 +551,14 @@ pub fn get_transient_for_hint(w: Window) -> Option<Window> {
 /// This is used to persist client state across WM restarts: when the WM starts
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
-fn read_client_info(ctx: &mut WmCtx, w: Window) {
+fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = w.into();
 
     let client_info_atom = ctx.g.cfg.netatom.client_info;
 
-    let Ok(cookie) = conn.get_property(false, w, client_info_atom, AtomEnum::CARDINAL, 0, 2) else {
+    let Ok(cookie) = conn.get_property(false, x11_win, client_info_atom, AtomEnum::CARDINAL, 0, 2)
+    else {
         return;
     };
     let Ok(reply) = cookie.reply() else { return };
@@ -561,11 +583,20 @@ fn read_client_info(ctx: &mut WmCtx, w: Window) {
     }
 }
 
-fn get_transient_for_hint_ctx(ctx: &WmCtx, w: Window) -> Option<Window> {
+fn get_transient_for_hint_ctx(ctx: &WmCtx, w: WindowId) -> Option<WindowId> {
     let conn = ctx.x11.conn;
+    let x11_win: Window = w.into();
 
-    conn.get_property(false, w, AtomEnum::WM_TRANSIENT_FOR, AtomEnum::WINDOW, 0, 1)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+    conn.get_property(
+        false,
+        x11_win,
+        AtomEnum::WM_TRANSIENT_FOR,
+        AtomEnum::WINDOW,
+        0,
+        1,
+    )
+    .ok()
+    .and_then(|cookie| cookie.reply().ok())
+    .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+    .map(WindowId::from)
 }

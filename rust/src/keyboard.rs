@@ -372,11 +372,11 @@ pub fn space_toggle(ctx: &mut WmCtx) {
     }
 }
 
-pub fn key_resize(ctx: &mut WmCtx, win: Window, dir: Direction) {
+pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     crate::floating::key_resize(ctx, win, dir);
 }
 
-pub fn center_window(ctx: &mut WmCtx, win: Window) {
+pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     crate::floating::center_window(ctx, win);
 }
 

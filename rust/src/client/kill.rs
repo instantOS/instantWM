@@ -25,7 +25,7 @@
 use crate::animation::animate_client;
 use crate::client::focus::send_event;
 use crate::contexts::WmCtx;
-use crate::types::Rect;
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
 use x11rb::CURRENT_TIME;
@@ -41,7 +41,7 @@ use x11rb::CURRENT_TIME;
 /// 2. Play a "slide down" animation (skipped when already animating or
 ///    the window is fullscreen).
 /// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
-pub fn kill_client(ctx: &mut WmCtx, win: Window) {
+pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
     let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
@@ -81,7 +81,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: Window) {
 }
 
 /// Return the selected window for the current monitor.
-pub fn selected_window(ctx: &WmCtx) -> Option<Window> {
+pub fn selected_window(ctx: &WmCtx) -> Option<WindowId> {
     ctx.g.selected_win()
 }
 
@@ -116,7 +116,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 /// Used by the per-client close button in the bar.
 ///
 /// The window is still animated before the close message is sent.
-pub fn close_win(ctx: &mut WmCtx, win: Window) {
+pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
     let (is_locked, mon_mh) = ctx
         .g
         .clients
@@ -157,7 +157,8 @@ pub fn close_win(ctx: &mut WmCtx, win: Window) {
 // ---------------------------------------------------------------------------
 
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient`.
-fn force_close(ctx: &mut WmCtx, win: Window, wmatom_delete: u32) {
+fn force_close(ctx: &mut WmCtx, win: WindowId, wmatom_delete: u32) {
+    let x11_win: Window = win.into();
     let sent = send_event(
         ctx,
         win,
@@ -173,7 +174,7 @@ fn force_close(ctx: &mut WmCtx, win: Window, wmatom_delete: u32) {
     if !sent {
         let conn = ctx.x11.conn;
         let _ = conn.grab_server();
-        let _ = conn.kill_client(win);
+        let _ = conn.kill_client(x11_win);
         let _ = conn.ungrab_server();
         let _ = conn.flush();
     }

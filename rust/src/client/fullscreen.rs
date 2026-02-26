@@ -26,7 +26,7 @@ use crate::client::geometry::resize_client;
 use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut};
 use crate::layouts::arrange;
-use crate::types::Rect;
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -45,7 +45,7 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// **Guard:** if `border_width` is already 0 the save is skipped — we must
 /// never clobber a previously saved non-zero value with 0, or restoring would
 /// silently become a no-op.  This matches the C `savebw` implementation.
-pub fn save_border_width(win: Window) {
+pub fn save_border_width(win: WindowId) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.border_width != 0 {
@@ -61,7 +61,7 @@ pub fn save_border_width(win: Window) {
 /// writing 0 back would remove the border from windows that were managed
 /// without ever going through the strip path.  This matches the C
 /// `restore_border_width` implementation.
-pub fn restore_border_width(win: Window) {
+pub fn restore_border_width(win: WindowId) {
     let globals = get_globals_mut();
     if let Some(client) = globals.clients.get_mut(&win) {
         if client.old_border_width != 0 {
@@ -86,8 +86,9 @@ pub fn restore_border_width(win: Window) {
 /// When the client has `isfakefullscreen` enabled, geometry/border changes are
 /// skipped – only the EWMH property is toggled so the application remains happy
 /// while the window keeps participating in the tiling layout.
-pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
+pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
 
     let (net_wm_fullscreen, net_wm_state) = {
         let globals = get_globals();
@@ -119,7 +120,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
         // Advertise the new state via EWMH.
         let _ = conn.change_property32(
             PropMode::REPLACE,
-            win,
+            x11_win,
             net_wm_state,
             AtomEnum::ATOM,
             &[net_wm_fullscreen],
@@ -156,15 +157,17 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
 
             // Position and raise the window.
             let _ = conn.configure_window(
-                win,
+                x11_win,
                 &ConfigureWindowAux::new()
                     .x(mon_rect.x)
                     .y(mon_rect.y)
                     .width(mon_rect.w as u32)
                     .height(mon_rect.h as u32),
             );
-            let _ =
-                conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+            let _ = conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
             let _ = conn.flush();
         }
 
@@ -179,7 +182,13 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: Window, fullscreen: bool) {
         // ---- Exit fullscreen ------------------------------------------------
 
         // Clear the EWMH state property.
-        let _ = conn.change_property32(PropMode::REPLACE, win, net_wm_state, AtomEnum::ATOM, &[]);
+        let _ = conn.change_property32(
+            PropMode::REPLACE,
+            x11_win,
+            net_wm_state,
+            AtomEnum::ATOM,
+            &[],
+        );
 
         {
             let globals = get_globals_mut();

@@ -51,7 +51,8 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         };
 
         let conn = ctx.x11.conn;
-        let Ok(cookie) = conn.query_pointer(win) else {
+        let x11_win: Window = win.into();
+        let Ok(cookie) = conn.query_pointer(x11_win) else {
             return;
         };
         let Ok(reply) = cookie.reply() else { return };
@@ -336,7 +337,7 @@ pub fn force_resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: Window, btn: MouseButton) {
+pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
     let is_fullscreen = ctx
         .g
         .clients

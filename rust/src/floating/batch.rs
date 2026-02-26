@@ -18,7 +18,6 @@
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::types::*;
-use x11rb::protocol::xproto::Window;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
 
@@ -58,7 +57,7 @@ pub fn restore_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
 /// - not currently snapped.
 ///
 /// This is the shared selection logic for both save and restore.
-fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<Window> {
+fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<WindowId> {
     let Some(mon) = globals.monitor(mid) else {
         return Vec::new();
     };
@@ -145,7 +144,7 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
 fn collect_distribute_targets(
     globals: &crate::globals::Globals,
     sel_mon_id: usize,
-) -> (Vec<Window>, Rect) {
+) -> (Vec<WindowId>, Rect) {
     let empty = (Vec::new(), Rect::default());
 
     let Some(mon) = globals.monitor(sel_mon_id) else {

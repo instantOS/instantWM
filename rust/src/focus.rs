@@ -17,7 +17,7 @@ use x11rb::CURRENT_TIME;
 ///
 /// # Errors
 /// Returns an error if X11 operations fail (e.g., connection lost).
-pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
+pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         if ctx.g.monitors.is_empty() {
             return Ok(());
@@ -106,23 +106,24 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
 /// Focus failures typically mean the X11 connection is in a bad state; callers
 /// in event handlers usually can't recover, but we should not silently drop the
 /// error.
-pub fn focus_soft(ctx: &mut WmCtx, win: Option<Window>) {
+pub fn focus_soft(ctx: &mut WmCtx, win: Option<WindowId>) {
     if let Err(e) = focus(ctx, win) {
         log::warn!("focus({:?}) failed: {}", win, e);
     }
 }
 
-pub fn set_focus_win(ctx: &WmCtx, win: Window) {
+pub fn set_focus_win(ctx: &WmCtx, win: WindowId) {
     let conn = ctx.x11.conn;
+    let x11_win: Window = win.into();
     if let Some(c) = ctx.g.clients.get(&win) {
         if !c.neverfocus {
-            let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, win, CURRENT_TIME);
+            let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
             let _ = conn.change_property32_ctx(
                 PropMode::REPLACE,
                 ctx.g.cfg.root,
                 ctx.g.cfg.netatom.active_window,
                 AtomEnum::WINDOW,
-                &[win],
+                &[x11_win],
             );
         }
         let _ = conn.flush_ctx();
@@ -142,7 +143,7 @@ pub fn set_focus_win(ctx: &WmCtx, win: Window) {
 /// * `focus_fn` - Function to call with the target window
 pub fn focus_direction<F>(ctx: &WmCtx, direction: Direction, focus_fn: F)
 where
-    F: FnOnce(Option<Window>),
+    F: FnOnce(Option<WindowId>),
 {
     let Some(mon) = ctx.g.selmon() else {
         focus_fn(None);
@@ -177,15 +178,15 @@ where
 }
 
 fn get_directional_candidates(
-    head: Option<Window>,
-    globals_map: &std::collections::HashMap<Window, Client>,
+    head: Option<WindowId>,
+    globals_map: &std::collections::HashMap<WindowId, Client>,
     selected_tags: TagMask,
-    source_win: Window,
+    source_win: WindowId,
     source_center_x: i32,
     source_center_y: i32,
     direction: Direction,
-) -> Option<Window> {
-    let mut out_client: Option<Window> = None;
+) -> Option<WindowId> {
+    let mut out_client: Option<WindowId> = None;
     let mut min_score: i32 = 0;
 
     for (c_win, c) in crate::types::ClientListIter::new(head, globals_map) {
@@ -223,8 +224,8 @@ fn get_directional_candidates(
 }
 
 fn is_client_in_direction(
-    c_win: Window,
-    source_win: Window,
+    c_win: WindowId,
+    source_win: WindowId,
     center_x: i32,
     center_y: i32,
     source_center_x: i32,
@@ -305,7 +306,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
 
 pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_client_win = ctx.focus.last_client;
-    if last_client_win == 0 {
+    if last_client_win == WindowId::default() {
         return;
     }
     let last_win = last_client_win;
@@ -344,7 +345,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     crate::layouts::arrange(ctx, Some(mon_id));
 }
 
-pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
+pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: WindowId) {
     mouse_warp::warp_impl(ctx, c_win);
 }
 
@@ -357,7 +358,7 @@ pub fn warp_to_focus(ctx: &WmCtx) {
 /// Focus the next or previous client in the stack.
 pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
 where
-    F: FnOnce(Option<Window>),
+    F: FnOnce(Option<WindowId>),
 {
     let Some(mon) = ctx.g.selmon() else {
         focus_fn(None);
@@ -390,8 +391,8 @@ where
 
 fn get_visible_stack(
     mon: &Monitor,
-    clients: &std::collections::HashMap<Window, Client>,
-) -> Vec<Window> {
+    clients: &std::collections::HashMap<WindowId, Client>,
+) -> Vec<WindowId> {
     let mut stack = Vec::new();
     let selected = mon.selected_tag_mask();
 
@@ -437,6 +438,6 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     focus_soft(ctx, Some(stack[next_idx]));
 }
 
-fn get_selected_window(ctx: &WmCtx) -> Option<Window> {
+fn get_selected_window(ctx: &WmCtx) -> Option<WindowId> {
     ctx.g.selected_win()
 }
