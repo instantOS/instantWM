@@ -272,7 +272,11 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     let Some((px, py)) = get_root_ptr(ctx) else {
         return false;
     };
-    if !is_in_resize_border(ctx, px, py) {
+    let sel = ctx.g.selected_win();
+    let info = sel.and_then(|w| ctx.g.clients.get(&w)).map(|c| (c.isfloating, c.geo));
+    let in_border = is_in_resize_border(ctx, px, py);
+    eprintln!("DEBUG hover_resize_mouse: px={} py={} sel={:?} info={:?} in_border={}", px, py, sel, info, in_border);
+    if !in_border {
         return false;
     }
 

@@ -141,38 +141,8 @@ pub fn detach_stack(win: Window) {
                 }
             }
 
-            // If `win` was selected, pick the next visible non-hidden client.
-            if globals.monitor(mon_id).and_then(|m| m.sel) == Some(win) {
-                let selected = globals
-                    .monitor(mon_id)
-                    .map(|m| m.selected_tags())
-                    .unwrap_or(0);
-                let mut t = globals.monitor(mon_id).and_then(|m| m.stack);
-                while let Some(t_win) = t {
-                    let t_snext = globals.clients.get(&t_win).and_then(|tc| tc.snext);
-                    let is_vis = globals
-                        .clients
-                        .get(&t_win)
-                        .map(|tc| tc.is_visible_on_tags(selected))
-                        .unwrap_or(false);
-
-                    let is_not_hidden = globals
-                        .clients
-                        .get(&t_win)
-                        .map(|tc| !tc.is_hidden)
-                        .unwrap_or(true);
-                    if is_vis && is_not_hidden {
-                        if let Some(mon) = globals.monitor_mut(mon_id) {
-                            mon.sel = Some(t_win);
-                        }
-                        return;
-                    }
-                    t = t_snext;
-                }
-                if let Some(mon) = globals.monitor_mut(mon_id) {
-                    mon.sel = None;
-                }
-            }
+            // If `win` was selected, we don't update mon.sel here. 
+            // We rely on focus() to discover the new selection from the stack.
             return;
         }
     }

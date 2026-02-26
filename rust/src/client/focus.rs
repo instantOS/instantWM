@@ -150,7 +150,8 @@ pub fn set_focus(ctx: &mut WmCtx, win: Window) {
     }
 
     if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-        let isfloating = c.isfloating;
+        let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
+        let isfloating = c.isfloating || !has_tiling;
         let pixel = if isfloating {
             scheme.float_focus.bg.pixel()
         } else {

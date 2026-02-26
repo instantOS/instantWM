@@ -89,13 +89,14 @@ pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
         .map(|c| c.cursor)
         .unwrap_or(x11rb::NONE);
 
-    conn.grab_pointer(
+    // KEY_PRESS is NOT valid for grab_pointer. 
+    // It must be handles separately or by listening on the root window.
+    let result = conn.grab_pointer(
         false,
         root,
         EventMask::BUTTON_PRESS
             | EventMask::BUTTON_RELEASE
-            | EventMask::POINTER_MOTION
-            | EventMask::KEY_PRESS,
+            | EventMask::POINTER_MOTION,
         GrabMode::ASYNC,
         GrabMode::ASYNC,
         x11rb::NONE,
@@ -104,8 +105,18 @@ pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
     )
     .ok()
     .and_then(|cookie| cookie.reply().ok())
-    .map(|r| r.status == GrabStatus::SUCCESS)
-    .unwrap_or(false)
+    .map(|r| {
+        if r.status != GrabStatus::SUCCESS {
+            eprintln!("DEBUG grab_pointer_with_keys: index={} status={:?}", cursor_index, r.status);
+        }
+        r.status == GrabStatus::SUCCESS
+    })
+    .unwrap_or(false);
+
+    if !result {
+        eprintln!("DEBUG grab_pointer_with_keys: FAILED for index={}", cursor_index);
+    }
+    result
 }
 
 /// Wait for the next X11 event.
