@@ -19,11 +19,21 @@ once_cell = "1.19"
 anyhow = "1.0"
 log = "0.4"
 
+# Wayland compositor support via Smithay
+smithay = { version = "0.7", default-features = false, features = [
+    "wayland_frontend",
+    "desktop",
+    "xwayland",
+], optional = true }
+calloop = { version = "0.14", optional = true }
+
 [build-dependencies]
 
 [features]
-default = ["xinerama"]
+default = ["xinerama", "x11_backend"]
 xinerama = []
+x11_backend = []
+wayland_backend = ["smithay", "calloop"]
 
 [profile.release]
 opt-level = 3

@@ -1,7 +1,9 @@
 //! Backend abstraction.
 //!
-//! This module is a small scaffold to allow supporting multiple compositor/
-//! window-system backends (X11 today; Wayland later).
+//! This module supports multiple window-system backends:
+//! - **X11** (always available) — the original `x11rb`-based backend.
+//! - **Wayland** (feature-gated behind `wayland_backend`) — a Smithay-based
+//!   Wayland compositor backend.
 
 pub mod wayland;
 pub mod x11;

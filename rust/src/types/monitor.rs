@@ -205,7 +205,7 @@ impl Monitor {
     }
 
     /// Count the number of visible clients on this monitor.
-    pub fn client_count(&self, clients: &HashMap<Window, Client>) -> usize {
+    pub fn client_count(&self, clients: &HashMap<WindowHandle, Client>) -> usize {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
@@ -217,7 +217,7 @@ impl Monitor {
     }
 
     /// Count the number of tiled clients on this monitor.
-    pub fn tiled_client_count(&self, clients: &HashMap<Window, Client>) -> usize {
+    pub fn tiled_client_count(&self, clients: &HashMap<WindowHandle, Client>) -> usize {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
@@ -229,7 +229,7 @@ impl Monitor {
     }
 
     /// Get the currently selected client window, if any.
-    pub fn selected_client(&self) -> Option<Window> {
+    pub fn selected_client(&self) -> Option<WindowHandle> {
         self.sel
     }
 
@@ -239,7 +239,7 @@ impl Monitor {
     }
 
     /// Set the selected client for this monitor.
-    pub fn set_selected(&mut self, win: Option<Window>) {
+    pub fn set_selected(&mut self, win: Option<WindowHandle>) {
         self.sel = win;
     }
 
