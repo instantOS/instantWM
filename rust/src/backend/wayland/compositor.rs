@@ -30,31 +30,33 @@ use std::sync::Arc;
 
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_xwayland_shell,
     desktop::{PopupManager, Space, Window},
-    input::{keyboard::XkbConfig, Seat, SeatHandler, SeatState},
+    input::{
+        keyboard::{KeyState, KeysymHandle, ModifiersState, XkbConfig},
+        Seat, SeatHandler, SeatState,
+    },
     output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{
-            backend::ClientData, protocol::wl_surface::WlSurface, Client, Display, DisplayHandle,
+            backend::ClientData,
+            protocol::{wl_seat, wl_surface::WlSurface},
+            Client, Display, DisplayHandle,
         },
     },
-    utils::{Scale, Serial, Transform, SERIAL_COUNTER},
+    utils::{IsAlive, Scale, Serial, Transform, SERIAL_COUNTER},
     wayland::{
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
-        shell::xdg::{ToplevelSurface, XdgShellHandler, XdgShellState},
+        output::OutputManagerState,
+        shell::xdg::{
+            PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+        },
         shm::{ShmHandler, ShmState},
+        xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
+    xwayland::X11Wm,
 };
-
-#[cfg(feature = "wayland_backend")]
-use smithay::{
-    delegate_xwayland_shell,
-    wayland::xwayland_shell::{self, XWaylandShellHandler, XWaylandShellState},
-    xwayland::{X11Wm, XWayland, XWaylandEvent},
-};
-
-use smithay::output::OutputManagerState;
 
 // ---------------------------------------------------------------------------
 // Focus target types
@@ -79,15 +81,32 @@ pub enum PointerFocusTarget {
     WlSurface(WlSurface),
 }
 
-// Smithay requires these trait implementations for focus dispatch.
-// They delegate to the underlying surface's built-in implementations.
+// -- IsAlive implementations (required by KeyboardTarget / PointerTarget) --
+
+impl IsAlive for KeyboardFocusTarget {
+    fn alive(&self) -> bool {
+        match self {
+            KeyboardFocusTarget::Window(w) => w.alive(),
+        }
+    }
+}
+
+impl IsAlive for PointerFocusTarget {
+    fn alive(&self) -> bool {
+        match self {
+            PointerFocusTarget::WlSurface(s) => s.alive(),
+        }
+    }
+}
+
+// -- KeyboardTarget implementation --
 
 impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTarget {
     fn enter(
         &self,
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
-        keys: Vec<smithay::input::keyboard::KeysymHandle<'_>>,
+        keys: Vec<KeysymHandle<'_>>,
         serial: Serial,
     ) {
         match self {
@@ -101,12 +120,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         }
     }
 
-    fn leave(
-        &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
-        serial: Serial,
-    ) {
+    fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial) {
         match self {
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
@@ -120,8 +134,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         &self,
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
-        key: smithay::input::keyboard::KeysymHandle<'_>,
-        state: u32,
+        key: KeysymHandle<'_>,
+        state: KeyState,
         serial: Serial,
         time: u32,
     ) {
@@ -140,7 +154,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         &self,
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
-        modifiers: smithay::input::keyboard::ModifiersState,
+        modifiers: ModifiersState,
         serial: Serial,
     ) {
         match self {
@@ -154,6 +168,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         }
     }
 }
+
+// -- PointerTarget implementation --
 
 impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget {
     fn enter(
@@ -348,11 +364,7 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
     }
 }
 
-// WaylandFocus is needed so SeatHandler::focus_changed can extract a WlSurface
-impl smithay::reexports::wayland_server::protocol::wl_surface::WlSurfaceHandler
-    for KeyboardFocusTarget
-{
-}
+// -- TouchTarget implementation --
 
 impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
     fn down(
@@ -496,8 +508,7 @@ impl ClientData for WaylandClientState {
 /// - `seat` — the compositor's input seat (keyboard + pointer + touch).
 ///
 /// ## XWayland
-/// - `xwayland_shell_state`, `xwm`, `xdisplay` — feature-gated behind
-///   `wayland_backend`.
+/// - `xwayland_shell_state`, `xwm`, `xdisplay` — XWayland integration.
 pub struct WaylandState {
     // -- Wayland infrastructure --
     pub display_handle: DisplayHandle,
@@ -634,10 +645,7 @@ impl CompositorHandler for WaylandState {
             .compositor_state
     }
 
-    fn commit(&mut self, surface: &WlSurface) {
-        // Import committed buffers (SHM, dmabuf, etc.).
-        smithay::wayland::compositor::on_commit_buffer_handler::<Self>(surface);
-
+    fn commit(&mut self, _surface: &WlSurface) {
         // TODO: walk surface tree, send initial configure for new toplevels,
         // refresh Space, schedule repaint.
     }
@@ -658,11 +666,7 @@ impl SeatHandler for WaylandState {
         &mut self.seat_state
     }
 
-    fn focus_changed(
-        &mut self,
-        _seat: &Seat<Self>,
-        _target: Option<&KeyboardFocusTarget>,
-    ) {
+    fn focus_changed(&mut self, _seat: &Seat<Self>, _target: Option<&KeyboardFocusTarget>) {
         // TODO: update data device focus for clipboard bridging.
     }
 
@@ -689,14 +693,15 @@ impl XdgShellHandler for WaylandState {
 
     fn new_popup(
         &mut self,
-        surface: smithay::wayland::shell::xdg::PopupSurface,
-        _positioner: smithay::wayland::shell::xdg::PositionerState,
+        surface: PopupSurface,
+        _positioner: PositionerState,
     ) {
-        let _ = self.popups.track_popup(smithay::desktop::PopupKind::Xdg(surface));
+        let _ = self
+            .popups
+            .track_popup(smithay::desktop::PopupKind::Xdg(surface));
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        // Find and unmap the window from the space.
         let wl_surface = surface.wl_surface();
         if let Some(window) = self
             .space
@@ -708,10 +713,23 @@ impl XdgShellHandler for WaylandState {
         }
     }
 
+    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        // TODO: implement popup grab.
+    }
+
+    fn reposition_request(
+        &mut self,
+        _surface: PopupSurface,
+        _positioner: PositionerState,
+        _token: u32,
+    ) {
+        // TODO: reposition popup.
+    }
+
     fn move_request(
         &mut self,
         _surface: ToplevelSurface,
-        _seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
+        _seat: wl_seat::WlSeat,
         _serial: Serial,
     ) {
         // TODO: initiate interactive move (pointer grab).
@@ -720,7 +738,7 @@ impl XdgShellHandler for WaylandState {
     fn resize_request(
         &mut self,
         _surface: ToplevelSurface,
-        _seat: smithay::reexports::wayland_server::protocol::wl_seat::WlSeat,
+        _seat: wl_seat::WlSeat,
         _serial: Serial,
         _edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
