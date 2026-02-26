@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, SizeHints};
 use crate::types::input::SnapPosition;
-use crate::types::WindowHandle;
+use crate::types::WindowId;
 
 /// Represents a managed client window in the window manager.
 ///
@@ -96,12 +96,12 @@ pub struct Client {
     pub scratchpad_restore_tags: u32,
     /// Monitor this client is on.
     pub mon_id: Option<MonitorId>,
-    /// X11 window ID.
-    pub win: WindowHandle,
+    /// Window ID.
+    pub win: WindowId,
     /// Next client in the client list (focus order).
-    pub next: Option<WindowHandle>,
+    pub next: Option<WindowId>,
     /// Next client in the stack list (stacking order).
-    pub snext: Option<WindowHandle>,
+    pub snext: Option<WindowId>,
 }
 
 impl Client {
@@ -135,14 +135,14 @@ impl Client {
 /// Yields `(Window, &Client)` pairs so call-sites keep the window id and the
 /// corresponding client tightly coupled.
 pub struct ClientListIter<'a> {
-    next: Option<WindowHandle>,
-    clients: &'a HashMap<WindowHandle, Client>,
+    next: Option<WindowId>,
+    clients: &'a HashMap<WindowId, Client>,
 }
 
 impl<'a> ClientListIter<'a> {
     /// Create a new client list iterator.
     #[inline]
-    pub fn new(head: Option<WindowHandle>, clients: &'a HashMap<WindowHandle, Client>) -> Self {
+    pub fn new(head: Option<WindowId>, clients: &'a HashMap<WindowId, Client>) -> Self {
         Self {
             next: head,
             clients,
@@ -151,7 +151,7 @@ impl<'a> ClientListIter<'a> {
 }
 
 impl<'a> Iterator for ClientListIter<'a> {
-    type Item = (WindowHandle, &'a Client);
+    type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
         let win = self.next?;
@@ -167,14 +167,14 @@ impl<'a> Iterator for ClientListIter<'a> {
 /// Yields `(Window, &Client)` pairs so restack/showhide style logic can use the
 /// correct ordering while keeping the window id available.
 pub struct ClientStackIter<'a> {
-    next: Option<WindowHandle>,
-    clients: &'a HashMap<WindowHandle, Client>,
+    next: Option<WindowId>,
+    clients: &'a HashMap<WindowId, Client>,
 }
 
 impl<'a> ClientStackIter<'a> {
     /// Create a new stack list iterator.
     #[inline]
-    pub fn new(head: Option<WindowHandle>, clients: &'a HashMap<WindowHandle, Client>) -> Self {
+    pub fn new(head: Option<WindowId>, clients: &'a HashMap<WindowId, Client>) -> Self {
         Self {
             next: head,
             clients,
@@ -183,7 +183,7 @@ impl<'a> ClientStackIter<'a> {
 }
 
 impl<'a> Iterator for ClientStackIter<'a> {
-    type Item = (WindowHandle, &'a Client);
+    type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
         let win = self.next?;

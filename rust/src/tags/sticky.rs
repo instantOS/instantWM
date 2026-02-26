@@ -9,8 +9,7 @@
 //! state machine, which is why it lives separately from [`super::shift`].
 
 use crate::contexts::WmCtx;
-use crate::types::Client;
-use x11rb::protocol::xproto::Window;
+use crate::types::{Client, WindowId};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -41,7 +40,7 @@ pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
 /// Wrapper around `reset_sticky` that takes a window ID instead of a Client.
 /// This is useful when you need to reset sticky status but only have the window ID
 /// and need to avoid borrow checker issues.
-pub fn reset_sticky_win(ctx: &mut WmCtx, win: Window) {
+pub fn reset_sticky_win(ctx: &mut WmCtx, win: WindowId) {
     // Extract data first to avoid borrow issues
     let target_tags = ctx.g.selmon().and_then(|mon| {
         if mon.current_tag > 0 {

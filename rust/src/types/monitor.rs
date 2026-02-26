@@ -12,7 +12,7 @@ use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
 use crate::types::tag_types::MonitorDirection;
 use crate::types::TagMask;
-use crate::types::WindowHandle;
+use crate::types::WindowId;
 
 /// Internal state of a monitor (screen) in the window manager.
 ///
@@ -63,7 +63,7 @@ pub struct Monitor {
     /// Current gesture state.
     pub gesture: Gesture,
     /// Bar window handle.
-    pub barwin: WindowHandle,
+    pub barwin: WindowId,
     /// Which tags to show.
     pub showtags: u32,
     /// Current tag index (1-based).
@@ -73,15 +73,15 @@ pub struct Monitor {
     /// Tags owned by this monitor.
     pub tags: Vec<Tag>,
     /// Head of client list (focus order).
-    pub clients: Option<WindowHandle>,
+    pub clients: Option<WindowId>,
     /// Currently selected client.
-    pub sel: Option<WindowHandle>,
+    pub sel: Option<WindowId>,
     /// Overlay window.
-    pub overlay: Option<WindowHandle>,
+    pub overlay: Option<WindowId>,
     /// Head of stack list (stacking order).
-    pub stack: Option<WindowHandle>,
+    pub stack: Option<WindowId>,
     /// Currently fullscreen client.
-    pub fullscreen: Option<WindowHandle>,
+    pub fullscreen: Option<WindowId>,
 }
 
 impl Default for Monitor {
@@ -106,7 +106,7 @@ impl Default for Monitor {
             overlaystatus: 0,
             overlaymode: OverlayMode::default(),
             gesture: Gesture::default(),
-            barwin: 0,
+            barwin: WindowId::default(),
             showtags: 0,
             current_tag: 0,
             prev_tag: 0,
@@ -171,17 +171,14 @@ impl Monitor {
     #[inline]
     pub fn iter_clients<'a>(
         &'a self,
-        clients: &'a HashMap<WindowHandle, Client>,
+        clients: &'a HashMap<WindowId, Client>,
     ) -> ClientListIter<'a> {
         ClientListIter::new(self.clients, clients)
     }
 
     /// Iterate the monitor's stack list (stacking order).
     #[inline]
-    pub fn iter_stack<'a>(
-        &'a self,
-        clients: &'a HashMap<WindowHandle, Client>,
-    ) -> ClientStackIter<'a> {
+    pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<WindowId, Client>) -> ClientStackIter<'a> {
         ClientStackIter::new(self.stack, clients)
     }
 
@@ -205,7 +202,7 @@ impl Monitor {
     }
 
     /// Count the number of visible clients on this monitor.
-    pub fn client_count(&self, clients: &HashMap<WindowHandle, Client>) -> usize {
+    pub fn client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
@@ -217,7 +214,7 @@ impl Monitor {
     }
 
     /// Count the number of tiled clients on this monitor.
-    pub fn tiled_client_count(&self, clients: &HashMap<WindowHandle, Client>) -> usize {
+    pub fn tiled_client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
@@ -229,7 +226,7 @@ impl Monitor {
     }
 
     /// Get the currently selected client window, if any.
-    pub fn selected_client(&self) -> Option<WindowHandle> {
+    pub fn selected_client(&self) -> Option<WindowId> {
         self.sel
     }
 
@@ -239,7 +236,7 @@ impl Monitor {
     }
 
     /// Set the selected client for this monitor.
-    pub fn set_selected(&mut self, win: Option<WindowHandle>) {
+    pub fn set_selected(&mut self, win: Option<WindowId>) {
         self.sel = win;
     }
 

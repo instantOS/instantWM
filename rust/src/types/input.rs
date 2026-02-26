@@ -2,7 +2,7 @@
 //!
 //! Types for mouse, keyboard, and gesture handling.
 
-use crate::types::WindowHandle;
+use crate::types::WindowId;
 
 /// Mouse cursor types used by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,11 +95,11 @@ pub enum BarPosition {
     /// The shutdown/power button (shown when no client is selected).
     ShutDown,
     /// The title cell of a specific client window.
-    WinTitle(WindowHandle),
+    WinTitle(WindowId),
     /// The close button overlaying the left edge of the selected client's title.
-    CloseButton(WindowHandle),
+    CloseButton(WindowId),
     /// The resize widget overlaying the right edge of the selected client's title.
-    ResizeWidget(WindowHandle),
+    ResizeWidget(WindowId),
     /// The status-text / command strip on the right side of the bar.
     StatusText,
     /// A client window (outside the bar entirely).
@@ -121,7 +121,7 @@ pub enum Gesture {
     ///
     /// This is used to drive hover highlighting; unlike selection state, it can
     /// be empty (no title hovered) when the cursor leaves the bar.
-    WinTitle(WindowHandle),
+    WinTitle(WindowId),
     /// Cursor is over a tag button (0-based tag index).
     Tag(usize),
     /// Cursor is over the overlay activation zone.

@@ -349,13 +349,7 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         }
     }
 
-    fn leave(
-        &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
-        serial: Serial,
-        time: u32,
-    ) {
+    fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial, time: u32) {
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::leave(s, seat, data, serial, time);
@@ -544,10 +538,7 @@ impl WaylandState {
     /// 5. Create at least one output.
     ///
     /// The caller is responsible for creating the `EventLoop` and running it.
-    pub fn new(
-        display: Display<WaylandState>,
-        handle: &LoopHandle<'static, WaylandState>,
-    ) -> Self {
+    pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
         let dh = display.handle();
 
         // Insert the Wayland display as a calloop source so that protocol
@@ -691,11 +682,7 @@ impl XdgShellHandler for WaylandState {
         self.space.map_element(window, (0, 0), true);
     }
 
-    fn new_popup(
-        &mut self,
-        surface: PopupSurface,
-        _positioner: PositionerState,
-    ) {
+    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         let _ = self
             .popups
             .track_popup(smithay::desktop::PopupKind::Xdg(surface));
@@ -726,12 +713,7 @@ impl XdgShellHandler for WaylandState {
         // TODO: reposition popup.
     }
 
-    fn move_request(
-        &mut self,
-        _surface: ToplevelSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
-    ) {
+    fn move_request(&mut self, _surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         // TODO: initiate interactive move (pointer grab).
     }
 

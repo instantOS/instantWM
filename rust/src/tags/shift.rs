@@ -4,7 +4,7 @@ use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 
 use crate::layouts::arrange;
-use crate::types::{Direction, OverlayMode, Rect};
+use crate::types::{Direction, OverlayMode, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -81,7 +81,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     arrange(ctx, Some(selmon));
 }
 
-fn clear_sticky(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window) {
+fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {
     let target_tags = ctx.g.selmon().and_then(|mon| {
         if mon.current_tag > 0 {
             Some(1u32 << (mon.current_tag - 1))
@@ -100,10 +100,13 @@ fn clear_sticky(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window) {
     }
 }
 
-fn play_slide_animation(ctx: &mut WmCtx, win: x11rb::protocol::xproto::Window, dir: Direction) {
+fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     {
         let conn = ctx.x11.conn;
-        let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+        let _ = conn.configure_window(
+            u32::from(win),
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
         let _ = conn.flush();
     }
 

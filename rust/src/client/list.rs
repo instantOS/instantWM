@@ -12,7 +12,7 @@
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
-use x11rb::protocol::xproto::Window;
+use crate::types::WindowId;
 
 // ---------------------------------------------------------------------------
 // Client-list (focus order)
@@ -22,7 +22,7 @@ use x11rb::protocol::xproto::Window;
 ///
 /// The monitor is determined by `Client::mon_id`.  Does nothing if the client
 /// is not found in the global map or has no monitor assigned.
-pub fn attach(win: Window) {
+pub fn attach(win: WindowId) {
     let g = crate::globals::get_globals_mut();
     let mon_id = g.clients.get(&win).and_then(|c| c.mon_id);
     let Some(mon_id) = mon_id else {
@@ -38,7 +38,7 @@ pub fn attach(win: Window) {
     }
 }
 
-pub fn attach_ctx(ctx: &mut WmCtx, win: Window) {
+pub fn attach_ctx(ctx: &mut WmCtx, win: WindowId) {
     let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
     let Some(mon_id) = mon_id else {
         return;
@@ -57,7 +57,7 @@ pub fn attach_ctx(ctx: &mut WmCtx, win: Window) {
 ///
 /// Walks the list to splice out `win`.  If `win` is not present the function
 /// returns silently.
-pub fn detach(win: Window) {
+pub fn detach(win: WindowId) {
     let g = crate::globals::get_globals_mut();
     let mon_id = match g.clients.get(&win).and_then(|c| c.mon_id) {
         Some(id) => id,
@@ -67,9 +67,9 @@ pub fn detach(win: Window) {
     let client_next = g.clients.get(&win).and_then(|c| c.next);
 
     // Collect the traversal snapshot to avoid aliasing `clients` while mutating.
-    let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+    let mut traversal: Vec<(WindowId, Option<WindowId>)> = Vec::new();
     let mut current = g.monitor(mon_id).and_then(|m| m.clients);
-    let mut prev: Option<Window> = None;
+    let mut prev: Option<WindowId> = None;
 
     while let Some(cur_win) = current {
         let next = g.clients.get(&cur_win).and_then(|c| c.next);
@@ -97,7 +97,7 @@ pub fn detach(win: Window) {
     }
 }
 
-pub fn detach_ctx(ctx: &mut WmCtx, win: Window) {
+pub fn detach_ctx(ctx: &mut WmCtx, win: WindowId) {
     let mon_id = match ctx.g.clients.get(&win).and_then(|c| c.mon_id) {
         Some(id) => id,
         None => return,
@@ -105,9 +105,9 @@ pub fn detach_ctx(ctx: &mut WmCtx, win: Window) {
 
     let client_next = ctx.g.clients.get(&win).and_then(|c| c.next);
 
-    let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+    let mut traversal: Vec<(WindowId, Option<WindowId>)> = Vec::new();
     let mut current = ctx.g.monitor(mon_id).and_then(|m| m.clients);
-    let mut prev: Option<Window> = None;
+    let mut prev: Option<WindowId> = None;
 
     while let Some(cur_win) = current {
         let next = ctx.g.clients.get(&cur_win).and_then(|c| c.next);
@@ -140,7 +140,7 @@ pub fn detach_ctx(ctx: &mut WmCtx, win: Window) {
 // ---------------------------------------------------------------------------
 
 /// Prepend `win` to the front of its monitor's stack list.
-pub fn attach_stack(win: Window) {
+pub fn attach_stack(win: WindowId) {
     let g = crate::globals::get_globals_mut();
     let mon_id = g.clients.get(&win).and_then(|c| c.mon_id);
     let Some(mon_id) = mon_id else {
@@ -156,7 +156,7 @@ pub fn attach_stack(win: Window) {
     }
 }
 
-pub fn attach_stack_ctx(ctx: &mut WmCtx, win: Window) {
+pub fn attach_stack_ctx(ctx: &mut WmCtx, win: WindowId) {
     let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
     let Some(mon_id) = mon_id else {
         return;
@@ -176,7 +176,7 @@ pub fn attach_stack_ctx(ctx: &mut WmCtx, win: Window) {
 /// Also updates `Monitor::sel` if `win` was the selected client: the first
 /// visible, non-hidden client remaining in the stack becomes the new selection,
 /// or `None` if no such client exists.
-pub fn detach_stack(win: Window) {
+pub fn detach_stack(win: WindowId) {
     let g = crate::globals::get_globals_mut();
     let mon_id = match g.clients.get(&win).and_then(|c| c.mon_id) {
         Some(id) => id,
@@ -186,9 +186,9 @@ pub fn detach_stack(win: Window) {
     let client_snext = g.clients.get(&win).and_then(|c| c.snext);
 
     // Snapshot the traversal to avoid aliasing.
-    let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+    let mut traversal: Vec<(WindowId, Option<WindowId>)> = Vec::new();
     let mut current = g.monitor(mon_id).and_then(|m| m.stack);
-    let mut prev: Option<Window> = None;
+    let mut prev: Option<WindowId> = None;
 
     while let Some(cur_win) = current {
         let snext = g.clients.get(&cur_win).and_then(|c| c.snext);
@@ -217,7 +217,7 @@ pub fn detach_stack(win: Window) {
     }
 }
 
-pub fn detach_stack_ctx(ctx: &mut WmCtx, win: Window) {
+pub fn detach_stack_ctx(ctx: &mut WmCtx, win: WindowId) {
     let mon_id = match ctx.g.clients.get(&win).and_then(|c| c.mon_id) {
         Some(id) => id,
         None => return,
@@ -225,9 +225,9 @@ pub fn detach_stack_ctx(ctx: &mut WmCtx, win: Window) {
 
     let client_snext = ctx.g.clients.get(&win).and_then(|c| c.snext);
 
-    let mut traversal: Vec<(Window, Option<Window>)> = Vec::new();
+    let mut traversal: Vec<(WindowId, Option<WindowId>)> = Vec::new();
     let mut current = ctx.g.monitor(mon_id).and_then(|m| m.stack);
-    let mut prev: Option<Window> = None;
+    let mut prev: Option<WindowId> = None;
 
     while let Some(cur_win) = current {
         let snext = ctx.g.clients.get(&cur_win).and_then(|c| c.snext);
@@ -262,7 +262,7 @@ pub fn detach_stack_ctx(ctx: &mut WmCtx, win: Window) {
 
 /// Return the first tiled (non-floating, visible, non-hidden) client starting
 /// from `start_win` in the focus-order list.
-pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
+pub fn next_tiled(start_win: Option<WindowId>) -> Option<WindowId> {
     // Legacy helper: keep a globals-based entry point for callers that are not
     // yet ctx-based.
     let mut current = start_win;
@@ -286,7 +286,7 @@ pub fn next_tiled(start_win: Option<Window>) -> Option<Window> {
     None
 }
 
-pub fn next_tiled_ctx(ctx: &WmCtx, start_win: Option<Window>) -> Option<Window> {
+pub fn next_tiled_ctx(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> {
     let mut current = start_win;
     while let Some(win) = current {
         if let Some(c) = ctx.g.clients.get(&win) {
@@ -308,7 +308,7 @@ pub fn next_tiled_ctx(ctx: &WmCtx, start_win: Option<Window>) -> Option<Window> 
 
 /// Detach `win` from the client list and re-attach it at the front (master
 /// position), then re-focus and re-arrange the monitor.
-pub fn pop(ctx: &mut WmCtx, win: Window) {
+pub fn pop(ctx: &mut WmCtx, win: WindowId) {
     detach_ctx(ctx, win);
     attach_ctx(ctx, win);
     let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
@@ -327,7 +327,7 @@ pub fn pop(ctx: &mut WmCtx, win: Window) {
 ///
 /// This exists as a typed check: callers that only care *whether* a window is
 /// managed can use this instead of reaching into `globals.clients` directly.
-pub fn win_to_client(win: Window) -> Option<Window> {
+pub fn win_to_client(win: WindowId) -> Option<WindowId> {
     if crate::globals::get_globals().clients.contains_key(&win) {
         Some(win)
     } else {

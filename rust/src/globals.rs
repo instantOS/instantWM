@@ -147,7 +147,7 @@ pub struct Globals {
     /// `set_selmon()` to read/write this value so that `Monitor::monitor_id`
     /// is kept in sync automatically.
     selmon_idx: MonitorId,
-    pub clients: HashMap<Window, Client>,
+    pub clients: HashMap<WindowId, Client>,
     pub client_list: Vec<ClientId>,
     pub tags: TagSet,
     pub systray: Option<Systray>,
@@ -277,7 +277,7 @@ impl Globals {
 
     /// Return the window currently selected on the selected monitor, if any.
     #[inline]
-    pub fn selected_win(&self) -> Option<x11rb::protocol::xproto::Window> {
+    pub fn selected_win(&self) -> Option<WindowId> {
         self.selmon().and_then(|m| m.sel)
     }
 }

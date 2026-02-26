@@ -26,8 +26,8 @@ mod util;
 mod wm;
 mod xresources;
 
+use clap::{Parser, ValueEnum};
 use libc::{setlocale, LC_CTYPE};
-use std::env;
 use std::process::exit;
 
 use x11rb::connection::Connection;
@@ -39,11 +39,8 @@ use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
 use crate::types::*;
-use crate::util::die;
 use crate::wm::Wm;
 use crate::xresources::list_xresources;
-
-const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -56,27 +53,41 @@ const XC_BOTTOM_RIGHT_CORNER: u32 = 14;
 const XC_TOP_LEFT_CORNER: u32 = 134;
 const XC_TOP_RIGHT_CORNER: u32 = 136;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Backend {
+    X11,
+    Wayland,
+}
 
-    if args.len() == 2 {
-        if args[1] == "-V" || args[1] == "--version" {
-            println!("instantwm-{}", VERSION);
-            exit(0);
-        }
-        if args[1] == "-X" || args[1] == "--xresources" {
-            list_xresources();
-            exit(0);
-        }
-        die("usage: instantwm [-VX]");
-    } else if args.len() > 2 {
-        die("usage: instantwm [-VX]");
+#[derive(Debug, Parser)]
+#[command(name = "instantwm", version, disable_help_subcommand = true)]
+struct Cli {
+    #[arg(short = 'X', long = "xresources")]
+    xresources: bool,
+
+    #[arg(long, value_enum, default_value_t = Backend::X11)]
+    backend: Backend,
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    if cli.xresources {
+        list_xresources();
+        exit(0);
     }
 
     if set_locale().is_err() {
         eprintln!("warning: no locale support");
     }
 
+    match cli.backend {
+        Backend::X11 => run_x11(),
+        Backend::Wayland => run_wayland(),
+    }
+}
+
+fn run_x11() {
     let (conn, screen_num) = match RustConnection::connect(None) {
         Ok((c, s)) => (c, s),
         Err(_) => {
@@ -94,6 +105,20 @@ fn main() {
     run_autostart();
     crate::events::run(&mut wm);
     crate::events::cleanup(&mut wm);
+}
+
+#[cfg(feature = "wayland_backend")]
+fn run_wayland() -> ! {
+    eprintln!("instantwm: Wayland backend is not wired yet.");
+    exit(1);
+}
+
+#[cfg(not(feature = "wayland_backend"))]
+fn run_wayland() -> ! {
+    eprintln!(
+        "instantwm: Wayland backend requested but not enabled. Rebuild with --features wayland_backend.",
+    );
+    exit(1);
 }
 
 fn set_locale() -> Result<(), ()> {

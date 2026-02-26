@@ -15,7 +15,7 @@ use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
 use crate::types::monitor::find_monitor_by_direction;
-use crate::types::MonitorDirection;
+use crate::types::{MonitorDirection, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
 
@@ -76,7 +76,7 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     if is_floating {
         move_floating(ctx, win, target_id);
     } else {
-        transfer_client(ctx, win, target_id);
+        transfer_client(ctx, u32::from(win), target_id);
     }
 }
 
@@ -85,11 +85,7 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 // ---------------------------------------------------------------------------
 
 /// Move a floating client to `target_id`, preserving its relative position.
-fn move_floating(
-    ctx: &mut WmCtx,
-    win: x11rb::protocol::xproto::Window,
-    target_id: crate::types::MonitorId,
-) {
+fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
     // Snapshot source geometry before transfer_client() transfers ownership.
     let (
         client_x,
@@ -158,7 +154,7 @@ fn move_floating(
         .unwrap_or((0, 0, 0, 0));
 
     // Transfer the client to the target monitor.
-    transfer_client(ctx, win, target_id);
+    transfer_client(ctx, u32::from(win), target_id);
 
     // Apply proportional position on the new monitor.
     if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -170,6 +166,9 @@ fn move_floating(
 
     // Raise so the window is immediately visible on the new monitor.
     let conn = ctx.x11.conn;
-    let _ = conn.configure_window(win, &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE));
+    let _ = conn.configure_window(
+        u32::from(win),
+        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+    );
     let _ = conn.flush();
 }

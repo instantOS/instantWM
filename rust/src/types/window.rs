@@ -9,7 +9,28 @@ use crate::contexts::WmCtx;
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
-pub type WindowHandle = x11rb::protocol::xproto::Window;
+/// Backend-agnostic window identifier.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct WindowId(pub u32);
+
+impl From<u32> for WindowId {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+impl From<WindowId> for u32 {
+    fn from(value: WindowId) -> Self {
+        value.0
+    }
+}
+
+impl std::borrow::Borrow<u32> for WindowId {
+    fn borrow(&self) -> &u32 {
+        &self.0
+    }
+}
 
 /// Arguments passed to a button action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,7 +158,7 @@ pub struct ResourcePref {
 #[derive(Debug, Clone)]
 pub struct Systray {
     /// Tray window handle.
-    pub win: WindowHandle,
+    pub win: WindowId,
     /// List of tray icon windows.
-    pub icons: Vec<WindowHandle>,
+    pub icons: Vec<WindowId>,
 }

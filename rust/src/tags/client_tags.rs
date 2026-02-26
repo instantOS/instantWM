@@ -4,11 +4,10 @@ use crate::client::set_client_tag_prop;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
-use crate::types::{TagMask, SCRATCHPAD_MASK};
-use x11rb::protocol::xproto::Window;
+use crate::types::{TagMask, WindowId, SCRATCHPAD_MASK};
 
 /// Set the selected client's tags using type-safe mask.
-pub fn set_client_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
+pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let selmon_id = ctx.g.selmon_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let effective_mask = mask & tagmask;
@@ -82,7 +81,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 /// Toggle tags on the selected client.
-pub fn toggle_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
+pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let selmon_id = ctx.g.selmon_id();
 
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
@@ -117,7 +116,7 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
 }
 
 /// Follow a tag (move client to tag and view it).
-pub fn follow_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
+pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let had_prefix = ctx.g.tags.prefix;
 
     set_client_tag(ctx, win, mask);

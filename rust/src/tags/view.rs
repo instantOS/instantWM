@@ -3,9 +3,8 @@
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
-use crate::types::{Direction, TagMask, SCRATCHPAD_MASK};
+use crate::types::{Direction, TagMask, WindowId, SCRATCHPAD_MASK};
 use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::protocol::xproto::Window;
 
 /// View tags using type-safe mask.
 pub fn view(ctx: &mut WmCtx, mask: TagMask) {
@@ -206,7 +205,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         Ok(r) => r,
         Err(_) => return,
     };
-    let focused_win = reply.focus;
+    let focused_win = WindowId::from(reply.focus);
 
     let client_win = find_client_for_window(ctx, focused_win);
     let Some(win) = client_win else { return };
@@ -248,7 +247,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 
     let target_idx = newtag.first_tag().unwrap_or(0);
 
-    let clients_to_swap: Vec<Window> = {
+    let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
         let mut cursor = ctx.g.selmon().and_then(|m| m.clients);
 
@@ -443,7 +442,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     arrange(ctx, Some(selmon_id));
 }
 
-fn find_client_for_window(ctx: &WmCtx, win: Window) -> Option<Window> {
+fn find_client_for_window(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
     if ctx.g.clients.contains_key(&win) {
         return Some(win);
     }
