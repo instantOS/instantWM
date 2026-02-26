@@ -89,33 +89,27 @@ pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
         .map(|c| c.cursor)
         .unwrap_or(x11rb::NONE);
 
-    // KEY_PRESS is NOT valid for grab_pointer. 
+    // KEY_PRESS is NOT valid for grab_pointer.
     // It must be handles separately or by listening on the root window.
-    let result = conn.grab_pointer(
-        false,
-        root,
-        EventMask::BUTTON_PRESS
-            | EventMask::BUTTON_RELEASE
-            | EventMask::POINTER_MOTION,
-        GrabMode::ASYNC,
-        GrabMode::ASYNC,
-        x11rb::NONE,
-        cursor,
-        CURRENT_TIME,
-    )
-    .ok()
-    .and_then(|cookie| cookie.reply().ok())
-    .map(|r| {
-        if r.status != GrabStatus::SUCCESS {
-            eprintln!("DEBUG grab_pointer_with_keys: index={} status={:?}", cursor_index, r.status);
-        }
-        r.status == GrabStatus::SUCCESS
-    })
-    .unwrap_or(false);
+    let result = conn
+        .grab_pointer(
+            false,
+            root,
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+            x11rb::NONE,
+            cursor,
+            CURRENT_TIME,
+        )
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .map(|r| {
+            // Non-success is expected occasionally (another grab in flight).
+            r.status == GrabStatus::SUCCESS
+        })
+        .unwrap_or(false);
 
-    if !result {
-        eprintln!("DEBUG grab_pointer_with_keys: FAILED for index={}", cursor_index);
-    }
     result
 }
 

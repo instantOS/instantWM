@@ -32,7 +32,7 @@
 //! *column*.
 
 use crate::animation::animate_client;
-use crate::client::next_tiled;
+use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
 use crate::layouts::query::client_count;
 use crate::types::{Monitor, Rect};
@@ -60,7 +60,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: i32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -91,7 +91,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place each client ─────────────────────────────────────────────────
     let mut i: i32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while let Some(win) = c_win {
         let (border_width, next_client) = ctx
             .g
@@ -130,7 +130,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         i += 1;
-        c_win = next_tiled(next_client);
+        c_win = next_tiled_ctx(ctx, next_client);
     }
 }
 
@@ -144,7 +144,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -175,11 +175,15 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         let cell_width = m.work_rect.w / cols as i32;
 
         // Walk forward to the first client belonging to this column.
-        let mut c_win = next_tiled(m.clients);
+        let mut c_win = next_tiled_ctx(ctx, m.clients);
         let mut skip = col * (n / cols);
         while skip > 0 {
             if let Some(win) = c_win {
-                c_win = ctx.g.clients.get(&win).and_then(|c| next_tiled(c.next));
+                c_win = ctx
+                    .g
+                    .clients
+                    .get(&win)
+                    .and_then(|c| next_tiled_ctx(ctx, c.next));
             } else {
                 break;
             }
@@ -219,7 +223,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     0,
                 );
 
-                c_win = next_tiled(next_client);
+                c_win = next_tiled_ctx(ctx, next_client);
             }
         }
     }

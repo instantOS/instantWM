@@ -32,14 +32,14 @@
 //! The column width for the two side columns is `(work_width - mfact_width) / 2`.
 //! When there is only one side column (2 clients), it takes the full remaining width.
 
-use crate::client::{client_height, next_tiled, resize};
+use crate::client::{client_height, next_tiled_ctx, resize};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -49,7 +49,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         return;
     }
 
-    let first_win = match next_tiled(m.clients) {
+    let first_win = match next_tiled_ctx(ctx, m.clients) {
         Some(w) => w,
         None => return,
     };
@@ -123,7 +123,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         let col_x = m.work_rect.x + mw + sw; // right of master, past the gap
         let mut y = m.work_rect.y;
-        let mut c_win = next_tiled(master_next);
+        let mut c_win = next_tiled_ctx(ctx, master_next);
         let mut idx: u32 = 0;
 
         while let Some(win) = c_win {
@@ -165,7 +165,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
 
             idx += 1;
-            c_win = next_tiled(next_client);
+            c_win = next_tiled_ctx(ctx, next_client);
 
             // Skip the next client — it belongs to the left column.
             if let Some(skip_win) = c_win {
@@ -173,7 +173,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     .g
                     .clients
                     .get(&skip_win)
-                    .and_then(|c| next_tiled(c.next));
+                    .and_then(|c| next_tiled_ctx(ctx, c.next));
             }
         }
     }
@@ -191,9 +191,13 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         // Walk to the first odd-index stack client by skipping the first
         // right-column client.
-        let first_right = next_tiled(master_next);
-        let first_left =
-            first_right.and_then(|w| ctx.g.clients.get(&w).and_then(|c| next_tiled(c.next)));
+        let first_right = next_tiled_ctx(ctx, master_next);
+        let first_left = first_right.and_then(|w| {
+            ctx.g
+                .clients
+                .get(&w)
+                .and_then(|c| next_tiled_ctx(ctx, c.next))
+        });
 
         let mut c_win = first_left;
         let mut idx: u32 = 0;
@@ -235,7 +239,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
 
             idx += 1;
-            c_win = next_tiled(next_client);
+            c_win = next_tiled_ctx(ctx, next_client);
 
             // Skip the next client — it belongs to the right column.
             if let Some(skip_win) = c_win {
@@ -243,7 +247,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     .g
                     .clients
                     .get(&skip_win)
-                    .and_then(|c| next_tiled(c.next));
+                    .and_then(|c| next_tiled_ctx(ctx, c.next));
             }
         }
     }

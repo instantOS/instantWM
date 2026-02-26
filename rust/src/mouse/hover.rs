@@ -14,7 +14,8 @@
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
 use crate::contexts::WmCtx;
-use crate::focus::{focus, warp_into};
+use crate::focus::focus;
+use crate::mouse::warp::warp_into;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -219,7 +220,7 @@ pub fn handle_floating_resize_hover(
         ctx.g.resize_direction = Some(dir);
 
         if should_focus {
-            let _ = focus(ctx, Some(win));
+            crate::focus::focus_soft(ctx, Some(win));
         }
         return true;
     }
@@ -273,9 +274,10 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
         return false;
     };
     let sel = ctx.g.selected_win();
-    let info = sel.and_then(|w| ctx.g.clients.get(&w)).map(|c| (c.isfloating, c.geo));
+    let info = sel
+        .and_then(|w| ctx.g.clients.get(&w))
+        .map(|c| (c.isfloating, c.geo));
     let in_border = is_in_resize_border(ctx, px, py);
-    eprintln!("DEBUG hover_resize_mouse: px={} py={} sel={:?} info={:?} in_border={}", px, py, sel, info, in_border);
     if !in_border {
         return false;
     }
@@ -330,7 +332,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                             find_tiled_win_at_point(ctx, px, py, sel)
                         });
                     if let Some(win) = target {
-                        focus(ctx, Some(win));
+                        crate::focus::focus_soft(ctx, Some(win));
                     }
                     break;
                 }
@@ -440,7 +442,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 
     // If cursor is already outside the resize border, just focus the tiled window
     if !is_point_in_resize_border(&sel_geo, px, py) {
-        focus(ctx, Some(hovered_win));
+        crate::focus::focus_soft(ctx, Some(hovered_win));
         return true;
     }
 

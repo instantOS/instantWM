@@ -20,12 +20,15 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
+const FORCE_WARP_Y: i16 = 10;
+const WARP_INTO_PADDING: i32 = 10;
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Query the current root-window pointer position.
 ///
 /// Returns `None` when the X11 connection is unavailable or the request fails.
-pub(super) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
+pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
     let conn = ctx.x11.conn;
     let cookie = query_pointer(conn, ctx.g.cfg.root).ok()?;
     let reply = cookie.reply().ok()?;
@@ -38,7 +41,7 @@ pub(super) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
 /// work area instead.  The warp is skipped when the pointer is already inside
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
-pub(super) fn warp_impl(ctx: &WmCtx, win: Window) {
+pub(crate) fn warp_impl(ctx: &WmCtx, win: Window) {
     let conn = ctx.x11.conn;
 
     let root = ctx.g.cfg.root;
@@ -132,8 +135,42 @@ pub fn force_warp(ctx: &WmCtx, c: &Client) {
         0u16,
         0u16,
         (c.geo.w / 2) as i16,
-        10i16,
+        FORCE_WARP_Y,
     );
+    let _ = conn.flush();
+}
+
+/// Warp the pointer into the window's geometry if it is currently outside.
+///
+/// This clamps the pointer into the window rect with a small padding so
+/// subsequent drags/resizes start from inside the client.
+pub fn warp_into(ctx: &WmCtx, win: Window) {
+    if win == 0 {
+        return;
+    }
+
+    let Some(c) = ctx.g.clients.get(&win) else {
+        return;
+    };
+
+    let Some((mut x, mut y)) = get_root_ptr(ctx) else {
+        return;
+    };
+
+    if x < c.geo.x {
+        x = c.geo.x + WARP_INTO_PADDING;
+    } else if x > c.geo.x + c.geo.w {
+        x = c.geo.x + c.geo.w - WARP_INTO_PADDING;
+    }
+
+    if y < c.geo.y {
+        y = c.geo.y + WARP_INTO_PADDING;
+    } else if y > c.geo.y + c.geo.h {
+        y = c.geo.y + c.geo.h - WARP_INTO_PADDING;
+    }
+
+    let conn = ctx.x11.conn;
+    let _ = conn.warp_pointer(CURRENT_TIME, ctx.g.cfg.root, 0, 0, 0, 0, x as i16, y as i16);
     let _ = conn.flush();
 }
 

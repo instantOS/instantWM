@@ -1,4 +1,4 @@
-use crate::client::{attach, attach_stack, detach, detach_stack};
+use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx};
 use crate::contexts::WmCtx;
 use crate::focus::{focus, warp_cursor_to_client};
 use crate::layouts::{arrange, restack};
@@ -70,7 +70,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     }
 
     let selmon = ctx.g.selmon_id();
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     if !ctx.g.monitors.is_empty() {
         arrange(ctx, Some(selmon));
     }
@@ -150,8 +150,8 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     }
 
     if target_mon != current_mon {
-        detach(found);
-        detach_stack(found);
+        detach_ctx(ctx, found);
+        detach_stack_ctx(ctx, found);
 
         {
             if let Some(client) = ctx.g.clients.get_mut(&found) {
@@ -159,14 +159,14 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
             }
         }
 
-        attach(found);
-        attach_stack(found);
+        attach_ctx(ctx, found);
+        attach_stack_ctx(ctx, found);
     }
 
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
     if !ctx.g.monitors.is_empty() {
         let mid = ctx.g.selmon_id();
-        focus(ctx, Some(found));
+        crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
         restack(ctx, mid);
         if focusfollowsmouse {
@@ -200,7 +200,7 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         }
     }
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     if let Some(mid) = mon_id {
         arrange(ctx, Some(mid));
     }

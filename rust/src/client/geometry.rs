@@ -285,7 +285,7 @@ pub fn apply_size_hints(
     // floating / not in a tiling layout.
     if resizehints != 0 || isfloating || !is_tiling {
         if hintsvalid == 0 {
-            drop(c); // Release mutable borrow before calling update_size_hints
+            let _ = c; // Release mutable borrow before calling update_size_hints
             update_size_hints(ctx, win);
             let c = ctx.g.clients.get_mut(&win).unwrap();
 

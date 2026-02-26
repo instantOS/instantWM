@@ -27,7 +27,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
     }
 
     set_client_tag_prop(ctx, win);
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 
@@ -77,7 +77,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         }
     }
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 
@@ -112,7 +112,7 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: Window, mask: TagMask) {
     }
 
     set_client_tag_prop(ctx, win);
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 

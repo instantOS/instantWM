@@ -1,8 +1,6 @@
 use crate::contexts::WmCtx;
-use crate::globals::get_drw;
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
-use std::sync::atomic::Ordering;
 
 const MAX_COMMAND_OFFSETS: usize = 20;
 
@@ -23,7 +21,7 @@ struct StatusLayout {
     total_width: i32,
 }
 
-pub(crate) fn draw_status_bar(ctx: &WmCtx, m: &Monitor, bh: i32) -> (i32, i32) {
+pub(crate) fn draw_status_bar(ctx: &mut WmCtx, m: &Monitor, bh: i32) -> (i32, i32) {
     let stext = ctx.g.status_text.clone();
     if stext.is_empty() {
         return (0, 0);
@@ -32,8 +30,14 @@ pub(crate) fn draw_status_bar(ctx: &WmCtx, m: &Monitor, bh: i32) -> (i32, i32) {
     let items = parse_status_items(stext.as_bytes());
     let layout = measure_layout(ctx, m, &items);
 
-    let mut drw = get_drw().clone();
-    draw_items(&mut drw, m, bh, &items, layout, ctx.g);
+    let mut drw = ctx
+        .g
+        .cfg
+        .drw
+        .as_ref()
+        .expect("draw_status_bar called before drw initialised")
+        .clone();
+    draw_items(&mut drw, m, bh, &items, layout, ctx.g, ctx.bar);
 
     (layout.draw_start_x, layout.total_width)
 }
@@ -146,7 +150,7 @@ fn measure_layout(ctx: &WmCtx, m: &Monitor, items: &[StatusItem]) -> StatusLayou
 
     for item in items {
         match item {
-            StatusItem::Text(text) => width += super::text_width(text),
+            StatusItem::Text(text) => width += super::text_width_ctx(ctx, text),
             StatusItem::Offset(offset) => width += *offset,
             _ => {}
         }
@@ -169,6 +173,7 @@ fn draw_items(
     items: &[StatusItem],
     layout: StatusLayout,
     g: &crate::globals::Globals,
+    bar: &mut crate::bar::BarState,
 ) {
     let mut scheme = g
         .cfg
@@ -192,9 +197,8 @@ fn draw_items(
         );
     }
 
-    for idx in 0..MAX_COMMAND_OFFSETS {
-        super::COMMANDOFFSETS[idx].store(-1, Ordering::Relaxed);
-    }
+    let _ = MAX_COMMAND_OFFSETS;
+    bar.clear_command_offsets();
 
     let mut x = layout.draw_start_x + 1;
     let mut marker_idx = 0usize;
@@ -202,7 +206,7 @@ fn draw_items(
     for item in items {
         match item {
             StatusItem::Text(text) => {
-                let seg_w = super::text_width(text);
+                let seg_w = drw.fontset_getwidth(text) as i32;
                 if seg_w > 0 {
                     drw.text(x, 0, seg_w as u32, bh as u32, 0, text, false, 0);
                 }
@@ -234,7 +238,7 @@ fn draw_items(
             }
             StatusItem::CommandOffset => {
                 if marker_idx < MAX_COMMAND_OFFSETS {
-                    super::COMMANDOFFSETS[marker_idx].store(x, Ordering::Relaxed);
+                    bar.command_offsets[marker_idx] = x;
                     marker_idx += 1;
                 }
             }
@@ -242,7 +246,7 @@ fn draw_items(
     }
 
     if marker_idx < MAX_COMMAND_OFFSETS {
-        super::COMMANDOFFSETS[marker_idx].store(-1, Ordering::Relaxed);
+        bar.command_offsets[marker_idx] = -1;
     }
 
     let _ = m;

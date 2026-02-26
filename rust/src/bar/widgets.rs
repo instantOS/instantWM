@@ -1,13 +1,22 @@
 use crate::config::{SchemeClose, SchemeTag, SchemeWin};
 use crate::contexts::WmCtx;
 use crate::drw::{Drw, COL_BG, COL_DETAIL};
-use crate::globals::{get_drw, get_globals, Globals};
+use crate::globals::Globals;
 use crate::types::*;
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
+
+fn drw_clone(ctx: &WmCtx) -> Drw {
+    ctx.g
+        .cfg
+        .drw
+        .as_ref()
+        .expect("bar draw called before drw initialised")
+        .clone()
+}
 
 pub(crate) fn draw_startmenu_icon(ctx: &WmCtx, bh: i32) {
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
@@ -38,7 +47,7 @@ pub(crate) fn draw_startmenu_icon(ctx: &WmCtx, bh: i32) {
 
     let Some(ref scheme) = scheme else { return };
 
-    let mut drw = get_drw().clone();
+    let mut drw = drw_clone(ctx);
     drw.set_scheme(scheme.clone());
 
     drw.rect(
@@ -144,9 +153,9 @@ pub(crate) fn draw_tag_indicators(
     let lpad = (horizontal_padding / 2) as u32;
     let bar_dragging = ctx.g.bar_dragging;
 
-    let tags = crate::tags::bar::visible_tags(ctx.g, m, occupied_tags);
+    let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 
-    let mut drw = get_drw().clone();
+    let mut drw = drw_clone(ctx);
 
     let selmon_gesture = ctx.g.selmon().map(|s| s.gesture).unwrap_or_default();
 
@@ -192,12 +201,12 @@ pub(crate) fn draw_tag_indicators(
 pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i32) -> i32 {
     let horizontal_padding = ctx.g.cfg.horizontal_padding;
     let ltsymbol = super::layout_symbol(m);
-    let text_w = super::text_width(&ltsymbol);
+    let text_w = super::text_width_ctx(ctx, &ltsymbol);
     let w = (text_w + horizontal_padding).max(horizontal_padding);
     let lpad = ((w - text_w) / 2).max(0) as u32;
 
     {
-        let mut drw = get_drw().clone();
+        let mut drw = drw_clone(ctx);
         if let Some(ref ss) = ctx.g.cfg.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),
@@ -219,7 +228,7 @@ pub(crate) fn draw_layout_indicator(ctx: &WmCtx, m: &Monitor, mut x: i32, bh: i3
 /// filled rectangles so it is visible without a font glyph.  Returns the new
 /// x offset (i.e. `x + bh`).
 pub(crate) fn draw_shutdown_button(ctx: &WmCtx, x: i32, bh: i32) -> i32 {
-    let mut drw = get_drw().clone();
+    let mut drw = drw_clone(ctx);
 
     // Use the status scheme as the base colours.
     if let Some(ref ss) = ctx.g.cfg.statusscheme {
@@ -365,29 +374,30 @@ fn get_window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<ColorSch
     schemes.get(SchemeWin::Normal as usize).cloned()
 }
 
-pub(crate) fn draw_close_button(c: &Client, x: i32, bh: i32) {
-    let g = get_globals();
-
-    let close_hovered = g
+pub(crate) fn draw_close_button(ctx: &WmCtx, c: &Client, x: i32, bh: i32) {
+    let close_hovered = ctx
+        .g
         .selmon()
         .is_some_and(|selmon| selmon.gesture == Gesture::CloseButton);
 
     let schemes = if close_hovered {
-        &g.cfg.closebuttonschemes.hover
+        &ctx.g.cfg.closebuttonschemes.hover
     } else {
-        &g.cfg.closebuttonschemes.no_hover
+        &ctx.g.cfg.closebuttonschemes.no_hover
     };
 
     {
-        let mut drw = get_drw().clone();
+        let mut drw = drw_clone(ctx);
 
         let scheme_idx = if c.islocked {
             SchemeClose::Locked as usize
-        } else if g
+        } else if ctx
+            .g
             .selmon()
             .and_then(|selmon| {
                 selmon.sel.and_then(|sel_win| {
-                    g.clients
+                    ctx.g
+                        .clients
                         .get(&sel_win)
                         .map(|sel_c| sel_c.is_fullscreen && sel_c.win == c.win)
                 })
@@ -445,48 +455,58 @@ fn get_scheme_pixel(drw: &Drw, idx: usize) -> std::os::raw::c_ulong {
     0
 }
 
-fn draw_window_title(m: &Monitor, c: &Client, x: i32, width: i32, bh: i32) -> Option<u32> {
-    let g = get_globals();
-
-    let is_hover = g.selmon().is_some_and(|selmon| {
-        selmon.gesture == Gesture::None
-            && selmon.sel.is_some_and(|sel_win| {
-                g.clients
-                    .get(&sel_win)
-                    .is_some_and(|hover_c| hover_c.win == c.win)
-            })
-    });
+fn draw_window_title(
+    ctx: &WmCtx,
+    m: &Monitor,
+    c: &Client,
+    x: i32,
+    width: i32,
+    bh: i32,
+) -> Option<u32> {
+    let is_hover = ctx
+        .g
+        .selmon()
+        .is_some_and(|selmon| selmon.gesture == Gesture::WinTitle(c.win));
 
     let client_name = c.name.as_str();
-    let text_w = super::text_width(client_name);
+    let text_w = super::text_width_ctx(ctx, client_name);
 
     {
-        let mut drw = get_drw().clone();
-        if let Some(scheme) = get_window_scheme(g, c, is_hover) {
+        let mut drw = drw_clone(ctx);
+        if let Some(scheme) = get_window_scheme(ctx.g, c, is_hover) {
             drw.set_scheme(scheme);
         }
 
         let lpad = if text_w < width - 64 {
             ((width - text_w) as f32 * 0.5) as u32
         } else {
-            (g.cfg.horizontal_padding / 2 + 20) as u32
+            (ctx.g.cfg.horizontal_padding / 2 + 20) as u32
         };
 
         drw.text(x, 0, width as u32, bh as u32, lpad, client_name, false, 4);
     }
 
-    let is_selected = g.selmon().is_some_and(|selmon| selmon.sel == Some(c.win));
+    let is_selected = ctx
+        .g
+        .selmon()
+        .is_some_and(|selmon| selmon.sel == Some(c.win));
 
     if is_selected {
-        draw_close_button(c, x, bh);
+        draw_close_button(ctx, c, x, bh);
         return Some(m.monitor_rect.x as u32 + x as u32);
     }
 
     None
 }
 
-pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -> Option<u32> {
-    let g = get_globals();
+pub(crate) fn draw_window_titles(
+    ctx: &WmCtx,
+    m: &Monitor,
+    x: i32,
+    w: i32,
+    n: i32,
+    bh: i32,
+) -> Option<u32> {
     let selected = m.selected_tags();
     let mut new_activeoffset = None;
 
@@ -502,12 +522,12 @@ pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -
         // Use the passed monitor `m` (not selmon) so that secondary monitors
         // draw their own clients, not the selected monitor's clients.
         let wins: Vec<x11rb::protocol::xproto::Window> = m
-            .iter_clients(&g.clients)
+            .iter_clients(&ctx.g.clients)
             .filter_map(|(c_win, c)| c.is_visible_on_tags(selected).then_some(c_win))
             .collect();
 
         for c_win in wins {
-            let Some(c) = g.clients.get(&c_win) else {
+            let Some(c) = ctx.g.clients.get(&c_win) else {
                 continue;
             };
             if !c.is_visible_on_tags(selected) {
@@ -522,7 +542,7 @@ pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -
                 each_width
             };
 
-            if let Some(offset) = draw_window_title(m, &c, x, this_width, bh) {
+            if let Some(offset) = draw_window_title(ctx, m, &c, x, this_width, bh) {
                 new_activeoffset = Some(offset);
             }
             x += this_width;
@@ -531,8 +551,8 @@ pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -
     }
 
     {
-        let mut drw = get_drw().clone();
-        if let Some(ref ss) = g.cfg.statusscheme {
+        let mut drw = drw_clone(ctx);
+        if let Some(ref ss) = ctx.g.cfg.statusscheme {
             let scheme = ColorScheme {
                 fg: ss.fg.clone(),
                 bg: ss.bg.clone(),
@@ -542,11 +562,14 @@ pub(crate) fn draw_window_titles(m: &Monitor, x: i32, w: i32, n: i32, bh: i32) -
         }
         drw.rect(x, 0, w as u32, bh as u32, true, true);
 
-        let has_clients = g.selmon().is_some_and(|selmon| selmon.clients.is_some());
+        let has_clients = ctx
+            .g
+            .selmon()
+            .is_some_and(|selmon| selmon.clients.is_some());
 
         if !has_clients {
             let help_text = "Press space to launch an application";
-            let text_w = super::text_width(help_text);
+            let text_w = super::text_width_ctx(ctx, help_text);
             let avail = w - bh;
             let title_width = text_w.min(avail);
             drw.text(

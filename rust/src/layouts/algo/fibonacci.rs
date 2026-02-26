@@ -46,7 +46,7 @@
 //! | `true`  | toward the centre (spiral)   |
 //! | `false` | away from centre (dwindle)   |
 
-use crate::client::{next_tiled, resize};
+use crate::client::{next_tiled_ctx, resize};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
@@ -84,7 +84,7 @@ pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -103,7 +103,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     let mut h = m.work_rect.h;
 
     let mut i: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
 
     while let Some(win) = c_win {
         let (border_width, next_client) = ctx
@@ -156,6 +156,6 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         }
 
         i += 1;
-        c_win = next_tiled(next_client);
+        c_win = next_tiled_ctx(ctx, next_client);
     }
 }

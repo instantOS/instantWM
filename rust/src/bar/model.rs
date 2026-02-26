@@ -64,8 +64,8 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
         BarPosition::StartMenu => Gesture::StartMenu,
         BarPosition::Tag(idx) => Gesture::Tag(idx),
         BarPosition::CloseButton(_) => Gesture::CloseButton,
-        // Title hover is tracked via `Gesture::None` (bar redraws handle
-        // highlighting based on `selmon.sel`); other positions also use None.
+        BarPosition::WinTitle(w) => Gesture::WinTitle(w),
+        // Most positions don't map to a gesture.
         _ => Gesture::None,
     }
 }
@@ -88,7 +88,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
 
     let start_menu_size = ctx.g.cfg.startmenusize;
     let (tag_end, tag_idx) = (get_tag_width(ctx), get_tag_at_x(ctx, local_x));
-    let blw = get_layout_symbol_width(mon);
+    let blw = get_layout_symbol_width(ctx, mon);
 
     // ── Start menu ────────────────────────────────────────────────────────
     if local_x < start_menu_size {

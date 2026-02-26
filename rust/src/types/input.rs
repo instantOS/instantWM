@@ -115,6 +115,11 @@ pub enum Gesture {
     /// No actionable hover target.
     #[default]
     None,
+    /// Cursor is over a specific window-title cell in the bar.
+    ///
+    /// This is used to drive hover highlighting; unlike selection state, it can
+    /// be empty (no title hovered) when the cursor leaves the bar.
+    WinTitle(x11rb::protocol::xproto::Window),
     /// Cursor is over a tag button (0-based tag index).
     Tag(usize),
     /// Cursor is over the overlay activation zone.

@@ -13,6 +13,7 @@ use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
 use crate::types::tag_types::MonitorDirection;
+use crate::types::TagMask;
 
 /// Internal state of a monitor (screen) in the window manager.
 ///
@@ -159,6 +160,12 @@ impl Monitor {
     #[inline]
     pub fn selected_tags(&self) -> u32 {
         self.tagset[self.seltags as usize]
+    }
+
+    /// Get the currently selected tags as a type-safe mask.
+    #[inline]
+    pub fn selected_tag_mask(&self) -> TagMask {
+        TagMask::from_bits(self.selected_tags())
     }
 
     /// Iterate the monitor's client list (focus order).

@@ -1,6 +1,6 @@
 use crate::animation::animate_client;
 use crate::client::save_border_width;
-use crate::client::{attach, attach_stack, detach, detach_stack, resize};
+use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, resize};
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
 use crate::constants::overlay::*;
 use crate::contexts::WmCtx;
@@ -10,8 +10,44 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-//TODO: maybe overlay should be a struct with the overlay relevant state kept
-//there
+pub struct OverlayController;
+
+impl OverlayController {
+    #[inline]
+    pub fn create(ctx: &mut WmCtx, sel_win: Window) {
+        create_overlay(ctx, sel_win)
+    }
+
+    #[inline]
+    pub fn set(ctx: &mut WmCtx) {
+        set_overlay(ctx)
+    }
+
+    #[inline]
+    pub fn show(ctx: &mut WmCtx) {
+        show_overlay(ctx)
+    }
+
+    #[inline]
+    pub fn hide(ctx: &mut WmCtx) {
+        hide_overlay(ctx)
+    }
+
+    #[inline]
+    pub fn reset(ctx: &mut WmCtx) {
+        reset_overlay(ctx)
+    }
+
+    #[inline]
+    pub fn set_mode(ctx: &mut WmCtx, mode: OverlayMode) {
+        set_overlay_mode(ctx, mode)
+    }
+
+    #[inline]
+    pub fn exists(ctx: &WmCtx) -> bool {
+        overlay_exists(ctx)
+    }
+}
 
 /// Information needed to position an overlay window.
 #[derive(Debug, Clone, Copy)]
@@ -281,21 +317,21 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 
     arrange(ctx, Some(selmon));
 
-    focus(ctx, Some(overlay_win));
+    crate::focus::focus_soft(ctx, Some(overlay_win));
 }
 
 /// Prepare the overlay window for display (detach, update state, reattach).
 fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: Window, selmon_id: MonitorId) {
-    detach(overlay_win);
-    detach_stack(overlay_win);
+    detach_ctx(ctx, overlay_win);
+    detach_stack_ctx(ctx, overlay_win);
 
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         client.mon_id = Some(selmon_id);
         client.isfloating = true;
     }
 
-    attach(overlay_win);
-    attach_stack(overlay_win);
+    attach_ctx(ctx, overlay_win);
+    attach_stack_ctx(ctx, overlay_win);
 }
 
 /// Update overlay client properties for showing.
@@ -394,7 +430,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         }
     }
 
-    focus(ctx, Some(overlay_win));
+    crate::focus::focus_soft(ctx, Some(overlay_win));
     raise_window(ctx, overlay_win);
 }
 
@@ -478,7 +514,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
     reset_all_overlay_status(&mut ctx.g.monitors);
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 

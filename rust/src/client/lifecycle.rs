@@ -33,7 +33,7 @@ use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
 use crate::client::geometry::{client_height, client_width, resize_client, update_size_hints_win};
-use crate::client::list::{attach, attach_stack, detach, detach_stack};
+use crate::client::list::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx};
 use crate::client::state::set_client_state;
 use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
@@ -264,8 +264,8 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
     // -------------------------------------------------------------------------
     // 11. Insert into both linked lists and register with the root.
     // -------------------------------------------------------------------------
-    attach(w);
-    attach_stack(w);
+    attach_ctx(ctx, w);
+    attach_stack_ctx(ctx, w);
 
     {
         let _ = conn.change_property32(
@@ -337,7 +337,7 @@ pub fn manage(ctx: &mut WmCtx, w: Window, wa_geo: Rect, wa_border_width: u32) {
         let _ = conn.flush();
     }
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
 
     // Re-snapshot c again after arrange has modified its geometry in X and WM state.
     c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
@@ -416,8 +416,8 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
         }
     }
 
-    detach(win);
-    detach_stack(win);
+    detach_ctx(ctx, win);
+    detach_stack_ctx(ctx, win);
 
     if !destroyed {
         let conn = ctx.x11.conn;
@@ -451,7 +451,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: Window, destroyed: bool) {
     // Remove from the global map.
     ctx.g.clients.remove(&win);
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     update_client_list(ctx);
 
     if let Some(mid) = mon_id {

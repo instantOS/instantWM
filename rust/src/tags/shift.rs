@@ -77,7 +77,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     }
 
     let selmon = ctx.g.selmon_id();
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon));
 }
 

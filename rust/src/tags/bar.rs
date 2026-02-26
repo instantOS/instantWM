@@ -2,14 +2,13 @@
 //!
 //! These functions answer three questions the bar needs on every redraw:
 //!
-//! * [`visible_tags`] – which tags should be drawn, and with what label/width?
+//! * [`visible_tags_ctx`] – which tags should be drawn, and with what label/width?
 //! * [`get_tag_width`] – how many pixels wide is the entire tag strip?
 //! * [`get_tag_at_x`] – which tag (if any) lives at a given X coordinate?
 //!
-//! All three share a single iteration through [`visible_tags`], which resolves
+//! All three share a single iteration through [`visible_tags_ctx`], which resolves
 //! tag-index remapping, skip logic, display names, and widths in one place.
 
-use crate::bar::text_width;
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::types::Monitor;
@@ -29,21 +28,16 @@ pub(crate) struct VisibleTag<'a> {
     pub width: i32,
 }
 
-/// Build the list of tags that should be visible in the bar for `monitor`.
-///
-/// Handles the slot-8-remaps-to-current_tag logic, skip-vacant-tags filtering,
-/// and alt-name selection. Both rendering and hit-testing consume this.
-pub(crate) fn visible_tags<'a>(
-    globals: &'a Globals,
+pub(crate) fn visible_tags_ctx<'a>(
+    ctx: &WmCtx,
     monitor: &'a Monitor,
     occupied: u32,
 ) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = globals.cfg.horizontal_padding;
-    let show_alt = globals.tags.show_alt;
+    let horizontal_padding = ctx.g.cfg.horizontal_padding;
+    let show_alt = ctx.g.tags.show_alt;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
-
     for slot in 0..slot_count {
         let tag_index = tag_index_for_slot(monitor, slot);
         if tag_index >= monitor.tags.len() {
@@ -55,7 +49,7 @@ pub(crate) fn visible_tags<'a>(
 
         let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
-        let width = text_width(label) + horizontal_padding;
+        let width = crate::bar::text_width_ctx(ctx, label) + horizontal_padding;
 
         out.push(VisibleTag {
             slot,
@@ -84,7 +78,7 @@ pub fn get_tag_width(ctx: &WmCtx) -> i32 {
         return ctx.g.cfg.startmenusize;
     }
 
-    let tags_width: i32 = visible_tags(ctx.g, m, occupied)
+    let tags_width: i32 = visible_tags_ctx(ctx, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
@@ -105,7 +99,7 @@ pub fn get_tag_at_x(ctx: &WmCtx, click_x: i32) -> i32 {
     }
 
     let mut acc = ctx.g.cfg.startmenusize;
-    for t in visible_tags(ctx.g, m, occupied) {
+    for t in visible_tags_ctx(ctx, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;

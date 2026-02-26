@@ -381,44 +381,7 @@ pub fn center_window(ctx: &mut WmCtx, win: Window) {
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    let (sel_win, selected, clients_head) = {
-        let Some(mon) = ctx.g.selmon() else {
-            return;
-        };
-        (mon.sel, mon.selected_tags(), mon.clients)
-    };
-
-    let mut next: Option<Window> = None;
-    let mut found_current = false;
-
-    for (c_win, c) in crate::types::ClientListIter::new(clients_head, &ctx.g.clients) {
-        let visible = c.is_visible_on_tags(selected) && !c.is_hidden;
-        let is_floating = c.isfloating;
-
-        if found_current && visible && !is_floating {
-            next = Some(c_win);
-            break;
-        }
-
-        if Some(c_win) == sel_win {
-            found_current = true;
-        }
-    }
-
-    if next.is_none() && direction.is_forward() {
-        for (c_win, c) in crate::types::ClientListIter::new(clients_head, &ctx.g.clients) {
-            let visible = c.is_visible_on_tags(selected) && !c.is_hidden;
-            let is_floating = c.isfloating;
-            if visible && !is_floating {
-                next = Some(c_win);
-                break;
-            }
-        }
-    }
-
-    if let Some(win) = next {
-        crate::focus::focus(ctx, Some(win));
-    }
+    crate::focus::focus_stack(ctx, direction);
 }
 
 pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {

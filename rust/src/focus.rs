@@ -6,12 +6,10 @@
 use crate::bar::draw_bars;
 use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::contexts::WmCtx;
+use crate::mouse::warp as mouse_warp;
 use crate::tags::view;
 use crate::types::*;
 use crate::util::X11ConnExt;
-use std::sync::atomic::Ordering;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 
@@ -29,13 +27,13 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
             return Ok(());
         };
 
-        let selected = mon.selected_tags();
+        let selected = mon.selected_tag_mask();
 
         let mut target = win.filter(|w| {
             ctx.g
                 .clients
                 .get(w)
-                .map(|c| c.is_visible_on_tags(selected) && !c.is_hidden)
+                .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
                 .unwrap_or(false)
         });
 
@@ -45,7 +43,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
                 let Some(c) = ctx.g.clients.get(&c_win) else {
                     break;
                 };
-                if c.is_visible_on_tags(selected) && !c.is_hidden {
+                if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
                     target = Some(c_win);
                     break;
                 }
@@ -72,7 +70,10 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
 
     if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
-        if !matches!(mon.gesture, Gesture::None | Gesture::Overlay) {
+        if !matches!(
+            mon.gesture,
+            Gesture::None | Gesture::Overlay | Gesture::WinTitle(_)
+        ) {
             mon.gesture = Gesture::None;
         }
     }
@@ -97,6 +98,17 @@ pub fn focus(ctx: &mut WmCtx, win: Option<Window>) -> anyhow::Result<()> {
         conn.delete_property_ctx(root, net_active_window)?;
         conn.flush_ctx()?;
         Ok(())
+    }
+}
+
+/// Best-effort focus.
+///
+/// Focus failures typically mean the X11 connection is in a bad state; callers
+/// in event handlers usually can't recover, but we should not silently drop the
+/// error.
+pub fn focus_soft(ctx: &mut WmCtx, win: Option<Window>) {
+    if let Err(e) = focus(ctx, win) {
+        log::warn!("focus({:?}) failed: {}", win, e);
     }
 }
 
@@ -137,7 +149,7 @@ where
         return;
     };
 
-    let selected = mon.selected_tags();
+    let selected = mon.selected_tag_mask();
 
     let Some(source_win) = mon.sel else {
         focus_fn(None);
@@ -167,8 +179,7 @@ where
 fn get_directional_candidates(
     head: Option<Window>,
     globals_map: &std::collections::HashMap<Window, Client>,
-    //TODO: there is a struct/enum which abstracts this better, use it
-    selected_tags: u32,
+    selected_tags: TagMask,
     source_win: Window,
     source_center_x: i32,
     source_center_y: i32,
@@ -178,7 +189,7 @@ fn get_directional_candidates(
     let mut min_score: i32 = 0;
 
     for (c_win, c) in crate::types::ClientListIter::new(head, globals_map) {
-        if !c.is_visible_on_tags(selected_tags) {
+        if !c.is_visible_on_tags(selected_tags.bits()) {
             continue;
         }
 
@@ -274,7 +285,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
         };
         let (source_center_x, source_center_y) = source_client.geo.center();
 
-        let selected = mon.selected_tags();
+        let selected = mon.selected_tag_mask();
 
         get_directional_candidates(
             mon.clients,
@@ -288,12 +299,12 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
     };
 
     if let Some(target) = candidates {
-        focus(ctx, Some(target));
+        focus_soft(ctx, Some(target));
     }
 }
 
 pub fn focus_last_client(ctx: &mut WmCtx) {
-    let last_client_win = crate::client::LAST_CLIENT.load(Ordering::Relaxed);
+    let last_client_win = ctx.focus.last_client;
     if last_client_win == 0 {
         return;
     }
@@ -323,141 +334,18 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
 
     if let Some(cur) = get_selected_window(ctx) {
-        crate::client::LAST_CLIENT.store(cur, Ordering::Relaxed);
+        ctx.focus.last_client = cur;
     }
 
     view(ctx, TagMask::from_bits(tags));
-    //TODO: do error propagation
-    focus(ctx, Some(last_win));
+    focus_soft(ctx, Some(last_win));
 
     let mon_id = ctx.g.selmon_id();
     crate::layouts::arrange(ctx, Some(mon_id));
 }
 
-//TODO: is this duplicated? Look for other warp functions in this and the C
-//codebase and do what's best
-pub fn warp(ctx: &WmCtx, c_win: Window) {
-    let conn = ctx.x11.conn;
-    if let Some(c) = ctx.g.clients.get(&c_win) {
-        if let Some(_cursor_x) = get_root_ptr(ctx) {
-            let _ = conn.warp_pointer(
-                CURRENT_TIME,
-                c.win,
-                0,
-                0,
-                0,
-                0,
-                (c.geo.w / 2) as i16,
-                (c.geo.h / 2) as i16,
-            );
-            let _ = conn.flush();
-        }
-    }
-}
-
-//TODO: is this duplicated? Look for other warp functions in this and the C
-//codebase and do what's best
-pub fn force_warp(ctx: &WmCtx, c_win: Window) {
-    let conn = ctx.x11.conn;
-    if let Some(c) = ctx.g.clients.get(&c_win) {
-        let _ = conn.warp_pointer(
-            CURRENT_TIME,
-            c.win,
-            0,
-            0,
-            0,
-            0,
-            (c.geo.w / 2) as i16,
-            10_i16,
-        );
-        let _ = conn.flush();
-    }
-}
-
 pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: Window) {
-    let conn = ctx.x11.conn;
-    let root = ctx.g.cfg.root;
-    let bh = ctx.g.cfg.bar_height;
-
-    //TODO: get rid of magic number
-    if c_win == 0 {
-        if !ctx.g.monitors.is_empty() {
-            if let Some(mon) = ctx.g.selmon() {
-                let _ = conn.warp_pointer(
-                    CURRENT_TIME,
-                    root,
-                    0,
-                    0,
-                    0,
-                    0,
-                    (mon.work_rect.x + mon.work_rect.w / 2) as i16,
-                    (mon.work_rect.y + mon.work_rect.h / 2) as i16,
-                );
-                let _ = conn.flush();
-            }
-        }
-        return;
-    }
-
-    if let Some(c) = ctx.g.clients.get(&c_win) {
-        if let Some((x, y)) = get_root_ptr(ctx) {
-            let in_window = c.geo.contains_point(x, y)
-                || (x > c.geo.x - c.border_width
-                    && y > c.geo.y - c.border_width
-                    && x < c.geo.x + c.geo.w + c.border_width * 2
-                    && y < c.geo.y + c.geo.h + c.border_width * 2);
-
-            let on_bar = if let Some(mon_id) = c.mon_id {
-                if let Some(mon) = ctx.g.monitor(mon_id) {
-                    (y > mon.by && y < mon.by + bh) || (mon.topbar && y == 0)
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            if in_window || on_bar {
-                return;
-            }
-
-            let _ = conn.warp_pointer(
-                CURRENT_TIME,
-                c.win,
-                0,
-                0,
-                0,
-                0,
-                (c.geo.w / 2) as i16,
-                (c.geo.h / 2) as i16,
-            );
-            let _ = conn.flush();
-        }
-    }
-}
-
-pub fn warp_into(ctx: &WmCtx, c_win: Window) {
-    let conn = ctx.x11.conn;
-    let root = ctx.g.cfg.root;
-
-    if let Some(c) = ctx.g.clients.get(&c_win) {
-        if let Some((mut x, mut y)) = get_root_ptr(ctx) {
-            if x < c.geo.x {
-                x = c.geo.x + 10;
-            } else if x > c.geo.x + c.geo.w {
-                x = c.geo.x + c.geo.w - 10;
-            }
-
-            if y < c.geo.y {
-                y = c.geo.y + 10;
-            } else if y > c.geo.y + c.geo.h {
-                y = c.geo.y + c.geo.h - 10;
-            }
-
-            let _ = conn.warp_pointer(CURRENT_TIME, root, 0, 0, 0, 0, x as i16, y as i16);
-            let _ = conn.flush();
-        }
-    }
+    mouse_warp::warp_impl(ctx, c_win);
 }
 
 pub fn warp_to_focus(ctx: &WmCtx) {
@@ -466,18 +354,7 @@ pub fn warp_to_focus(ctx: &WmCtx) {
     }
 }
 
-fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    let conn = ctx.x11.conn;
-    if let Ok(cookie) = query_pointer(conn, ctx.g.cfg.root) {
-        if let Ok(reply) = cookie.reply() {
-            return Some((reply.root_x as i32, reply.root_y as i32));
-        }
-    }
-    None
-}
-
 /// Focus the next or previous client in the stack.
-//TODO: check super + up/down keybinds, shouldn't these use this? Or is this function duplicated? Do what's best
 pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<Window>),
@@ -516,10 +393,10 @@ fn get_visible_stack(
     clients: &std::collections::HashMap<Window, Client>,
 ) -> Vec<Window> {
     let mut stack = Vec::new();
-    let selected = mon.selected_tags();
+    let selected = mon.selected_tag_mask();
 
     for (c_win, c) in mon.iter_stack(clients) {
-        if c.is_visible_on_tags(selected) {
+        if c.is_visible_on_tags(selected.bits()) {
             stack.push(c_win);
         }
     }
@@ -557,8 +434,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         current_idx - 1
     };
 
-    //TODO: proper error propagation and handling
-    focus(ctx, Some(stack[next_idx]));
+    focus_soft(ctx, Some(stack[next_idx]));
 }
 
 fn get_selected_window(ctx: &WmCtx) -> Option<Window> {

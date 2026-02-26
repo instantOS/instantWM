@@ -43,7 +43,7 @@
 //! ```
 
 use crate::animation::animate_client;
-use crate::client::{client_height, client_width, next_tiled, resize};
+use crate::client::{client_height, client_width, next_tiled_ctx, resize};
 use crate::contexts::WmCtx;
 use crate::layouts::query::client_count;
 use crate::types::{Monitor, Rect};
@@ -59,7 +59,7 @@ use std::cmp::min;
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -83,7 +83,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── place each client ─────────────────────────────────────────────────
     let mut master_column_offset: u32 = 0; // running y-offset inside master column
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(m.clients);
+    let mut current_window = next_tiled_ctx(ctx, m.clients);
 
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
@@ -128,7 +128,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(next_client);
+        current_window = next_tiled_ctx(ctx, next_client);
     }
 }
 
@@ -149,7 +149,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -180,7 +180,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let mut tx: i32 = m.work_rect.x; // running x-offset inside stack row
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(m.clients);
+    let mut current_window = next_tiled_ctx(ctx, m.clients);
 
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
@@ -233,7 +233,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(next_client);
+        current_window = next_tiled_ctx(ctx, next_client);
     }
 }
 
@@ -254,7 +254,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut c_win = next_tiled(m.clients);
+    let mut c_win = next_tiled_ctx(ctx, m.clients);
     while c_win.is_some() {
         n += 1;
         c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
@@ -285,7 +285,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let tx: i32 = m.work_rect.x;
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(m.clients);
+    let mut current_window = next_tiled_ctx(ctx, m.clients);
 
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
@@ -339,6 +339,6 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(next_client);
+        current_window = next_tiled_ctx(ctx, next_client);
     }
 }

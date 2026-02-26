@@ -23,10 +23,9 @@
 //! expected `DestroyNotify`.
 
 use crate::animation::animate_client;
-use crate::client::focus::{send_event, ANIM_CLIENT};
+use crate::client::focus::send_event;
 use crate::contexts::WmCtx;
 use crate::types::Rect;
-use std::sync::atomic::Ordering;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
 use x11rb::CURRENT_TIME;
@@ -59,10 +58,10 @@ pub fn kill_client(ctx: &mut WmCtx, win: Window) {
         .unwrap_or(0);
 
     let animated = ctx.g.animated;
-    let anim_client = ANIM_CLIENT.load(Ordering::Relaxed);
+    let anim_client = ctx.focus.anim_client;
 
     if animated && win != anim_client && !is_fullscreen {
-        ANIM_CLIENT.store(win, Ordering::Relaxed);
+        ctx.focus.anim_client = win;
         animate_client(
             ctx,
             win,

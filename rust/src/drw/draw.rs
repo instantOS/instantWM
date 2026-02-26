@@ -17,7 +17,6 @@
 use std::ffi::CString;
 use std::os::raw::{c_int, c_ulong};
 use std::ptr;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
@@ -46,16 +45,13 @@ use crate::types::ColorScheme;
 /// find a fallback font for the same unrenderable character.
 const NOMATCHES_LEN: usize = 64;
 
-/// Global ring-buffer index for the no-match cache (shared across all `Drw` instances).
-static NOMATCHES_IDX: AtomicU32 = AtomicU32::new(0);
-
 // ── Drw ──────────────────────────────────────────────────────────────────────
 
 /// The main drawing context.
 ///
 /// Wraps an Xlib display, a server-side pixmap used as an off-screen buffer,
 /// a graphics context (GC), the active color scheme, and the fontset.
-// TODO: Should this be called Drawable or DrawSurface or something like that?
+// Note: the name `Drw` matches dwm's `drw` (drawing context) naming.
 pub struct Drw {
     /// Pixmap / drawable width.
     pub w: u32,
@@ -83,6 +79,9 @@ pub struct Drw {
 
     /// Ring buffer of codepoints for which no fallback font was found.
     nomatches: [u32; NOMATCHES_LEN],
+
+    /// Ring-buffer insertion index for `nomatches`.
+    nomatches_idx: u32,
 
     /// Cached pixel width of `"..."` for the current fontset.
     ellipsis_width: u32,
@@ -113,6 +112,7 @@ impl Clone for Drw {
             visual: self.visual,
             colormap: self.colormap,
             nomatches: self.nomatches,
+            nomatches_idx: self.nomatches_idx,
             ellipsis_width: self.ellipsis_width,
             owns_resources: false,
         }
@@ -216,6 +216,7 @@ impl Drw {
                 visual,
                 colormap,
                 nomatches: [0; NOMATCHES_LEN],
+                nomatches_idx: 0,
                 ellipsis_width: 0,
                 owns_resources: true,
             })
@@ -633,6 +634,72 @@ impl Drw {
 // ── Text rendering ────────────────────────────────────────────────────────────
 
 impl Drw {
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_text_surface(
+        &mut self,
+        mut x: i32,
+        y: i32,
+        mut w: u32,
+        h: u32,
+        lpad: u32,
+        invert: bool,
+        detail_height: i32,
+        fg_pixel: u32,
+        bg_pixel: u32,
+        detail_pixel: u32,
+    ) -> (bool, i32, u32, *mut XftDraw) {
+        // Lazy-initialise ellipsis width.
+        // Skip when `detail_height < 0` — that signals we are *drawing* the
+        // ellipsis itself and must not recurse.
+        if self.ellipsis_width == 0 && detail_height >= 0 {
+            self.ellipsis_width = self.fontset_getwidth("...");
+        }
+
+        // Paint background and create Xft draw surface.
+        // SAFETY: Xlib/Xft drawing calls with raw pointers.
+        let bg = if invert { fg_pixel } else { bg_pixel };
+        unsafe {
+            XSetForeground(self.display, self.gc, bg as c_ulong);
+
+            if detail_height > 0 {
+                // Main background (above the detail strip).
+                XFillRectangle(
+                    self.display,
+                    self.drawable,
+                    self.gc,
+                    x,
+                    y,
+                    w,
+                    h.saturating_sub(detail_height as u32),
+                );
+                // Colored detail strip at the bottom.
+                XSetForeground(self.display, self.gc, detail_pixel as c_ulong);
+                XFillRectangle(
+                    self.display,
+                    self.drawable,
+                    self.gc,
+                    x,
+                    y + h as i32 - detail_height,
+                    w,
+                    detail_height as u32,
+                );
+            } else {
+                XFillRectangle(self.display, self.drawable, self.gc, x, y, w, h);
+            }
+        }
+
+        // SAFETY: XftDrawCreate returns a raw pointer owned by us.
+        let d = unsafe { XftDrawCreate(self.display, self.drawable, self.visual, self.colormap) };
+        if d.is_null() {
+            // Fallback to measure-only if Xft surface creation failed.
+            return (false, x, u32::MAX, ptr::null_mut());
+        }
+
+        x += lpad as i32;
+        w = w.saturating_sub(lpad);
+        (true, x, w, d)
+    }
+
     /// Render `text` into the rectangle `(x, y, w, h)`.
     ///
     /// When `x == 0 && y == 0 && w == 0 && h == 0` the function only measures
@@ -653,7 +720,6 @@ impl Drw {
     /// * In **render** mode (`w > 0`): `x + remaining_width` (the x position
     ///   just past the drawn area, suitable for chaining draw calls).
     /// * In **measure** mode (`w == 0`): total advance width of the text.
-    //TODO: this is too long, refactor
     pub fn text(
         &mut self,
         x: i32,
@@ -698,61 +764,64 @@ impl Drw {
             bg_color = unsafe { std::mem::zeroed() };
         }
 
-        // ── Lazy-initialise ellipsis width ───────────────────────────────────
-        // Skip when `detail_height < 0` — that signals we are *drawing* the
-        // ellipsis itself and must not recurse.
-        if self.ellipsis_width == 0 && render && detail_height >= 0 {
-            self.ellipsis_width = self.fontset_getwidth("...");
-        }
-
         // ── Prepare background + Xft draw surface ────────────────────────────
         let mut d: *mut XftDraw = ptr::null_mut();
-
         if render {
-            unsafe {
-                let bg = if invert { fg_pixel } else { bg_pixel };
-                XSetForeground(self.display, self.gc, bg as c_ulong);
-
-                if detail_height > 0 {
-                    // Main background (above the detail strip).
-                    XFillRectangle(
-                        self.display,
-                        self.drawable,
-                        self.gc,
-                        x,
-                        y,
-                        w,
-                        h.saturating_sub(detail_height as u32),
-                    );
-                    // Colored detail strip at the bottom.
-                    XSetForeground(self.display, self.gc, detail_pixel as c_ulong);
-                    XFillRectangle(
-                        self.display,
-                        self.drawable,
-                        self.gc,
-                        x,
-                        y + h as i32 - detail_height,
-                        w,
-                        detail_height as u32,
-                    );
-                } else {
-                    XFillRectangle(self.display, self.drawable, self.gc, x, y, w, h);
-                }
-
-                d = XftDrawCreate(self.display, self.drawable, self.visual, self.colormap);
-            }
-
-            if d.is_null() {
-                // Fallback to measure-only if Xft surface creation failed.
-                render = false;
-                w = u32::MAX;
-            } else {
-                x += lpad as i32;
-                w = w.saturating_sub(lpad);
-            }
+            let (r, nx, nw, nd) = self.prepare_text_surface(
+                x,
+                y,
+                w,
+                h,
+                lpad,
+                invert,
+                detail_height,
+                fg_pixel,
+                bg_pixel,
+                detail_pixel,
+            );
+            render = r;
+            x = nx;
+            w = nw;
+            d = nd;
         }
 
-        // ── Main text rendering loop ─────────────────────────────────────────
+        let (x, w) = self.text_run_loop(
+            d,
+            x,
+            y,
+            w,
+            h,
+            text,
+            invert,
+            detail_height,
+            render,
+            &fg_color,
+            &bg_color,
+        );
+
+        // ── Tear down Xft draw surface ────────────────────────────────────────
+        if !d.is_null() {
+            unsafe { XftDrawDestroy(d) };
+        }
+
+        x + if render { w as i32 } else { 0 }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn text_run_loop(
+        &mut self,
+        d: *mut XftDraw,
+        mut x: i32,
+        y: i32,
+        mut w: u32,
+        h: u32,
+        text: &str,
+        invert: bool,
+        detail_height: i32,
+        render: bool,
+        fg_color: &XftColor,
+        bg_color: &XftColor,
+    ) -> (i32, u32) {
         let text_bytes = text.as_bytes();
         let mut text_pos: usize = 0;
 
@@ -832,7 +901,7 @@ impl Drw {
                 charexists = false;
             }
 
-            // ── Render the accumulated run ────────────────────────────────────
+            // ── Render the accumulated run ───────────────────────────────────
             if utf8strlen > 0 {
                 if render {
                     let f = self.fonts.as_ref().unwrap().get(usedfont_idx).unwrap();
@@ -842,7 +911,7 @@ impl Drw {
                     unsafe {
                         XftDrawStringUtf8(
                             d,
-                            if invert { &bg_color } else { &fg_color } as *const XftColor,
+                            if invert { bg_color } else { fg_color } as *const XftColor,
                             f.xfont,
                             x as c_int,
                             ty as c_int,
@@ -851,6 +920,7 @@ impl Drw {
                         );
                     }
                 }
+
                 x += ew as i32;
                 w = w.saturating_sub(ew);
             }
@@ -864,7 +934,7 @@ impl Drw {
                 break;
             }
 
-            // ── Advance to the next font run ──────────────────────────────────
+            // ── Advance to the next font run ─────────────────────────────────
             if let Some(next_idx) = nextfont_idx {
                 charexists = false;
                 usedfont_idx = next_idx;
@@ -881,12 +951,7 @@ impl Drw {
             }
         }
 
-        // ── Tear down Xft draw surface ────────────────────────────────────────
-        if !d.is_null() {
-            unsafe { XftDrawDestroy(d) };
-        }
-
-        x + if render { w as i32 } else { 0 }
+        (x, w)
     }
 
     // ── Internal helpers for `text` ───────────────────────────────────────────
@@ -934,7 +999,8 @@ impl Drw {
 
             if match_pattern.is_null() {
                 // No fallback found.
-                let idx = NOMATCHES_IDX.fetch_add(1, Ordering::SeqCst);
+                let idx = self.nomatches_idx;
+                self.nomatches_idx = self.nomatches_idx.wrapping_add(1);
                 self.nomatches[idx as usize % NOMATCHES_LEN] = codepoint;
                 *usedfont_idx = 0;
                 return;
@@ -947,13 +1013,15 @@ impl Drw {
                         self.fonts.as_mut().unwrap().push_back(new_font);
                     } else {
                         drop(new_font);
-                        let idx = NOMATCHES_IDX.fetch_add(1, Ordering::SeqCst);
+                        let idx = self.nomatches_idx;
+                        self.nomatches_idx = self.nomatches_idx.wrapping_add(1);
                         self.nomatches[idx as usize % NOMATCHES_LEN] = codepoint;
                         *usedfont_idx = 0;
                     }
                 }
                 _ => {
-                    let idx = NOMATCHES_IDX.fetch_add(1, Ordering::SeqCst);
+                    let idx = self.nomatches_idx;
+                    self.nomatches_idx = self.nomatches_idx.wrapping_add(1);
                     self.nomatches[idx as usize % NOMATCHES_LEN] = codepoint;
                     *usedfont_idx = 0;
                 }

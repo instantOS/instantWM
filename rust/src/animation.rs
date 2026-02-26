@@ -226,7 +226,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         let mut target = None;
         crate::focus::focus_direction(ctx, focus_dir, |win| target = win);
         if let Some(win) = target {
-            crate::focus::focus(ctx, Some(win));
+            crate::focus::focus_soft(ctx, Some(win));
         }
         return;
     }

@@ -18,7 +18,7 @@
 //! - When there is only one client it expands to fill the entire work area.
 
 use crate::animation::animate_client;
-use crate::client::{client_height, next_tiled};
+use crate::client::{client_height, next_tiled_ctx};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
@@ -34,11 +34,11 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── count tiled clients ───────────────────────────────────────────────
     let mut n: u32 = 0;
-    let mut current_window = next_tiled(m.clients);
+    let mut current_window = next_tiled_ctx(ctx, m.clients);
     while let Some(win) = current_window {
         n += 1;
         let next_client = ctx.g.clients.get(&win).and_then(|c| c.next);
-        current_window = next_tiled(next_client);
+        current_window = next_tiled_ctx(ctx, next_client);
     }
 
     if n == 0 {
@@ -66,7 +66,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_y_offset: u32 = 0; // running y-offset inside master column
     let mut stack_y_offset: u32 = 0; // running y-offset inside stack column
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(m.clients);
+    let mut current_window = next_tiled_ctx(ctx, m.clients);
 
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
@@ -135,6 +135,6 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(next_client);
+        current_window = next_tiled_ctx(ctx, next_client);
     }
 }

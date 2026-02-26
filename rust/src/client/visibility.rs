@@ -286,7 +286,7 @@ pub fn hide(ctx: &mut WmCtx, win: Window) {
     resize(ctx, win, &Rect { x, y, w, h }, false);
 
     let snext = get_globals().clients.get(&win).and_then(|c| c.snext);
-    focus(ctx, snext);
+    crate::focus::focus_soft(ctx, snext);
 
     if let Some(mid) = mon_id {
         arrange(ctx, Some(mid));

@@ -11,7 +11,7 @@
 //!   └─► handle_client_monitor_switch(win)
 //!             └─► reads client.geo
 //!                   └─► handle_monitor_switch(win, &rect)
-//!                             ├─► rect_to_mon       → target monitor index
+//!                             ├─► find_monitor_by_rect → target monitor index
 //!                             ├─► transfer_client   → reassigns client
 //!                             └─► focus(None)       → re-focus on new monitor
 //! ```
@@ -19,7 +19,7 @@
 use crate::client::unfocus_win;
 use crate::contexts::WmCtx;
 use crate::focus::focus;
-use crate::monitor::{rect_to_mon, transfer_client};
+use crate::monitor::transfer_client;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
 
@@ -35,7 +35,8 @@ use x11rb::protocol::xproto::*;
 /// * `c_win` - The client window to potentially move
 /// * `rect` - The window's geometry to check against monitor boundaries
 pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
-    let new_mon = rect_to_mon(&ctx.g.monitors, ctx.g.selmon_id(), rect);
+    let new_mon =
+        crate::types::find_monitor_by_rect(&ctx.g.monitors, rect).or(Some(ctx.g.selmon_id()));
     let current_mon = ctx.g.selmon_id();
 
     let Some(target) = new_mon else { return };
@@ -51,7 +52,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: Window, rect: &Rect) {
     transfer_client(ctx, c_win, target);
 
     ctx.g.set_selmon(target);
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
 }
 
 /// Convenience wrapper that reads the client's current geometry and delegates

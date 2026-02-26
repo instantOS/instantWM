@@ -27,7 +27,7 @@
 
 use crate::bar::x11::update_bar_pos;
 use crate::client::{
-    attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win,
+    attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
 };
 use crate::contexts::WmCtx;
@@ -35,6 +35,12 @@ use crate::focus::{focus, warp_cursor_to_client};
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
+
+use crate::bar::BarState;
+use crate::client::focus::FocusState;
+
+// NOTE: keep the legacy global update_geom() shim around while the refactor
+// migrates call-sites. New code should use update_geom_ctx().
 
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
@@ -61,24 +67,6 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
     }
 }
 
-/// Find which monitor a rectangle intersects with the most.
-///
-/// This function uses dependency injection by accepting references to
-/// monitor state instead of accessing global state.
-///
-/// # Arguments
-/// * `monitors` - Slice of all monitors
-/// * `selmon` - Currently selected monitor ID (fallback)
-/// * `rect` - The rectangle to check
-///
-/// # Returns
-/// * `Some(monitor_id)` - The monitor with maximum intersection area
-/// * `None` - If there are no monitors
-//TODO: get rid of this function, use find_monitor_by_rect instead
-pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Option<MonitorId> {
-    find_monitor_by_rect(monitors, rect).or(Some(selmon))
-}
-
 /// Find which monitor a window belongs to, using explicit context.
 ///
 /// This is the dependency-injected version that accepts a `WmCtx`.
@@ -92,12 +80,10 @@ pub fn rect_to_mon(monitors: &[Monitor], selmon: MonitorId, rect: &Rect) -> Opti
 /// * `None` - If no monitor could be determined
 pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: Window) -> Option<MonitorId> {
     if w == ctx.g.cfg.root {
-        if let Some((x, y)) = get_root_ptr_with_conn(ctx.x11.conn) {
-            return rect_to_mon(
-                &ctx.g.monitors,
-                ctx.g.selmon_id(),
-                &Rect { x, y, w: 1, h: 1 },
-            );
+        if let Some((x, y)) = get_root_ptr_with_conn_and_root(ctx.x11.conn, ctx.g.cfg.root) {
+            let rect = Rect { x, y, w: 1, h: 1 };
+            return crate::types::find_monitor_by_rect(&ctx.g.monitors, &rect)
+                .or(Some(ctx.g.selmon_id()));
         }
         return if ctx.g.monitors.is_empty() {
             None
@@ -155,8 +141,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
         unfocus_win(ctx, win, true);
     }
 
-    detach(win);
-    detach_stack(win);
+    detach_ctx(ctx, win);
+    detach_stack_ctx(ctx, win);
 
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.mon_id = Some(target_mon);
@@ -169,11 +155,11 @@ pub fn transfer_client(ctx: &mut WmCtx, win: Window, target_mon: MonitorId) {
         crate::tags::reset_sticky_win(ctx, win);
     }
 
-    attach(win);
-    attach_stack(win);
+    attach_ctx(ctx, win);
+    attach_stack_ctx(ctx, win);
     set_client_tag_prop(ctx, win);
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
 
     let needs_arrange = ctx
         .g
@@ -217,7 +203,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: Window, target_mon: MonitorI
     }
     ctx.g.set_selmon(current_mon);
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
 }
 
 /// Change focus to the next or previous monitor.
@@ -249,7 +235,7 @@ pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     ctx.g.set_selmon(target);
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
 }
 
 /// Change focus to a specific monitor by index.
@@ -274,7 +260,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
 
     ctx.g.set_selmon(target);
 
-    focus(ctx, None);
+    crate::focus::focus_soft(ctx, None);
 }
 
 pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
@@ -289,7 +275,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         ctx.g.set_selmon(mon_id);
     }
 
-    focus(ctx, Some(c_win));
+    crate::focus::focus_soft(ctx, Some(c_win));
 
     {
         let conn = ctx.x11.conn;
@@ -343,15 +329,18 @@ fn get_unique_screens(conn: &x11rb::rust_connection::RustConnection) -> Option<V
 }
 
 /// Ensure we have at least `count` monitors.
-fn ensure_monitor_count(count: usize) {
-    let g = get_globals_mut();
-    let (mfact, nmaster, showbar, topbar) =
-        (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
-    let template = g.cfg.tag_template.clone();
-    while g.monitors.len() < count {
+fn ensure_monitor_count_ctx(ctx: &mut WmCtx, count: usize) {
+    let (mfact, nmaster, showbar, topbar) = (
+        ctx.g.cfg.mfact,
+        ctx.g.cfg.nmaster,
+        ctx.g.cfg.showbar,
+        ctx.g.cfg.topbar,
+    );
+    let template = ctx.g.cfg.tag_template.clone();
+    while ctx.g.monitors.len() < count {
         let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
         mon.init_tags(&template);
-        g.push_monitor(mon);
+        ctx.g.push_monitor(mon);
     }
 }
 
@@ -373,61 +362,59 @@ fn update_monitor_geometry(mon: &mut Monitor, idx: usize, new_rect: &Rect) -> bo
 }
 
 /// Move clients from a removed monitor to monitor 0.
-fn move_clients_to_mon0(removed_mon_id: usize) -> bool {
-    let clients_to_move: Vec<Window> = {
-        let g = get_globals();
-        g.clients
-            .values()
-            .filter(|c| c.mon_id == Some(removed_mon_id))
-            .map(|c| c.win)
-            .collect()
-    };
+fn move_clients_to_mon0_ctx(ctx: &mut WmCtx, removed_mon_id: usize) -> bool {
+    let clients_to_move: Vec<Window> = ctx
+        .g
+        .clients
+        .values()
+        .filter(|c| c.mon_id == Some(removed_mon_id))
+        .map(|c| c.win)
+        .collect();
 
     let mut dirty = false;
     for win in clients_to_move {
         dirty = true;
-        detach(win);
-        detach_stack(win);
 
-        let g = get_globals_mut();
-        if let Some(ref mut c) = g.clients.get_mut(&win) {
+        detach_ctx(ctx, win);
+        detach_stack_ctx(ctx, win);
+
+        if let Some(c) = ctx.g.clients.get_mut(&win) {
             c.mon_id = Some(0);
         }
 
-        attach(win);
-        attach_stack(win);
+        attach_ctx(ctx, win);
+        attach_stack_ctx(ctx, win);
     }
 
     dirty
 }
 
 /// Handle removal of monitors that are no longer present.
-fn cleanup_removed_monitors(start_idx: usize, x11: &crate::globals::X11Connection) -> bool {
+fn cleanup_removed_monitors_ctx(ctx: &mut WmCtx, start_idx: usize) -> bool {
     let mut dirty = false;
 
-    for i in (start_idx..get_globals().monitors.len()).rev() {
-        // NOTE: monitors.len() is re-evaluated each iteration as cleanup_monitor shrinks the vec
-        dirty = move_clients_to_mon0(i) || dirty;
-
-        let g = get_globals_mut();
-        // selmon fixup is handled inside cleanup_monitor → remove_monitor
-        let mut ctx = WmCtx::new(g, x11.as_conn());
-        cleanup_monitor(&mut ctx, i);
+    for i in (start_idx..ctx.g.monitors.len()).rev() {
+        // monitors.len() is re-evaluated each iteration as cleanup_monitor shrinks the vec
+        dirty = move_clients_to_mon0_ctx(ctx, i) || dirty;
+        cleanup_monitor(ctx, i);
     }
 
     dirty
 }
 
 /// Initialize a single monitor with the given dimensions.
-fn init_single_monitor(sw: i32, sh: i32) -> bool {
-    let g = get_globals_mut();
-    let (mfact, nmaster, showbar, topbar) =
-        (g.cfg.mfact, g.cfg.nmaster, g.cfg.showbar, g.cfg.topbar);
-    let template = g.cfg.tag_template.clone();
+fn init_single_monitor_ctx(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
+    let (mfact, nmaster, showbar, topbar) = (
+        ctx.g.cfg.mfact,
+        ctx.g.cfg.nmaster,
+        ctx.g.cfg.showbar,
+        ctx.g.cfg.topbar,
+    );
+    let template = ctx.g.cfg.tag_template.clone();
     let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
     mon.init_tags(&template);
-    g.push_monitor(mon);
-    if let Some(ref mut m) = g.monitors.first_mut() {
+    ctx.g.push_monitor(mon);
+    if let Some(m) = ctx.g.monitors.first_mut() {
         m.num = 0;
         m.monitor_rect = Rect {
             x: 0,
@@ -443,13 +430,14 @@ fn init_single_monitor(sw: i32, sh: i32) -> bool {
         };
         update_bar_pos(m);
     }
-    g.set_selmon(0);
+    ctx.g.set_selmon(0);
     true
 }
 
 /// Update single monitor dimensions if changed.
-fn update_single_monitor(sw: i32, sh: i32) -> bool {
-    let needs_update = get_globals()
+fn update_single_monitor_ctx(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
+    let needs_update = ctx
+        .g
         .monitors
         .first()
         .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
@@ -459,8 +447,7 @@ fn update_single_monitor(sw: i32, sh: i32) -> bool {
         return false;
     }
 
-    let g = get_globals_mut();
-    if let Some(ref mut m) = g.monitors.first_mut() {
+    if let Some(m) = ctx.g.monitors.first_mut() {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
@@ -472,24 +459,20 @@ fn update_single_monitor(sw: i32, sh: i32) -> bool {
 
 /// Update monitor geometries from Xinerama screens.
 #[cfg(feature = "xinerama")]
-fn update_from_xinerama(
-    x11: &crate::globals::X11Connection,
-    conn: &x11rb::rust_connection::RustConnection,
-) -> Option<bool> {
-    let unique = get_unique_screens(conn)?;
+fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
+    let unique = get_unique_screens(ctx.x11.conn)?;
     let new_count = unique.len();
-    let old_count = get_globals().monitors.len();
+    let old_count = ctx.g.monitors.len();
 
     // Add new monitors if needed
-    ensure_monitor_count(new_count);
+    ensure_monitor_count_ctx(ctx, new_count);
 
     // Update existing monitor geometries
     let mut dirty = new_count > old_count;
     let mut monitors_need_bar_update: Vec<usize> = Vec::new();
 
     for (i, info) in unique.iter().enumerate() {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitor_mut(i) {
+        if let Some(m) = ctx.g.monitor_mut(i) {
             if update_monitor_geometry(m, i, info) {
                 dirty = true;
                 monitors_need_bar_update.push(i);
@@ -499,24 +482,20 @@ fn update_from_xinerama(
 
     // Update bar positions for changed monitors
     for idx in &monitors_need_bar_update {
-        let g = get_globals_mut();
-        if let Some(m) = g.monitor_mut(*idx) {
+        if let Some(m) = ctx.g.monitor_mut(*idx) {
             update_bar_pos(m);
         }
     }
 
     // Cleanup removed monitors
     if new_count < old_count {
-        dirty = cleanup_removed_monitors(new_count, x11) || dirty;
+        dirty = cleanup_removed_monitors_ctx(ctx, new_count) || dirty;
     }
 
     // Reset selection to first monitor and try to find better one
     if dirty {
-        let g = get_globals_mut();
-        g.set_selmon(0);
-        // Create a temporary context to find the monitor for the root window
-        let ctx = WmCtx::new(g, x11.as_conn());
-        if let Some(m) = win_to_mon_with_ctx(&ctx, x11.screen_num as u32) {
+        ctx.g.set_selmon(0);
+        if let Some(m) = win_to_mon_with_ctx(ctx, ctx.g.cfg.root) {
             ctx.g.set_selmon(m);
         }
     }
@@ -524,59 +503,59 @@ fn update_from_xinerama(
     Some(dirty)
 }
 
-pub fn update_geom() -> bool {
-    let dirty;
-
+pub fn update_geom_ctx(ctx: &mut WmCtx) -> bool {
     #[cfg(feature = "xinerama")]
     {
-        let x11 = get_x11();
-
-        if let Some(ref conn) = x11.conn {
-            if let Some(result) = update_from_xinerama(x11, conn) {
-                return result;
-            }
+        if let Some(result) = update_from_xinerama(ctx) {
+            return result;
         }
     }
 
     // Fallback to single monitor
-    let g = get_globals();
-    let (sw, sh) = (g.cfg.screen_width, g.cfg.screen_height);
+    let (sw, sh) = (ctx.g.cfg.screen_width, ctx.g.cfg.screen_height);
 
-    if g.monitors.is_empty() {
-        dirty = init_single_monitor(sw, sh);
+    if ctx.g.monitors.is_empty() {
+        init_single_monitor_ctx(ctx, sw, sh)
     } else {
-        dirty = update_single_monitor(sw, sh);
+        update_single_monitor_ctx(ctx, sw, sh)
     }
+}
 
-    dirty
+/// Legacy, global-based entrypoint.
+///
+/// Prefer `update_geom_ctx()` when you already have a `WmCtx`.
+pub fn update_geom() -> bool {
+    // Recreate the legacy behavior by driving the ctx-based implementation with
+    // global storage.
+    let x11 = get_x11();
+    let conn = x11.conn();
+    let g = get_globals_mut();
+    let mut running = true;
+    let mut bar = BarState::default();
+    let mut focus = FocusState::default();
+    let mut ctx = WmCtx::new(g, conn, x11.screen_num, &mut running, &mut bar, &mut focus);
+    update_geom_ctx(&mut ctx)
 }
 
 /// Get the root pointer position using an explicit connection.
 ///
 /// This is the dependency-injected version that accepts an X11 connection.
 fn get_root_ptr_with_conn(conn: &x11rb::rust_connection::RustConnection) -> Option<(i32, i32)> {
+    // Legacy helper used by global call-sites.
     let g = get_globals();
-    if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, g.cfg.root) {
+    get_root_ptr_with_conn_and_root(conn, g.cfg.root)
+}
+
+fn get_root_ptr_with_conn_and_root(
+    conn: &x11rb::rust_connection::RustConnection,
+    root: Window,
+) -> Option<(i32, i32)> {
+    if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, root) {
         if let Ok(reply) = cookie.reply() {
             return Some((reply.root_x as i32, reply.root_y as i32));
         }
     }
     None
-}
-
-fn get_root_ptr() -> Option<(i32, i32)> {
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        return get_root_ptr_with_conn(conn);
-    }
-    None
-}
-
-fn get_selected_client(mon_id: MonitorId) -> Option<Client> {
-    let g = get_globals();
-    g.monitor(mon_id)
-        .and_then(|mon| mon.sel)
-        .and_then(|win| g.clients.get(&win).cloned())
 }
 
 fn get_selected_client_win(mon_id: MonitorId) -> Option<Window> {

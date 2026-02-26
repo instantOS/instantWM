@@ -9,9 +9,8 @@
 //! * [`zoom`] – promote the selected window to the master slot (or, if it
 //!              already is master, promote the next tiled window instead).
 
-use crate::client::list::{next_tiled, pop};
+use crate::client::list::{next_tiled_ctx, pop};
 use crate::contexts::WmCtx;
-use crate::globals::get_globals;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -45,8 +44,7 @@ pub fn zoom(ctx: &mut WmCtx) {
     let _ = conn.flush();
 
     let (is_floating, mon_id) = {
-        let globals = get_globals();
-        globals
+        ctx.g
             .clients
             .get(&win)
             .map(|c| (c.isfloating, c.mon_id))
@@ -55,7 +53,7 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Only meaningful in a tiling layout with a non-floating window.
     let is_tiling = mon_id
-        .and_then(|mid| get_globals().monitor(mid))
+        .and_then(|mid| ctx.g.monitor(mid))
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -65,14 +63,13 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Find the current master (first tiled client on the monitor).
     let first_tiled = mon_id
-        .and_then(|mid| get_globals().monitor(mid))
-        .and_then(|mon| next_tiled(mon.clients));
+        .and_then(|mid| ctx.g.monitor(mid))
+        .and_then(|mon| next_tiled_ctx(ctx, mon.clients));
 
     if first_tiled == Some(win) {
         // The selected window is already master – promote the next one.
-        let after_first =
-            first_tiled.and_then(|f| get_globals().clients.get(&f).and_then(|c| c.next));
-        let next = next_tiled(after_first);
+        let after_first = first_tiled.and_then(|f| ctx.g.clients.get(&f).and_then(|c| c.next));
+        let next = next_tiled_ctx(ctx, after_first);
 
         // Nothing to promote if there is only one tiled window.
         if next.is_none() {

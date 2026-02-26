@@ -7,21 +7,20 @@ use crate::client::{
 use crate::commands::x_command;
 use crate::contexts::WmCtx;
 use crate::focus::focus;
-use crate::globals::{get_globals, get_globals_mut, get_x11, RUNNING};
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::layouts::{arrange, restack};
-use crate::monitor::{rect_to_mon, update_geom, win_to_mon_with_ctx};
+use crate::monitor::{update_geom_ctx, win_to_mon_with_ctx};
 use crate::mouse::{
-    get_cursor_client_win, handle_floating_resize_hover, handle_sidebar_hover,
-    hover_resize_mouse, reset_cursor, resize_mouse_directional,
+    get_cursor_client_win, handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse,
+    reset_cursor, resize_mouse_directional,
 };
 use crate::systray;
 use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::clean_mask;
-use std::sync::atomic::Ordering;
+use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -50,7 +49,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selmon(clicked_mon);
             selmon_id = clicked_mon;
-            focus(ctx, None);
+            crate::focus::focus_soft(ctx, None);
         }
     };
 
@@ -66,7 +65,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            focus(ctx, Some(win));
+            crate::focus::focus_soft(ctx, Some(win));
             if let Some(mon_id) = ctx.g.clients.get(&win).and_then(|c| c.mon_id) {
                 restack(ctx, mon_id);
             }
@@ -169,8 +168,8 @@ pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
     ctx.g.cfg.screen_width = e.width as i32;
     ctx.g.cfg.screen_height = e.height as i32;
 
-    update_geom();
-    focus(ctx, None);
+    update_geom_ctx(ctx);
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, None);
 }
 
@@ -243,9 +242,17 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     //    When the selected window is floating and we enter a different window
     //    (root or client), offer the resize cursor via hover_resize_mouse.
     if is_floating_sel {
+        // Special case: transitioning from a floating selection to a tiled
+        // client under the cursor should activate the resize offer on the
+        // floating window until the user commits (clicks) or moves away.
+        // This avoids the "nothing happens" feel when hovering onto a tiled
+        // window while a floating window is selected.
+        if crate::mouse::floating_to_tiled_hover(ctx) {
+            return;
+        }
+
         // Case 1: Entering root with floating sel
         if entering_root {
-            eprintln!("DEBUG enter_notify: CASE1 entering root with floating sel={:?}", sel_win);
             if hover_resize_mouse(ctx) {
                 return;
             }
@@ -253,10 +260,8 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         }
         // Case 2: Entering a different client while sel is floating
         else if let Some(ew) = entering_client {
-            eprintln!("DEBUG enter_notify: CASE2 entering client={} sel={:?} same={}", ew, sel_win, Some(ew) == sel_win);
             if Some(ew) != sel_win {
                 let resized = hover_resize_mouse(ctx);
-                eprintln!("DEBUG enter_notify: hover_resize_mouse returned {}", resized);
                 if focusfollowsfloatmouse {
                     if resized {
                         return;
@@ -264,7 +269,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                     // Use the actual topmost window under cursor for focus
                     if let Some(newc) = get_cursor_client_win(ctx) {
                         if Some(newc) != sel_win {
-                            focus(ctx, Some(newc));
+                            crate::focus::focus_soft(ctx, Some(newc));
                         }
                     }
                 }
@@ -278,7 +283,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, e.event) {
             if new_mon_id != selmon_id {
                 ctx.g.set_selmon(new_mon_id);
-                focus(ctx, None);
+                crate::focus::focus_soft(ctx, None);
                 return;
             }
         }
@@ -308,7 +313,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
         // Apply the focus change if different
         if ctx.g.selmon().map(|m| m.sel) != Some(Some(hovered_win)) {
-            focus(ctx, Some(hovered_win));
+            crate::focus::focus_soft(ctx, Some(hovered_win));
         }
     }
 }
@@ -377,19 +382,18 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
 
     // Handle focus-follows-mouse monitor switching
     if ctx.g.focusfollowsmouse {
-        if let Some(new_mon) = rect_to_mon(
-            &ctx.g.monitors,
-            ctx.g.selmon_id(),
-            &Rect {
-                x: root_x,
-                y: root_y,
-                w: 1,
-                h: 1,
-            },
-        ) {
+        let rect = Rect {
+            x: root_x,
+            y: root_y,
+            w: 1,
+            h: 1,
+        };
+        if let Some(new_mon) =
+            crate::types::find_monitor_by_rect(&ctx.g.monitors, &rect).or(Some(ctx.g.selmon_id()))
+        {
             if new_mon != selmon_id {
                 ctx.g.set_selmon(new_mon);
-                focus(ctx, None);
+                crate::focus::focus_soft(ctx, None);
                 return;
             }
         }
@@ -673,31 +677,24 @@ fn handle_active_window(ctx: &mut WmCtx, win: Window) {
 
     if let Some(c) = ctx.g.clients.get(&win) {
         if let Some(mon_id) = c.mon_id {
-            focus(ctx, Some(win));
+            crate::focus::focus_soft(ctx, Some(win));
             restack(ctx, mon_id);
         }
     };
 }
 
-pub fn run() {
-    while RUNNING.load(Ordering::SeqCst) {
-        let event = {
-            let x11 = get_x11();
-            let conn = x11.conn();
-            match conn.wait_for_event() {
-                Ok(event) => event,
-                Err(_) => return,
-            }
+pub fn run(wm: &mut Wm) {
+    while wm.running {
+        let event = match wm.x11.conn.wait_for_event() {
+            Ok(event) => event,
+            Err(_) => return,
         };
-        dispatch_event(event);
+        dispatch_event(wm, event);
     }
 }
 
-fn dispatch_event(event: x11rb::protocol::Event) {
-    // Create context for this event
-    let x11 = get_x11();
-    let globals = get_globals_mut();
-    let mut ctx = WmCtx::new(globals, x11.as_conn());
+fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
+    let mut ctx = wm.ctx();
 
     match event {
         x11rb::protocol::Event::ButtonPress(e) => button_press(&mut ctx, &e),
@@ -843,11 +840,9 @@ fn is_window_iconic(ctx: &WmCtx, win: Window) -> bool {
 /// Regular windows are managed first; transients second — matching the order
 /// the original C dwm uses so that transient windows end up above their owners
 /// in the client list.
-pub fn scan() {
-    let x11 = get_x11();
-    let conn = x11.conn();
-    let globals = get_globals_mut();
-    let mut ctx = WmCtx::new(globals, x11.as_conn());
+pub fn scan(wm: &mut Wm) {
+    let mut ctx = wm.ctx();
+    let conn = ctx.x11.conn;
     let root = ctx.g.cfg.root;
 
     let children = {
@@ -868,32 +863,18 @@ pub fn scan() {
     }
 }
 
-pub fn check_other_wm() {
-    let x11 = get_x11();
-    let conn = x11.conn();
-
-    let root = get_globals().cfg.root;
+pub fn check_other_wm(conn: &x11rb::rust_connection::RustConnection, root: Window) {
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
 }
 
-pub fn setup() {
-    let x11 = get_x11();
-    let conn = x11.conn();
+pub fn setup(_wm: &mut Wm) {
+    // setup is performed by main during wm_init.
+}
 
-    let screen = conn.setup().roots.get(x11.screen_num).cloned();
-    let Some(screen) = screen else { return };
-
-    let root = screen.root;
-
-    {
-        let globals = get_globals_mut();
-        globals.cfg.screen = x11.screen_num as i32;
-        globals.cfg.root = root;
-        globals.cfg.screen_width = screen.width_in_pixels as i32;
-        globals.cfg.screen_height = screen.height_in_pixels as i32;
-    };
-
+pub fn setup_root(wm: &mut Wm) {
+    let conn = &wm.x11.conn;
+    let root = wm.g.cfg.root;
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
@@ -908,25 +889,19 @@ pub fn setup() {
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     let _ = conn.flush();
 
-    update_geom();
-    {
-        let globals = get_globals_mut();
-        let ctx = WmCtx::new(globals, x11.as_conn());
-        grab_keys(&ctx);
-    }
+    let mut ctx = wm.ctx();
+    update_geom_ctx(&mut ctx);
 }
 
-pub fn cleanup() {
-    let x11 = get_x11();
-    let conn = x11.conn();
+pub fn cleanup(wm: &mut Wm) {
+    let conn = &wm.x11.conn;
 
     let _ = conn.grab_server();
 
-    let globals = get_globals();
-    for (_id, mon) in globals.monitors_iter() {
+    for (_id, mon) in wm.g.monitors_iter() {
         let mut current = mon.clients;
         while let Some(win) = current {
-            if let Some(c) = globals.clients.get(&win) {
+            if let Some(c) = wm.g.clients.get(&win) {
                 let old_bw = c.old_border_width;
                 current = c.next;
                 let _ = conn

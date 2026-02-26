@@ -15,22 +15,19 @@
 
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::WmCtx;
-use std::sync::atomic::{AtomicU32, Ordering};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
-// ---------------------------------------------------------------------------
-// Shared atomics (also used by lifecycle.rs / kill.rs)
-// ---------------------------------------------------------------------------
-
-/// The window currently being animated (0 = none).
-pub static ANIM_CLIENT: AtomicU32 = AtomicU32::new(0);
-
-/// The previously focused window (0 = none), used by focus-last-client logic.
-pub static LAST_CLIENT: AtomicU32 = AtomicU32::new(0);
+#[derive(Default)]
+pub struct FocusState {
+    /// The window currently being animated (0 = none).
+    pub anim_client: u32,
+    /// The previously focused window (0 = none), used by focus-last-client logic.
+    pub last_client: u32,
+}
 
 // ---------------------------------------------------------------------------
 // ConfigureNotify
@@ -180,7 +177,7 @@ pub fn set_focus(ctx: &mut WmCtx, win: Window) {
 
 /// Remove focus from `win`.
 ///
-/// Records it in [`LAST_CLIENT`], ungrabs buttons (so that any click on the
+/// Records it in `ctx.focus.last_client`, ungrabs buttons (so that any click on the
 /// unfocused window can be intercepted by the WM), and resets the border colour
 /// to the normal (unfocused) scheme.
 ///
@@ -192,7 +189,7 @@ pub fn unfocus_win(ctx: &mut WmCtx, win: Window, redirect_to_root: bool) {
         return;
     }
 
-    LAST_CLIENT.store(win, Ordering::Relaxed);
+    ctx.focus.last_client = win;
     grab_buttons(ctx, win, false);
 
     let conn = ctx.x11.conn;

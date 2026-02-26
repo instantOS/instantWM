@@ -7,50 +7,74 @@ pub use model::{bar_position_at_x, bar_position_to_gesture};
 pub use x11::{resize_bar_win, resize_bar_win_ctx};
 
 use crate::contexts::WmCtx;
-use crate::globals::{get_drw, get_drw_mut, get_globals};
 use crate::types::*;
 use model::ClientBarStats;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 
-static DRAW_BAR_RECURSION: AtomicUsize = AtomicUsize::new(0);
-const MAX_BAR_RECURSION: usize = 50;
+#[derive(Default)]
+pub struct BarState {
+    pausedraw: bool,
+    draw_bar_recursion: usize,
+    pub command_offsets: [i32; 20],
+}
 
-/// Pause bar drawing (e.g. during animations).
-pub static PAUSEDRAW: AtomicBool = AtomicBool::new(false);
-/// Per-command click-region x-offsets; sentinel value -1 marks end of list.
-const INIT_COMMAND_OFFSET: AtomicI32 = AtomicI32::new(-1);
-pub static COMMANDOFFSETS: [AtomicI32; 20] = [INIT_COMMAND_OFFSET; 20];
+impl BarState {
+    pub fn pausedraw(&self) -> bool {
+        self.pausedraw
+    }
 
-pub fn text_width(text: &str) -> i32 {
-    let mut drw = get_drw().clone();
+    pub fn set_pausedraw(&mut self, paused: bool) {
+        self.pausedraw = paused;
+    }
+
+    fn recursion_enter(&mut self) {
+        self.draw_bar_recursion += 1;
+        if self.draw_bar_recursion > 50 {
+            std::process::abort();
+        }
+    }
+
+    fn recursion_exit(&mut self) {
+        self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
+    }
+
+    pub fn clear_command_offsets(&mut self) {
+        self.command_offsets.fill(-1);
+    }
+}
+
+pub fn text_width_ctx(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
+    // Transitional helper: avoid going through get_drw() when ctx is available.
+    let mut drw = ctx
+        .g
+        .cfg
+        .drw
+        .as_ref()
+        .expect("text_width_ctx called before drw initialised")
+        .clone();
     drw.fontset_getwidth(text) as i32
 }
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
-    let _g = get_globals();
     m.layout_symbol()
 }
 
-pub fn get_layout_symbol_width(m: &Monitor) -> i32 {
-    text_width(&layout_symbol(m)) + get_horizontal_padding()
+pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
+    text_width_ctx(ctx, &layout_symbol(m)) + ctx.g.cfg.horizontal_padding
 }
 
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
-    let count = DRAW_BAR_RECURSION.fetch_add(1, Ordering::SeqCst);
-    if count > MAX_BAR_RECURSION {
-        std::process::abort();
-    }
+    ctx.bar.recursion_enter();
 
     let m_info = match ctx.g.monitor(mon_idx) {
         Some(m) => {
-            if !m.shows_bar() || PAUSEDRAW.load(Ordering::Relaxed) {
-                DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+            if !m.shows_bar() || ctx.bar.pausedraw() {
+                ctx.bar.recursion_exit();
                 return;
             }
             (m.num, m.work_rect.w, m.barwin)
         }
         None => {
-            DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+            ctx.bar.recursion_exit();
             return;
         }
     };
@@ -60,7 +84,12 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     let barwin = m_info.2;
 
     let bh = ctx.g.cfg.bar_height;
-    get_drw_mut().resize(work_rect_w as u32, bh as u32);
+    ctx.g
+        .cfg
+        .drw
+        .as_mut()
+        .expect("draw_bar called before drw initialised")
+        .resize(work_rect_w as u32, bh as u32);
 
     let is_selmon = ctx
         .g
@@ -74,9 +103,9 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     };
 
     let (status_start_x, status_width) = if is_selmon {
-        let ctx_imm = &*ctx;
-        let m = ctx_imm.g.monitor(mon_idx).unwrap();
-        status::draw_status_bar(ctx_imm, m, bh)
+        // Avoid borrowing ctx.g and ctx (mut) at once.
+        let m = ctx.g.monitor(mon_idx).cloned().unwrap();
+        status::draw_status_bar(ctx, &m, bh)
     } else {
         (0, 0)
     };
@@ -130,7 +159,9 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     let mut new_activeoffset = None;
     if title_width > bh {
         let m = ctx.g.monitor(mon_idx).unwrap();
-        new_activeoffset = widgets::draw_window_titles(m, x, title_width, visible_clients, bh);
+        let ctx_imm = &*ctx;
+        new_activeoffset =
+            widgets::draw_window_titles(ctx_imm, m, x, title_width, visible_clients, bh);
     }
 
     if let Some(m) = ctx.g.monitor_mut(mon_idx) {
@@ -141,9 +172,14 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         }
     }
 
-    get_drw().map(barwin, 0, 0, work_rect_w as u16, bh as u16);
+    ctx.g
+        .cfg
+        .drw
+        .as_ref()
+        .expect("draw_bar called before drw initialised")
+        .map(barwin, 0, 0, work_rect_w as u16, bh as u16);
 
-    DRAW_BAR_RECURSION.fetch_sub(1, Ordering::SeqCst);
+    ctx.bar.recursion_exit();
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {
@@ -169,8 +205,4 @@ pub fn reset_bar(ctx: &mut WmCtx) {
     }
 
     draw_bar(ctx, selmon_idx);
-}
-
-pub(crate) fn get_horizontal_padding() -> i32 {
-    get_globals().cfg.horizontal_padding
 }

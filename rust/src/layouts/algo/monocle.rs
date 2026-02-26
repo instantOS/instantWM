@@ -17,7 +17,7 @@
 //! windows appearing during the animation.
 
 use crate::animation::animate_client;
-use crate::client::next_tiled;
+use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 use x11rb::connection::Connection;
@@ -45,7 +45,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let sel_win = ctx.g.selected_win();
 
     // ── resize every tiled client to fill the work area ───────────────────
-    let mut current_window = next_tiled(m.clients);
+    let mut current_window = next_tiled_ctx(ctx, m.clients);
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
@@ -75,6 +75,6 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             0,
         );
 
-        current_window = next_tiled(next_client);
+        current_window = next_tiled_ctx(ctx, next_client);
     }
 }

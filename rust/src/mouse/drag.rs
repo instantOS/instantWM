@@ -28,8 +28,9 @@ use crate::client::resize;
 use crate::config::commands::Cmd;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
-use crate::focus::{focus, warp_into};
+use crate::focus::focus;
 use crate::layouts::{arrange, restack};
+use crate::mouse::warp::warp_into;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
 use crate::types::SnapPosition;
 use crate::types::*;
@@ -847,7 +848,7 @@ pub fn window_title_mouse_handler(
                     if was_hidden {
                         crate::client::show(ctx, win);
                     }
-                    focus(ctx, Some(win));
+                    crate::focus::focus_soft(ctx, Some(win));
                     warp_into(ctx, win);
                     move_mouse(ctx, btn);
                     return;
@@ -860,12 +861,12 @@ pub fn window_title_mouse_handler(
     ungrab_ctx(ctx);
     if was_hidden {
         crate::client::show(ctx, win);
-        focus(ctx, Some(win));
+        crate::focus::focus_soft(ctx, Some(win));
         restack(ctx, ctx.g.selmon_id());
     } else if was_focused {
         crate::client::hide(ctx, win);
     } else {
-        focus(ctx, Some(win));
+        crate::focus::focus_soft(ctx, Some(win));
         restack(ctx, ctx.g.selmon_id());
     }
 }
@@ -896,7 +897,7 @@ pub fn window_title_mouse_handler_right(
         }
     }
 
-    focus(ctx, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
 
     if !grab_pointer(ctx, 2) {
         return;
@@ -927,7 +928,7 @@ pub fn window_title_mouse_handler_right(
                     ungrab_ctx(ctx);
                     if crate::client::is_hidden(win) {
                         crate::client::show(ctx, win);
-                        focus(ctx, Some(win));
+                        crate::focus::focus_soft(ctx, Some(win));
                     }
                     super::resize::resize_mouse_from_cursor(ctx, btn);
                     return;
@@ -941,7 +942,7 @@ pub fn window_title_mouse_handler_right(
     ungrab_ctx(ctx);
     if crate::client::is_hidden(win) {
         crate::client::show(ctx, win);
-        focus(ctx, Some(win));
+        crate::focus::focus_soft(ctx, Some(win));
     }
     crate::client::zoom(ctx);
 }

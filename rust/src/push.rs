@@ -1,5 +1,5 @@
-use crate::client::list::{attach, detach};
-use crate::client::next_tiled;
+use crate::client::list::{attach_ctx, detach_ctx};
+use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
 use crate::focus::focus;
 use crate::layouts::arrange;
@@ -8,7 +8,7 @@ use x11rb::protocol::xproto::Window;
 
 pub fn next_c(ctx: &WmCtx, c_win: Option<Window>, include_floating: bool) -> Option<Window> {
     if !include_floating {
-        return next_tiled(c_win);
+        return next_tiled_ctx(ctx, c_win);
     }
 
     let mut current = c_win;
@@ -77,7 +77,7 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
     let selmon_id = ctx.g.selmon_id();
 
     if let Some(prev) = prev_c(ctx, win, include_floating) {
-        detach(win);
+        detach_ctx(ctx, win);
 
         {
             let selmon_id = ctx.g.selmon_id();
@@ -114,7 +114,7 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
             }
         }
 
-        detach(win);
+        detach_ctx(ctx, win);
 
         if let Some(last_win) = last {
             if let Some(client) = ctx.g.clients.get_mut(&last_win) {
@@ -126,7 +126,7 @@ pub fn push_up(ctx: &mut WmCtx, win: Window) {
         }
     }
 
-    focus(ctx, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
     arrange(ctx, Some(selmon_id));
 }
 
@@ -157,7 +157,7 @@ pub fn push_down(ctx: &mut WmCtx, win: Window) {
         .and_then(|c| next_c(ctx, c.next, include_floating));
 
     if let Some(next_win) = next {
-        detach(win);
+        detach_ctx(ctx, win);
 
         let next_c_next = ctx.g.clients.get(&next_win).and_then(|c| c.next);
         if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -168,10 +168,10 @@ pub fn push_down(ctx: &mut WmCtx, win: Window) {
             next_c.next = Some(win);
         }
     } else {
-        detach(win);
-        attach(win);
+        detach_ctx(ctx, win);
+        attach_ctx(ctx, win);
     }
 
-    focus(ctx, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
     arrange(ctx, Some(selmon_id));
 }

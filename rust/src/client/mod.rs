@@ -48,7 +48,9 @@ pub mod visibility;
 pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 
 // -- Linked-list management --------------------------------------------------
-pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop, win_to_client};
+pub use list::{
+    attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, next_tiled_ctx, pop, win_to_client,
+};
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
@@ -60,7 +62,7 @@ pub use geometry::{
 pub use visibility::{hide, is_hidden, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{configure, send_event, set_focus, unfocus_win, LAST_CLIENT};
+pub use focus::{configure, send_event, set_focus, unfocus_win};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{
