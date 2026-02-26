@@ -18,6 +18,7 @@
 //!                             └─► toggle_floating (if tiled) + resize
 //! ```
 
+use crate::backend::BackendKind;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
@@ -144,6 +145,9 @@ pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
 pub fn draw_window(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(win) = ctx.g.selected_win() else {
         return;
     };

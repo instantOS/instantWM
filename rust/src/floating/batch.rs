@@ -15,6 +15,7 @@
 //! mode (see `tags.rs`) so that window positions survive the overview layout
 //! and are correctly restored when the user switches back.
 
+use crate::backend::BackendKind;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::types::*;
@@ -31,6 +32,9 @@ use crate::types::*;
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
 pub fn save_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(mid) = mon_id else { return };
 
     let wins_to_save = collect_floating_wins(ctx.g, mid);
@@ -44,6 +48,9 @@ pub fn save_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
 /// Counterpart to [`save_all_floating`]: resizes each window back to the rect
 /// that was captured by the most recent `save_all_floating` call.
 pub fn restore_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(mid) = mon_id else { return };
 
     let wins_to_restore = collect_floating_wins(ctx.g, mid);
@@ -98,6 +105,9 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 ///
 /// Does nothing when there are no qualifying windows.
 pub fn distribute_clients(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let sel_mon_id = ctx.g.selmon_id();
 
     let (floating_wins, work_rect) = collect_distribute_targets(ctx.g, sel_mon_id);

@@ -32,15 +32,7 @@ fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
             | ModMask::M5.bits())
 }
 
-pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
-    let keycode = e.detail;
-    let state = e.state;
-
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-    let keysym = keycode_to_keysym(conn, keycode, 0);
-
+pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let matching_key = {
         let numlockmask = ctx.g.cfg.numlockmask;
         let keys = ctx.g.cfg.keys.clone();
@@ -49,7 +41,7 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
         for key in &keys {
             if keysym == key.keysym
                 && clean_mask(key.mod_mask as u16, numlockmask)
-                    == clean_mask(state.bits(), numlockmask)
+                    == clean_mask(mod_mask as u16, numlockmask)
             {
                 result = Some(key.clone());
                 break;
@@ -60,7 +52,7 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
             for key in &desktop_keybinds {
                 if keysym == key.keysym
                     && clean_mask(key.mod_mask as u16, numlockmask)
-                        == clean_mask(state.bits(), numlockmask)
+                        == clean_mask(mod_mask as u16, numlockmask)
                 {
                     result = Some(key.clone());
                     break;
@@ -72,7 +64,22 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
 
     if let Some(key) = matching_key {
         (key.action)(ctx);
+        true
+    } else {
+        false
     }
+}
+
+pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
+    let keycode = e.detail;
+    let state = e.state;
+
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
+    let keysym = keycode_to_keysym(conn, keycode, 0);
+
+    let _ = handle_keysym(ctx, keysym, state.bits() as u32);
 }
 
 pub fn key_release(_ctx: &mut WmCtx, _e: &KeyReleaseEvent) {}
@@ -98,11 +105,14 @@ pub fn grab_keys(ctx: &WmCtx) {
         (numlockmask as u16) | ModMask::LOCK.bits(),
     ];
 
-    let mapping = conn
+    let mapping = match conn
         .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-        .unwrap()
-        .reply()
-        .unwrap();
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+    {
+        Some(mapping) => mapping,
+        None => return,
+    };
 
     let get_keysym = |keycode: u8| -> u32 {
         let index = (keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
@@ -168,11 +178,14 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
             let mut new_numlockmask: u32 = 0;
 
             let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
-            let mapping = conn
+            let mapping = match conn
                 .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-                .unwrap()
-                .reply()
-                .unwrap();
+                .ok()
+                .and_then(|cookie| cookie.reply().ok())
+            {
+                Some(mapping) => mapping,
+                None => return,
+            };
 
             for (i, keycode) in reply.keycodes.iter().enumerate() {
                 if *keycode >= keycode_min && *keycode <= keycode_max {
@@ -289,9 +302,10 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
         if let Some(win) = ctx.g.selected_win() {
             if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                    let x11_win: Window = win.into();
                     let _ = change_window_attributes(
                         conn,
-                        win,
+                        x11_win,
                         &ChangeWindowAttributesAux::new()
                             .border_pixel(Some(scheme.normal.bg.pixel())),
                     );
@@ -359,9 +373,10 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         } else {
             if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                    let x11_win: Window = win.into();
                     let _ = change_window_attributes(
                         conn,
-                        win,
+                        x11_win,
                         &ChangeWindowAttributesAux::new()
                             .border_pixel(Some(scheme.normal.bg.pixel())),
                     );

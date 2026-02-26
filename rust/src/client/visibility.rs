@@ -15,6 +15,7 @@
 //! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
@@ -94,6 +95,9 @@ pub fn is_hidden(win: WindowId) -> bool {
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
 pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let current = match win {
         Some(w) => w,
         None => return,
@@ -160,6 +164,9 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
 ///
 /// Does nothing if `win` is not currently in the iconic state.
 pub fn show(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;
@@ -206,6 +213,9 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
 ///
 /// Does nothing if `win` is already hidden.
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let globals = get_globals();
     let Some(client) = globals.clients.get(&win) else {
         return;

@@ -1,5 +1,6 @@
 //! View (workspace) navigation.
 
+use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
@@ -196,6 +197,9 @@ pub fn last_view(ctx: &mut WmCtx) {
 }
 
 pub fn win_view(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };

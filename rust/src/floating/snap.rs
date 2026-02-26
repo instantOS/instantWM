@@ -18,6 +18,7 @@
 //! [`reset_snap`].
 
 use crate::animation::check_animate;
+use crate::backend::BackendKind;
 use crate::client::{restore_border_width, save_border_width};
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
@@ -147,6 +148,9 @@ fn snap_pos_to_index(s: SnapPosition) -> usize {
 /// If the window is not currently snapped, its current geometry is saved first
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let snapstatus = match ctx.g.clients.get(&win) {
         Some(c) => c.snapstatus,
         None => return,
@@ -182,6 +186,9 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
 pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, mon_id: Option<usize>) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (snapstatus, saved_geo, border_width) = match ctx.g.clients.get(&win) {
         Some(c) => (c.snapstatus, c.float_geo, c.border_width),
         None => return,
@@ -377,6 +384,9 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, mon_id: Option<usize>) {
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (is_floating, snapstatus) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.snapstatus),
         None => return,

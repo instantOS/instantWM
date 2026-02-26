@@ -22,6 +22,7 @@
 //! border intact.
 
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::geometry::resize_client;
 use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut};
@@ -87,6 +88,9 @@ pub fn restore_border_width(win: WindowId) {
 /// skipped – only the EWMH property is toggled so the application remains happy
 /// while the window keeps participating in the tiling layout.
 pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -226,6 +230,9 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
 /// The `isfakefullscreen` flag itself is flipped at the end regardless of the
 /// current state.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(win) = ctx.g.selected_win() else {
         return;
     };

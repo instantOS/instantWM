@@ -3,6 +3,7 @@
 //! This module provides window focus functionality via `WmCtx`, avoiding
 //! global state access and making dependencies explicit.
 
+use crate::backend::BackendKind;
 use crate::bar::draw_bars;
 use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::contexts::WmCtx;
@@ -18,6 +19,9 @@ use x11rb::CURRENT_TIME;
 /// # Errors
 /// Returns an error if X11 operations fail (e.g., connection lost).
 pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return Ok(());
+    }
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         if ctx.g.monitors.is_empty() {
             return Ok(());
@@ -115,6 +119,9 @@ pub fn focus_soft(ctx: &mut WmCtx, win: Option<WindowId>) {
 }
 
 pub fn set_focus_win(ctx: &WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };

@@ -240,6 +240,10 @@ pub fn update_systray(ctx: &mut WmCtx) {
         return;
     };
 
+    if ctx.g.cfg.xlibdisplay.0.is_null() {
+        return;
+    }
+
     // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
     unsafe {
         crate::drw::XFlush(ctx.g.cfg.xlibdisplay.0);

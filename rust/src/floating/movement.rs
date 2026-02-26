@@ -1,12 +1,16 @@
 //! Keyboard-driven floating window movement, resize, and scaling.
 
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (is_floating, geo, border_width) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.geo, c.border_width),
         None => return,
@@ -51,6 +55,9 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (is_floating, geo) = match ctx.g.clients.get(&win) {
         Some(c) => (c.isfloating, c.geo),
         None => return,
@@ -82,6 +89,9 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let is_overlay = ctx.g.selmon().and_then(|m| m.overlay) == Some(win);
     if is_overlay {
         return;

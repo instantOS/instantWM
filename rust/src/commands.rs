@@ -1,3 +1,4 @@
+use crate::backend::BackendKind;
 use crate::bar::draw_bar;
 use crate::contexts::WmCtx;
 use crate::types::*;
@@ -7,6 +8,9 @@ use x11rb::protocol::xproto::ConnectionExt;
 const COMMAND_INDICATOR: &[u8] = b"c;:;";
 
 pub fn x_command(ctx: &mut WmCtx) -> i32 {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return 0;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return 0;
     };

@@ -23,6 +23,7 @@
 //! expected `DestroyNotify`.
 
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::focus::send_event;
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
@@ -42,6 +43,9 @@ use x11rb::CURRENT_TIME;
 ///    the window is fullscreen).
 /// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
@@ -117,6 +121,9 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 ///
 /// The window is still animated before the close message is sent.
 pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (is_locked, mon_mh) = ctx
         .g
         .clients
@@ -158,6 +165,9 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
 
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient`.
 fn force_close(ctx: &mut WmCtx, win: WindowId, wmatom_delete: u32) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let x11_win: Window = win.into();
     let sent = send_event(
         ctx,

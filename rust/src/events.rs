@@ -708,9 +708,13 @@ fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
 
 pub fn run(wm: &mut Wm) {
     while wm.running {
-        let event = match wm.x11().conn.wait_for_event() {
-            Ok(event) => event,
-            Err(_) => return,
+        let event = match wm
+            .backend
+            .x11()
+            .and_then(|x11| x11.conn.wait_for_event().ok())
+        {
+            Some(event) => event,
+            None => return,
         };
         dispatch_event(wm, event);
     }
@@ -918,7 +922,10 @@ pub fn setup(_wm: &mut Wm) {
 }
 
 pub fn setup_root(wm: &mut Wm) {
-    let conn = &wm.x11().conn;
+    let Some(x11) = wm.backend.x11() else {
+        return;
+    };
+    let conn = &x11.conn;
     let root = wm.g.cfg.root;
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
@@ -939,7 +946,10 @@ pub fn setup_root(wm: &mut Wm) {
 }
 
 pub fn cleanup(wm: &mut Wm) {
-    let conn = &wm.x11().conn;
+    let Some(x11) = wm.backend.x11() else {
+        return;
+    };
+    let conn = &x11.conn;
 
     let _ = conn.grab_server();
 

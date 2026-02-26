@@ -21,6 +21,7 @@
 //! post-loop cleanup (bar drop, monitor switch, bar redraw, …)
 //! ```
 
+use crate::backend::BackendKind;
 use crate::bar::bar_position_at_x;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::draw_bar;
@@ -526,6 +527,9 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>) -
 ///
 /// Grab → event loop → release handling. See helpers above for each phase.
 pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(win) = prepare_drag_target(ctx) else {
         return;
     };
@@ -601,6 +605,9 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
 pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if !grab_pointer(ctx, 2) {
         return;
     }
@@ -657,6 +664,9 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 ///
 /// Exits without action if the pointer leaves the bar during the drag.
 pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
         let selmon_id = ctx.g.selmon_id();
         let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
@@ -814,6 +824,9 @@ pub fn window_title_mouse_handler(
     click_root_x: i32,
     click_root_y: i32,
 ) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let sel = ctx.g.selected_win();
     let was_focused = sel == Some(win);
     let was_hidden = crate::client::is_hidden(win);
@@ -885,6 +898,9 @@ pub fn window_title_mouse_handler_right(
     click_root_x: i32,
     click_root_y: i32,
 ) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     {
         if ctx
             .g

@@ -57,12 +57,30 @@ use crate::backend::{BackendKind, BackendOps};
 use crate::types::{Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
+use std::cell::RefCell;
+use std::ptr::NonNull;
+
+use crate::backend::wayland::compositor::WaylandState;
+
 #[derive(Default)]
-pub struct WaylandBackend;
+pub struct WaylandBackend {
+    state: RefCell<Option<NonNull<WaylandState>>>,
+}
 
 impl WaylandBackend {
     pub fn new() -> Self {
-        Self
+        Self {
+            state: RefCell::new(None),
+        }
+    }
+
+    pub fn attach_state(&self, state: &mut WaylandState) {
+        *self.state.borrow_mut() = Some(NonNull::from(state));
+    }
+
+    fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
+        let mut ptr = *self.state.borrow();
+        ptr.as_mut().map(|state| unsafe { f(state.as_mut()) })
     }
 }
 
@@ -71,17 +89,31 @@ impl BackendOps for WaylandBackend {
         BackendKind::Wayland
     }
 
-    fn resize_window(&self, _window: WindowId, _rect: Rect) {}
+    fn resize_window(&self, window: WindowId, rect: Rect) {
+        let _ = self.with_state(|state| state.resize_window(window, rect));
+    }
 
-    fn raise_window(&self, _window: WindowId) {}
+    fn raise_window(&self, window: WindowId) {
+        let _ = self.with_state(|state| state.raise_window(window));
+    }
 
-    fn restack(&self, _windows: &[WindowId]) {}
+    fn restack(&self, windows: &[WindowId]) {
+        let _ = self.with_state(|state| state.restack(windows));
+    }
 
-    fn set_focus(&self, _window: WindowId) {}
+    fn set_focus(&self, window: WindowId) {
+        let _ = self.with_state(|state| state.set_focus(window));
+    }
 
-    fn map_window(&self, _window: WindowId) {}
+    fn map_window(&self, window: WindowId) {
+        let _ = self.with_state(|state| state.map_window(window));
+    }
 
-    fn unmap_window(&self, _window: WindowId) {}
+    fn unmap_window(&self, window: WindowId) {
+        let _ = self.with_state(|state| state.unmap_window(window));
+    }
 
-    fn flush(&self) {}
+    fn flush(&self) {
+        let _ = self.with_state(WaylandState::flush);
+    }
 }

@@ -22,11 +22,13 @@ clap = { version = "4.5", features = ["derive"] }
 
 # Wayland compositor support via Smithay
 smithay = { version = "0.7", default-features = false, features = [
+    "backend_winit",
+    "renderer_gl",
     "wayland_frontend",
     "desktop",
     "xwayland",
-], optional = true }
-calloop = { version = "0.14", optional = true }
+] }
+calloop = { version = "0.14" }
 
 [build-dependencies]
 
@@ -34,7 +36,6 @@ calloop = { version = "0.14", optional = true }
 default = ["xinerama", "x11_backend"]
 xinerama = []
 x11_backend = []
-wayland_backend = ["smithay", "calloop"]
 
 [profile.release]
 opt-level = 3

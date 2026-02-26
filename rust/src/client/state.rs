@@ -17,6 +17,7 @@
 //! * [`update_motif_hints`]   – parse Motif `_MOTIF_WM_HINTS` decoration hints.
 //! * [`get_atom_prop`]        – read a single-atom X11 property (internal helper).
 
+use crate::backend::BackendKind;
 use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,
@@ -40,6 +41,9 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `state` should be one of the `WM_STATE_*` constants from
 /// [`crate::client::constants`].
 pub fn set_client_state(ctx: &WmCtx, win: WindowId, state: i32) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -70,6 +74,9 @@ pub fn set_client_state(ctx: &WmCtx, win: WindowId, state: i32) {
 /// External tools (e.g. `instantmenu`) can read this to know which tags and
 /// monitor a window belongs to without querying the WM over IPC.
 pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -107,6 +114,9 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
 /// focus order.  Clients are appended in the order they appear in the list,
 /// which matches the order used by most EWMH-aware taskbars.
 pub fn update_client_list(ctx: &WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -141,6 +151,9 @@ pub fn update_client_list(ctx: &WmCtx) {
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 /// Falls back to [`BROKEN`] when neither property is readable.
 pub fn update_title(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let name = read_window_title(ctx, win);
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.name = name;
@@ -152,6 +165,9 @@ pub fn update_title(ctx: &mut WmCtx, win: WindowId) {
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
 /// or [`BROKEN`] if both are absent / unreadable.
 fn read_window_title(ctx: &WmCtx, win: WindowId) -> String {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return BROKEN.to_string();
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return BROKEN.to_string();
     };
@@ -205,6 +221,9 @@ fn read_window_title(ctx: &WmCtx, win: WindowId) -> String {
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
 pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -405,6 +424,9 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
 pub fn update_window_type(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -436,6 +458,9 @@ pub fn update_window_type(ctx: &mut WmCtx, win: WindowId) {
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
 pub fn update_wm_hints(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -484,6 +509,9 @@ pub fn update_wm_hints(ctx: &mut WmCtx, win: WindowId) {
 /// This function is currently reserved for future EWMH compliance use but is
 /// kept here so the property plumbing is in one place.
 pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -545,6 +573,9 @@ pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
 pub fn update_motif_hints(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if ctx.g.cfg.decorhints == 0 {
         return;
     }

@@ -1,4 +1,5 @@
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::save_border_width;
 use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, resize};
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
@@ -227,6 +228,9 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 
 /// Create overlay with dependency injection.
 pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let (sel_overlay, sel_fullscreen) = {
         let g = &*ctx.g;
         let mon = match g.selmon() {
@@ -300,6 +304,9 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
 }
 
 pub fn reset_overlay(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if !overlay_exists(ctx) {
         return;
     }
@@ -349,6 +356,9 @@ fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: 
 }
 
 pub fn show_overlay(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if !overlay_exists(ctx) || ctx.g.monitors.is_empty() {
         return;
     }
@@ -458,6 +468,9 @@ fn reset_all_overlay_status(monitors: &mut [Monitor]) {
 }
 
 pub fn hide_overlay(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if !overlay_exists(ctx) || ctx.g.monitors.is_empty() {
         return;
     }
@@ -522,6 +535,9 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 }
 
 pub fn set_overlay(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if !overlay_exists(ctx) {
         return;
     }
@@ -556,6 +572,9 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 }
 
 pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     for mon in &mut ctx.g.monitors {
         mon.overlaymode = mode;
     }

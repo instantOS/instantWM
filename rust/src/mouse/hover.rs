@@ -13,6 +13,7 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
+use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::mouse::warp::warp_into;
@@ -42,6 +43,9 @@ fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 
 /// Change the root window cursor to the shape at `cursor_index`.
 fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -57,6 +61,9 @@ fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &WmCtx, win: WindowId, dir: ResizeDirection) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -275,6 +282,9 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// Returns `true` if the function entered its loop (caller should skip normal
 /// focus/event handling), `false` if the cursor was not in a resize border.
 pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return false;
+    }
     let Some((px, py)) = get_root_ptr(ctx) else {
         return false;
     };
@@ -474,6 +484,9 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 /// overlap, the topmost (visible) one is returned, not just any window whose
 /// geometry contains the cursor.
 pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return None;
+    }
     let conn = ctx.x11_conn().map(|x11| x11.conn)?;
 
     // Query pointer on root to get the actual child window under cursor

@@ -1,3 +1,4 @@
+use crate::backend::BackendKind;
 use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx};
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
@@ -243,6 +244,9 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let root = ctx.g.cfg.root;
 
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {

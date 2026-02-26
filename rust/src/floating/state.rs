@@ -1,6 +1,7 @@
 //! Floating state transitions and geometry persistence.
 
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::{resize, restore_border_width};
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
@@ -15,6 +16,9 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
 
     restore_border_width(win);
 
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let x11_win: Window = win.into();
         if let Some(ref scheme) = ctx.g.cfg.borderscheme {
@@ -57,6 +61,9 @@ pub fn apply_float_change(
         if update_borders {
             restore_border_width(win);
 
+            if ctx.backend_kind() == BackendKind::Wayland {
+                return;
+            }
             if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
                 let x11_win: Window = win.into();
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
@@ -239,6 +246,9 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
         arrange(ctx, Some(ctx.g.selmon_id()));
     }
 
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if let Some(win) = ctx.g.selmon().and_then(|m| m.fullscreen) {
         if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
             let x11_win: Window = win.into();

@@ -1,3 +1,4 @@
+use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 use x11rb::protocol::xproto::ConnectionExt;
 
@@ -64,6 +65,9 @@ pub fn list_xresources() {
 /// Load xresources and update the runtime configuration
 /// This should be called after init_globals but before setup
 pub fn load_xresources(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };

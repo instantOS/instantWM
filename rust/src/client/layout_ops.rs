@@ -9,6 +9,7 @@
 //! * [`zoom`] – promote the selected window to the master slot (or, if it
 //!              already is master, promote the next tiled window instead).
 
+use crate::backend::BackendKind;
 use crate::client::list::{next_tiled_ctx, pop};
 use crate::contexts::WmCtx;
 use x11rb::connection::Connection;
@@ -33,6 +34,9 @@ use x11rb::protocol::xproto::*;
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(win) = ctx.g.selected_win() else {
         return;
     };

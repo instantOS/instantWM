@@ -11,6 +11,7 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
+use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
@@ -44,6 +45,9 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Wind
 /// - Only one monitor is connected.
 /// - [`find_monitor_by_direction`] returns `None`.
 pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
@@ -86,6 +90,9 @@ pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
 /// Move a floating client to `target_id`, preserving its relative position.
 fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     // Snapshot source geometry before transfer_client() transfers ownership.
     let (
         client_x,

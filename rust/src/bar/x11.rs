@@ -116,6 +116,9 @@ pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
 }
 
 pub fn update_bars(ctx: &mut WmCtx) {
+    if ctx.x11_conn().is_none() {
+        return;
+    }
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bh = ctx.g.cfg.bar_height;
         let showsystray = ctx.g.cfg.showsystray;

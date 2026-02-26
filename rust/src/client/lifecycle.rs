@@ -29,6 +29,7 @@
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
 use crate::animation::animate_client;
+use crate::backend::BackendKind;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
@@ -60,6 +61,9 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
 ///
 pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let x11_win: Window = w.into();
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
@@ -408,6 +412,9 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
 
     // Clear overlay and fullscreen references so those code paths don't hold
@@ -488,6 +495,9 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return BROKEN.to_string();
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return BROKEN.to_string();
     };
@@ -563,6 +573,9 @@ pub fn get_transient_for_hint(w: WindowId) -> Option<WindowId> {
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
 fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -597,6 +610,9 @@ fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
 }
 
 fn get_transient_for_hint_ctx(ctx: &WmCtx, w: WindowId) -> Option<WindowId> {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return None;
+    }
     let conn = ctx.x11_conn().map(|x11| x11.conn)?;
     let x11_win: Window = w.into();
 

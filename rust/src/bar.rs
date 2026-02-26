@@ -6,6 +6,7 @@ pub mod x11;
 pub use model::{bar_position_at_x, bar_position_to_gesture};
 pub use x11::{resize_bar_win, resize_bar_win_ctx};
 
+use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 use crate::types::*;
 use model::ClientBarStats;
@@ -63,6 +64,9 @@ pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
 }
 
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     ctx.bar.recursion_enter();
 
     let m_info = match ctx.g.monitor(mon_idx) {
@@ -183,6 +187,9 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let indices: Vec<usize> = ctx.g.monitors_iter().map(|(i, _)| i).collect();
     for i in indices {
         draw_bar(ctx, i);
@@ -190,6 +197,9 @@ pub fn draw_bars(ctx: &mut WmCtx) {
 }
 
 pub fn reset_bar(ctx: &mut WmCtx) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let selmon_idx = ctx.g.selmon_id();
 
     let should_reset = ctx

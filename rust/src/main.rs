@@ -29,11 +29,16 @@ mod xresources;
 use clap::{Parser, ValueEnum};
 use libc::{setlocale, LC_CTYPE};
 use std::process::exit;
+use std::sync::Arc;
+use std::time::Duration;
 
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
+use crate::backend::wayland::compositor::{
+    KeyboardFocusTarget, PointerFocusTarget, WaylandClientState, WaylandState,
+};
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
@@ -43,6 +48,19 @@ use crate::globals::XlibDisplay;
 use crate::types::*;
 use crate::wm::Wm;
 use crate::xresources::list_xresources;
+use crate::{keyboard, monitor};
+use smithay::backend::input::InputEvent;
+use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::winit::{self, WinitEvent};
+use smithay::desktop::render_output;
+use smithay::input::keyboard::FilterResult;
+use smithay::output::Mode as OutputMode;
+use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::wayland_server::Display;
+use smithay::utils::{Point, Transform, SERIAL_COUNTER};
+use smithay::wayland::socket::ListeningSocketSource;
+use winit::platform::pump_events::PumpStatus;
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -109,20 +127,240 @@ fn run_x11() {
     crate::events::cleanup(&mut wm);
 }
 
-#[cfg(feature = "wayland_backend")]
 fn run_wayland() -> ! {
-    let _wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
-    eprintln!("instantwm: Wayland backend is not wired yet.");
-    exit(1);
+    let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
+    init_wayland_globals(&mut wm);
+    run_autostart();
+
+    let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("wayland event loop");
+    let loop_handle = event_loop.handle();
+
+    let display: Display<WaylandState> = Display::new().expect("wayland display");
+    let mut display_handle = display.handle();
+    let mut state = WaylandState::new(display, &loop_handle);
+    if let WmBackend::Wayland(ref wayland) = wm.backend {
+        wayland.attach_state(&mut state);
+    }
+
+    let (mut backend, mut winit_loop) =
+        winit::init::<GlesRenderer>().expect("failed to init winit backend");
+    let output_size = backend.window_size();
+    wm.g.cfg.screen_width = output_size.w;
+    wm.g.cfg.screen_height = output_size.h;
+    monitor::update_geom_ctx(&mut wm.ctx());
+
+    let output = state.create_output("winit", output_size.w, output_size.h);
+    let mut damage_tracker = OutputDamageTracker::from_output(&output);
+
+    let mut seat = state.seat.clone();
+    let keyboard_handle = seat.get_keyboard().expect("keyboard missing from seat");
+    let pointer_handle = seat.get_pointer().expect("pointer missing from seat");
+
+    let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
+    let socket_name = listening_socket
+        .socket_name()
+        .to_string_lossy()
+        .into_owned();
+    std::env::set_var("WAYLAND_DISPLAY", &socket_name);
+
+    loop_handle
+        .insert_source(listening_socket, |client, _, data| {
+            let _ = data
+                .display_handle
+                .insert_client(client, Arc::new(WaylandClientState::default()));
+        })
+        .expect("listening socket source");
+
+    let start_time = std::time::Instant::now();
+    let mut pointer_location = Point::from((0.0, 0.0));
+
+    let loop_signal: LoopSignal = event_loop.get_signal();
+    event_loop
+        .run(Duration::from_millis(16), &mut state, move |state| {
+            let status = winit_loop.dispatch_new_events(|event| match event {
+                WinitEvent::Resized { size, .. } => {
+                    let mode = OutputMode {
+                        size: size.into(),
+                        refresh: 60_000,
+                    };
+                    wm.g.cfg.screen_width = size.w;
+                    wm.g.cfg.screen_height = size.h;
+                    monitor::update_geom_ctx(&mut wm.ctx());
+                    output.change_current_state(
+                        Some(mode),
+                        Some(Transform::Normal),
+                        None,
+                        Some((0, 0).into()),
+                    );
+                    output.set_preferred(mode);
+                }
+                WinitEvent::Input(event) => match event {
+                    InputEvent::Keyboard { event } => {
+                        let serial = SERIAL_COUNTER.next_serial();
+                        keyboard_handle.input(
+                            state,
+                            event.key_code(),
+                            event.state(),
+                            serial,
+                            event.time() as u32,
+                            |_, modifiers, keysym| {
+                                if event.state() == smithay::backend::input::KeyState::Pressed {
+                                    let mod_mask = modifiers_to_x11_mask(modifiers);
+                                    let mut ctx = wm.ctx();
+                                    if keyboard::handle_keysym(
+                                        &mut ctx,
+                                        keysym.modified_sym() as u32,
+                                        mod_mask,
+                                    ) {
+                                        return FilterResult::Intercept(());
+                                    }
+                                }
+                                FilterResult::Forward
+                            },
+                        );
+                    }
+                    InputEvent::PointerMotionAbsolute { event } => {
+                        let size = backend.window_size();
+                        let x = event.x_transformed(size.w);
+                        let y = event.y_transformed(size.h);
+                        pointer_location = Point::from((x, y));
+
+                        let (focus, keyboard_focus) =
+                            match state.space.element_under(pointer_location) {
+                                Some((window, location)) => {
+                                    let keyboard_focus =
+                                        Some(KeyboardFocusTarget::Window(window.clone()));
+                                    let focus = window.wl_surface().map(|surface| {
+                                        (PointerFocusTarget::WlSurface(surface), location.to_f64())
+                                    });
+                                    (focus, keyboard_focus)
+                                }
+                                None => (None, None),
+                            };
+
+                        let serial = SERIAL_COUNTER.next_serial();
+                        let motion = smithay::input::pointer::MotionEvent {
+                            location: pointer_location,
+                            serial,
+                            time: event.time() as u32,
+                        };
+                        pointer_handle.motion(state, focus, &motion);
+                        keyboard_handle.set_focus(state, keyboard_focus, serial);
+                    }
+                    InputEvent::PointerButton { event } => {
+                        let serial = SERIAL_COUNTER.next_serial();
+                        let button = smithay::input::pointer::ButtonEvent {
+                            serial,
+                            time: event.time() as u32,
+                            button: event.button_code(),
+                            state: event.state(),
+                        };
+                        pointer_handle.button(state, &button);
+                    }
+                    InputEvent::PointerAxis { event } => {
+                        let mut frame =
+                            smithay::input::pointer::AxisFrame::new(event.time() as u32);
+                        frame = frame.source(event.source());
+                        if let Some(amount) = event.amount(smithay::backend::input::Axis::Vertical)
+                        {
+                            frame = frame.value(smithay::backend::input::Axis::Vertical, amount);
+                        }
+                        if let Some(amount) =
+                            event.amount(smithay::backend::input::Axis::Horizontal)
+                        {
+                            frame = frame.value(smithay::backend::input::Axis::Horizontal, amount);
+                        }
+                        if let Some(steps) =
+                            event.amount_v120(smithay::backend::input::Axis::Vertical)
+                        {
+                            frame =
+                                frame.v120(smithay::backend::input::Axis::Vertical, steps as i32);
+                        }
+                        if let Some(steps) =
+                            event.amount_v120(smithay::backend::input::Axis::Horizontal)
+                        {
+                            frame =
+                                frame.v120(smithay::backend::input::Axis::Horizontal, steps as i32);
+                        }
+                        pointer_handle.axis(state, frame);
+                    }
+                    _ => {}
+                },
+                WinitEvent::CloseRequested => {
+                    loop_signal.stop();
+                }
+                _ => {}
+            });
+
+            if matches!(status, PumpStatus::Exit(_)) {
+                loop_signal.stop();
+                return;
+            }
+
+            state.sync_space_from_globals();
+            let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
+            let age = backend.buffer_age().unwrap_or(0);
+            let render_result = render_output(
+                &output,
+                renderer,
+                &mut framebuffer,
+                1.0,
+                age,
+                [&state.space],
+                &[],
+                &mut damage_tracker,
+                [0.05, 0.05, 0.07, 1.0],
+            )
+            .expect("render output");
+
+            let _ = backend.submit(render_result.damage.map(|d| d.as_slice()));
+
+            let time = start_time.elapsed();
+            for window in state.space.elements() {
+                if let Some(surface) = window.wl_surface() {
+                    smithay::desktop::wayland::utils::send_frames_surface_tree(
+                        &surface,
+                        &output,
+                        time,
+                        Some(Duration::from_millis(16)),
+                        smithay::desktop::wayland::utils::surface_primary_scanout_output,
+                    );
+                }
+            }
+
+            if display_handle.flush_clients().is_err() {
+                loop_signal.stop();
+            }
+        })
+        .expect("wayland event loop run");
+    exit(0);
 }
 
-#[cfg(not(feature = "wayland_backend"))]
-fn run_wayland() -> ! {
-    let _wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
-    eprintln!(
-        "instantwm: Wayland backend requested but not enabled. Rebuild with --features wayland_backend.",
-    );
-    exit(1);
+fn init_wayland_globals(wm: &mut Wm) {
+    let cfg = init_config();
+    wm.g.cfg.screen_width = 1280;
+    wm.g.cfg.screen_height = 800;
+    crate::globals::update_config_from_config(&cfg);
+    crate::globals::init_tags_from_config(&cfg);
+    wm.g.cfg.numlockmask = 0;
+    monitor::update_geom_ctx(&mut wm.ctx());
+}
+
+fn modifiers_to_x11_mask(mods: &smithay::input::keyboard::ModifiersState) -> u32 {
+    let mut mask = 0u32;
+    if mods.shift {
+        mask |= crate::config::SHIFT;
+    }
+    if mods.ctrl {
+        mask |= crate::config::CONTROL;
+    }
+    if mods.alt {
+        mask |= crate::config::MOD1;
+    }
+    if mods.logo {
+        mask |= crate::config::MODKEY;
+    }
+    mask
 }
 
 fn set_locale() -> Result<(), ()> {
@@ -138,11 +376,14 @@ fn set_locale() -> Result<(), ()> {
 fn wm_init(wm: &mut Wm) {
     setup_signal_handlers();
 
-    let screen_num = wm.x11().screen_num;
-    let screen = wm.x11().conn.setup().roots[screen_num].clone();
+    let Some(x11) = wm.backend.x11() else {
+        return;
+    };
+    let screen_num = x11.screen_num;
+    let screen = x11.conn.setup().roots[screen_num].clone();
     let root = screen.root;
 
-    crate::events::check_other_wm(&wm.x11().conn, root);
+    crate::events::check_other_wm(&x11.conn, root);
 
     init_globals(wm, screen_num, root, &screen);
 
@@ -151,7 +392,7 @@ fn wm_init(wm: &mut Wm) {
         crate::xresources::load_xresources(&mut ctx);
     }
 
-    let conn = &wm.x11().conn;
+    let conn = &x11.conn;
     init_atoms(&mut wm.g, conn);
     init_drw_and_schemes(wm);
 
@@ -266,6 +507,9 @@ fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
 }
 
 fn init_drw_and_schemes(wm: &mut Wm) {
+    if wm.backend.x11().is_none() {
+        return;
+    }
     let mut drw = match Drw::new(None) {
         Ok(d) => d,
         Err(_) => die("instantwm: cannot create drawing context"),

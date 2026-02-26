@@ -13,6 +13,7 @@
 //! * [`grab_buttons`]  – (un)grab mouse buttons on a client depending on
 //!                       whether it is currently focused.
 
+use crate::backend::BackendKind;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::WmCtx;
 use crate::types::WindowId;
@@ -40,6 +41,9 @@ pub struct FocusState {
 /// `ConfigureRequest`.  We send it after every [`super::geometry::resize_client`]
 /// call.
 pub fn configure(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -90,6 +94,9 @@ pub fn send_event(
     d3: i64,
     d4: i64,
 ) -> bool {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return false;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return false;
     };
@@ -135,6 +142,9 @@ pub fn send_event(
 /// `_NET_ACTIVE_WINDOW` on the root.  Also sends `WM_TAKE_FOCUS` so that
 /// clients using the "locally active" input model receive focus correctly.
 pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
     };
@@ -197,6 +207,9 @@ pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
 /// window and `_NET_ACTIVE_WINDOW` is deleted – this is used when no other
 /// client is taking focus.
 pub fn unfocus_win(ctx: &mut WmCtx, win: WindowId, redirect_to_root: bool) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     if win == WindowId::default() {
         return;
     }
@@ -237,6 +250,9 @@ pub fn unfocus_win(ctx: &mut WmCtx, win: WindowId, redirect_to_root: bool) {
 /// When `focused` is `true`, all button grabs are released so the client
 /// receives button events directly.
 pub fn grab_buttons(ctx: &mut WmCtx, win: WindowId, focused: bool) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -325,6 +341,9 @@ fn ungrab_button(
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
 pub fn clear_urgency_hint(ctx: &mut WmCtx, win: WindowId) {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };

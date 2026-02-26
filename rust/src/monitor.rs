@@ -533,7 +533,9 @@ pub fn update_geom() -> bool {
     // Recreate the legacy behavior by driving the ctx-based implementation with
     // global storage.
     let x11 = get_x11();
-    let conn = x11.conn();
+    let Some(conn) = x11.conn.as_ref() else {
+        return false;
+    };
     let g = get_globals_mut();
     let mut running = true;
     let mut bar = BarState::default();

@@ -58,6 +58,10 @@ use smithay::{
     xwayland::X11Wm,
 };
 
+use crate::client;
+use crate::globals::get_globals_mut;
+use crate::types::{Client as WmClient, Rect, WindowId};
+
 // ---------------------------------------------------------------------------
 // Focus target types
 // ---------------------------------------------------------------------------
@@ -525,7 +529,12 @@ pub struct WaylandState {
     // -- XWayland --
     pub xwm: Option<X11Wm>,
     pub xdisplay: Option<u32>,
+
+    next_window_id: u32,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowIdMarker(pub WindowId);
 
 impl WaylandState {
     /// Create a new `WaylandState` and register all Wayland globals.
@@ -582,6 +591,7 @@ impl WaylandState {
             seat,
             xwm: None,
             xdisplay: None,
+            next_window_id: 1,
         }
     }
 
@@ -618,6 +628,183 @@ impl WaylandState {
 
         output
     }
+
+    pub fn sync_space_from_globals(&mut self) {
+        let g = get_globals_mut();
+        for window in self.space.elements().cloned().collect::<Vec<_>>() {
+            if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
+                if let Some(client) = g.clients.get(&marker.0) {
+                    self.space
+                        .map_element(window.clone(), (client.geo.x, client.geo.y), false);
+                    if let Some(toplevel) = window.toplevel() {
+                        let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
+                            client.geo.w.max(1),
+                            client.geo.h.max(1),
+                        );
+                        toplevel.with_pending_state(|state| {
+                            state.size = Some(size);
+                        });
+                        toplevel.send_pending_configure();
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn map_new_toplevel(&mut self, surface: ToplevelSurface) -> WindowId {
+        let window = Window::new_wayland_window(surface);
+        let window_id = self.alloc_window_id();
+        let _ = window
+            .user_data()
+            .get_or_insert_threadsafe(|| WindowIdMarker(window_id));
+
+        self.space.map_element(window.clone(), (0, 0), true);
+        self.ensure_client_for_window(window_id);
+        window_id
+    }
+
+    pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
+        if let Some(element) = self.find_window(window).cloned() {
+            self.space.map_element(element, (rect.x, rect.y), false);
+            if let Some(toplevel) = element.toplevel() {
+                let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
+                    rect.w.max(1),
+                    rect.h.max(1),
+                );
+                toplevel.with_pending_state(|state| {
+                    state.size = Some(size);
+                });
+                toplevel.send_pending_configure();
+            }
+        }
+    }
+
+    pub fn raise_window(&mut self, window: WindowId) {
+        if let Some(element) = self.find_window(window) {
+            self.space.raise_element(element, true);
+            if element.set_activated(true) {
+                if let Some(toplevel) = element.toplevel() {
+                    toplevel.send_pending_configure();
+                }
+            }
+        }
+    }
+
+    pub fn restack(&mut self, windows: &[WindowId]) {
+        for window in windows {
+            if let Some(element) = self.find_window(*window) {
+                self.space.raise_element(element, false);
+            }
+        }
+    }
+
+    pub fn set_focus(&mut self, window: WindowId) {
+        let serial = SERIAL_COUNTER.next_serial();
+        let focus = self
+            .find_window(window)
+            .cloned()
+            .map(KeyboardFocusTarget::Window);
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, focus, serial);
+        }
+        if let Some(pointer) = self.seat.get_pointer() {
+            if let Some(window) = self.find_window(window) {
+                if let Some(surface) = window.wl_surface() {
+                    let location = self
+                        .space
+                        .element_location(window)
+                        .unwrap_or((0, 0).into())
+                        .to_f64();
+                    let focus = Some((
+                        PointerFocusTarget::WlSurface(surface.into_owned()),
+                        location,
+                    ));
+                    let motion = smithay::input::pointer::MotionEvent {
+                        location,
+                        serial,
+                        time: 0,
+                    };
+                    pointer.motion(self, focus, &motion);
+                }
+            }
+        }
+    }
+
+    pub fn map_window(&mut self, window: WindowId) {
+        if let Some(element) = self.find_window(window).cloned() {
+            let loc = self
+                .space
+                .element_location(&element)
+                .unwrap_or((0, 0).into());
+            self.space.map_element(element, loc, false);
+        }
+    }
+
+    pub fn unmap_window(&mut self, window: WindowId) {
+        if let Some(element) = self.find_window(window) {
+            self.space.unmap_elem(element);
+        }
+    }
+
+    pub fn flush(&mut self) {
+        self.space.refresh();
+        let _ = self.display_handle.flush_clients();
+    }
+
+    fn alloc_window_id(&mut self) -> WindowId {
+        loop {
+            let id = self.next_window_id;
+            self.next_window_id = self.next_window_id.wrapping_add(1).max(1);
+            let window_id = WindowId::from(id);
+            if !self
+                .space
+                .elements()
+                .any(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window_id))
+            {
+                return window_id;
+            }
+        }
+    }
+
+    fn find_window(&self, window: WindowId) -> Option<&Window> {
+        self.space
+            .elements()
+            .find(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window))
+    }
+
+    fn ensure_client_for_window(&mut self, window: WindowId) {
+        let g = get_globals_mut();
+        if g.clients.contains_key(&window) {
+            return;
+        }
+
+        let mon_id = g.selmon_id();
+        let geo = Rect {
+            x: 0,
+            y: 0,
+            w: g.cfg.screen_width.max(1),
+            h: g.cfg.screen_height.max(1),
+        };
+
+        let mut c = WmClient::default();
+        c.win = window;
+        c.geo = geo;
+        c.old_geo = geo;
+        c.float_geo = geo;
+        c.border_width = g.cfg.borderpx;
+        c.old_border_width = g.cfg.borderpx;
+        c.tags = 1;
+        c.mon_id = Some(mon_id);
+        g.clients.insert(window, c);
+        g.client_list.push(window.0 as usize);
+
+        let has_monitor = g.monitor(mon_id).is_some();
+        drop(g);
+        if has_monitor {
+            client::attach(window);
+            client::attach_stack(window);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -636,9 +823,15 @@ impl CompositorHandler for WaylandState {
             .compositor_state
     }
 
-    fn commit(&mut self, _surface: &WlSurface) {
-        // TODO: walk surface tree, send initial configure for new toplevels,
-        // refresh Space, schedule repaint.
+    fn commit(&mut self, surface: &WlSurface) {
+        if let Some(window) = self
+            .space
+            .elements()
+            .find(|w| w.wl_surface().as_deref() == Some(surface))
+            .cloned()
+        {
+            window.on_commit();
+        }
     }
 }
 
@@ -676,10 +869,7 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        // Wrap the toplevel in a Smithay Window and map it into the space.
-        // Smithay will send the initial configure on first commit.
-        let window = Window::new_wayland_window(surface);
-        self.space.map_element(window, (0, 0), true);
+        let _ = self.map_new_toplevel(surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -697,6 +887,18 @@ impl XdgShellHandler for WaylandState {
             .cloned()
         {
             self.space.unmap_elem(&window);
+            if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
+                let win = marker.0;
+                let g = get_globals_mut();
+                if g.clients.contains_key(&win) {
+                    drop(g);
+                    client::detach(win);
+                    client::detach_stack(win);
+                    let g = get_globals_mut();
+                    g.clients.remove(&win);
+                    g.client_list.retain(|id| *id != win.0 as usize);
+                }
+            }
         }
     }
 
