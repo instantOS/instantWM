@@ -5,11 +5,11 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use x11rb::protocol::xproto::Window;
-
 use crate::contexts::WmCtx;
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
+
+pub type WindowHandle = x11rb::protocol::xproto::Window;
 
 /// Arguments passed to a button action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,7 +137,7 @@ pub struct ResourcePref {
 #[derive(Debug, Clone)]
 pub struct Systray {
     /// Tray window handle.
-    pub win: Window,
+    pub win: WindowHandle,
     /// List of tray icon windows.
-    pub icons: Vec<Window>,
+    pub icons: Vec<WindowHandle>,
 }

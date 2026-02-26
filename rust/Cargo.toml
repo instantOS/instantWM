@@ -17,6 +17,7 @@ bitflags = "2.4"
 thiserror = "1.0"
 once_cell = "1.19"
 anyhow = "1.0"
+log = "0.4"
 
 [build-dependencies]
 

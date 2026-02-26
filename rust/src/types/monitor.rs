@@ -4,8 +4,6 @@
 
 use std::collections::HashMap;
 
-use x11rb::protocol::xproto::Window;
-
 use crate::layouts::LayoutKind;
 use crate::types::client::{Client, ClientListIter, ClientStackIter};
 use crate::types::geometry::Rect;
@@ -14,6 +12,7 @@ use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
 use crate::types::tag_types::MonitorDirection;
 use crate::types::TagMask;
+use crate::types::WindowHandle;
 
 /// Internal state of a monitor (screen) in the window manager.
 ///
@@ -64,7 +63,7 @@ pub struct Monitor {
     /// Current gesture state.
     pub gesture: Gesture,
     /// Bar window handle.
-    pub barwin: Window,
+    pub barwin: WindowHandle,
     /// Which tags to show.
     pub showtags: u32,
     /// Current tag index (1-based).
@@ -74,15 +73,15 @@ pub struct Monitor {
     /// Tags owned by this monitor.
     pub tags: Vec<Tag>,
     /// Head of client list (focus order).
-    pub clients: Option<Window>,
+    pub clients: Option<WindowHandle>,
     /// Currently selected client.
-    pub sel: Option<Window>,
+    pub sel: Option<WindowHandle>,
     /// Overlay window.
-    pub overlay: Option<Window>,
+    pub overlay: Option<WindowHandle>,
     /// Head of stack list (stacking order).
-    pub stack: Option<Window>,
+    pub stack: Option<WindowHandle>,
     /// Currently fullscreen client.
-    pub fullscreen: Option<Window>,
+    pub fullscreen: Option<WindowHandle>,
 }
 
 impl Default for Monitor {
@@ -170,13 +169,19 @@ impl Monitor {
 
     /// Iterate the monitor's client list (focus order).
     #[inline]
-    pub fn iter_clients<'a>(&'a self, clients: &'a HashMap<Window, Client>) -> ClientListIter<'a> {
+    pub fn iter_clients<'a>(
+        &'a self,
+        clients: &'a HashMap<WindowHandle, Client>,
+    ) -> ClientListIter<'a> {
         ClientListIter::new(self.clients, clients)
     }
 
     /// Iterate the monitor's stack list (stacking order).
     #[inline]
-    pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<Window, Client>) -> ClientStackIter<'a> {
+    pub fn iter_stack<'a>(
+        &'a self,
+        clients: &'a HashMap<WindowHandle, Client>,
+    ) -> ClientStackIter<'a> {
         ClientStackIter::new(self.stack, clients)
     }
 

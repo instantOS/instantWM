@@ -40,7 +40,7 @@ use crate::client::state::{
     update_wm_hints,
 };
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::globals::get_x11;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect};

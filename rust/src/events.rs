@@ -6,7 +6,7 @@ use crate::client::{
 };
 use crate::commands::x_command;
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };

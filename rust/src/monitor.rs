@@ -31,7 +31,7 @@ use crate::client::{
     win_to_client as get_win_to_client,
 };
 use crate::contexts::WmCtx;
-use crate::focus::{focus, warp_cursor_to_client};
+use crate::focus::warp_cursor_to_client;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::*;
 use x11rb::protocol::xproto::Window;

@@ -10,7 +10,7 @@
 //! the invariants of both lists are maintained in one place.
 
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use x11rb::protocol::xproto::Window;
 

@@ -1,6 +1,6 @@
 use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx};
 use crate::contexts::WmCtx;
-use crate::focus::{focus, warp_cursor_to_client};
+use crate::focus::warp_cursor_to_client;
 use crate::layouts::{arrange, restack};
 use crate::types::*;
 use x11rb::connection::Connection;

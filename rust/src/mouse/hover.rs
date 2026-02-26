@@ -14,7 +14,7 @@
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::mouse::warp::warp_into;
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -273,10 +273,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     let Some((px, py)) = get_root_ptr(ctx) else {
         return false;
     };
-    let sel = ctx.g.selected_win();
-    let info = sel
-        .and_then(|w| ctx.g.clients.get(&w))
-        .map(|c| (c.isfloating, c.geo));
+    let _sel = ctx.g.selected_win();
     let in_border = is_in_resize_border(ctx, px, py);
     if !in_border {
         return false;

@@ -1,7 +1,7 @@
 //! Moving clients between tags.
 
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect};

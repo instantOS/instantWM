@@ -4,7 +4,7 @@ use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, 
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
 use crate::constants::overlay::*;
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;

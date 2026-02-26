@@ -1,7 +1,7 @@
 //! View (workspace) navigation.
 
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, SCRATCHPAD_MASK};
 use x11rb::protocol::xproto::ConnectionExt;

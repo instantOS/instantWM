@@ -746,23 +746,23 @@ impl Drw {
         }
 
         // ── Extract scheme colors (render path only) ─────────────────────────
-        let (fg_pixel, bg_pixel, detail_pixel, fg_color, bg_color);
-        if render {
+        let mut fg_pixel: u32 = 0;
+        let mut bg_pixel: u32 = 0;
+        let mut detail_pixel: u32 = 0;
+        let (fg_color, bg_color): (Option<XftColor>, Option<XftColor>) = if render {
             let Some(ref scheme) = self.scheme else {
                 return 0;
             };
             fg_pixel = scheme[COL_FG].pixel();
             bg_pixel = scheme[COL_BG].pixel();
             detail_pixel = scheme[COL_DETAIL].pixel();
-            fg_color = scheme[COL_FG].color.clone();
-            bg_color = scheme[COL_BG].color.clone();
+            (
+                Some(scheme[COL_FG].color.clone()),
+                Some(scheme[COL_BG].color.clone()),
+            )
         } else {
-            fg_pixel = 0;
-            bg_pixel = 0;
-            detail_pixel = 0;
-            fg_color = unsafe { std::mem::zeroed() };
-            bg_color = unsafe { std::mem::zeroed() };
-        }
+            (None, None)
+        };
 
         // ── Prepare background + Xft draw surface ────────────────────────────
         let mut d: *mut XftDraw = ptr::null_mut();
@@ -795,8 +795,8 @@ impl Drw {
             invert,
             detail_height,
             render,
-            &fg_color,
-            &bg_color,
+            fg_color.as_ref(),
+            bg_color.as_ref(),
         );
 
         // ── Tear down Xft draw surface ────────────────────────────────────────
@@ -819,8 +819,8 @@ impl Drw {
         invert: bool,
         detail_height: i32,
         render: bool,
-        fg_color: &XftColor,
-        bg_color: &XftColor,
+        fg_color: Option<&XftColor>,
+        bg_color: Option<&XftColor>,
     ) -> (i32, u32) {
         let text_bytes = text.as_bytes();
         let mut text_pos: usize = 0;
@@ -904,6 +904,10 @@ impl Drw {
             // ── Render the accumulated run ───────────────────────────────────
             if utf8strlen > 0 {
                 if render {
+                    let fg_color =
+                        fg_color.expect("text_run_loop: fg_color required in render mode");
+                    let bg_color =
+                        bg_color.expect("text_run_loop: bg_color required in render mode");
                     let f = self.fonts.as_ref().unwrap().get(usedfont_idx).unwrap();
                     let ty = y + ((h as i32 - f.h as i32) / 2) + f.ascent();
 

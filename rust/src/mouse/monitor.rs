@@ -18,7 +18,7 @@
 
 use crate::client::unfocus_win;
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::monitor::transfer_client;
 use crate::types::*;
 use x11rb::protocol::xproto::*;

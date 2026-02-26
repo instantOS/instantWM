@@ -1,7 +1,7 @@
 use crate::client::list::{attach_ctx, detach_ctx};
 use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
-use crate::focus::focus;
+// focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 pub use crate::layouts::query::client_count;
 use x11rb::protocol::xproto::Window;
