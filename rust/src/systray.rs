@@ -158,12 +158,15 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: WindowId, ev: &Prope
         return;
     }
 
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
+
     let xembed_info_atom = ctx.g.cfg.xatom.xembed_info;
     if ev.atom != xembed_info_atom {
         return;
     }
 
-    let conn = ctx.x11.conn;
     let x11_icon_win: Window = icon_win.into();
 
     let flags = get_atom_prop(ctx, icon_win, xembed_info_atom);
@@ -233,6 +236,10 @@ pub fn update_systray(ctx: &mut WmCtx) {
         return;
     }
 
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
+
     // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
     unsafe {
         crate::drw::XFlush(ctx.g.cfg.xlibdisplay.0);
@@ -255,8 +262,6 @@ pub fn update_systray(ctx: &mut WmCtx) {
     let mut w: u32 = 1;
 
     let systray_exists = ctx.g.systray.is_some();
-
-    let conn = ctx.x11.conn;
 
     if !systray_exists {
         let root = ctx.g.cfg.root;
@@ -459,7 +464,9 @@ pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
 
 /// Get atom property using dependency injection.
 fn get_atom_prop(ctx: &mut WmCtx, win: WindowId, atom: u32) -> u32 {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return 0;
+    };
     let x11_win: Window = win.into();
     if let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 2) {
         if let Ok(reply) = cookie.reply() {
@@ -483,7 +490,9 @@ fn send_event(
     d3: i64,
     d4: i64,
 ) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
     let event = ClientMessageEvent {
         response_type: CLIENT_MESSAGE_EVENT,

@@ -172,10 +172,11 @@ fn force_close(ctx: &mut WmCtx, win: WindowId, wmatom_delete: u32) {
     );
 
     if !sent {
-        let conn = ctx.x11.conn;
-        let _ = conn.grab_server();
-        let _ = conn.kill_client(x11_win);
-        let _ = conn.ungrab_server();
-        let _ = conn.flush();
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.grab_server();
+            let _ = conn.kill_client(x11_win);
+            let _ = conn.ungrab_server();
+            let _ = conn.flush();
+        }
     }
 }

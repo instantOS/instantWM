@@ -8,6 +8,9 @@ use x11rb::protocol::xproto::Window;
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn update_status(ctx: &mut WmCtx) {
+    if ctx.x11_conn().is_none() {
+        return;
+    }
     let root = ctx.g.cfg.root;
 
     let text = get_text_prop(ctx, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
@@ -98,7 +101,9 @@ pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
         w = w.saturating_sub(crate::systray::get_systray_width(ctx));
     }
 
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_barwin: Window = m.barwin.into();
     let _ = conn.configure_window(
         x11_barwin,
@@ -220,7 +225,7 @@ pub fn toggle_bar() {
 }
 
 fn get_text_prop(ctx: &WmCtx, win: Window, atom: u32) -> Option<String> {
-    let conn = ctx.x11.conn;
+    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
     let reply = conn
         .get_property(
             false,

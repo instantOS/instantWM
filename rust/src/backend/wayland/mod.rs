@@ -53,6 +53,35 @@
 #[cfg(feature = "wayland_backend")]
 pub mod compositor;
 
-#[cfg(not(feature = "wayland_backend"))]
-/// Placeholder when the wayland_backend feature is disabled.
+use crate::backend::{BackendKind, BackendOps};
+use crate::types::{Rect, WindowId};
+
+/// Wayland backend placeholder/state wrapper.
+#[derive(Default)]
 pub struct WaylandBackend;
+
+impl WaylandBackend {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl BackendOps for WaylandBackend {
+    fn kind(&self) -> BackendKind {
+        BackendKind::Wayland
+    }
+
+    fn resize_window(&self, _window: WindowId, _rect: Rect) {}
+
+    fn raise_window(&self, _window: WindowId) {}
+
+    fn restack(&self, _windows: &[WindowId]) {}
+
+    fn set_focus(&self, _window: WindowId) {}
+
+    fn map_window(&self, _window: WindowId) {}
+
+    fn unmap_window(&self, _window: WindowId) {}
+
+    fn flush(&self) {}
+}

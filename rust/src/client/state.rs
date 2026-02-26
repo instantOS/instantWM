@@ -40,7 +40,9 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `state` should be one of the `WM_STATE_*` constants from
 /// [`crate::client::constants`].
 pub fn set_client_state(ctx: &WmCtx, win: WindowId, state: i32) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
 
     // WM_STATE is a pair of CARD32 values: [state, icon_pixmap].
@@ -68,7 +70,9 @@ pub fn set_client_state(ctx: &WmCtx, win: WindowId, state: i32) {
 /// External tools (e.g. `instantmenu`) can read this to know which tags and
 /// monitor a window belongs to without querying the WM over IPC.
 pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
     let Some(c) = ctx.g.clients.get(&win) else {
         return;
@@ -103,7 +107,9 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
 /// focus order.  Clients are appended in the order they appear in the list,
 /// which matches the order used by most EWMH-aware taskbars.
 pub fn update_client_list(ctx: &WmCtx) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
 
     // Delete the existing property first so we start with a clean slate.
     let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.client_list);
@@ -146,7 +152,9 @@ pub fn update_title(ctx: &mut WmCtx, win: WindowId) {
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
 /// or [`BROKEN`] if both are absent / unreadable.
 fn read_window_title(ctx: &WmCtx, win: WindowId) -> String {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return BROKEN.to_string();
+    };
     let x11_win: Window = win.into();
     let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
@@ -197,7 +205,9 @@ fn read_window_title(ctx: &WmCtx, win: WindowId) -> String {
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
 pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
 
     // --- Read WM_CLASS -------------------------------------------------------
@@ -395,7 +405,9 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
 pub fn update_window_type(ctx: &mut WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
     let state = get_atom_prop(conn, x11_win, ctx.g.cfg.netatom.wm_state);
     let wtype = get_atom_prop(conn, x11_win, ctx.g.cfg.netatom.wm_window_type);
@@ -424,7 +436,9 @@ pub fn update_window_type(ctx: &mut WmCtx, win: WindowId) {
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
 pub fn update_wm_hints(ctx: &mut WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
 
     let Ok(cookie) =
@@ -470,7 +484,9 @@ pub fn update_wm_hints(ctx: &mut WmCtx, win: WindowId) {
 /// This function is currently reserved for future EWMH compliance use but is
 /// kept here so the property plumbing is in one place.
 pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
 
     // Update the internal flag first.
@@ -535,7 +551,9 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: WindowId) {
 
     let motif_atom = ctx.g.cfg.motifatom;
     let borderpx = ctx.g.cfg.borderpx;
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
 
     let Ok(cookie) = conn.get_property(false, x11_win, motif_atom, motif_atom, 0, 5) else {

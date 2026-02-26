@@ -34,7 +34,9 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
+use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
+use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
@@ -54,7 +56,7 @@ const XC_TOP_LEFT_CORNER: u32 = 134;
 const XC_TOP_RIGHT_CORNER: u32 = 136;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
-enum Backend {
+enum CliBackend {
     X11,
     Wayland,
 }
@@ -65,8 +67,8 @@ struct Cli {
     #[arg(short = 'X', long = "xresources")]
     xresources: bool,
 
-    #[arg(long, value_enum, default_value_t = Backend::X11)]
-    backend: Backend,
+    #[arg(long, value_enum, default_value_t = CliBackend::X11)]
+    backend: CliBackend,
 }
 
 fn main() {
@@ -82,8 +84,8 @@ fn main() {
     }
 
     match cli.backend {
-        Backend::X11 => run_x11(),
-        Backend::Wayland => run_wayland(),
+        CliBackend::X11 => run_x11(),
+        CliBackend::Wayland => run_wayland(),
     }
 }
 
@@ -98,7 +100,7 @@ fn run_x11() {
         }
     };
 
-    let mut wm = Wm::new(X11Backend::new(conn, screen_num));
+    let mut wm = Wm::new(WmBackend::X11(X11Backend::new(conn, screen_num)));
     wm_init(&mut wm);
     crate::events::setup(&mut wm);
     crate::events::scan(&mut wm);
@@ -109,12 +111,14 @@ fn run_x11() {
 
 #[cfg(feature = "wayland_backend")]
 fn run_wayland() -> ! {
+    let _wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     eprintln!("instantwm: Wayland backend is not wired yet.");
     exit(1);
 }
 
 #[cfg(not(feature = "wayland_backend"))]
 fn run_wayland() -> ! {
+    let _wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     eprintln!(
         "instantwm: Wayland backend requested but not enabled. Rebuild with --features wayland_backend.",
     );
@@ -134,11 +138,11 @@ fn set_locale() -> Result<(), ()> {
 fn wm_init(wm: &mut Wm) {
     setup_signal_handlers();
 
-    let screen_num = wm.x11.screen_num;
-    let screen = wm.x11.conn.setup().roots[screen_num].clone();
+    let screen_num = wm.x11().screen_num;
+    let screen = wm.x11().conn.setup().roots[screen_num].clone();
     let root = screen.root;
 
-    crate::events::check_other_wm(&wm.x11.conn, root);
+    crate::events::check_other_wm(&wm.x11().conn, root);
 
     init_globals(wm, screen_num, root, &screen);
 
@@ -147,7 +151,7 @@ fn wm_init(wm: &mut Wm) {
         crate::xresources::load_xresources(&mut ctx);
     }
 
-    let conn = &wm.x11.conn;
+    let conn = &wm.x11().conn;
     init_atoms(&mut wm.g, conn);
     init_drw_and_schemes(wm);
 

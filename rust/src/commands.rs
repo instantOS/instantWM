@@ -7,7 +7,9 @@ use x11rb::protocol::xproto::ConnectionExt;
 const COMMAND_INDICATOR: &[u8] = b"c;:;";
 
 pub fn x_command(ctx: &mut WmCtx) -> i32 {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return 0;
+    };
 
     let root = ctx.g.cfg.root;
 

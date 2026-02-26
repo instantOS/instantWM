@@ -9,6 +9,7 @@
 //! * [`update_size_hints`] / [`update_size_hints_win`] – read `WM_NORMAL_HINTS` from X.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
 
+use crate::backend::BackendKind;
 use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,
@@ -16,7 +17,6 @@ use crate::client::constants::{
 use crate::contexts::WmCtx;
 use crate::types::{Client, Rect, WindowId};
 use std::cmp::{max, min};
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -138,9 +138,6 @@ pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
 pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
-    let conn = ctx.x11.conn;
-    let x11_win: Window = win.into();
-
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         // Snapshot old geometry before overwriting.
         client.old_geo.x = client.geo.x;
@@ -152,23 +149,25 @@ pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
         client.geo.y = rect.y;
         client.geo.w = rect.w;
         client.geo.h = rect.h;
+    }
 
-        let border_width = client.border_width;
+    ctx.backend.resize_window(win, *rect);
 
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new()
-                .x(rect.x)
-                .y(rect.y)
-                .width(rect.w as u32)
-                .height(rect.h as u32)
-                .border_width(border_width as u32),
-        );
+    if ctx.backend_kind() == BackendKind::X11 {
+        if let Some(x11) = ctx.x11_conn() {
+            let x11_win: Window = win.into();
+            if let Some(border_width) = ctx.g.clients.get(&win).map(|c| c.border_width) {
+                let _ = x11.conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new().border_width(border_width as u32),
+                );
+            }
+        }
     }
 
     // Send a synthetic ConfigureNotify so the client knows its geometry.
     crate::client::focus::configure(ctx, win);
-    let _ = conn.flush();
+    ctx.backend.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +268,10 @@ pub fn apply_size_hints(
     }
     if *w < bh {
         *w = bh;
+    }
+
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return *x != old_x || *y != old_y || *w != old_w || *h != old_h;
     }
 
     let resizehints = cfg.resizehints;
@@ -392,7 +395,9 @@ pub fn apply_size_hints(
 /// The raw property is a packed C struct; we read individual 4-byte integers
 /// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
 pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
 
     let Some(c) = ctx.g.clients.get_mut(&win) else {
         return;

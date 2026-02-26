@@ -2,6 +2,7 @@
 //!
 //! Use a single context to avoid proliferation and keep dependencies explicit.
 
+use crate::backend::{BackendKind, BackendOps, BackendRef};
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
@@ -9,52 +10,50 @@ use x11rb::rust_connection::RustConnection;
 
 /// Unified WM context with globals and backend connection.
 ///
-/// Today `WmCtx` always carries an X11 connection, but it is intentionally
-/// structured so we can add a Wayland backend without rewriting all high-level
-/// code at once.
+/// `WmCtx` keeps backend access explicit while allowing X11-only code paths to
+/// opt-in to X11 connections when available.
 pub struct WmCtx<'a> {
     pub g: &'a mut Globals,
-    pub x11: X11Conn<'a>,
+    pub backend: BackendRef<'a>,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
     pub focus: &'a mut FocusState,
 }
 
-/// A guaranteed X11 connection reference.
-///
-/// This exists so call-sites can stay mostly unchanged (`ctx.x11.conn`).
+/// An X11 connection reference, available only for X11 backends.
 pub struct X11Conn<'a> {
     pub conn: &'a RustConnection,
     pub screen_num: usize,
 }
 
-/// Backend kind indicator.
-///
-/// This is a minimal hook so modules can start branching on backend capability
-/// while we progressively move X11 details behind an abstraction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackendKind {
-    X11,
-    Wayland,
-}
-
 impl<'a> WmCtx<'a> {
-    /// Create a new unified context with a guaranteed X11 connection.
+    /// Create a new unified context with a backend reference.
     pub fn new(
         g: &'a mut Globals,
-        conn: &'a RustConnection,
-        screen_num: usize,
+        backend: BackendRef<'a>,
         running: &'a mut bool,
         bar: &'a mut BarState,
         focus: &'a mut FocusState,
     ) -> Self {
         Self {
             g,
-            x11: X11Conn { conn, screen_num },
+            backend,
             running,
             bar,
             focus,
         }
+    }
+
+    pub fn x11_conn(&self) -> Option<X11Conn<'_>> {
+        self.backend
+            .x11_conn()
+            .map(|(conn, screen_num)| X11Conn { conn, screen_num })
+    }
+
+    pub fn with_x11_conn<T>(&self, f: impl FnOnce(&RustConnection, usize) -> T) -> Option<T> {
+        self.backend
+            .x11_conn()
+            .map(|(conn, screen_num)| f(conn, screen_num))
     }
 
     pub fn quit(&mut self) {
@@ -63,6 +62,6 @@ impl<'a> WmCtx<'a> {
 
     #[inline]
     pub fn backend_kind(&self) -> BackendKind {
-        BackendKind::X11
+        self.backend.kind()
     }
 }

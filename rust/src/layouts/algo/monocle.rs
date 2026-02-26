@@ -20,8 +20,6 @@ use crate::animation::animate_client;
 use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── raise the selected client so it is visible while we animate ───────
@@ -30,13 +28,8 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if is_animated {
         if let Some(mon) = ctx.g.selmon() {
             if let Some(sel_win) = mon.sel {
-                let conn = ctx.x11.conn;
-                let _ = configure_window(
-                    conn,
-                    sel_win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                );
-                let _ = conn.flush();
+                ctx.backend.raise_window(sel_win);
+                ctx.backend.flush();
             }
         }
     }

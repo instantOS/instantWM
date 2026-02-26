@@ -6,7 +6,7 @@ use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect, WindowId};
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
+use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
 pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     shift_tag(ctx, dir, offset.max(1));
@@ -101,10 +101,10 @@ fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    {
-        let conn = ctx.x11.conn;
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let x11_win: Window = win.into();
         let _ = conn.configure_window(
-            u32::from(win),
+            x11_win,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
         let _ = conn.flush();

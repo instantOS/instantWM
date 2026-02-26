@@ -357,13 +357,15 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, mon_id: Option<usize>) {
             // Raise the window if it is the focused one.
             let is_sel = ctx.g.selected_win() == Some(win);
             if is_sel {
-                let conn = ctx.x11.conn;
-                let _ = configure_window(
-                    conn,
-                    win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                );
-                let _ = conn.flush();
+                if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+                    let x11_win: Window = win.into();
+                    let _ = configure_window(
+                        conn,
+                        x11_win,
+                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                    );
+                    let _ = conn.flush();
+                }
             }
         }
     }

@@ -61,6 +61,9 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 ///
 pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
     let x11_win: Window = w.into();
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     // -------------------------------------------------------------------------
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
@@ -156,8 +159,6 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     };
 
     let bh = ctx.g.cfg.bar_height;
-    let conn = ctx.x11.conn;
-
     {
         let (isfloating, client_width, client_height) = ctx
             .g
@@ -426,7 +427,15 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
     detach_stack_ctx(ctx, win);
 
     if !destroyed {
-        let conn = ctx.x11.conn;
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            ctx.g.clients.remove(&win);
+            crate::focus::focus_soft(ctx, None);
+            update_client_list(ctx);
+            if let Some(mid) = mon_id {
+                arrange(ctx, Some(mid));
+            }
+            return;
+        };
         let x11_win: Window = win.into();
         let old_bw = ctx
             .g
@@ -479,7 +488,9 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return BROKEN.to_string();
+    };
     let x11_win: Window = win.into();
     let net_wm_name = ctx.g.cfg.netatom.wm_name;
 
@@ -552,7 +563,9 @@ pub fn get_transient_for_hint(w: WindowId) -> Option<WindowId> {
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
 fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = w.into();
 
     let client_info_atom = ctx.g.cfg.netatom.client_info;
@@ -584,7 +597,7 @@ fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
 }
 
 fn get_transient_for_hint_ctx(ctx: &WmCtx, w: WindowId) -> Option<WindowId> {
-    let conn = ctx.x11.conn;
+    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
     let x11_win: Window = w.into();
 
     conn.get_property(

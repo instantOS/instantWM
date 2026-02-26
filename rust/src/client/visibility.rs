@@ -23,7 +23,6 @@ use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -111,41 +110,18 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
         .unwrap_or(0);
     let is_vis = c.is_visible_on_tags(selected_tags);
     let snext = c.snext;
-
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
-    let x11_win: Window = win.into();
-    let x11_win: Window = current.into();
+    let geo = c.geo;
+    let (is_floating, is_fullscreen, is_fake_fullscreen, mon_id) =
+        (c.isfloating, c.is_fullscreen, c.isfakefullscreen, c.mon_id);
 
     if is_vis {
         // Move the window to its stored on-screen position.
-        let (x, y) = ctx
-            .g
-            .clients
-            .get(&current)
-            .map(|c| (c.geo.x, c.geo.y))
-            .unwrap_or((0, 0));
-        let _ = conn.configure_window(x11_win, &ConfigureWindowAux::new().x(x).y(y));
-        let _ = conn.flush();
+        let Rect { x, y, w, h } = geo;
+        ctx.backend.resize_window(current, Rect { x, y, w, h });
+        ctx.backend.flush();
 
         // For floating or non-tiling windows, also issue a full resize so the
         // stored geometry is reflected in the X server's window extents.
-        let (is_floating, is_fullscreen, is_fake_fullscreen, mon_id, w, h) = ctx
-            .g
-            .clients
-            .get(&current)
-            .map(|c| {
-                (
-                    c.isfloating,
-                    c.is_fullscreen,
-                    c.isfakefullscreen,
-                    c.mon_id,
-                    c.geo.w,
-                    c.geo.h,
-                )
-            })
-            .unwrap_or((false, false, false, None, 0, 0));
-
         let is_tiling = mon_id
             .and_then(|mid| ctx.g.monitor(mid))
             .map(|mon| mon.is_tiling_layout())
@@ -161,10 +137,18 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
         show_hide(ctx, snext);
 
         let w_val = ctx.g.clients.get(&current).map(client_width).unwrap_or(0);
-        let y = ctx.g.clients.get(&current).map(|c| c.geo.y).unwrap_or(0);
+        let y = geo.y;
 
-        let _ = conn.configure_window(x11_win, &ConfigureWindowAux::new().x(-2 * w_val).y(y));
-        let _ = conn.flush();
+        ctx.backend.resize_window(
+            current,
+            Rect {
+                x: -2 * w_val,
+                y,
+                w: geo.w,
+                h: geo.h,
+            },
+        );
+        ctx.backend.flush();
     }
 }
 
@@ -192,12 +176,8 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
         c.is_hidden = false;
     }
 
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let x11_win: Window = win.into();
-        let _ = conn.map_window(x11_win);
-        let _ = conn.flush();
-    }
+    ctx.backend.map_window(win);
+    ctx.backend.flush();
 
     set_client_state(ctx, win, WM_STATE_NORMAL);
 
@@ -205,14 +185,8 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // slides it down into place.
     resize(ctx, win, &Rect { x, y: -50, w, h }, false);
 
-    if let Some(ref conn) = x11.conn {
-        let x11_win: Window = win.into();
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
-        let _ = conn.flush();
-    }
+    ctx.backend.raise_window(win);
+    ctx.backend.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
     animate_client(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
@@ -262,32 +236,39 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         );
     }
 
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else { return };
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let x11_win: Window = win.into();
+        // Suppress UnmapNotify / DestroyNotify while we unmap so the event loop
+        // does not try to unmanage the client.
+        let _ = conn.grab_server();
 
-    // Suppress UnmapNotify / DestroyNotify while we unmap so the event loop
-    // does not try to unmanage the client.
-    let _ = conn.grab_server();
+        // Temporarily remove the event mask bits that would trigger an unmanage.
+        let root = get_globals().cfg.root;
+        suppress_unmap_events(conn, root, x11_win);
 
-    // Temporarily remove the event mask bits that would trigger an unmanage.
-    let root = get_globals().cfg.root;
-    suppress_unmap_events(conn, root, x11_win);
+        ctx.backend.unmap_window(win);
+        ctx.backend.flush();
 
-    let _ = conn.unmap_window(x11_win);
-    let _ = conn.flush();
+        set_client_state(ctx, win, WM_STATE_ICONIC);
 
-    set_client_state(ctx, win, WM_STATE_ICONIC);
+        // Set the cached flag now that WM_STATE is committed.
+        if let Some(c) = get_globals_mut().clients.get_mut(&win) {
+            c.is_hidden = true;
+        }
 
-    // Set the cached flag now that WM_STATE is committed.
-    if let Some(c) = get_globals_mut().clients.get_mut(&win) {
-        c.is_hidden = true;
+        // Restore event masks.
+        restore_event_masks(conn, root, x11_win);
+
+        let _ = conn.ungrab_server();
+        ctx.backend.flush();
+    } else {
+        ctx.backend.unmap_window(win);
+        ctx.backend.flush();
+        set_client_state(ctx, win, WM_STATE_ICONIC);
+        if let Some(c) = get_globals_mut().clients.get_mut(&win) {
+            c.is_hidden = true;
+        }
     }
-
-    // Restore event masks.
-    restore_event_masks(conn, root, x11_win);
-
-    let _ = conn.ungrab_server();
-    let _ = conn.flush();
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.

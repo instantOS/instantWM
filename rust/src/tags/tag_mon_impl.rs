@@ -17,7 +17,7 @@ use crate::monitor::transfer_client;
 use crate::types::monitor::find_monitor_by_direction;
 use crate::types::{MonitorDirection, WindowId};
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode};
+use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -165,11 +165,12 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     arrange(ctx, Some(ctx.g.selmon_id()));
 
     // Raise so the window is immediately visible on the new monitor.
-    let conn = ctx.x11.conn;
-    let x11_win: Window = win.into();
-    let _ = conn.configure_window(
-        x11_win,
-        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-    );
-    let _ = conn.flush();
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let x11_win: Window = win.into();
+        let _ = conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
+        let _ = conn.flush();
+    }
 }

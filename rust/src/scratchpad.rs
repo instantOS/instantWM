@@ -245,6 +245,10 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let root = ctx.g.cfg.root;
 
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
+
     if !name.is_empty() && name != "all" {
         let found = scratchpad_find(ctx, name);
         let visible = found
@@ -253,7 +257,6 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
 
-        let conn = ctx.x11.conn;
         let _ = conn.change_property(
             x11rb::protocol::xproto::PropMode::REPLACE,
             root,
@@ -290,7 +293,6 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
         status.push_str("none");
     }
 
-    let conn = ctx.x11.conn;
     let _ = conn.change_property(
         x11rb::protocol::xproto::PropMode::REPLACE,
         root,

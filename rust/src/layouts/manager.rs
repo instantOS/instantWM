@@ -7,7 +7,7 @@ use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
 use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
-use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
 use super::LayoutKind;
@@ -105,11 +105,13 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                 let new_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
 
                 if old_bw != new_bw && (is_floating || is_fullscreen) {
-                    let x11_win: Window = win.into();
-                    let _ = ctx.x11.conn.configure_window(
-                        x11_win,
-                        &ConfigureWindowAux::new().border_width(new_bw as u32),
-                    );
+                    if let Some(x11) = ctx.x11_conn() {
+                        let x11_win: Window = win.into();
+                        let _ = x11.conn.configure_window(
+                            x11_win,
+                            &ConfigureWindowAux::new().border_width(new_bw as u32),
+                        );
+                    }
                 }
             }
         }
@@ -194,55 +196,48 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         let m = ctx.g.monitor_mut(mon_id).expect("invalid monitor");
         (m.barwin, m.stack, m.selected_tags())
     };
-    {
-        let conn = ctx.x11.conn;
-        let is_floating = ctx
-            .g
-            .clients
-            .get(&sel_win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false);
+    let is_floating = ctx
+        .g
+        .clients
+        .get(&sel_win)
+        .map(|c| c.isfloating)
+        .unwrap_or(false);
 
-        if is_floating || !is_tiling {
-            let x11_sel_win: Window = sel_win.into();
-            let _ = configure_window(
-                conn,
-                x11_sel_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-        }
+    if is_floating {
+        ctx.backend.raise_window(sel_win);
+    }
 
-        if is_tiling {
-            let x11_barwin: Window = barwin.into();
-            let mut wc = ConfigureWindowAux::new()
-                .stack_mode(StackMode::BELOW)
-                .sibling(x11_barwin);
+    if !is_tiling {
+        ctx.backend.raise_window(sel_win);
+        ctx.backend.flush();
+        return;
+    }
 
-            let mut s_win = stack_head;
-            while let Some(win) = s_win {
-                match ctx.g.clients.get(&win) {
-                    None => break,
-                    Some(c) => {
-                        let is_win_floating = c.isfloating;
-                        let visible = c.is_visible_on_tags(selected_tags);
-                        let snext = c.snext;
+    let mut stack: Vec<WindowId> = Vec::new();
+    let mut s_win = stack_head;
+    while let Some(win) = s_win {
+        match ctx.g.clients.get(&win) {
+            None => break,
+            Some(c) => {
+                let is_win_floating = c.isfloating;
+                let visible = c.is_visible_on_tags(selected_tags);
+                let snext = c.snext;
 
-                        if !is_win_floating && visible {
-                            let x11_win: Window = win.into();
-                            let _ = configure_window(conn, x11_win, &wc);
-                            wc = ConfigureWindowAux::new()
-                                .stack_mode(StackMode::ABOVE)
-                                .sibling(x11_win);
-                        }
-
-                        s_win = snext;
-                    }
+                if !is_win_floating && visible {
+                    stack.push(win);
                 }
+
+                s_win = snext;
             }
         }
-
-        let _ = conn.flush();
     }
+
+    stack.push(barwin);
+    if is_floating {
+        stack.push(sel_win);
+    }
+    ctx.backend.restack(&stack);
+    ctx.backend.flush();
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {

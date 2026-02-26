@@ -36,7 +36,9 @@ pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
     let _ = conn.flush();
 
@@ -182,7 +184,9 @@ pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
     if let Some(win) = win_to_client(event_win) {
         configure(ctx, win);
     } else {
-        let conn = ctx.x11.conn;
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
         let _ = conn.configure_window(
             e.window,
             &ConfigureWindowAux::new()
@@ -551,7 +555,9 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         return;
     };
 
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_icon_win: Window = icon_win.into();
     let x11_systray_win: Window = systray_win.into();
     let (geo, border_width) = conn
@@ -702,7 +708,7 @@ fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
 
 pub fn run(wm: &mut Wm) {
     while wm.running {
-        let event = match wm.x11.conn.wait_for_event() {
+        let event = match wm.x11().conn.wait_for_event() {
             Ok(event) => event,
             Err(_) => return,
         };
@@ -745,7 +751,17 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
 /// Returns a sensible fallback (`800×600`, border `1`) when the request fails,
 /// so callers never have to handle `None`.
 fn get_win_geometry(ctx: &WmCtx, win: WindowId) -> (Rect, u32) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return (
+            Rect {
+                x: 0,
+                y: 0,
+                w: 800,
+                h: 600,
+            },
+            1,
+        );
+    };
     let x11_win: Window = win.into();
     conn.get_geometry(x11_win)
         .ok()
@@ -777,7 +793,9 @@ fn get_win_geometry(ctx: &WmCtx, win: WindowId) -> (Rect, u32) {
 /// Such windows manage themselves (e.g. tooltips, menus) and must be ignored
 /// by the WM.
 fn is_override_redirect(ctx: &WmCtx, win: WindowId) -> bool {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return false;
+    };
     let x11_win: Window = win.into();
     conn.get_window_attributes(x11_win)
         .ok()
@@ -801,7 +819,9 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<WindowId>, Vec<W
     let mut managed = Vec::new();
     let mut transients = Vec::new();
 
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return (managed, transients);
+    };
 
     for win in children {
         let win_id = WindowId::from(win);
@@ -838,7 +858,9 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<WindowId>, Vec<W
 }
 
 fn is_window_iconic(ctx: &WmCtx, win: WindowId) -> bool {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return false;
+    };
     let x11_win: Window = win.into();
 
     let state_atom = ctx.g.cfg.wmatom.state;
@@ -863,7 +885,9 @@ fn is_window_iconic(ctx: &WmCtx, win: WindowId) -> bool {
 /// in the client list.
 pub fn scan(wm: &mut Wm) {
     let mut ctx = wm.ctx();
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let root = ctx.g.cfg.root;
 
     let children = {
@@ -894,7 +918,7 @@ pub fn setup(_wm: &mut Wm) {
 }
 
 pub fn setup_root(wm: &mut Wm) {
-    let conn = &wm.x11.conn;
+    let conn = &wm.x11().conn;
     let root = wm.g.cfg.root;
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
@@ -915,7 +939,7 @@ pub fn setup_root(wm: &mut Wm) {
 }
 
 pub fn cleanup(wm: &mut Wm) {
-    let conn = &wm.x11.conn;
+    let conn = &wm.x11().conn;
 
     let _ = conn.grab_server();
 
@@ -925,8 +949,11 @@ pub fn cleanup(wm: &mut Wm) {
             if let Some(c) = wm.g.clients.get(&win) {
                 let old_bw = c.old_border_width;
                 current = c.next;
-                let _ = conn
-                    .configure_window(win, &ConfigureWindowAux::new().border_width(old_bw as u32));
+                let x11_win: Window = win.into();
+                let _ = conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new().border_width(old_bw as u32),
+                );
             } else {
                 break;
             }

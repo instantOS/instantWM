@@ -28,8 +28,6 @@ use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::layouts::query::all_client_count;
 use crate::types::{Monitor, Rect, WindowId};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 /// Save the current geometry as the client's floating geometry.
 ///
@@ -58,14 +56,13 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if ctx.g.monitors.is_empty() {
         return;
     }
-    let (mon_x, mon_y, work_h, work_w, showbar, barwin) = match ctx.g.selmon() {
+    let (mon_x, mon_y, work_h, work_w, showbar) = match ctx.g.selmon() {
         Some(mon) => (
             mon.monitor_rect.x,
             mon.monitor_rect.y,
             mon.work_rect.h,
             mon.work_rect.w,
             mon.showbar,
-            mon.barwin,
         ),
         None => return,
     };
@@ -84,8 +81,6 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut cur_y = origin_y;
 
     // ── place every client ────────────────────────────────────────────────
-    let conn = ctx.x11.conn;
-    let x11_barwin: Window = barwin.into();
     let mut c_win = m.clients;
     while let Some(win) = c_win {
         let c = match ctx.g.clients.get(&win) {
@@ -125,14 +120,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         // Raise each client above the bar so nothing is obscured.
-        let x11_win: Window = win.into();
-        let _ = configure_window(
-            conn,
-            x11_win,
-            &ConfigureWindowAux::new()
-                .stack_mode(StackMode::ABOVE)
-                .sibling(x11_barwin),
-        );
+        ctx.backend.raise_window(win);
 
         // Advance to the next cell, wrapping to the next row.
         if cur_x + cell_w < mon_x + work_w {
@@ -145,5 +133,5 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         c_win = next_client;
     }
 
-    let _ = conn.flush();
+    ctx.backend.flush();
 }

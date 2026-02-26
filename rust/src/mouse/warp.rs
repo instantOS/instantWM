@@ -29,7 +29,7 @@ const WARP_INTO_PADDING: i32 = 10;
 ///
 /// Returns `None` when the X11 connection is unavailable or the request fails.
 pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    let conn = ctx.x11.conn;
+    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
     let cookie = query_pointer(conn, ctx.g.cfg.root).ok()?;
     let reply = cookie.reply().ok()?;
     Some((reply.root_x as i32, reply.root_y as i32))
@@ -42,7 +42,9 @@ pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
 pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
 
     let root = ctx.g.cfg.root;
     let bh = ctx.g.cfg.bar_height;
@@ -127,7 +129,9 @@ pub fn warp_cursor_to_client_win(ctx: &WmCtx, c: &Client) {
 /// Used after operations that deliberately reposition the window (e.g. after
 /// an animated move) where the old cursor position is no longer meaningful.
 pub fn force_warp(ctx: &WmCtx, c: &Client) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = c.win.into();
     let _ = conn.warp_pointer(
         x11rb::NONE,
@@ -171,7 +175,9 @@ pub fn warp_into(ctx: &WmCtx, win: WindowId) {
         y = c.geo.y + c.geo.h - WARP_INTO_PADDING;
     }
 
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let _ = conn.warp_pointer(CURRENT_TIME, ctx.g.cfg.root, 0, 0, 0, 0, x as i16, y as i16);
     let _ = conn.flush();
 }
@@ -196,7 +202,9 @@ pub fn reset_cursor(ctx: &mut WmCtx) {
     }
     ctx.g.altcursor = AltCursor::None;
 
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     if let Some(ref cursor) = ctx.g.cfg.cursors[0] {
         let _ = change_window_attributes(
             conn,

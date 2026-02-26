@@ -92,7 +92,9 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         set_focus(ctx, w);
         Ok(())
     } else {
-        let conn = ctx.x11.conn;
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return Ok(());
+        };
         // Use the _ctx methods for operations that should report errors
         conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME)?;
         conn.delete_property_ctx(root, net_active_window)?;
@@ -113,7 +115,9 @@ pub fn focus_soft(ctx: &mut WmCtx, win: Option<WindowId>) {
 }
 
 pub fn set_focus_win(ctx: &WmCtx, win: WindowId) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let x11_win: Window = win.into();
     if let Some(c) = ctx.g.clients.get(&win) {
         if !c.neverfocus {

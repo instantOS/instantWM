@@ -25,6 +25,7 @@
 //! - **Thread safety**: Easier to reason about with explicit state passing
 //! - **Flexibility**: Can work with temporary state without affecting globals
 
+use crate::backend::BackendRef;
 use crate::bar::x11::update_bar_pos;
 use crate::client::{
     attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, set_client_tag_prop, unfocus_win,
@@ -54,13 +55,12 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
         return;
     }
 
-    let barwin = ctx.g.monitor(mon_id).map(|m| m.barwin).unwrap_or(0);
+    let barwin = ctx.g.monitor(mon_id).map(|m| m.barwin).unwrap_or_default();
 
     ctx.g.remove_monitor(mon_id);
 
-    if barwin != 0 {
-        {
-            let conn = ctx.x11.conn;
+    if barwin != WindowId::default() {
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
             let x11_barwin: Window = barwin.into();
             let _ = x11rb::protocol::xproto::unmap_window(conn, x11_barwin);
             let _ = x11rb::protocol::xproto::destroy_window(conn, x11_barwin);
@@ -82,10 +82,12 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
 pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: WindowId) -> Option<MonitorId> {
     let root_win = WindowId::from(ctx.g.cfg.root);
     if w == root_win {
-        if let Some((x, y)) = get_root_ptr_with_conn_and_root(ctx.x11.conn, ctx.g.cfg.root) {
-            let rect = Rect { x, y, w: 1, h: 1 };
-            return crate::types::find_monitor_by_rect(&ctx.g.monitors, &rect)
-                .or(Some(ctx.g.selmon_id()));
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            if let Some((x, y)) = get_root_ptr_with_conn_and_root(conn, ctx.g.cfg.root) {
+                let rect = Rect { x, y, w: 1, h: 1 };
+                return crate::types::find_monitor_by_rect(&ctx.g.monitors, &rect)
+                    .or(Some(ctx.g.selmon_id()));
+            }
         }
         return if ctx.g.monitors.is_empty() {
             None
@@ -279,11 +281,11 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     crate::focus::focus_soft(ctx, Some(c_win));
 
-    {
-        let conn = ctx.x11.conn;
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let x11_win: Window = c_win.into();
         let _ = x11rb::protocol::xproto::configure_window(
             conn,
-            c_win,
+            x11_win,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
         );
@@ -462,7 +464,8 @@ fn update_single_monitor_ctx(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
 /// Update monitor geometries from Xinerama screens.
 #[cfg(feature = "xinerama")]
 fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
-    let unique = get_unique_screens(ctx.x11.conn)?;
+    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
+    let unique = get_unique_screens(conn)?;
     let new_count = unique.len();
     let old_count = ctx.g.monitors.len();
 
@@ -535,7 +538,8 @@ pub fn update_geom() -> bool {
     let mut running = true;
     let mut bar = BarState::default();
     let mut focus = FocusState::default();
-    let mut ctx = WmCtx::new(g, conn, x11.screen_num, &mut running, &mut bar, &mut focus);
+    let backend = BackendRef::from_x11(conn, x11.screen_num);
+    let mut ctx = WmCtx::new(g, backend, &mut running, &mut bar, &mut focus);
     update_geom_ctx(&mut ctx)
 }
 

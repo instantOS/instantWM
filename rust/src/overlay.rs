@@ -75,8 +75,7 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 
 /// Raise a window to the top of the stack.
 fn raise_window(ctx: &WmCtx, win: WindowId) {
-    {
-        let conn = ctx.x11.conn;
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let x11_win: Window = win.into();
         let _ = conn.configure_window(
             x11_win,
@@ -288,8 +287,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
         }
     }
 
-    {
-        let conn = ctx.x11.conn;
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let x11_win: Window = temp_client.into();
         let _ = conn.configure_window(
             x11_win,

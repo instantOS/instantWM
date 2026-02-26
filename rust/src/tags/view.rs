@@ -196,7 +196,9 @@ pub fn last_view(ctx: &mut WmCtx) {
 }
 
 pub fn win_view(ctx: &mut WmCtx) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
 
     let Ok(cookie) = conn.get_input_focus() else {
         return;

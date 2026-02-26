@@ -1,3 +1,4 @@
+use crate::backend::BackendKind;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
@@ -6,7 +7,6 @@ use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::thread;
 use std::time::Duration;
-use x11rb::connection::Connection;
 
 const QUEUED_ALREADY: std::os::raw::c_int = 0;
 
@@ -85,8 +85,6 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
     let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
     let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
-    let conn = ctx.x11.conn;
-
     let (mon_w, mon_h) = get_monitor_size(win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
@@ -104,16 +102,20 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
         return;
     }
 
-    let queued_events = unsafe {
-        crate::drw::XEventsQueued(
-            ctx.g.cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
-            QUEUED_ALREADY,
-        )
-    };
-    let effective_frames = if queued_events > QUEUE_SKIP_THRESHOLD {
-        0
-    } else if queued_events > QUEUE_REDUCE_THRESHOLD {
-        (frames / 2).max(1)
+    let effective_frames = if ctx.backend_kind() == BackendKind::X11 {
+        let queued_events = unsafe {
+            crate::drw::XEventsQueued(
+                ctx.g.cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
+                QUEUED_ALREADY,
+            )
+        };
+        if queued_events > QUEUE_SKIP_THRESHOLD {
+            0
+        } else if queued_events > QUEUE_REDUCE_THRESHOLD {
+            (frames / 2).max(1)
+        } else {
+            frames
+        }
     } else {
         frames
     };
@@ -169,7 +171,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
                         h: actual_h,
                     },
                 );
-                let _ = conn.flush();
+                ctx.backend.flush();
                 thread::sleep(Duration::from_micros(FRAME_SLEEP_MICROS));
             }
         }

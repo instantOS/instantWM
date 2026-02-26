@@ -36,7 +36,9 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
 
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let keysym = keycode_to_keysym(conn, keycode, 0);
 
     let matching_key = {
@@ -76,7 +78,9 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
 pub fn key_release(_ctx: &mut WmCtx, _e: &KeyReleaseEvent) {}
 
 pub fn grab_keys(ctx: &WmCtx) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let root = ctx.g.cfg.root;
     let numlockmask = ctx.g.cfg.numlockmask;
     let keys = ctx.g.cfg.keys.as_slice();
@@ -155,7 +159,9 @@ pub fn grab_keys(ctx: &WmCtx) {
 }
 
 pub fn update_num_lock_mask(ctx: &mut WmCtx) {
-    let conn = ctx.x11.conn;
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
     let modmap = conn.get_modifier_mapping();
     if let Ok(cookie) = modmap {
         if let Ok(reply) = cookie.reply() {
@@ -281,14 +287,16 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 
     if !has_tiling {
         if let Some(win) = ctx.g.selected_win() {
-            let conn = ctx.x11.conn;
-            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                let _ = change_window_attributes(
-                    conn,
-                    win,
-                    &ChangeWindowAttributesAux::new().border_pixel(Some(scheme.normal.bg.pixel())),
-                );
-                let _ = conn.flush();
+            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                    let _ = change_window_attributes(
+                        conn,
+                        win,
+                        &ChangeWindowAttributesAux::new()
+                            .border_pixel(Some(scheme.normal.bg.pixel())),
+                    );
+                    let _ = conn.flush();
+                }
             }
             change_snap(ctx, win, SnapDir::Up);
         }
@@ -349,14 +357,16 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snapstatus != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            let conn = ctx.x11.conn;
-            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                let _ = change_window_attributes(
-                    conn,
-                    win,
-                    &ChangeWindowAttributesAux::new().border_pixel(Some(scheme.normal.bg.pixel())),
-                );
-                let _ = conn.flush();
+            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                    let _ = change_window_attributes(
+                        conn,
+                        win,
+                        &ChangeWindowAttributesAux::new()
+                            .border_pixel(Some(scheme.normal.bg.pixel())),
+                    );
+                    let _ = conn.flush();
+                }
             }
 
             save_floating_win(ctx, win);
