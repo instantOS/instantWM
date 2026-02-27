@@ -1,6 +1,6 @@
 use crate::backend::Backend;
-use crate::backend::BackendOps;
 use crate::backend::BackendKind;
+use crate::backend::BackendOps;
 use crate::types::WindowId;
 use crate::wm::Wm;
 use std::fs;
@@ -109,7 +109,11 @@ fn list_windows(wm: &Wm) -> String {
         let name = c.name.replace('\n', " ").replace('\t', " ");
         out.push_str(&format!(
             "{}\t{}\t{}\t{}\t{}\n",
-            c.win.0, c.mon_id.unwrap_or(0), c.isfloating as u8, c.is_fullscreen as u8, name
+            c.win.0,
+            c.mon_id.unwrap_or(0),
+            c.isfloating as u8,
+            c.is_fullscreen as u8,
+            name
         ));
     }
     out
@@ -142,5 +146,8 @@ fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> String {
     let Some(c) = wm.g.clients.get(&win) else {
         return "ERR window not found\n".to_string();
     };
-    format!("OK\n{}\t{}\t{}\t{}\t{}\n", c.win.0, c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+    format!(
+        "OK\n{}\t{}\t{}\t{}\t{}\n",
+        c.win.0, c.geo.x, c.geo.y, c.geo.w, c.geo.h
+    )
 }

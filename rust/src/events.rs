@@ -8,6 +8,7 @@ use crate::client::{
 use crate::commands::x_command;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
+use crate::ipc::IpcServer;
 use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
@@ -22,7 +23,6 @@ use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::clean_mask;
 use crate::wm::Wm;
-use crate::ipc::IpcServer;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;

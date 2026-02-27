@@ -33,8 +33,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use smithay::{
     backend::{input::KeyState, renderer::utils::on_commit_buffer_handler},
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
-    delegate_xdg_shell,
-    delegate_xwayland_shell,
+    delegate_xdg_shell, delegate_xwayland_shell,
     desktop::{PopupManager, Space, Window},
     input::{
         keyboard::{KeyboardHandle, KeysymHandle, ModifiersState, XkbConfig},
@@ -55,11 +54,13 @@ use smithay::{
         buffer::BufferHandler,
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
         output::OutputManagerState,
+        seat::WaylandFocus,
         selection::{
-            data_device::{ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler},
+            data_device::{
+                ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+            },
             SelectionHandler,
         },
-        seat::WaylandFocus,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
         },
@@ -750,7 +751,8 @@ impl WaylandState {
             })
             .collect();
         for (window, geo) in updates {
-            self.space.map_element(window.clone(), (geo.x, geo.y), false);
+            self.space
+                .map_element(window.clone(), (geo.x, geo.y), false);
             if let Some(toplevel) = window.toplevel() {
                 let key = window
                     .user_data()
@@ -763,8 +765,9 @@ impl WaylandState {
                     .get(&key)
                     .is_some_and(|&s| s == target);
                 if !unchanged {
-                    let size =
-                        smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
+                    let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
+                        target.0, target.1,
+                    );
                     toplevel.with_pending_state(|state| {
                         state.size = Some(size);
                     });
@@ -790,10 +793,8 @@ impl WaylandState {
                 .and_then(|g| g.clients.get(&window_id).map(|c| (c.geo.w, c.geo.h)))
                 .unwrap_or((Self::MIN_WL_DIM, Self::MIN_WL_DIM));
             let target = (w.max(Self::MIN_WL_DIM), h.max(Self::MIN_WL_DIM));
-            let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                target.0,
-                target.1,
-            );
+            let size =
+                smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
             toplevel.with_pending_state(|state| {
                 state.size = Some(size);
             });
@@ -810,10 +811,8 @@ impl WaylandState {
                 .map_element(element.clone(), (rect.x, rect.y), false);
             if let Some(toplevel) = element.toplevel() {
                 let target = (rect.w.max(1), rect.h.max(1));
-                let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                    target.0,
-                    target.1,
-                );
+                let size =
+                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
                 toplevel.with_pending_state(|state| {
                     state.size = Some(size);
                 });
@@ -844,11 +843,13 @@ impl WaylandState {
 
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
-        let focus = self.find_window(window).cloned().map(KeyboardFocusTarget::Window);
+        let focus = self
+            .find_window(window)
+            .cloned()
+            .map(KeyboardFocusTarget::Window);
         let windows = self.space.elements().cloned().collect::<Vec<_>>();
         for w in windows {
-            let is_target =
-                w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window);
+            let is_target = w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window);
             if w.set_activated(is_target) {
                 if let Some(toplevel) = w.toplevel() {
                     toplevel.send_pending_configure();

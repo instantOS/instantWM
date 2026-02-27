@@ -11,12 +11,12 @@ mod events;
 mod floating;
 mod focus;
 mod globals;
+mod ipc;
 mod keyboard;
 mod layouts;
 mod monitor;
 mod mouse;
 mod overlay;
-mod ipc;
 mod push;
 mod scratchpad;
 mod systray;
@@ -43,6 +43,7 @@ use crate::backend::wayland::compositor::{
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
+use crate::bar::wayland::{render_bar_to_output, BarRenderer};
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
@@ -160,6 +161,8 @@ fn run_wayland() -> ! {
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
+    let mut bar_renderer = BarRenderer::new();
+
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
@@ -246,14 +249,12 @@ fn run_wayland() -> ! {
                         pointer_location = Point::from((x, y));
 
                         let focus = match state.space.element_under(pointer_location) {
-                            Some((window, location)) => {
-                                window.wl_surface().map(|surface| {
-                                    (
-                                        PointerFocusTarget::WlSurface(surface.into_owned()),
-                                        location.to_f64(),
-                                    )
-                                })
-                            }
+                            Some((window, location)) => window.wl_surface().map(|surface| {
+                                (
+                                    PointerFocusTarget::WlSurface(surface.into_owned()),
+                                    location.to_f64(),
+                                )
+                            }),
                             None => None,
                         };
 
@@ -334,7 +335,18 @@ fn run_wayland() -> ! {
             let age = 0;
             let damage = {
                 let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
-                let custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+                let mut custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                    Vec::new();
+
+                if wm.g.cfg.showbar {
+                    let ctx = wm.ctx();
+                    if let Some(bar_element) =
+                        render_bar_to_output(&mut bar_renderer, renderer, &output, &ctx)
+                    {
+                        custom_elements.push(bar_element);
+                    }
+                }
+
                 let render_result = render_output(
                     &output,
                     renderer,
@@ -379,7 +391,7 @@ fn init_wayland_globals(wm: &mut Wm) {
     wm.g.cfg.screen_height = 800;
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    wm.g.cfg.showbar = false;
+    wm.g.cfg.showbar = true;
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
 }
@@ -391,11 +403,7 @@ fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
 }
 
 fn spawn_wayland_smoke_window() {
-    if std::env::var("INSTANTWM_WL_AUTOSPAWN")
-        .ok()
-        .as_deref()
-        == Some("0")
-    {
+    if std::env::var("INSTANTWM_WL_AUTOSPAWN").ok().as_deref() == Some("0") {
         return;
     }
 
@@ -766,6 +774,9 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
 }
 
 fn run_autostart() {
+    if std::env::var("INSTANTWM_AUTOSTART").ok().as_deref() == Some("0") {
+        return;
+    }
     unsafe {
         match libc::fork() {
             -1 => {

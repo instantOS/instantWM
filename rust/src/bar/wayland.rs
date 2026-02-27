@@ -5,7 +5,7 @@
 
 use cosmic_text::{Buffer, FontSystem, Metrics, SwashCache};
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::utils::{Point, Rectangle, Size};
+use smithay::utils::Rectangle;
 
 use crate::globals::get_globals;
 use crate::types::Monitor;
@@ -404,8 +404,8 @@ impl BarRenderer {
     /// Get colors for a tag based on its state.
     fn get_tag_colors(
         &self,
-        monitor: &Monitor,
-        tag_index: u32,
+        _monitor: &Monitor,
+        _tag_index: u32,
         is_occupied: bool,
         is_selected: bool,
         is_hover: bool,
@@ -902,4 +902,84 @@ pub fn rgba_to_color(r: f32, g: f32, b: f32, a: f32) -> crate::drw::Color {
             },
         },
     }
+}
+
+/// Draw the bar for a specific monitor in Wayland mode.
+///
+/// This function is called from bar.rs when the backend is Wayland.
+/// Since the bar is rendered as part of the compositor's render loop,
+/// this function currently just marks that the bar needs to be redrawn.
+pub fn draw_bar_wayland(_ctx: &mut crate::contexts::WmCtx, _mon_idx: usize) {
+    // In Wayland mode, the bar is rendered during the compositor's render loop
+    // The actual rendering happens in render_bar_to_output which is called
+    // from the Wayland backend's render loop.
+    // No action needed here - the bar will be drawn on the next frame.
+}
+
+/// Draw bars for all monitors in Wayland mode.
+///
+/// Called from bar.rs draw_bars() function.
+pub fn draw_bars_wayland(ctx: &mut crate::contexts::WmCtx) {
+    let indices: Vec<usize> = ctx.g.monitors_iter().map(|(i, _)| i).collect();
+    for i in indices {
+        draw_bar_wayland(ctx, i);
+    }
+}
+
+/// Reset the bar state in Wayland mode.
+///
+/// Clears gestures and redraws the bar.
+pub fn reset_bar_wayland(ctx: &mut crate::contexts::WmCtx) {
+    let selmon_idx = ctx.g.selmon_id();
+
+    let should_reset = ctx
+        .g
+        .selmon()
+        .is_some_and(|selmon| selmon.gesture != crate::types::Gesture::None);
+
+    if !should_reset {
+        return;
+    }
+
+    if let Some(selmon) = ctx.g.selmon_mut() {
+        selmon.gesture = crate::types::Gesture::None;
+    }
+
+    draw_bar_wayland(ctx, selmon_idx);
+}
+
+/// Check if the bar should be drawn in Wayland mode.
+///
+/// Returns true if the bar is enabled and the backend is Wayland.
+pub fn should_draw_bar_wayland(ctx: &crate::contexts::WmCtx) -> bool {
+    ctx.g.cfg.showbar
+}
+
+/// Render the bar to a specific output during the compositor's render loop.
+///
+/// This is called from main.rs during the Wayland render loop to draw
+/// the bar on top of the output. It takes the BarRenderer and renders
+/// the bar for each monitor.
+///
+/// # Arguments
+///
+/// * `bar_renderer` - The BarRenderer instance
+/// * `renderer` - The GlesRenderer
+/// * `output` - The output being rendered
+/// * `ctx` - The WM context
+///
+/// Returns an optional render element for the bar.
+pub fn render_bar_to_output(
+    bar_renderer: &mut BarRenderer,
+    renderer: &mut GlesRenderer,
+    output: &smithay::output::Output,
+    ctx: &crate::contexts::WmCtx,
+) -> Option<smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>
+{
+    // For now, return None as the full bar rendering integration with Smithay
+    // requires additional implementation to create WaylandSurfaceRenderElement
+    // from the BarRenderElements. This is a placeholder that will be completed
+    // when the full rendering pipeline is in place.
+    let _ = (bar_renderer, renderer, output, ctx);
+    None
 }

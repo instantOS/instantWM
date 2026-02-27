@@ -1,6 +1,5 @@
 mod model;
 mod status;
-#[cfg(feature = "wayland_bar")]
 pub mod wayland;
 mod widgets;
 pub mod x11;
@@ -72,6 +71,7 @@ pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
 
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        wayland::draw_bar_wayland(ctx, mon_idx);
         return;
     }
     if ctx.x11_conn().is_none() {
@@ -202,6 +202,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
 pub fn draw_bars(ctx: &mut WmCtx) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        wayland::draw_bars_wayland(ctx);
         return;
     }
     if ctx.x11_conn().is_none() {
@@ -215,6 +216,7 @@ pub fn draw_bars(ctx: &mut WmCtx) {
 
 pub fn reset_bar(ctx: &mut WmCtx) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        wayland::reset_bar_wayland(ctx);
         return;
     }
     if ctx.x11_conn().is_none() {
@@ -235,4 +237,11 @@ pub fn reset_bar(ctx: &mut WmCtx) {
     }
 
     draw_bar(ctx, selmon_idx);
+}
+
+pub fn should_draw_bar(ctx: &WmCtx) -> bool {
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return wayland::should_draw_bar_wayland(ctx);
+    }
+    ctx.x11_conn().is_some()
 }
