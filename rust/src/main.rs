@@ -38,11 +38,12 @@ use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
 use crate::backend::wayland::compositor::{
-    KeyboardFocusTarget, PointerFocusTarget, WaylandClientState, WaylandState,
+    KeyboardFocusTarget, PointerFocusTarget, WaylandClientState, WaylandState, WindowIdMarker,
 };
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
+use crate::bar::wayland::BarRenderer;
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
@@ -55,7 +56,10 @@ use smithay::backend::input::{
     PointerButtonEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::element::render_elements;
+use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::desktop::space::render_output;
@@ -64,7 +68,7 @@ use smithay::input::keyboard::FilterResult;
 use smithay::output::Mode as OutputMode;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
-use smithay::utils::{Point, Transform, SERIAL_COUNTER};
+use smithay::utils::{Point, Scale, Transform, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 
@@ -78,6 +82,12 @@ const XC_BOTTOM_LEFT_CORNER: u32 = 12;
 const XC_BOTTOM_RIGHT_CORNER: u32 = 14;
 const XC_TOP_LEFT_CORNER: u32 = 134;
 const XC_TOP_RIGHT_CORNER: u32 = 136;
+
+render_elements! {
+    pub WaylandExtras<=GlesRenderer>;
+    Surface=WaylandSurfaceRenderElement<GlesRenderer>,
+    Solid=SolidColorRenderElement,
+}
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum CliBackend {
@@ -160,7 +170,7 @@ fn run_wayland() -> ! {
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
-    // Initialize bar renderer for Wayland
+    let mut bar_renderer = BarRenderer::new();
 
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
@@ -248,7 +258,16 @@ fn run_wayland() -> ! {
                         let y = event.y_transformed(size.h);
                         pointer_location = Point::from((x, y));
 
-                        let focus = match state.space.element_under(pointer_location) {
+                        let element_under = state.space.element_under(pointer_location);
+                        let hovered_win = element_under.as_ref().and_then(|(window, _)| {
+                            window.user_data().get::<WindowIdMarker>().map(|m| m.0)
+                        });
+                        if hovered_win.is_some() {
+                            let mut ctx = wm.ctx();
+                            crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
+                        }
+
+                        let focus = match element_under {
                             Some((window, location)) => window.wl_surface().map(|surface| {
                                 (
                                     PointerFocusTarget::WlSurface(surface.into_owned()),
@@ -335,7 +354,20 @@ fn run_wayland() -> ! {
             let age = 0;
             let damage = {
                 let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
-                let custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+                let mut custom_elements: Vec<WaylandExtras> = Vec::new();
+                if wm.g.cfg.showbar {
+                    let ctx = wm.ctx();
+                    for elem in crate::bar::wayland::render_bar_elements(
+                        &mut bar_renderer,
+                        &ctx,
+                        Scale::from(1.0),
+                    ) {
+                        custom_elements.push(WaylandExtras::Solid(elem));
+                    }
+                }
+                for elem in wayland_border_elements(&wm) {
+                    custom_elements.push(WaylandExtras::Solid(elem));
+                }
 
                 let render_result = render_output(
                     &output,
@@ -373,6 +405,74 @@ fn run_wayland() -> ! {
         })
         .expect("wayland event loop run");
     exit(0);
+}
+
+fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
+    let Some(scheme) = wm.g.cfg.borderscheme.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let sel = wm.g.selected_win();
+    for c in wm.g.clients.values() {
+        let bw = c.border_width.max(0);
+        if bw <= 0 || c.geo.w <= 0 || c.geo.h <= 0 {
+            continue;
+        }
+        let has_tiling = c
+            .mon_id
+            .and_then(|mid| wm.g.monitor(mid))
+            .map(|m| m.is_tiling_layout())
+            .unwrap_or(true);
+        let rgba = if Some(c.win) == sel {
+            if c.isfloating || !has_tiling {
+                color_to_rgba(&scheme.float_focus.bg)
+            } else {
+                color_to_rgba(&scheme.tile_focus.bg)
+            }
+        } else {
+            color_to_rgba(&scheme.normal.bg)
+        };
+
+        let x = c.geo.x;
+        let y = c.geo.y;
+        let w = c.geo.w;
+        let h = c.geo.h;
+        push_solid(&mut out, x, y, w, bw, rgba);
+        push_solid(&mut out, x, y + h - bw, w, bw, rgba);
+        push_solid(&mut out, x, y + bw, bw, (h - 2 * bw).max(0), rgba);
+        push_solid(&mut out, x + w - bw, y + bw, bw, (h - 2 * bw).max(0), rgba);
+    }
+    out
+}
+
+fn push_solid(
+    out: &mut Vec<SolidColorRenderElement>,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    color: [f32; 4],
+) {
+    if w <= 0 || h <= 0 {
+        return;
+    }
+    let buffer = SolidColorBuffer::new((w, h), color);
+    out.push(SolidColorRenderElement::from_buffer(
+        &buffer,
+        (x, y),
+        Scale::from(1.0),
+        1.0,
+        Kind::Unspecified,
+    ));
+}
+
+fn color_to_rgba(color: &crate::drw::Color) -> [f32; 4] {
+    [
+        color.color.color.red as f32 / 65535.0,
+        color.color.color.green as f32 / 65535.0,
+        color.color.color.blue as f32 / 65535.0,
+        color.color.color.alpha as f32 / 65535.0,
+    ]
 }
 
 fn init_wayland_globals(wm: &mut Wm) {

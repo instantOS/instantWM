@@ -3,7 +3,7 @@
 //! This module provides window focus functionality via `WmCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::BackendKind;
+use crate::backend::{BackendKind, BackendOps};
 use crate::bar::draw_bars;
 use crate::client::{set_focus, set_urgent, unfocus_win};
 use crate::contexts::WmCtx;
@@ -115,6 +115,47 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
 pub fn focus_soft(ctx: &mut WmCtx, win: Option<WindowId>) {
     if let Err(e) = focus(ctx, win) {
         log::warn!("focus({:?}) failed: {}", win, e);
+    }
+}
+
+/// Shared hover-focus behavior used by both X11 and Wayland pointer paths.
+pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, entering_root: bool) {
+    let Some(hovered_win) = hovered_win else {
+        return;
+    };
+    if !ctx.g.focusfollowsmouse {
+        return;
+    }
+
+    if let Some(mid) = ctx.g.clients.get(&hovered_win).and_then(|c| c.mon_id) {
+        if mid != ctx.g.selmon_id() {
+            ctx.g.set_selmon(mid);
+        }
+    }
+
+    let hovered_is_floating = ctx
+        .g
+        .clients
+        .get(&hovered_win)
+        .map(|c| c.isfloating)
+        .unwrap_or(false);
+    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
+    if !ctx.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
+        return;
+    }
+
+    if ctx.g.selected_win() == Some(hovered_win) {
+        return;
+    }
+
+    if ctx.backend_kind() == BackendKind::Wayland {
+        if let Some(mon) = ctx.g.selmon_mut() {
+            mon.sel = Some(hovered_win);
+        }
+        ctx.backend.set_focus(hovered_win);
+        draw_bars(ctx);
+    } else {
+        focus_soft(ctx, Some(hovered_win));
     }
 }
 

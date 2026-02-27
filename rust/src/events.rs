@@ -316,29 +316,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     let topmost_win_under_cursor = get_cursor_client_win(ctx);
 
     // 6. Handle focus switching based on configuration
-    if let Some(hovered_win) = topmost_win_under_cursor {
-        let hovered_is_floating = ctx
-            .g
-            .clients
-            .get(&hovered_win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false);
-        let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
-
-        // Skip floating focus if focusfollowsfloatmouse is disabled
-        if !focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
-            return;
-        }
-
-        if !focusfollowsmouse {
-            return;
-        }
-
-        // Apply the focus change if different
-        if ctx.g.selmon().map(|m| m.sel) != Some(Some(hovered_win)) {
-            crate::focus::focus_soft(ctx, Some(hovered_win));
-        }
-    }
+    crate::focus::hover_focus_target(ctx, topmost_win_under_cursor, entering_root);
 }
 
 pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
