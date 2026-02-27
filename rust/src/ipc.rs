@@ -69,6 +69,14 @@ fn handle_command(wm: &mut Wm, cmd: &str) -> String {
     if cmd.eq_ignore_ascii_case("list") {
         return list_windows(wm);
     }
+    if cmd.eq_ignore_ascii_case("geom") || cmd.starts_with("geom ") {
+        let parsed_id = cmd
+            .split_whitespace()
+            .nth(1)
+            .and_then(|s| s.parse::<u32>().ok())
+            .map(WindowId::from);
+        return window_geometry(wm, parsed_id);
+    }
     if let Some(rest) = cmd.strip_prefix("spawn ") {
         if rest.trim().is_empty() {
             return "ERR spawn requires a command\n".to_string();
@@ -124,4 +132,15 @@ fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> String {
             Backend::X11(_) => "ERR backend mismatch\n".to_string(),
         },
     }
+}
+
+fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> String {
+    let target = parsed_id.or_else(|| wm.g.selected_win());
+    let Some(win) = target else {
+        return "ERR no target window\n".to_string();
+    };
+    let Some(c) = wm.g.clients.get(&win) else {
+        return "ERR window not found\n".to_string();
+    };
+    format!("OK\n{}\t{}\t{}\t{}\t{}\n", c.win.0, c.geo.x, c.geo.y, c.geo.w, c.geo.h)
 }

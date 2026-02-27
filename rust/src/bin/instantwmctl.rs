@@ -12,6 +12,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum CommandKind {
     List,
+    Geom { window_id: Option<u32> },
     Spawn { command: Vec<String> },
     Close { window_id: Option<u32> },
 }
@@ -20,6 +21,10 @@ fn main() {
     let cli = Cli::parse();
     let request = match cli.command {
         CommandKind::List => "list\n".to_string(),
+        CommandKind::Geom { window_id } => match window_id {
+            Some(id) => format!("geom {}\n", id),
+            None => "geom\n".to_string(),
+        },
         CommandKind::Spawn { command } => {
             if command.is_empty() {
                 eprintln!("instantwmctl: spawn requires a command");
