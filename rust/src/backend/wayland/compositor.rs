@@ -724,7 +724,7 @@ impl WaylandState {
 
         output.change_current_state(
             Some(mode),
-            Some(Transform::Normal),
+            Some(Transform::Flipped180),
             Some(Scale::Integer(1)),
             Some((0, 0).into()),
         );
@@ -844,33 +844,19 @@ impl WaylandState {
 
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
-        let focus = self
-            .find_window(window)
-            .cloned()
-            .map(KeyboardFocusTarget::Window);
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, focus, serial);
-        }
-        if let Some(pointer) = self.seat.get_pointer() {
-            if let Some(window) = self.find_window(window).cloned() {
-                if let Some(surface) = window.wl_surface() {
-                    let location = self
-                        .space
-                        .element_location(&window)
-                        .unwrap_or((0, 0).into())
-                        .to_f64();
-                    let focus = Some((
-                        PointerFocusTarget::WlSurface(surface.into_owned()),
-                        location,
-                    ));
-                    let motion = smithay::input::pointer::MotionEvent {
-                        location,
-                        serial,
-                        time: 0,
-                    };
-                    pointer.motion(self, focus, &motion);
+        let focus = self.find_window(window).cloned().map(KeyboardFocusTarget::Window);
+        let windows = self.space.elements().cloned().collect::<Vec<_>>();
+        for w in windows {
+            let is_target =
+                w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window);
+            if w.set_activated(is_target) {
+                if let Some(toplevel) = w.toplevel() {
+                    toplevel.send_pending_configure();
                 }
             }
+        }
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, focus, serial);
         }
     }
 
@@ -961,6 +947,17 @@ impl WaylandState {
         g.clients.insert(window, c);
         g.client_list.push(window.0 as usize);
         attach_client_to_monitor(g, window);
+    }
+
+    fn window_id_for_toplevel(&self, surface: &ToplevelSurface) -> Option<WindowId> {
+        let wl_surface = surface.wl_surface();
+        self.space.elements().find_map(|w| {
+            if w.wl_surface().as_deref() == Some(wl_surface) {
+                w.user_data().get::<WindowIdMarker>().map(|m| m.0)
+            } else {
+                None
+            }
+        })
     }
 }
 
@@ -1253,18 +1250,24 @@ impl XdgShellHandler for WaylandState {
         // TODO: reposition popup.
     }
 
-    fn move_request(&mut self, _surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // TODO: initiate interactive move (pointer grab).
+    fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            self.set_focus(win);
+            self.raise_window(win);
+        }
     }
 
     fn resize_request(
         &mut self,
-        _surface: ToplevelSurface,
+        surface: ToplevelSurface,
         _seat: wl_seat::WlSeat,
         _serial: Serial,
         _edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
-        // TODO: initiate interactive resize (pointer grab).
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            self.set_focus(win);
+            self.raise_window(win);
+        }
     }
 }
 

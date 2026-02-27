@@ -173,9 +173,6 @@ fn run_wayland() -> ! {
     std::env::set_var("QT_QPA_PLATFORM", "wayland");
     std::env::set_var("SDL_VIDEODRIVER", "wayland");
     std::env::set_var("CLUTTER_BACKEND", "wayland");
-    // Prefer software GL fallback in environments without a usable render node.
-    std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
-    std::env::set_var("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe");
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {
@@ -206,7 +203,7 @@ fn run_wayland() -> ! {
                     monitor::update_geom_ctx(&mut wm.ctx());
                     output.change_current_state(
                         Some(mode),
-                        Some(Transform::Normal),
+                        Some(Transform::Flipped180),
                         None,
                         Some((0, 0).into()),
                     );
@@ -245,21 +242,17 @@ fn run_wayland() -> ! {
                         let y = event.y_transformed(size.h);
                         pointer_location = Point::from((x, y));
 
-                        let (focus, keyboard_focus) =
-                            match state.space.element_under(pointer_location) {
-                                Some((window, location)) => {
-                                    let keyboard_focus =
-                                        Some(KeyboardFocusTarget::Window(window.clone()));
-                                    let focus = window.wl_surface().map(|surface| {
-                                        (
-                                            PointerFocusTarget::WlSurface(surface.into_owned()),
-                                            location.to_f64(),
-                                        )
-                                    });
-                                    (focus, keyboard_focus)
-                                }
-                                None => (None, None),
-                            };
+                        let focus = match state.space.element_under(pointer_location) {
+                            Some((window, location)) => {
+                                window.wl_surface().map(|surface| {
+                                    (
+                                        PointerFocusTarget::WlSurface(surface.into_owned()),
+                                        location.to_f64(),
+                                    )
+                                })
+                            }
+                            None => None,
+                        };
 
                         let serial = SERIAL_COUNTER.next_serial();
                         let motion = smithay::input::pointer::MotionEvent {
@@ -268,7 +261,7 @@ fn run_wayland() -> ! {
                             time: event.time() as u32,
                         };
                         pointer_handle.motion(state, focus, &motion);
-                        keyboard_handle.set_focus(state, keyboard_focus, serial);
+                        pointer_handle.frame(state);
                     }
                     InputEvent::PointerButton { event } => {
                         let serial = SERIAL_COUNTER.next_serial();
@@ -279,6 +272,14 @@ fn run_wayland() -> ! {
                             state: event.state(),
                         };
                         pointer_handle.button(state, &button);
+                        if event.state() == smithay::backend::input::ButtonState::Pressed {
+                            let keyboard_focus = state
+                                .space
+                                .element_under(pointer_location)
+                                .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()));
+                            keyboard_handle.set_focus(state, keyboard_focus, serial);
+                        }
+                        pointer_handle.frame(state);
                     }
                     InputEvent::PointerAxis { event } => {
                         let mut frame =
@@ -306,6 +307,7 @@ fn run_wayland() -> ! {
                                 frame.v120(smithay::backend::input::Axis::Horizontal, steps as i32);
                         }
                         pointer_handle.axis(state, frame);
+                        pointer_handle.frame(state);
                     }
                     _ => {}
                 },
@@ -315,8 +317,15 @@ fn run_wayland() -> ! {
                 _ => {}
             });
 
+            {
+                let mut ctx = wm.ctx();
+                if !ctx.g.clients.is_empty() {
+                    let selmon = ctx.g.selmon_id();
+                    crate::layouts::arrange(&mut ctx, Some(selmon));
+                }
+            }
             state.sync_space_from_globals();
-            let age = backend.buffer_age().unwrap_or(0);
+            let age = 0;
             let damage = {
                 let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
                 let custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
