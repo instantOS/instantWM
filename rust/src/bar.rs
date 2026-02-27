@@ -1,5 +1,6 @@
 mod model;
 mod status;
+pub mod wayland;
 mod widgets;
 pub mod x11;
 
