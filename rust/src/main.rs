@@ -349,8 +349,8 @@ fn init_wayland_globals(wm: &mut Wm) {
     let cfg = init_config();
     wm.g.cfg.screen_width = 1280;
     wm.g.cfg.screen_height = 800;
-    crate::globals::update_config_from_config(&cfg);
-    crate::globals::init_tags_from_config(&cfg);
+    crate::globals::apply_config(&mut wm.g, &cfg);
+    crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
 }
@@ -440,8 +440,8 @@ fn init_globals(
     wm.g.cfg.screen_width = screen.width_in_pixels as i32;
     wm.g.cfg.screen_height = screen.height_in_pixels as i32;
 
-    crate::globals::update_config_from_config(&cfg);
-    crate::globals::init_tags_from_config(&cfg);
+    crate::globals::apply_config(&mut wm.g, &cfg);
+    crate::globals::apply_tags_config(&mut wm.g, &cfg);
 }
 
 fn setup_signal_handlers() {

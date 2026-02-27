@@ -224,7 +224,7 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
-        key!(MODKEY, XK_B  => |_| toggle_bar()),
+        key!(MODKEY, XK_B  => |ctx| toggle_bar(ctx)),
         key!(MS,     XK_F  => toggle_fake_fullscreen),
         key!(MC,     XK_F  => temp_fullscreen),
         key!(MC,     XK_S  => |ctx| {

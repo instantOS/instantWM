@@ -32,10 +32,12 @@ pub fn update_status(ctx: &mut WmCtx) {
     crate::systray::update_systray(ctx);
 }
 
-/// Update bar position for a monitor.
-///
-/// **Note**: This delegates to `m.update_bar_position(bh)`. Prefer using
-/// the method directly on `Monitor` for new code.
+pub fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
+    m.update_bar_position(bh);
+}
+
+/// Legacy wrapper — reads bar_height from static globals.
+/// Prefer `update_bar_pos_with_bh` when you have access to the bar height.
 pub fn update_bar_pos(m: &mut Monitor) {
     let bh = get_globals().cfg.bar_height;
     m.update_bar_position(bh);
@@ -160,9 +162,14 @@ pub fn update_bars(ctx: &mut WmCtx) {
         return;
     }
 
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        for (i, wx, by, w, bh) in bar_configs {
+    // Create bar windows for each monitor that needs one.
+    // We collect window IDs first, then assign them to monitors to avoid
+    // borrow conflicts between the X11 connection ref and ctx.g.
+    let mut created: Vec<(usize, u32)> = Vec::new();
+
+    if let Some(x11) = ctx.x11_conn() {
+        let conn = x11.conn;
+        for (i, wx, by, w, bh) in &bar_configs {
             let win_id = conn.generate_id().unwrap();
 
             let aux = x11rb::protocol::xproto::CreateWindowAux::new()
@@ -178,10 +185,10 @@ pub fn update_bars(ctx: &mut WmCtx) {
                 x11rb::COPY_FROM_PARENT as u8,
                 win_id,
                 root,
-                wx as i16,
-                by as i16,
-                w as u16,
-                bh as u16,
+                *wx as i16,
+                *by as i16,
+                *w as u16,
+                *bh as u16,
                 0,
                 x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
                 x11rb::COPY_FROM_PARENT,
@@ -190,26 +197,28 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
             let _ = conn.map_window(win_id);
             let _ = conn.flush();
+            created.push((*i, win_id));
+        }
+    }
 
-            if let Some(mon) = ctx.g.monitor_mut(i) {
-                mon.barwin = WindowId::from(win_id);
-            }
+    for (i, win_id) in created {
+        if let Some(mon) = ctx.g.monitor_mut(i) {
+            mon.barwin = WindowId::from(win_id);
         }
     }
 }
 
-pub fn toggle_bar() {
-    let g = get_globals_mut();
-
-    let animated = g.animated;
-    let client_count = g.clients.len() as i32;
+pub fn toggle_bar(ctx: &mut WmCtx) {
+    let animated = ctx.g.animated;
+    let client_count = ctx.g.clients.len() as i32;
     let mut tmp_no_anim = false;
     if animated && client_count > 6 {
-        g.animated = false;
+        ctx.g.animated = false;
         tmp_no_anim = true;
     }
 
-    if let Some(selmon) = g.selmon_mut() {
+    let bh = ctx.g.cfg.bar_height;
+    if let Some(selmon) = ctx.g.selmon_mut() {
         selmon.showbar = !selmon.showbar;
 
         let current_tag = selmon.current_tag;
@@ -217,13 +226,16 @@ pub fn toggle_bar() {
             selmon.tags[current_tag - 1].showbar = selmon.showbar;
         }
 
-        update_bar_pos(selmon);
-        let m = selmon.clone();
-        resize_bar_win(&m);
+        update_bar_pos_with_bh(selmon, bh);
+    }
+
+    let selmon_idx = ctx.g.selmon_id();
+    if let Some(m) = ctx.g.monitor(selmon_idx) {
+        resize_bar_win_ctx(ctx, m);
     }
 
     if tmp_no_anim {
-        g.animated = true;
+        ctx.g.animated = true;
     }
 }
 

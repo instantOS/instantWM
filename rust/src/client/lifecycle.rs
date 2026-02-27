@@ -112,7 +112,7 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     // This handles windows that were already in the iconic state before
     // the WM started (e.g. restored from a previous session).
     c.is_hidden =
-        crate::client::visibility::get_state(w) == crate::client::constants::WM_STATE_ICONIC;
+        crate::client::visibility::get_state_ctx(ctx, w) == crate::client::constants::WM_STATE_ICONIC;
 
     ctx.g.clients.insert(w, c.clone());
 

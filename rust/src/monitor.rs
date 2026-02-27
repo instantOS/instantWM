@@ -26,7 +26,7 @@
 //! - **Flexibility**: Can work with temporary state without affecting globals
 
 use crate::backend::BackendRef;
-use crate::bar::x11::update_bar_pos;
+use crate::bar::x11::update_bar_pos_with_bh;
 use crate::client::{
     attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, set_client_tag_prop, unfocus_win,
     win_to_client as get_win_to_client,
@@ -418,6 +418,7 @@ fn init_single_monitor_ctx(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
     mon.init_tags(&template);
     ctx.g.push_monitor(mon);
+    let bh = ctx.g.cfg.bar_height;
     if let Some(m) = ctx.g.monitors.first_mut() {
         m.num = 0;
         m.monitor_rect = Rect {
@@ -432,7 +433,7 @@ fn init_single_monitor_ctx(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
             w: sw,
             h: sh,
         };
-        update_bar_pos(m);
+        update_bar_pos_with_bh(m, bh);
     }
     ctx.g.set_selmon(0);
     true
@@ -451,12 +452,13 @@ fn update_single_monitor_ctx(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         return false;
     }
 
+    let bh = ctx.g.cfg.bar_height;
     if let Some(m) = ctx.g.monitors.first_mut() {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
         m.work_rect.h = sh;
-        update_bar_pos(m);
+        update_bar_pos_with_bh(m, bh);
     }
     true
 }
@@ -486,9 +488,10 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     }
 
     // Update bar positions for changed monitors
+    let bh = ctx.g.cfg.bar_height;
     for idx in &monitors_need_bar_update {
         if let Some(m) = ctx.g.monitor_mut(*idx) {
-            update_bar_pos(m);
+            update_bar_pos_with_bh(m, bh);
         }
     }
 

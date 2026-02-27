@@ -65,6 +65,29 @@ pub fn get_state(win: WindowId) -> i32 {
         .unwrap_or(WM_STATE_NORMAL)
 }
 
+/// Context-based version of [`get_state`] that uses the X11 connection from ctx.
+pub fn get_state_ctx(ctx: &WmCtx, win: WindowId) -> i32 {
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return WM_STATE_NORMAL;
+    };
+    let x11_win: Window = win.into();
+
+    let wm_state_atom = ctx.g.cfg.wmatom.state;
+    let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
+        return WM_STATE_NORMAL;
+    };
+
+    let Ok(reply) = cookie.reply() else {
+        return WM_STATE_NORMAL;
+    };
+
+    reply
+        .value32()
+        .and_then(|mut it| it.next())
+        .map(|v| v as i32)
+        .unwrap_or(WM_STATE_NORMAL)
+}
+
 /// Returns `true` when `win` is in the minimized (iconic) state.
 ///
 /// Reads the cached [`crate::types::Client::is_hidden`] field — no X11
@@ -167,8 +190,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let globals = get_globals();
-    let Some(client) = globals.clients.get(&win) else {
+    let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
 
@@ -179,7 +201,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     let Rect { x, y, w, h } = client.geo;
 
     // Clear the cached flag before any redraws that might be triggered below.
-    if let Some(c) = get_globals_mut().clients.get_mut(&win) {
+    if let Some(c) = ctx.g.clients.get_mut(&win) {
         c.is_hidden = false;
     }
 
@@ -198,7 +220,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // Animate: slide down to (x, y) from (x, -50).
     animate_client(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
-    let mon_id = get_globals().clients.get(&win).and_then(|c| c.mon_id);
+    let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
     if let Some(mid) = mon_id {
         arrange(ctx, Some(mid));
     }
@@ -216,8 +238,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let globals = get_globals();
-    let Some(client) = globals.clients.get(&win) else {
+    let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
 
@@ -227,8 +248,8 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 
     let Rect { x, y, w, h } = client.geo;
     let mon_id = client.mon_id;
-    let bh = globals.cfg.bar_height;
-    let animated = globals.animated;
+    let bh = ctx.g.cfg.bar_height;
+    let animated = ctx.g.animated;
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
@@ -246,45 +267,41 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         );
     }
 
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let x11_win: Window = win.into();
-        // Suppress UnmapNotify / DestroyNotify while we unmap so the event loop
-        // does not try to unmanage the client.
-        let _ = conn.grab_server();
+    let root = ctx.g.cfg.root;
+    let has_x11 = ctx.x11_conn().is_some();
+    let x11_win: Window = win.into();
 
-        // Temporarily remove the event mask bits that would trigger an unmanage.
-        let root = get_globals().cfg.root;
-        suppress_unmap_events(conn, root, x11_win);
-
-        ctx.backend.unmap_window(win);
-        ctx.backend.flush();
-
-        set_client_state(ctx, win, WM_STATE_ICONIC);
-
-        // Set the cached flag now that WM_STATE is committed.
-        if let Some(c) = get_globals_mut().clients.get_mut(&win) {
-            c.is_hidden = true;
+    if has_x11 {
+        // Phase 1: grab server and suppress events (borrows conn briefly)
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.grab_server();
+            suppress_unmap_events(conn, root, x11_win);
         }
+    }
 
-        // Restore event masks.
-        restore_event_masks(conn, root, x11_win);
+    // Phase 2: unmap and update state (no conn borrow needed)
+    ctx.backend.unmap_window(win);
+    ctx.backend.flush();
+    set_client_state(ctx, win, WM_STATE_ICONIC);
 
-        let _ = conn.ungrab_server();
-        ctx.backend.flush();
-    } else {
-        ctx.backend.unmap_window(win);
-        ctx.backend.flush();
-        set_client_state(ctx, win, WM_STATE_ICONIC);
-        if let Some(c) = get_globals_mut().clients.get_mut(&win) {
-            c.is_hidden = true;
+    if let Some(c) = ctx.g.clients.get_mut(&win) {
+        c.is_hidden = true;
+    }
+
+    if has_x11 {
+        // Phase 3: restore events and ungrab (borrows conn briefly)
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            restore_event_masks(conn, root, x11_win);
+            let _ = conn.ungrab_server();
         }
+        ctx.backend.flush();
     }
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.
     resize(ctx, win, &Rect { x, y, w, h }, false);
 
-    let snext = get_globals().clients.get(&win).and_then(|c| c.snext);
+    let snext = ctx.g.clients.get(&win).and_then(|c| c.snext);
     crate::focus::focus_soft(ctx, snext);
 
     if let Some(mid) = mon_id {

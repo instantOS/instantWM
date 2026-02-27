@@ -272,17 +272,26 @@ impl Drw {
         if self.display.is_null() {
             return;
         }
+        if w == 0 || h == 0 {
+            return;
+        }
+        unsafe {
+            let new_drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
+            if new_drawable == 0 {
+                return;
+            }
+            if self.drawable != 0 {
+                XFreePixmap(self.display, self.drawable);
+            }
+            self.drawable = new_drawable;
+        }
         self.w = w;
         self.h = h;
-        unsafe {
-            XFreePixmap(self.display, self.drawable);
-            self.drawable = XCreatePixmap(self.display, self.root, w, h, self.depth as u32);
-        }
     }
 
     /// Blit the off-screen pixmap to `win` at position `(x, y)` with size `w × h`.
     pub fn map(&self, win: Window, x: i16, y: i16, w: u16, h: u16) {
-        if self.display.is_null() {
+        if self.display.is_null() || win == 0 || self.drawable == 0 || w == 0 || h == 0 {
             return;
         }
         unsafe {

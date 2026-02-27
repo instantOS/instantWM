@@ -96,6 +96,10 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     let barwin = m_info.2;
 
     let bh = ctx.g.cfg.bar_height;
+    if barwin == WindowId::default() || work_rect_w <= 0 || bh <= 0 {
+        ctx.bar.recursion_exit();
+        return;
+    }
     ctx.g
         .cfg
         .drw

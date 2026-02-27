@@ -212,8 +212,9 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
         // removesystrayicon(c) → resizebarwin(selmon) → updatesystray().
         systray::remove_systray_icon(ctx, icon);
         // Get monitor reference for resize_bar_win
-        if let Some(mon) = ctx.g.selmon() {
-            crate::bar::resize_bar_win(mon);
+        let selmon_idx = ctx.g.selmon_id();
+        if let Some(mon) = ctx.g.monitor(selmon_idx) {
+            crate::bar::resize_bar_win_ctx(ctx, mon);
         }
         systray::update_systray(ctx);
     };
@@ -856,7 +857,21 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<WindowId>, Vec<W
             continue;
         }
 
-        if get_transient_for_hint(win_id).is_some() {
+        // Check WM_TRANSIENT_FOR directly using the already-borrowed conn.
+        let is_transient = conn
+            .get_property(
+                false,
+                win,
+                AtomEnum::WM_TRANSIENT_FOR,
+                AtomEnum::WINDOW,
+                0,
+                1,
+            )
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+            .is_some();
+        if is_transient {
             transients.push(win_id);
         } else {
             managed.push(win_id);

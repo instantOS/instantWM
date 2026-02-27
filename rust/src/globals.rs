@@ -403,10 +403,8 @@ pub fn get_x11_mut() -> &'static mut X11Connection {
     unsafe { &mut *X11.0.get() }
 }
 
-/// Update the runtime configuration from a config::Config struct
-/// This is called during initialization and on reload
-pub fn update_config_from_config(cfg: &crate::config::Config) {
-    let g = get_globals_mut();
+/// Apply config values to the given `Globals` instance.
+pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.borderpx = cfg.borderpx;
     g.cfg.snap = cfg.snap;
     g.cfg.startmenusize = cfg.startmenusize;
@@ -438,6 +436,12 @@ pub fn update_config_from_config(cfg: &crate::config::Config) {
     g.cfg.tag_template = build_tag_template(cfg);
 }
 
+/// Legacy wrapper for call-sites that still use static globals.
+pub fn update_config_from_config(cfg: &crate::config::Config) {
+    let g = get_globals_mut();
+    apply_config(g, cfg);
+}
+
 /// Build the canonical tag template from config.
 ///
 /// Returns a `Vec<Tag>` that every monitor should clone into its own
@@ -467,15 +471,9 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag>
     template
 }
 
-/// Initialize tags from config.
-///
-/// Stores `num_tags` in `TagSet` for mask/count helpers, then clones the
-/// template into every monitor that has already been created (on first
-/// startup there are none yet; `update_geom` will call `init_tags` on each
-/// monitor as it creates them).
-pub fn init_tags_from_config(cfg: &crate::config::Config) {
+/// Apply tag configuration to the given `Globals` instance.
+pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
     let template = build_tag_template(cfg);
-    let g = get_globals_mut();
     g.tags.colors = cfg.tag_colors.clone();
     g.tags.num_tags = cfg.num_tags;
     g.cfg.tag_template = template.clone();
@@ -483,4 +481,10 @@ pub fn init_tags_from_config(cfg: &crate::config::Config) {
     for mon in g.monitors.iter_mut() {
         mon.init_tags(&template);
     }
+}
+
+/// Legacy wrapper for call-sites that still use static globals.
+pub fn init_tags_from_config(cfg: &crate::config::Config) {
+    let g = get_globals_mut();
+    apply_tags_config(g, cfg);
 }
