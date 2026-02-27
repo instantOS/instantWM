@@ -3,7 +3,7 @@ use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
     configure, get_transient_for_hint, is_hidden, set_client_state, set_fullscreen, unmanage,
-    update_title, update_wm_hints, win_to_client, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
+    update_title, update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::commands::x_command;
 use crate::contexts::WmCtx;
@@ -34,6 +34,15 @@ pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
 pub const XEMBED_MODALITY_ON: u32 = 10;
 pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
+#[inline]
+fn win_to_client_ctx(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
+    if ctx.g.clients.contains_key(&win) {
+        Some(win)
+    } else {
+        None
+    }
+}
+
 pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
@@ -61,7 +70,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     // (tag index, window handle, etc.) through to the button action.
     let bar_pos: BarPosition;
 
-    if let Some(win) = win_to_client(event_win) {
+    if let Some(win) = win_to_client_ctx(ctx, event_win) {
         bar_pos = BarPosition::ClientWin;
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
@@ -154,7 +163,7 @@ pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         return;
     };
 
-    let Some(win) = win_to_client(event_win) else {
+    let Some(win) = win_to_client_ctx(ctx, event_win) else {
         return;
     };
 
@@ -182,7 +191,7 @@ pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
 
 pub fn configure_request(ctx: &mut WmCtx, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(win) = win_to_client(event_win) {
+    if let Some(win) = win_to_client_ctx(ctx, event_win) {
         configure(ctx, win);
     } else {
         let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
@@ -205,7 +214,7 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(win) = win_to_client(event_win) {
+    if let Some(win) = win_to_client_ctx(ctx, event_win) {
         unmanage(ctx, win, true);
     } else if let Some(icon) = systray::win_to_systray_icon(ctx, event_win) {
         // Remove the icon from the systray list and client map, then resize
@@ -249,7 +258,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
         is_floating || !has_tiling
     };
-    let entering_client = win_to_client(event_win);
+    let entering_client = win_to_client_ctx(ctx, event_win);
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
@@ -374,7 +383,7 @@ pub fn map_request(ctx: &mut WmCtx, e: &MapRequestEvent) {
         return;
     };
 
-    if win_to_client(event_win).is_none() && !is_override_redirect(ctx, event_win) {
+    if win_to_client_ctx(ctx, event_win).is_none() && !is_override_redirect(ctx, event_win) {
         let (geo, border_width) = get_win_geometry(ctx, event_win);
         crate::client::manage(ctx, event_win, geo, border_width);
     };
@@ -478,7 +487,7 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if let Some(win) = win_to_client(event_win) {
+    if let Some(win) = win_to_client_ctx(ctx, event_win) {
         match e.atom {
             x if x == AtomEnum::WM_NORMAL_HINTS.into() => {
                 if let Some(c) = ctx.g.clients.get_mut(&win) {
@@ -508,19 +517,10 @@ pub fn resize_request(ctx: &mut WmCtx, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(win) = win_to_client(event_win) {
-        // Bit 7 of response_type is the X11 "send_event" flag. When set the
-        // UnmapNotify was generated synthetically (e.g. a client withdrawing
-        // itself) rather than by a real XUnmapWindow call. Treat both as
-        // removal from management so withdrawn clients leave WM lists.
+    if let Some(win) = win_to_client_ctx(ctx, event_win) {
         if e.response_type & 0x80 != 0 {
-            // Synthetic unmap — client is withdrawing; remove from management.
-            // unmanage(win, false) already calls set_client_state(WITHDRAWN).
-            unmanage(ctx, win, false);
+            set_client_state(ctx, win, WM_STATE_WITHDRAWN);
         } else {
-            // Real unmap — window is going away; remove from management.
-            // unmanage(win, false) already calls set_client_state(WITHDRAWN)
-            // internally, so we must not call it here first.
             unmanage(ctx, win, false);
         }
     } else if let Some(_icon) = systray::win_to_systray_icon(ctx, event_win) {
@@ -851,7 +851,7 @@ fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<WindowId>, Vec<W
         }
 
         // Skip already-managed windows.
-        if win_to_client(win_id).is_some() {
+        if win_to_client_ctx(ctx, win_id).is_some() {
             continue;
         }
 

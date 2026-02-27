@@ -2,7 +2,7 @@
 
 use crate::animation::animate_client;
 use crate::backend::{BackendKind, BackendOps};
-use crate::client::{resize, restore_border_width};
+use crate::client::{resize, restore_border_width_ctx};
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::types::*;
@@ -14,7 +14,7 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
         client.isfloating = true;
     }
 
-    restore_border_width(win);
+    restore_border_width_ctx(ctx, win);
     let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
     ctx.backend.set_border_width(win, restored_bw);
 
@@ -61,7 +61,7 @@ pub fn apply_float_change(
         }
 
         if update_borders {
-            restore_border_width(win);
+            restore_border_width_ctx(ctx, win);
             let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
             ctx.backend.set_border_width(win, restored_bw);
 

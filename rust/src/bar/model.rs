@@ -38,10 +38,12 @@ impl ClientBarStats {
         }
 
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
-        // Use the monitor's numeric id for matching so that clients on other
-        // monitors (including ones not yet attached to any list) are excluded.
+        // Use monitor.id() (the Vec index stored as MonitorId) for matching
+        // because Client::mon_id holds the Vec index, not monitor.num (which is
+        // the Xinerama display number and can diverge from the Vec index).
+        let monitor_id = monitor.id();
         for client in globals.clients.values() {
-            if client.mon_id != Some(monitor.num as usize) {
+            if client.mon_id != Some(monitor_id) {
                 continue;
             }
             stats.occupied_tags |= if client.tags == 255 { 0 } else { client.tags };

@@ -304,25 +304,26 @@ impl Monitor {
 
     /// Update the bar position based on monitor geometry.
     pub fn update_bar_position(&mut self, bar_height: i32) {
+        let safe_bh = bar_height.max(0).min(self.monitor_rect.h.max(0));
         if self.showbar {
             self.work_rect.y = if self.topbar {
-                self.monitor_rect.y + bar_height
+                self.monitor_rect.y + safe_bh
             } else {
                 self.monitor_rect.y
             };
-            self.work_rect.h = self.monitor_rect.h - bar_height;
+            self.work_rect.h = (self.monitor_rect.h - safe_bh).max(1);
             self.by = if self.topbar {
                 self.monitor_rect.y
             } else {
-                self.monitor_rect.y + self.monitor_rect.h - bar_height
+                self.monitor_rect.y + self.monitor_rect.h - safe_bh
             };
         } else {
             self.work_rect.y = self.monitor_rect.y;
-            self.work_rect.h = self.monitor_rect.h;
+            self.work_rect.h = self.monitor_rect.h.max(1);
             self.by = if self.topbar {
-                -bar_height
+                -safe_bh
             } else {
-                self.monitor_rect.h
+                self.monitor_rect.h.max(0)
             };
         }
     }

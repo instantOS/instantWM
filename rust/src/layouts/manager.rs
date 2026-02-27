@@ -2,7 +2,7 @@
 
 use crate::backend::BackendOps;
 use crate::bar::draw_bar;
-use crate::client::{resize, restore_border_width, save_border_width};
+use crate::client::{resize, restore_border_width_ctx, save_border_width_ctx};
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
@@ -94,16 +94,16 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                 !is_floating && !is_fullscreen && ((clientcount == 1 && is_tiling) || is_monocle);
 
             if strip_border {
-                save_border_width(win);
+                save_border_width_ctx(ctx, win);
                 if let Some(c) = ctx.g.clients.get_mut(&win) {
                     c.border_width = 0;
                 }
             } else {
                 let old_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
-                restore_border_width(win);
+                restore_border_width_ctx(ctx, win);
                 let new_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
 
-                if old_bw != new_bw && (is_floating || is_fullscreen) {
+                if old_bw != new_bw {
                     ctx.backend.set_border_width(win, new_bw);
                 }
             }

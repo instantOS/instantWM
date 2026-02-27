@@ -66,7 +66,8 @@ pub use focus::{configure, send_event, set_focus, unfocus_win};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{
-    restore_border_width, save_border_width, set_fullscreen, toggle_fake_fullscreen,
+    restore_border_width, restore_border_width_ctx, save_border_width, save_border_width_ctx,
+    set_fullscreen, toggle_fake_fullscreen,
 };
 
 // -- X11 state / properties --------------------------------------------------

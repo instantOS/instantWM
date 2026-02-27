@@ -51,6 +51,12 @@ pub fn save_border_width(win: WindowId) {
     save_border_width_in(&mut globals.clients, win);
 }
 
+/// Save border width using the active WM context.
+#[inline]
+pub fn save_border_width_ctx(ctx: &mut WmCtx, win: WindowId) {
+    save_border_width_in(&mut ctx.g.clients, win);
+}
+
 /// Save border width using an explicit client map reference.
 pub(crate) fn save_border_width_in(
     clients: &mut std::collections::HashMap<WindowId, crate::types::Client>,
@@ -73,6 +79,12 @@ pub(crate) fn save_border_width_in(
 pub fn restore_border_width(win: WindowId) {
     let globals = get_globals_mut();
     restore_border_width_in(&mut globals.clients, win);
+}
+
+/// Restore border width using the active WM context.
+#[inline]
+pub fn restore_border_width_ctx(ctx: &mut WmCtx, win: WindowId) {
+    restore_border_width_in(&mut ctx.g.clients, win);
 }
 
 /// Restore border width using an explicit client map reference.

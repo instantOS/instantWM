@@ -27,6 +27,7 @@
 //! handler trait implementation.
 
 use std::borrow::Cow;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use smithay::{
     backend::input::KeyState,
@@ -596,6 +597,7 @@ pub struct WaylandState {
 pub struct WindowIdMarker(pub WindowId);
 
 impl WaylandState {
+    const MIN_WL_DIM: i32 = 64;
     /// Create a new `WaylandState` and register all Wayland globals.
     ///
     /// This follows Smithay's Anvil pattern:
@@ -615,8 +617,19 @@ impl WaylandState {
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, data| {
-                    unsafe {
-                        display.get_mut().dispatch_clients(data).unwrap();
+                    let dispatch_result = catch_unwind(AssertUnwindSafe(|| unsafe {
+                        display.get_mut().dispatch_clients(data)
+                    }));
+                    match dispatch_result {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(err)) => {
+                            log::warn!("wayland dispatch_clients error: {}", err);
+                        }
+                        Err(_) => {
+                            log::error!(
+                                "wayland client dispatch panicked (invalid client request); continuing"
+                            );
+                        }
                     }
                     Ok(PostAction::Continue)
                 },
@@ -659,6 +672,8 @@ impl WaylandState {
     /// Call this after construction to set up an initial output that
     /// matches the physical display (or a default for testing).
     pub fn create_output(&mut self, name: &str, width: i32, height: i32) -> Output {
+        let safe_width = width.max(Self::MIN_WL_DIM);
+        let safe_height = height.max(Self::MIN_WL_DIM);
         let output = Output::new(
             name.to_string(),
             PhysicalProperties {
@@ -670,7 +685,7 @@ impl WaylandState {
         );
 
         let mode = OutputMode {
-            size: (width, height).into(),
+            size: (safe_width, safe_height).into(),
             refresh: 60_000,
         };
 
@@ -843,11 +858,23 @@ impl WaylandState {
         }
 
         let mon_id = g.selmon_id();
+        let (base_w, base_h) = g
+            .monitor(mon_id)
+            .map(|m| {
+                (
+                    m.work_rect.w.max(Self::MIN_WL_DIM),
+                    m.work_rect.h.max(Self::MIN_WL_DIM),
+                )
+            })
+            .unwrap_or((
+                g.cfg.screen_width.max(Self::MIN_WL_DIM),
+                g.cfg.screen_height.max(Self::MIN_WL_DIM),
+            ));
         let geo = Rect {
             x: 0,
             y: 0,
-            w: g.cfg.screen_width.max(1),
-            h: g.cfg.screen_height.max(1),
+            w: base_w,
+            h: base_h,
         };
 
         let mut c = WmClient::default();

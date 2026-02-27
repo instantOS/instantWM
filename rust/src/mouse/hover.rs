@@ -497,8 +497,12 @@ pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
         return None;
     }
 
-    // Convert the window under cursor to a client
-    crate::client::win_to_client(WindowId::from(reply.child))
+    let win = WindowId::from(reply.child);
+    if ctx.g.clients.contains_key(&win) {
+        Some(win)
+    } else {
+        None
+    }
 }
 
 /// Query the pointer position in both root and window-local coordinates.

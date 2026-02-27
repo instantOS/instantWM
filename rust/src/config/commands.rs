@@ -228,7 +228,7 @@ pub fn default_commands() -> ExternalCommands {
         clipmenu: &["instantclipmenu"],
         smart: &["instantmenu_smartrun"],
         instantmenu_st: &["instantmenu_run_st"],
-        term: &[".config/instantos/default/terminal"],
+        term: &["kitty"],
         term_scratch: &[".config/instantos/default/terminal", "-c", SCRATCHPAD_CLASS],
         quickmenu: &["quickmenu"],
         instantassist: &["instantassist"],

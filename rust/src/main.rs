@@ -150,11 +150,12 @@ fn run_wayland() -> ! {
     let (mut backend, mut winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let output_size = backend.window_size();
-    wm.g.cfg.screen_width = output_size.w;
-    wm.g.cfg.screen_height = output_size.h;
+    let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
+    wm.g.cfg.screen_width = initial_w;
+    wm.g.cfg.screen_height = initial_h;
     monitor::update_geom_ctx(&mut wm.ctx());
 
-    let output = state.create_output("winit", output_size.w, output_size.h);
+    let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
     let seat = state.seat.clone();
@@ -184,12 +185,13 @@ fn run_wayland() -> ! {
         .run(Duration::from_millis(16), &mut state, move |state| {
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
+                    let (safe_w, safe_h) = sanitize_wayland_size(size.w, size.h);
                     let mode = OutputMode {
-                        size: size.into(),
+                        size: (safe_w, safe_h).into(),
                         refresh: 60_000,
                     };
-                    wm.g.cfg.screen_width = size.w;
-                    wm.g.cfg.screen_height = size.h;
+                    wm.g.cfg.screen_width = safe_w;
+                    wm.g.cfg.screen_height = safe_h;
                     monitor::update_geom_ctx(&mut wm.ctx());
                     output.change_current_state(
                         Some(mode),
@@ -351,8 +353,15 @@ fn init_wayland_globals(wm: &mut Wm) {
     wm.g.cfg.screen_height = 800;
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
+    wm.g.cfg.showbar = false;
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
+}
+
+#[inline]
+fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
+    const WAYLAND_MIN_DIM: i32 = 64;
+    (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
 }
 
 fn modifiers_to_x11_mask(mods: &smithay::input::keyboard::ModifiersState) -> u32 {

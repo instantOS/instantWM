@@ -173,7 +173,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     let title_width = (title_end_x - x).max(0);
 
     let mut new_activeoffset = None;
-    if title_width > bh {
+    if title_width > 0 {
         let m = ctx.g.monitor(mon_idx).unwrap();
         let ctx_imm = &*ctx;
         new_activeoffset =

@@ -30,6 +30,7 @@
 
 use crate::animation::animate_client;
 use crate::backend::BackendKind;
+use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
@@ -111,8 +112,8 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     // Seed the cached is_hidden flag from the live WM_STATE property.
     // This handles windows that were already in the iconic state before
     // the WM started (e.g. restored from a previous session).
-    c.is_hidden =
-        crate::client::visibility::get_state_ctx(ctx, w) == crate::client::constants::WM_STATE_ICONIC;
+    c.is_hidden = crate::client::visibility::get_state_ctx(ctx, w)
+        == crate::client::constants::WM_STATE_ICONIC;
 
     ctx.g.clients.insert(w, c.clone());
 
@@ -187,12 +188,12 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             client.border_width = border_width;
         }
 
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().border_width(border_width as u32),
-            );
+        // Use backend-agnostic border width setter so this works without a
+        // direct X11 connection reference.
+        ctx.backend.set_border_width(w, border_width);
 
+        // Border pixel colour is X11-specific (a colour scheme pixel value).
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
             if let Some(ref scheme) = ctx.g.cfg.borderscheme {
                 let pixel = scheme.normal.bg.pixel();
                 let _ = conn.change_window_attributes(
@@ -269,13 +270,8 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
 
     // Floating windows start on top.
     if should_raise {
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
-        }
+        ctx.backend.raise_window(w);
+        ctx.backend.flush();
     }
 
     // -------------------------------------------------------------------------
@@ -315,17 +311,19 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             .unwrap_or((0, 0, 0, 0, 0))
     };
 
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new()
-                .x(client_x + 2 * screen_width)
-                .y(client_y)
-                .width(client_width as u32)
-                .height(client_height as u32),
-        );
-        let _ = conn.flush();
-    }
+    // Move off-screen initially to avoid a visible flash at (0,0) before
+    // the layout runs.  Use the backend's resize_window so the call goes
+    // through the right abstraction layer.
+    ctx.backend.resize_window(
+        w,
+        Rect {
+            x: client_x + 2 * screen_width,
+            y: client_y,
+            w: client_width,
+            h: client_height,
+        },
+    );
+    ctx.backend.flush();
 
     let initially_hidden = ctx.g.clients.get(&w).map(|c| c.is_hidden).unwrap_or(false);
 
@@ -350,10 +348,8 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     }
 
     if !initially_hidden {
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.map_window(x11_win);
-            let _ = conn.flush();
-        }
+        ctx.backend.map_window(w);
+        ctx.backend.flush();
     }
 
     crate::focus::focus_soft(ctx, None);
@@ -396,13 +392,8 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             .unwrap_or(false);
 
         if !is_tiling {
-            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-                let _ = conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                );
-                let _ = conn.flush();
-            }
+            ctx.backend.raise_window(w);
+            ctx.backend.flush();
         } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
             if let Some(mon_id) = c.mon_id {
                 arrange(ctx, Some(mon_id));
@@ -473,10 +464,8 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
             );
 
             // Restore the original border width the application expects.
-            let _ = conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().border_width(old_bw as u32),
-            );
+            // Use the backend abstraction so the call is backend-agnostic.
+            ctx.backend.set_border_width(win, old_bw);
 
             // Release button grabs.
             let _ = conn.ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
@@ -485,7 +474,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
         set_client_state(ctx, win, WM_STATE_WITHDRAWN);
 
         let _ = conn.ungrab_server();
-        let _ = conn.flush();
+        ctx.backend.flush();
     }
 
     // Remove from the global map.

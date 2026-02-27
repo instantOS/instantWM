@@ -573,10 +573,7 @@ pub(crate) fn draw_window_titles(
     }
     drw.rect(x, 0, w as u32, bh as u32, true, true);
 
-    let has_clients = ctx
-        .g
-        .selmon()
-        .is_some_and(|selmon| selmon.clients.is_some());
+    let has_clients = m.clients.is_some();
 
     if !has_clients {
         let help_text = "Press space to launch an application";

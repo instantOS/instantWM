@@ -29,7 +29,6 @@ use crate::backend::BackendRef;
 use crate::bar::x11::update_bar_pos_with_bh;
 use crate::client::{
     attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, set_client_tag_prop, unfocus_win,
-    win_to_client as get_win_to_client,
 };
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
@@ -102,7 +101,8 @@ pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: WindowId) -> Option<MonitorId> {
         }
     }
 
-    if let Some(win) = get_win_to_client(w) {
+    if ctx.g.clients.contains_key(&w) {
+        let win = w;
         return ctx.g.clients.get(&win).and_then(|c| c.mon_id);
     }
 
@@ -141,7 +141,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         (is_sp, tags)
     };
 
-    if get_win_to_client(win).is_some() {
+    if ctx.g.clients.contains_key(&win) {
         unfocus_win(ctx, win, true);
     }
 
@@ -520,7 +520,8 @@ pub fn update_geom_ctx(ctx: &mut WmCtx) -> bool {
     }
 
     // Fallback to single monitor
-    let (sw, sh) = (ctx.g.cfg.screen_width, ctx.g.cfg.screen_height);
+    let sw = ctx.g.cfg.screen_width.max(1);
+    let sh = ctx.g.cfg.screen_height.max(1);
 
     if ctx.g.monitors.is_empty() {
         init_single_monitor_ctx(ctx, sw, sh)
