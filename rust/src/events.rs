@@ -1,3 +1,4 @@
+use crate::backend::BackendOps;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
@@ -508,17 +509,14 @@ pub fn resize_request(ctx: &mut WmCtx, e: &ResizeRequestEvent) {
 pub fn unmap_notify(ctx: &mut WmCtx, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(win) = win_to_client(event_win) {
-        // Bit 7 of response_type is the X11 "send_event" flag.  When set the
+        // Bit 7 of response_type is the X11 "send_event" flag. When set the
         // UnmapNotify was generated synthetically (e.g. a client withdrawing
-        // itself) rather than by a real XUnmapWindow call.  In that case we
-        // only update WM_STATE to WithdrawnState and leave the client managed,
-        // exactly as the original C code does:
-        //
-        //   if (ev->send_event) setclientstate(c, WithdrawnState);
-        //   else                unmanage(c, 0);
+        // itself) rather than by a real XUnmapWindow call. Treat both as
+        // removal from management so withdrawn clients leave WM lists.
         if e.response_type & 0x80 != 0 {
-            // Synthetic unmap — client is withdrawing; just record state.
-            set_client_state(ctx, win, WM_STATE_WITHDRAWN);
+            // Synthetic unmap — client is withdrawing; remove from management.
+            // unmanage(win, false) already calls set_client_state(WITHDRAWN).
+            unmanage(ctx, win, false);
         } else {
             // Real unmap — window is going away; remove from management.
             // unmanage(win, false) already calls set_client_state(WITHDRAWN)

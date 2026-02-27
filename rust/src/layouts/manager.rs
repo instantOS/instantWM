@@ -8,8 +8,6 @@ use crate::layouts::algo::save_floating;
 use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
 use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
-use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::protocol::xproto::*;
 
 use super::LayoutKind;
 
@@ -106,13 +104,7 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                 let new_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
 
                 if old_bw != new_bw && (is_floating || is_fullscreen) {
-                    if let Some(x11) = ctx.x11_conn() {
-                        let x11_win: Window = win.into();
-                        let _ = x11.conn.configure_window(
-                            x11_win,
-                            &ConfigureWindowAux::new().border_width(new_bw as u32),
-                        );
-                    }
+                    ctx.backend.set_border_width(win, new_bw);
                 }
             }
         }

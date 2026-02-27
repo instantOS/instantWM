@@ -811,6 +811,10 @@ impl WaylandState {
         let _ = self.display_handle.flush_clients();
     }
 
+    pub fn window_exists(&self, window: WindowId) -> bool {
+        self.find_window(window).is_some()
+    }
+
     fn alloc_window_id(&mut self) -> WindowId {
         loop {
             let id = self.next_window_id;

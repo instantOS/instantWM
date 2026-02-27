@@ -28,6 +28,8 @@ pub trait BackendOps {
     fn set_focus(&self, window: WindowId);
     fn map_window(&self, window: WindowId);
     fn unmap_window(&self, window: WindowId);
+    fn set_border_width(&self, window: WindowId, width: i32);
+    fn window_exists(&self, window: WindowId) -> bool;
     fn flush(&self);
 }
 
@@ -100,6 +102,20 @@ impl BackendOps for Backend {
         match self {
             Self::X11(x11) => x11.unmap_window(window),
             Self::Wayland(wayland) => wayland.unmap_window(window),
+        }
+    }
+
+    fn set_border_width(&self, window: WindowId, width: i32) {
+        match self {
+            Self::X11(x11) => x11.set_border_width(window, width),
+            Self::Wayland(wayland) => wayland.set_border_width(window, width),
+        }
+    }
+
+    fn window_exists(&self, window: WindowId) -> bool {
+        match self {
+            Self::X11(x11) => x11.window_exists(window),
+            Self::Wayland(wayland) => wayland.window_exists(window),
         }
     }
 
@@ -184,6 +200,20 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.unmap_window(window),
             BackendRef::Wayland(wayland) => wayland.unmap_window(window),
+        }
+    }
+
+    fn set_border_width(&self, window: WindowId, width: i32) {
+        match self {
+            BackendRef::X11(x11) => x11.set_border_width(window, width),
+            BackendRef::Wayland(wayland) => wayland.set_border_width(window, width),
+        }
+    }
+
+    fn window_exists(&self, window: WindowId) -> bool {
+        match self {
+            BackendRef::X11(x11) => x11.window_exists(window),
+            BackendRef::Wayland(wayland) => wayland.window_exists(window),
         }
     }
 

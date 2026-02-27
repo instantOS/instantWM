@@ -86,6 +86,19 @@ impl BackendOps for X11Backend {
         let _ = self.conn.unmap_window(x11_win);
     }
 
+    fn set_border_width(&self, window: WindowId, width: i32) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().border_width(width.max(0) as u32),
+        );
+    }
+
+    fn window_exists(&self, window: WindowId) -> bool {
+        let x11_win: Window = window.into();
+        self.conn.get_window_attributes(x11_win).is_ok()
+    }
+
     fn flush(&self) {
         let _ = self.conn.flush();
     }
@@ -139,6 +152,19 @@ impl BackendOps for X11BackendRef<'_> {
     fn unmap_window(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.unmap_window(x11_win);
+    }
+
+    fn set_border_width(&self, window: WindowId, width: i32) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().border_width(width.max(0) as u32),
+        );
+    }
+
+    fn window_exists(&self, window: WindowId) -> bool {
+        let x11_win: Window = window.into();
+        self.conn.get_window_attributes(x11_win).is_ok()
     }
 
     fn flush(&self) {
