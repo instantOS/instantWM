@@ -43,6 +43,7 @@ use crate::backend::wayland::compositor::{
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
+use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::wayland::BarRenderer;
 use crate::config::init_config;
 use crate::drw::Drw;
@@ -296,6 +297,58 @@ fn run_wayland() -> ! {
                         };
                         pointer_handle.button(state, &button);
                         if event.state() == smithay::backend::input::ButtonState::Pressed {
+                            let root_x = pointer_location.x.round() as i32;
+                            let root_y = pointer_location.y.round() as i32;
+                            let rect = Rect {
+                                x: root_x,
+                                y: root_y,
+                                w: 1,
+                                h: 1,
+                            };
+                            if let Some(mid) =
+                                crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)
+                            {
+                                let mut ctx = wm.ctx();
+                                if mid != ctx.g.selmon_id() {
+                                    ctx.g.set_selmon(mid);
+                                }
+                                let bar_h = ctx.g.cfg.bar_height.max(1);
+                                let in_bar = ctx.g.selmon().is_some_and(|m| {
+                                    m.showbar && root_y >= m.by && root_y < m.by + bar_h
+                                });
+                                if in_bar {
+                                    if let Some(mon) = ctx.g.selmon().cloned() {
+                                        let local_x = root_x - mon.monitor_rect.x;
+                                        let pos = bar_position_at_x(&mon, &ctx, local_x);
+                                        if pos == BarPosition::StartMenu {
+                                            crate::bar::reset_bar(&mut ctx);
+                                        }
+                                        let gesture = if pos == BarPosition::StatusText {
+                                            ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
+                                        } else {
+                                            bar_position_to_gesture(pos)
+                                        };
+                                        if let Some(m) = ctx.g.selmon_mut() {
+                                            m.gesture = gesture;
+                                        }
+                                        let buttons = ctx.g.cfg.buttons.clone();
+                                        let btn_code = event.button_code() as u8;
+                                        for b in &buttons {
+                                            if b.matches(pos) && b.button.as_u8() == btn_code {
+                                                (b.action)(
+                                                    &mut ctx,
+                                                    ButtonArg {
+                                                        pos,
+                                                        btn: b.button,
+                                                        rx: root_x,
+                                                        ry: root_y,
+                                                    },
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             let keyboard_focus = state
                                 .space
                                 .element_under(pointer_location)
@@ -408,9 +461,8 @@ fn run_wayland() -> ! {
 }
 
 fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
-    let Some(scheme) = wm.g.cfg.borderscheme.as_ref() else {
-        return Vec::new();
-    };
+    let scheme = wm.g.cfg.borderscheme.as_ref();
+    let bordercolors = &wm.g.cfg.bordercolors;
     let mut out = Vec::new();
     let sel = wm.g.selected_win();
     for c in wm.g.clients.values() {
@@ -425,12 +477,18 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
             .unwrap_or(true);
         let rgba = if Some(c.win) == sel {
             if c.isfloating || !has_tiling {
-                color_to_rgba(&scheme.float_focus.bg)
+                cfg_hex_to_rgba(bordercolors.get(2).copied())
+                    .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
+                    .unwrap_or([0.75, 0.40, 0.28, 1.0])
             } else {
-                color_to_rgba(&scheme.tile_focus.bg)
+                cfg_hex_to_rgba(bordercolors.get(1).copied())
+                    .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
+                    .unwrap_or([0.28, 0.52, 0.77, 1.0])
             }
         } else {
-            color_to_rgba(&scheme.normal.bg)
+            cfg_hex_to_rgba(bordercolors.first().copied())
+                .or_else(|| scheme.map(|s| color_to_rgba(&s.normal.bg)))
+                .unwrap_or([0.18, 0.18, 0.20, 1.0])
         };
 
         let x = c.geo.x;
@@ -443,6 +501,28 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
         push_solid(&mut out, x + w - bw, y + bw, bw, (h - 2 * bw).max(0), rgba);
     }
     out
+}
+
+fn cfg_hex_to_rgba(color: Option<&str>) -> Option<[f32; 4]> {
+    let s = color?.trim();
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() != 6 && hex.len() != 8 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    let a = if hex.len() == 8 {
+        u8::from_str_radix(&hex[6..8], 16).ok()?
+    } else {
+        255
+    };
+    Some([
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        a as f32 / 255.0,
+    ])
 }
 
 fn push_solid(
@@ -482,6 +562,7 @@ fn init_wayland_globals(wm: &mut Wm) {
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.showbar = true;
+    wm.g.cfg.bar_height = if cfg.barheight > 0 { cfg.barheight + 12 } else { 24 };
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
 }

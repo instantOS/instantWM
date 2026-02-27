@@ -85,6 +85,10 @@ while read -r id; do
 done </tmp/iwm-e2e-ids-new.txt
 
 awk 'NF >= 5 && $1 ~ /^[0-9]+$/ {print $0}' /tmp/iwm-e2e-geoms.txt >/tmp/iwm-e2e-geoms-clean.txt
+if ! awk 'NF >= 5 && $3 > 0 {found=1} END{exit(found?0:1)}' /tmp/iwm-e2e-geoms-clean.txt; then
+  echo "No window y-offset detected; bar may be overlaying tiled area" >&2
+  exit 1
+fi
 if ! awk -v expected="$SPAWN_COUNT" '
 BEGIN { n=0; bad=0; max_ratio=0.0 }
 {

@@ -8,7 +8,7 @@ use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRen
 use smithay::backend::renderer::element::Kind;
 use smithay::utils::{Logical, Point, Scale, Size};
 
-use crate::globals::get_globals;
+use crate::globals::Globals;
 use crate::types::Monitor;
 
 /// Default font size in pixels.
@@ -145,23 +145,23 @@ impl BarRenderer {
     /// Render the bar for a monitor and return the render elements.
     pub fn render_bar(
         &mut self,
+        g: &Globals,
         monitor: &Monitor,
         x: i32,
         y: i32,
         width: i32,
     ) -> BarRenderElements {
-        let g = get_globals();
         let bh = g.cfg.bar_height.max(DEFAULT_BAR_HEIGHT);
         self.bar_height = bh;
 
         let mut elements = BarRenderElements::new();
 
-        let (bg_color, fg_color) = g
-            .cfg
-            .statusscheme
-            .as_ref()
-            .map(|s| (color_to_rgba(&s.bg), color_to_rgba(&s.fg)))
-            .unwrap_or(([0.07, 0.07, 0.07, 1.0], [0.9, 0.9, 0.9, 1.0]));
+        let bg_color = cfg_hex_to_rgba(g.cfg.statusbarcolors.get(1).copied())
+            .or_else(|| g.cfg.statusscheme.as_ref().map(|s| color_to_rgba(&s.bg)))
+            .unwrap_or([0.12, 0.12, 0.14, 1.0]);
+        let fg_color = cfg_hex_to_rgba(g.cfg.statusbarcolors.first().copied())
+            .or_else(|| g.cfg.statusscheme.as_ref().map(|s| color_to_rgba(&s.fg)))
+            .unwrap_or([0.92, 0.92, 0.92, 1.0]);
 
         // Draw bar background
         elements.add_rect(x, y, width, bh, bg_color);
@@ -170,10 +170,10 @@ impl BarRenderer {
         let mut current_x = x + startmenu_size;
 
         // Draw start menu icon
-        self.draw_startmenu_icon(&mut elements, x, y, startmenu_size, bh, fg_color, bg_color);
+        self.draw_startmenu_icon(g, &mut elements, x, y, startmenu_size, bh, fg_color, bg_color);
 
         // Draw tags
-        current_x = self.draw_tags(&mut elements, monitor, current_x, y, bh);
+        current_x = self.draw_tags(g, &mut elements, monitor, current_x, y, bh);
 
         // Draw layout indicator
         current_x = self.draw_layout(&mut elements, monitor, current_x, y, bh, fg_color, bg_color);
@@ -186,20 +186,21 @@ impl BarRenderer {
 
         // Draw window titles
         let status_width = if g.selmon_id() == monitor.id() {
-            self.measure_status_text()
+            self.measure_status_text(g)
         } else {
             0
         };
 
         let title_width = (x + width - current_x - status_width).max(0);
         if title_width > 0 {
-            self.draw_window_titles(&mut elements, monitor, current_x, y, title_width, bh);
+            self.draw_window_titles(g, &mut elements, monitor, current_x, y, title_width, bh);
         }
 
         // Draw status text
         if g.selmon_id() == monitor.id() && status_width > 0 {
             self.draw_status_text(
                 &mut elements,
+                g,
                 x + width - status_width,
                 y,
                 status_width,
@@ -214,6 +215,7 @@ impl BarRenderer {
 
     fn draw_startmenu_icon(
         &self,
+        g: &Globals,
         elements: &mut BarRenderElements,
         x: i32,
         y: i32,
@@ -222,7 +224,6 @@ impl BarRenderer {
         fg: [f32; 4],
         bg: [f32; 4],
     ) {
-        let g = get_globals();
         let is_inverted = g
             .selmon()
             .is_some_and(|mon| mon.gesture == crate::types::Gesture::StartMenu);
@@ -248,13 +249,13 @@ impl BarRenderer {
 
     fn draw_tags(
         &self,
+        g: &Globals,
         elements: &mut BarRenderElements,
         monitor: &Monitor,
         x: i32,
         y: i32,
         bh: i32,
     ) -> i32 {
-        let g = get_globals();
         let mut current_x = x;
 
         let occupied_tags: u32 = g
@@ -271,7 +272,8 @@ impl BarRenderer {
             let is_selected = monitor.tagset[monitor.seltags as usize] & (1 << i) != 0;
             let is_hover = selmon_gesture == crate::types::Gesture::Tag(i);
 
-            let (bg_color, fg_color) = self.get_tag_colors(i, is_occupied, is_selected, is_hover);
+            let (bg_color, fg_color) =
+                self.get_tag_colors(g, i, is_occupied, is_selected, is_hover);
             let tag_width = 40;
 
             elements.add_rect(current_x, y, tag_width, bh, bg_color);
@@ -301,24 +303,14 @@ impl BarRenderer {
 
     fn get_tag_colors(
         &self,
+        g: &Globals,
         _idx: usize,
         is_occupied: bool,
         is_selected: bool,
         is_hover: bool,
     ) -> ([f32; 4], [f32; 4]) {
-        let g = get_globals();
-        let schemes = if is_hover {
-            &g.tags.schemes.hover
-        } else {
-            &g.tags.schemes.no_hover
-        };
-
         let default_bg = [0.07, 0.07, 0.07, 1.0];
         let default_fg = [0.9, 0.9, 0.9, 1.0];
-
-        if schemes.is_empty() {
-            return (default_bg, default_fg);
-        }
 
         use crate::config::SchemeTag;
         let scheme_idx = if is_occupied {
@@ -333,6 +325,22 @@ impl BarRenderer {
             SchemeTag::Inactive as usize
         };
 
+        let raw = if is_hover {
+            g.tags.colors.get(1)
+        } else {
+            g.tags.colors.first()
+        };
+        if let Some(triplet) = raw.and_then(|group| group.get(scheme_idx)) {
+            return (
+                cfg_hex_to_rgba(triplet.get(1).copied()).unwrap_or(default_bg),
+                cfg_hex_to_rgba(triplet.first().copied()).unwrap_or(default_fg),
+            );
+        }
+        let schemes = if is_hover {
+            &g.tags.schemes.hover
+        } else {
+            &g.tags.schemes.no_hover
+        };
         schemes
             .get(scheme_idx)
             .map(|s| (color_to_rgba(&s.bg), color_to_rgba(&s.fg)))
@@ -402,6 +410,7 @@ impl BarRenderer {
 
     fn draw_window_titles(
         &self,
+        g: &Globals,
         elements: &mut BarRenderElements,
         monitor: &Monitor,
         x: i32,
@@ -409,7 +418,6 @@ impl BarRenderer {
         width: i32,
         bh: i32,
     ) {
-        let g = get_globals();
         let selected = monitor.selected_tags();
 
         let visible_clients: Vec<_> = monitor
@@ -436,7 +444,7 @@ impl BarRenderer {
                     each_width
                 };
                 let is_selected = monitor.sel == Some(win);
-                let (bg, fg) = self.get_window_colors(client, is_selected);
+                let (bg, fg) = self.get_window_colors(g, client, is_selected);
 
                 elements.add_rect(current_x, y, this_width, bh, bg);
 
@@ -448,7 +456,7 @@ impl BarRenderer {
                 }
 
                 if is_selected {
-                    self.draw_close_button(elements, current_x, y, bh);
+                    self.draw_close_button(g, elements, current_x, y, bh);
                 }
 
                 current_x += this_width;
@@ -475,18 +483,12 @@ impl BarRenderer {
 
     fn get_window_colors(
         &self,
+        g: &Globals,
         client: &crate::types::Client,
         is_selected: bool,
     ) -> ([f32; 4], [f32; 4]) {
-        let g = get_globals();
-        let schemes = &g.cfg.windowschemes.no_hover;
-
         let default_bg = [0.07, 0.07, 0.07, 1.0];
         let default_fg = [0.9, 0.9, 0.9, 1.0];
-
-        if schemes.is_empty() {
-            return (default_bg, default_fg);
-        }
 
         use crate::config::SchemeWin;
         let scheme_idx = if is_selected {
@@ -503,32 +505,63 @@ impl BarRenderer {
             SchemeWin::Normal as usize
         };
 
-        schemes
+        if let Some(triplet) = g
+            .cfg
+            .windowcolors
+            .first()
+            .and_then(|group| group.get(scheme_idx))
+        {
+            return (
+                cfg_hex_to_rgba(triplet.get(1).copied()).unwrap_or(default_bg),
+                cfg_hex_to_rgba(triplet.first().copied()).unwrap_or(default_fg),
+            );
+        }
+        g.cfg
+            .windowschemes
+            .no_hover
             .get(scheme_idx)
             .map(|s| (color_to_rgba(&s.bg), color_to_rgba(&s.fg)))
             .unwrap_or((default_bg, default_fg))
     }
 
-    fn draw_close_button(&self, elements: &mut BarRenderElements, x: i32, y: i32, bh: i32) {
-        let g = get_globals();
+    fn draw_close_button(
+        &self,
+        g: &Globals,
+        elements: &mut BarRenderElements,
+        x: i32,
+        y: i32,
+        bh: i32,
+    ) {
         let button_size = 16i32;
         let button_x = x + bh / 6;
         let button_y = y + (bh - button_size) / 2;
 
         let (bg, detail) = g
             .cfg
-            .closebuttonschemes
-            .no_hover
+            .closebuttoncolors
             .first()
-            .map(|s| (color_to_rgba(&s.bg), color_to_rgba(&s.detail)))
+            .and_then(|v| {
+                v.first().map(|triplet| {
+                    (
+                        cfg_hex_to_rgba(triplet.get(1).copied()).unwrap_or([0.8, 0.2, 0.2, 1.0]),
+                        cfg_hex_to_rgba(triplet.get(2).copied()).unwrap_or([0.6, 0.1, 0.1, 1.0]),
+                    )
+                })
+            })
+            .or_else(|| {
+                g.cfg
+                    .closebuttonschemes
+                    .no_hover
+                    .first()
+                    .map(|s| (color_to_rgba(&s.bg), color_to_rgba(&s.detail)))
+            })
             .unwrap_or(([0.8, 0.2, 0.2, 1.0], [0.6, 0.1, 0.1, 1.0]));
 
         elements.add_rect(button_x, button_y, button_size, button_size, bg);
         elements.add_rect(button_x, button_y + button_size - 4, button_size, 4, detail);
     }
 
-    fn measure_status_text(&self) -> i32 {
-        let g = get_globals();
+    fn measure_status_text(&self, g: &Globals) -> i32 {
         if g.status_text.is_empty() {
             return 0;
         }
@@ -538,6 +571,7 @@ impl BarRenderer {
     fn draw_status_text(
         &self,
         elements: &mut BarRenderElements,
+        g: &Globals,
         x: i32,
         y: i32,
         width: i32,
@@ -545,7 +579,6 @@ impl BarRenderer {
         fg: [f32; 4],
         bg: [f32; 4],
     ) {
-        let g = get_globals();
         if g.status_text.is_empty() {
             return;
         }
@@ -600,15 +633,15 @@ pub fn render_bar_elements(
             continue;
         }
 
-        let bar_x = monitor.work_rect.x;
-        let bar_y = monitor.work_rect.y;
-        let bar_width = monitor.work_rect.w;
+        let bar_x = monitor.monitor_rect.x;
+        let bar_y = monitor.by;
+        let bar_width = monitor.monitor_rect.w;
 
         if bar_width <= 0 || bh <= 0 {
             continue;
         }
 
-        let bar_elements = bar_renderer.render_bar(monitor, bar_x, bar_y, bar_width);
+        let bar_elements = bar_renderer.render_bar(ctx.g, monitor, bar_x, bar_y, bar_width);
         let solid_elements = bar_elements.to_solid_elements(scale);
         all_elements.extend(solid_elements);
     }
@@ -622,4 +655,26 @@ fn color_to_rgba(color: &crate::drw::Color) -> [f32; 4] {
     let b = color.color.color.blue as f32 / 65535.0;
     let a = color.color.color.alpha as f32 / 65535.0;
     [r, g, b, a]
+}
+
+fn cfg_hex_to_rgba(color: Option<&str>) -> Option<[f32; 4]> {
+    let s = color?.trim();
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() != 6 && hex.len() != 8 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    let a = if hex.len() == 8 {
+        u8::from_str_radix(&hex[6..8], 16).ok()?
+    } else {
+        255
+    };
+    Some([
+        r as f32 / 255.0,
+        g as f32 / 255.0,
+        b as f32 / 255.0,
+        a as f32 / 255.0,
+    ])
 }
