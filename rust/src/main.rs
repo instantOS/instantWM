@@ -135,7 +135,6 @@ fn run_x11() {
 fn run_wayland() -> ! {
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     init_wayland_globals(&mut wm);
-    run_autostart();
 
     let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("wayland event loop");
     let loop_handle = event_loop.handle();
@@ -143,6 +142,7 @@ fn run_wayland() -> ! {
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut display_handle = display.handle();
     let mut state = WaylandState::new(display, &loop_handle);
+    state.attach_globals(&mut wm.g);
     if let WmBackend::Wayland(ref wayland) = wm.backend {
         wayland.attach_state(&mut state);
     }
@@ -168,6 +168,13 @@ fn run_wayland() -> ! {
         .to_string_lossy()
         .into_owned();
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
+    std::env::set_var("XDG_SESSION_TYPE", "wayland");
+    std::env::set_var("GDK_BACKEND", "wayland,x11");
+    std::env::set_var("QT_QPA_PLATFORM", "wayland;xcb");
+    std::env::set_var("CLUTTER_BACKEND", "wayland");
+    // Prefer software GL fallback in environments without a usable render node.
+    std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+    std::env::set_var("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe");
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {
@@ -176,6 +183,8 @@ fn run_wayland() -> ! {
                 .insert_client(client, Arc::new(WaylandClientState::default()));
         })
         .expect("listening socket source");
+
+    run_autostart();
 
     let start_time = std::time::Instant::now();
     let mut pointer_location = Point::from((0.0, 0.0));

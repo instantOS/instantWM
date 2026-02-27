@@ -62,9 +62,9 @@ use smithay::{
     xwayland::X11Wm,
 };
 
-use crate::client;
-use crate::globals::get_globals_mut;
+use crate::globals::Globals;
 use crate::types::{Client as WmClient, Rect, WindowId};
+use std::ptr::NonNull;
 
 // ---------------------------------------------------------------------------
 // Focus target types
@@ -591,6 +591,7 @@ pub struct WaylandState {
     pub xdisplay: Option<u32>,
 
     next_window_id: u32,
+    globals: Option<NonNull<Globals>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -664,7 +665,22 @@ impl WaylandState {
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
+            globals: None,
         }
+    }
+
+    pub fn attach_globals(&mut self, globals: &mut Globals) {
+        self.globals = Some(NonNull::from(globals));
+    }
+
+    #[inline]
+    fn globals(&self) -> Option<&Globals> {
+        self.globals.map(|p| unsafe { p.as_ref() })
+    }
+
+    #[inline]
+    fn globals_mut(&mut self) -> Option<&mut Globals> {
+        self.globals.map(|mut p| unsafe { p.as_mut() })
     }
 
     /// Create and register a default output.
@@ -704,23 +720,27 @@ impl WaylandState {
     }
 
     pub fn sync_space_from_globals(&mut self) {
-        let g = get_globals_mut();
-        for window in self.space.elements().cloned().collect::<Vec<_>>() {
-            if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
-                if let Some(client) = g.clients.get(&marker.0) {
-                    self.space
-                        .map_element(window.clone(), (client.geo.x, client.geo.y), false);
-                    if let Some(toplevel) = window.toplevel() {
-                        let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                            client.geo.w.max(1),
-                            client.geo.h.max(1),
-                        );
-                        toplevel.with_pending_state(|state| {
-                            state.size = Some(size);
-                        });
-                        toplevel.send_pending_configure();
-                    }
-                }
+        let Some(g) = self.globals() else {
+            return;
+        };
+        let updates: Vec<(Window, Rect)> = self
+            .space
+            .elements()
+            .filter_map(|window| {
+                let marker = window.user_data().get::<WindowIdMarker>()?;
+                let client = g.clients.get(&marker.0)?;
+                Some((window.clone(), client.geo))
+            })
+            .collect();
+        for (window, geo) in updates {
+            self.space.map_element(window.clone(), (geo.x, geo.y), false);
+            if let Some(toplevel) = window.toplevel() {
+                let size =
+                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(geo.w.max(1), geo.h.max(1));
+                toplevel.with_pending_state(|state| {
+                    state.size = Some(size);
+                });
+                toplevel.send_pending_configure();
             }
         }
     }
@@ -734,6 +754,21 @@ impl WaylandState {
 
         self.space.map_element(window.clone(), (0, 0), true);
         self.ensure_client_for_window(window_id);
+        if let Some(toplevel) = window.toplevel() {
+            let (w, h) = self
+                .globals()
+                .and_then(|g| g.clients.get(&window_id).map(|c| (c.geo.w, c.geo.h)))
+                .unwrap_or((Self::MIN_WL_DIM, Self::MIN_WL_DIM));
+            let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
+                w.max(Self::MIN_WL_DIM),
+                h.max(Self::MIN_WL_DIM),
+            );
+            toplevel.with_pending_state(|state| {
+                state.size = Some(size);
+            });
+            toplevel.send_pending_configure();
+        }
+        self.set_focus(window_id);
         window_id
     }
 
@@ -852,7 +887,9 @@ impl WaylandState {
     }
 
     fn ensure_client_for_window(&mut self, window: WindowId) {
-        let g = get_globals_mut();
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
         if g.clients.contains_key(&window) {
             return;
         }
@@ -888,12 +925,77 @@ impl WaylandState {
         c.mon_id = Some(mon_id);
         g.clients.insert(window, c);
         g.client_list.push(window.0 as usize);
+        attach_client_to_monitor(g, window);
+    }
+}
 
-        let has_monitor = g.monitor(mon_id).is_some();
-        drop(g);
-        if has_monitor {
-            client::list::attach(window);
-            client::list::attach_stack(window);
+fn attach_client_to_monitor(g: &mut Globals, win: WindowId) {
+    let mon_id = match g.clients.get(&win).and_then(|c| c.mon_id) {
+        Some(mid) => mid,
+        None => return,
+    };
+    let old_clients = g.monitor(mon_id).and_then(|m| m.clients);
+    let old_stack = g.monitor(mon_id).and_then(|m| m.stack);
+    if let Some(c) = g.clients.get_mut(&win) {
+        c.next = old_clients;
+        c.snext = old_stack;
+    }
+    if let Some(mon) = g.monitor_mut(mon_id) {
+        mon.clients = Some(win);
+        mon.stack = Some(win);
+        if mon.sel.is_none() {
+            mon.sel = Some(win);
+        }
+    }
+}
+
+fn detach_client_from_monitor(g: &mut Globals, win: WindowId) {
+    let mon_id = match g.clients.get(&win).and_then(|c| c.mon_id) {
+        Some(mid) => mid,
+        None => return,
+    };
+    let client_next = g.clients.get(&win).and_then(|c| c.next);
+    let client_snext = g.clients.get(&win).and_then(|c| c.snext);
+
+    let mut cur = g.monitor(mon_id).and_then(|m| m.clients);
+    let mut prev: Option<WindowId> = None;
+    while let Some(w) = cur {
+        let next = g.clients.get(&w).and_then(|c| c.next);
+        if w == win {
+            if let Some(p) = prev {
+                if let Some(pc) = g.clients.get_mut(&p) {
+                    pc.next = client_next;
+                }
+            } else if let Some(mon) = g.monitor_mut(mon_id) {
+                mon.clients = client_next;
+            }
+            break;
+        }
+        prev = Some(w);
+        cur = next;
+    }
+
+    let mut cur = g.monitor(mon_id).and_then(|m| m.stack);
+    let mut prev: Option<WindowId> = None;
+    while let Some(w) = cur {
+        let next = g.clients.get(&w).and_then(|c| c.snext);
+        if w == win {
+            if let Some(p) = prev {
+                if let Some(pc) = g.clients.get_mut(&p) {
+                    pc.snext = client_snext;
+                }
+            } else if let Some(mon) = g.monitor_mut(mon_id) {
+                mon.stack = client_snext;
+            }
+            break;
+        }
+        prev = Some(w);
+        cur = next;
+    }
+
+    if let Some(mon) = g.monitor_mut(mon_id) {
+        if mon.sel == Some(win) {
+            mon.sel = mon.clients;
         }
     }
 }
@@ -1074,12 +1176,11 @@ impl XdgShellHandler for WaylandState {
             let marker = window.user_data().get::<WindowIdMarker>().cloned();
             if let Some(marker) = marker {
                 let win = marker.0;
-                let g = get_globals_mut();
+                let Some(g) = self.globals_mut() else {
+                    return;
+                };
                 if g.clients.contains_key(&win) {
-                    drop(g);
-                    client::list::detach(win);
-                    client::list::detach_stack(win);
-                    let g = get_globals_mut();
+                    detach_client_from_monitor(g, win);
                     g.clients.remove(&win);
                     g.client_list.retain(|id| *id != win.0 as usize);
                 }
