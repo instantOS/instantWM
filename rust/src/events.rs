@@ -22,6 +22,7 @@ use crate::tags::get_tag_width;
 use crate::types::*;
 use crate::util::clean_mask;
 use crate::wm::Wm;
+use crate::ipc::IpcServer;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -710,17 +711,20 @@ fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
     };
 }
 
-pub fn run(wm: &mut Wm) {
+pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     while wm.running {
-        let event = match wm
+        let event = wm
             .backend
             .x11()
-            .and_then(|x11| x11.conn.wait_for_event().ok())
-        {
-            Some(event) => event,
-            None => return,
-        };
-        dispatch_event(wm, event);
+            .and_then(|x11| x11.conn.poll_for_event().ok())
+            .flatten();
+        match event {
+            Some(event) => dispatch_event(wm, event),
+            None => std::thread::sleep(std::time::Duration::from_millis(8)),
+        }
+        if let Some(server) = ipc_server.as_mut() {
+            server.process_pending(wm);
+        }
     }
 }
 

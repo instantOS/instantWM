@@ -16,6 +16,7 @@ mod layouts;
 mod monitor;
 mod mouse;
 mod overlay;
+mod ipc;
 mod push;
 mod scratchpad;
 mod systray;
@@ -128,7 +129,8 @@ fn run_x11() {
     crate::events::setup(&mut wm);
     crate::events::scan(&mut wm);
     run_autostart();
-    crate::events::run(&mut wm);
+    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+    crate::events::run(&mut wm, &mut ipc_server);
     crate::events::cleanup(&mut wm);
 }
 
@@ -184,6 +186,7 @@ fn run_wayland() -> ! {
 
     run_autostart();
     spawn_wayland_smoke_window();
+    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
     let start_time = std::time::Instant::now();
     let mut pointer_location = Point::from((0.0, 0.0));
@@ -323,6 +326,9 @@ fn run_wayland() -> ! {
                     let selmon = ctx.g.selmon_id();
                     crate::layouts::arrange(&mut ctx, Some(selmon));
                 }
+            }
+            if let Some(server) = ipc_server.as_mut() {
+                server.process_pending(&mut wm);
             }
             state.sync_space_from_globals();
             let age = 0;

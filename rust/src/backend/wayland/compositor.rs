@@ -860,6 +860,17 @@ impl WaylandState {
         }
     }
 
+    pub fn close_window(&mut self, window: WindowId) -> bool {
+        let Some(element) = self.find_window(window).cloned() else {
+            return false;
+        };
+        if let Some(toplevel) = element.toplevel() {
+            toplevel.send_close();
+            return true;
+        }
+        false
+    }
+
     pub fn map_window(&mut self, window: WindowId) {
         if let Some(element) = self.find_window(window).cloned() {
             let loc = self
