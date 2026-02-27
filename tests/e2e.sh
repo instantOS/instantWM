@@ -84,6 +84,49 @@ while read -r id; do
   run_ctl geom "$id" >>/tmp/iwm-e2e-geoms.txt
 done </tmp/iwm-e2e-ids-new.txt
 
+awk 'NF >= 5 && $1 ~ /^[0-9]+$/ {print $0}' /tmp/iwm-e2e-geoms.txt >/tmp/iwm-e2e-geoms-clean.txt
+if ! awk -v expected="$SPAWN_COUNT" '
+BEGIN { n=0; bad=0; max_ratio=0.0 }
+{
+  n++;
+  id[n]=$1; x[n]=$2; y[n]=$3; w[n]=$4; h[n]=$5;
+  if (w[n] <= 0 || h[n] <= 0) bad=1;
+}
+END {
+  if (n < expected) {
+    print "Missing geometry rows: expected at least " expected ", got " n > "/dev/stderr";
+    exit 1;
+  }
+  for (i = 1; i <= n; i++) {
+    for (j = i + 1; j <= n; j++) {
+      left = (x[i] > x[j]) ? x[i] : x[j];
+      top = (y[i] > y[j]) ? y[i] : y[j];
+      right = ((x[i] + w[i]) < (x[j] + w[j])) ? (x[i] + w[i]) : (x[j] + w[j]);
+      bottom = ((y[i] + h[i]) < (y[j] + h[j])) ? (y[i] + h[i]) : (y[j] + h[j]);
+      ow = right - left;
+      oh = bottom - top;
+      if (ow < 0) ow = 0;
+      if (oh < 0) oh = 0;
+      overlap = ow * oh;
+      a1 = w[i] * h[i];
+      a2 = w[j] * h[j];
+      base = (a1 < a2) ? a1 : a2;
+      ratio = (base > 0) ? overlap / base : 1.0;
+      if (ratio > max_ratio) max_ratio = ratio;
+      if (ratio > 0.70) {
+        print "Excessive overlap between windows " id[i] " and " id[j] ": " ratio > "/dev/stderr";
+        bad = 1;
+      }
+    }
+  }
+  if (bad) exit 1;
+  print "max_overlap_ratio=" max_ratio > "/tmp/iwm-e2e-overlap.txt";
+}
+' /tmp/iwm-e2e-geoms-clean.txt; then
+  echo "Geometry sanity check failed; see /tmp/iwm-e2e-geoms-clean.txt" >&2
+  exit 1
+fi
+
 while read -r id; do
   run_ctl close "$id" >/dev/null
 done </tmp/iwm-e2e-ids-new.txt
@@ -102,4 +145,4 @@ if grep -Eq "panic|negative size|libEGL warning|Gdk-CRITICAL" "$WM_LOG"; then
   exit 1
 fi
 
-echo "PASS: spawned=$new_count"
+echo "PASS: spawned=$new_count $(cat /tmp/iwm-e2e-overlap.txt)"
