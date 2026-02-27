@@ -81,11 +81,7 @@ fn handle_command(wm: &mut Wm, cmd: &str) -> String {
         if rest.trim().is_empty() {
             return "ERR spawn requires a command\n".to_string();
         }
-        match std::process::Command::new("sh")
-            .arg("-lc")
-            .arg(rest)
-            .spawn()
-        {
+        match std::process::Command::new("sh").arg("-c").arg(rest).spawn() {
             Ok(child) => return format!("OK pid={}\n", child.id()),
             Err(err) => return format!("ERR spawn failed: {}\n", err),
         }

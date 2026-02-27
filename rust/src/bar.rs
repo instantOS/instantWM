@@ -48,7 +48,6 @@ pub fn text_width_ctx(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
     if ctx.x11_conn().is_none() {
         return 0;
     }
-    // Transitional helper: avoid going through get_drw() when ctx is available.
     let Some(mut drw) = ctx
         .g
         .cfg
@@ -121,7 +120,6 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     };
 
     let (status_start_x, status_width) = if is_selmon {
-        // Avoid borrowing ctx.g and ctx (mut) at once.
         let m = ctx.g.monitor(mon_idx).cloned().unwrap();
         status::draw_status_bar(ctx, &m, bh)
     } else {
@@ -161,8 +159,6 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         x = widgets::draw_layout_indicator(ctx_imm, m, x, bh);
     }
 
-    // Draw the shutdown/power button directly after the layout indicator
-    // when there is no selected client on this monitor (mirrors C behaviour).
     if !mon_has_sel {
         x = widgets::draw_shutdown_button(ctx, x, bh);
     }

@@ -43,7 +43,6 @@ use crate::backend::wayland::compositor::{
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
-use crate::bar::wayland::{render_bar_to_output, BarRenderer};
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
@@ -161,7 +160,7 @@ fn run_wayland() -> ! {
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
-    let mut bar_renderer = BarRenderer::new();
+    // Initialize bar renderer for Wayland
 
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
@@ -197,6 +196,7 @@ fn run_wayland() -> ! {
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {
+            state.attach_globals(&mut wm.g);
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
                     let (safe_w, safe_h) = sanitize_wayland_size(size.w, size.h);
@@ -335,17 +335,7 @@ fn run_wayland() -> ! {
             let age = 0;
             let damage = {
                 let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
-                let mut custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-                    Vec::new();
-
-                if wm.g.cfg.showbar {
-                    let ctx = wm.ctx();
-                    if let Some(bar_element) =
-                        render_bar_to_output(&mut bar_renderer, renderer, &output, &ctx)
-                    {
-                        custom_elements.push(bar_element);
-                    }
-                }
+                let custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
 
                 let render_result = render_output(
                     &output,
