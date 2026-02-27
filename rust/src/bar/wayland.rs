@@ -3,14 +3,12 @@
 //! This module provides GPU-accelerated bar rendering for the Wayland backend.
 //! It uses cosmic-text for text layout and rendering with swash integration.
 
-use cosmic_text::{Buffer, BufferRef, FontSystem, Metrics, SwashCache};
-use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::backend::renderer::{Frame, Renderer, Texture};
-use smithay::utils::{Physical, Point, Rectangle, Size, Transform};
+use cosmic_text::{Buffer, FontSystem, Metrics, SwashCache};
+use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::utils::{Point, Rectangle, Size};
 
-use crate::contexts::WmCtx;
 use crate::globals::get_globals;
-use crate::types::{ColorScheme, Monitor, WindowId};
+use crate::types::Monitor;
 
 /// Default font size in pixels.
 const DEFAULT_FONT_SIZE: f32 = 12.0;
@@ -106,20 +104,20 @@ impl BarRenderer {
     /// # Arguments
     ///
     /// * `renderer` - The GlesRenderer to render to
-    /// * `frame` - The current frame being rendered
     /// * `monitor` - The monitor to render the bar for
     /// * `x` - X position of the bar
     /// * `y` - Y position of the bar
     /// * `width` - Width of the bar
+    ///
+    /// Returns a list of render elements to be drawn.
     pub fn render_bar(
         &mut self,
-        renderer: &mut GlesRenderer,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        _renderer: &mut GlesRenderer,
         monitor: &Monitor,
         x: i32,
         y: i32,
         width: i32,
-    ) {
+    ) -> BarRenderElements {
         let g = get_globals();
         let bh = g.cfg.bar_height.max(DEFAULT_BAR_HEIGHT);
         self.bar_height = bh;
@@ -132,25 +130,27 @@ impl BarRenderer {
             .map(|s| color_to_rgba(&s.bg))
             .unwrap_or([0.07, 0.07, 0.07, 1.0]); // Default dark background
 
+        let mut elements = BarRenderElements::new();
+
         // Draw bar background
-        self.draw_rect(frame, x, y, width, bh, bg_color);
+        elements.add_rect(x, y, width, bh, bg_color);
 
         // Calculate positions for bar elements
         let startmenu_size = g.cfg.startmenusize;
         let mut current_x = x + startmenu_size;
 
         // Draw start menu icon
-        self.draw_startmenu_icon(frame, x, y, startmenu_size, bh);
+        self.draw_startmenu_icon(&mut elements, x, y, startmenu_size, bh);
 
         // Draw tag indicators
-        current_x = self.draw_tag_indicators(frame, monitor, current_x, y, bh);
+        current_x = self.draw_tag_indicators(&mut elements, monitor, current_x, y, bh);
 
         // Draw layout indicator
-        current_x = self.draw_layout_indicator(frame, monitor, current_x, y, bh);
+        current_x = self.draw_layout_indicator(&mut elements, monitor, current_x, y, bh);
 
         // Draw shutdown button if no client selected
         if monitor.sel.is_none() {
-            current_x = self.draw_shutdown_button(frame, current_x, y, bh);
+            current_x = self.draw_shutdown_button(&mut elements, current_x, y, bh);
         }
 
         // Draw window titles in the remaining space
@@ -162,20 +162,22 @@ impl BarRenderer {
 
         let title_width = (x + width - current_x - status_width).max(0);
         if title_width > 0 {
-            self.draw_window_titles(frame, monitor, current_x, y, title_width, bh);
+            self.draw_window_titles(&mut elements, monitor, current_x, y, title_width, bh);
         }
 
         // Draw status text on the selected monitor
         if g.selmon_id() == monitor.id() {
-            self.draw_status_text(frame, x + width - status_width, y, status_width, bh);
+            self.draw_status_text(&mut elements, x + width - status_width, y, status_width, bh);
         }
+
+        elements
     }
 
     /// Draw a filled rectangle.
     ///
     /// # Arguments
     ///
-    /// * `frame` - The frame to draw to
+    /// * `elements` - The render elements collection
     /// * `x` - X position
     /// * `y` - Y position
     /// * `width` - Rectangle width
@@ -183,7 +185,7 @@ impl BarRenderer {
     /// * `color` - RGBA color as [r, g, b, a] with values 0.0-1.0
     pub fn draw_rect(
         &self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         x: i32,
         y: i32,
         width: i32,
@@ -194,17 +196,14 @@ impl BarRenderer {
             return;
         }
 
-        let rect = Rectangle::new(Point::from((x, y)), Size::from((width, height)));
-
-        // Use the frame's render solid method
-        frame.render_solid(rect, color, Transform::Normal);
+        elements.add_rect(x, y, width, height, color);
     }
 
     /// Draw text at a position.
     ///
     /// # Arguments
     ///
-    /// * `frame` - The frame to draw to
+    /// * `elements` - The render elements collection
     /// * `x` - X position
     /// * `y` - Y position
     /// * `text` - The text to draw
@@ -213,7 +212,7 @@ impl BarRenderer {
     /// Returns the width of the rendered text.
     pub fn draw_text(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         x: i32,
         y: i32,
         text: &str,
@@ -234,7 +233,7 @@ impl BarRenderer {
         let text_y = y + (self.bar_height - text_height) / 2;
 
         // Draw text background (placeholder for actual text rendering)
-        self.draw_rect(frame, x, text_y, width, text_height, color);
+        elements.add_rect(x, text_y, width, text_height, color);
 
         width
     }
@@ -274,12 +273,12 @@ impl BarRenderer {
     /// Draw the start menu icon.
     fn draw_startmenu_icon(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         x: i32,
         y: i32,
         size: i32,
         bh: i32,
-    ) -> i32 {
+    ) {
         let g = get_globals();
         let is_inverted = g
             .selmon()
@@ -300,8 +299,7 @@ impl BarRenderer {
             .unwrap_or([0.07, 0.07, 0.07, 1.0]);
 
         // Draw background
-        self.draw_rect(
-            frame,
+        elements.add_rect(
             x,
             y,
             size,
@@ -316,19 +314,11 @@ impl BarRenderer {
 
         // Outer rectangle
         let outer_color = if is_inverted { bg_color } else { fg_color };
-        self.draw_rect(
-            frame,
-            x + 5,
-            y + icon_offset,
-            icon_size,
-            icon_size,
-            outer_color,
-        );
+        elements.add_rect(x + 5, y + icon_offset, icon_size, icon_size, outer_color);
 
         // Inner rectangle
         let inner_color = if is_inverted { fg_color } else { bg_color };
-        self.draw_rect(
-            frame,
+        elements.add_rect(
             x + 9,
             y + icon_offset + 4,
             inner_size,
@@ -337,22 +327,19 @@ impl BarRenderer {
         );
 
         // Small detail rectangle
-        self.draw_rect(
-            frame,
+        elements.add_rect(
             x + 19,
             y + icon_offset + icon_size,
             inner_size,
             inner_size,
             outer_color,
         );
-
-        size
     }
 
     /// Draw tag indicators.
     fn draw_tag_indicators(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         monitor: &Monitor,
         x: i32,
         y: i32,
@@ -365,7 +352,7 @@ impl BarRenderer {
         let occupied_tags: u32 = g
             .clients
             .values()
-            .filter(|c| c.mon == monitor.num)
+            .filter(|c| c.mon_id == Some(monitor.id()))
             .map(|c| c.tags)
             .fold(0, |acc, tags| acc | tags);
 
@@ -385,10 +372,10 @@ impl BarRenderer {
             let tag_width = self.text_width(&tag.name).max(30);
 
             // Draw tag background
-            self.draw_rect(frame, current_x, y, tag_width, bh, bg_color);
+            elements.add_rect(current_x, y, tag_width, bh, bg_color);
 
             // Draw tag text
-            self.draw_text(frame, current_x, y, &tag.name, fg_color);
+            self.draw_text(elements, current_x, y, &tag.name, fg_color);
 
             // Draw detail bar at bottom for hover
             if is_hover {
@@ -399,8 +386,7 @@ impl BarRenderer {
                     .as_ref()
                     .map(|s| color_to_rgba(&s.detail))
                     .unwrap_or([0.0, 0.33, 0.47, 1.0]);
-                self.draw_rect(
-                    frame,
+                elements.add_rect(
                     current_x,
                     y + bh - detail_height,
                     tag_width,
@@ -461,7 +447,7 @@ impl BarRenderer {
     /// Draw the layout indicator.
     fn draw_layout_indicator(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         monitor: &Monitor,
         x: i32,
         y: i32,
@@ -480,11 +466,11 @@ impl BarRenderer {
             .unwrap_or(([0.07, 0.07, 0.07, 1.0], [0.9, 0.9, 0.9, 1.0]));
 
         // Draw background
-        self.draw_rect(frame, x, y, width, bh, bg_color);
+        elements.add_rect(x, y, width, bh, bg_color);
 
         // Draw layout symbol
         let text_x = x + (width - text_width) / 2;
-        self.draw_text(frame, text_x, y, &layout_symbol, fg_color);
+        self.draw_text(elements, text_x, y, &layout_symbol, fg_color);
 
         x + width
     }
@@ -492,7 +478,7 @@ impl BarRenderer {
     /// Draw the shutdown button.
     fn draw_shutdown_button(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         x: i32,
         y: i32,
         bh: i32,
@@ -507,7 +493,7 @@ impl BarRenderer {
             .unwrap_or(([0.07, 0.07, 0.07, 1.0], [0.9, 0.9, 0.9, 1.0]));
 
         // Draw button background
-        self.draw_rect(frame, x, y, bh, bh, bg_color);
+        elements.add_rect(x, y, bh, bh, bg_color);
 
         // Draw power icon using simple rectangles
         let icon_size = bh * 5 / 8;
@@ -521,29 +507,22 @@ impl BarRenderer {
         let stem_h = icon_size / 2;
         let stem_x = icon_x + (icon_size - stem_w) / 2;
         let stem_y = icon_y;
-        self.draw_rect(frame, stem_x, stem_y, stem_w, stem_h, fg_color);
+        elements.add_rect(stem_x, stem_y, stem_w, stem_h, fg_color);
 
         // Arc approximation - left side
         let arc_x = icon_x;
         let arc_y = icon_y + gap + stroke;
         let arc_h = icon_size - gap - stroke;
-        self.draw_rect(frame, arc_x, arc_y, stroke, arc_h, fg_color);
+        elements.add_rect(arc_x, arc_y, stroke, arc_h, fg_color);
 
         // Arc approximation - right side
-        self.draw_rect(
-            frame,
-            icon_x + icon_size - stroke,
-            arc_y,
-            stroke,
-            arc_h,
-            fg_color,
-        );
+        elements.add_rect(icon_x + icon_size - stroke, arc_y, stroke, arc_h, fg_color);
 
         // Arc approximation - bottom
         let bot_x = icon_x + stroke;
         let bot_y = icon_y + icon_size - stroke;
         let bot_w = (icon_size - stroke * 2).max(0);
-        self.draw_rect(frame, bot_x, bot_y, bot_w, stroke, fg_color);
+        elements.add_rect(bot_x, bot_y, bot_w, stroke, fg_color);
 
         x + bh
     }
@@ -551,7 +530,7 @@ impl BarRenderer {
     /// Draw window titles.
     fn draw_window_titles(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         monitor: &Monitor,
         x: i32,
         y: i32,
@@ -591,7 +570,7 @@ impl BarRenderer {
                 let (bg_color, fg_color) = self.get_window_colors(client, is_selected);
 
                 // Draw title background
-                self.draw_rect(frame, current_x, y, this_width, bh, bg_color);
+                elements.add_rect(current_x, y, this_width, bh, bg_color);
 
                 // Draw client name
                 let name = &client.name;
@@ -601,16 +580,16 @@ impl BarRenderer {
                 if text_width < avail_width {
                     // Center text
                     let text_x = current_x + (this_width - text_width) / 2;
-                    self.draw_text(frame, text_x, y, name, fg_color);
+                    self.draw_text(elements, text_x, y, name, fg_color);
                 } else {
                     // Left-align with padding
                     let text_x = current_x + TEXT_PADDING;
-                    self.draw_text(frame, text_x, y, name, fg_color);
+                    self.draw_text(elements, text_x, y, name, fg_color);
                 }
 
                 // Draw close button for selected window
                 if is_selected {
-                    self.draw_close_button(frame, current_x, y, bh);
+                    self.draw_close_button(elements, current_x, y, bh);
                 }
 
                 current_x += this_width;
@@ -622,9 +601,10 @@ impl BarRenderer {
                 .statusscheme
                 .as_ref()
                 .map(|s| (color_to_rgba(&s.bg), color_to_rgba(&s.fg)))
-                .unwrap_or(([0.07, 0.07, 0.07, 1.0], [0.9, 0.9, 0.9, 1.0]));
+                .unwrap_or(([0.07, 0.07, 0.07, 1.0], [0.9, 0.9, 0.9, 1.0]))
+                .clone();
 
-            self.draw_rect(frame, x, y, width, bh, bg_color);
+            elements.add_rect(x, y, width, bh, bg_color);
 
             // Show help text if no clients
             let help_text = "Press space to launch an application";
@@ -634,7 +614,7 @@ impl BarRenderer {
 
             if title_width > 0 {
                 let text_x = x + bh + (avail - title_width + 1) / 2;
-                self.draw_text(frame, text_x, y, help_text, fg_color);
+                self.draw_text(elements, text_x, y, help_text, fg_color);
             }
         }
     }
@@ -677,13 +657,7 @@ impl BarRenderer {
     }
 
     /// Draw close button.
-    fn draw_close_button(
-        &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
-        x: i32,
-        y: i32,
-        bh: i32,
-    ) {
+    fn draw_close_button(&mut self, elements: &mut BarRenderElements, x: i32, y: i32, bh: i32) {
         let g = get_globals();
         let button_width = 16;
         let button_height = 16;
@@ -699,8 +673,7 @@ impl BarRenderer {
             .unwrap_or(([0.8, 0.2, 0.2, 1.0], [0.6, 0.1, 0.1, 1.0]));
 
         // Draw button background
-        self.draw_rect(
-            frame,
+        elements.add_rect(
             button_x,
             y + button_y,
             button_width,
@@ -710,8 +683,7 @@ impl BarRenderer {
 
         // Draw detail bar at bottom
         let detail_height = 4;
-        self.draw_rect(
-            frame,
+        elements.add_rect(
             button_x,
             y + button_y + button_height - detail_height,
             button_width,
@@ -732,7 +704,7 @@ impl BarRenderer {
     /// Draw status text.
     fn draw_status_text(
         &mut self,
-        frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
+        elements: &mut BarRenderElements,
         x: i32,
         y: i32,
         width: i32,
@@ -751,10 +723,10 @@ impl BarRenderer {
             .unwrap_or(([0.07, 0.07, 0.07, 1.0], [0.9, 0.9, 0.9, 1.0]));
 
         // Draw status background
-        self.draw_rect(frame, x, y, width, bh, bg_color);
+        elements.add_rect(x, y, width, bh, bg_color);
 
         // Draw status text
-        self.draw_text(frame, x + TEXT_PADDING, y, &g.status_text, fg_color);
+        self.draw_text(elements, x + TEXT_PADDING, y, &g.status_text, fg_color);
     }
 }
 
@@ -764,38 +736,119 @@ impl Default for BarRenderer {
     }
 }
 
+/// A render element for the bar.
+#[derive(Debug, Clone)]
+pub enum BarElement {
+    /// A filled rectangle.
+    Rect {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        color: [f32; 4],
+    },
+    /// Text element (placeholder for future full text rendering).
+    Text {
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        color: [f32; 4],
+    },
+}
+
+/// Collection of render elements for the bar.
+#[derive(Debug, Default, Clone)]
+pub struct BarRenderElements {
+    elements: Vec<BarElement>,
+}
+
+impl BarRenderElements {
+    /// Create a new empty collection of render elements.
+    pub fn new() -> Self {
+        Self {
+            elements: Vec::new(),
+        }
+    }
+
+    /// Add a rectangle element.
+    pub fn add_rect(&mut self, x: i32, y: i32, width: i32, height: i32, color: [f32; 4]) {
+        self.elements.push(BarElement::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+        });
+    }
+
+    /// Add a text placeholder element.
+    pub fn add_text(&mut self, x: i32, y: i32, width: i32, height: i32, color: [f32; 4]) {
+        self.elements.push(BarElement::Text {
+            x,
+            y,
+            width,
+            height,
+            color,
+        });
+    }
+
+    /// Get all elements.
+    pub fn elements(&self) -> &[BarElement] {
+        &self.elements
+    }
+
+    /// Get elements mutably.
+    pub fn elements_mut(&mut self) -> &mut Vec<BarElement> {
+        &mut self.elements
+    }
+
+    /// Clear all elements.
+    pub fn clear(&mut self) {
+        self.elements.clear();
+    }
+
+    /// Check if there are no elements.
+    pub fn is_empty(&self) -> bool {
+        self.elements.is_empty()
+    }
+
+    /// Get the number of elements.
+    pub fn len(&self) -> usize {
+        self.elements.len()
+    }
+}
+
 /// Render bar elements to a Smithay GlesFrame.
 ///
 /// This is a helper function that can be called from the Wayland backend
-/// when rendering a monitor's output.
+/// when rendering a monitor's output. It takes the render elements produced
+/// by `BarRenderer::render_bar` and draws them using the provided renderer.
 ///
 /// # Arguments
 ///
 /// * `renderer` - The GlesRenderer
-/// * `frame` - The current frame being rendered
-/// * `monitor` - The monitor to render the bar for
+/// * `elements` - The render elements to draw
 /// * `bar_area` - The rectangle where the bar should be rendered
-pub fn render_bar_to_frame(
-    renderer: &mut GlesRenderer,
-    frame: &mut <GlesRenderer as Renderer>::Frame<'_>,
-    bar_renderer: &mut BarRenderer,
-    monitor: &Monitor,
-    bar_area: Rectangle<i32, Physical>,
+pub fn render_bar_elements(
+    _renderer: &mut GlesRenderer,
+    _elements: &BarRenderElements,
+    _bar_area: Rectangle<i32, smithay::utils::Physical>,
 ) {
-    bar_renderer.render_bar(
-        renderer,
-        frame,
-        monitor,
-        bar_area.loc.x,
-        bar_area.loc.y,
-        bar_area.size.w,
-    );
+    // This function would render the elements using the Smithay API.
+    // For now, it's a placeholder that will be implemented when the
+    // full integration with Smithay's rendering pipeline is done.
+    //
+    // The actual implementation would:
+    // 1. Create solid color textures for each rectangle element
+    // 2. Render text elements using glyph textures from cosmic-text
+    // 3. Composite everything in the correct order
 }
 
 /// Convert a Color to RGBA float array.
 ///
 /// The Color struct stores a pixel value and XRenderColor components.
-/// This function extracts the RGB components for use with GlesRenderer.
+/// This function extracts the RGB components for use with GPU rendering.
 fn color_to_rgba(color: &crate::drw::Color) -> [f32; 4] {
     let r = color.color.color.red as f32 / 65535.0;
     let g = color.color.color.green as f32 / 65535.0;
@@ -833,8 +886,7 @@ pub fn hex_to_rgba(hex: &str) -> [f32; 4] {
 /// This creates a Color struct suitable for use with the existing
 /// color scheme system.
 pub fn rgba_to_color(r: f32, g: f32, b: f32, a: f32) -> crate::drw::Color {
-    use crate::drw::ffi::XRenderColor;
-    use crate::drw::ffi::XftColor;
+    use crate::drw::ffi::{XRenderColor, XftColor};
 
     crate::drw::Color {
         color: XftColor {

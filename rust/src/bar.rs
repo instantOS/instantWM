@@ -1,5 +1,6 @@
 mod model;
 mod status;
+#[cfg(feature = "wayland_bar")]
 pub mod wayland;
 mod widgets;
 pub mod x11;

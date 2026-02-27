@@ -37,6 +37,7 @@ cosmic-text = "0.12"
 default = ["xinerama", "x11_backend"]
 xinerama = []
 x11_backend = []
+wayland_bar = []
 
 [profile.release]
 opt-level = 3
