@@ -1,4 +1,4 @@
-use crate::backend::{BackendKind, BackendOps};
+use crate::backend::BackendOps;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};

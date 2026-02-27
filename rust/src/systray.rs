@@ -158,10 +158,6 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: WindowId, ev: &Prope
         return;
     }
 
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-
     let xembed_info_atom = ctx.g.cfg.xatom.xembed_info;
     if ev.atom != xembed_info_atom {
         return;
@@ -188,45 +184,47 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: WindowId, ev: &Prope
             client.tags = 1;
         }
 
-        let _ = conn.map_window(x11_icon_win);
-        let _ = conn.configure_window(
-            x11_icon_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
-        set_client_state(ctx, icon_win, 1);
-
         let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or_default();
-        send_event(
-            ctx,
-            icon_win,
-            xembed_info_atom,
-            xembed_info_atom,
-            CURRENT_TIME as i64,
-            XEMBED_WINDOW_ACTIVATE as i64,
-            0,
-            u32::from(systray_win) as i64,
-            XEMBED_EMBEDDED_VERSION as i64,
-        );
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.map_window(x11_icon_win);
+            let _ = conn.configure_window(
+                x11_icon_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
+            send_event(
+                conn,
+                icon_win,
+                xembed_info_atom,
+                xembed_info_atom,
+                CURRENT_TIME as i64,
+                XEMBED_WINDOW_ACTIVATE as i64,
+                0,
+                u32::from(systray_win) as i64,
+                XEMBED_EMBEDDED_VERSION as i64,
+            );
+        }
+        set_client_state(ctx, icon_win, 1);
     } else if (flags & XEMBED_MAPPED) == 0 && current_tags != 0 {
         if let Some(client) = ctx.g.clients.get_mut(&icon_win) {
             client.tags = 0;
         }
 
-        let _ = conn.unmap_window(x11_icon_win);
-        set_client_state(ctx, icon_win, 0);
-
         let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or_default();
-        send_event(
-            ctx,
-            icon_win,
-            xembed_info_atom,
-            xembed_info_atom,
-            CURRENT_TIME as i64,
-            XEMBED_WINDOW_DEACTIVATE as i64,
-            0,
-            u32::from(systray_win) as i64,
-            XEMBED_EMBEDDED_VERSION as i64,
-        );
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.unmap_window(x11_icon_win);
+            send_event(
+                conn,
+                icon_win,
+                xembed_info_atom,
+                xembed_info_atom,
+                CURRENT_TIME as i64,
+                XEMBED_WINDOW_DEACTIVATE as i64,
+                0,
+                u32::from(systray_win) as i64,
+                XEMBED_EMBEDDED_VERSION as i64,
+            );
+        }
+        set_client_state(ctx, icon_win, 0);
     }
 }
 
@@ -235,10 +233,6 @@ pub fn update_systray(ctx: &mut WmCtx) {
     if !ctx.g.cfg.showsystray {
         return;
     }
-
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
 
     if ctx.g.cfg.xlibdisplay.0.is_null() {
         return;
@@ -270,92 +264,96 @@ pub fn update_systray(ctx: &mut WmCtx) {
     if !systray_exists {
         let root = ctx.g.cfg.root;
         let bh = ctx.g.cfg.bar_height;
-
         let net_system_tray = ctx.g.cfg.netatom.system_tray;
         let net_system_tray_horz = ctx.g.cfg.netatom.system_tray_orientation_horz;
+        let manager_atom = ctx.g.cfg.xatom.manager;
+        let bg_pixel = ctx
+            .g
+            .cfg
+            .statusscheme
+            .as_ref()
+            .map(|scheme| scheme.bg.color.pixel as u32)
+            .unwrap_or(0);
 
-        let bg_pixel = if let Some(ref scheme) = ctx.g.cfg.statusscheme {
-            scheme.bg.color.pixel as u32
-        } else {
-            0
-        };
+        let systray_win = ctx.x11_conn().map(|x11| x11.conn).and_then(|conn| {
+            let systray_win = conn.generate_id().ok()?;
 
-        let systray_win = conn.generate_id().ok();
+            let result = conn.create_window(
+                x11rb::COPY_FROM_PARENT as u8,
+                systray_win,
+                root,
+                x as i16,
+                by as i16,
+                w as u16,
+                bh as u16,
+                0,
+                WindowClass::INPUT_OUTPUT,
+                x11rb::COPY_FROM_PARENT,
+                &CreateWindowAux::new()
+                    .event_mask(EventMask::BUTTON_PRESS | EventMask::EXPOSURE)
+                    .override_redirect(1)
+                    .background_pixel(bg_pixel),
+            );
+
+            if result.is_err() {
+                return None;
+            }
+
+            let _ = result.and_then(|cookie| {
+                cookie
+                    .check()
+                    .map_err(|_| x11rb::errors::ConnectionError::UnknownError)
+            });
+
+            let _ = conn.change_property32(
+                PropMode::REPLACE,
+                systray_win,
+                net_system_tray,
+                AtomEnum::CARDINAL,
+                &[net_system_tray_horz],
+            );
+
+            let _ = conn.change_window_attributes(
+                systray_win,
+                &ChangeWindowAttributesAux::new().event_mask(EventMask::SUBSTRUCTURE_NOTIFY),
+            );
+
+            let _ = conn.map_window(systray_win);
+
+            let _ = conn.change_window_attributes(
+                systray_win,
+                &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
+            );
+
+            let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
+
+            // Send MANAGER event to root window to announce systray
+            // Use non-blocking approach
+            let event = ClientMessageEvent {
+                response_type: CLIENT_MESSAGE_EVENT,
+                format: 32,
+                sequence: 0,
+                window: root,
+                type_: manager_atom,
+                data: ClientMessageData::from([CURRENT_TIME, net_system_tray, systray_win, 0, 0]),
+            };
+            let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
+
+            Some(systray_win)
+        });
+
         let Some(systray_win) = systray_win else {
             return;
         };
-
-        let result = conn.create_window(
-            x11rb::COPY_FROM_PARENT as u8,
-            systray_win,
-            root,
-            x as i16,
-            by as i16,
-            w as u16,
-            bh as u16,
-            0,
-            WindowClass::INPUT_OUTPUT,
-            x11rb::COPY_FROM_PARENT,
-            &CreateWindowAux::new()
-                .event_mask(EventMask::BUTTON_PRESS | EventMask::EXPOSURE)
-                .override_redirect(1)
-                .background_pixel(bg_pixel),
-        );
-
-        if result.is_err() {
-            return;
-        }
-
-        let _ = result.and_then(|cookie| {
-            cookie
-                .check()
-                .map_err(|_| x11rb::errors::ConnectionError::UnknownError)
-        });
-
-        let _ = conn.change_property32(
-            PropMode::REPLACE,
-            systray_win,
-            net_system_tray,
-            AtomEnum::CARDINAL,
-            &[net_system_tray_horz],
-        );
-
-        let _ = conn.change_window_attributes(
-            systray_win,
-            &ChangeWindowAttributesAux::new().event_mask(EventMask::SUBSTRUCTURE_NOTIFY),
-        );
-
-        let _ = conn.map_window(systray_win);
-
-        let _ = conn.change_window_attributes(
-            systray_win,
-            &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
-        );
-
-        let _ = conn.set_selection_owner(systray_win, net_system_tray, CURRENT_TIME);
 
         ctx.g.systray = Some(Systray {
             win: WindowId::from(systray_win),
             icons: Vec::new(),
         });
-
-        let manager_atom = ctx.g.cfg.xatom.manager;
-
-        // Send MANAGER event to root window to announce systray
-        // Use non-blocking approach
-        let event = ClientMessageEvent {
-            response_type: CLIENT_MESSAGE_EVENT,
-            format: 32,
-            sequence: 0,
-            window: root,
-            type_: manager_atom,
-            data: ClientMessageData::from([CURRENT_TIME, net_system_tray, systray_win, 0, 0]),
-        };
-        let _ = conn.send_event(false, root, EventMask::STRUCTURE_NOTIFY, event);
     }
 
-    let systray = match &ctx.g.systray {
-        Some(s) => s,
+    let (systray_win, icons) = match ctx.g.systray.as_ref() {
+        Some(s) => (s.win, s.icons.clone()),
         None => return,
     };
 
@@ -369,20 +367,39 @@ pub fn update_systray(ctx: &mut WmCtx) {
         .map(|s| s.bg.color.pixel as u32)
         .unwrap_or(0);
 
-    w = 0;
-    for &icon_win in &systray.icons {
-        let x11_icon_win: Window = icon_win.into();
-        let _ = conn.change_window_attributes(
-            x11_icon_win,
-            &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
-        );
-        let _ = conn.map_window(x11_icon_win);
+    let icon_layout: Vec<(WindowId, i32, i32)> = icons
+        .iter()
+        .filter_map(|icon_win| {
+            ctx.g
+                .clients
+                .get(icon_win)
+                .map(|client| (*icon_win, client.geo.w, client.geo.h))
+        })
+        .collect();
 
-        w += systrayspacing as u32;
+    let mut systray_width = 0u32;
+    for _ in 0..icon_layout.len() {
+        systray_width += systrayspacing as u32;
+    }
+    for (_, icon_w, _) in &icon_layout {
+        systray_width += *icon_w as u32;
+    }
 
-        if let Some(client) = ctx.g.clients.get(&icon_win) {
-            let icon_w = client.geo.w;
-            let icon_h = client.geo.h;
+    {
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
+
+        w = 0;
+        for (icon_win, icon_w, icon_h) in icon_layout {
+            let x11_icon_win: Window = icon_win.into();
+            let _ = conn.change_window_attributes(
+                x11_icon_win,
+                &ChangeWindowAttributesAux::new().background_pixel(bg_pixel),
+            );
+            let _ = conn.map_window(x11_icon_win);
+
+            w += systrayspacing as u32;
 
             let _ = conn.configure_window(
                 x11_icon_win,
@@ -397,12 +414,20 @@ pub fn update_systray(ctx: &mut WmCtx) {
         }
     }
 
-    let systray_win = systray.win;
+    let systray_win = systray_win;
     let x11_systray_win: Window = systray_win.into();
     let x11_barwin: Window = barwin.into();
 
-    w = if w > 0 { w + systrayspacing as u32 } else { 1 };
+    w = if systray_width > 0 {
+        systray_width + systrayspacing as u32
+    } else {
+        1
+    };
     let x = x - w as i32;
+
+    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+        return;
+    };
 
     let _ = conn.configure_window(
         x11_systray_win,
@@ -484,7 +509,7 @@ fn get_atom_prop(ctx: &mut WmCtx, win: WindowId, atom: u32) -> u32 {
 
 /// Send X event using dependency injection.
 fn send_event(
-    ctx: &mut WmCtx,
+    conn: &impl Connection,
     win: WindowId,
     proto: u32,
     mask: u32,
@@ -494,9 +519,6 @@ fn send_event(
     d3: i64,
     d4: i64,
 ) {
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
     let x11_win: Window = win.into();
     let event = ClientMessageEvent {
         response_type: CLIENT_MESSAGE_EVENT,

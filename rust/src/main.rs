@@ -49,22 +49,23 @@ use crate::types::*;
 use crate::util::die;
 use crate::wm::Wm;
 use crate::xresources::list_xresources;
-use crate::{keyboard, monitor};
 use smithay::backend::input::{
-    InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionAbsoluteEvent,
+    AbsolutePositionEvent, Event, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
+    PointerButtonEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::desktop::render::render_output;
+use smithay::desktop::space::render_output;
+use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::input::keyboard::FilterResult;
 use smithay::output::Mode as OutputMode;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Point, Transform, SERIAL_COUNTER};
-use smithay::wayland::compositor::{send_frames_surface_tree, surface_primary_scanout_output};
+use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
-use winit::event_loop::PumpStatus;
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -156,7 +157,7 @@ fn run_wayland() -> ! {
     let output = state.create_output("winit", output_size.w, output_size.h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
-    let mut seat = state.seat.clone();
+    let seat = state.seat.clone();
     let keyboard_handle = seat.get_keyboard().expect("keyboard missing from seat");
     let pointer_handle = seat.get_pointer().expect("pointer missing from seat");
 
@@ -181,7 +182,7 @@ fn run_wayland() -> ! {
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {
-            let status = winit_loop.dispatch_new_events(|event| match event {
+            winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
                     let mode = OutputMode {
                         size: size.into(),
@@ -215,7 +216,7 @@ fn run_wayland() -> ! {
                                     let mut ctx = wm.ctx();
                                     if keyboard::handle_keysym(
                                         &mut ctx,
-                                        keysym.modified_sym() as u32,
+                                        u32::from(keysym.modified_sym()),
                                         mod_mask,
                                     ) {
                                         return FilterResult::Intercept(());
@@ -237,7 +238,10 @@ fn run_wayland() -> ! {
                                     let keyboard_focus =
                                         Some(KeyboardFocusTarget::Window(window.clone()));
                                     let focus = window.wl_surface().map(|surface| {
-                                        (PointerFocusTarget::WlSurface(surface), location.to_f64())
+                                        (
+                                            PointerFocusTarget::WlSurface(surface.into_owned()),
+                                            location.to_f64(),
+                                        )
                                     });
                                     (focus, keyboard_focus)
                                 }
@@ -298,28 +302,27 @@ fn run_wayland() -> ! {
                 _ => {}
             });
 
-            if matches!(status, PumpStatus::Exit(_)) {
-                loop_signal.stop();
-                return;
-            }
-
             state.sync_space_from_globals();
-            let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
             let age = backend.buffer_age().unwrap_or(0);
-            let render_result = render_output(
-                &output,
-                renderer,
-                &mut framebuffer,
-                1.0,
-                age,
-                [&state.space],
-                &[],
-                &mut damage_tracker,
-                [0.05, 0.05, 0.07, 1.0],
-            )
-            .expect("render output");
+            let damage = {
+                let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
+                let custom_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+                let render_result = render_output(
+                    &output,
+                    renderer,
+                    &mut framebuffer,
+                    1.0,
+                    age,
+                    [&state.space],
+                    &custom_elements,
+                    &mut damage_tracker,
+                    [0.05, 0.05, 0.07, 1.0],
+                )
+                .expect("render output");
 
-            let _ = backend.submit(render_result.damage.map(|d| d.as_slice()));
+                render_result.damage.cloned()
+            };
+            let _ = backend.submit(damage.as_deref());
 
             let time = start_time.elapsed();
             for window in state.space.elements() {
@@ -382,14 +385,17 @@ fn set_locale() -> Result<(), ()> {
 fn wm_init(wm: &mut Wm) {
     setup_signal_handlers();
 
-    let Some(x11) = wm.backend.x11() else {
-        return;
+    let (screen_num, screen, root) = {
+        let Some(x11) = wm.backend.x11() else {
+            return;
+        };
+        let screen_num = x11.screen_num;
+        let screen = x11.conn.setup().roots[screen_num].clone();
+        let root = screen.root;
+        let conn = &x11.conn;
+        crate::events::check_other_wm(conn, root);
+        (screen_num, screen, root)
     };
-    let screen_num = x11.screen_num;
-    let screen = x11.conn.setup().roots[screen_num].clone();
-    let root = screen.root;
-
-    crate::events::check_other_wm(&x11.conn, root);
 
     init_globals(wm, screen_num, root, &screen);
 
@@ -398,8 +404,13 @@ fn wm_init(wm: &mut Wm) {
         crate::xresources::load_xresources(&mut ctx);
     }
 
-    let conn = &x11.conn;
-    init_atoms(&mut wm.g, conn);
+    {
+        let Some(x11) = wm.backend.x11() else {
+            return;
+        };
+        let conn = &x11.conn;
+        init_atoms(&mut wm.g, conn);
+    }
     init_drw_and_schemes(wm);
 
     // Select events and initialise EWMH bits that depend on atoms + config.

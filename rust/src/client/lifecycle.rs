@@ -65,9 +65,9 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
         return;
     }
     let x11_win: Window = w.into();
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+    if ctx.x11_conn().is_none() {
         return;
-    };
+    }
     // -------------------------------------------------------------------------
     // 1. Build the initial Client struct.
     // -------------------------------------------------------------------------
@@ -187,19 +187,21 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             client.border_width = border_width;
         }
 
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().border_width(border_width as u32),
-        );
-
-        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let pixel = scheme.normal.bg.pixel();
-            let _ = conn.change_window_attributes(
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.configure_window(
                 x11_win,
-                &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+                &ConfigureWindowAux::new().border_width(border_width as u32),
             );
+
+            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                let pixel = scheme.normal.bg.pixel();
+                let _ = conn.change_window_attributes(
+                    x11_win,
+                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+                );
+            }
+            let _ = conn.flush();
         }
-        let _ = conn.flush();
     }
 
     // -------------------------------------------------------------------------
@@ -239,8 +241,12 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             | EventMask::FOCUS_CHANGE
             | EventMask::PROPERTY_CHANGE
             | EventMask::STRUCTURE_NOTIFY;
-        let _ = conn
-            .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.change_window_attributes(
+                x11_win,
+                &ChangeWindowAttributesAux::new().event_mask(mask),
+            );
+        }
     }
 
     grab_buttons(ctx, w, false);
@@ -263,11 +269,13 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
 
     // Floating windows start on top.
     if should_raise {
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
-        let _ = conn.flush();
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
+            let _ = conn.flush();
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -276,7 +284,7 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     attach_ctx(ctx, w);
     attach_stack_ctx(ctx, w);
 
-    {
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let _ = conn.change_property32(
             PropMode::APPEND,
             ctx.g.cfg.root,
@@ -307,7 +315,7 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             .unwrap_or((0, 0, 0, 0, 0))
     };
 
-    {
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let _ = conn.configure_window(
             x11_win,
             &ConfigureWindowAux::new()
@@ -342,8 +350,10 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     }
 
     if !initially_hidden {
-        let _ = conn.map_window(x11_win);
-        let _ = conn.flush();
+        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+            let _ = conn.map_window(x11_win);
+            let _ = conn.flush();
+        }
     }
 
     crate::focus::focus_soft(ctx, None);
@@ -386,11 +396,13 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             .unwrap_or(false);
 
         if !is_tiling {
-            let _ = conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
+            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+                let _ = conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                );
+                let _ = conn.flush();
+            }
         } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
             if let Some(mon_id) = c.mon_id {
                 arrange(ctx, Some(mon_id));
@@ -451,22 +463,24 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
             .map(|c| c.old_border_width)
             .unwrap_or(0);
 
-        let _ = conn.grab_server();
+        {
+            let _ = conn.grab_server();
 
-        // Stop receiving events so we don't get confused during cleanup.
-        let _ = conn.change_window_attributes(
-            x11_win,
-            &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
-        );
+            // Stop receiving events so we don't get confused during cleanup.
+            let _ = conn.change_window_attributes(
+                x11_win,
+                &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
+            );
 
-        // Restore the original border width the application expects.
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().border_width(old_bw as u32),
-        );
+            // Restore the original border width the application expects.
+            let _ = conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().border_width(old_bw as u32),
+            );
 
-        // Release button grabs.
-        let _ = conn.ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+            // Release button grabs.
+            let _ = conn.ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+        }
 
         set_client_state(ctx, win, WM_STATE_WITHDRAWN);
 

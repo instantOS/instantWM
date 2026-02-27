@@ -26,17 +26,18 @@
 //! an `impl` block).  They wire Smithay's internal message routing to the
 //! handler trait implementation.
 
-use std::sync::Arc;
+use std::borrow::Cow;
 
 use smithay::{
+    backend::input::KeyState,
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
     delegate_xwayland_shell,
     desktop::{PopupManager, Space, Window},
     input::{
-        keyboard::{KeyState, KeysymHandle, ModifiersState, XkbConfig},
+        keyboard::{KeysymHandle, ModifiersState, XkbConfig},
         Seat, SeatHandler, SeatState,
     },
-    output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
+    output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{
@@ -45,10 +46,12 @@ use smithay::{
             Client, Display, DisplayHandle,
         },
     },
-    utils::{IsAlive, Scale, Serial, Transform, SERIAL_COUNTER},
+    utils::{IsAlive, Serial, Transform, SERIAL_COUNTER},
     wayland::{
+        buffer::BufferHandler,
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
         output::OutputManagerState,
+        seat::WaylandFocus,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
         },
@@ -74,6 +77,7 @@ use crate::types::{Client as WmClient, Rect, WindowId};
 #[derive(Debug, Clone, PartialEq)]
 pub enum KeyboardFocusTarget {
     Window(Window),
+    WlSurface(WlSurface),
 }
 
 /// What can receive pointer focus.
@@ -91,6 +95,7 @@ impl IsAlive for KeyboardFocusTarget {
     fn alive(&self) -> bool {
         match self {
             KeyboardFocusTarget::Window(w) => w.alive(),
+            KeyboardFocusTarget::WlSurface(s) => s.alive(),
         }
     }
 }
@@ -99,6 +104,25 @@ impl IsAlive for PointerFocusTarget {
     fn alive(&self) -> bool {
         match self {
             PointerFocusTarget::WlSurface(s) => s.alive(),
+        }
+    }
+}
+
+// -- WaylandFocus implementations --
+
+impl WaylandFocus for KeyboardFocusTarget {
+    fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
+        match self {
+            KeyboardFocusTarget::Window(w) => w.wl_surface(),
+            KeyboardFocusTarget::WlSurface(s) => Some(Cow::Borrowed(s)),
+        }
+    }
+}
+
+impl WaylandFocus for PointerFocusTarget {
+    fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
+        match self {
+            PointerFocusTarget::WlSurface(s) => Some(Cow::Borrowed(s)),
         }
     }
 }
@@ -117,9 +141,16 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::enter(
-                        &surface, seat, data, keys, serial,
+                        &surface.into_owned(),
+                        seat,
+                        data,
+                        keys,
+                        serial,
                     );
                 }
+            }
+            KeyboardFocusTarget::WlSurface(surface) => {
+                smithay::input::keyboard::KeyboardTarget::enter(surface, seat, data, keys, serial);
             }
         }
     }
@@ -128,8 +159,16 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         match self {
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
-                    smithay::input::keyboard::KeyboardTarget::leave(&surface, seat, data, serial);
+                    smithay::input::keyboard::KeyboardTarget::leave(
+                        &surface.into_owned(),
+                        seat,
+                        data,
+                        serial,
+                    );
                 }
+            }
+            KeyboardFocusTarget::WlSurface(surface) => {
+                smithay::input::keyboard::KeyboardTarget::leave(surface, seat, data, serial);
             }
         }
     }
@@ -147,9 +186,20 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::key(
-                        &surface, seat, data, key, state, serial, time,
+                        &surface.into_owned(),
+                        seat,
+                        data,
+                        key,
+                        state,
+                        serial,
+                        time,
                     );
                 }
+            }
+            KeyboardFocusTarget::WlSurface(surface) => {
+                smithay::input::keyboard::KeyboardTarget::key(
+                    surface, seat, data, key, state, serial, time,
+                );
             }
         }
     }
@@ -165,9 +215,18 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::modifiers(
-                        &surface, seat, data, modifiers, serial,
+                        &surface.into_owned(),
+                        seat,
+                        data,
+                        modifiers,
+                        serial,
                     );
                 }
+            }
+            KeyboardFocusTarget::WlSurface(surface) => {
+                smithay::input::keyboard::KeyboardTarget::modifiers(
+                    surface, seat, data, modifiers, serial,
+                );
             }
         }
     }
@@ -665,7 +724,8 @@ impl WaylandState {
 
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {
-            self.space.map_element(element, (rect.x, rect.y), false);
+            self.space
+                .map_element(element.clone(), (rect.x, rect.y), false);
             if let Some(toplevel) = element.toplevel() {
                 let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
                     rect.w.max(1),
@@ -680,8 +740,8 @@ impl WaylandState {
     }
 
     pub fn raise_window(&mut self, window: WindowId) {
-        if let Some(element) = self.find_window(window) {
-            self.space.raise_element(element, true);
+        if let Some(element) = self.find_window(window).cloned() {
+            self.space.raise_element(&element, true);
             if element.set_activated(true) {
                 if let Some(toplevel) = element.toplevel() {
                     toplevel.send_pending_configure();
@@ -692,8 +752,8 @@ impl WaylandState {
 
     pub fn restack(&mut self, windows: &[WindowId]) {
         for window in windows {
-            if let Some(element) = self.find_window(*window) {
-                self.space.raise_element(element, false);
+            if let Some(element) = self.find_window(*window).cloned() {
+                self.space.raise_element(&element, false);
             }
         }
     }
@@ -708,11 +768,11 @@ impl WaylandState {
             keyboard.set_focus(self, focus, serial);
         }
         if let Some(pointer) = self.seat.get_pointer() {
-            if let Some(window) = self.find_window(window) {
+            if let Some(window) = self.find_window(window).cloned() {
                 if let Some(surface) = window.wl_surface() {
                     let location = self
                         .space
-                        .element_location(window)
+                        .element_location(&window)
                         .unwrap_or((0, 0).into())
                         .to_f64();
                     let focus = Some((
@@ -741,8 +801,8 @@ impl WaylandState {
     }
 
     pub fn unmap_window(&mut self, window: WindowId) {
-        if let Some(element) = self.find_window(window) {
-            self.space.unmap_elem(element);
+        if let Some(element) = self.find_window(window).cloned() {
+            self.space.unmap_elem(&element);
         }
     }
 
@@ -801,8 +861,8 @@ impl WaylandState {
         let has_monitor = g.monitor(mon_id).is_some();
         drop(g);
         if has_monitor {
-            client::attach(window);
-            client::attach_stack(window);
+            client::list::attach(window);
+            client::list::attach_stack(window);
         }
     }
 }
@@ -838,6 +898,100 @@ impl CompositorHandler for WaylandState {
 impl ShmHandler for WaylandState {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
+    }
+}
+
+impl BufferHandler for WaylandState {
+    fn buffer_destroyed(
+        &mut self,
+        _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
+    ) {
+    }
+}
+
+impl smithay::xwayland::XwmHandler for WaylandState {
+    fn xwm_state(&mut self, _xwm: smithay::xwayland::xwm::XwmId) -> &mut X11Wm {
+        self.xwm.as_mut().expect("XWayland is not initialized")
+    }
+
+    fn new_window(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+    ) {
+    }
+
+    fn new_override_redirect_window(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+    ) {
+    }
+
+    fn map_window_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+    ) {
+    }
+
+    fn mapped_override_redirect_window(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+    ) {
+    }
+
+    fn unmapped_window(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+    ) {
+    }
+
+    fn destroyed_window(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+    ) {
+    }
+
+    fn configure_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+        _x: Option<i32>,
+        _y: Option<i32>,
+        _w: Option<u32>,
+        _h: Option<u32>,
+        _reorder: Option<smithay::xwayland::xwm::Reorder>,
+    ) {
+    }
+
+    fn configure_notify(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+        _geometry: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
+        _above: Option<smithay::xwayland::xwm::X11Window>,
+    ) {
+    }
+
+    fn resize_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+        _button: u32,
+        _resize_edge: smithay::xwayland::xwm::ResizeEdge,
+    ) {
+    }
+
+    fn move_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _window: smithay::xwayland::X11Surface,
+        _button: u32,
+    ) {
     }
 }
 
@@ -880,20 +1034,20 @@ impl XdgShellHandler for WaylandState {
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl_surface = surface.wl_surface();
-        if let Some(window) = self
-            .space
-            .elements()
+        let windows = self.space.elements().cloned().collect::<Vec<_>>();
+        if let Some(window) = windows
+            .into_iter()
             .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
-            .cloned()
         {
             self.space.unmap_elem(&window);
-            if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
+            let marker = window.user_data().get::<WindowIdMarker>().cloned();
+            if let Some(marker) = marker {
                 let win = marker.0;
                 let g = get_globals_mut();
                 if g.clients.contains_key(&win) {
                     drop(g);
-                    client::detach(win);
-                    client::detach_stack(win);
+                    client::list::detach(win);
+                    client::list::detach_stack(win);
                     let g = get_globals_mut();
                     g.clients.remove(&win);
                     g.client_list.retain(|id| *id != win.0 as usize);

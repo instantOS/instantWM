@@ -512,10 +512,9 @@ pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+    if ctx.x11_conn().is_none() {
         return;
     };
-    let x11_win: Window = win.into();
 
     // Update the internal flag first.
     if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -523,14 +522,20 @@ pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
     }
 
     // Read the current WM_HINTS so we only modify the urgency bit.
-    let Ok(cookie) =
-        conn.get_property(false, x11_win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
-    else {
-        return;
+    let data: Vec<u8> = {
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
+        let x11_win: Window = win.into();
+        let Ok(cookie) =
+            conn.get_property(false, x11_win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
+        else {
+            return;
+        };
+        let Ok(reply) = cookie.reply() else { return };
+        reply.value8().map(|v| v.collect()).unwrap_or_default()
     };
-    let Ok(reply) = cookie.reply() else { return };
 
-    let data: Vec<u8> = reply.value8().map(|v| v.collect()).unwrap_or_default();
     if data.len() < 4 {
         return;
     }
@@ -549,16 +554,19 @@ pub fn set_urgent(ctx: &mut WmCtx, win: WindowId, urg: bool) {
         new_data[4..data.len()].copy_from_slice(&data[4..]);
     }
 
-    let _ = conn.change_property(
-        PropMode::REPLACE,
-        x11_win,
-        AtomEnum::WM_HINTS,
-        AtomEnum::WM_HINTS,
-        8u8,
-        new_data.len() as u32,
-        &new_data,
-    );
-    let _ = conn.flush();
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let x11_win: Window = win.into();
+        let _ = conn.change_property(
+            PropMode::REPLACE,
+            x11_win,
+            AtomEnum::WM_HINTS,
+            AtomEnum::WM_HINTS,
+            8u8,
+            new_data.len() as u32,
+            &new_data,
+        );
+        let _ = conn.flush();
+    }
 }
 
 // ---------------------------------------------------------------------------

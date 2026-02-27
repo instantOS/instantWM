@@ -395,30 +395,29 @@ pub fn apply_size_hints(
 /// The raw property is a packed C struct; we read individual 4-byte integers
 /// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
 pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
+    let (data, flags) = {
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
+        let x11_win: Window = win.into();
+
+        let Ok(cookie) = conn.get_property(
+            false,
+            x11_win,
+            AtomEnum::WM_NORMAL_HINTS,
+            AtomEnum::WM_SIZE_HINTS,
+            0,
+            24,
+        ) else {
+            return;
+        };
+
+        let Ok(reply) = cookie.reply() else { return };
+
+        let data: Vec<u32> = reply.value32().map(|v| v.collect()).unwrap_or_default();
+        let flags = if !data.is_empty() { data[0] } else { 0 };
+        (data, flags)
     };
-
-    let Some(c) = ctx.g.clients.get_mut(&win) else {
-        return;
-    };
-    let cwin = c.win;
-    let x11_win: Window = cwin.into();
-
-    let Ok(cookie) = conn.get_property(
-        false,
-        x11_win,
-        AtomEnum::WM_NORMAL_HINTS,
-        AtomEnum::WM_SIZE_HINTS,
-        0,
-        24,
-    ) else {
-        return;
-    };
-
-    let Ok(reply) = cookie.reply() else { return };
-
-    let data: Vec<u32> = reply.value32().map(|v| v.collect()).unwrap_or_default();
 
     // Helper: read a u32 at index `idx`, or 0 if out of range.
     let read_i32 = |idx: usize| -> i32 {
@@ -428,8 +427,6 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
             0
         }
     };
-
-    let flags = if !data.is_empty() { data[0] } else { 0 };
 
     // Re-acquire mutable reference.
     let c = match ctx.g.clients.get_mut(&win) {

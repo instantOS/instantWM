@@ -555,35 +555,35 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         return;
     };
 
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-    let x11_icon_win: Window = icon_win.into();
-    let x11_systray_win: Window = systray_win.into();
-    let (geo, border_width) = conn
-        .get_geometry(x11_icon_win)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .map(|wa| {
-            (
+    let (geo, border_width) = {
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
+        let x11_icon_win: Window = icon_win.into();
+        conn.get_geometry(x11_icon_win)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|wa| {
+                (
+                    Rect {
+                        x: 0,
+                        y: 0,
+                        w: wa.width as i32,
+                        h: wa.height as i32,
+                    },
+                    wa.border_width as i32,
+                )
+            })
+            .unwrap_or((
                 Rect {
                     x: 0,
                     y: 0,
-                    w: wa.width as i32,
-                    h: wa.height as i32,
+                    w: 1,
+                    h: 1,
                 },
-                wa.border_width as i32,
-            )
-        })
-        .unwrap_or((
-            Rect {
-                x: 0,
-                y: 0,
-                w: 1,
-                h: 1,
-            },
-            0,
-        ));
+                0,
+            ))
+    };
 
     let client = Client {
         win: icon_win,
@@ -607,21 +607,28 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     crate::client::update_size_hints_win(ctx, icon_win);
     systray::update_systray_icon_geom(ctx, icon_win, geo.w, geo.h);
 
-    let _ = conn.change_save_set(SetMode::INSERT, x11_icon_win);
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let x11_icon_win: Window = icon_win.into();
+        let x11_systray_win: Window = systray_win.into();
 
-    let mask =
-        EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE | EventMask::RESIZE_REDIRECT;
-    let _ = conn.change_window_attributes(
-        x11_icon_win,
-        &ChangeWindowAttributesAux::new().event_mask(mask),
-    );
+        let _ = conn.change_save_set(SetMode::INSERT, x11_icon_win);
 
-    let _ = conn.reparent_window(x11_icon_win, x11_systray_win, 0, 0);
+        let mask =
+            EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE | EventMask::RESIZE_REDIRECT;
+        let _ = conn.change_window_attributes(
+            x11_icon_win,
+            &ChangeWindowAttributesAux::new().event_mask(mask),
+        );
 
-    let _ = conn.change_window_attributes(
-        x11_icon_win,
-        &ChangeWindowAttributesAux::new().background_pixel(statusescheme_bg_pixel),
-    );
+        let _ = conn.reparent_window(x11_icon_win, x11_systray_win, 0, 0);
+
+        let _ = conn.change_window_attributes(
+            x11_icon_win,
+            &ChangeWindowAttributesAux::new().background_pixel(statusescheme_bg_pixel),
+        );
+
+        let _ = conn.flush();
+    }
 
     let xembed_atom = ctx.g.cfg.xatom.xembed;
     let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
@@ -670,8 +677,6 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
-
-    let _ = conn.flush();
 
     if let Some(mon) = ctx.g.monitor(selmon_id) {
         crate::bar::resize_bar_win_ctx(ctx, mon);

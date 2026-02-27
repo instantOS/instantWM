@@ -5,6 +5,7 @@
 //! functionality while still allowing existing call-sites to use the raw
 //! connection.
 
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 use x11rb::CURRENT_TIME;

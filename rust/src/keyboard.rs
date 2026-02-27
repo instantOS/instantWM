@@ -74,10 +74,12 @@ pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
 
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
+    let keysym = {
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
+        keycode_to_keysym(conn, keycode, 0)
     };
-    let keysym = keycode_to_keysym(conn, keycode, 0);
 
     let _ = handle_keysym(ctx, keysym, state.bits() as u32);
 }
@@ -169,45 +171,48 @@ pub fn grab_keys(ctx: &WmCtx) {
 }
 
 pub fn update_num_lock_mask(ctx: &mut WmCtx) {
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-    let modmap = conn.get_modifier_mapping();
-    if let Ok(cookie) = modmap {
-        if let Ok(reply) = cookie.reply() {
-            let mut new_numlockmask: u32 = 0;
+    let new_numlockmask = {
+        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+            return;
+        };
+        let Ok(cookie) = conn.get_modifier_mapping() else {
+            return;
+        };
+        let Ok(reply) = cookie.reply() else {
+            return;
+        };
+        let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
+        let mapping = match conn
+            .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+        {
+            Some(mapping) => mapping,
+            None => return,
+        };
 
-            let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
-            let mapping = match conn
-                .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-                .ok()
-                .and_then(|cookie| cookie.reply().ok())
-            {
-                Some(mapping) => mapping,
-                None => return,
-            };
-
-            for (i, keycode) in reply.keycodes.iter().enumerate() {
-                if *keycode >= keycode_min && *keycode <= keycode_max {
-                    let idx =
-                        (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-                    let keysym = if idx < mapping.keysyms.len() {
-                        mapping.keysyms[idx]
-                    } else {
-                        0
-                    };
-                    if keysym == 0xff7f {
-                        let mod_index = i / reply.keycodes_per_modifier() as usize;
-                        if mod_index < 8 {
-                            new_numlockmask = 1 << mod_index;
-                        }
+        let mut new_numlockmask: u32 = 0;
+        for (i, keycode) in reply.keycodes.iter().enumerate() {
+            if *keycode >= keycode_min && *keycode <= keycode_max {
+                let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
+                let keysym = if idx < mapping.keysyms.len() {
+                    mapping.keysyms[idx]
+                } else {
+                    0
+                };
+                if keysym == 0xff7f {
+                    let mod_index = i / reply.keycodes_per_modifier() as usize;
+                    if mod_index < 8 {
+                        new_numlockmask = 1 << mod_index;
                     }
                 }
             }
-
-            ctx.g.cfg.numlockmask = new_numlockmask;
         }
-    }
+
+        new_numlockmask
+    };
+
+    ctx.g.cfg.numlockmask = new_numlockmask;
 }
 
 pub fn up_press(ctx: &mut WmCtx) {
@@ -300,17 +305,15 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 
     if !has_tiling {
         if let Some(win) = ctx.g.selected_win() {
-            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                    let x11_win: Window = win.into();
-                    let _ = change_window_attributes(
-                        conn,
-                        x11_win,
-                        &ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(scheme.normal.bg.pixel())),
-                    );
-                    let _ = conn.flush();
-                }
+            let border_pixel = ctx.g.cfg.borderscheme.as_ref().map(|s| s.normal.bg.pixel());
+            if let (Some(conn), Some(pixel)) = (ctx.x11_conn().map(|x11| x11.conn), border_pixel) {
+                let x11_win: Window = win.into();
+                let _ = change_window_attributes(
+                    conn,
+                    x11_win,
+                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+                );
+                let _ = conn.flush();
             }
             change_snap(ctx, win, SnapDir::Up);
         }
@@ -371,17 +374,15 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snapstatus != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                    let x11_win: Window = win.into();
-                    let _ = change_window_attributes(
-                        conn,
-                        x11_win,
-                        &ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(scheme.normal.bg.pixel())),
-                    );
-                    let _ = conn.flush();
-                }
+            let border_pixel = ctx.g.cfg.borderscheme.as_ref().map(|s| s.normal.bg.pixel());
+            if let (Some(conn), Some(pixel)) = (ctx.x11_conn().map(|x11| x11.conn), border_pixel) {
+                let x11_win: Window = win.into();
+                let _ = change_window_attributes(
+                    conn,
+                    x11_win,
+                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+                );
+                let _ = conn.flush();
             }
 
             save_floating_win(ctx, win);
