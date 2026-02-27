@@ -27,15 +27,18 @@
 //! handler trait implementation.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use smithay::{
-    backend::input::KeyState,
-    delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
+    backend::{input::KeyState, renderer::utils::on_commit_buffer_handler},
+    delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
+    delegate_xdg_shell,
     delegate_xwayland_shell,
     desktop::{PopupManager, Space, Window},
     input::{
-        keyboard::{KeysymHandle, ModifiersState, XkbConfig},
+        keyboard::{KeyboardHandle, KeysymHandle, ModifiersState, XkbConfig},
+        pointer::PointerHandle,
         Seat, SeatHandler, SeatState,
     },
     output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
@@ -52,6 +55,10 @@ use smithay::{
         buffer::BufferHandler,
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
         output::OutputManagerState,
+        selection::{
+            data_device::{ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler},
+            SelectionHandler,
+        },
         seat::WaylandFocus,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
@@ -581,10 +588,13 @@ pub struct WaylandState {
     pub xdg_shell_state: XdgShellState,
     pub seat_state: SeatState<WaylandState>,
     pub output_manager_state: OutputManagerState,
+    pub data_device_state: DataDeviceState,
     pub xwayland_shell_state: XWaylandShellState,
 
     // -- Input --
     pub seat: Seat<WaylandState>,
+    pub keyboard: KeyboardHandle<WaylandState>,
+    pub pointer: PointerHandle<WaylandState>,
 
     // -- XWayland --
     pub xwm: Option<X11Wm>,
@@ -592,6 +602,7 @@ pub struct WaylandState {
 
     next_window_id: u32,
     globals: Option<NonNull<Globals>>,
+    last_configured_size: HashMap<WindowId, (i32, i32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -642,14 +653,16 @@ impl WaylandState {
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
+        let data_device_state = DataDeviceState::new::<Self>(&dh);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat-0");
-        seat.add_keyboard(XkbConfig::default(), 200, 25)
+        let keyboard = seat
+            .add_keyboard(XkbConfig::default(), 200, 25)
             .expect("Failed to add keyboard to seat");
-        let _pointer = seat.add_pointer();
+        let pointer = seat.add_pointer();
 
         WaylandState {
             display_handle: dh,
@@ -660,12 +673,16 @@ impl WaylandState {
             xdg_shell_state,
             seat_state,
             output_manager_state,
+            data_device_state,
             xwayland_shell_state,
             seat,
+            keyboard,
+            pointer,
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
             globals: None,
+            last_configured_size: HashMap::new(),
         }
     }
 
@@ -735,12 +752,25 @@ impl WaylandState {
         for (window, geo) in updates {
             self.space.map_element(window.clone(), (geo.x, geo.y), false);
             if let Some(toplevel) = window.toplevel() {
-                let size =
-                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(geo.w.max(1), geo.h.max(1));
-                toplevel.with_pending_state(|state| {
-                    state.size = Some(size);
-                });
-                toplevel.send_pending_configure();
+                let key = window
+                    .user_data()
+                    .get::<WindowIdMarker>()
+                    .map(|m| m.0)
+                    .unwrap_or_default();
+                let target = (geo.w.max(1), geo.h.max(1));
+                let unchanged = self
+                    .last_configured_size
+                    .get(&key)
+                    .is_some_and(|&s| s == target);
+                if !unchanged {
+                    let size =
+                        smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
+                    toplevel.with_pending_state(|state| {
+                        state.size = Some(size);
+                    });
+                    toplevel.send_pending_configure();
+                    self.last_configured_size.insert(key, target);
+                }
             }
         }
     }
@@ -759,14 +789,16 @@ impl WaylandState {
                 .globals()
                 .and_then(|g| g.clients.get(&window_id).map(|c| (c.geo.w, c.geo.h)))
                 .unwrap_or((Self::MIN_WL_DIM, Self::MIN_WL_DIM));
+            let target = (w.max(Self::MIN_WL_DIM), h.max(Self::MIN_WL_DIM));
             let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                w.max(Self::MIN_WL_DIM),
-                h.max(Self::MIN_WL_DIM),
+                target.0,
+                target.1,
             );
             toplevel.with_pending_state(|state| {
                 state.size = Some(size);
             });
             toplevel.send_pending_configure();
+            self.last_configured_size.insert(window_id, target);
         }
         self.set_focus(window_id);
         window_id
@@ -777,14 +809,16 @@ impl WaylandState {
             self.space
                 .map_element(element.clone(), (rect.x, rect.y), false);
             if let Some(toplevel) = element.toplevel() {
+                let target = (rect.w.max(1), rect.h.max(1));
                 let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                    rect.w.max(1),
-                    rect.h.max(1),
+                    target.0,
+                    target.1,
                 );
                 toplevel.with_pending_state(|state| {
                     state.size = Some(size);
                 });
                 toplevel.send_pending_configure();
+                self.last_configured_size.insert(window, target);
             }
         }
     }
@@ -854,6 +888,7 @@ impl WaylandState {
         if let Some(element) = self.find_window(window).cloned() {
             self.space.unmap_elem(&element);
         }
+        self.last_configured_size.remove(&window);
     }
 
     pub fn flush(&mut self) {
@@ -1017,6 +1052,7 @@ impl CompositorHandler for WaylandState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        on_commit_buffer_handler::<Self>(surface);
         if let Some(window) = self
             .space
             .elements()
@@ -1026,6 +1062,21 @@ impl CompositorHandler for WaylandState {
             window.on_commit();
         }
     }
+}
+
+impl SelectionHandler for WaylandState {
+    type SelectionUserData = ();
+}
+
+impl DataDeviceHandler for WaylandState {
+    fn data_device_state(&self) -> &DataDeviceState {
+        &self.data_device_state
+    }
+}
+
+impl ClientDndGrabHandler for WaylandState {}
+impl ServerDndGrabHandler for WaylandState {
+    fn send(&mut self, _mime_type: String, _fd: std::os::unix::io::OwnedFd, _seat: Seat<Self>) {}
 }
 
 impl ShmHandler for WaylandState {
@@ -1183,6 +1234,7 @@ impl XdgShellHandler for WaylandState {
                     detach_client_from_monitor(g, win);
                     g.clients.remove(&win);
                     g.client_list.retain(|id| *id != win.0 as usize);
+                    self.last_configured_size.remove(&win);
                 }
             }
         }
@@ -1229,6 +1281,7 @@ impl smithay::wayland::output::OutputHandler for WaylandState {}
 // ---------------------------------------------------------------------------
 
 delegate_compositor!(WaylandState);
+delegate_data_device!(WaylandState);
 delegate_shm!(WaylandState);
 delegate_seat!(WaylandState);
 delegate_xdg_shell!(WaylandState);

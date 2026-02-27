@@ -28,7 +28,7 @@ mod xresources;
 
 use clap::{Parser, ValueEnum};
 use libc::{setlocale, LC_CTYPE};
-use std::process::exit;
+use std::process::{exit, Command};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -158,9 +158,8 @@ fn run_wayland() -> ! {
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
 
-    let seat = state.seat.clone();
-    let keyboard_handle = seat.get_keyboard().expect("keyboard missing from seat");
-    let pointer_handle = seat.get_pointer().expect("pointer missing from seat");
+    let keyboard_handle = state.keyboard.clone();
+    let pointer_handle = state.pointer.clone();
 
     let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
     let socket_name = listening_socket
@@ -169,8 +168,10 @@ fn run_wayland() -> ! {
         .into_owned();
     std::env::set_var("WAYLAND_DISPLAY", &socket_name);
     std::env::set_var("XDG_SESSION_TYPE", "wayland");
-    std::env::set_var("GDK_BACKEND", "wayland,x11");
-    std::env::set_var("QT_QPA_PLATFORM", "wayland;xcb");
+    std::env::remove_var("DISPLAY");
+    std::env::set_var("GDK_BACKEND", "wayland");
+    std::env::set_var("QT_QPA_PLATFORM", "wayland");
+    std::env::set_var("SDL_VIDEODRIVER", "wayland");
     std::env::set_var("CLUTTER_BACKEND", "wayland");
     // Prefer software GL fallback in environments without a usable render node.
     std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
@@ -185,6 +186,7 @@ fn run_wayland() -> ! {
         .expect("listening socket source");
 
     run_autostart();
+    spawn_wayland_smoke_window();
 
     let start_time = std::time::Instant::now();
     let mut pointer_location = Point::from((0.0, 0.0));
@@ -371,6 +373,24 @@ fn init_wayland_globals(wm: &mut Wm) {
 fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
+}
+
+fn spawn_wayland_smoke_window() {
+    if std::env::var("INSTANTWM_WL_AUTOSPAWN")
+        .ok()
+        .as_deref()
+        == Some("0")
+    {
+        return;
+    }
+
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(800));
+        let _ = Command::new("sh")
+            .arg("-lc")
+            .arg("for app in gtk3-demo thunar xmessage; do command -v \"$app\" >/dev/null 2>&1 && exec \"$app\"; done; exit 0")
+            .spawn();
+    });
 }
 
 fn modifiers_to_x11_mask(mods: &smithay::input::keyboard::ModifiersState) -> u32 {
