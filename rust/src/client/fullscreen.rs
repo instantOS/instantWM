@@ -48,7 +48,15 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// silently become a no-op.  This matches the C `savebw` implementation.
 pub fn save_border_width(win: WindowId) {
     let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+    save_border_width_in(&mut globals.clients, win);
+}
+
+/// Save border width using an explicit client map reference.
+pub(crate) fn save_border_width_in(
+    clients: &mut std::collections::HashMap<WindowId, crate::types::Client>,
+    win: WindowId,
+) {
+    if let Some(client) = clients.get_mut(&win) {
         if client.border_width != 0 {
             client.old_border_width = client.border_width;
         }
@@ -64,7 +72,15 @@ pub fn save_border_width(win: WindowId) {
 /// `restore_border_width` implementation.
 pub fn restore_border_width(win: WindowId) {
     let globals = get_globals_mut();
-    if let Some(client) = globals.clients.get_mut(&win) {
+    restore_border_width_in(&mut globals.clients, win);
+}
+
+/// Restore border width using an explicit client map reference.
+pub(crate) fn restore_border_width_in(
+    clients: &mut std::collections::HashMap<WindowId, crate::types::Client>,
+    win: WindowId,
+) {
+    if let Some(client) = clients.get_mut(&win) {
         if client.old_border_width != 0 {
             client.border_width = client.old_border_width;
         }
@@ -93,16 +109,11 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
     }
     let x11_win: Window = win.into();
 
-    let (net_wm_fullscreen, net_wm_state) = {
-        let globals = get_globals();
-        (
-            globals.cfg.netatom.wm_fullscreen,
-            globals.cfg.netatom.wm_state,
-        )
-    };
+    let net_wm_fullscreen = ctx.g.cfg.netatom.wm_fullscreen;
+    let net_wm_state = ctx.g.cfg.netatom.wm_state;
 
     // Snapshot what we need before taking a mutable borrow.
-    let client_snapshot = get_globals().clients.get(&win).map(|c| {
+    let client_snapshot = ctx.g.clients.get(&win).map(|c| {
         (
             c.is_fullscreen,
             c.isfloating,
@@ -131,27 +142,21 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             );
         }
 
-        {
-            let globals = get_globals_mut();
-            if let Some(c) = globals.clients.get_mut(&win) {
-                c.is_fullscreen = true;
-                c.oldstate = c.isfloating as i32;
-            }
+        if let Some(c) = ctx.g.clients.get_mut(&win) {
+            c.is_fullscreen = true;
+            c.oldstate = c.isfloating as i32;
         }
 
-        save_border_width(win);
+        save_border_width_in(&mut ctx.g.clients, win);
 
         if !is_fake_fs {
             // Remove the border.
-            {
-                let globals = get_globals_mut();
-                if let Some(c) = globals.clients.get_mut(&win) {
-                    c.border_width = 0;
-                }
+            if let Some(c) = ctx.g.clients.get_mut(&win) {
+                c.border_width = 0;
             }
 
             let mon_rect = mon_id
-                .and_then(|mid| get_globals().monitor(mid).map(|m| m.monitor_rect))
+                .and_then(|mid| ctx.g.monitor(mid).map(|m| m.monitor_rect))
                 .unwrap_or_default();
 
             // Animate the expansion only for non-floating clients (floating
@@ -179,11 +184,8 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
         }
 
         // Mark as floating so the layout engine leaves it alone.
-        {
-            let globals = get_globals_mut();
-            if let Some(c) = globals.clients.get_mut(&win) {
-                c.isfloating = true;
-            }
+        if let Some(c) = ctx.g.clients.get_mut(&win) {
+            c.isfloating = true;
         }
     } else if !fullscreen && is_fs {
         // ---- Exit fullscreen ------------------------------------------------
@@ -199,15 +201,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             );
         }
 
-        {
-            let globals = get_globals_mut();
-            if let Some(c) = globals.clients.get_mut(&win) {
-                c.is_fullscreen = false;
-                c.isfloating = c.oldstate != 0;
-            }
+        if let Some(c) = ctx.g.clients.get_mut(&win) {
+            c.is_fullscreen = false;
+            c.isfloating = c.oldstate != 0;
         }
 
-        restore_border_width(win);
+        restore_border_width_in(&mut ctx.g.clients, win);
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.

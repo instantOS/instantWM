@@ -15,21 +15,19 @@ pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 + t * t * t
 }
 
-fn get_start_rect(win: WindowId, reset_pos: i32) -> Option<Rect> {
-    let globals = get_globals();
-    globals
+fn get_start_rect(ctx: &WmCtx, win: WindowId, reset_pos: i32) -> Option<Rect> {
+    ctx.g
         .clients
         .get(&win)
         .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
 }
 
-fn get_monitor_size(win: WindowId) -> (i32, i32) {
-    let globals = get_globals();
-    globals
+fn get_monitor_size(ctx: &WmCtx, win: WindowId) -> (i32, i32) {
+    ctx.g
         .clients
         .get(&win)
         .and_then(|c| c.mon_id)
-        .and_then(|mon_id| globals.monitor(mon_id))
+        .and_then(|mon_id| ctx.g.monitor(mon_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
         .unwrap_or((0, 0))
 }
@@ -77,7 +75,7 @@ fn try_resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
 pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     // Handled below by !ctx.g.animated or frames <= 0 check.
 
-    let start_rect = match get_start_rect(win, reset_pos) {
+    let start_rect = match get_start_rect(ctx, win, reset_pos) {
         Some(r) => r,
         None => return,
     };
@@ -85,7 +83,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
     let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
     let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
-    let (mon_w, mon_h) = get_monitor_size(win);
+    let (mon_w, mon_h) = get_monitor_size(ctx, win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
     if !ctx.g.animated || frames <= 0 {
