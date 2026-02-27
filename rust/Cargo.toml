@@ -29,6 +29,7 @@ smithay = { version = "0.7", default-features = false, features = [
     "xwayland",
 ] }
 calloop = { version = "0.14" }
+cosmic-text = "0.12"
 
 [build-dependencies]
 
