@@ -602,7 +602,14 @@ impl Default for BarRenderer {
 }
 
 pub fn draw_bar_wayland(_ctx: &mut crate::contexts::WmCtx, _mon_idx: usize) {}
-pub fn draw_bars_wayland(_ctx: &mut crate::contexts::WmCtx) {}
+pub fn draw_bars_wayland(ctx: &mut crate::contexts::WmCtx) {
+    // Ensure status_text_width is computed for bar hit-testing.
+    if !ctx.g.status_text.is_empty() {
+        ctx.g.status_text_width = ctx.g.status_text.len() as i32 * 6 + TEXT_PADDING * 2;
+    } else {
+        ctx.g.status_text_width = 0;
+    }
+}
 pub fn reset_bar_wayland(ctx: &mut crate::contexts::WmCtx) {
     let should_reset = ctx
         .g

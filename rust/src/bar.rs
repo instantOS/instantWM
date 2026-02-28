@@ -45,19 +45,17 @@ impl BarState {
 }
 
 pub fn text_width_ctx(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
-    if ctx.x11_conn().is_none() {
-        return 0;
-    }
-    let Some(mut drw) = ctx
+    if let Some(mut drw) = ctx
         .g
         .cfg
         .drw
         .as_ref()
         .and_then(|drw| drw.has_display().then(|| drw.clone()))
-    else {
-        return 0;
-    };
-    drw.fontset_getwidth(text) as i32
+    {
+        return drw.fontset_getwidth(text) as i32;
+    }
+    // Wayland fallback: approximate width using char count * avg glyph width.
+    text.len() as i32 * 8
 }
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {

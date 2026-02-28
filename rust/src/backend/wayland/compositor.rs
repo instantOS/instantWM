@@ -725,7 +725,7 @@ impl WaylandState {
 
         output.change_current_state(
             Some(mode),
-            Some(Transform::Flipped180),
+            Some(Transform::Normal),
             Some(Scale::Integer(1)),
             Some((0, 0).into()),
         );
@@ -741,18 +741,19 @@ impl WaylandState {
         let Some(g) = self.globals() else {
             return;
         };
-        let updates: Vec<(Window, Rect)> = self
+        let updates: Vec<(Window, Rect, i32)> = self
             .space
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
                 let client = g.clients.get(&marker.0)?;
-                Some((window.clone(), client.geo))
+                Some((window.clone(), client.geo, client.border_width))
             })
             .collect();
-        for (window, geo) in updates {
+        for (window, geo, bw) in updates {
+            // Offset by border_width: content sits inside the drawn border.
             self.space
-                .map_element(window.clone(), (geo.x, geo.y), false);
+                .map_element(window.clone(), (geo.x + bw, geo.y + bw), false);
             if let Some(toplevel) = window.toplevel() {
                 let key = window
                     .user_data()
@@ -807,8 +808,15 @@ impl WaylandState {
 
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {
+            // In X11, the server draws borders outside the client area.
+            // In Wayland we draw borders ourselves, so we offset the surface
+            // position by border_width so the content sits inside the border.
+            let bw = self
+                .globals()
+                .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
+                .unwrap_or(0);
             self.space
-                .map_element(element.clone(), (rect.x, rect.y), false);
+                .map_element(element.clone(), (rect.x + bw, rect.y + bw), false);
             if let Some(toplevel) = element.toplevel() {
                 let target = (rect.w.max(1), rect.h.max(1));
                 let size =
@@ -1228,23 +1236,37 @@ impl XdgShellHandler for WaylandState {
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
         let wl_surface = surface.wl_surface();
         let windows = self.space.elements().cloned().collect::<Vec<_>>();
+        let mut destroyed_win: Option<WindowId> = None;
         if let Some(window) = windows
             .into_iter()
             .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
         {
             self.space.unmap_elem(&window);
-            let marker = window.user_data().get::<WindowIdMarker>().cloned();
-            if let Some(marker) = marker {
-                let win = marker.0;
-                let Some(g) = self.globals_mut() else {
-                    return;
-                };
-                if g.clients.contains_key(&win) {
-                    detach_client_from_monitor(g, win);
-                    g.clients.remove(&win);
-                    g.client_list.retain(|id| *id != win.0 as usize);
-                    self.last_configured_size.remove(&win);
-                }
+            destroyed_win = window
+                .user_data()
+                .get::<WindowIdMarker>()
+                .map(|m| m.0);
+        }
+        let Some(win) = destroyed_win else { return };
+        self.last_configured_size.remove(&win);
+        let new_sel = {
+            let Some(g) = self.globals_mut() else {
+                return;
+            };
+            if g.clients.contains_key(&win) {
+                detach_client_from_monitor(g, win);
+                g.clients.remove(&win);
+                g.client_list.retain(|id| *id != win.0 as usize);
+            }
+            g.selected_win()
+        };
+        // Update Smithay keyboard focus to match mon.sel.
+        if let Some(new_win) = new_sel {
+            self.set_focus(new_win);
+        } else {
+            let serial = SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
             }
         }
     }

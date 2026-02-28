@@ -220,7 +220,7 @@ fn run_wayland() -> ! {
                     monitor::update_geom_ctx(&mut wm.ctx());
                     output.change_current_state(
                         Some(mode),
-                        Some(Transform::Flipped180),
+                        Some(Transform::Normal),
                         None,
                         Some((0, 0).into()),
                     );
@@ -260,10 +260,28 @@ fn run_wayland() -> ! {
                         pointer_location = Point::from((x, y));
 
                         let element_under = state.space.element_under(pointer_location);
-                        let hovered_win = element_under.as_ref().and_then(|(window, _)| {
+                        let mut hovered_win = element_under.as_ref().and_then(|(window, _)| {
                             window.user_data().get::<WindowIdMarker>().map(|m| m.0)
                         });
-                        if hovered_win.is_some() {
+                        // If the pointer isn't over a surface, check if it's
+                        // inside a window's outer rect (content + borders).
+                        if hovered_win.is_none() {
+                            let px = pointer_location.x as i32;
+                            let py = pointer_location.y as i32;
+                            for c in wm.g.clients.values() {
+                                let bw = c.border_width;
+                                if bw <= 0 { continue; }
+                                let ox = c.geo.x;
+                                let oy = c.geo.y;
+                                let ow = c.geo.w + 2 * bw;
+                                let oh = c.geo.h + 2 * bw;
+                                if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
+                                    hovered_win = Some(c.win);
+                                    break;
+                                }
+                            }
+                        }
+                        {
                             let mut ctx = wm.ctx();
                             crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
                         }
@@ -491,14 +509,19 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
                 .unwrap_or([0.18, 0.18, 0.20, 1.0])
         };
 
+        // geo stores content position/size; the outer rect includes borders.
         let x = c.geo.x;
         let y = c.geo.y;
-        let w = c.geo.w;
-        let h = c.geo.h;
-        push_solid(&mut out, x, y, w, bw, rgba);
-        push_solid(&mut out, x, y + h - bw, w, bw, rgba);
-        push_solid(&mut out, x, y + bw, bw, (h - 2 * bw).max(0), rgba);
-        push_solid(&mut out, x + w - bw, y + bw, bw, (h - 2 * bw).max(0), rgba);
+        let ow = c.geo.w + 2 * bw; // outer width
+        let oh = c.geo.h + 2 * bw; // outer height
+        // Top edge
+        push_solid(&mut out, x, y, ow, bw, rgba);
+        // Bottom edge
+        push_solid(&mut out, x, y + oh - bw, ow, bw, rgba);
+        // Left edge
+        push_solid(&mut out, x, y + bw, bw, (oh - 2 * bw).max(0), rgba);
+        // Right edge
+        push_solid(&mut out, x + ow - bw, y + bw, bw, (oh - 2 * bw).max(0), rgba);
     }
     out
 }
@@ -563,6 +586,8 @@ fn init_wayland_globals(wm: &mut Wm) {
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.showbar = true;
     wm.g.cfg.bar_height = if cfg.barheight > 0 { cfg.barheight + 12 } else { 24 };
+    // Approximate font metrics for bar hit-testing (no X11 drw on Wayland).
+    wm.g.cfg.horizontal_padding = 12;
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
 }
