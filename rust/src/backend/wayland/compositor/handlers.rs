@@ -7,6 +7,7 @@ use smithay::{
         buffer::BufferHandler,
         compositor::CompositorHandler,
         output::OutputHandler,
+        seat::WaylandFocus,
         selection::{
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,

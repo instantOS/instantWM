@@ -1,8 +1,13 @@
+mod color;
 mod model;
+mod paint;
+mod renderer;
 mod status;
+mod theme;
 pub mod wayland;
 mod widgets;
 pub mod x11;
+mod x11_painter;
 
 pub use model::{bar_position_at_x, bar_position_to_gesture};
 pub use x11::{resize_bar_win, resize_bar_win_ctx};
@@ -10,7 +15,6 @@ pub use x11::{resize_bar_win, resize_bar_win_ctx};
 use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 use crate::types::*;
-use model::ClientBarStats;
 
 #[derive(Default)]
 pub struct BarState {
@@ -74,124 +78,35 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     if ctx.x11_conn().is_none() {
         return;
     }
-    ctx.bar.recursion_enter();
-
-    let m_info = match ctx.g.monitor(mon_idx) {
-        Some(m) => {
-            if !m.shows_bar() || ctx.bar.pausedraw() {
-                ctx.bar.recursion_exit();
-                return;
-            }
-            (m.num, m.work_rect.w, m.barwin)
-        }
-        None => {
-            ctx.bar.recursion_exit();
-            return;
-        }
-    };
-
-    let monitor_num = m_info.0;
-    let work_rect_w = m_info.1;
-    let barwin = m_info.2;
-
-    let bh = ctx.g.cfg.bar_height;
-    if barwin == WindowId::default() || work_rect_w <= 0 || bh <= 0 {
-        ctx.bar.recursion_exit();
+    let barwin = ctx.g.monitor(mon_idx).map(|m| m.barwin).unwrap_or_default();
+    if barwin == WindowId::default() {
         return;
     }
-    ctx.g
-        .cfg
-        .drw
-        .as_mut()
-        .expect("draw_bar called before drw initialised")
-        .resize(work_rect_w as u32, bh as u32);
+    let work_rect_w = match ctx.g.monitor(mon_idx) {
+        Some(m) => m.work_rect.w,
+        None => return,
+    };
+    let bh = ctx.g.cfg.bar_height;
+    if work_rect_w <= 0 || bh <= 0 {
+        return;
+    }
 
-    let is_selmon = ctx
+    let Some(drw) = ctx
         .g
-        .selmon()
-        .is_some_and(|selmon| selmon.num == monitor_num);
-
-    let systray_width = if ctx.g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width(ctx) as i32
-    } else {
-        0
-    };
-
-    let (status_start_x, status_width) = if is_selmon {
-        let m = ctx.g.monitor(mon_idx).cloned().unwrap();
-        status::draw_status_bar(ctx, &m, bh)
-    } else {
-        (0, 0)
-    };
-
-    if is_selmon {
-        ctx.g.status_text_width = status_width;
-    }
-
-    widgets::draw_startmenu_icon(ctx, bh);
-
-    {
-        let ctx_imm = &*ctx;
-        let m = ctx_imm.g.monitor(mon_idx).unwrap();
-        x11::resize_bar_win_ctx(ctx_imm, m);
-    }
-
-    let (occupied_tags, urgent_tags, visible_clients) = {
-        let m = ctx.g.monitor(mon_idx).unwrap();
-        let stats = ClientBarStats::collect(m, ctx.g);
-        (
-            stats.occupied_tags,
-            stats.urgent_tags,
-            stats.visible_clients,
-        )
-    };
-
-    let mut x = ctx.g.cfg.startmenusize;
-
-    let mon_has_sel = ctx.g.monitor(mon_idx).is_some_and(|m| m.sel.is_some());
-
-    {
-        let ctx_imm = &*ctx;
-        let m = ctx_imm.g.monitor(mon_idx).unwrap();
-        x = widgets::draw_tag_indicators(ctx_imm, m, x, occupied_tags, urgent_tags, bh);
-        x = widgets::draw_layout_indicator(ctx_imm, m, x, bh);
-    }
-
-    if !mon_has_sel {
-        x = widgets::draw_shutdown_button(ctx, x, bh);
-    }
-
-    let title_end_x = if is_selmon {
-        status_start_x
-    } else {
-        work_rect_w - systray_width
-    };
-    let title_width = (title_end_x - x).max(0);
-
-    let mut new_activeoffset = None;
-    if title_width > 0 {
-        let m = ctx.g.monitor(mon_idx).unwrap();
-        let ctx_imm = &*ctx;
-        new_activeoffset =
-            widgets::draw_window_titles(ctx_imm, m, x, title_width, visible_clients, bh);
-    }
-
-    if let Some(m) = ctx.g.monitor_mut(mon_idx) {
-        m.bt = visible_clients;
-        m.bar_clients_width = title_width;
-        if let Some(offset) = new_activeoffset {
-            m.activeoffset = offset;
-        }
-    }
-
-    ctx.g
         .cfg
         .drw
         .as_ref()
-        .expect("draw_bar called before drw initialised")
-        .map(barwin.into(), 0, 0, work_rect_w as u16, bh as u16);
+        .and_then(|drw| drw.has_display().then(|| drw.clone()))
+    else {
+        return;
+    };
 
-    ctx.bar.recursion_exit();
+    let mut painter = x11_painter::X11BarPainter::new(drw);
+    painter.resize(work_rect_w as u32, bh as u32);
+
+    renderer::draw_bar_common(ctx, mon_idx, &mut painter);
+
+    painter.map(barwin, 0, 0, work_rect_w as u16, bh as u16);
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {
@@ -217,25 +132,10 @@ pub fn reset_bar(ctx: &mut WmCtx) {
         return;
     }
     let selmon_idx = ctx.g.selmon_id();
-
-    let should_reset = ctx
-        .g
-        .selmon()
-        .is_some_and(|selmon| selmon.gesture != Gesture::None);
-    if !should_reset {
-        return;
-    }
-
-    if let Some(selmon) = ctx.g.selmon_mut() {
-        selmon.gesture = Gesture::None;
-    }
-
+    renderer::reset_bar_common(ctx);
     draw_bar(ctx, selmon_idx);
 }
 
 pub fn should_draw_bar(ctx: &WmCtx) -> bool {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return wayland::should_draw_bar_wayland(ctx);
-    }
-    ctx.x11_conn().is_some()
+    renderer::should_draw_bar_common(ctx)
 }

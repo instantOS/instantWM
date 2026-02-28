@@ -360,6 +360,24 @@ impl Drw {
         Ok(Color { color })
     }
 
+    pub fn clr_create_rgba(&self, rgba: [f32; 4]) -> Color {
+        let clamp = |v: f32| -> u16 {
+            let v = v.clamp(0.0, 1.0);
+            (v * 65535.0).round() as u16
+        };
+        Color {
+            color: XftColor {
+                pixel: 0,
+                color: XRenderColor {
+                    red: clamp(rgba[0]),
+                    green: clamp(rgba[1]),
+                    blue: clamp(rgba[2]),
+                    alpha: clamp(rgba[3]),
+                },
+            },
+        }
+    }
+
     /// Allocate a color scheme from a slice of color name strings.
     ///
     /// The slice must have at least two entries (`[fg, bg, ...]`).

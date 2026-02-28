@@ -44,7 +44,6 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
-use crate::bar::wayland::BarRenderer;
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
@@ -173,8 +172,6 @@ fn run_wayland() -> ! {
 
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
-
-    let mut bar_renderer = BarRenderer::new();
 
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
@@ -441,12 +438,9 @@ fn run_wayland() -> ! {
                 let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
                 let mut custom_elements: Vec<WaylandExtras> = Vec::new();
                 if wm.g.cfg.showbar {
-                    let ctx = wm.ctx();
-                    for elem in crate::bar::wayland::render_bar_elements(
-                        &mut bar_renderer,
-                        &ctx,
-                        Scale::from(1.0),
-                    ) {
+                    let mut ctx = wm.ctx();
+                    for elem in crate::bar::wayland::render_bar_elements(&mut ctx, Scale::from(1.0))
+                    {
                         custom_elements.push(WaylandExtras::Solid(elem));
                     }
                 }
@@ -460,7 +454,10 @@ fn run_wayland() -> ! {
                         for (popup, popup_location) in
                             PopupManager::popups_for_surface(toplevel.wl_surface())
                         {
-                            let render_location = (location + popup_location).to_f64().to_physical(1.0).to_i32_round();
+                            let render_location = (location + popup_location)
+                                .to_f64()
+                                .to_physical(1.0)
+                                .to_i32_round();
                             for elem in render_elements_from_surface_tree::<
                                 GlesRenderer,
                                 WaylandSurfaceRenderElement<GlesRenderer>,
@@ -563,14 +560,21 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
         let y = c.geo.y;
         let ow = c.geo.w + 2 * bw; // outer width
         let oh = c.geo.h + 2 * bw; // outer height
-        // Top edge
+                                   // Top edge
         push_solid(&mut out, x, y, ow, bw, rgba);
         // Bottom edge
         push_solid(&mut out, x, y + oh - bw, ow, bw, rgba);
         // Left edge
         push_solid(&mut out, x, y + bw, bw, (oh - 2 * bw).max(0), rgba);
         // Right edge
-        push_solid(&mut out, x + ow - bw, y + bw, bw, (oh - 2 * bw).max(0), rgba);
+        push_solid(
+            &mut out,
+            x + ow - bw,
+            y + bw,
+            bw,
+            (oh - 2 * bw).max(0),
+            rgba,
+        );
     }
     out
 }
@@ -634,7 +638,11 @@ fn init_wayland_globals(wm: &mut Wm) {
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.showbar = true;
-    wm.g.cfg.bar_height = if cfg.barheight > 0 { cfg.barheight + 12 } else { 24 };
+    wm.g.cfg.bar_height = if cfg.barheight > 0 {
+        cfg.barheight + 12
+    } else {
+        24
+    };
     // Approximate font metrics for bar hit-testing (no X11 drw on Wayland).
     wm.g.cfg.horizontal_padding = 12;
     wm.g.cfg.numlockmask = 0;

@@ -2,7 +2,8 @@ use crate::contexts::WmCtx;
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 
-const MAX_COMMAND_OFFSETS: usize = 20;
+pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
+pub(crate) const TEXT_PADDING: i32 = 6;
 
 #[derive(Debug, Clone)]
 enum StatusItem {
@@ -21,28 +22,21 @@ struct StatusLayout {
     total_width: i32,
 }
 
-pub(crate) fn draw_status_bar(ctx: &mut WmCtx, m: &Monitor, bh: i32) -> (i32, i32) {
-    if ctx.x11_conn().is_none() {
-        return (0, 0);
-    }
+pub(crate) fn draw_status_bar(
+    ctx: &mut WmCtx,
+    m: &Monitor,
+    bh: i32,
+    painter: &mut dyn crate::bar::paint::BarPainter,
+) -> (i32, i32) {
     let stext = ctx.g.status_text.clone();
     if stext.is_empty() {
         return (0, 0);
     }
 
     let items = parse_status_items(stext.as_bytes());
-    let layout = measure_layout(ctx, m, &items);
+    let layout = measure_layout(ctx, m, &items, painter);
 
-    let Some(mut drw) = ctx
-        .g
-        .cfg
-        .drw
-        .as_ref()
-        .and_then(|drw| drw.has_display().then(|| drw.clone()))
-    else {
-        return (0, 0);
-    };
-    draw_items(&mut drw, m, bh, &items, layout, ctx.g, ctx.bar);
+    draw_items(painter, m, bh, &items, layout, ctx.g, ctx.bar);
 
     (layout.draw_start_x, layout.total_width)
 }
@@ -150,19 +144,28 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
     }
 }
 
-fn measure_layout(ctx: &WmCtx, m: &Monitor, items: &[StatusItem]) -> StatusLayout {
+fn measure_layout(
+    ctx: &WmCtx,
+    m: &Monitor,
+    items: &[StatusItem],
+    painter: &dyn crate::bar::paint::BarPainter,
+) -> StatusLayout {
     let mut width = 0i32;
 
     for item in items {
         match item {
-            StatusItem::Text(text) => width += super::text_width_ctx(ctx, text),
+            StatusItem::Text(text) => width += painter.text_width(text),
             StatusItem::Offset(offset) => width += *offset,
             _ => {}
         }
     }
 
     let draw_width = (width + 2).max(0);
-    let systray_w = get_systray_width(ctx) as i32;
+    let systray_w = if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
+        0
+    } else {
+        get_systray_width(ctx) as i32
+    };
     let draw_start_x = m.work_rect.w - draw_width - systray_w;
 
     StatusLayout {
@@ -172,7 +175,7 @@ fn measure_layout(ctx: &WmCtx, m: &Monitor, items: &[StatusItem]) -> StatusLayou
 }
 
 fn draw_items(
-    drw: &mut crate::drw::Drw,
+    painter: &mut dyn crate::bar::paint::BarPainter,
     m: &Monitor,
     bh: i32,
     items: &[StatusItem],
@@ -180,26 +183,16 @@ fn draw_items(
     g: &crate::globals::Globals,
     bar: &mut crate::bar::BarState,
 ) {
-    let mut scheme = g
-        .cfg
-        .statusscheme
-        .clone()
-        .unwrap_or_default()
-        .as_color_scheme();
+    let Some(mut scheme) = crate::bar::theme::status_scheme(g) else {
+        return;
+    };
     let base_scheme = scheme.clone();
 
-    drw.set_scheme(scheme.clone());
+    painter.set_scheme(scheme.clone());
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
-        drw.rect(
-            layout.draw_start_x,
-            0,
-            draw_width as u32,
-            bh as u32,
-            true,
-            true,
-        );
+        painter.rect(layout.draw_start_x, 0, draw_width, bh, true, true);
     }
 
     let _ = MAX_COMMAND_OFFSETS;
@@ -211,34 +204,34 @@ fn draw_items(
     for item in items {
         match item {
             StatusItem::Text(text) => {
-                let seg_w = drw.fontset_getwidth(text) as i32;
+                let seg_w = painter.text_width(text);
                 if seg_w > 0 {
-                    drw.text(x, 0, seg_w as u32, bh as u32, 0, text, false, 0);
+                    painter.text(x, 0, seg_w, bh, 0, text, false, 0);
                 }
                 x += seg_w;
             }
             StatusItem::Offset(offset) => x += *offset,
             StatusItem::SetBg(color) => {
-                if let Ok(clr) = drw.clr_create(color) {
+                if let Some(clr) = crate::bar::theme::rgba_from_config(color) {
                     scheme.bg = clr;
-                    drw.set_scheme(scheme.clone());
+                    painter.set_scheme(scheme.clone());
                 }
             }
             StatusItem::SetFg(color) => {
-                if let Ok(clr) = drw.clr_create(color) {
+                if let Some(clr) = crate::bar::theme::rgba_from_config(color) {
                     scheme.fg = clr;
-                    drw.set_scheme(scheme.clone());
+                    painter.set_scheme(scheme.clone());
                 }
             }
             StatusItem::ResetColors => {
                 scheme = base_scheme.clone();
-                drw.set_scheme(scheme.clone());
+                painter.set_scheme(scheme.clone());
             }
             StatusItem::Rect(r) => {
                 let rw = (r.w).max(0) as u32;
                 let rh = (r.h).max(0) as u32;
                 if rw > 0 && rh > 0 {
-                    drw.rect(x + r.x, r.y, rw, rh, true, false);
+                    painter.rect(x + r.x, r.y, rw as i32, rh as i32, true, false);
                 }
             }
             StatusItem::CommandOffset => {

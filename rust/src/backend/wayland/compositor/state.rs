@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 
+use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{
@@ -114,7 +115,7 @@ pub struct WaylandState {
 
     next_window_id: u32,
     globals: Option<NonNull<Globals>>,
-    last_configured_size: HashMap<WindowId, (i32, i32)>,
+    pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,7 +209,7 @@ impl WaylandState {
     }
 
     #[inline]
-    fn globals_mut(&mut self) -> Option<&mut Globals> {
+    pub(super) fn globals_mut(&mut self) -> Option<&mut Globals> {
         self.globals.map(|mut p| unsafe { p.as_mut() })
     }
 
