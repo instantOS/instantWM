@@ -15,6 +15,16 @@ pub enum SchemeHover {
     Hover,
 }
 
+impl SchemeHover {
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::NoHover),
+            1 => Some(Self::Hover),
+            _ => None,
+        }
+    }
+}
+
 /// State of a tag button in the bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeTag {
@@ -30,6 +40,19 @@ pub enum SchemeTag {
     Empty,
 }
 
+impl SchemeTag {
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Inactive),
+            1 => Some(Self::Filled),
+            2 => Some(Self::Focus),
+            3 => Some(Self::NoFocus),
+            4 => Some(Self::Empty),
+            _ => None,
+        }
+    }
+}
+
 /// State of a window title button in the bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeWin {
@@ -42,12 +65,38 @@ pub enum SchemeWin {
     OverlayFocus,
 }
 
+impl SchemeWin {
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Focus),
+            1 => Some(Self::Normal),
+            2 => Some(Self::Minimized),
+            3 => Some(Self::Sticky),
+            4 => Some(Self::StickyFocus),
+            5 => Some(Self::Overlay),
+            6 => Some(Self::OverlayFocus),
+            _ => None,
+        }
+    }
+}
+
 /// State of the close button widget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeClose {
     Normal,
     Locked,
     Fullscreen,
+}
+
+impl SchemeClose {
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Normal),
+            1 => Some(Self::Locked),
+            2 => Some(Self::Fullscreen),
+            _ => None,
+        }
+    }
 }
 
 /// State of the window border.
@@ -59,6 +108,18 @@ pub enum SchemeBorder {
     Snap,
 }
 
+impl SchemeBorder {
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Normal),
+            1 => Some(Self::TileFocus),
+            2 => Some(Self::FloatFocus),
+            3 => Some(Self::Snap),
+            _ => None,
+        }
+    }
+}
+
 /// Which color component to read from a scheme triplet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColIndex {
@@ -67,8 +128,19 @@ pub enum ColIndex {
     Detail,
 }
 
+impl ColIndex {
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Fg),
+            1 => Some(Self::Bg),
+            2 => Some(Self::Detail),
+            _ => None,
+        }
+    }
+}
+
 /// A color scheme with foreground, background, and detail colors.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ColorScheme {
     /// Foreground color.
     pub fg: Color,
@@ -76,23 +148,6 @@ pub struct ColorScheme {
     pub bg: Color,
     /// Detail/accent color.
     pub detail: Color,
-}
-
-impl ColorScheme {
-    pub fn is_zeroed(&self) -> bool {
-        self.fg.color.pixel == 0
-    }
-}
-
-impl Default for ColorScheme {
-    fn default() -> Self {
-        let zero = Color::default();
-        Self {
-            fg: zero.clone(),
-            bg: zero.clone(),
-            detail: zero,
-        }
-    }
 }
 
 impl ColorScheme {
@@ -119,6 +174,21 @@ impl ColorScheme {
     /// Convert this color scheme to a vector.
     pub fn as_vec(&self) -> Vec<Color> {
         vec![self.fg.clone(), self.bg.clone(), self.detail.clone()]
+    }
+
+    pub fn is_zeroed(&self) -> bool {
+        self.fg.color.pixel == 0
+    }
+}
+
+impl Default for ColorScheme {
+    fn default() -> Self {
+        let zero = Color::default();
+        Self {
+            fg: zero.clone(),
+            bg: zero.clone(),
+            detail: zero,
+        }
     }
 }
 
@@ -322,22 +392,22 @@ pub struct CloseButtonSchemes {
 }
 
 // =============================================================================
-// Configuration String Types (for xresources/config loading)
+// Configuration String Types (for config loading)
 // =============================================================================
 
 /// Color scheme using string colors (before parsing).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ColorSchemeStrings {
     /// Foreground color string.
-    pub fg: &'static str,
+    pub fg: String,
     /// Background color string.
-    pub bg: &'static str,
+    pub bg: String,
     /// Detail color string.
-    pub detail: &'static str,
+    pub detail: String,
 }
 
 /// Tag scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TagColorSet {
     pub inactive: ColorSchemeStrings,
     pub filled: ColorSchemeStrings,
@@ -381,7 +451,7 @@ impl TagColorSet {
 }
 
 /// Window scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct WindowColorSet {
     pub focus: ColorSchemeStrings,
     pub normal: ColorSchemeStrings,
@@ -433,7 +503,7 @@ impl WindowColorSet {
 }
 
 /// Close button scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CloseButtonColorSet {
     pub normal: ColorSchemeStrings,
     pub locked: ColorSchemeStrings,
@@ -470,31 +540,40 @@ impl CloseButtonColorSet {
 
 impl ColorSchemeStrings {
     /// Create a new color scheme from strings.
-    pub const fn new(fg: &'static str, bg: &'static str, detail: &'static str) -> Self {
-        Self { fg, bg, detail }
+    pub fn new(fg: impl Into<String>, bg: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self {
+            fg: fg.into(),
+            bg: bg.into(),
+            detail: detail.into(),
+        }
     }
 
     /// Construct an empty (all blank) scheme.
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Self::new("", "", "")
     }
 
     /// Read a color by component.
-    pub fn get(&self, col: ColIndex) -> &'static str {
+    pub fn get(&self, col: ColIndex) -> &str {
         match col {
-            ColIndex::Fg => self.fg,
-            ColIndex::Bg => self.bg,
-            ColIndex::Detail => self.detail,
+            ColIndex::Fg => &self.fg,
+            ColIndex::Bg => &self.bg,
+            ColIndex::Detail => &self.detail,
         }
     }
 
     /// Mutate a color by component.
-    pub fn set(&mut self, col: ColIndex, value: &'static str) {
+    pub fn set(&mut self, col: ColIndex, value: impl Into<String>) {
+        let value = value.into();
         match col {
             ColIndex::Fg => self.fg = value,
             ColIndex::Bg => self.bg = value,
             ColIndex::Detail => self.detail = value,
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.fg.is_empty() && self.bg.is_empty() && self.detail.is_empty()
     }
 }
 
@@ -632,30 +711,27 @@ impl CloseButtonColorConfigs {
 #[derive(Debug, Clone, PartialEq)]
 pub struct BorderColorConfig {
     /// Normal border color.
-    pub normal: &'static str,
+    pub normal: String,
     /// Focused tiled window color.
-    pub tile_focus: &'static str,
+    pub tile_focus: String,
     /// Focused floating window color.
-    pub float_focus: &'static str,
+    pub float_focus: String,
     /// Snap indicator color.
-    pub snap: &'static str,
+    pub snap: String,
 }
 
 impl BorderColorConfig {
-    pub fn as_array(&self) -> [&'static str; SchemeBorder::COUNT] {
-        [self.normal, self.tile_focus, self.float_focus, self.snap]
-    }
-
-    pub fn get(&self, scheme: SchemeBorder) -> &'static str {
+    pub fn get(&self, scheme: SchemeBorder) -> &str {
         match scheme {
-            SchemeBorder::Normal => self.normal,
-            SchemeBorder::TileFocus => self.tile_focus,
-            SchemeBorder::FloatFocus => self.float_focus,
-            SchemeBorder::Snap => self.snap,
+            SchemeBorder::Normal => &self.normal,
+            SchemeBorder::TileFocus => &self.tile_focus,
+            SchemeBorder::FloatFocus => &self.float_focus,
+            SchemeBorder::Snap => &self.snap,
         }
     }
 
-    pub fn set(&mut self, scheme: SchemeBorder, value: &'static str) {
+    pub fn set(&mut self, scheme: SchemeBorder, value: impl Into<String>) {
+        let value = value.into();
         match scheme {
             SchemeBorder::Normal => self.normal = value,
             SchemeBorder::TileFocus => self.tile_focus = value,
@@ -668,10 +744,10 @@ impl BorderColorConfig {
 impl Default for BorderColorConfig {
     fn default() -> Self {
         Self {
-            normal: "",
-            tile_focus: "",
-            float_focus: "",
-            snap: "",
+            normal: String::new(),
+            tile_focus: String::new(),
+            float_focus: String::new(),
+            snap: String::new(),
         }
     }
 }
@@ -680,25 +756,42 @@ impl Default for BorderColorConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusColorConfig {
     /// Status bar colors.
-    pub fg: &'static str,
+    pub fg: String,
     /// Status bar background.
-    pub bg: &'static str,
+    pub bg: String,
     /// Status bar detail/accent.
-    pub detail: &'static str,
+    pub detail: String,
 }
 
 impl StatusColorConfig {
     pub fn as_scheme(&self) -> ColorSchemeStrings {
-        ColorSchemeStrings::new(self.fg, self.bg, self.detail)
+        ColorSchemeStrings::new(self.fg.clone(), self.bg.clone(), self.detail.clone())
+    }
+
+    pub fn get(&self, col: ColIndex) -> &str {
+        match col {
+            ColIndex::Fg => &self.fg,
+            ColIndex::Bg => &self.bg,
+            ColIndex::Detail => &self.detail,
+        }
+    }
+
+    pub fn set(&mut self, col: ColIndex, value: impl Into<String>) {
+        let value = value.into();
+        match col {
+            ColIndex::Fg => self.fg = value,
+            ColIndex::Bg => self.bg = value,
+            ColIndex::Detail => self.detail = value,
+        }
     }
 }
 
 impl Default for StatusColorConfig {
     fn default() -> Self {
         Self {
-            fg: "",
-            bg: "",
-            detail: "",
+            fg: String::new(),
+            bg: String::new(),
+            detail: String::new(),
         }
     }
 }

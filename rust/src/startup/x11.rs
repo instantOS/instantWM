@@ -65,11 +65,6 @@ fn wm_init(wm: &mut Wm) {
     init_globals(wm, screen_num, root, &screen);
 
     {
-        let mut ctx = wm.ctx();
-        crate::xresources::load_xresources(&mut ctx);
-    }
-
-    {
         let Some(x11) = wm.backend.x11() else {
             return;
         };
@@ -81,10 +76,10 @@ fn wm_init(wm: &mut Wm) {
     // Select events and initialise EWMH bits that depend on atoms + config.
     crate::events::setup_root(wm);
 
-    // After atoms + drw exist, we can verify xresources and create bars.
+    // After atoms + drw exist, we can verify tag naming and create bars.
     {
         let mut ctx = wm.ctx();
-        crate::xresources::verify_tags_xres(&mut ctx);
+        crate::xresources::verify_tags_config(&mut ctx);
         crate::bar::x11::update_bars(&mut ctx);
         crate::bar::x11::update_status(&mut ctx);
         crate::keyboard::grab_keys(&ctx);
@@ -197,7 +192,7 @@ fn init_drw_and_schemes(wm: &mut Wm) {
         Err(_) => die("instantwm: cannot create drawing context"),
     };
 
-    let fonts: Vec<&str> = wm.g.cfg.fonts.clone();
+    let fonts: Vec<&str> = wm.g.cfg.fonts.iter().map(|f| f.as_str()).collect();
     if drw.fontset_create(&fonts).is_err() {
         die("no fonts could be loaded.");
     }
@@ -247,31 +242,32 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
     let windowcolors = wm.g.cfg.windowcolors.clone();
     let closebuttoncolors = wm.g.cfg.closebuttoncolors.clone();
 
-    let borderscheme = drw.scm_create(&[bordercolors.normal]).ok().map(|normal| {
-        let normal = normal[0].clone();
-        let tile = drw
-            .clr_create(bordercolors.tile_focus)
-            .unwrap_or(normal.clone());
-        let float = drw
-            .clr_create(bordercolors.float_focus)
-            .unwrap_or(normal.clone());
-        let snap = drw.clr_create(bordercolors.snap).unwrap_or(normal.clone());
-        BorderScheme {
-            normal: ColorScheme::new(normal.clone(), normal.clone(), normal.clone()),
-            tile_focus: ColorScheme::new(tile.clone(), tile.clone(), tile.clone()),
-            float_focus: ColorScheme::new(float.clone(), float.clone(), float.clone()),
-            snap: ColorScheme::new(snap.clone(), snap.clone(), snap.clone()),
-        }
-    });
+    let borderscheme = drw
+        .scm_create(&[bordercolors.normal.as_str()])
+        .ok()
+        .and_then(|normal| {
+            let color = ColorScheme::from_vec(normal)?;
+            let tile = drw.clr_create(bordercolors.tile_focus.as_str()).ok()?;
+            let float = drw.clr_create(bordercolors.float_focus.as_str()).ok()?;
+            let snap = drw.clr_create(bordercolors.snap.as_str()).ok()?;
+            Some(BorderScheme {
+                normal: ColorScheme::new(color.fg.clone(), color.bg.clone(), color.detail.clone()),
+                tile_focus: ColorScheme::new(tile.clone(), tile.clone(), tile.clone()),
+                float_focus: ColorScheme::new(float.clone(), float.clone(), float.clone()),
+                snap: ColorScheme::new(snap.clone(), snap.clone(), snap.clone()),
+            })
+        });
 
     let statusscheme = drw
         .scm_create(&[
-            statusbarcolors.fg,
-            statusbarcolors.bg,
-            statusbarcolors.detail,
+            statusbarcolors.fg.as_str(),
+            statusbarcolors.bg.as_str(),
+            statusbarcolors.detail.as_str(),
         ])
         .ok()
-        .map(|clr| StatusScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone()));
+        .and_then(|clr| {
+            ColorScheme::from_vec(clr).map(|cs| StatusScheme::new(cs.fg, cs.bg, cs.detail))
+        });
 
     let tagschemes = TagSchemes {
         no_hover: build_tag_schemes(drw, &tagcolors.no_hover),
@@ -297,7 +293,11 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
 
 fn build_scheme(drw: &Drw, colors: &crate::types::ColorSchemeStrings) -> Option<ColorScheme> {
     let clr = drw
-        .scm_create(&[colors.fg, colors.bg, colors.detail])
+        .scm_create(&[
+            colors.fg.as_str(),
+            colors.bg.as_str(),
+            colors.detail.as_str(),
+        ])
         .ok()?;
     ColorScheme::from_vec(clr)
 }

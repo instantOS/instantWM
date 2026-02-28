@@ -181,7 +181,7 @@ pub struct TagSet {
     /// this length; this value is used for mask/count helpers that don't
     /// have a monitor reference handy.
     pub num_tags: usize,
-    /// Raw colour strings from config/xresources.
+    /// Raw colour strings from config.
     pub colors: TagColorConfigs,
     /// Compiled colour objects derived from `colors`.
     pub schemes: TagSchemes,

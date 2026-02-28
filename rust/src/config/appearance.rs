@@ -130,10 +130,10 @@ pub fn get_close_button_colors() -> crate::types::CloseButtonColorConfigs {
 pub fn get_border_colors() -> crate::types::BorderColorConfig {
     use palette::*;
     crate::types::BorderColorConfig {
-        normal: BG_ACCENT,
-        tile_focus: LIGHT_BLUE,
-        float_focus: LIGHT_GREEN,
-        snap: LIGHT_YELLOW,
+        normal: BG_ACCENT.to_string(),
+        tile_focus: LIGHT_BLUE.to_string(),
+        float_focus: LIGHT_GREEN.to_string(),
+        snap: LIGHT_YELLOW.to_string(),
     }
 }
 
@@ -141,9 +141,9 @@ pub fn get_border_colors() -> crate::types::BorderColorConfig {
 pub fn get_status_bar_colors() -> crate::types::StatusColorConfig {
     use palette::*;
     crate::types::StatusColorConfig {
-        fg: TEXT,
-        bg: BG,
-        detail: BG,
+        fg: TEXT.to_string(),
+        bg: BG.to_string(),
+        detail: BG.to_string(),
     }
 }
 
@@ -277,6 +277,9 @@ pub fn border_color(scheme: SchemeBorder) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// Fonts used for bar text rendering (in order of preference / fallback).
-pub fn get_fonts() -> Vec<&'static str> {
-    vec!["Inter-Regular:size=12", "Fira Code Nerd Font:size=12"]
+pub fn get_fonts() -> Vec<String> {
+    vec![
+        "Inter-Regular:size=12".to_string(),
+        "Fira Code Nerd Font:size=12".to_string(),
+    ]
 }

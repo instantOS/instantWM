@@ -1,6 +1,6 @@
 use crate::bar::color::{rgba_from_color, rgba_from_hex, rgba_from_hex_opt, Rgba};
 use crate::bar::paint::BarScheme;
-use crate::config::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+use crate::config::{ColIndex, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 use crate::globals::Globals;
 use crate::types::{Client, Monitor};
 
@@ -9,9 +9,9 @@ pub fn rgba_from_config(color: &str) -> Option<Rgba> {
 }
 
 fn scheme_from_strings(colors: &crate::types::ColorSchemeStrings) -> Option<BarScheme> {
-    let fg = rgba_from_hex(colors.fg)?;
-    let bg = rgba_from_hex(colors.bg)?;
-    let detail = rgba_from_hex(colors.detail)?;
+    let fg = rgba_from_hex(&colors.fg)?;
+    let bg = rgba_from_hex(&colors.bg)?;
+    let detail = rgba_from_hex(&colors.detail)?;
     Some(BarScheme { fg, bg, detail })
 }
 
@@ -23,9 +23,9 @@ pub fn status_scheme(g: &Globals) -> Option<BarScheme> {
             detail: rgba_from_color(&ss.detail),
         });
     }
-    let fg = rgba_from_hex_opt(g.cfg.statusbarcolors.first().copied());
-    let bg = rgba_from_hex_opt(g.cfg.statusbarcolors.get(1).copied());
-    let detail = rgba_from_hex_opt(g.cfg.statusbarcolors.get(2).copied());
+    let fg = rgba_from_hex_opt(Some(g.cfg.statusbarcolors.get(ColIndex::Fg)));
+    let bg = rgba_from_hex_opt(Some(g.cfg.statusbarcolors.get(ColIndex::Bg)));
+    let detail = rgba_from_hex_opt(Some(g.cfg.statusbarcolors.get(ColIndex::Detail)));
     match (fg, bg, detail) {
         (Some(fg), Some(bg), Some(detail)) => Some(BarScheme { fg, bg, detail }),
         _ => None,
@@ -75,7 +75,7 @@ pub fn tag_scheme(
     };
 
     let cs = schemes.scheme(scheme_idx);
-    if !cs.is_zeroed() {
+    if !cs.is_empty() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -96,7 +96,7 @@ pub fn tag_scheme(
 
 pub fn tag_hover_fill_scheme(g: &Globals) -> Option<BarScheme> {
     let cs = g.tags.schemes.hover.scheme(SchemeTag::Filled);
-    if !cs.is_zeroed() {
+    if !cs.is_empty() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -139,7 +139,7 @@ pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarSchem
     };
 
     let cs = schemes.scheme(scheme_idx);
-    if !cs.is_zeroed() {
+    if !cs.is_empty() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -179,7 +179,7 @@ pub fn close_button_scheme(
     };
 
     let cs = schemes.scheme(scheme_idx);
-    if !cs.is_zeroed() {
+    if !cs.is_empty() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),

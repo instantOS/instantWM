@@ -480,16 +480,20 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
             .unwrap_or(true);
         let rgba = if Some(c.win) == sel {
             if c.isfloating || !has_tiling {
-                cfg_hex_to_rgba(bordercolors.get(2).copied())
-                    .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
-                    .unwrap_or([0.75, 0.40, 0.28, 1.0])
+                cfg_hex_to_rgba(Some(
+                    bordercolors.get(crate::config::SchemeBorder::FloatFocus),
+                ))
+                .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
+                .unwrap_or([0.75, 0.40, 0.28, 1.0])
             } else {
-                cfg_hex_to_rgba(bordercolors.get(1).copied())
-                    .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
-                    .unwrap_or([0.28, 0.52, 0.77, 1.0])
+                cfg_hex_to_rgba(Some(
+                    bordercolors.get(crate::config::SchemeBorder::TileFocus),
+                ))
+                .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
+                .unwrap_or([0.28, 0.52, 0.77, 1.0])
             }
         } else {
-            cfg_hex_to_rgba(bordercolors.first().copied())
+            cfg_hex_to_rgba(Some(bordercolors.get(crate::config::SchemeBorder::Normal)))
                 .or_else(|| scheme.map(|s| color_to_rgba(&s.normal.bg)))
                 .unwrap_or([0.18, 0.18, 0.20, 1.0])
         };

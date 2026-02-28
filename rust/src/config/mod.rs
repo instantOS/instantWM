@@ -25,6 +25,8 @@
 pub mod appearance;
 pub mod buttons;
 pub mod commands;
+pub mod config_doc;
+pub mod config_toml;
 pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
@@ -75,7 +77,7 @@ pub use mod_consts::{BORDERPX, MAX_TAGLEN, TAGMASK};
 
 use crate::types::MAX_TAGS;
 
-/// Default tag names (used when no xresources override is set).
+/// Default tag names (used when no config override is set).
 ///
 /// There are [`MAX_TAGS`] entries — the last one (`"s"`) is the scratchpad tag.
 pub fn get_tags_default() -> [&'static str; MAX_TAGS] {
@@ -91,63 +93,17 @@ pub fn get_tags() -> Vec<String> {
 }
 
 /// Alternative (icon) tag names shown when alt-tag mode is active.
-pub fn get_tags_alt() -> Vec<&'static str> {
-    vec!["", "{}", "$", "", "", "", "", "", ""]
-}
-
-// ---------------------------------------------------------------------------
-// X resource preferences
-// ---------------------------------------------------------------------------
-
-use crate::types::{ResourcePref, ResourceType};
-
-/// Xresources keys that the WM reads on startup (and on reload).
-pub fn get_resources() -> Vec<ResourcePref> {
+pub fn get_tags_alt() -> Vec<String> {
     vec![
-        ResourcePref {
-            name: "barheight",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "font",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag1",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag2",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag3",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag4",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag5",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag6",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag7",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag8",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag9",
-            rtype: ResourceType::String,
-        },
+        "".to_string(),
+        "{}".to_string(),
+        "$".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
     ]
 }
 
@@ -203,7 +159,7 @@ pub struct Config {
 
     // --- Tags ---
     pub tag_names: Vec<String>,
-    pub tag_alt_names: Vec<&'static str>,
+    pub tag_alt_names: Vec<String>,
     /// Color table for tag buttons: `[hover][SchemeTag][ColIndex]`
     pub tag_colors: TagColorConfigs,
     pub num_tags: usize,
@@ -224,8 +180,8 @@ pub struct Config {
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub commands: Vec<XCommand>,
-    pub resources: Vec<ResourcePref>,
-    pub fonts: Vec<&'static str>,
+    pub resources: Vec<String>,
+    pub fonts: Vec<String>,
 
     // --- External commands ---
     pub external_commands: ExternalCommands,
@@ -238,9 +194,9 @@ pub struct Config {
 /// Build the default [`Config`].
 ///
 /// Called once from `init_globals` in `startup::x11`.  All values here are the
-/// compile-time defaults; some are later overridden by xresources.
+/// compile-time defaults; some are later overridden by config files.
 pub fn init_config() -> Config {
-    Config {
+    let mut cfg = Config {
         // --- Window geometry ---
         borderpx: BORDERPX,
         snap: 32,
@@ -279,10 +235,17 @@ pub fn init_config() -> Config {
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
         commands: xcommands::get_xcommands(),
-        resources: get_resources(),
+        resources: Vec::new(),
         fonts: appearance::get_fonts(),
 
         // --- External commands ---
         external_commands: default_commands(),
+    };
+
+    // Load config from TOML file - this merges with defaults set above
+    if let Err(err) = config_toml::apply_config_overrides(&mut cfg) {
+        eprintln!("instantwm: config load failed, using defaults: {}", err);
     }
+
+    cfg
 }

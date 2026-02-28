@@ -1,8 +1,4 @@
 use clap::{Parser, ValueEnum};
-use std::process::exit;
-
-use crate::xresources::list_xresources;
-
 mod autostart;
 mod locale;
 mod wayland;
@@ -17,9 +13,9 @@ enum CliBackend {
 #[derive(Debug, Parser)]
 #[command(name = "instantwm", version, disable_help_subcommand = true)]
 struct Cli {
-    #[arg(short = 'X', long = "xresources")]
-    xresources: bool,
-
+    /// Print an example config.toml and exit.
+    #[arg(long = "print-config")]
+    print_config: bool,
     #[arg(long, value_enum, default_value_t = CliBackend::X11)]
     backend: CliBackend,
 }
@@ -27,9 +23,9 @@ struct Cli {
 pub fn run() {
     let cli = Cli::parse();
 
-    if cli.xresources {
-        list_xresources();
-        exit(0);
+    if cli.print_config {
+        println!("{}", crate::config::config_doc::CONFIG_DOC);
+        return;
     }
 
     if locale::set_locale().is_err() {
