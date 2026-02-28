@@ -220,7 +220,7 @@ fn run_wayland() -> ! {
                     monitor::update_geom_ctx(&mut wm.ctx());
                     output.change_current_state(
                         Some(mode),
-                        Some(Transform::Normal),
+                        Some(Transform::Flipped180),
                         None,
                         Some((0, 0).into()),
                     );
