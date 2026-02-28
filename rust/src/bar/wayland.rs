@@ -123,6 +123,8 @@ pub struct WaylandBarPainter {
     elements: BarRenderElements,
     scheme: Option<BarScheme>,
     scale: Scale<f64>,
+    origin_x: i32,
+    origin_y: i32,
 }
 
 impl Default for WaylandBarPainter {
@@ -131,15 +133,19 @@ impl Default for WaylandBarPainter {
             elements: BarRenderElements::new(),
             scheme: None,
             scale: Scale::from(1.0),
+            origin_x: 0,
+            origin_y: 0,
         }
     }
 }
 
 impl WaylandBarPainter {
-    pub fn begin(&mut self, scale: Scale<f64>) {
+    pub fn begin(&mut self, scale: Scale<f64>, origin_x: i32, origin_y: i32) {
         self.elements = BarRenderElements::new();
         self.scheme = None;
         self.scale = scale;
+        self.origin_x = origin_x;
+        self.origin_y = origin_y;
     }
 
     pub fn finish(&mut self) -> Vec<SolidColorRenderElement> {
@@ -148,7 +154,7 @@ impl WaylandBarPainter {
 }
 
 impl BarPainter for WaylandBarPainter {
-    fn text_width(&self, text: &str) -> i32 {
+    fn text_width(&mut self, text: &str) -> i32 {
         text.len() as i32 * 8
     }
 
@@ -168,7 +174,8 @@ impl BarPainter for WaylandBarPainter {
             return;
         };
         let color = if invert { scheme.fg } else { scheme.bg };
-        self.elements.add_rect(x, y, w, h, color);
+        self.elements
+            .add_rect(x + self.origin_x, y + self.origin_y, w, h, color);
     }
 
     fn text(
@@ -187,16 +194,27 @@ impl BarPainter for WaylandBarPainter {
         };
         let bg = if invert { scheme.fg } else { scheme.bg };
         let fg = if invert { scheme.bg } else { scheme.fg };
-        self.elements.add_rect(x, y, w, h, bg);
+        self.elements
+            .add_rect(x + self.origin_x, y + self.origin_y, w, h, bg);
         if detail_height > 0 {
-            self.elements
-                .add_rect(x, y + h - detail_height, w, detail_height, scheme.detail);
+            self.elements.add_rect(
+                x + self.origin_x,
+                y + self.origin_y + h - detail_height,
+                w,
+                detail_height,
+                scheme.detail,
+            );
         }
         let text_width = self.text_width(text);
         let draw_w = (w - lpad).max(0).min(text_width);
         if draw_w > 0 {
-            self.elements
-                .add_text(x + lpad, y + (h - 12) / 2, draw_w, 12, fg);
+            self.elements.add_text(
+                x + self.origin_x + lpad,
+                y + self.origin_y + (h - 12) / 2,
+                draw_w,
+                12,
+                fg,
+            );
         }
         x + w
     }
@@ -229,10 +247,12 @@ pub fn render_bar_elements(
             if !monitor.shows_bar() {
                 continue;
             }
+            let origin_x = monitor.work_rect.x;
+            let origin_y = monitor.by;
+            ctx.bar_painter.begin(scale, origin_x, origin_y);
         } else {
             continue;
         }
-        ctx.bar_painter.begin(scale);
         draw_bar_common_with_painter(ctx, mon_idx);
         let mut elements = ctx.bar_painter.finish();
         all_elements.append(&mut elements);

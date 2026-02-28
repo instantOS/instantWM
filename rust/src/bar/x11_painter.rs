@@ -12,19 +12,14 @@ impl X11BarPainter {
         Self { drw, scheme: None }
     }
 
-    pub fn resize(&mut self, w: u32, h: u32) {
-        self.drw.resize(w, h);
-    }
-
     pub fn map(&self, win: crate::types::WindowId, x: i16, y: i16, w: u16, h: u16) {
         self.drw.map(win.into(), x, y, w, h);
     }
 }
 
 impl BarPainter for X11BarPainter {
-    fn text_width(&self, text: &str) -> i32 {
-        let mut drw = self.drw.clone();
-        drw.fontset_getwidth(text) as i32
+    fn text_width(&mut self, text: &str) -> i32 {
+        self.drw.fontset_getwidth(text) as i32
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {

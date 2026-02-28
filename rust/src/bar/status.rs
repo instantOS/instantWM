@@ -148,7 +148,7 @@ fn measure_layout(
     ctx: &WmCtx,
     m: &Monitor,
     items: &[StatusItem],
-    painter: &dyn crate::bar::paint::BarPainter,
+    painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> StatusLayout {
     let mut width = 0i32;
 

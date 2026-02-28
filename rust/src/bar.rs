@@ -91,18 +91,18 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         return;
     }
 
-    let Some(drw) = ctx
-        .g
-        .cfg
-        .drw
-        .as_ref()
-        .and_then(|drw| drw.has_display().then(|| drw.clone()))
-    else {
-        return;
+    let drw = {
+        let Some(drw) = ctx.g.cfg.drw.as_mut() else {
+            return;
+        };
+        if !drw.has_display() {
+            return;
+        }
+        drw.resize(work_rect_w as u32, bh as u32);
+        drw.clone()
     };
 
     let mut painter = x11_painter::X11BarPainter::new(drw);
-    painter.resize(work_rect_w as u32, bh as u32);
 
     renderer::draw_bar_common(ctx, mon_idx, &mut painter);
 

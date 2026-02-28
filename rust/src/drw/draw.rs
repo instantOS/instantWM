@@ -32,10 +32,10 @@ use super::ffi::{
     XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc,
     XDrawRectangle, XFillArc, XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap,
     XGlyphInfo, XOpenDisplay, XRenderColor, XSetForeground, XSetLineAttributes, XSync,
-    XftCharExists, XftColor, XftColorAllocName, XftDraw, XftDrawCreate, XftDrawDestroy,
-    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
-    XftInit, XftResult, XftTextExtentsUtf8, XlibGc, FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE,
-    FC_TRUE,
+    XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate,
+    XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName,
+    XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, FC_CHARSET,
+    FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE,
 };
 use super::font::Fnt;
 use super::utf8::utf8decode;
@@ -365,17 +365,35 @@ impl Drw {
             let v = v.clamp(0.0, 1.0);
             (v * 65535.0).round() as u16
         };
-        Color {
-            color: XftColor {
-                pixel: 0,
-                color: XRenderColor {
-                    red: clamp(rgba[0]),
-                    green: clamp(rgba[1]),
-                    blue: clamp(rgba[2]),
-                    alpha: clamp(rgba[3]),
-                },
+        let mut color = XftColor {
+            pixel: 0,
+            color: XRenderColor {
+                red: clamp(rgba[0]),
+                green: clamp(rgba[1]),
+                blue: clamp(rgba[2]),
+                alpha: clamp(rgba[3]),
             },
+        };
+
+        if self.display.is_null() {
+            return Color { color };
         }
+
+        unsafe {
+            let mut render = color.color;
+            let ok = XftColorAllocValue(
+                self.display,
+                self.visual,
+                self.colormap,
+                &mut render,
+                &mut color,
+            );
+            if ok != 0 {
+                color.pixel |= 0xff << 24;
+            }
+        }
+
+        Color { color }
     }
 
     /// Allocate a color scheme from a slice of color name strings.

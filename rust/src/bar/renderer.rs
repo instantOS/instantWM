@@ -133,7 +133,7 @@ pub fn should_draw_bar_common(ctx: &WmCtx) -> bool {
     ctx.x11_conn().is_some()
 }
 
-pub fn compute_status_hit_width(painter: &dyn BarPainter, text: &str) -> i32 {
+pub fn compute_status_hit_width(painter: &mut dyn BarPainter, text: &str) -> i32 {
     if text.is_empty() {
         return 0;
     }
