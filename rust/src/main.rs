@@ -59,12 +59,15 @@ use smithay::backend::input::{
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::surface::{
+    render_elements_from_surface_tree, WaylandSurfaceRenderElement,
+};
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::desktop::space::render_output;
 use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
+use smithay::desktop::{PopupKind, PopupManager};
 use smithay::input::keyboard::FilterResult;
 use smithay::output::Mode as OutputMode;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
@@ -451,6 +454,30 @@ fn run_wayland() -> ! {
                     custom_elements.push(WaylandExtras::Solid(elem));
                 }
 
+                for window in state.space.elements() {
+                    let location = state.space.element_location(window).unwrap_or_default();
+                    if let Some(toplevel) = window.toplevel() {
+                        for (popup, popup_location) in
+                            PopupManager::popups_for_surface(toplevel.wl_surface())
+                        {
+                            let render_location = (location + popup_location).to_f64().to_physical(1.0).to_i32_round();
+                            for elem in render_elements_from_surface_tree::<
+                                GlesRenderer,
+                                WaylandSurfaceRenderElement<GlesRenderer>,
+                            >(
+                                renderer,
+                                popup.wl_surface(),
+                                render_location,
+                                1.0,
+                                1.0,
+                                Kind::Unspecified,
+                            ) {
+                                custom_elements.push(WaylandExtras::Surface(elem));
+                            }
+                        }
+                    }
+                }
+
                 let render_result = render_output(
                     &output,
                     renderer,
@@ -478,6 +505,17 @@ fn run_wayland() -> ! {
                         Some(Duration::from_millis(16)),
                         surface_primary_scanout_output,
                     );
+                    if let Some(toplevel) = window.toplevel() {
+                        for (popup, _) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
+                            send_frames_surface_tree(
+                                popup.wl_surface(),
+                                &output,
+                                time,
+                                Some(Duration::from_millis(16)),
+                                surface_primary_scanout_output,
+                            );
+                        }
+                    }
                 }
             }
 

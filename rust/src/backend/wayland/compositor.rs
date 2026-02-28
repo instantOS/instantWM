@@ -34,7 +34,7 @@ use smithay::{
     backend::{input::KeyState, renderer::utils::on_commit_buffer_handler},
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat, delegate_shm,
     delegate_xdg_shell, delegate_xwayland_shell,
-    desktop::{PopupManager, Space, Window},
+    desktop::{PopupKind, PopupManager, Space, Window},
     input::{
         keyboard::{KeyboardHandle, KeysymHandle, ModifiersState, XkbConfig},
         pointer::PointerHandle,
@@ -87,6 +87,13 @@ use std::ptr::NonNull;
 pub enum KeyboardFocusTarget {
     Window(Window),
     WlSurface(WlSurface),
+    Popup(PopupKind),
+}
+
+impl From<PopupKind> for KeyboardFocusTarget {
+    fn from(kind: PopupKind) -> Self {
+        KeyboardFocusTarget::Popup(kind)
+    }
 }
 
 /// What can receive pointer focus.
@@ -96,6 +103,25 @@ pub enum KeyboardFocusTarget {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PointerFocusTarget {
     WlSurface(WlSurface),
+    Popup(PopupKind),
+}
+
+impl From<PopupKind> for PointerFocusTarget {
+    fn from(kind: PopupKind) -> Self {
+        PointerFocusTarget::Popup(kind)
+    }
+}
+
+impl From<KeyboardFocusTarget> for PointerFocusTarget {
+    fn from(target: KeyboardFocusTarget) -> Self {
+        match target {
+            KeyboardFocusTarget::Window(w) => {
+                PointerFocusTarget::WlSurface(w.wl_surface().unwrap().into_owned())
+            }
+            KeyboardFocusTarget::WlSurface(s) => PointerFocusTarget::WlSurface(s),
+            KeyboardFocusTarget::Popup(p) => PointerFocusTarget::Popup(p),
+        }
+    }
 }
 
 // -- IsAlive implementations (required by KeyboardTarget / PointerTarget) --
@@ -105,6 +131,7 @@ impl IsAlive for KeyboardFocusTarget {
         match self {
             KeyboardFocusTarget::Window(w) => w.alive(),
             KeyboardFocusTarget::WlSurface(s) => s.alive(),
+            KeyboardFocusTarget::Popup(p) => p.alive(),
         }
     }
 }
@@ -113,6 +140,7 @@ impl IsAlive for PointerFocusTarget {
     fn alive(&self) -> bool {
         match self {
             PointerFocusTarget::WlSurface(s) => s.alive(),
+            PointerFocusTarget::Popup(p) => p.alive(),
         }
     }
 }
@@ -124,6 +152,7 @@ impl WaylandFocus for KeyboardFocusTarget {
         match self {
             KeyboardFocusTarget::Window(w) => w.wl_surface(),
             KeyboardFocusTarget::WlSurface(s) => Some(Cow::Borrowed(s)),
+            KeyboardFocusTarget::Popup(p) => Some(Cow::Borrowed(p.wl_surface())),
         }
     }
 }
@@ -132,6 +161,7 @@ impl WaylandFocus for PointerFocusTarget {
     fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
         match self {
             PointerFocusTarget::WlSurface(s) => Some(Cow::Borrowed(s)),
+            PointerFocusTarget::Popup(p) => Some(Cow::Borrowed(p.wl_surface())),
         }
     }
 }
@@ -161,6 +191,15 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::WlSurface(surface) => {
                 smithay::input::keyboard::KeyboardTarget::enter(surface, seat, data, keys, serial);
             }
+            KeyboardFocusTarget::Popup(p) => {
+                smithay::input::keyboard::KeyboardTarget::enter(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    keys,
+                    serial,
+                );
+            }
         }
     }
 
@@ -178,6 +217,9 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             }
             KeyboardFocusTarget::WlSurface(surface) => {
                 smithay::input::keyboard::KeyboardTarget::leave(surface, seat, data, serial);
+            }
+            KeyboardFocusTarget::Popup(p) => {
+                smithay::input::keyboard::KeyboardTarget::leave(p.wl_surface(), seat, data, serial);
             }
         }
     }
@@ -210,6 +252,17 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
                     surface, seat, data, key, state, serial, time,
                 );
             }
+            KeyboardFocusTarget::Popup(p) => {
+                smithay::input::keyboard::KeyboardTarget::key(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    key,
+                    state,
+                    serial,
+                    time,
+                );
+            }
         }
     }
 
@@ -237,6 +290,15 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
                     surface, seat, data, modifiers, serial,
                 );
             }
+            KeyboardFocusTarget::Popup(p) => {
+                smithay::input::keyboard::KeyboardTarget::modifiers(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    modifiers,
+                    serial,
+                );
+            }
         }
     }
 }
@@ -254,6 +316,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::enter(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::enter(p.wl_surface(), seat, data, event);
+            }
         }
     }
 
@@ -266,6 +331,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::motion(s, seat, data, event);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::motion(p.wl_surface(), seat, data, event);
             }
         }
     }
@@ -280,6 +348,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::relative_motion(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::relative_motion(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
+            }
         }
     }
 
@@ -292,6 +368,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::button(s, seat, data, event);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::button(p.wl_surface(), seat, data, event);
             }
         }
     }
@@ -306,6 +385,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::axis(s, seat, data, frame);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::axis(p.wl_surface(), seat, data, frame);
+            }
         }
     }
 
@@ -313,6 +395,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::frame(s, seat, data);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::frame(p.wl_surface(), seat, data);
             }
         }
     }
@@ -327,6 +412,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_swipe_begin(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_swipe_begin(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
+            }
         }
     }
 
@@ -339,6 +432,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_swipe_update(s, seat, data, event);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_swipe_update(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
             }
         }
     }
@@ -353,6 +454,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_swipe_end(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_swipe_end(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
+            }
         }
     }
 
@@ -365,6 +474,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_pinch_begin(s, seat, data, event);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_pinch_begin(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
             }
         }
     }
@@ -379,6 +496,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_pinch_update(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_pinch_update(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
+            }
         }
     }
 
@@ -391,6 +516,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_pinch_end(s, seat, data, event);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_pinch_end(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
             }
         }
     }
@@ -405,6 +538,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_hold_begin(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_hold_begin(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
+            }
         }
     }
 
@@ -418,6 +559,14 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_hold_end(s, seat, data, event);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::gesture_hold_end(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                );
+            }
         }
     }
 
@@ -425,6 +574,15 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::leave(s, seat, data, serial, time);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::pointer::PointerTarget::leave(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    serial,
+                    time,
+                );
             }
         }
     }
@@ -444,6 +602,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::down(s, seat, data, event, seq);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::down(p.wl_surface(), seat, data, event, seq);
+            }
         }
     }
 
@@ -457,6 +618,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::up(s, seat, data, event, seq);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::up(p.wl_surface(), seat, data, event, seq);
             }
         }
     }
@@ -472,6 +636,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::motion(s, seat, data, event, seq);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::motion(p.wl_surface(), seat, data, event, seq);
+            }
         }
     }
 
@@ -480,6 +647,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::frame(s, seat, data, seq);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::frame(p.wl_surface(), seat, data, seq);
+            }
         }
     }
 
@@ -487,6 +657,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::cancel(s, seat, data, seq);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::cancel(p.wl_surface(), seat, data, seq);
             }
         }
     }
@@ -502,6 +675,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::shape(s, seat, data, event, seq);
             }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::shape(p.wl_surface(), seat, data, event, seq);
+            }
         }
     }
 
@@ -515,6 +691,15 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         match self {
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::orientation(s, seat, data, event, seq);
+            }
+            PointerFocusTarget::Popup(p) => {
+                smithay::input::touch::TouchTarget::orientation(
+                    p.wl_surface(),
+                    seat,
+                    data,
+                    event,
+                    seq,
+                );
             }
         }
     }
@@ -1276,8 +1461,14 @@ impl XdgShellHandler for WaylandState {
         }
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
-        // TODO: implement popup grab.
+    fn grab(&mut self, surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+        let kind = smithay::desktop::PopupKind::Xdg(surface.clone());
+        if let Some(parent) = surface.parent_surface() {
+            let ret = self.popups.grab_popup(kind, parent, &self.seat, _serial);
+            if let Err(err) = ret {
+                log::warn!("Failed to grab popup: {:?}", err);
+            }
+        }
     }
 
     fn reposition_request(
