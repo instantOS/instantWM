@@ -8,6 +8,16 @@ pub fn rgba_from_config(color: &str) -> Option<Rgba> {
     rgba_from_hex(color)
 }
 
+fn scheme_from_strings(colors: &[&str]) -> Option<BarScheme> {
+    if colors.len() < 3 {
+        return None;
+    }
+    let fg = rgba_from_hex(colors[0])?;
+    let bg = rgba_from_hex(colors[1])?;
+    let detail = rgba_from_hex(colors[2])?;
+    Some(BarScheme { fg, bg, detail })
+}
+
 pub fn status_scheme(g: &Globals) -> Option<BarScheme> {
     if let Some(ss) = g.cfg.statusscheme.as_ref() {
         return Some(BarScheme {
@@ -38,11 +48,7 @@ pub fn tag_scheme(
         &g.tags.schemes.no_hover
     };
 
-    if schemes.is_empty() {
-        return None;
-    }
-
-    let scheme = if occupied_tags & (1 << tag_index) != 0 {
+    let scheme_idx = if occupied_tags & (1 << tag_index) != 0 {
         let sel_has_tag = g
             .selmon()
             .and_then(|selmon| {
@@ -57,37 +63,50 @@ pub fn tag_scheme(
         let is_selected = g.selmon().is_some_and(|selmon| selmon.num == m.num);
 
         if is_selected && sel_has_tag {
-            schemes.get(SchemeTag::Focus as usize)
+            SchemeTag::Focus
         } else if m.tagset[m.seltags as usize] & (1 << tag_index) != 0 {
-            schemes.get(SchemeTag::NoFocus as usize)
+            SchemeTag::NoFocus
         } else if m.showtags == 0 {
-            schemes.get(SchemeTag::Filled as usize)
+            SchemeTag::Filled
         } else {
-            schemes.get(SchemeTag::Inactive as usize)
+            SchemeTag::Inactive
         }
     } else if m.tagset[m.seltags as usize] & (1 << tag_index) != 0 {
-        schemes.get(SchemeTag::Empty as usize)
+        SchemeTag::Empty
     } else {
-        schemes.get(SchemeTag::Inactive as usize)
+        SchemeTag::Inactive
     };
 
-    scheme.map(|cs| BarScheme {
-        fg: rgba_from_color(&cs.fg),
-        bg: rgba_from_color(&cs.bg),
-        detail: rgba_from_color(&cs.detail),
-    })
-}
-
-pub fn tag_hover_fill_scheme(g: &Globals) -> Option<BarScheme> {
-    g.tags
-        .schemes
-        .hover
-        .get(SchemeTag::Filled as usize)
-        .map(|cs| BarScheme {
+    if let Some(cs) = schemes.get(scheme_idx as usize) {
+        return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
             detail: rgba_from_color(&cs.detail),
-        })
+        });
+    }
+
+    let hover_idx = if is_hover { 1 } else { 0 };
+    g.tags
+        .colors
+        .get(hover_idx)
+        .and_then(|schemes| schemes.get(scheme_idx as usize))
+        .and_then(|colors| scheme_from_strings(colors))
+}
+
+pub fn tag_hover_fill_scheme(g: &Globals) -> Option<BarScheme> {
+    if let Some(cs) = g.tags.schemes.hover.get(SchemeTag::Filled as usize) {
+        return Some(BarScheme {
+            fg: rgba_from_color(&cs.fg),
+            bg: rgba_from_color(&cs.bg),
+            detail: rgba_from_color(&cs.detail),
+        });
+    }
+
+    g.tags
+        .colors
+        .get(1)
+        .and_then(|schemes| schemes.get(SchemeTag::Filled as usize))
+        .and_then(|colors| scheme_from_strings(colors))
 }
 
 pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarScheme> {
@@ -97,38 +116,43 @@ pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarSchem
         &g.cfg.windowschemes.no_hover
     };
 
-    if schemes.is_empty() {
-        return None;
-    }
-
     let is_selected = g.selmon().is_some_and(|selmon| selmon.sel == Some(c.win));
     let is_overlay = g
         .selmon()
         .is_some_and(|selmon| selmon.overlay == Some(c.win));
 
-    let scheme = if is_selected {
+    let scheme_idx = if is_selected {
         if is_overlay {
-            schemes.get(SchemeWin::OverlayFocus as usize)
+            SchemeWin::OverlayFocus
         } else if c.issticky {
-            schemes.get(SchemeWin::StickyFocus as usize)
+            SchemeWin::StickyFocus
         } else {
-            schemes.get(SchemeWin::Focus as usize)
+            SchemeWin::Focus
         }
     } else if is_overlay {
-        schemes.get(SchemeWin::Overlay as usize)
+        SchemeWin::Overlay
     } else if c.issticky {
-        schemes.get(SchemeWin::Sticky as usize)
+        SchemeWin::Sticky
     } else if c.is_hidden {
-        schemes.get(SchemeWin::Minimized as usize)
+        SchemeWin::Minimized
     } else {
-        schemes.get(SchemeWin::Normal as usize)
+        SchemeWin::Normal
     };
 
-    scheme.map(|cs| BarScheme {
-        fg: rgba_from_color(&cs.fg),
-        bg: rgba_from_color(&cs.bg),
-        detail: rgba_from_color(&cs.detail),
-    })
+    if let Some(cs) = schemes.get(scheme_idx as usize) {
+        return Some(BarScheme {
+            fg: rgba_from_color(&cs.fg),
+            bg: rgba_from_color(&cs.bg),
+            detail: rgba_from_color(&cs.detail),
+        });
+    }
+
+    let hover_idx = if is_hover { 1 } else { 0 };
+    g.cfg
+        .windowcolors
+        .get(hover_idx)
+        .and_then(|schemes| schemes.get(scheme_idx as usize))
+        .and_then(|colors| scheme_from_strings(colors))
 }
 
 pub fn close_button_scheme(
@@ -143,21 +167,26 @@ pub fn close_button_scheme(
         &g.cfg.closebuttonschemes.no_hover
     };
 
-    if schemes.is_empty() {
-        return None;
-    }
-
     let scheme_idx = if is_locked {
-        SchemeClose::Locked as usize
+        SchemeClose::Locked
     } else if is_fullscreen {
-        SchemeClose::Fullscreen as usize
+        SchemeClose::Fullscreen
     } else {
-        SchemeClose::Normal as usize
+        SchemeClose::Normal
     };
 
-    schemes.get(scheme_idx).map(|cs| BarScheme {
-        fg: rgba_from_color(&cs.fg),
-        bg: rgba_from_color(&cs.bg),
-        detail: rgba_from_color(&cs.detail),
-    })
+    if let Some(cs) = schemes.get(scheme_idx as usize) {
+        return Some(BarScheme {
+            fg: rgba_from_color(&cs.fg),
+            bg: rgba_from_color(&cs.bg),
+            detail: rgba_from_color(&cs.detail),
+        });
+    }
+
+    let hover_idx = if is_hover { 1 } else { 0 };
+    g.cfg
+        .closebuttoncolors
+        .get(hover_idx)
+        .and_then(|schemes| schemes.get(scheme_idx as usize))
+        .and_then(|colors| scheme_from_strings(colors))
 }
