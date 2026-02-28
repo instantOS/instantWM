@@ -220,6 +220,8 @@ fn run_wayland() -> ! {
                     monitor::update_geom_ctx(&mut wm.ctx());
                     output.change_current_state(
                         Some(mode),
+                        // Keep Flipped180: this matches Smithay's demo compositor
+                        // behavior in this backend and avoids inverted output.
                         Some(Transform::Flipped180),
                         None,
                         Some((0, 0).into()),
@@ -264,20 +266,26 @@ fn run_wayland() -> ! {
                             window.user_data().get::<WindowIdMarker>().map(|m| m.0)
                         });
                         // If the pointer isn't over a surface, check if it's
-                        // inside a window's outer rect (content + borders).
+                        // inside a window's outer rect (content + borders),
+                        // following stack order for deterministic focus edges.
                         if hovered_win.is_none() {
                             let px = pointer_location.x as i32;
                             let py = pointer_location.y as i32;
-                            for c in wm.g.clients.values() {
-                                let bw = c.border_width;
-                                if bw <= 0 { continue; }
-                                let ox = c.geo.x;
-                                let oy = c.geo.y;
-                                let ow = c.geo.w + 2 * bw;
-                                let oh = c.geo.h + 2 * bw;
-                                if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
-                                    hovered_win = Some(c.win);
-                                    break;
+                            if let Some(mon) = wm.g.selmon() {
+                                let selected = mon.selected_tags();
+                                for (w, c) in mon.iter_stack(&wm.g.clients) {
+                                    if !c.is_visible_on_tags(selected) || c.is_hidden {
+                                        continue;
+                                    }
+                                    let bw = c.border_width.max(0);
+                                    let ox = c.geo.x;
+                                    let oy = c.geo.y;
+                                    let ow = c.geo.w + 2 * bw;
+                                    let oh = c.geo.h + 2 * bw;
+                                    if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
+                                        hovered_win = Some(w);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -350,18 +358,21 @@ fn run_wayland() -> ! {
                                             m.gesture = gesture;
                                         }
                                         let buttons = ctx.g.cfg.buttons.clone();
-                                        let btn_code = event.button_code() as u8;
-                                        for b in &buttons {
-                                            if b.matches(pos) && b.button.as_u8() == btn_code {
-                                                (b.action)(
-                                                    &mut ctx,
-                                                    ButtonArg {
-                                                        pos,
-                                                        btn: b.button,
-                                                        rx: root_x,
-                                                        ry: root_y,
-                                                    },
-                                                );
+                                        if let Some(btn_code) =
+                                            wayland_button_to_wm_button(event.button_code())
+                                        {
+                                            for b in &buttons {
+                                                if b.matches(pos) && b.button.as_u8() == btn_code {
+                                                    (b.action)(
+                                                        &mut ctx,
+                                                        ButtonArg {
+                                                            pos,
+                                                            btn: b.button,
+                                                            rx: root_x,
+                                                            ry: root_y,
+                                                        },
+                                                    );
+                                                }
                                             }
                                         }
                                     }
@@ -627,6 +638,16 @@ fn modifiers_to_x11_mask(mods: &smithay::input::keyboard::ModifiersState) -> u32
         mask |= crate::config::MODKEY;
     }
     mask
+}
+
+#[inline]
+fn wayland_button_to_wm_button(code: u32) -> Option<u8> {
+    match code {
+        0x110 => Some(1), // BTN_LEFT
+        0x112 => Some(2), // BTN_MIDDLE
+        0x111 => Some(3), // BTN_RIGHT
+        _ => None,
+    }
 }
 
 fn set_locale() -> Result<(), ()> {

@@ -267,7 +267,22 @@ impl BarRenderer {
 
         let selmon_gesture = g.selmon().map(|s| s.gesture).unwrap_or_default();
 
-        for (i, tag) in monitor.tags.iter().enumerate() {
+        let tag_count = if monitor.tags.is_empty() {
+            g.cfg.tag_template.len()
+        } else {
+            monitor.tags.len()
+        };
+
+        for i in 0..tag_count {
+            let tag_name = if let Some(tag) = monitor.tags.get(i) {
+                tag.name.as_str()
+            } else {
+                g.cfg
+                    .tag_template
+                    .get(i)
+                    .map(|t| t.name.as_str())
+                    .unwrap_or("")
+            };
             let is_occupied = occupied_tags & (1 << i) != 0;
             let is_selected = monitor.tagset[monitor.seltags as usize] & (1 << i) != 0;
             let is_hover = selmon_gesture == crate::types::Gesture::Tag(i);
@@ -278,7 +293,7 @@ impl BarRenderer {
 
             elements.add_rect(current_x, y, tag_width, bh, bg_color);
 
-            let text_width = tag.name.len() as i32 * 8;
+            let text_width = tag_name.len() as i32 * 8;
             if text_width < tag_width - TEXT_PADDING * 2 {
                 let text_x = current_x + (tag_width - text_width) / 2;
                 let text_y = y + (bh - 12) / 2;

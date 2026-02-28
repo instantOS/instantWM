@@ -725,6 +725,8 @@ impl WaylandState {
 
         output.change_current_state(
             Some(mode),
+            // Keep Flipped180: required for this backend's output orientation,
+            // consistent with the official Smithay demo compositor setup.
             Some(Transform::Flipped180),
             Some(Scale::Integer(1)),
             Some((0, 0).into()),
@@ -1070,6 +1072,7 @@ impl CompositorHandler for WaylandState {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        let _ = self.popups.commit(surface);
         if let Some(window) = self
             .space
             .elements()
@@ -1228,9 +1231,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+        let kind = smithay::desktop::PopupKind::Xdg(surface);
         let _ = self
             .popups
-            .track_popup(smithay::desktop::PopupKind::Xdg(surface));
+            .track_popup(kind.clone());
+        let _ = self.popups.commit(kind.wl_surface());
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -1277,11 +1282,11 @@ impl XdgShellHandler for WaylandState {
 
     fn reposition_request(
         &mut self,
-        _surface: PopupSurface,
+        surface: PopupSurface,
         _positioner: PositionerState,
-        _token: u32,
+        token: u32,
     ) {
-        // TODO: reposition popup.
+        surface.send_repositioned(token);
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
