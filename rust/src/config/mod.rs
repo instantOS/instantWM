@@ -158,7 +158,7 @@ use crate::types::{Button, Key, Rule, XCommand};
 
 /// All WM configuration in one place.
 ///
-/// Built by [`init_config`] and consumed by `init_globals` in `main.rs`.
+/// Built by [`init_config`] and consumed by `init_globals` in `startup::x11`.
 /// Fields are public so `init_globals` can move them into `Globals` without
 /// extra getters.
 #[derive(Debug, Clone)]
@@ -233,7 +233,7 @@ pub struct Config {
 
 /// Build the default [`Config`].
 ///
-/// Called once from `init_globals` in `main.rs`.  All values here are the
+/// Called once from `init_globals` in `startup::x11`.  All values here are the
 /// compile-time defaults; some are later overridden by xresources.
 pub fn init_config() -> Config {
     Config {
