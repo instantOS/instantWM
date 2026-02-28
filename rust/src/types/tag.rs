@@ -3,7 +3,7 @@
 //! Types for workspace tags, layouts, and tag management.
 
 use crate::layouts::LayoutKind;
-use crate::types::color::TagSchemes;
+use crate::types::color::{TagColorConfigs, TagSchemes};
 
 /// Identifies which layout slot (primary or secondary) is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -181,8 +181,8 @@ pub struct TagSet {
     /// this length; this value is used for mask/count helpers that don't
     /// have a monitor reference handy.
     pub num_tags: usize,
-    /// Raw colour strings from config/xresources, indexed [hover_state][type][colour_index].
-    pub colors: Vec<Vec<Vec<&'static str>>>,
+    /// Raw colour strings from config/xresources.
+    pub colors: TagColorConfigs,
     /// Compiled colour objects derived from `colors`.
     pub schemes: TagSchemes,
     /// Whether to display `alt_names` instead of `names`.

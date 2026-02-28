@@ -241,133 +241,51 @@ fn init_cursors(wm: &mut Wm, drw: &mut Drw) {
 }
 
 fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
-    let bordercolors: Vec<&str> = wm.g.cfg.bordercolors.clone();
-    let statusbarcolors: Vec<&str> = wm.g.cfg.statusbarcolors.clone();
-    let tagcolors: Vec<Vec<Vec<&str>>> = wm.g.tags.colors.clone();
-    let windowcolors: Vec<Vec<Vec<&str>>> = wm.g.cfg.windowcolors.clone();
-    let closebuttoncolors: Vec<Vec<Vec<&str>>> = wm.g.cfg.closebuttoncolors.clone();
+    let bordercolors = wm.g.cfg.bordercolors.clone();
+    let statusbarcolors = wm.g.cfg.statusbarcolors.clone();
+    let tagcolors = wm.g.tags.colors.clone();
+    let windowcolors = wm.g.cfg.windowcolors.clone();
+    let closebuttoncolors = wm.g.cfg.closebuttoncolors.clone();
 
-    const BORDER_NORMAL: usize = 0;
-    const BORDER_TILE_FOCUS: usize = 1;
-    const BORDER_FLOAT_FOCUS: usize = 2;
-    const BORDER_SNAP: usize = 3;
-
-    let borderscheme = drw.scm_create(&bordercolors).ok().map(|clr| {
-        if clr.len() >= 4 {
-            BorderScheme {
-                normal: ColorScheme::new(
-                    clr[BORDER_NORMAL].clone(),
-                    clr[BORDER_NORMAL].clone(),
-                    clr[BORDER_NORMAL].clone(),
-                ),
-                tile_focus: ColorScheme::new(
-                    clr[BORDER_TILE_FOCUS].clone(),
-                    clr[BORDER_TILE_FOCUS].clone(),
-                    clr[BORDER_TILE_FOCUS].clone(),
-                ),
-                float_focus: ColorScheme::new(
-                    clr[BORDER_FLOAT_FOCUS].clone(),
-                    clr[BORDER_FLOAT_FOCUS].clone(),
-                    clr[BORDER_FLOAT_FOCUS].clone(),
-                ),
-                snap: ColorScheme::new(
-                    clr[BORDER_SNAP].clone(),
-                    clr[BORDER_SNAP].clone(),
-                    clr[BORDER_SNAP].clone(),
-                ),
-            }
-        } else {
-            BorderScheme::default()
+    let borderscheme = drw.scm_create(&[bordercolors.normal]).ok().map(|normal| {
+        let normal = normal[0].clone();
+        let tile = drw
+            .clr_create(bordercolors.tile_focus)
+            .unwrap_or(normal.clone());
+        let float = drw
+            .clr_create(bordercolors.float_focus)
+            .unwrap_or(normal.clone());
+        let snap = drw.clr_create(bordercolors.snap).unwrap_or(normal.clone());
+        BorderScheme {
+            normal: ColorScheme::new(normal.clone(), normal.clone(), normal.clone()),
+            tile_focus: ColorScheme::new(tile.clone(), tile.clone(), tile.clone()),
+            float_focus: ColorScheme::new(float.clone(), float.clone(), float.clone()),
+            snap: ColorScheme::new(snap.clone(), snap.clone(), snap.clone()),
         }
     });
 
     let statusscheme = drw
-        .scm_create(&statusbarcolors)
+        .scm_create(&[
+            statusbarcolors.fg,
+            statusbarcolors.bg,
+            statusbarcolors.detail,
+        ])
         .ok()
         .map(|clr| StatusScheme::new(clr[0].clone(), clr[1].clone(), clr[2].clone()));
 
-    let mut tagschemes_no_hover: Vec<ColorScheme> = Vec::new();
-    let mut tagschemes_hover: Vec<ColorScheme> = Vec::new();
-
-    if let Some(no_hover) = tagcolors.first() {
-        for scheme_colors in no_hover {
-            if let Ok(clr) = drw.scm_create(scheme_colors) {
-                if let Some(cs) = ColorScheme::from_vec(clr) {
-                    tagschemes_no_hover.push(cs);
-                }
-            }
-        }
-    }
-
-    if let Some(hover) = tagcolors.get(1) {
-        for scheme_colors in hover {
-            if let Ok(clr) = drw.scm_create(scheme_colors) {
-                if let Some(cs) = ColorScheme::from_vec(clr) {
-                    tagschemes_hover.push(cs);
-                }
-            }
-        }
-    }
-
     let tagschemes = TagSchemes {
-        no_hover: tagschemes_no_hover,
-        hover: tagschemes_hover,
+        no_hover: build_tag_schemes(drw, &tagcolors.no_hover),
+        hover: build_tag_schemes(drw, &tagcolors.hover),
     };
-
-    let mut windowschemes_no_hover: Vec<ColorScheme> = Vec::new();
-    let mut windowschemes_hover: Vec<ColorScheme> = Vec::new();
-
-    if let Some(no_hover) = windowcolors.first() {
-        for scheme_colors in no_hover {
-            if let Ok(clr) = drw.scm_create(scheme_colors) {
-                if let Some(cs) = ColorScheme::from_vec(clr) {
-                    windowschemes_no_hover.push(cs);
-                }
-            }
-        }
-    }
-
-    if let Some(hover) = windowcolors.get(1) {
-        for scheme_colors in hover {
-            if let Ok(clr) = drw.scm_create(scheme_colors) {
-                if let Some(cs) = ColorScheme::from_vec(clr) {
-                    windowschemes_hover.push(cs);
-                }
-            }
-        }
-    }
 
     let windowschemes = WindowSchemes {
-        no_hover: windowschemes_no_hover,
-        hover: windowschemes_hover,
+        no_hover: build_window_schemes(drw, &windowcolors.no_hover),
+        hover: build_window_schemes(drw, &windowcolors.hover),
     };
 
-    let mut closebuttonschemes_no_hover: Vec<ColorScheme> = Vec::new();
-    let mut closebuttonschemes_hover: Vec<ColorScheme> = Vec::new();
-
-    if let Some(no_hover) = closebuttoncolors.first() {
-        for scheme_colors in no_hover {
-            if let Ok(clr) = drw.scm_create(scheme_colors) {
-                if let Some(cs) = ColorScheme::from_vec(clr) {
-                    closebuttonschemes_no_hover.push(cs);
-                }
-            }
-        }
-    }
-
-    if let Some(hover) = closebuttoncolors.get(1) {
-        for scheme_colors in hover {
-            if let Ok(clr) = drw.scm_create(scheme_colors) {
-                if let Some(cs) = ColorScheme::from_vec(clr) {
-                    closebuttonschemes_hover.push(cs);
-                }
-            }
-        }
-    }
-
     let closebuttonschemes = CloseButtonSchemes {
-        no_hover: closebuttonschemes_no_hover,
-        hover: closebuttonschemes_hover,
+        no_hover: build_close_button_schemes(drw, &closebuttoncolors.no_hover),
+        hover: build_close_button_schemes(drw, &closebuttoncolors.hover),
     };
 
     wm.g.cfg.borderscheme = borderscheme;
@@ -375,4 +293,44 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
     wm.g.tags.schemes = tagschemes;
     wm.g.cfg.windowschemes = windowschemes;
     wm.g.cfg.closebuttonschemes = closebuttonschemes;
+}
+
+fn build_scheme(drw: &Drw, colors: &crate::types::ColorSchemeStrings) -> Option<ColorScheme> {
+    let clr = drw
+        .scm_create(&[colors.fg, colors.bg, colors.detail])
+        .ok()?;
+    ColorScheme::from_vec(clr)
+}
+
+fn build_tag_schemes(drw: &Drw, colors: &crate::types::TagColorSet) -> TagSchemesSet {
+    TagSchemesSet {
+        inactive: build_scheme(drw, &colors.inactive).unwrap_or_default(),
+        filled: build_scheme(drw, &colors.filled).unwrap_or_default(),
+        focus: build_scheme(drw, &colors.focus).unwrap_or_default(),
+        nofocus: build_scheme(drw, &colors.nofocus).unwrap_or_default(),
+        empty: build_scheme(drw, &colors.empty).unwrap_or_default(),
+    }
+}
+
+fn build_window_schemes(drw: &Drw, colors: &crate::types::WindowColorSet) -> WindowSchemesSet {
+    WindowSchemesSet {
+        focus: build_scheme(drw, &colors.focus).unwrap_or_default(),
+        normal: build_scheme(drw, &colors.normal).unwrap_or_default(),
+        minimized: build_scheme(drw, &colors.minimized).unwrap_or_default(),
+        sticky: build_scheme(drw, &colors.sticky).unwrap_or_default(),
+        sticky_focus: build_scheme(drw, &colors.sticky_focus).unwrap_or_default(),
+        overlay: build_scheme(drw, &colors.overlay).unwrap_or_default(),
+        overlay_focus: build_scheme(drw, &colors.overlay_focus).unwrap_or_default(),
+    }
+}
+
+fn build_close_button_schemes(
+    drw: &Drw,
+    colors: &crate::types::CloseButtonColorSet,
+) -> CloseButtonSchemesSet {
+    CloseButtonSchemesSet {
+        normal: build_scheme(drw, &colors.normal).unwrap_or_default(),
+        locked: build_scheme(drw, &colors.locked).unwrap_or_default(),
+        fullscreen: build_scheme(drw, &colors.fullscreen).unwrap_or_default(),
+    }
 }

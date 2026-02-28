@@ -36,10 +36,11 @@ pub mod xcommands;
 // not all of them are referenced inside this crate, but they are part of the
 // intended surface area for anyone reading or extending the config.
 #[allow(unused_imports)]
+pub use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+#[allow(unused_imports)]
 pub use appearance::{
     border_color, close_button_color, get_border_colors, get_close_button_colors,
-    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color, window_color, ColIndex,
-    SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin,
+    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color, window_color,
 };
 #[allow(unused_imports)]
 pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};
@@ -154,7 +155,10 @@ pub fn get_resources() -> Vec<ResourcePref> {
 // Config struct
 // ---------------------------------------------------------------------------
 
-use crate::types::{Button, Key, Rule, XCommand};
+use crate::types::{
+    BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
+    TagColorConfigs, WindowColorConfigs, XCommand,
+};
 
 /// All WM configuration in one place.
 ///
@@ -201,18 +205,18 @@ pub struct Config {
     pub tag_names: Vec<String>,
     pub tag_alt_names: Vec<&'static str>,
     /// Color table for tag buttons: `[hover][SchemeTag][ColIndex]`
-    pub tag_colors: Vec<Vec<Vec<&'static str>>>,
+    pub tag_colors: TagColorConfigs,
     pub num_tags: usize,
 
     // --- Color tables ---
     /// `[hover][SchemeWin][ColIndex]`
-    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
+    pub windowcolors: WindowColorConfigs,
     /// `[hover][SchemeClose][ColIndex]`
-    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
+    pub closebuttoncolors: CloseButtonColorConfigs,
     /// `[SchemeBorder as usize]`
-    pub bordercolors: Vec<&'static str>,
+    pub bordercolors: BorderColorConfig,
     /// `[fg, bg, detail]`
-    pub statusbarcolors: Vec<&'static str>,
+    pub statusbarcolors: StatusColorConfig,
 
     // --- Bindings ---
     pub keys: Vec<Key>,

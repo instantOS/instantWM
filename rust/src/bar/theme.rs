@@ -1,6 +1,6 @@
 use crate::bar::color::{rgba_from_color, rgba_from_hex, rgba_from_hex_opt, Rgba};
 use crate::bar::paint::BarScheme;
-use crate::config::{SchemeClose, SchemeTag, SchemeWin};
+use crate::config::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 use crate::globals::Globals;
 use crate::types::{Client, Monitor};
 
@@ -8,13 +8,10 @@ pub fn rgba_from_config(color: &str) -> Option<Rgba> {
     rgba_from_hex(color)
 }
 
-fn scheme_from_strings(colors: &[&str]) -> Option<BarScheme> {
-    if colors.len() < 3 {
-        return None;
-    }
-    let fg = rgba_from_hex(colors[0])?;
-    let bg = rgba_from_hex(colors[1])?;
-    let detail = rgba_from_hex(colors[2])?;
+fn scheme_from_strings(colors: &crate::types::ColorSchemeStrings) -> Option<BarScheme> {
+    let fg = rgba_from_hex(colors.fg)?;
+    let bg = rgba_from_hex(colors.bg)?;
+    let detail = rgba_from_hex(colors.detail)?;
     Some(BarScheme { fg, bg, detail })
 }
 
@@ -77,7 +74,8 @@ pub fn tag_scheme(
         SchemeTag::Inactive
     };
 
-    if let Some(cs) = schemes.get(scheme_idx as usize) {
+    let cs = schemes.scheme(scheme_idx);
+    if !cs.is_zeroed() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -85,16 +83,20 @@ pub fn tag_scheme(
         });
     }
 
-    let hover_idx = if is_hover { 1 } else { 0 };
-    g.tags
-        .colors
-        .get(hover_idx)
-        .and_then(|schemes| schemes.get(scheme_idx as usize))
-        .and_then(|colors| scheme_from_strings(colors))
+    let colors = g.tags.colors.scheme(
+        if is_hover {
+            SchemeHover::Hover
+        } else {
+            SchemeHover::NoHover
+        },
+        scheme_idx,
+    );
+    scheme_from_strings(colors)
 }
 
 pub fn tag_hover_fill_scheme(g: &Globals) -> Option<BarScheme> {
-    if let Some(cs) = g.tags.schemes.hover.get(SchemeTag::Filled as usize) {
+    let cs = g.tags.schemes.hover.scheme(SchemeTag::Filled);
+    if !cs.is_zeroed() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -102,11 +104,8 @@ pub fn tag_hover_fill_scheme(g: &Globals) -> Option<BarScheme> {
         });
     }
 
-    g.tags
-        .colors
-        .get(1)
-        .and_then(|schemes| schemes.get(SchemeTag::Filled as usize))
-        .and_then(|colors| scheme_from_strings(colors))
+    let colors = g.tags.colors.scheme(SchemeHover::Hover, SchemeTag::Filled);
+    scheme_from_strings(colors)
 }
 
 pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarScheme> {
@@ -139,7 +138,8 @@ pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarSchem
         SchemeWin::Normal
     };
 
-    if let Some(cs) = schemes.get(scheme_idx as usize) {
+    let cs = schemes.scheme(scheme_idx);
+    if !cs.is_zeroed() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -147,12 +147,15 @@ pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarSchem
         });
     }
 
-    let hover_idx = if is_hover { 1 } else { 0 };
-    g.cfg
-        .windowcolors
-        .get(hover_idx)
-        .and_then(|schemes| schemes.get(scheme_idx as usize))
-        .and_then(|colors| scheme_from_strings(colors))
+    let colors = g.cfg.windowcolors.scheme(
+        if is_hover {
+            SchemeHover::Hover
+        } else {
+            SchemeHover::NoHover
+        },
+        scheme_idx,
+    );
+    scheme_from_strings(colors)
 }
 
 pub fn close_button_scheme(
@@ -175,7 +178,8 @@ pub fn close_button_scheme(
         SchemeClose::Normal
     };
 
-    if let Some(cs) = schemes.get(scheme_idx as usize) {
+    let cs = schemes.scheme(scheme_idx);
+    if !cs.is_zeroed() {
         return Some(BarScheme {
             fg: rgba_from_color(&cs.fg),
             bg: rgba_from_color(&cs.bg),
@@ -183,10 +187,13 @@ pub fn close_button_scheme(
         });
     }
 
-    let hover_idx = if is_hover { 1 } else { 0 };
-    g.cfg
-        .closebuttoncolors
-        .get(hover_idx)
-        .and_then(|schemes| schemes.get(scheme_idx as usize))
-        .and_then(|colors| scheme_from_strings(colors))
+    let colors = g.cfg.closebuttoncolors.scheme(
+        if is_hover {
+            SchemeHover::Hover
+        } else {
+            SchemeHover::NoHover
+        },
+        scheme_idx,
+    );
+    scheme_from_strings(colors)
 }

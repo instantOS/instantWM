@@ -51,10 +51,10 @@ pub struct RuntimeConfig {
     pub closebuttonschemes: CloseButtonSchemes,
 
     // Raw color strings for xresources override
-    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
-    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
-    pub bordercolors: Vec<&'static str>,
-    pub statusbarcolors: Vec<&'static str>,
+    pub windowcolors: WindowColorConfigs,
+    pub closebuttoncolors: CloseButtonColorConfigs,
+    pub bordercolors: BorderColorConfig,
+    pub statusbarcolors: StatusColorConfig,
 
     // Bindings
     pub keys: Vec<Key>,
@@ -111,10 +111,10 @@ impl Default for RuntimeConfig {
             statusscheme: None,
             windowschemes: WindowSchemes::default(),
             closebuttonschemes: CloseButtonSchemes::default(),
-            windowcolors: Vec::new(),
-            closebuttoncolors: Vec::new(),
-            bordercolors: Vec::new(),
-            statusbarcolors: Vec::new(),
+            windowcolors: WindowColorConfigs::default(),
+            closebuttoncolors: CloseButtonColorConfigs::default(),
+            bordercolors: BorderColorConfig::default(),
+            statusbarcolors: StatusColorConfig::default(),
             keys: Vec::new(),
             desktop_keybinds: Vec::new(),
             buttons: Vec::new(),
