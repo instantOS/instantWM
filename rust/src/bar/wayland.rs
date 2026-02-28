@@ -173,7 +173,7 @@ impl BarPainter for WaylandBarPainter {
         let Some(scheme) = self.scheme.clone() else {
             return;
         };
-        let color = if invert { scheme.bg } else { scheme.fg };
+        let color = if invert { scheme.fg } else { scheme.bg };
         self.elements
             .add_rect(x + self.origin_x, y + self.origin_y, w, h, color);
     }

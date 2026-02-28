@@ -294,6 +294,47 @@ fn run_wayland() -> ! {
                             crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
                         }
 
+                        {
+                            let root_x = pointer_location.x.round() as i32;
+                            let root_y = pointer_location.y.round() as i32;
+                            let rect = Rect {
+                                x: root_x,
+                                y: root_y,
+                                w: 1,
+                                h: 1,
+                            };
+                            if let Some(mid) =
+                                crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)
+                            {
+                                let mut ctx = wm.ctx();
+                                if mid != ctx.g.selmon_id() {
+                                    ctx.g.set_selmon(mid);
+                                }
+                                let bar_h = ctx.g.cfg.bar_height.max(1);
+                                let in_bar = ctx.g.selmon().is_some_and(|m| {
+                                    m.showbar && root_y >= m.by && root_y < m.by + bar_h
+                                });
+                                let gesture = if in_bar {
+                                    if let Some(mon) = ctx.g.selmon().cloned() {
+                                        let local_x = root_x - mon.monitor_rect.x;
+                                        let pos = bar_position_at_x(&mon, &ctx, local_x);
+                                        if pos == BarPosition::StatusText {
+                                            ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
+                                        } else {
+                                            bar_position_to_gesture(pos)
+                                        }
+                                    } else {
+                                        Gesture::None
+                                    }
+                                } else {
+                                    Gesture::None
+                                };
+                                if let Some(m) = ctx.g.selmon_mut() {
+                                    m.gesture = gesture;
+                                }
+                            }
+                        }
+
                         let focus = match element_under {
                             Some((window, location)) => window.wl_surface().map(|surface| {
                                 (
