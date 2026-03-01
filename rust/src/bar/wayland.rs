@@ -9,7 +9,9 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::{Scale, Transform};
 
-use cosmic_text::{Attrs, Buffer, Color as CosmicColor, FontSystem, Metrics, Shaping, SwashCache, Wrap};
+use cosmic_text::{
+    Attrs, Buffer, Color as CosmicColor, FontSystem, Metrics, Shaping, SwashCache, Wrap,
+};
 
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::bar::renderer::draw_bar_common;
@@ -17,7 +19,17 @@ use crate::bar::renderer::draw_bar_common;
 const DEFAULT_FONT_SIZE: f32 = 14.0;
 
 // Pixel buffer operations (freestanding to avoid borrow conflicts)
-fn pixel_fill(pixels: &mut [u8], canvas_w: i32, canvas_h: i32, x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
+fn pixel_fill(
+    pixels: &mut [u8],
+    canvas_w: i32,
+    canvas_h: i32,
+    x: i32,
+    y: i32,
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+) {
     if x < 0 || y < 0 || x >= canvas_w || y >= canvas_h {
         return;
     }
@@ -41,7 +53,16 @@ fn pixel_fill(pixels: &mut [u8], canvas_w: i32, canvas_h: i32, x: i32, y: i32, r
     }
 }
 
-fn pixel_fill_rect(pixels: &mut [u8], canvas_w: i32, canvas_h: i32, x: i32, y: i32, w: i32, h: i32, color: [f32; 4]) {
+fn pixel_fill_rect(
+    pixels: &mut [u8],
+    canvas_w: i32,
+    canvas_h: i32,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    color: [f32; 4],
+) {
     let r = (color[0] * 255.0) as u8;
     let g = (color[1] * 255.0) as u8;
     let b = (color[2] * 255.0) as u8;
@@ -146,9 +167,14 @@ fn rasterize_text(
                             }
                             let a = (alpha as u32 * glyph_color.a() as u32) / 255;
                             pixel_fill(
-                                pixels, canvas_w, canvas_h,
-                                gx + col, gy + row,
-                                glyph_color.r(), glyph_color.g(), glyph_color.b(),
+                                pixels,
+                                canvas_w,
+                                canvas_h,
+                                gx + col,
+                                gy + row,
+                                glyph_color.r(),
+                                glyph_color.g(),
+                                glyph_color.b(),
                                 a as u8,
                             );
                         }
@@ -161,10 +187,15 @@ fn rasterize_text(
                             let si = ((row * pw + col) * 4) as usize;
                             if si + 3 < image.data.len() {
                                 pixel_fill(
-                                    pixels, canvas_w, canvas_h,
-                                    gx + col, gy + row,
-                                    image.data[si], image.data[si + 1],
-                                    image.data[si + 2], image.data[si + 3],
+                                    pixels,
+                                    canvas_w,
+                                    canvas_h,
+                                    gx + col,
+                                    gy + row,
+                                    image.data[si],
+                                    image.data[si + 1],
+                                    image.data[si + 2],
+                                    image.data[si + 3],
                                 );
                             }
                         }
@@ -219,7 +250,14 @@ impl WaylandBarPainter {
         measure_width(&mut fs, text, self.font_size)
     }
 
-    pub fn begin(&mut self, _scale: Scale<f64>, origin_x: i32, origin_y: i32, width: i32, height: i32) {
+    pub fn begin(
+        &mut self,
+        _scale: Scale<f64>,
+        origin_x: i32,
+        origin_y: i32,
+        width: i32,
+        height: i32,
+    ) {
         self.scheme = None;
         self.origin_x = origin_x;
         self.origin_y = origin_y;
@@ -279,7 +317,16 @@ impl BarPainter for WaylandBarPainter {
             return;
         };
         let color = if invert { scheme.fg } else { scheme.bg };
-        pixel_fill_rect(&mut self.pixels, self.canvas_w, self.canvas_h, x, y, w, h, color);
+        pixel_fill_rect(
+            &mut self.pixels,
+            self.canvas_w,
+            self.canvas_h,
+            x,
+            y,
+            w,
+            h,
+            color,
+        );
     }
 
     fn text(
@@ -298,11 +345,26 @@ impl BarPainter for WaylandBarPainter {
         };
         let bg = if invert { scheme.fg } else { scheme.bg };
         let fg = if invert { scheme.bg } else { scheme.fg };
-        pixel_fill_rect(&mut self.pixels, self.canvas_w, self.canvas_h, x, y, w, h, bg);
+        pixel_fill_rect(
+            &mut self.pixels,
+            self.canvas_w,
+            self.canvas_h,
+            x,
+            y,
+            w,
+            h,
+            bg,
+        );
         if detail_height > 0 {
             pixel_fill_rect(
-                &mut self.pixels, self.canvas_w, self.canvas_h,
-                x, y + h - detail_height, w, detail_height, scheme.detail,
+                &mut self.pixels,
+                self.canvas_w,
+                self.canvas_h,
+                x,
+                y + h - detail_height,
+                w,
+                detail_height,
+                scheme.detail,
             );
         }
         if !text.is_empty() {
@@ -312,9 +374,18 @@ impl BarPainter for WaylandBarPainter {
                 let mut fs = self.font_system.borrow_mut();
                 let mut sc = self.swash_cache.borrow_mut();
                 rasterize_text(
-                    &mut self.pixels, self.canvas_w, self.canvas_h,
-                    &mut fs, &mut sc,
-                    text_x, y, text_w, h, text, fg, self.font_size,
+                    &mut self.pixels,
+                    self.canvas_w,
+                    self.canvas_h,
+                    &mut fs,
+                    &mut sc,
+                    text_x,
+                    y,
+                    text_w,
+                    h,
+                    text,
+                    fg,
+                    self.font_size,
                 );
             }
         }
@@ -355,7 +426,8 @@ pub fn render_bar_buffers(
         .collect();
 
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
-        ctx.bar_painter.begin(scale, origin_x, origin_y, width, height);
+        ctx.bar_painter
+            .begin(scale, origin_x, origin_y, width, height);
         draw_bar_common_with_painter(ctx, mon_idx);
         ctx.bar_painter.finish();
     }
