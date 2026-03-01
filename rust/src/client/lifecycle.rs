@@ -43,6 +43,7 @@ use crate::client::state::{
 };
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
+use crate::globals::Globals;
 use crate::globals::get_x11;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect, WindowId};
@@ -102,6 +103,7 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             }
         } else {
             c.mon_id = Some(ctx.g.selmon_id());
+            c.tags = initial_tags_for_monitor(ctx.g, c.mon_id);
         }
     }
 
@@ -400,6 +402,18 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
             }
         }
     }
+}
+
+/// Initial tag mask for a newly managed client on `mon_id`.
+///
+/// This mirrors DWM semantics: a new client appears on all tags currently
+/// visible on its target monitor.
+pub fn initial_tags_for_monitor(g: &Globals, mon_id: Option<usize>) -> u32 {
+    mon_id
+        .and_then(|mid| g.monitor(mid))
+        .map(|m| m.selected_tags())
+        .filter(|tags| *tags != 0)
+        .unwrap_or(1)
 }
 
 // ---------------------------------------------------------------------------
