@@ -456,9 +456,9 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag>
             format!("{}", i + 1)
         };
         let alt_name = if i < cfg.tag_alt_names.len() {
-            cfg.tag_alt_names[i].as_str()
+            cfg.tag_alt_names[i].clone()
         } else {
-            ""
+            String::new()
         };
         let mut tag = crate::types::Tag::default();
         tag.name = name;

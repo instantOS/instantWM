@@ -58,8 +58,7 @@ pub fn text_width_ctx(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
     {
         return drw.fontset_getwidth(text) as i32;
     }
-    // Wayland fallback: approximate width using char count * avg glyph width.
-    text.len() as i32 * 8
+    ctx.bar_painter.measure_text_width(text)
 }
 
 pub(crate) fn layout_symbol(m: &Monitor) -> String {

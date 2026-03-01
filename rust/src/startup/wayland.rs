@@ -7,6 +7,7 @@ use smithay::backend::input::{
     PointerButtonEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::surface::{
@@ -14,6 +15,7 @@ use smithay::backend::renderer::element::surface::{
 };
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportMem;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::desktop::space::render_output;
 use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
@@ -43,6 +45,7 @@ render_elements! {
     pub WaylandExtras<=GlesRenderer>;
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
+    Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
 }
 
 pub fn run() -> ! {
@@ -378,9 +381,23 @@ pub fn run() -> ! {
                 let mut custom_elements: Vec<WaylandExtras> = Vec::new();
                 if wm.g.cfg.showbar {
                     let mut ctx = wm.ctx();
-                    for elem in crate::bar::wayland::render_bar_elements(&mut ctx, Scale::from(1.0))
-                    {
-                        custom_elements.push(WaylandExtras::Solid(elem));
+                    let bar_buffers =
+                        crate::bar::wayland::render_bar_buffers(&mut ctx, Scale::from(1.0));
+                    for (buffer, x, y) in bar_buffers {
+                        match MemoryRenderBufferRenderElement::from_buffer(
+                            renderer,
+                            (x as f64, y as f64),
+                            &buffer,
+                            None,
+                            None,
+                            None,
+                            Kind::Unspecified,
+                        ) {
+                            Ok(elem) => custom_elements.push(WaylandExtras::Memory(elem)),
+                            Err(e) => {
+                                log::warn!("bar buffer upload failed: {:?}", e);
+                            }
+                        }
                     }
                 }
                 for elem in wayland_border_elements(&wm) {

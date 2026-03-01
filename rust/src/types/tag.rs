@@ -146,7 +146,7 @@ pub struct Tag {
     /// Display name for the tag.
     pub name: String,
     /// Alternative name (shown when `show_alt` is true).
-    pub alt_name: &'static str,
+    pub alt_name: String,
     /// Number of clients in the master area for tiling layouts.
     pub nmaster: i32,
     /// Master factor for tiling layouts (0.0 to 1.0).
@@ -161,7 +161,7 @@ impl Default for Tag {
     fn default() -> Self {
         Self {
             name: String::new(),
-            alt_name: "",
+            alt_name: String::new(),
             nmaster: 1,
             mfact: 0.55,
             showbar: true,
