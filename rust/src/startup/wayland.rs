@@ -503,6 +503,14 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
         if bw <= 0 || c.geo.w <= 0 || c.geo.h <= 0 {
             continue;
         }
+        let is_visible = c
+            .mon_id
+            .and_then(|mid| wm.g.monitor(mid))
+            .map(|m| c.is_visible_on_tags(m.selected_tags()))
+            .unwrap_or(false);
+        if !is_visible || c.is_hidden {
+            continue;
+        }
         let has_tiling = c
             .mon_id
             .and_then(|mid| wm.g.monitor(mid))

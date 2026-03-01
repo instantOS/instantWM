@@ -15,7 +15,7 @@ use smithay::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
-    utils::{Transform, SERIAL_COUNTER},
+    utils::{Logical, Point, Transform, SERIAL_COUNTER},
     wayland::{
         compositor::CompositorState,
         output::OutputManagerState,
@@ -116,6 +116,7 @@ pub struct WaylandState {
     next_window_id: u32,
     globals: Option<NonNull<Globals>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    hidden_windows: HashMap<WindowId, Window>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,6 +197,7 @@ impl WaylandState {
             next_window_id: 1,
             globals: None,
             last_configured_size: HashMap::new(),
+            hidden_windows: HashMap::new(),
         }
     }
 
@@ -401,13 +403,32 @@ impl WaylandState {
                 .element_location(&element)
                 .unwrap_or((0, 0).into());
             self.space.map_element(element, loc, false);
+            return;
+        }
+
+        if let Some(element) = self.hidden_windows.remove(&window) {
+            let loc: Point<i32, Logical> = self
+                .globals()
+                .and_then(|g| g.clients.get(&window))
+                .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+                .unwrap_or(Point::from((0, 0)));
+            self.space.map_element(element, loc, false);
         }
     }
 
     pub fn unmap_window(&mut self, window: WindowId) {
         if let Some(element) = self.find_window(window).cloned() {
             self.space.unmap_elem(&element);
+            self.hidden_windows.insert(window, element);
         }
+        self.last_configured_size.remove(&window);
+    }
+
+    pub(super) fn remove_window_tracking(&mut self, window: WindowId) {
+        if let Some(element) = self.find_window(window).cloned() {
+            self.space.unmap_elem(&element);
+        }
+        self.hidden_windows.remove(&window);
         self.last_configured_size.remove(&window);
     }
 
@@ -417,7 +438,7 @@ impl WaylandState {
     }
 
     pub fn window_exists(&self, window: WindowId) -> bool {
-        self.find_window(window).is_some()
+        self.find_window(window).is_some() || self.hidden_windows.contains_key(&window)
     }
 
     fn alloc_window_id(&mut self) -> WindowId {
@@ -485,13 +506,16 @@ impl WaylandState {
 
     pub(super) fn window_id_for_toplevel(&self, surface: &ToplevelSurface) -> Option<WindowId> {
         let wl_surface = surface.wl_surface();
-        self.space.elements().find_map(|w| {
-            if w.wl_surface().as_deref() == Some(wl_surface) {
-                w.user_data().get::<WindowIdMarker>().map(|m| m.0)
-            } else {
-                None
-            }
-        })
+        self.space
+            .elements()
+            .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
+            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+            .or_else(|| {
+                self.hidden_windows
+                    .values()
+                    .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
+                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+            })
     }
 }
 

@@ -23,7 +23,7 @@ use smithay::{
 
 use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
-    state::{detach_client_from_monitor, WaylandClientState, WaylandState, WindowIdMarker},
+    state::{detach_client_from_monitor, WaylandClientState, WaylandState},
 };
 
 impl CompositorHandler for WaylandState {
@@ -221,18 +221,10 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        let wl_surface = surface.wl_surface();
-        let windows = self.space.elements().cloned().collect::<Vec<_>>();
-        let mut destroyed_win: Option<crate::types::WindowId> = None;
-        if let Some(window) = windows
-            .into_iter()
-            .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
-        {
-            self.space.unmap_elem(&window);
-            destroyed_win = window.user_data().get::<WindowIdMarker>().map(|m| m.0);
-        }
-        let Some(win) = destroyed_win else { return };
-        self.last_configured_size.remove(&win);
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        self.remove_window_tracking(win);
         let new_sel = {
             let Some(g) = self.globals_mut() else {
                 return;
