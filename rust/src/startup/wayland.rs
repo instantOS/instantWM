@@ -310,23 +310,14 @@ pub fn run() -> ! {
                                                 ),
                                                 numlockmask,
                                             );
-                                            for b in &buttons {
-                                                if !b.matches(pos) || b.button.as_u8() != btn_code {
-                                                    continue;
-                                                }
-                                                if crate::util::clean_mask(b.mask, numlockmask)
-                                                    != clean_state
-                                                {
-                                                    continue;
-                                                }
-                                                (b.action)(
+                                            if let Some(btn) = MouseButton::from_u8(btn_code) {
+                                                dispatch_wayland_bar_button(
                                                     &mut ctx,
-                                                    ButtonArg {
-                                                        pos,
-                                                        btn: b.button,
-                                                        rx: root_x,
-                                                        ry: root_y,
-                                                    },
+                                                    pos,
+                                                    btn,
+                                                    root_x,
+                                                    root_y,
+                                                    clean_state,
                                                 );
                                             }
                                         }
@@ -365,6 +356,67 @@ pub fn run() -> ! {
                         {
                             frame =
                                 frame.v120(smithay::backend::input::Axis::Horizontal, steps as i32);
+                        }
+                        let scroll_delta = event
+                            .amount_v120(smithay::backend::input::Axis::Vertical)
+                            .map(|s| s as f64)
+                            .or_else(|| event.amount(smithay::backend::input::Axis::Vertical));
+                        if let Some(delta) = scroll_delta.filter(|d| *d != 0.0) {
+                            let root_x = pointer_location.x.round() as i32;
+                            let root_y = pointer_location.y.round() as i32;
+                            let rect = Rect {
+                                x: root_x,
+                                y: root_y,
+                                w: 1,
+                                h: 1,
+                            };
+                            if let Some(mid) =
+                                crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)
+                            {
+                                let mut ctx = wm.ctx();
+                                if mid != ctx.g.selmon_id() {
+                                    ctx.g.set_selmon(mid);
+                                }
+                                let bar_h = ctx.g.cfg.bar_height.max(1);
+                                let in_bar = ctx.g.selmon().is_some_and(|m| {
+                                    m.showbar && root_y >= m.by && root_y < m.by + bar_h
+                                });
+                                if in_bar {
+                                    if let Some(mon) = ctx.g.selmon().cloned() {
+                                        let local_x = root_x - mon.monitor_rect.x;
+                                        let pos = bar_position_at_x(&mon, &ctx, local_x);
+                                        if pos == BarPosition::StartMenu {
+                                            crate::bar::reset_bar(&mut ctx);
+                                        }
+                                        let gesture = if pos == BarPosition::StatusText {
+                                            ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
+                                        } else {
+                                            bar_position_to_gesture(pos)
+                                        };
+                                        if let Some(m) = ctx.g.selmon_mut() {
+                                            m.gesture = gesture;
+                                        }
+                                        let numlockmask = ctx.g.cfg.numlockmask;
+                                        let clean_state = crate::util::clean_mask(
+                                            modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                                            numlockmask,
+                                        );
+                                        let btn = if delta > 0.0 {
+                                            MouseButton::ScrollUp
+                                        } else {
+                                            MouseButton::ScrollDown
+                                        };
+                                        dispatch_wayland_bar_button(
+                                            &mut ctx,
+                                            pos,
+                                            btn,
+                                            root_x,
+                                            root_y,
+                                            clean_state,
+                                        );
+                                    }
+                                }
+                            }
                         }
                         pointer_handle.axis(state, frame);
                         pointer_handle.frame(state);
@@ -634,6 +686,35 @@ fn init_wayland_globals(wm: &mut Wm) {
 fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
+}
+
+fn dispatch_wayland_bar_button(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    pos: BarPosition,
+    btn: MouseButton,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+) {
+    let numlockmask = ctx.g.cfg.numlockmask;
+    let buttons = ctx.g.cfg.buttons.clone();
+    for b in &buttons {
+        if !b.matches(pos) || b.button != btn {
+            continue;
+        }
+        if crate::util::clean_mask(b.mask, numlockmask) != clean_state {
+            continue;
+        }
+        (b.action)(
+            ctx,
+            ButtonArg {
+                pos,
+                btn: b.button,
+                rx: root_x,
+                ry: root_y,
+            },
+        );
+    }
 }
 
 fn spawn_wayland_smoke_window() {
