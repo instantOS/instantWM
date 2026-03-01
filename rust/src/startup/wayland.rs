@@ -303,18 +303,31 @@ pub fn run() -> ! {
                                         if let Some(btn_code) =
                                             wayland_button_to_wm_button(event.button_code())
                                         {
+                                            let numlockmask = ctx.g.cfg.numlockmask;
+                                            let clean_state = crate::util::clean_mask(
+                                                modifiers_to_x11_mask(
+                                                    &keyboard_handle.modifier_state(),
+                                                ),
+                                                numlockmask,
+                                            );
                                             for b in &buttons {
-                                                if b.matches(pos) && b.button.as_u8() == btn_code {
-                                                    (b.action)(
-                                                        &mut ctx,
-                                                        ButtonArg {
-                                                            pos,
-                                                            btn: b.button,
-                                                            rx: root_x,
-                                                            ry: root_y,
-                                                        },
-                                                    );
+                                                if !b.matches(pos) || b.button.as_u8() != btn_code {
+                                                    continue;
                                                 }
+                                                if crate::util::clean_mask(b.mask, numlockmask)
+                                                    != clean_state
+                                                {
+                                                    continue;
+                                                }
+                                                (b.action)(
+                                                    &mut ctx,
+                                                    ButtonArg {
+                                                        pos,
+                                                        btn: b.button,
+                                                        rx: root_x,
+                                                        ry: root_y,
+                                                    },
+                                                );
                                             }
                                         }
                                     }

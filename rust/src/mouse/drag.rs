@@ -664,9 +664,6 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 ///
 /// Exits without action if the pointer leaves the bar during the drag.
 pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
     let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
         let selmon_id = ctx.g.selmon_id();
         let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
@@ -702,6 +699,9 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
         return;
     }
     if !has_sel {
+        return;
+    }
+    if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
 
