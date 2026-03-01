@@ -82,13 +82,7 @@ pub fn run() -> ! {
         .socket_name()
         .to_string_lossy()
         .into_owned();
-    std::env::set_var("WAYLAND_DISPLAY", &socket_name);
-    std::env::set_var("XDG_SESSION_TYPE", "wayland");
-    std::env::remove_var("DISPLAY");
-    std::env::set_var("GDK_BACKEND", "wayland");
-    std::env::set_var("QT_QPA_PLATFORM", "wayland");
-    std::env::set_var("SDL_VIDEODRIVER", "wayland");
-    std::env::set_var("CLUTTER_BACKEND", "wayland");
+    apply_wayland_session_env(&socket_name);
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {
@@ -195,46 +189,9 @@ pub fn run() -> ! {
                             crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
                         }
 
-                        {
-                            let root_x = pointer_location.x.round() as i32;
-                            let root_y = pointer_location.y.round() as i32;
-                            let rect = Rect {
-                                x: root_x,
-                                y: root_y,
-                                w: 1,
-                                h: 1,
-                            };
-                            if let Some(mid) =
-                                crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)
-                            {
-                                let mut ctx = wm.ctx();
-                                if mid != ctx.g.selmon_id() {
-                                    ctx.g.set_selmon(mid);
-                                }
-                                let bar_h = ctx.g.cfg.bar_height.max(1);
-                                let in_bar = ctx.g.selmon().is_some_and(|m| {
-                                    m.showbar && root_y >= m.by && root_y < m.by + bar_h
-                                });
-                                let gesture = if in_bar {
-                                    if let Some(mon) = ctx.g.selmon().cloned() {
-                                        let local_x = root_x - mon.monitor_rect.x;
-                                        let pos = bar_position_at_x(&mon, &ctx, local_x);
-                                        if pos == BarPosition::StatusText {
-                                            ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
-                                        } else {
-                                            bar_position_to_gesture(pos)
-                                        }
-                                    } else {
-                                        Gesture::None
-                                    }
-                                } else {
-                                    Gesture::None
-                                };
-                                if let Some(m) = ctx.g.selmon_mut() {
-                                    m.gesture = gesture;
-                                }
-                            }
-                        }
+                        let root_x = pointer_location.x.round() as i32;
+                        let root_y = pointer_location.y.round() as i32;
+                        let _ = update_wayland_bar_hit_state(&mut wm, root_x, root_y, false);
 
                         let focus = match element_under {
                             Some((window, location)) => window.wl_surface().map(|surface| {
@@ -267,62 +224,24 @@ pub fn run() -> ! {
                         if event.state() == smithay::backend::input::ButtonState::Pressed {
                             let root_x = pointer_location.x.round() as i32;
                             let root_y = pointer_location.y.round() as i32;
-                            let rect = Rect {
-                                x: root_x,
-                                y: root_y,
-                                w: 1,
-                                h: 1,
-                            };
-                            if let Some(mid) =
-                                crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)
+                            if let Some(pos) =
+                                update_wayland_bar_hit_state(&mut wm, root_x, root_y, true)
                             {
-                                let mut ctx = wm.ctx();
-                                if mid != ctx.g.selmon_id() {
-                                    ctx.g.set_selmon(mid);
-                                }
-                                let bar_h = ctx.g.cfg.bar_height.max(1);
-                                let in_bar = ctx.g.selmon().is_some_and(|m| {
-                                    m.showbar && root_y >= m.by && root_y < m.by + bar_h
-                                });
-                                if in_bar {
-                                    if let Some(mon) = ctx.g.selmon().cloned() {
-                                        let local_x = root_x - mon.monitor_rect.x;
-                                        let pos = bar_position_at_x(&mon, &ctx, local_x);
-                                        if pos == BarPosition::StartMenu {
-                                            crate::bar::reset_bar(&mut ctx);
-                                        }
-                                        let gesture = if pos == BarPosition::StatusText {
-                                            ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
-                                        } else {
-                                            bar_position_to_gesture(pos)
-                                        };
-                                        if let Some(m) = ctx.g.selmon_mut() {
-                                            m.gesture = gesture;
-                                        }
-                                        let buttons = ctx.g.cfg.buttons.clone();
-                                        if let Some(btn_code) =
-                                            wayland_button_to_wm_button(event.button_code())
-                                        {
-                                            let numlockmask = ctx.g.cfg.numlockmask;
-                                            let clean_state = crate::util::clean_mask(
-                                                modifiers_to_x11_mask(
-                                                    &keyboard_handle.modifier_state(),
-                                                ),
-                                                numlockmask,
-                                            );
-                                            if let Some(btn) = MouseButton::from_u8(btn_code) {
-                                                dispatch_wayland_bar_button(
-                                                    &mut ctx,
-                                                    pos,
-                                                    btn,
-                                                    root_x,
-                                                    root_y,
-                                                    clean_state,
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
+                                let clean_state = {
+                                    let ctx = wm.ctx();
+                                    crate::util::clean_mask(
+                                        modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                                        ctx.g.cfg.numlockmask,
+                                    )
+                                };
+                                dispatch_wayland_bar_click(
+                                    &mut wm,
+                                    pos,
+                                    event.button_code(),
+                                    root_x,
+                                    root_y,
+                                    clean_state,
+                                );
                             }
                             let keyboard_focus = state
                                 .space
@@ -364,58 +283,24 @@ pub fn run() -> ! {
                         if let Some(delta) = scroll_delta.filter(|d| *d != 0.0) {
                             let root_x = pointer_location.x.round() as i32;
                             let root_y = pointer_location.y.round() as i32;
-                            let rect = Rect {
-                                x: root_x,
-                                y: root_y,
-                                w: 1,
-                                h: 1,
-                            };
-                            if let Some(mid) =
-                                crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)
+                            if let Some(pos) =
+                                update_wayland_bar_hit_state(&mut wm, root_x, root_y, true)
                             {
-                                let mut ctx = wm.ctx();
-                                if mid != ctx.g.selmon_id() {
-                                    ctx.g.set_selmon(mid);
-                                }
-                                let bar_h = ctx.g.cfg.bar_height.max(1);
-                                let in_bar = ctx.g.selmon().is_some_and(|m| {
-                                    m.showbar && root_y >= m.by && root_y < m.by + bar_h
-                                });
-                                if in_bar {
-                                    if let Some(mon) = ctx.g.selmon().cloned() {
-                                        let local_x = root_x - mon.monitor_rect.x;
-                                        let pos = bar_position_at_x(&mon, &ctx, local_x);
-                                        if pos == BarPosition::StartMenu {
-                                            crate::bar::reset_bar(&mut ctx);
-                                        }
-                                        let gesture = if pos == BarPosition::StatusText {
-                                            ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
-                                        } else {
-                                            bar_position_to_gesture(pos)
-                                        };
-                                        if let Some(m) = ctx.g.selmon_mut() {
-                                            m.gesture = gesture;
-                                        }
-                                        let numlockmask = ctx.g.cfg.numlockmask;
-                                        let clean_state = crate::util::clean_mask(
-                                            modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                                            numlockmask,
-                                        );
-                                        let btn = if delta > 0.0 {
-                                            MouseButton::ScrollUp
-                                        } else {
-                                            MouseButton::ScrollDown
-                                        };
-                                        dispatch_wayland_bar_button(
-                                            &mut ctx,
-                                            pos,
-                                            btn,
-                                            root_x,
-                                            root_y,
-                                            clean_state,
-                                        );
-                                    }
-                                }
+                                let clean_state = {
+                                    let ctx = wm.ctx();
+                                    crate::util::clean_mask(
+                                        modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                                        ctx.g.cfg.numlockmask,
+                                    )
+                                };
+                                dispatch_wayland_bar_scroll(
+                                    &mut wm,
+                                    pos,
+                                    delta,
+                                    root_x,
+                                    root_y,
+                                    clean_state,
+                                );
                             }
                         }
                         pointer_handle.axis(state, frame);
@@ -682,10 +567,102 @@ fn init_wayland_globals(wm: &mut Wm) {
     monitor::update_geom_ctx(&mut wm.ctx());
 }
 
+fn apply_wayland_session_env(socket_name: &str) {
+    std::env::set_var("WAYLAND_DISPLAY", socket_name);
+    std::env::set_var("XDG_SESSION_TYPE", "wayland");
+    std::env::remove_var("DISPLAY");
+    std::env::set_var("GDK_BACKEND", "wayland");
+    std::env::set_var("QT_QPA_PLATFORM", "wayland");
+    std::env::set_var("SDL_VIDEODRIVER", "wayland");
+    std::env::set_var("CLUTTER_BACKEND", "wayland");
+}
+
 #[inline]
 fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
+}
+
+fn update_wayland_bar_hit_state(
+    wm: &mut Wm,
+    root_x: i32,
+    root_y: i32,
+    reset_start_menu: bool,
+) -> Option<BarPosition> {
+    let rect = Rect {
+        x: root_x,
+        y: root_y,
+        w: 1,
+        h: 1,
+    };
+    let mid = crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)?;
+    let mut ctx = wm.ctx();
+    if mid != ctx.g.selmon_id() {
+        ctx.g.set_selmon(mid);
+    }
+
+    let bar_h = ctx.g.cfg.bar_height.max(1);
+    let in_bar = ctx
+        .g
+        .selmon()
+        .is_some_and(|m| m.showbar && root_y >= m.by && root_y < m.by + bar_h);
+    if !in_bar {
+        return None;
+    }
+
+    let mon = ctx.g.selmon().cloned()?;
+    let local_x = root_x - mon.monitor_rect.x;
+    let pos = bar_position_at_x(&mon, &ctx, local_x);
+    if reset_start_menu && pos == BarPosition::StartMenu {
+        crate::bar::reset_bar(&mut ctx);
+    }
+
+    let gesture = if pos == BarPosition::StatusText {
+        ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
+    } else {
+        bar_position_to_gesture(pos)
+    };
+    if let Some(m) = ctx.g.selmon_mut() {
+        m.gesture = gesture;
+    }
+
+    Some(pos)
+}
+
+fn dispatch_wayland_bar_click(
+    wm: &mut Wm,
+    pos: BarPosition,
+    button_code: u32,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+) {
+    let Some(button_code) = wayland_button_to_wm_button(button_code) else {
+        return;
+    };
+    let Some(button) = MouseButton::from_u8(button_code) else {
+        return;
+    };
+
+    let mut ctx = wm.ctx();
+    dispatch_wayland_bar_button(&mut ctx, pos, button, root_x, root_y, clean_state);
+}
+
+fn dispatch_wayland_bar_scroll(
+    wm: &mut Wm,
+    pos: BarPosition,
+    delta: f64,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+) {
+    let button = if delta > 0.0 {
+        MouseButton::ScrollUp
+    } else {
+        MouseButton::ScrollDown
+    };
+    let mut ctx = wm.ctx();
+    dispatch_wayland_bar_button(&mut ctx, pos, button, root_x, root_y, clean_state);
 }
 
 fn dispatch_wayland_bar_button(
