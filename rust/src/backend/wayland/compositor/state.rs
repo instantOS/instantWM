@@ -267,7 +267,8 @@ impl WaylandState {
             })
             .collect();
         for (window, geo, bw) in updates {
-            // Offset by border_width: content sits inside the drawn border.
+            // map_element positions the window GEOMETRY at the given
+            // location (Smithay offsets by geometry().loc internally).
             self.space
                 .map_element(window.clone(), (geo.x + bw, geo.y + bw), false);
             if let Some(toplevel) = window.toplevel() {
@@ -324,9 +325,8 @@ impl WaylandState {
 
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {
-            // In X11, the server draws borders outside the client area.
-            // In Wayland we draw borders ourselves, so we offset the surface
-            // position by border_width so the content sits inside the border.
+            // map_element positions the window GEOMETRY at the given
+            // location (Smithay offsets by geometry().loc internally).
             let bw = self
                 .globals()
                 .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
@@ -473,13 +473,19 @@ impl WaylandState {
             let Some(loc) = self.space.element_location(window) else {
                 continue;
             };
+            // For popups: element_location is the GEOMETRY origin, but popup
+            // surface positions from Window::surface_under are relative to
+            // the SURFACE origin.  Adjust by the CSD geometry offset.
+            let geo_offset = window.geometry().loc;
+            let surface_origin = loc - geo_offset;
             if let Some(result) =
-                window.surface_under(point - loc.to_f64(), WindowSurfaceType::POPUP)
+                window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::POPUP)
             {
-                return Some((result.0, result.1 + loc));
+                return Some((result.0, result.1 + surface_origin));
             }
         }
         // Second pass: toplevel + subsurfaces.
+        // No geometry offset needed — clients handle their own CSD offset.
         if let Some((window, loc)) = self.space.element_under(point) {
             if let Some(result) =
                 window.surface_under(point - loc.to_f64(), WindowSurfaceType::TOPLEVEL)
