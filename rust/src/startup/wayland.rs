@@ -193,6 +193,16 @@ pub fn run() -> ! {
                         let root_y = pointer_location.y.round() as i32;
                         let _ = update_wayland_bar_hit_state(&mut wm, root_x, root_y, false);
 
+                        // Drive tag-drag state machine on motion.
+                        if wm.g.tag_drag.active {
+                            let mut ctx = wm.ctx();
+                            if !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y) {
+                                // Cursor left the bar — finish the drag.
+                                let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+                                crate::mouse::drag_tag_finish(&mut ctx, mod_state);
+                            }
+                        }
+
                         // Check all windows (top-to-bottom) for popups first,
                         // then fall back to the toplevel under the pointer.
                         // Popups can extend beyond their parent window's bounds,
@@ -249,6 +259,17 @@ pub fn run() -> ! {
                                 .element_under(pointer_location)
                                 .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()));
                             keyboard_handle.set_focus(state, keyboard_focus, serial);
+                        } else if event.state() == smithay::backend::input::ButtonState::Released {
+                            // Drive tag-drag state machine on release.
+                            let released_btn = wayland_button_to_wm_button(event.button_code())
+                                .and_then(MouseButton::from_u8);
+                            if wm.g.tag_drag.active
+                                && released_btn == Some(wm.g.tag_drag.button)
+                            {
+                                let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+                                let mut ctx = wm.ctx();
+                                crate::mouse::drag_tag_finish(&mut ctx, mod_state);
+                            }
                         }
                         pointer_handle.frame(state);
                     }

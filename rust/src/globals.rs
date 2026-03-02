@@ -135,6 +135,30 @@ impl Default for RuntimeConfig {
     }
 }
 
+/// State for an in-progress tag-bar drag (backend-agnostic).
+///
+/// On X11, the synchronous grab loop drives this. On Wayland, the calloop
+/// press/motion/release events drive it asynchronously.
+#[derive(Debug, Clone, Default)]
+pub struct TagDragState {
+    /// Whether a tag drag is currently active.
+    pub active: bool,
+    /// The initial tag bitmask that was clicked.
+    pub initial_tag: u32,
+    /// Monitor ID where the drag started.
+    pub mon_id: usize,
+    /// Monitor X origin (for converting root coords to local).
+    pub mon_mx: i32,
+    /// Last seen tag gesture index (-1 = none).
+    pub last_tag: i32,
+    /// Whether cursor is still on the bar.
+    pub cursor_on_bar: bool,
+    /// Last motion coordinates + modifier state (for release handling).
+    pub last_motion: Option<(i32, i32, u32)>,
+    /// The mouse button that started the drag.
+    pub button: MouseButton,
+}
+
 pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
@@ -161,6 +185,7 @@ pub struct Globals {
     pub doubledraw: bool,
     pub specialnext: SpecialNext,
     pub bar_dragging: bool,
+    pub tag_drag: TagDragState,
     pub status_text_width: i32,
     pub status_text: String,
 }
@@ -300,6 +325,7 @@ impl Default for Globals {
             doubledraw: false,
             specialnext: SpecialNext::None,
             bar_dragging: false,
+            tag_drag: TagDragState::default(),
             status_text_width: 0,
             status_text: String::new(),
         }

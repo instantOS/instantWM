@@ -656,144 +656,149 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 
 // ── drag_tag ──────────────────────────────────────────────────────────────────
 
-/// Drag across the tag bar to switch the view or move/follow a window to a tag.
+/// Begin a tag-bar drag. Returns `true` if a drag was started (current tag
+/// clicked with a selected window), `false` if the click was fully handled
+/// (view switch or no selection).
 ///
-/// * Plain click on a different tag   → [`view`]
-/// * Plain click on the current tag   → drag; release with `Shift` → [`set_client_tag`],
-///   `Control` → [`tag_all`], no modifier → [`follow_tag`]
-///
-/// Exits without action if the pointer leaves the bar during the drag.
-pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
-    let (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx) = {
-        let selmon_id = ctx.g.selmon_id();
-        let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
+/// On Wayland the caller should return after this — the calloop will drive
+/// [`drag_tag_motion`] and [`drag_tag_finish`].  On X11 the caller enters a
+/// grab loop that calls those two functions synchronously.
+pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -> bool {
+    let selmon_id = ctx.g.selmon_id();
+    let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
 
-        let initial_tag = match bar_pos {
-            BarPosition::Tag(idx) => 1u32 << (idx as u32),
-            _ => {
-                let Some((ptr_x, _)) = get_root_ptr(ctx) else {
-                    return;
-                };
-                ctx.g
-                    .monitors
-                    .get(selmon_id)
-                    .and_then(|mon| {
-                        let local_x = ptr_x - mon.monitor_rect.x;
-                        match bar_position_at_x(mon, ctx, local_x) {
-                            BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
-                            _ => None,
-                        }
-                    })
-                    .unwrap_or(0)
-            }
-        };
-
-        let current_tagset = ctx.g.selmon().map(|m| m.tagset[m.seltags as usize]);
-        let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset.unwrap_or(0);
-        let has_sel = ctx.g.selmon().and_then(|m| m.sel).is_some();
-        (initial_tag, is_current_tag, has_sel, selmon_id, mon_mx)
+    let initial_tag = match bar_pos {
+        BarPosition::Tag(idx) => 1u32 << (idx as u32),
+        _ => {
+            let ptr_x = get_root_ptr(ctx).map(|(x, _)| x).unwrap_or(0);
+            ctx.g
+                .monitors
+                .get(selmon_id)
+                .and_then(|mon| {
+                    let local_x = ptr_x - mon.monitor_rect.x;
+                    match bar_position_at_x(mon, ctx, local_x) {
+                        BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
+                        _ => None,
+                    }
+                })
+                .unwrap_or(0)
+        }
     };
 
+    let current_tagset = ctx.g.selmon().map(|m| m.tagset[m.seltags as usize]);
+    let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset.unwrap_or(0);
+    let has_sel = ctx.g.selmon().and_then(|m| m.sel).is_some();
+
+    // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
         view(ctx, TagMask::from_bits(initial_tag));
-        return;
+        return false;
     }
+    // No selected window → nothing to drag.
     if !has_sel {
-        return;
-    }
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
+        return false;
     }
 
-    if !grab_pointer(ctx, 2) {
-        return;
+    // Initialise the drag state machine.
+    ctx.g.tag_drag = crate::globals::TagDragState {
+        active: true,
+        initial_tag,
+        mon_id: selmon_id,
+        mon_mx,
+        last_tag: -1,
+        cursor_on_bar: true,
+        last_motion: None,
+        button: btn,
+    };
+    ctx.g.bar_dragging = true;
+    draw_bar(ctx, selmon_id);
+    true
+}
+
+/// Process a single motion event during an active tag drag.
+///
+/// Updates gesture highlighting and detects when the cursor leaves the bar.
+/// Returns `false` if the cursor left the bar (caller should finish the drag).
+pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+    if !ctx.g.tag_drag.active {
+        return false;
     }
 
-    {
-        ctx.g.bar_dragging = true;
+    let selmon_id = ctx.g.tag_drag.mon_id;
+    let mon_mx = ctx.g.tag_drag.mon_mx;
+
+    let bar_bottom = ctx
+        .g
+        .selmon()
+        .map(|m| m.by + ctx.g.cfg.bar_height + 1)
+        .unwrap_or(9999);
+
+    if root_y > bar_bottom {
+        ctx.g.tag_drag.cursor_on_bar = false;
+        return false;
+    }
+
+    // Store last motion for release handling.  Modifier state is not available
+    // from root coords alone; the caller sets it via drag_tag_finish.
+    ctx.g.tag_drag.last_motion = Some((root_x, root_y, 0));
+
+    let local_x = root_x - mon_mx;
+    let new_gesture = ctx
+        .g
+        .monitors
+        .get(selmon_id)
+        .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x)))
+        .unwrap_or(Gesture::None);
+    let gesture_key = match new_gesture {
+        Gesture::Tag(idx) => idx as i32,
+        _ => -1,
+    };
+
+    if ctx.g.tag_drag.last_tag != gesture_key {
+        ctx.g.tag_drag.last_tag = gesture_key;
+        if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
+            mon.gesture = new_gesture;
+        }
         draw_bar(ctx, selmon_id);
     }
+    true
+}
 
-    let mut cursor_on_bar = true;
-    let mut last_tag: i32 = -1;
-    let mut last_time: u32 = 0;
-    let mut last_motion: Option<(i32, i32, u16)> = None;
-
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
-                    continue;
-                }
-                last_time = m.time;
-
-                last_motion = Some((m.event_x as i32, m.event_y as i32, u16::from(m.state)));
-
-                let bar_bottom = {
-                    ctx.g
-                        .selmon()
-                        .map(|m| m.by + ctx.g.cfg.bar_height + 1)
-                        .unwrap_or(9999)
-                };
-                if m.event_y as i32 > bar_bottom {
-                    cursor_on_bar = false;
-                    break;
-                }
-
-                let local_x = m.event_x as i32 - mon_mx;
-                let new_gesture = ctx
-                    .g
-                    .monitors
-                    .get(selmon_id)
-                    .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x)))
-                    .unwrap_or(Gesture::None);
-                let gesture_key = match new_gesture {
-                    Gesture::Tag(idx) => idx as i32,
-                    _ => -1,
-                };
-
-                if last_tag != gesture_key {
-                    last_tag = gesture_key;
-                    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
-                        mon.gesture = new_gesture;
-                    }
-                    draw_bar(ctx, selmon_id);
-                }
-            }
-            _ => {}
-        }
+/// Finish a tag drag: apply the action based on the final position and
+/// modifier keys held at release time.
+///
+/// `modifier_state` is the X11-style modifier bitmask at release time
+/// (Shift, Control, …).
+pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
+    if !ctx.g.tag_drag.active {
+        return;
     }
 
-    ungrab_ctx(ctx);
+    let selmon_id = ctx.g.tag_drag.mon_id;
+    let cursor_on_bar = ctx.g.tag_drag.cursor_on_bar;
+    let last_motion = ctx.g.tag_drag.last_motion;
+
+    // Clear state first so re-entrant calls are safe.
+    ctx.g.tag_drag.active = false;
 
     if cursor_on_bar {
-        if let Some((x, _, state)) = last_motion {
-            let position = {
-                ctx.g
-                    .selmon()
-                    .map(|mon| {
-                        let local_x = x - mon.monitor_rect.x;
-                        bar_position_at_x(mon, ctx, local_x)
-                    })
-                    .unwrap_or(BarPosition::Root)
-            };
+        if let Some((x, _, _)) = last_motion {
+            let position = ctx
+                .g
+                .selmon()
+                .map(|mon| {
+                    let local_x = x - mon.monitor_rect.x;
+                    bar_position_at_x(mon, ctx, local_x)
+                })
+                .unwrap_or(BarPosition::Root);
 
             if let BarPosition::Tag(tag_idx) = position {
                 let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
-                let state = state as u32;
-                if (state & ModMask::SHIFT.bits() as u32) != 0 {
+                if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
                     if let Some(win) = ctx.g.monitor(selmon_id).and_then(|m| m.sel) {
                         set_client_tag(ctx, win, tag_mask);
                     }
-                } else if (state & ModMask::CONTROL.bits() as u32) != 0 {
+                } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
                     tag_all(ctx, tag_mask);
                 } else if let Some(win) = ctx.g.monitor(selmon_id).and_then(|m| m.sel) {
                     follow_tag(ctx, win, tag_mask);
@@ -802,13 +807,81 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
         }
     }
 
-    {
-        ctx.g.bar_dragging = false;
-        if let Some(mon) = ctx.g.monitor_mut(selmon_id) {
-            mon.gesture = Gesture::None;
-        }
-        draw_bar(ctx, selmon_id);
+    ctx.g.bar_dragging = false;
+    if let Some(mon) = ctx.g.monitor_mut(selmon_id) {
+        mon.gesture = Gesture::None;
     }
+    draw_bar(ctx, selmon_id);
+}
+
+/// Drag across the tag bar to switch the view or move/follow a window to a tag.
+///
+/// * Plain click on a different tag   → [`view`]
+/// * Plain click on the current tag   → drag; release with `Shift` → [`set_client_tag`],
+///   `Control` → [`tag_all`], no modifier → [`follow_tag`]
+///
+/// Exits without action if the pointer leaves the bar during the drag.
+///
+/// On X11, runs a synchronous grab loop.  On Wayland, starts the drag and
+/// returns immediately — the calloop drives [`drag_tag_motion`] and
+/// [`drag_tag_finish`].
+pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
+    if !drag_tag_begin(ctx, bar_pos, btn) {
+        return;
+    }
+
+    // On Wayland the calloop drives motion/finish asynchronously.
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
+
+    // ── X11 synchronous grab loop ─────────────────────────────────────────
+    if !grab_pointer(ctx, 2) {
+        drag_tag_finish(ctx, 0);
+        return;
+    }
+
+    let mut last_time: u32 = 0;
+
+    loop {
+        let Some(event) = wait_event(ctx) else {
+            break;
+        };
+        match &event {
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    // Capture modifier state at release and finish.
+                    let modifier_state = u16::from(br.state) as u32;
+                    ungrab_ctx(ctx);
+                    drag_tag_finish(ctx, modifier_state);
+                    return;
+                }
+            }
+            x11rb::protocol::Event::MotionNotify(m) => {
+                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
+                    continue;
+                }
+                last_time = m.time;
+
+                // Update stored modifier state from latest motion.
+                let root_x = m.event_x as i32;
+                let root_y = m.event_y as i32;
+                let mod_state = u16::from(m.state) as u32;
+
+                // Store motion with modifier state for release handling.
+                ctx.g.tag_drag.last_motion = Some((root_x, root_y, mod_state));
+
+                if !drag_tag_motion(ctx, root_x, root_y) {
+                    // Cursor left the bar — abort.
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    ungrab_ctx(ctx);
+    drag_tag_finish(ctx, 0);
 }
 
 // ── window_title_mouse_handler ────────────────────────────────────────────────

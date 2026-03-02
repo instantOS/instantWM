@@ -30,9 +30,10 @@ pub enum Cursor {
 }
 
 /// Mouse buttons recognized by the window manager.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MouseButton {
     /// Left mouse button.
+    #[default]
     Left = 1,
     /// Middle mouse button.
     Middle = 2,
