@@ -124,14 +124,8 @@ pub fn update_bars(ctx: &mut WmCtx) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bh = ctx.g.cfg.bar_height;
         let showsystray = ctx.g.cfg.showsystray;
-        let status_bg = parse_color_to_u32(
-            ctx.g
-                .cfg
-                .statusbarcolors
-                .get(1)
-                .copied()
-                .unwrap_or("#121212"),
-        );
+        let status_bg =
+            parse_color_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
         let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
         let root = ctx.g.cfg.root;
         let selmon = ctx.g.selmon_id();

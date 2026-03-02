@@ -49,160 +49,102 @@ pub(super) mod palette {
     pub const RED_HOVER: &str = "#e05951";
 }
 
-// ---------------------------------------------------------------------------
-// Scheme enums — used as typed indices into the color tables
-// ---------------------------------------------------------------------------
-
-/// Whether the cursor is hovering over the element.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeHover {
-    NoHover = 0,
-    Hover = 1,
-}
-
-/// State of a tag button in the bar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeTag {
-    /// No clients on this tag.
-    Inactive = 0,
-    /// Has clients but not focused on this monitor.
-    Filled = 1,
-    /// Active tag on the focused monitor.
-    Focus = 2,
-    /// Active tag on an unfocused monitor.
-    NoFocus = 3,
-    /// Urgent / special state.
-    Empty = 4,
-}
-
-/// State of a window title button in the bar.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeWin {
-    Focus = 0,
-    Normal = 1,
-    Minimized = 2,
-    Sticky = 3,
-    StickyFocus = 4,
-    Overlay = 5,
-    OverlayFocus = 6,
-}
-
-/// State of the close button widget.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeClose {
-    Normal = 0,
-    Locked = 1,
-    Fullscreen = 2,
-}
-
-/// State of the window border.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SchemeBorder {
-    Normal = 0,
-    TileFocus = 1,
-    FloatFocus = 2,
-    Snap = 3,
-}
-
-/// Which color component to read from a scheme triplet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColIndex {
-    Fg = 0,
-    Bg = 1,
-    Detail = 2,
-}
+use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 
 // ---------------------------------------------------------------------------
 // Color table builders
-// Produce Vec<Vec<Vec<&str>>> in the shape [hover][scheme][col] that the
-// rest of the WM consumes.  The inner vec is always [fg, bg, detail].
 // ---------------------------------------------------------------------------
 
 /// Tag bar color table: `[hover][SchemeTag][ColIndex]`
-pub fn get_tag_colors() -> Vec<Vec<Vec<&'static str>>> {
+pub fn get_tag_colors() -> crate::types::TagColorConfigs {
     use palette::*;
-    // Each row is [fg, bg, detail]
-    vec![
-        // SchemeHover::NoHover
-        vec![
-            vec![TEXT, BG, BG],                // Inactive
-            vec![TEXT, BG_ACCENT, LIGHT_BLUE], // Filled
-            vec![BLACK, LIGHT_GREEN, GREEN],   // Focus
-            vec![BLACK, LIGHT_YELLOW, YELLOW], // NoFocus
-            vec![BLACK, LIGHT_RED, RED],       // Empty
-        ],
-        // SchemeHover::Hover
-        vec![
-            vec![TEXT, BG_HOVER, BG],                      // Inactive
-            vec![TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER], // Filled
-            vec![BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER],   // Focus
-            vec![BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER], // NoFocus
-            vec![BLACK, LIGHT_RED_HOVER, RED_HOVER],       // Empty
-        ],
-    ]
+    crate::types::TagColorConfigs {
+        no_hover: crate::types::TagColorSet {
+            inactive: crate::types::ColorSchemeStrings::new(TEXT, BG, BG),
+            filled: crate::types::ColorSchemeStrings::new(TEXT, BG_ACCENT, LIGHT_BLUE),
+            focus: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_GREEN, GREEN),
+            nofocus: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_YELLOW, YELLOW),
+            empty: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_RED, RED),
+        },
+        hover: crate::types::TagColorSet {
+            inactive: crate::types::ColorSchemeStrings::new(TEXT, BG_HOVER, BG),
+            filled: crate::types::ColorSchemeStrings::new(TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER),
+            focus: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER),
+            nofocus: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
+            empty: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
+        },
+    }
 }
 
 /// Window title color table: `[hover][SchemeWin][ColIndex]`
-pub fn get_window_colors() -> Vec<Vec<Vec<&'static str>>> {
+pub fn get_window_colors() -> crate::types::WindowColorConfigs {
     use palette::*;
-    vec![
-        // SchemeHover::NoHover
-        vec![
-            vec![TEXT, BG_ACCENT, LIGHT_BLUE], // Focus
-            vec![TEXT, BG, BG],                // Normal
-            vec![BG_ACCENT, BG, BG],           // Minimized
-            vec![BLACK, LIGHT_YELLOW, YELLOW], // Sticky
-            vec![BLACK, LIGHT_GREEN, GREEN],   // StickyFocus
-            vec![BLACK, LIGHT_YELLOW, YELLOW], // Overlay
-            vec![BLACK, LIGHT_GREEN, GREEN],   // OverlayFocus
-        ],
-        // SchemeHover::Hover
-        vec![
-            vec![TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER], // Focus
-            vec![TEXT, BG_HOVER, BG_HOVER],                // Normal
-            vec![BG_ACCENT_HOVER, BG, BG],                 // Minimized
-            vec![BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER], // Sticky
-            vec![BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER],   // StickyFocus
-            vec![BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER], // Overlay
-            vec![BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER],   // OverlayFocus
-        ],
-    ]
+    crate::types::WindowColorConfigs {
+        no_hover: crate::types::WindowColorSet {
+            focus: crate::types::ColorSchemeStrings::new(TEXT, BG_ACCENT, LIGHT_BLUE),
+            normal: crate::types::ColorSchemeStrings::new(TEXT, BG, BG),
+            minimized: crate::types::ColorSchemeStrings::new(BG_ACCENT, BG, BG),
+            sticky: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_YELLOW, YELLOW),
+            sticky_focus: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_GREEN, GREEN),
+            overlay: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_YELLOW, YELLOW),
+            overlay_focus: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_GREEN, GREEN),
+        },
+        hover: crate::types::WindowColorSet {
+            focus: crate::types::ColorSchemeStrings::new(TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER),
+            normal: crate::types::ColorSchemeStrings::new(TEXT, BG_HOVER, BG_HOVER),
+            minimized: crate::types::ColorSchemeStrings::new(BG_ACCENT_HOVER, BG, BG),
+            sticky: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
+            sticky_focus: crate::types::ColorSchemeStrings::new(
+                BLACK,
+                LIGHT_GREEN_HOVER,
+                GREEN_HOVER,
+            ),
+            overlay: crate::types::ColorSchemeStrings::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
+            overlay_focus: crate::types::ColorSchemeStrings::new(
+                BLACK,
+                LIGHT_GREEN_HOVER,
+                GREEN_HOVER,
+            ),
+        },
+    }
 }
 
 /// Close button color table: `[hover][SchemeClose][ColIndex]`
-pub fn get_close_button_colors() -> Vec<Vec<Vec<&'static str>>> {
+pub fn get_close_button_colors() -> crate::types::CloseButtonColorConfigs {
     use palette::*;
-    vec![
-        // SchemeHover::NoHover
-        vec![
-            vec![TEXT, LIGHT_RED, RED],       // Normal
-            vec![TEXT, LIGHT_YELLOW, YELLOW], // Locked
-            vec![TEXT, LIGHT_RED, RED],       // Fullscreen
-        ],
-        // SchemeHover::Hover
-        vec![
-            vec![TEXT, LIGHT_RED_HOVER, RED_HOVER],       // Normal
-            vec![TEXT, LIGHT_YELLOW_HOVER, YELLOW_HOVER], // Locked
-            vec![TEXT, LIGHT_RED_HOVER, RED_HOVER],       // Fullscreen
-        ],
-    ]
+    crate::types::CloseButtonColorConfigs {
+        no_hover: crate::types::CloseButtonColorSet {
+            normal: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_RED, RED),
+            locked: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_YELLOW, YELLOW),
+            fullscreen: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_RED, RED),
+        },
+        hover: crate::types::CloseButtonColorSet {
+            normal: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_RED_HOVER, RED_HOVER),
+            locked: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
+            fullscreen: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_RED_HOVER, RED_HOVER),
+        },
+    }
 }
 
-/// Border colors: `[SchemeBorder as usize]` → single color string.
-pub fn get_border_colors() -> Vec<&'static str> {
+/// Border colors.
+pub fn get_border_colors() -> crate::types::BorderColorConfig {
     use palette::*;
-    vec![
-        BG_ACCENT,    // Normal
-        LIGHT_BLUE,   // TileFocus
-        LIGHT_GREEN,  // FloatFocus
-        LIGHT_YELLOW, // Snap
-    ]
+    crate::types::BorderColorConfig {
+        normal: BG_ACCENT.to_string(),
+        tile_focus: LIGHT_BLUE.to_string(),
+        float_focus: LIGHT_GREEN.to_string(),
+        snap: LIGHT_YELLOW.to_string(),
+    }
 }
 
-/// Status bar colors: `[fg, bg, detail]`
-pub fn get_status_bar_colors() -> Vec<&'static str> {
+/// Status bar colors.
+pub fn get_status_bar_colors() -> crate::types::StatusColorConfig {
     use palette::*;
-    vec![TEXT, BG, BG]
+    crate::types::StatusColorConfig {
+        fg: TEXT.to_string(),
+        bg: BG.to_string(),
+        detail: BG.to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +277,9 @@ pub fn border_color(scheme: SchemeBorder) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// Fonts used for bar text rendering (in order of preference / fallback).
-pub fn get_fonts() -> Vec<&'static str> {
-    vec!["Inter-Regular:size=12", "Fira Code Nerd Font:size=12"]
+pub fn get_fonts() -> Vec<String> {
+    vec![
+        "Inter-Regular:size=12".to_string(),
+        "Fira Code Nerd Font:size=12".to_string(),
+    ]
 }

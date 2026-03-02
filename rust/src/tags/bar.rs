@@ -139,7 +139,7 @@ fn should_skip(monitor: &Monitor, tag_index: usize, occupied: u32) -> bool {
 /// Choose between the regular name and the alt-name for display.
 fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
     if show_alt && !tag.alt_name.is_empty() {
-        tag.alt_name
+        tag.alt_name.as_str()
     } else {
         tag.name.as_str()
     }

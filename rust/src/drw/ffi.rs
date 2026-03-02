@@ -655,6 +655,14 @@ extern "C" {
         result: *mut XftColor,
     ) -> c_int;
 
+    pub fn XftColorAllocValue(
+        display: *mut libc::c_void,
+        visual: *mut libc::c_void,
+        cmap: c_ulong,
+        color: *mut XRenderColor,
+        result: *mut XftColor,
+    ) -> c_int;
+
     pub fn XftFontMatch(
         display: *mut libc::c_void,
         screen: c_int,
@@ -754,6 +762,18 @@ pub unsafe fn XftColorAllocName(
     _visual: *mut libc::c_void,
     _cmap: c_ulong,
     _name: *const c_char,
+    _result: *mut XftColor,
+) -> c_int {
+    0
+}
+
+#[cfg(not(feature = "x11_backend"))]
+#[allow(non_snake_case)]
+pub unsafe fn XftColorAllocValue(
+    _display: *mut libc::c_void,
+    _visual: *mut libc::c_void,
+    _cmap: c_ulong,
+    _color: *mut XRenderColor,
     _result: *mut XftColor,
 ) -> c_int {
     0

@@ -20,7 +20,7 @@ use x11rb::CURRENT_TIME;
 /// Returns an error if X11 operations fail (e.g., connection lost).
 pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
     if ctx.backend_kind() == BackendKind::Wayland {
-        return Ok(());
+        return focus_wayland(ctx, win);
     }
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         if ctx.g.monitors.is_empty() {
@@ -105,6 +105,64 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         conn.flush_ctx()?;
         Ok(())
     }
+}
+
+/// Wayland focus implementation: pick a target window, update mon.sel,
+/// tell the backend, and redraw bars.
+fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
+    if ctx.g.monitors.is_empty() {
+        return Ok(());
+    }
+    let sel_mon_id = ctx.g.selmon_id();
+    let Some(mon) = ctx.g.selmon() else {
+        return Ok(());
+    };
+
+    let selected = mon.selected_tag_mask();
+
+    // Resolve target: use the requested window if visible, otherwise walk the
+    // stack to find the first visible non-hidden client.
+    let mut target = win.filter(|w| {
+        ctx.g
+            .clients
+            .get(w)
+            .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
+            .unwrap_or(false)
+    });
+
+    if target.is_none() {
+        let mon = ctx.g.selmon().unwrap();
+        let mut stack = mon.stack;
+        while let Some(c_win) = stack {
+            let Some(c) = ctx.g.clients.get(&c_win) else {
+                break;
+            };
+            if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
+                target = Some(c_win);
+                break;
+            }
+            stack = c.snext;
+        }
+    }
+
+    let current_sel = ctx.g.selmon().and_then(|m| m.sel);
+    let selection_state_changed = current_sel.is_none() != target.is_none();
+
+    if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
+        mon.sel = target;
+    }
+
+    if selection_state_changed {
+        // Desktop keybinds change based on whether a window is selected.
+        crate::keyboard::grab_keys(ctx);
+    }
+
+    if let Some(w) = target {
+        ctx.backend.set_focus(w);
+    }
+
+    draw_bars(ctx);
+    Ok(())
 }
 
 /// Best-effort focus.

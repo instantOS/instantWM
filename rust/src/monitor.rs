@@ -545,7 +545,15 @@ pub fn update_geom() -> bool {
     let mut bar = BarState::default();
     let mut focus = FocusState::default();
     let backend = BackendRef::from_x11(conn, x11.screen_num);
-    let mut ctx = WmCtx::new(g, backend, &mut running, &mut bar, &mut focus);
+    let mut bar_painter = crate::bar::wayland::WaylandBarPainter::default();
+    let mut ctx = WmCtx::new(
+        g,
+        backend,
+        &mut running,
+        &mut bar,
+        &mut bar_painter,
+        &mut focus,
+    );
     update_geom_ctx(&mut ctx)
 }
 

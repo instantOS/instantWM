@@ -17,6 +17,7 @@ pub struct WmCtx<'a> {
     pub backend: BackendRef<'a>,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
+    pub bar_painter: &'a mut crate::bar::wayland::WaylandBarPainter,
     pub focus: &'a mut FocusState,
 }
 
@@ -33,6 +34,7 @@ impl<'a> WmCtx<'a> {
         backend: BackendRef<'a>,
         running: &'a mut bool,
         bar: &'a mut BarState,
+        bar_painter: &'a mut crate::bar::wayland::WaylandBarPainter,
         focus: &'a mut FocusState,
     ) -> Self {
         Self {
@@ -40,6 +42,7 @@ impl<'a> WmCtx<'a> {
             backend,
             running,
             bar,
+            bar_painter,
             focus,
         }
     }

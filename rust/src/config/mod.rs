@@ -25,6 +25,8 @@
 pub mod appearance;
 pub mod buttons;
 pub mod commands;
+pub mod config_doc;
+pub mod config_toml;
 pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
@@ -36,10 +38,11 @@ pub mod xcommands;
 // not all of them are referenced inside this crate, but they are part of the
 // intended surface area for anyone reading or extending the config.
 #[allow(unused_imports)]
+pub use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+#[allow(unused_imports)]
 pub use appearance::{
     border_color, close_button_color, get_border_colors, get_close_button_colors,
-    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color, window_color, ColIndex,
-    SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin,
+    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color, window_color,
 };
 #[allow(unused_imports)]
 pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};
@@ -74,7 +77,7 @@ pub use mod_consts::{BORDERPX, MAX_TAGLEN, TAGMASK};
 
 use crate::types::MAX_TAGS;
 
-/// Default tag names (used when no xresources override is set).
+/// Default tag names (used when no config override is set).
 ///
 /// There are [`MAX_TAGS`] entries — the last one (`"s"`) is the scratchpad tag.
 pub fn get_tags_default() -> [&'static str; MAX_TAGS] {
@@ -90,63 +93,17 @@ pub fn get_tags() -> Vec<String> {
 }
 
 /// Alternative (icon) tag names shown when alt-tag mode is active.
-pub fn get_tags_alt() -> Vec<&'static str> {
-    vec!["", "{}", "$", "", "", "", "", "", ""]
-}
-
-// ---------------------------------------------------------------------------
-// X resource preferences
-// ---------------------------------------------------------------------------
-
-use crate::types::{ResourcePref, ResourceType};
-
-/// Xresources keys that the WM reads on startup (and on reload).
-pub fn get_resources() -> Vec<ResourcePref> {
+pub fn get_tags_alt() -> Vec<String> {
     vec![
-        ResourcePref {
-            name: "barheight",
-            rtype: ResourceType::Integer,
-        },
-        ResourcePref {
-            name: "font",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag1",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag2",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag3",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag4",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag5",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag6",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag7",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag8",
-            rtype: ResourceType::String,
-        },
-        ResourcePref {
-            name: "tag9",
-            rtype: ResourceType::String,
-        },
+        "".to_string(),
+        "{}".to_string(),
+        "$".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
+        "".to_string(),
     ]
 }
 
@@ -154,11 +111,14 @@ pub fn get_resources() -> Vec<ResourcePref> {
 // Config struct
 // ---------------------------------------------------------------------------
 
-use crate::types::{Button, Key, Rule, XCommand};
+use crate::types::{
+    BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
+    TagColorConfigs, WindowColorConfigs, XCommand,
+};
 
 /// All WM configuration in one place.
 ///
-/// Built by [`init_config`] and consumed by `init_globals` in `main.rs`.
+/// Built by [`init_config`] and consumed by `init_globals` in `startup::x11`.
 /// Fields are public so `init_globals` can move them into `Globals` without
 /// extra getters.
 #[derive(Debug, Clone)]
@@ -199,20 +159,20 @@ pub struct Config {
 
     // --- Tags ---
     pub tag_names: Vec<String>,
-    pub tag_alt_names: Vec<&'static str>,
+    pub tag_alt_names: Vec<String>,
     /// Color table for tag buttons: `[hover][SchemeTag][ColIndex]`
-    pub tag_colors: Vec<Vec<Vec<&'static str>>>,
+    pub tag_colors: TagColorConfigs,
     pub num_tags: usize,
 
     // --- Color tables ---
     /// `[hover][SchemeWin][ColIndex]`
-    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
+    pub windowcolors: WindowColorConfigs,
     /// `[hover][SchemeClose][ColIndex]`
-    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
+    pub closebuttoncolors: CloseButtonColorConfigs,
     /// `[SchemeBorder as usize]`
-    pub bordercolors: Vec<&'static str>,
+    pub bordercolors: BorderColorConfig,
     /// `[fg, bg, detail]`
-    pub statusbarcolors: Vec<&'static str>,
+    pub statusbarcolors: StatusColorConfig,
 
     // --- Bindings ---
     pub keys: Vec<Key>,
@@ -220,8 +180,8 @@ pub struct Config {
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub commands: Vec<XCommand>,
-    pub resources: Vec<ResourcePref>,
-    pub fonts: Vec<&'static str>,
+    pub resources: Vec<String>,
+    pub fonts: Vec<String>,
 
     // --- External commands ---
     pub external_commands: ExternalCommands,
@@ -233,10 +193,10 @@ pub struct Config {
 
 /// Build the default [`Config`].
 ///
-/// Called once from `init_globals` in `main.rs`.  All values here are the
-/// compile-time defaults; some are later overridden by xresources.
+/// Called once from `init_globals` in `startup::x11`.  All values here are the
+/// compile-time defaults; some are later overridden by config files.
 pub fn init_config() -> Config {
-    Config {
+    let mut cfg = Config {
         // --- Window geometry ---
         borderpx: BORDERPX,
         snap: 32,
@@ -275,10 +235,17 @@ pub fn init_config() -> Config {
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
         commands: xcommands::get_xcommands(),
-        resources: get_resources(),
+        resources: Vec::new(),
         fonts: appearance::get_fonts(),
 
         // --- External commands ---
         external_commands: default_commands(),
+    };
+
+    // Load config from TOML file - this merges with defaults set above
+    if let Err(err) = config_toml::apply_config_overrides(&mut cfg) {
+        eprintln!("instantwm: config load failed, using defaults: {}", err);
     }
+
+    cfg
 }

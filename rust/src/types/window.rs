@@ -1,6 +1,6 @@
 //! Window system and resource types.
 //!
-//! Types for keyboard bindings, mouse buttons, X commands, and X resources.
+//! Types for keyboard bindings, mouse buttons, and X commands.
 
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -132,26 +132,6 @@ pub struct XCommand {
     pub cmd: &'static str,
     /// Action function taking context and argument string.
     pub action: fn(&mut WmCtx, &str),
-}
-
-/// X resource value type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResourceType {
-    /// String value.
-    String,
-    /// Integer value.
-    Integer,
-    /// Float value.
-    Float,
-}
-
-/// X resource preference definition.
-#[derive(Debug, Clone)]
-pub struct ResourcePref {
-    /// Resource name.
-    pub name: &'static str,
-    /// Resource type.
-    pub rtype: ResourceType,
 }
 
 /// System tray state.

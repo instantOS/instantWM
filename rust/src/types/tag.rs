@@ -3,7 +3,7 @@
 //! Types for workspace tags, layouts, and tag management.
 
 use crate::layouts::LayoutKind;
-use crate::types::color::TagSchemes;
+use crate::types::color::{TagColorConfigs, TagSchemes};
 
 /// Identifies which layout slot (primary or secondary) is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -146,7 +146,7 @@ pub struct Tag {
     /// Display name for the tag.
     pub name: String,
     /// Alternative name (shown when `show_alt` is true).
-    pub alt_name: &'static str,
+    pub alt_name: String,
     /// Number of clients in the master area for tiling layouts.
     pub nmaster: i32,
     /// Master factor for tiling layouts (0.0 to 1.0).
@@ -161,7 +161,7 @@ impl Default for Tag {
     fn default() -> Self {
         Self {
             name: String::new(),
-            alt_name: "",
+            alt_name: String::new(),
             nmaster: 1,
             mfact: 0.55,
             showbar: true,
@@ -181,8 +181,8 @@ pub struct TagSet {
     /// this length; this value is used for mask/count helpers that don't
     /// have a monitor reference handy.
     pub num_tags: usize,
-    /// Raw colour strings from config/xresources, indexed [hover_state][type][colour_index].
-    pub colors: Vec<Vec<Vec<&'static str>>>,
+    /// Raw colour strings from config.
+    pub colors: TagColorConfigs,
     /// Compiled colour objects derived from `colors`.
     pub schemes: TagSchemes,
     /// Whether to display `alt_names` instead of `names`.

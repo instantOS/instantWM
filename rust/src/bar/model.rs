@@ -113,9 +113,13 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     }
 
     // ── Status text ───────────────────────────────────────────────────────
-    let status_hit_x = mon.work_rect.w - get_systray_width(ctx) as i32 - ctx.g.status_text_width
-        + ctx.g.cfg.horizontal_padding
-        - 2;
+    let systray_w = if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
+        0
+    } else {
+        get_systray_width(ctx) as i32
+    };
+    let status_hit_x =
+        mon.work_rect.w - systray_w - ctx.g.status_text_width + ctx.g.cfg.horizontal_padding - 2;
     if local_x > status_hit_x {
         return BarPosition::StatusText;
     }

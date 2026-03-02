@@ -12,7 +12,7 @@ pub struct XlibDisplay(pub *mut libc::c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
-/// Runtime configuration - values loaded from config and xresources
+/// Runtime configuration - values loaded from config
 /// These are set during initialization and updated on reload
 #[derive(Clone)]
 pub struct RuntimeConfig {
@@ -50,11 +50,11 @@ pub struct RuntimeConfig {
     pub windowschemes: WindowSchemes,
     pub closebuttonschemes: CloseButtonSchemes,
 
-    // Raw color strings for xresources override
-    pub windowcolors: Vec<Vec<Vec<&'static str>>>,
-    pub closebuttoncolors: Vec<Vec<Vec<&'static str>>>,
-    pub bordercolors: Vec<&'static str>,
-    pub statusbarcolors: Vec<&'static str>,
+    // Raw color strings for config override
+    pub windowcolors: WindowColorConfigs,
+    pub closebuttoncolors: CloseButtonColorConfigs,
+    pub bordercolors: BorderColorConfig,
+    pub statusbarcolors: StatusColorConfig,
 
     // Bindings
     pub keys: Vec<Key>,
@@ -64,9 +64,9 @@ pub struct RuntimeConfig {
     pub commands: Vec<XCommand>,
 
     // Resources
-    pub resources: Vec<ResourcePref>,
-    pub fonts: Vec<&'static str>,
-    pub xresourcesfont: String,
+    pub resources: Vec<String>,
+    pub fonts: Vec<String>,
+    pub config_font: String,
     pub instantmenumon: String,
 
     // External commands
@@ -111,10 +111,10 @@ impl Default for RuntimeConfig {
             statusscheme: None,
             windowschemes: WindowSchemes::default(),
             closebuttonschemes: CloseButtonSchemes::default(),
-            windowcolors: Vec::new(),
-            closebuttoncolors: Vec::new(),
-            bordercolors: Vec::new(),
-            statusbarcolors: Vec::new(),
+            windowcolors: WindowColorConfigs::default(),
+            closebuttoncolors: CloseButtonColorConfigs::default(),
+            bordercolors: BorderColorConfig::default(),
+            statusbarcolors: StatusColorConfig::default(),
             keys: Vec::new(),
             desktop_keybinds: Vec::new(),
             buttons: Vec::new(),
@@ -122,7 +122,7 @@ impl Default for RuntimeConfig {
             commands: Vec::new(),
             resources: Vec::new(),
             fonts: Vec::new(),
-            xresourcesfont: String::new(),
+            config_font: String::new(),
             instantmenumon: String::new(),
             external_commands: crate::config::commands::default_commands(),
             drw: None,
@@ -136,7 +136,7 @@ impl Default for RuntimeConfig {
 }
 
 pub struct Globals {
-    // Runtime configuration (loaded from config + xresources)
+    // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
 
     // Runtime state (changes during WM operation)
@@ -456,9 +456,9 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag>
             format!("{}", i + 1)
         };
         let alt_name = if i < cfg.tag_alt_names.len() {
-            cfg.tag_alt_names[i]
+            cfg.tag_alt_names[i].clone()
         } else {
-            ""
+            String::new()
         };
         let mut tag = crate::types::Tag::default();
         tag.name = name;

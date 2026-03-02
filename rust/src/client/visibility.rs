@@ -118,9 +118,8 @@ pub fn is_hidden(win: WindowId) -> bool {
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
 pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    let is_wayland = ctx.backend_kind() == BackendKind::Wayland;
+
     let current = match win {
         Some(w) => w,
         None => return,
@@ -142,20 +141,26 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
         (c.isfloating, c.is_fullscreen, c.isfakefullscreen, c.mon_id);
 
     if is_vis {
-        // Move the window to its stored on-screen position.
-        let Rect { x, y, w, h } = geo;
-        ctx.backend.resize_window(current, Rect { x, y, w, h });
-        ctx.backend.flush();
+        if is_wayland {
+            // Ensure the window is mapped in the compositor's space.
+            // The layout algorithm will position it afterward.
+            ctx.backend.map_window(current);
+        } else {
+            // Move the window to its stored on-screen position.
+            let Rect { x, y, w, h } = geo;
+            ctx.backend.resize_window(current, Rect { x, y, w, h });
+            ctx.backend.flush();
 
-        // For floating or non-tiling windows, also issue a full resize so the
-        // stored geometry is reflected in the X server's window extents.
-        let is_tiling = mon_id
-            .and_then(|mid| ctx.g.monitor(mid))
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(false);
+            // For floating or non-tiling windows, also issue a full resize so the
+            // stored geometry is reflected in the X server's window extents.
+            let is_tiling = mon_id
+                .and_then(|mid| ctx.g.monitor(mid))
+                .map(|mon| mon.is_tiling_layout())
+                .unwrap_or(false);
 
-        if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-            resize(ctx, current, &Rect { x, y, w, h }, false);
+            if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
+                resize(ctx, current, &Rect { x, y, w, h }, false);
+            }
         }
 
         show_hide(ctx, snext);
@@ -163,19 +168,25 @@ pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
         // Recurse first so children are positioned before we move the parent.
         show_hide(ctx, snext);
 
-        let w_val = ctx.g.clients.get(&current).map(client_width).unwrap_or(0);
-        let y = geo.y;
+        if is_wayland {
+            // Remove the window from the compositor's space so it is not
+            // rendered or hit-tested while its tag is inactive.
+            ctx.backend.unmap_window(current);
+        } else {
+            let w_val = ctx.g.clients.get(&current).map(client_width).unwrap_or(0);
+            let y = geo.y;
 
-        ctx.backend.resize_window(
-            current,
-            Rect {
-                x: -2 * w_val,
-                y,
-                w: geo.w,
-                h: geo.h,
-            },
-        );
-        ctx.backend.flush();
+            ctx.backend.resize_window(
+                current,
+                Rect {
+                    x: -2 * w_val,
+                    y,
+                    w: geo.w,
+                    h: geo.h,
+                },
+            );
+            ctx.backend.flush();
+        }
     }
 }
 

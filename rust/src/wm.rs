@@ -12,6 +12,7 @@ pub struct Wm {
     pub backend: Backend,
     pub running: bool,
     pub bar: crate::bar::BarState,
+    pub bar_painter: crate::bar::wayland::WaylandBarPainter,
     pub focus: crate::client::focus::FocusState,
 }
 
@@ -22,6 +23,7 @@ impl Wm {
             backend,
             running: true,
             bar: crate::bar::BarState::default(),
+            bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
             focus: crate::client::focus::FocusState::default(),
         }
     }
@@ -51,6 +53,7 @@ impl Wm {
             backend,
             &mut self.running,
             &mut self.bar,
+            &mut self.bar_painter,
             &mut self.focus,
         )
     }

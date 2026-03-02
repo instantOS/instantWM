@@ -44,6 +44,7 @@ use crate::client::state::{
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::globals::get_x11;
+use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect, WindowId};
 use std::cmp::max;
@@ -62,152 +63,165 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
 ///
 pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
-    if ctx.backend_kind() == BackendKind::Wayland {
+    if !manage_preconditions_met(ctx) {
         return;
     }
-    let x11_win: Window = w.into();
-    if ctx.x11_conn().is_none() {
-        return;
+
+    let trans = get_transient_for_hint_ctx(ctx, w);
+    let mut client = build_initial_client(ctx, w, wa_geo, wa_border_width);
+    assign_initial_monitor_and_tags(ctx, &mut client, trans);
+    insert_client_and_apply_rules(ctx, w, client);
+
+    let borderpx = apply_default_border(ctx, w);
+    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx, w);
+    clamp_client_to_work_area(ctx, w, mon_work_rect);
+    configure_client_border(
+        ctx,
+        w,
+        borderpx,
+        mon_monitor_rect,
+        is_monocle_on_client_monitor(ctx, w),
+    );
+
+    apply_manage_hints(ctx, w);
+    snapshot_float_geo(ctx, w, mon_monitor_rect);
+    subscribe_manage_events(ctx, w);
+    grab_buttons(ctx, w, false);
+
+    if initialize_floating_state(ctx, w, trans.is_some()) {
+        ctx.backend.raise_window(w);
+        ctx.backend.flush();
     }
-    // -------------------------------------------------------------------------
-    // 1. Build the initial Client struct.
-    // -------------------------------------------------------------------------
+
+    attach_ctx(ctx, w);
+    attach_stack_ctx(ctx, w);
+    register_client_root(ctx, w);
+
+    move_client_offscreen_before_arrange(ctx, w);
+    let initially_hidden = prepare_visibility_and_unfocus(ctx, w);
+    let animated = ctx.g.animated;
+    let c = arrange_map_focus_and_snapshot(ctx, w, initially_hidden);
+
+    run_manage_animation(ctx, w, &c, mon_monitor_rect, animated);
+}
+
+fn manage_preconditions_met(ctx: &WmCtx) -> bool {
+    ctx.backend_kind() != BackendKind::Wayland && ctx.x11_conn().is_some()
+}
+
+fn build_initial_client(ctx: &WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) -> Client {
     let mut c = Client::default();
     c.win = w;
     c.geo = wa_geo;
     c.old_geo = c.geo;
     c.old_border_width = wa_border_width as i32;
-    // Read the window title before insertion so that apply_rules can match on
-    // rule.title from the very first moment the client exists in the map.
     c.name = read_title_from_x(ctx, w);
+    c
+}
 
-    // -------------------------------------------------------------------------
-    // 2. Assign the initial monitor (from transient parent or selmon).
-    // -------------------------------------------------------------------------
-    let trans = get_transient_for_hint_ctx(ctx, w);
-
-    {
-        let trans_client = trans.and_then(|win| {
-            if ctx.g.clients.contains_key(&win) {
-                Some(win)
-            } else {
-                None
-            }
-        });
-
-        if let Some(tc_win) = trans_client {
-            if let Some(tc) = ctx.g.clients.get(&tc_win) {
-                c.mon_id = tc.mon_id;
-                c.tags = tc.tags;
-            }
-        } else {
-            c.mon_id = Some(ctx.g.selmon_id());
+fn assign_initial_monitor_and_tags(ctx: &WmCtx, c: &mut Client, trans: Option<WindowId>) {
+    let trans_client = trans.filter(|win| ctx.g.clients.contains_key(win));
+    if let Some(tc_win) = trans_client {
+        if let Some(tc) = ctx.g.clients.get(&tc_win) {
+            c.mon_id = tc.mon_id;
+            c.tags = tc.tags;
+            return;
         }
     }
+    c.mon_id = Some(ctx.g.selmon_id());
+    c.tags = initial_tags_for_monitor(ctx.g, c.mon_id);
+}
 
-    // -------------------------------------------------------------------------
-    // 3. Insert into the global client map and run rule matching.
-    // -------------------------------------------------------------------------
-
-    // Seed the cached is_hidden flag from the live WM_STATE property.
-    // This handles windows that were already in the iconic state before
-    // the WM started (e.g. restored from a previous session).
+fn insert_client_and_apply_rules(ctx: &mut WmCtx, w: WindowId, mut c: Client) {
     c.is_hidden = crate::client::visibility::get_state_ctx(ctx, w)
         == crate::client::constants::WM_STATE_ICONIC;
-
-    ctx.g.clients.insert(w, c.clone());
-
+    ctx.g.clients.insert(w, c);
     apply_rules(ctx, w);
+}
 
-    // -------------------------------------------------------------------------
-    // 4. Apply the global default border width.
-    // -------------------------------------------------------------------------
+fn apply_default_border(ctx: &mut WmCtx, w: WindowId) -> i32 {
     let borderpx = ctx.g.cfg.borderpx;
     if let Some(client) = ctx.g.clients.get_mut(&w) {
         client.border_width = borderpx;
         client.old_border_width = borderpx;
     }
+    borderpx
+}
 
-    // -------------------------------------------------------------------------
-    // 5. Clamp the initial position to the monitor work-area.
-    // -------------------------------------------------------------------------
-    let (_mon_showbar, mon_work_rect, mon_monitor_rect) = {
-        let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
-        mon_id
-            .and_then(|mid| ctx.g.monitor(mid))
-            .map(|m| (m.showbar, m.work_rect, m.monitor_rect))
-            .unwrap_or((false, Rect::default(), Rect::default()))
-    };
+fn monitor_rects_for_client(ctx: &WmCtx, w: WindowId) -> (Rect, Rect) {
+    let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
+    mon_id
+        .and_then(|mid| ctx.g.monitor(mid))
+        .map(|m| (m.work_rect, m.monitor_rect))
+        .unwrap_or((Rect::default(), Rect::default()))
+}
 
-    {
-        if let Some(client) = ctx.g.clients.get_mut(&w) {
-            if client.geo.x + client_width(client) > mon_work_rect.x + mon_work_rect.w {
-                client.geo.x = mon_work_rect.x + mon_work_rect.w - client_width(client);
-            }
-            if client.geo.y + client_height(client) > mon_work_rect.y + mon_work_rect.h {
-                client.geo.y = mon_work_rect.y + mon_work_rect.h - client_height(client);
-            }
-            client.geo.x = max(client.geo.x, mon_work_rect.x);
-            client.geo.y = max(client.geo.y, mon_work_rect.y);
+fn clamp_client_to_work_area(ctx: &mut WmCtx, w: WindowId, mon_work_rect: Rect) {
+    if let Some(client) = ctx.g.clients.get_mut(&w) {
+        if client.geo.x + client_width(client) > mon_work_rect.x + mon_work_rect.w {
+            client.geo.x = mon_work_rect.x + mon_work_rect.w - client_width(client);
         }
+        if client.geo.y + client_height(client) > mon_work_rect.y + mon_work_rect.h {
+            client.geo.y = mon_work_rect.y + mon_work_rect.h - client_height(client);
+        }
+        client.geo.x = max(client.geo.x, mon_work_rect.x);
+        client.geo.y = max(client.geo.y, mon_work_rect.y);
     }
+}
 
-    // -------------------------------------------------------------------------
-    // 6. Configure the X11 window: border width and border colour.
-    // -------------------------------------------------------------------------
-    let is_monocle = {
-        let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
-        mon_id
-            .and_then(|mid| ctx.g.monitor(mid))
-            .map(|mon| !mon.is_tiling_layout())
-            .unwrap_or(false)
-    };
+fn is_monocle_on_client_monitor(ctx: &WmCtx, w: WindowId) -> bool {
+    let mon_id = ctx.g.clients.get(&w).and_then(|c| c.mon_id);
+    mon_id
+        .and_then(|mid| ctx.g.monitor(mid))
+        .map(|mon| !mon.is_tiling_layout())
+        .unwrap_or(false)
+}
 
+fn configure_client_border(
+    ctx: &mut WmCtx,
+    w: WindowId,
+    borderpx: i32,
+    mon_monitor_rect: Rect,
+    is_monocle: bool,
+) {
     let bh = ctx.g.cfg.bar_height;
+    let (isfloating, client_width, client_height) = ctx
+        .g
+        .clients
+        .get(&w)
+        .map(|c| (c.isfloating, c.geo.w, c.geo.h))
+        .unwrap_or((false, 0, 0));
+
+    let border_width = if !isfloating
+        && is_monocle
+        && client_width > mon_monitor_rect.w - 30
+        && client_height > mon_monitor_rect.h - 30 - bh
     {
-        let (isfloating, client_width, client_height) = ctx
-            .g
-            .clients
-            .get(&w)
-            .map(|c| (c.isfloating, c.geo.w, c.geo.h))
-            .unwrap_or((false, 0, 0));
+        0
+    } else {
+        borderpx
+    };
 
-        // In monocle mode, borderless windows that fill the monitor get no
-        // border even if borderpx > 0.
-        let border_width = if !isfloating
-            && is_monocle
-            && client_width > mon_monitor_rect.w - 30
-            && client_height > mon_monitor_rect.h - 30 - bh
-        {
-            0
-        } else {
-            borderpx
-        };
-
-        if let Some(client) = ctx.g.clients.get_mut(&w) {
-            client.border_width = border_width;
-        }
-
-        // Use backend-agnostic border width setter so this works without a
-        // direct X11 connection reference.
-        ctx.backend.set_border_width(w, border_width);
-
-        // Border pixel colour is X11-specific (a colour scheme pixel value).
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                let pixel = scheme.normal.bg.pixel();
-                let _ = conn.change_window_attributes(
-                    x11_win,
-                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
-                );
-            }
-            let _ = conn.flush();
-        }
+    if let Some(client) = ctx.g.clients.get_mut(&w) {
+        client.border_width = border_width;
     }
 
-    // -------------------------------------------------------------------------
-    // 7. Read and apply all X11 hints/properties.
-    // -------------------------------------------------------------------------
+    ctx.backend.set_border_width(w, border_width);
+
+    let x11_win: Window = w.into();
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+            let pixel = scheme.normal.bg.pixel();
+            let _ = conn.change_window_attributes(
+                x11_win,
+                &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+            );
+        }
+        let _ = conn.flush();
+    }
+}
+
+fn apply_manage_hints(ctx: &mut WmCtx, w: WindowId) {
     crate::client::focus::configure(ctx, w);
     update_window_type(ctx, w);
     update_size_hints_win(ctx, w);
@@ -215,71 +229,48 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     read_client_info(ctx, w);
     set_client_tag_prop(ctx, w);
     update_motif_hints(ctx, w);
+}
 
-    // -------------------------------------------------------------------------
-    // 8. Store the floating geometry snapshot.
-    // -------------------------------------------------------------------------
-    {
-        if let Some(client) = ctx.g.clients.get_mut(&w) {
-            client.float_geo.x = client.geo.x;
-            // When the window's y is above the monitor origin (can happen with
-            // multi-monitor setups), offset by the monitor's y.
-            client.float_geo.y = if client.geo.y >= mon_monitor_rect.y {
-                client.geo.y
-            } else {
-                client.geo.y + mon_monitor_rect.y
-            };
-            client.float_geo.w = client.geo.w;
-            client.float_geo.h = client.geo.h;
-        }
+fn snapshot_float_geo(ctx: &mut WmCtx, w: WindowId, mon_monitor_rect: Rect) {
+    if let Some(client) = ctx.g.clients.get_mut(&w) {
+        client.float_geo.x = client.geo.x;
+        client.float_geo.y = if client.geo.y >= mon_monitor_rect.y {
+            client.geo.y
+        } else {
+            client.geo.y + mon_monitor_rect.y
+        };
+        client.float_geo.w = client.geo.w;
+        client.float_geo.h = client.geo.h;
     }
+}
 
-    // -------------------------------------------------------------------------
-    // 9. Subscribe to the events we care about on this window.
-    // -------------------------------------------------------------------------
-    {
-        let mask = EventMask::ENTER_WINDOW
-            | EventMask::FOCUS_CHANGE
-            | EventMask::PROPERTY_CHANGE
-            | EventMask::STRUCTURE_NOTIFY;
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.change_window_attributes(
-                x11_win,
-                &ChangeWindowAttributesAux::new().event_mask(mask),
-            );
-        }
+fn subscribe_manage_events(ctx: &WmCtx, w: WindowId) {
+    let mask = EventMask::ENTER_WINDOW
+        | EventMask::FOCUS_CHANGE
+        | EventMask::PROPERTY_CHANGE
+        | EventMask::STRUCTURE_NOTIFY;
+    let x11_win: Window = w.into();
+    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+        let _ = conn
+            .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
     }
+}
 
-    grab_buttons(ctx, w, false);
-
-    // -------------------------------------------------------------------------
-    // 10. Determine the initial floating state.
-    // -------------------------------------------------------------------------
+fn initialize_floating_state(ctx: &mut WmCtx, w: WindowId, has_transient_parent: bool) -> bool {
     let isfixed = ctx.g.clients.get(&w).map(|c| c.isfixed).unwrap_or(false);
-
     let mut should_raise = false;
-    {
-        if let Some(client) = ctx.g.clients.get_mut(&w) {
-            if !client.isfloating {
-                client.isfloating = trans.is_some() || isfixed;
-                client.oldstate = client.isfloating as i32;
-            }
-            should_raise = client.isfloating;
+    if let Some(client) = ctx.g.clients.get_mut(&w) {
+        if !client.isfloating {
+            client.isfloating = has_transient_parent || isfixed;
+            client.oldstate = client.isfloating as i32;
         }
+        should_raise = client.isfloating;
     }
+    should_raise
+}
 
-    // Floating windows start on top.
-    if should_raise {
-        ctx.backend.raise_window(w);
-        ctx.backend.flush();
-    }
-
-    // -------------------------------------------------------------------------
-    // 11. Insert into both linked lists and register with the root.
-    // -------------------------------------------------------------------------
-    attach_ctx(ctx, w);
-    attach_stack_ctx(ctx, w);
-
+fn register_client_root(ctx: &mut WmCtx, w: WindowId) {
+    let x11_win: Window = w.into();
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let _ = conn.change_property32(
             PropMode::APPEND,
@@ -290,30 +281,24 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
         );
         let _ = conn.flush();
     }
+}
 
-    // -------------------------------------------------------------------------
-    // 12. Move the window off-screen initially, then arrange + map it.
-    //     (Avoids a visible "flash" at (0,0) before the layout runs.)
-    // -------------------------------------------------------------------------
-    let (screen_width, client_x, client_y, client_width, client_height) = {
-        ctx.g
-            .clients
-            .get(&w)
-            .map(|client| {
-                (
-                    ctx.g.cfg.screen_width,
-                    client.geo.x,
-                    client.geo.y,
-                    client.geo.w,
-                    client.geo.h,
-                )
-            })
-            .unwrap_or((0, 0, 0, 0, 0))
-    };
+fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
+    let (screen_width, client_x, client_y, client_width, client_height) = ctx
+        .g
+        .clients
+        .get(&w)
+        .map(|client| {
+            (
+                ctx.g.cfg.screen_width,
+                client.geo.x,
+                client.geo.y,
+                client.geo.w,
+                client.geo.h,
+            )
+        })
+        .unwrap_or((0, 0, 0, 0, 0));
 
-    // Move off-screen initially to avoid a visible flash at (0,0) before
-    // the layout runs.  Use the backend's resize_window so the call goes
-    // through the right abstraction layer.
     ctx.backend.resize_window(
         w,
         Rect {
@@ -324,82 +309,93 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
         },
     );
     ctx.backend.flush();
+}
 
+fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     let initially_hidden = ctx.g.clients.get(&w).map(|c| c.is_hidden).unwrap_or(false);
-
     if !initially_hidden {
         set_client_state(ctx, w, WM_STATE_NORMAL);
     }
-
-    // Unfocus the previously selected window before reassigning sel.
-    let sel_win = ctx.g.selected_win();
-
-    if let Some(sel_win) = sel_win {
+    if let Some(sel_win) = ctx.g.selected_win() {
         unfocus_win(ctx, sel_win, false);
     }
+    initially_hidden
+}
 
-    // Re-snapshot c from the map (apply_rules / hints may have changed it).
+fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden: bool) -> Client {
     let mut c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
-
-    let animated = ctx.g.animated;
-
     if let Some(mon_id) = c.mon_id {
         arrange(ctx, Some(mon_id));
     }
-
     if !initially_hidden {
         ctx.backend.map_window(w);
         ctx.backend.flush();
     }
-
     crate::focus::focus_soft(ctx, None);
-
-    // Re-snapshot c again after arrange has modified its geometry in X and WM state.
     c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
+    c
+}
 
-    // -------------------------------------------------------------------------
-    // 13. Entrance animation.
-    // -------------------------------------------------------------------------
-    if animated && !c.is_fullscreen {
-        // Place the window 70 px above its target so the animation slides it down.
-        resize_client(
-            ctx,
-            w,
-            &Rect {
-                x: c.geo.x,
-                y: c.geo.y - 70,
-                w: c.geo.w,
-                h: c.geo.h,
-            },
-        );
-        animate_client(
-            ctx,
-            w,
-            &Rect {
-                x: c.geo.x,
-                y: c.geo.y,
-                w: 0,
-                h: 0,
-            },
-            7,
-            0,
-        );
+fn run_manage_animation(
+    ctx: &mut WmCtx,
+    w: WindowId,
+    c: &Client,
+    mon_monitor_rect: Rect,
+    animated: bool,
+) {
+    if !animated || c.is_fullscreen {
+        return;
+    }
 
-        let is_tiling = c
-            .mon_id
-            .and_then(|mid| ctx.g.monitor(mid))
-            .map(|mon| mon.is_tiling_layout())
-            .unwrap_or(false);
+    resize_client(
+        ctx,
+        w,
+        &Rect {
+            x: c.geo.x,
+            y: c.geo.y - 70,
+            w: c.geo.w,
+            h: c.geo.h,
+        },
+    );
+    animate_client(
+        ctx,
+        w,
+        &Rect {
+            x: c.geo.x,
+            y: c.geo.y,
+            w: 0,
+            h: 0,
+        },
+        7,
+        0,
+    );
 
-        if !is_tiling {
-            ctx.backend.raise_window(w);
-            ctx.backend.flush();
-        } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
-            if let Some(mon_id) = c.mon_id {
-                arrange(ctx, Some(mon_id));
-            }
+    let is_tiling = c
+        .mon_id
+        .and_then(|mid| ctx.g.monitor(mid))
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(false);
+
+    if !is_tiling {
+        ctx.backend.raise_window(w);
+        ctx.backend.flush();
+    } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
+        if let Some(mon_id) = c.mon_id {
+            arrange(ctx, Some(mon_id));
         }
     }
+}
+
+/// Initial tag mask for a newly managed client on `mon_id`.
+///
+/// This mirrors DWM semantics: a new client appears on all tags currently
+/// visible on its target monitor.
+pub fn initial_tags_for_monitor(g: &Globals, mon_id: Option<usize>) -> u32 {
+    mon_id
+        .and_then(|mid| g.monitor(mid))
+        .map(|m| m.selected_tags())
+        .filter(|tags| *tags != 0)
+        .unwrap_or(1)
 }
 
 // ---------------------------------------------------------------------------
