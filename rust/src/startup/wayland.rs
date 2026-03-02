@@ -30,9 +30,7 @@ use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
-use smithay::backend::renderer::element::surface::{
-    render_elements_from_surface_tree, WaylandSurfaceRenderElement,
-};
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
@@ -423,33 +421,34 @@ fn find_hovered_window(
 ) -> Option<WindowId> {
     // Fast path: pointer is over a mapped Wayland surface.
     let element_under = state.space.element_under(pointer_location);
-    let mut hovered = element_under
-        .as_ref()
-        .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.0));
+    if let Some((window, _)) = element_under.as_ref() {
+        if let Some(id) = window.user_data().get::<WindowIdMarker>().map(|m| m.0) {
+            return Some(id);
+        }
+    }
 
-    // Slow path: check outer rect (content + borders) in stack order.
-    if hovered.is_none() {
-        let px = pointer_location.x as i32;
-        let py = pointer_location.y as i32;
-        if let Some(mon) = wm.g.selmon() {
-            let selected = mon.selected_tags();
-            for (w, c) in mon.iter_stack(&wm.g.clients) {
-                if !c.is_visible_on_tags(selected) || c.is_hidden {
-                    continue;
-                }
-                let bw = c.border_width.max(0);
-                let ox = c.geo.x;
-                let oy = c.geo.y;
-                let ow = c.geo.w + 2 * bw;
-                let oh = c.geo.h + 2 * bw;
-                if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
-                    hovered = Some(w);
-                    break;
-                }
+    // Slow path: pointer isn't over any surface.  Check outer rect
+    // (content + borders) in stack order.  This handles the case where
+    // the pointer is over a WM-drawn border strip that has no surface.
+    let px = pointer_location.x as i32;
+    let py = pointer_location.y as i32;
+    if let Some(mon) = wm.g.selmon() {
+        let selected = mon.selected_tags();
+        for (w, c) in mon.iter_stack(&wm.g.clients) {
+            if !c.is_visible_on_tags(selected) || c.is_hidden {
+                continue;
+            }
+            let bw = c.border_width.max(0);
+            let ox = c.geo.x;
+            let oy = c.geo.y;
+            let ow = c.geo.w + 2 * bw;
+            let oh = c.geo.h + 2 * bw;
+            if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
+                return Some(w);
             }
         }
     }
-    hovered
+    None
 }
 
 // =============================================================================
@@ -501,34 +500,6 @@ fn render_frame(
         // Window borders.
         for elem in wayland_border_elements(wm) {
             custom_elements.push(WaylandExtras::Solid(elem));
-        }
-
-        // Popup surfaces (need to be rendered on top of space elements).
-        for window in state.space.elements() {
-            let location = state.space.element_location(window).unwrap_or_default();
-            if let Some(toplevel) = window.toplevel() {
-                for (popup, popup_location) in
-                    PopupManager::popups_for_surface(toplevel.wl_surface())
-                {
-                    let render_location = (location + popup_location)
-                        .to_f64()
-                        .to_physical(1.0)
-                        .to_i32_round();
-                    for elem in render_elements_from_surface_tree::<
-                        GlesRenderer,
-                        WaylandSurfaceRenderElement<GlesRenderer>,
-                    >(
-                        renderer,
-                        popup.wl_surface(),
-                        render_location,
-                        1.0,
-                        1.0,
-                        Kind::Unspecified,
-                    ) {
-                        custom_elements.push(WaylandExtras::Surface(elem));
-                    }
-                }
-            }
         }
 
         // ── Composite + submit ───────────────────────────────────────
