@@ -193,15 +193,16 @@ pub fn run() -> ! {
                         let root_y = pointer_location.y.round() as i32;
                         let _ = update_wayland_bar_hit_state(&mut wm, root_x, root_y, false);
 
-                        let focus = match element_under {
-                            Some((window, location)) => window.wl_surface().map(|surface| {
-                                (
-                                    PointerFocusTarget::WlSurface(surface.into_owned()),
-                                    location.to_f64(),
-                                )
-                            }),
-                            None => None,
-                        };
+                        // Check all windows (top-to-bottom) for popups first,
+                        // then fall back to the toplevel under the pointer.
+                        // Popups can extend beyond their parent window's bounds,
+                        // so element_under alone would miss them.
+                        let focus =
+                            state
+                                .surface_under_pointer(pointer_location)
+                                .map(|(surface, loc)| {
+                                    (PointerFocusTarget::WlSurface(surface), loc.to_f64())
+                                });
 
                         let serial = SERIAL_COUNTER.next_serial();
                         let motion = smithay::input::pointer::MotionEvent {

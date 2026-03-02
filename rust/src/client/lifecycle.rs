@@ -43,8 +43,8 @@ use crate::client::state::{
 };
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
-use crate::globals::Globals;
 use crate::globals::get_x11;
+use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect, WindowId};
 use std::cmp::max;
@@ -75,7 +75,13 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
     let borderpx = apply_default_border(ctx, w);
     let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx, w);
     clamp_client_to_work_area(ctx, w, mon_work_rect);
-    configure_client_border(ctx, w, borderpx, mon_monitor_rect, is_monocle_on_client_monitor(ctx, w));
+    configure_client_border(
+        ctx,
+        w,
+        borderpx,
+        mon_monitor_rect,
+        is_monocle_on_client_monitor(ctx, w),
+    );
 
     apply_manage_hints(ctx, w);
     snapshot_float_geo(ctx, w, mon_monitor_rect);
@@ -245,10 +251,8 @@ fn subscribe_manage_events(ctx: &WmCtx, w: WindowId) {
         | EventMask::STRUCTURE_NOTIFY;
     let x11_win: Window = w.into();
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let _ = conn.change_window_attributes(
-            x11_win,
-            &ChangeWindowAttributesAux::new().event_mask(mask),
-        );
+        let _ = conn
+            .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
     }
 }
 

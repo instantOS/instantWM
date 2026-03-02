@@ -1,6 +1,10 @@
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
-    input::SeatHandler,
+    desktop::{
+        find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupPointerGrab,
+        PopupUngrabStrategy,
+    },
+    input::{pointer::Focus, SeatHandler},
     reexports::wayland_server::{protocol::wl_seat, Client},
     utils::SERIAL_COUNTER,
     wayland::{
@@ -47,6 +51,15 @@ impl CompositorHandler for WaylandState {
     ) {
         on_commit_buffer_handler::<Self>(surface);
         let _ = self.popups.commit(surface);
+
+        if let Some(popup) = self.popups.find_popup(surface) {
+            if let PopupKind::Xdg(ref popup_surface) = popup {
+                if !popup_surface.is_initial_configure_sent() {
+                    let _ = popup_surface.send_configure();
+                }
+            }
+        }
+
         if let Some(window) = self
             .space
             .elements()
@@ -216,8 +229,7 @@ impl XdgShellHandler for WaylandState {
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         let kind = smithay::desktop::PopupKind::Xdg(surface);
-        let _ = self.popups.track_popup(kind.clone());
-        let _ = self.popups.commit(kind.wl_surface());
+        let _ = self.popups.track_popup(kind);
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -249,16 +261,51 @@ impl XdgShellHandler for WaylandState {
 
     fn grab(
         &mut self,
-        _surface: PopupSurface,
+        surface: PopupSurface,
         _seat: wl_seat::WlSeat,
-        _serial: smithay::utils::Serial,
+        serial: smithay::utils::Serial,
     ) {
-        // let kind = PopupKind::Xdg(surface.clone());
-        // if let Some(parent) = surface.get_parent_surface() {
-        //     if let Some(parent_kind) = self.popups.find_popup(&parent) {
-        //         let _ = self.popups.grab_popup(kind, parent_kind, &self.seat, _serial);
-        //     }
-        // }
+        let kind = PopupKind::Xdg(surface);
+        let root_surface = match find_popup_root_surface(&kind) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let root = match self
+            .space
+            .elements()
+            .find(|w| w.wl_surface().as_deref() == Some(&root_surface))
+            .cloned()
+        {
+            Some(w) => KeyboardFocusTarget::Window(w),
+            None => return,
+        };
+
+        let mut grab = match self.popups.grab_popup(root, kind, &self.seat, serial) {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            if keyboard.is_grabbed()
+                && !(keyboard.has_grab(serial)
+                    || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            keyboard.set_focus(self, grab.current_grab(), serial);
+            keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+        if let Some(pointer) = self.seat.get_pointer() {
+            if pointer.is_grabbed()
+                && !(pointer.has_grab(serial)
+                    || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
+            {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Clear);
+        }
     }
 
     fn reposition_request(

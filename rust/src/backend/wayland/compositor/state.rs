@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
-    desktop::{PopupManager, Space, Window},
+    desktop::{PopupManager, Space, Window, WindowSurfaceType},
     input::{
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
@@ -454,6 +454,40 @@ impl WaylandState {
                 return window_id;
             }
         }
+    }
+
+    /// Find the topmost surface (popup or toplevel) under a point.
+    ///
+    /// Iterates all space elements top-to-bottom and checks their popup
+    /// surfaces first (via `WindowSurfaceType::ALL`).  This correctly
+    /// handles popups that extend beyond the parent window's bounds.
+    pub fn surface_under_pointer(
+        &self,
+        point: Point<f64, Logical>,
+    ) -> Option<(
+        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        Point<i32, Logical>,
+    )> {
+        // First pass: check popups only (they render on top of everything).
+        for window in self.space.elements().rev() {
+            let Some(loc) = self.space.element_location(window) else {
+                continue;
+            };
+            if let Some(result) =
+                window.surface_under(point - loc.to_f64(), WindowSurfaceType::POPUP)
+            {
+                return Some((result.0, result.1 + loc));
+            }
+        }
+        // Second pass: toplevel + subsurfaces.
+        if let Some((window, loc)) = self.space.element_under(point) {
+            if let Some(result) =
+                window.surface_under(point - loc.to_f64(), WindowSurfaceType::TOPLEVEL)
+            {
+                return Some((result.0, result.1 + loc));
+            }
+        }
+        None
     }
 
     fn find_window(&self, window: WindowId) -> Option<&Window> {
