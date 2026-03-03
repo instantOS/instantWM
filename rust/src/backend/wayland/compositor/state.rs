@@ -4,6 +4,8 @@ use std::ptr::NonNull;
 
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
+    backend::allocator::Format,
+    backend::renderer::gles::GlesRenderer,
     desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurfaceType},
     input::{
         keyboard::{KeyboardHandle, XkbConfig},
@@ -20,6 +22,7 @@ use smithay::{
         compositor::CompositorState,
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
+        dmabuf::{DmabufGlobal, DmabufState},
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{ToplevelSurface, XdgShellState},
@@ -107,6 +110,9 @@ pub struct WaylandState {
     pub data_device_state: DataDeviceState,
     pub xwayland_shell_state: XWaylandShellState,
     pub wlr_layer_shell_state: WlrLayerShellState,
+    pub dmabuf_state: DmabufState,
+    pub dmabuf_global: Option<DmabufGlobal>,
+    renderer: Option<NonNull<GlesRenderer>>,
 
     // -- Input --
     pub seat: Seat<WaylandState>,
@@ -175,6 +181,7 @@ impl WaylandState {
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
+        let dmabuf_state = DmabufState::new();
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -196,6 +203,9 @@ impl WaylandState {
             data_device_state,
             xwayland_shell_state,
             wlr_layer_shell_state,
+            dmabuf_state,
+            dmabuf_global: None,
+            renderer: None,
             seat,
             keyboard,
             pointer,
@@ -211,6 +221,21 @@ impl WaylandState {
 
     pub fn attach_globals(&mut self, globals: &mut Globals) {
         self.globals = Some(NonNull::from(globals));
+    }
+
+    pub fn init_dmabuf_global(&mut self, formats: Vec<Format>) {
+        if self.dmabuf_global.is_some() {
+            return;
+        }
+        self.dmabuf_global = Some(self.dmabuf_state.create_global::<Self>(&self.display_handle, formats));
+    }
+
+    pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
+        self.renderer = Some(NonNull::from(renderer));
+    }
+
+    pub(super) fn renderer_mut(&mut self) -> Option<&mut GlesRenderer> {
+        self.renderer.map(|mut p| unsafe { p.as_mut() })
     }
 
     #[inline]

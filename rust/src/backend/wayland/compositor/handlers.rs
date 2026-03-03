@@ -1,4 +1,5 @@
 use smithay::{
+    backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::{
         find_popup_root_surface, layer_map_for_output, LayerSurface as DesktopLayerSurface,
@@ -11,6 +12,7 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::CompositorHandler,
+        dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
         selection::{
@@ -110,6 +112,29 @@ impl BufferHandler for WaylandState {
         &mut self,
         _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
     ) {
+    }
+}
+
+impl DmabufHandler for WaylandState {
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.dmabuf_state
+    }
+
+    fn dmabuf_imported(
+        &mut self,
+        _global: &DmabufGlobal,
+        dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
+        notifier: ImportNotifier,
+    ) {
+        let imported = self
+            .renderer_mut()
+            .and_then(|renderer| renderer.import_dmabuf(&dmabuf, None).ok())
+            .is_some();
+        if imported {
+            let _ = notifier.successful::<Self>();
+        } else {
+            notifier.failed();
+        }
     }
 }
 

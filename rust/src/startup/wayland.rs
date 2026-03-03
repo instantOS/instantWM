@@ -25,6 +25,7 @@ use std::time::Duration;
 use smithay::backend::input::{
     AbsolutePositionEvent, InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
 };
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -86,8 +87,10 @@ pub fn run() -> ! {
         wayland.attach_state(&mut state);
     }
 
-    let (mut backend, mut winit_loop) =
-        winit::init::<GlesRenderer>().expect("failed to init winit backend");
+    let (backend_init, mut winit_loop) = winit::init::<GlesRenderer>().expect("failed to init winit backend");
+    let mut backend = Box::new(backend_init);
+    state.attach_renderer(backend.renderer());
+    state.init_dmabuf_global(backend.renderer().dmabuf_formats().into_iter().collect());
     let output_size = backend.window_size();
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;
