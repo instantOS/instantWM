@@ -18,6 +18,7 @@
 //! * **Utilities** — `modifiers_to_x11_mask`, `wayland_button_to_wm_button`,
 //!   colour helpers.
 
+use std::collections::HashMap;
 use std::process::{exit, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -588,7 +589,7 @@ fn render_frame(
         }
 
         // Window borders.
-        for elem in wayland_border_elements(wm) {
+        for elem in wayland_border_elements(wm, state) {
             custom_elements.push(WaylandExtras::Solid(elem));
         }
 
@@ -656,14 +657,25 @@ fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state
 // Border rendering
 // =============================================================================
 
-fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
+fn wayland_border_elements(wm: &Wm, state: &WaylandState) -> Vec<SolidColorRenderElement> {
     let scheme = wm.g.cfg.borderscheme.as_ref();
     let bordercolors = &wm.g.cfg.bordercolors;
     let mut out = Vec::new();
+    let mut mapped_sizes: HashMap<WindowId, (i32, i32)> = HashMap::new();
+    for window in state.space.elements() {
+        if let Some(win) = window.user_data().get::<WindowIdMarker>().map(|m| m.0) {
+            let size = window.geometry().size;
+            mapped_sizes.insert(win, (size.w.max(1), size.h.max(1)));
+        }
+    }
     let sel = wm.g.selected_win();
     for c in wm.g.clients.values() {
         let bw = c.border_width.max(0);
-        if bw <= 0 || c.geo.w <= 0 || c.geo.h <= 0 {
+        let (content_w, content_h) = mapped_sizes
+            .get(&c.win)
+            .copied()
+            .unwrap_or((c.geo.w, c.geo.h));
+        if bw <= 0 || content_w <= 0 || content_h <= 0 {
             continue;
         }
         let is_visible = c
@@ -697,8 +709,8 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
 
         let x = c.geo.x;
         let y = c.geo.y;
-        let ow = c.geo.w + 2 * bw;
-        let oh = c.geo.h + 2 * bw;
+        let ow = content_w + 2 * bw;
+        let oh = content_h + 2 * bw;
         // Top
         push_solid(&mut out, x, y, ow, bw, rgba);
         // Bottom

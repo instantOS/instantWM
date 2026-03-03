@@ -1117,7 +1117,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         return;
     }
 
-    if ctx.backend_kind() == BackendKind::X11 && ctx.g.title_drag.dragging {
+    if ctx.g.title_drag.dragging {
         let win = ctx.g.title_drag.win;
         let right_click = ctx.g.title_drag.right_click;
         let grab_start_x = ctx.g.title_drag.win_start_x;
