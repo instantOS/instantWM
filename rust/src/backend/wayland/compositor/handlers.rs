@@ -580,6 +580,18 @@ impl WlrLayerShellHandler for WaylandState {
         let _ = map.map_layer(&layer_surface);
         map.arrange();
         layer_surface.layer_surface().send_configure();
+        if layer_surface.can_receive_keyboard_focus() {
+            let serial = SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(
+                    self,
+                    Some(KeyboardFocusTarget::WlSurface(
+                        layer_surface.wl_surface().clone(),
+                    )),
+                    serial,
+                );
+            }
+        }
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {

@@ -342,7 +342,8 @@ fn handle_pointer_motion(
 
     // ── Forward to Smithay's pointer dispatch ────────────────────────
     let focus = state
-        .surface_under_pointer(*pointer_location)
+        .layer_surface_under_pointer(*pointer_location)
+        .or_else(|| state.surface_under_pointer(*pointer_location))
         .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
 
     let serial = SERIAL_COUNTER.next_serial();
@@ -390,9 +391,14 @@ fn handle_pointer_button(
 
         // Keyboard focus follows pointer.
         let keyboard_focus = state
-            .space
-            .element_under(pointer_location)
-            .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()));
+            .layer_surface_under_pointer(pointer_location)
+            .map(|(surface, _)| KeyboardFocusTarget::WlSurface(surface))
+            .or_else(|| {
+                state
+                    .space
+                    .element_under(pointer_location)
+                    .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()))
+            });
         keyboard_handle.set_focus(state, keyboard_focus, serial);
     } else if event.state() == smithay::backend::input::ButtonState::Released {
         let released_btn =

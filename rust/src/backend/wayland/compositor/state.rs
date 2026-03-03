@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
-    desktop::{PopupManager, Space, Window, WindowSurfaceType},
+    desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurfaceType},
     input::{
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
@@ -561,6 +561,29 @@ impl WaylandState {
                 window.surface_under(point - loc.to_f64(), WindowSurfaceType::TOPLEVEL)
             {
                 return Some((result.0, result.1 + loc));
+            }
+        }
+        None
+    }
+
+    pub fn layer_surface_under_pointer(
+        &self,
+        point: Point<f64, Logical>,
+    ) -> Option<(
+        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        Point<i32, Logical>,
+    )> {
+        let outputs: Vec<_> = self.space.outputs().cloned().collect();
+        for output in outputs.iter().rev() {
+            let map = layer_map_for_output(output);
+            for layer in map.layers().rev() {
+                let Some(geo) = map.layer_geometry(layer) else {
+                    continue;
+                };
+                let rel = point - geo.loc.to_f64();
+                if let Some((surface, loc)) = layer.surface_under(rel, WindowSurfaceType::ALL) {
+                    return Some((surface, loc + geo.loc));
+                }
             }
         }
         None
