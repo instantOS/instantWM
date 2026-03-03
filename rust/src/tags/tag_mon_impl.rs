@@ -44,6 +44,7 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Wind
 /// - No client is currently selected.
 /// - Only one monitor is connected.
 /// - [`find_monitor_by_direction`] returns `None`.
+// TODO: This function is badly named, come up with something better
 pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;

@@ -42,7 +42,7 @@ pub use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeT
 #[allow(unused_imports)]
 pub use appearance::{
     border_color, close_button_color, get_border_colors, get_close_button_colors,
-    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color, window_color,
+    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color,
 };
 #[allow(unused_imports)]
 pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};

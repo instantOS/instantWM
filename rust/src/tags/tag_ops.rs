@@ -41,6 +41,7 @@ pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
 }
 
 /// Focus a monitor using type-safe direction.
+/// TODO:thihs wrapper is redundant, rename the orignial function to focus_monitor
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     super::super::monitor::focus_mon(ctx, direction);
 }

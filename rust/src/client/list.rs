@@ -260,32 +260,6 @@ pub fn detach_stack_ctx(ctx: &mut WmCtx, win: WindowId) {
 // Traversal helpers
 // ---------------------------------------------------------------------------
 
-/// Return the first tiled (non-floating, visible, non-hidden) client starting
-/// from `start_win` in the focus-order list.
-pub fn next_tiled(start_win: Option<WindowId>) -> Option<WindowId> {
-    // Legacy helper: keep a globals-based entry point for callers that are not
-    // yet ctx-based.
-    let mut current = start_win;
-    let globals = crate::globals::get_globals();
-
-    while let Some(win) = current {
-        if let Some(c) = globals.clients.get(&win) {
-            let selected = c
-                .mon_id
-                .and_then(|mid| globals.monitor(mid))
-                .map(|m| m.selected_tags())
-                .unwrap_or(0);
-            if !c.isfloating && c.is_visible_on_tags(selected) && !c.is_hidden {
-                return Some(win);
-            }
-            current = c.next;
-        } else {
-            break;
-        }
-    }
-    None
-}
-
 pub fn next_tiled_ctx(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> {
     let mut current = start_win;
     while let Some(win) = current {

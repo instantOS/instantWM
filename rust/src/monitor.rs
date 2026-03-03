@@ -39,9 +39,6 @@ use x11rb::protocol::xproto::Window;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 
-// NOTE: keep the legacy global update_geom() shim around while the refactor
-// migrates call-sites. New code should use update_geom_ctx().
-
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
@@ -530,34 +527,7 @@ pub fn update_geom_ctx(ctx: &mut WmCtx) -> bool {
     }
 }
 
-/// Legacy, global-based entrypoint.
-///
-/// Prefer `update_geom_ctx()` when you already have a `WmCtx`.
-pub fn update_geom() -> bool {
-    // Recreate the legacy behavior by driving the ctx-based implementation with
-    // global storage.
-    let x11 = get_x11();
-    let Some(conn) = x11.conn.as_ref() else {
-        return false;
-    };
-    let g = get_globals_mut();
-    let mut running = true;
-    let mut bar = BarState::default();
-    let mut focus = FocusState::default();
-    let backend = BackendRef::from_x11(conn, x11.screen_num);
-    let mut bar_painter = crate::bar::wayland::WaylandBarPainter::default();
-    let mut ctx = WmCtx::new(
-        g,
-        backend,
-        &mut running,
-        &mut bar,
-        &mut bar_painter,
-        &mut focus,
-    );
-    update_geom_ctx(&mut ctx)
-}
-
-/// Get the root pointer position using an explicit connection.
+/// Get the root pointer position for an explicit connection.
 ///
 /// This is the dependency-injected version that accepts an X11 connection.
 fn get_root_ptr_with_conn(conn: &x11rb::rust_connection::RustConnection) -> Option<(i32, i32)> {

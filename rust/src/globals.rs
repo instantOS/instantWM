@@ -151,6 +151,7 @@ pub struct TitleDragState {
     /// The mouse button that started the interaction.
     pub button: MouseButton,
     /// Whether this is a right-click interaction.
+    // TODO: do we need both this and MouseButton?
     pub right_click: bool,
     /// Whether the window was focused when the click started.
     pub was_focused: bool,
@@ -499,12 +500,6 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.tag_template = build_tag_template(cfg);
 }
 
-/// Legacy wrapper for call-sites that still use static globals.
-pub fn update_config_from_config(cfg: &crate::config::Config) {
-    let g = get_globals_mut();
-    apply_config(g, cfg);
-}
-
 /// Build the canonical tag template from config.
 ///
 /// Returns a `Vec<Tag>` that every monitor should clone into its own
@@ -544,11 +539,4 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
     for mon in g.monitors.iter_mut() {
         mon.init_tags(&template);
     }
-}
-
-/// Legacy wrapper for call-sites that still use static globals.
-// TODO: remove this, update callsites
-pub fn init_tags_from_config(cfg: &crate::config::Config) {
-    let g = get_globals_mut();
-    apply_tags_config(g, cfg);
 }

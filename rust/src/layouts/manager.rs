@@ -281,30 +281,6 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     finish_layout_change(ctx);
 }
 
-pub fn restore_last_layout(ctx: &mut WmCtx<'_>) {
-    let tagprefix = ctx.g.tags.prefix;
-
-    if tagprefix {
-        for mon in ctx.g.monitors.iter_mut() {
-            for tag in mon.tags.iter_mut() {
-                tag.layouts.restore_last_layout();
-            }
-        }
-        ctx.g.tags.prefix = false;
-        finish_layout_change(ctx);
-        return;
-    }
-
-    if let Some(m) = ctx.g.selmon_mut() {
-        let current_tag = m.current_tag;
-        if current_tag > 0 && current_tag <= m.tags.len() {
-            m.tags[current_tag - 1].layouts.restore_last_layout();
-        }
-    }
-
-    finish_layout_change(ctx);
-}
-
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let selmon = ctx.g.selmon_id();
     let sel = ctx.g.selmon().and_then(|m| m.sel);

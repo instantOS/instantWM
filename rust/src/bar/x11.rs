@@ -36,13 +36,6 @@ pub fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
     m.update_bar_position(bh);
 }
 
-/// Legacy wrapper — reads bar_height from static globals.
-/// Prefer `update_bar_pos_with_bh` when you have access to the bar height.
-pub fn update_bar_pos(m: &mut Monitor) {
-    let bh = get_globals().cfg.bar_height;
-    m.update_bar_position(bh);
-}
-
 pub fn resize_bar_win(m: &Monitor) {
     let g = get_globals();
     let bh = g.cfg.bar_height;

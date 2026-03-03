@@ -49,13 +49,14 @@ pub(super) mod palette {
     pub const RED_HOVER: &str = "#e05951";
 }
 
-use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag};
 
 // ---------------------------------------------------------------------------
 // Color table builders
 // ---------------------------------------------------------------------------
 
 /// Tag bar color table: `[hover][SchemeTag][ColIndex]`
+/// //TODO should more be imported to make this less awkward?
 pub fn get_tag_colors() -> crate::types::TagColorConfigs {
     use palette::*;
     crate::types::TagColorConfigs {
@@ -185,55 +186,6 @@ pub fn tag_color(hover: SchemeHover, scheme: SchemeTag, col: ColIndex) -> &'stat
         (SchemeHover::Hover, SchemeTag::Empty, ColIndex::Fg) => BLACK,
         (SchemeHover::Hover, SchemeTag::Empty, ColIndex::Bg) => LIGHT_RED_HOVER,
         (SchemeHover::Hover, SchemeTag::Empty, ColIndex::Detail) => RED_HOVER,
-    }
-}
-
-pub fn window_color(hover: SchemeHover, scheme: SchemeWin, col: ColIndex) -> &'static str {
-    use palette::*;
-    match (hover, scheme, col) {
-        (SchemeHover::NoHover, SchemeWin::Focus, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeWin::Focus, ColIndex::Bg) => BG_ACCENT,
-        (SchemeHover::NoHover, SchemeWin::Focus, ColIndex::Detail) => LIGHT_BLUE,
-        (SchemeHover::NoHover, SchemeWin::Normal, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeWin::Normal, ColIndex::Bg) => BG,
-        (SchemeHover::NoHover, SchemeWin::Normal, ColIndex::Detail) => BG,
-        (SchemeHover::NoHover, SchemeWin::Minimized, ColIndex::Fg) => BG_ACCENT,
-        (SchemeHover::NoHover, SchemeWin::Minimized, ColIndex::Bg) => BG,
-        (SchemeHover::NoHover, SchemeWin::Minimized, ColIndex::Detail) => BG,
-        (SchemeHover::NoHover, SchemeWin::Sticky, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeWin::Sticky, ColIndex::Bg) => LIGHT_YELLOW,
-        (SchemeHover::NoHover, SchemeWin::Sticky, ColIndex::Detail) => YELLOW,
-        (SchemeHover::NoHover, SchemeWin::StickyFocus, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeWin::StickyFocus, ColIndex::Bg) => LIGHT_GREEN,
-        (SchemeHover::NoHover, SchemeWin::StickyFocus, ColIndex::Detail) => GREEN,
-        (SchemeHover::NoHover, SchemeWin::Overlay, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeWin::Overlay, ColIndex::Bg) => LIGHT_YELLOW,
-        (SchemeHover::NoHover, SchemeWin::Overlay, ColIndex::Detail) => YELLOW,
-        (SchemeHover::NoHover, SchemeWin::OverlayFocus, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeWin::OverlayFocus, ColIndex::Bg) => LIGHT_GREEN,
-        (SchemeHover::NoHover, SchemeWin::OverlayFocus, ColIndex::Detail) => GREEN,
-
-        (SchemeHover::Hover, SchemeWin::Focus, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeWin::Focus, ColIndex::Bg) => BG_ACCENT_HOVER,
-        (SchemeHover::Hover, SchemeWin::Focus, ColIndex::Detail) => LIGHT_BLUE_HOVER,
-        (SchemeHover::Hover, SchemeWin::Normal, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeWin::Normal, ColIndex::Bg) => BG_HOVER,
-        (SchemeHover::Hover, SchemeWin::Normal, ColIndex::Detail) => BG_HOVER,
-        (SchemeHover::Hover, SchemeWin::Minimized, ColIndex::Fg) => BG_ACCENT_HOVER,
-        (SchemeHover::Hover, SchemeWin::Minimized, ColIndex::Bg) => BG,
-        (SchemeHover::Hover, SchemeWin::Minimized, ColIndex::Detail) => BG,
-        (SchemeHover::Hover, SchemeWin::Sticky, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeWin::Sticky, ColIndex::Bg) => LIGHT_YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeWin::Sticky, ColIndex::Detail) => YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeWin::StickyFocus, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeWin::StickyFocus, ColIndex::Bg) => LIGHT_GREEN_HOVER,
-        (SchemeHover::Hover, SchemeWin::StickyFocus, ColIndex::Detail) => GREEN_HOVER,
-        (SchemeHover::Hover, SchemeWin::Overlay, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeWin::Overlay, ColIndex::Bg) => LIGHT_YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeWin::Overlay, ColIndex::Detail) => YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeWin::OverlayFocus, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeWin::OverlayFocus, ColIndex::Bg) => LIGHT_GREEN_HOVER,
-        (SchemeHover::Hover, SchemeWin::OverlayFocus, ColIndex::Detail) => GREEN_HOVER,
     }
 }
 
