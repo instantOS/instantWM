@@ -35,6 +35,7 @@ use crate::mouse::warp::warp_into;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
 use crate::types::SnapPosition;
 use crate::types::*;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{
@@ -924,6 +925,12 @@ pub fn title_drag_begin(
         .get(&win)
         .map(|c| (c.geo.x, c.geo.y))
         .unwrap_or((0, 0));
+    let (win_start_w, win_start_h) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (c.geo.w, c.geo.h))
+        .unwrap_or((0, 0));
     ctx.g.title_drag = crate::globals::TitleDragState {
         active: true,
         win,
@@ -935,6 +942,8 @@ pub fn title_drag_begin(
         start_y: click_root_y,
         win_start_x,
         win_start_y,
+        win_start_w,
+        win_start_h,
         last_root_x: click_root_x,
         last_root_y: click_root_y,
         dragging: false,
@@ -960,6 +969,36 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         }
         let td = &ctx.g.title_drag;
         let win = td.win;
+        if td.right_click {
+            let (new_w, new_h, x, y, is_floating) = ctx
+                .g
+                .clients
+                .get(&win)
+                .map(|c| {
+                    (
+                        (td.win_start_w + (root_x - td.start_x)).max(1),
+                        (td.win_start_h + (root_y - td.start_y)).max(1),
+                        c.geo.x,
+                        c.geo.y,
+                        c.isfloating,
+                    )
+                })
+                .unwrap_or((1, 1, 0, 0, false));
+            if is_floating {
+                resize(
+                    ctx,
+                    win,
+                    &Rect {
+                        x,
+                        y,
+                        w: new_w,
+                        h: new_h,
+                    },
+                    true,
+                );
+            }
+            return true;
+        }
         let mut new_x = td.win_start_x + (root_x - td.start_x);
         let mut new_y = td.win_start_y + (root_y - td.start_y);
 
@@ -1006,28 +1045,36 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let was_hidden = ctx.g.title_drag.was_hidden;
     if ctx.backend_kind() == BackendKind::Wayland {
         // Keep the title drag active so Wayland motion/release can keep driving it.
-        // Right-click title-drag resize is still X11-only; keep click semantics.
-        if right_click {
-            return false;
-        }
         if was_hidden {
             crate::client::show(ctx, win);
         }
         crate::focus::focus_soft(ctx, Some(win));
-        if let Some((is_floating, geo)) = ctx.g.clients.get(&win).map(|c| (c.isfloating, c.geo)) {
+        if let Some((is_floating, geo, border_width)) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.isfloating, c.geo, c.border_width))
+        {
             if !is_floating {
                 set_floating_in_place(ctx, win);
                 arrange(ctx, Some(ctx.g.selmon_id()));
             }
-            // Wayland can't reliably warp the hardware pointer like X11, so
-            // emulate warp_into by rebasing the drag anchor into window bounds.
-            let pad = 10;
-            let max_x = (geo.w - pad).max(pad);
-            let max_y = (geo.h - pad).max(pad);
-            let offset_x = (root_x - geo.x).clamp(pad, max_x);
-            let offset_y = (root_y - geo.y).clamp(pad, max_y);
-            ctx.g.title_drag.start_x = geo.x + offset_x;
-            ctx.g.title_drag.start_y = geo.y + offset_y;
+            if right_click {
+                let (x_off, y_off) =
+                    ResizeDirection::BottomRight.warp_offset(geo.w, geo.h, border_width);
+                ctx.g.title_drag.start_x = geo.x + x_off;
+                ctx.g.title_drag.start_y = geo.y + y_off;
+            } else {
+                // Wayland can't reliably warp the hardware pointer like X11, so
+                // emulate warp_into by rebasing the drag anchor into window bounds.
+                let pad = 10;
+                let max_x = (geo.w - pad).max(pad);
+                let max_y = (geo.h - pad).max(pad);
+                let offset_x = (root_x - geo.x).clamp(pad, max_x);
+                let offset_y = (root_y - geo.y).clamp(pad, max_y);
+                ctx.g.title_drag.start_x = geo.x + offset_x;
+                ctx.g.title_drag.start_y = geo.y + offset_y;
+            }
         }
         ctx.g.title_drag.dragging = true;
         return title_drag_motion(ctx, root_x, root_y);
@@ -1042,7 +1089,25 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     crate::focus::focus_soft(ctx, Some(win));
 
     if right_click {
-        super::resize::resize_mouse_from_cursor(ctx, btn);
+        if let Some(c) = ctx.g.clients.get(&win) {
+            let (x_off, y_off) =
+                ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
+            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
+                let x11_win: Window = win.into();
+                let _ = conn.warp_pointer(
+                    x11rb::NONE,
+                    x11_win,
+                    0i16,
+                    0i16,
+                    0u16,
+                    0u16,
+                    x_off as i16,
+                    y_off as i16,
+                );
+                let _ = conn.flush();
+            }
+        }
+        super::resize::resize_mouse_directional(ctx, Some(ResizeDirection::BottomRight), btn);
     } else {
         warp_into(ctx, win);
         move_mouse(ctx, btn);
@@ -1059,11 +1124,14 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 
     if ctx.backend_kind() == BackendKind::Wayland && ctx.g.title_drag.dragging {
         let win = ctx.g.title_drag.win;
+        let right_click = ctx.g.title_drag.right_click;
         let grab_start_x = ctx.g.title_drag.win_start_x;
         let last = (ctx.g.title_drag.last_root_x, ctx.g.title_drag.last_root_y);
         ctx.g.title_drag.active = false;
         ctx.g.title_drag.dragging = false;
-        handle_bar_drop(ctx, win, grab_start_x, Some(last));
+        if !right_click {
+            handle_bar_drop(ctx, win, grab_start_x, Some(last));
+        }
         handle_client_monitor_switch(ctx, win);
         return;
     }
@@ -1158,11 +1226,10 @@ pub fn window_title_mouse_handler(
 /// Right-click / drag handler for a window title bar entry.
 ///
 /// Click: show+focus if hidden, otherwise zoom to master.
-/// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, hand off to resize.
+/// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, resize from bottom-right.
 /// No-op when the window is in true fullscreen.
 ///
-/// On Wayland, starts the async state machine and returns immediately.
-/// On X11, runs a synchronous grab loop.
+/// On Wayland and X11, this shares the same title-drag state machine.
 pub fn window_title_mouse_handler_right(
     ctx: &mut WmCtx,
     win: WindowId,

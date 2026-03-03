@@ -165,6 +165,10 @@ pub struct TitleDragState {
     pub win_start_x: i32,
     /// Window Y position at press time.
     pub win_start_y: i32,
+    /// Window width at press time.
+    pub win_start_w: i32,
+    /// Window height at press time.
+    pub win_start_h: i32,
     /// Last pointer X seen for this interaction (root coords).
     pub last_root_x: i32,
     /// Last pointer Y seen for this interaction (root coords).
