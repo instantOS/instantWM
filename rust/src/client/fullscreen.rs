@@ -25,7 +25,7 @@ use crate::animation::animate_client;
 use crate::backend::BackendKind;
 use crate::client::geometry::resize_client;
 use crate::contexts::WmCtx;
-use crate::globals::{get_globals_mut};
+use crate::globals::get_globals_mut;
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;

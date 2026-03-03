@@ -108,6 +108,7 @@ pub struct WaylandState {
     pub seat: Seat<WaylandState>,
     pub keyboard: KeyboardHandle<WaylandState>,
     pub pointer: PointerHandle<WaylandState>,
+    pub cursor_image_status: smithay::input::pointer::CursorImageStatus,
 
     // -- XWayland --
     pub xwm: Option<X11Wm>,
@@ -192,6 +193,7 @@ impl WaylandState {
             seat,
             keyboard,
             pointer,
+            cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             xwm: None,
             xdisplay: None,
             next_window_id: 1,

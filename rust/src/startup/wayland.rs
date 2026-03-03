@@ -475,6 +475,7 @@ fn render_frame(
     damage_tracker: &mut OutputDamageTracker,
     start_time: std::time::Instant,
 ) {
+    apply_cursor_image_status(backend, state);
     // ── Assemble custom render elements ──────────────────────────────
     let damage = {
         let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
@@ -553,6 +554,22 @@ fn render_frame(
                     );
                 }
             }
+        }
+    }
+}
+
+fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
+    match &state.cursor_image_status {
+        smithay::input::pointer::CursorImageStatus::Hidden => {
+            backend.window().set_cursor_visible(false);
+        }
+        smithay::input::pointer::CursorImageStatus::Named(icon) => {
+            backend.window().set_cursor_visible(true);
+            backend.window().set_cursor(*icon);
+        }
+        smithay::input::pointer::CursorImageStatus::Surface(_) => {
+            // Surface cursors are not composited yet; keep a visible fallback.
+            backend.window().set_cursor_visible(true);
         }
     }
 }

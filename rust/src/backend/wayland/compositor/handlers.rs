@@ -212,9 +212,9 @@ impl SeatHandler for WaylandState {
     fn cursor_image(
         &mut self,
         _seat: &smithay::input::Seat<Self>,
-        _image: smithay::input::pointer::CursorImageStatus,
+        image: smithay::input::pointer::CursorImageStatus,
     ) {
-        // TODO: store cursor image for rendering.
+        self.cursor_image_status = image;
     }
 }
 

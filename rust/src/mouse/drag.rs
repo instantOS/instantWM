@@ -993,7 +993,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
 
     let td = &ctx.g.title_drag;
-    if (root_x - td.start_x).abs() <= DRAG_THRESHOLD && (root_y - td.start_y).abs() <= DRAG_THRESHOLD
+    if (root_x - td.start_x).abs() <= DRAG_THRESHOLD
+        && (root_y - td.start_y).abs() <= DRAG_THRESHOLD
     {
         return false;
     }
