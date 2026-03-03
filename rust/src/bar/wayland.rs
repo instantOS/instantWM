@@ -4,6 +4,9 @@
 //! then uploaded as a Smithay MemoryRenderBuffer for compositing.
 
 use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
@@ -147,7 +150,6 @@ fn rasterize_text(
             let glyph_color = glyph.color_opt.unwrap_or(cosmic_color);
             let image = sc.get_image(fs, physical.cache_key);
             let Some(image) = image else { continue };
-            let image = image.clone();
 
             let gx = x + physical.x + image.placement.left;
             let gy = y + run.line_y as i32 + physical.y - image.placement.top;
@@ -210,6 +212,7 @@ fn rasterize_text(
 pub struct WaylandBarPainter {
     font_system: RefCell<FontSystem>,
     swash_cache: RefCell<SwashCache>,
+    text_width_cache: RefCell<HashMap<String, i32>>,
     scheme: Option<BarScheme>,
     pixels: Vec<u8>,
     canvas_w: i32,
@@ -218,6 +221,9 @@ pub struct WaylandBarPainter {
     origin_y: i32,
     font_size: f32,
     buffers: Vec<BarBuffer>,
+    cached_buffers: Vec<BarBuffer>,
+    cached_key: u64,
+    has_cached_buffers: bool,
 }
 
 struct BarBuffer {
@@ -226,11 +232,22 @@ struct BarBuffer {
     y: i32,
 }
 
+impl Clone for BarBuffer {
+    fn clone(&self) -> Self {
+        Self {
+            buffer: self.buffer.clone(),
+            x: self.x,
+            y: self.y,
+        }
+    }
+}
+
 impl Default for WaylandBarPainter {
     fn default() -> Self {
         Self {
             font_system: RefCell::new(FontSystem::new()),
             swash_cache: RefCell::new(SwashCache::new()),
+            text_width_cache: RefCell::new(HashMap::new()),
             scheme: None,
             pixels: Vec::new(),
             canvas_w: 0,
@@ -239,15 +256,38 @@ impl Default for WaylandBarPainter {
             origin_y: 0,
             font_size: DEFAULT_FONT_SIZE,
             buffers: Vec::new(),
+            cached_buffers: Vec::new(),
+            cached_key: 0,
+            has_cached_buffers: false,
         }
     }
 }
 
 impl WaylandBarPainter {
+    fn text_width_cached(&self, text: &str) -> i32 {
+        if text.is_empty() {
+            return 0;
+        }
+        if let Some(width) = self.text_width_cache.borrow().get(text).copied() {
+            return width;
+        }
+
+        let width = {
+            let mut fs = self.font_system.borrow_mut();
+            measure_width(&mut fs, text, self.font_size)
+        };
+
+        let mut cache = self.text_width_cache.borrow_mut();
+        if cache.len() > 2048 {
+            cache.clear();
+        }
+        cache.insert(text.to_string(), width);
+        width
+    }
+
     /// Measure text width without requiring `&mut self` — used for hit-testing.
     pub fn measure_text_width(&self, text: &str) -> i32 {
-        let mut fs = self.font_system.borrow_mut();
-        measure_width(&mut fs, text, self.font_size)
+        self.text_width_cached(text)
     }
 
     pub fn begin(
@@ -297,8 +337,7 @@ impl WaylandBarPainter {
 
 impl BarPainter for WaylandBarPainter {
     fn text_width(&mut self, text: &str) -> i32 {
-        let mut fs = self.font_system.borrow_mut();
-        measure_width(&mut fs, text, self.font_size)
+        self.text_width_cached(text)
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {
@@ -316,7 +355,7 @@ impl BarPainter for WaylandBarPainter {
         let Some(scheme) = self.scheme.clone() else {
             return;
         };
-        let color = if invert { scheme.fg } else { scheme.bg };
+        let color = scheme.rect_color(invert);
         pixel_fill_rect(
             &mut self.pixels,
             self.canvas_w,
@@ -343,8 +382,7 @@ impl BarPainter for WaylandBarPainter {
         let Some(scheme) = self.scheme.clone() else {
             return x;
         };
-        let bg = if invert { scheme.fg } else { scheme.bg };
-        let fg = if invert { scheme.bg } else { scheme.fg };
+        let (bg, fg) = scheme.text_colors(invert);
         pixel_fill_rect(
             &mut self.pixels,
             self.canvas_w,
@@ -414,6 +452,16 @@ pub fn render_bar_buffers(
     ctx: &mut crate::contexts::WmCtx,
     scale: Scale<f64>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
+    let key = bar_render_key(ctx);
+    if ctx.bar_painter.has_cached_buffers && ctx.bar_painter.cached_key == key {
+        return ctx
+            .bar_painter
+            .cached_buffers
+            .iter()
+            .map(|b| (b.buffer.clone(), b.x, b.y))
+            .collect();
+    }
+
     let mon_indices: Vec<(usize, i32, i32, i32, i32)> = ctx
         .g
         .monitors_iter()
@@ -432,7 +480,19 @@ pub fn render_bar_buffers(
         ctx.bar_painter.finish();
     }
 
-    ctx.bar_painter.take_buffers()
+    let rendered = ctx.bar_painter.take_buffers();
+    ctx.bar_painter.cached_buffers = rendered
+        .iter()
+        .map(|(buffer, x, y)| BarBuffer {
+            buffer: buffer.clone(),
+            x: *x,
+            y: *y,
+        })
+        .collect();
+    ctx.bar_painter.cached_key = key;
+    ctx.bar_painter.has_cached_buffers = true;
+
+    rendered
 }
 
 fn draw_bar_common_with_painter(ctx: &mut crate::contexts::WmCtx, mon_idx: usize) {
@@ -441,4 +501,68 @@ fn draw_bar_common_with_painter(ctx: &mut crate::contexts::WmCtx, mon_idx: usize
     unsafe {
         draw_bar_common(&mut *ctx_ptr, mon_idx, &mut *painter_ptr);
     }
+}
+
+fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
+    match gesture {
+        crate::types::Gesture::None => 0u8.hash(hasher),
+        crate::types::Gesture::WinTitle(win) => {
+            1u8.hash(hasher);
+            win.hash(hasher);
+        }
+        crate::types::Gesture::Tag(tag) => {
+            2u8.hash(hasher);
+            tag.hash(hasher);
+        }
+        crate::types::Gesture::Overlay => 3u8.hash(hasher),
+        crate::types::Gesture::CloseButton => 4u8.hash(hasher),
+        crate::types::Gesture::StartMenu => 5u8.hash(hasher),
+    }
+}
+
+//TODO: document what this does
+fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    ctx.g.cfg.showbar.hash(&mut hasher);
+    ctx.g.cfg.bar_height.hash(&mut hasher);
+    ctx.g.cfg.horizontal_padding.hash(&mut hasher);
+    ctx.g.cfg.startmenusize.hash(&mut hasher);
+    ctx.g.bar_dragging.hash(&mut hasher);
+    ctx.g.status_text.hash(&mut hasher);
+    ctx.g.selmon_id().hash(&mut hasher);
+
+    for (_idx, m) in ctx.g.monitors_iter() {
+        m.num.hash(&mut hasher);
+        m.work_rect.x.hash(&mut hasher);
+        m.work_rect.y.hash(&mut hasher);
+        m.work_rect.w.hash(&mut hasher);
+        m.work_rect.h.hash(&mut hasher);
+        m.by.hash(&mut hasher);
+        m.showbar.hash(&mut hasher);
+        m.current_tag.hash(&mut hasher);
+        m.sel.hash(&mut hasher);
+        hash_gesture(&mut hasher, m.gesture);
+        if let Some(tag) = m.current_tag() {
+            tag.showbar.hash(&mut hasher);
+            tag.name.hash(&mut hasher);
+            tag.alt_name.hash(&mut hasher);
+            tag.layouts.symbol().hash(&mut hasher);
+        }
+
+        let selected = m.selected_tags();
+        for (win, c) in m.iter_clients(&ctx.g.clients) {
+            if !c.is_visible_on_tags(selected) {
+                continue;
+            }
+            win.hash(&mut hasher);
+            c.name.hash(&mut hasher);
+            c.tags.hash(&mut hasher);
+            c.isurgent.hash(&mut hasher);
+            c.islocked.hash(&mut hasher);
+            c.is_fullscreen.hash(&mut hasher);
+            c.is_hidden.hash(&mut hasher);
+        }
+    }
+
+    hasher.finish()
 }

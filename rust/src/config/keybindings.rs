@@ -12,12 +12,13 @@ use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
+use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_client, quit, shift_tag_by, shift_view,
+    follow_view, last_view, move_client, quit, shift_tag_by, shift_view, tag_mon,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -170,12 +171,12 @@ pub fn get_keys() -> Vec<Key> {
             }
         }),
         key!(MODKEY,  XK_O       => win_view),
-        key!(MODKEY, XK_COMMA  => |ctx| tag_ops::focus_monitor(ctx, MonitorDirection::PREV)),
-        key!(MODKEY, XK_PERIOD => |ctx| tag_ops::focus_monitor(ctx, MonitorDirection::NEXT)),
-        key!(MS,     XK_COMMA  => |ctx| tag_ops::tag_monitor(ctx, MonitorDirection::PREV)),
-        key!(MS,     XK_PERIOD => |ctx| tag_ops::tag_monitor(ctx, MonitorDirection::NEXT)),
-        key!(MA,     XK_COMMA  => |ctx| tag_ops::follow_monitor(ctx, MonitorDirection::PREV)),
-        key!(MA,     XK_PERIOD => |ctx| tag_ops::follow_monitor(ctx, MonitorDirection::NEXT)),
+        key!(MODKEY, XK_COMMA  => |ctx| focus_mon(ctx, MonitorDirection::PREV)),
+        key!(MODKEY, XK_PERIOD => |ctx| focus_mon(ctx, MonitorDirection::NEXT)),
+        key!(MS,     XK_COMMA  => |ctx| tag_mon(ctx, MonitorDirection::PREV)),
+        key!(MS,     XK_PERIOD => |ctx| tag_mon(ctx, MonitorDirection::NEXT)),
+        key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
+        key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),
         key!(MC,   XK_D      => distribute_clients),
         key!(MS,   XK_D      => draw_window),

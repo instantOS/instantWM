@@ -4,7 +4,7 @@
 //! the new `TagMask` and `TagSelection` types.
 
 use crate::contexts::WmCtx;
-use crate::types::{MonitorDirection, TagMask, TagSelection};
+use crate::types::{TagMask, TagSelection};
 
 /// View tags using a type-safe selection.
 ///
@@ -38,20 +38,4 @@ pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);
     super::view(ctx, mask);
-}
-
-/// Focus a monitor using type-safe direction.
-/// TODO:thihs wrapper is redundant, rename the orignial function to focus_monitor
-pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    super::super::monitor::focus_mon(ctx, direction);
-}
-
-/// Move client to a monitor using type-safe direction.
-pub fn tag_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    super::tag_mon(ctx, direction);
-}
-
-/// Follow client to a monitor using type-safe direction.
-pub fn follow_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    super::super::monitor::follow_mon(ctx, direction);
 }
