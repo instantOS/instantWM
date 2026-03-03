@@ -53,6 +53,7 @@ use crate::backend::wayland::compositor::{
 };
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
+use crate::bar::color::rgba_from_hex;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::config::init_config;
 use crate::monitor;
@@ -680,20 +681,16 @@ fn wayland_border_elements(wm: &Wm) -> Vec<SolidColorRenderElement> {
             .unwrap_or(true);
         let rgba = if Some(c.win) == sel {
             if c.isfloating || !has_tiling {
-                cfg_hex_to_rgba(Some(
-                    bordercolors.get(crate::config::SchemeBorder::FloatFocus),
-                ))
-                .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
-                .unwrap_or([0.75, 0.40, 0.28, 1.0])
+                rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::FloatFocus))
+                    .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
+                    .unwrap_or([0.75, 0.40, 0.28, 1.0])
             } else {
-                cfg_hex_to_rgba(Some(
-                    bordercolors.get(crate::config::SchemeBorder::TileFocus),
-                ))
-                .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
-                .unwrap_or([0.28, 0.52, 0.77, 1.0])
+                rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::TileFocus))
+                    .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
+                    .unwrap_or([0.28, 0.52, 0.77, 1.0])
             }
         } else {
-            cfg_hex_to_rgba(Some(bordercolors.get(crate::config::SchemeBorder::Normal)))
+            rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::Normal))
                 .or_else(|| scheme.map(|s| color_to_rgba(&s.normal.bg)))
                 .unwrap_or([0.18, 0.18, 0.20, 1.0])
         };
@@ -921,28 +918,6 @@ fn spawn_wayland_smoke_window() {
 fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
-}
-
-fn cfg_hex_to_rgba(color: Option<&str>) -> Option<[f32; 4]> {
-    let s = color?.trim();
-    let hex = s.strip_prefix('#').unwrap_or(s);
-    if hex.len() != 6 && hex.len() != 8 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    let a = if hex.len() == 8 {
-        u8::from_str_radix(&hex[6..8], 16).ok()?
-    } else {
-        255
-    };
-    Some([
-        r as f32 / 255.0,
-        g as f32 / 255.0,
-        b as f32 / 255.0,
-        a as f32 / 255.0,
-    ])
 }
 
 fn push_solid(

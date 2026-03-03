@@ -7,6 +7,8 @@
 //! that both the algorithm modules and the manager can depend on them without
 //! creating circular imports.
 
+use crate::client::next_tiled_ctx;
+use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::types::{Monitor, WindowId};
 
@@ -108,4 +110,25 @@ pub fn selmon_has_tiling_layout(g: &Globals) -> bool {
         }
         None => false,
     }
+}
+
+/// Returns `hi` if animation is enabled and client count exceeds threshold,
+/// otherwise returns `lo`.
+pub fn framecount_for_layout(g: &Globals, threshold: usize, hi: i32, lo: i32) -> i32 {
+    if g.animated && client_count(g) > threshold as i32 {
+        hi
+    } else {
+        lo
+    }
+}
+
+/// Counts tiled clients by walking the linked list using `next_tiled_ctx`.
+pub fn count_tiled_clients(ctx: &WmCtx, mon: &Monitor) -> u32 {
+    let mut count = 0;
+    let mut c_win = next_tiled_ctx(ctx, mon.clients);
+    while let Some(win) = c_win {
+        count += 1;
+        c_win = next_tiled_ctx(ctx, ctx.g.clients.get(&win).and_then(|c| c.next));
+    }
+    count
 }

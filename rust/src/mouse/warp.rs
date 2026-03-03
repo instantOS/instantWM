@@ -16,6 +16,8 @@
 
 use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
+use crate::require_x11;
+use crate::require_x11_ret;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -30,9 +32,7 @@ const WARP_INTO_PADDING: i32 = 10;
 ///
 /// Returns `None` when the X11 connection is unavailable or the request fails.
 pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return None;
-    }
+    require_x11_ret!(ctx, None);
     let conn = ctx.x11_conn().map(|x11| x11.conn)?;
     let cookie = query_pointer(conn, ctx.g.cfg.root).ok()?;
     let reply = cookie.reply().ok()?;
@@ -46,9 +46,7 @@ pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
 pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -136,9 +134,7 @@ pub fn warp_cursor_to_client_win(ctx: &WmCtx, c: &Client) {
 /// Used after operations that deliberately reposition the window (e.g. after
 /// an animated move) where the old cursor position is no longer meaningful.
 pub fn force_warp(ctx: &WmCtx, c: &Client) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
@@ -161,9 +157,7 @@ pub fn force_warp(ctx: &WmCtx, c: &Client) {
 /// This clamps the pointer into the window rect with a small padding so
 /// subsequent drags/resizes start from inside the client.
 pub fn warp_into(ctx: &WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     if win == WindowId::default() {
         return;
     }
@@ -210,9 +204,7 @@ pub fn warp_to_focus(ctx: &WmCtx) {
 /// Call this after a modal grab ends so that the cursor reverts to normal even
 /// if the pointer is not over any client window.
 pub fn reset_cursor(ctx: &mut WmCtx) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     if ctx.g.altcursor == AltCursor::None {
         return;
     }

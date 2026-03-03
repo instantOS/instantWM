@@ -13,6 +13,22 @@ use x11rb::CURRENT_TIME;
 use crate::backend::{BackendKind, BackendOps};
 use crate::types::{Rect, WindowId};
 
+/// Log X11 errors instead of silently ignoring them.
+#[inline]
+pub fn log_x11_error<T>(result: Result<T, x11rb::errors::ConnectionError>, operation: &str) {
+    if let Err(e) = result {
+        log::warn!("X11 operation '{}' failed: {}", operation, e);
+    }
+}
+
+/// Log X11 protocol errors (have a different error type).
+#[inline]
+pub fn log_x11_protocol_error<T>(result: Result<T, x11rb::errors::ReplyError>, operation: &str) {
+    if let Err(e) = result {
+        log::warn!("X11 protocol operation '{}' failed: {}", operation, e);
+    }
+}
+
 pub struct X11Backend {
     pub conn: RustConnection,
     pub screen_num: usize,

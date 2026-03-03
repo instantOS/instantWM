@@ -33,8 +33,11 @@
 
 use crate::animation::animate_client;
 use crate::client::next_tiled_ctx;
+use crate::constants::animation::{
+    BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
+};
 use crate::contexts::WmCtx;
-use crate::layouts::query::client_count;
+use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
 use crate::types::{Monitor, Rect};
 
 // ── grid ─────────────────────────────────────────────────────────────────────
@@ -50,21 +53,10 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         return;
     }
 
-    let framecount = {
-        if ctx.g.animated && client_count(ctx.g) > 5 {
-            3
-        } else {
-            6
-        }
-    };
+    let framecount = framecount_for_layout(ctx.g, FAST_ANIM_THRESHOLD, 3, 6);
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: i32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m) as i32;
 
     if n == 0 {
         return;
@@ -97,7 +89,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         let cell_x = m.work_rect.x + (i / rows) * cell_width;
@@ -122,8 +114,8 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             &Rect {
                 x: cell_x,
                 y: cell_y,
-                w: cell_width - 2 * border_width + extra_w,
-                h: cell_height - 2 * border_width + extra_h,
+                w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
+                h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
             },
             framecount,
             0,
@@ -143,24 +135,18 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// so there are never empty cells.
 pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
     }
 
-    let framecount = {
-        if ctx.g.animated && client_count(ctx.g) > 5 {
-            3
-        } else {
-            6
-        }
-    };
+    let framecount = framecount_for_layout(
+        ctx.g,
+        FAST_ANIM_THRESHOLD,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
 
     // Number of columns = ceil(sqrt(n)).
     let cols = ((n as f32).sqrt() + 0.5) as u32;
@@ -196,7 +182,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     .g
                     .clients
                     .get(&win)
-                    .map(|c| (c.border_width, c.next))
+                    .map(|c| c.border_and_next())
                     .unwrap_or((0, None));
 
                 let cell_height = m.work_rect.h / cn as i32;
@@ -216,8 +202,8 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     &Rect {
                         x: cell_x,
                         y: cell_y,
-                        w: cell_width - 2 * border_width + extra_w,
-                        h: cell_height - 2 * border_width,
+                        w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
+                        h: cell_height - BORDER_MULTIPLIER * border_width,
                     },
                     framecount,
                     0,

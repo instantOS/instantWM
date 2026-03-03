@@ -19,6 +19,7 @@
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
 use crate::client::next_tiled_ctx;
+use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
@@ -45,13 +46,13 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.
         let frames = if ctx.g.animated && Some(win) == sel_win {
-            7
+            DEFAULT_FRAME_COUNT
         } else {
             0
         };
@@ -62,8 +63,8 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             &Rect {
                 x: m.work_rect.x,
                 y: m.work_rect.y,
-                w: m.work_rect.w - 2 * border_width,
-                h: m.work_rect.h - 2 * border_width,
+                w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
+                h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
             },
             frames,
             0,

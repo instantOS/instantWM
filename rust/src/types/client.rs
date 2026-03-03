@@ -128,6 +128,18 @@ impl Client {
     pub fn is_visible_on_tags(&self, selected_tags: u32) -> bool {
         self.issticky || (self.tags & selected_tags) != 0
     }
+
+    /// Check if the client is in true fullscreen mode (not fake fullscreen).
+    #[inline]
+    pub fn is_true_fullscreen(&self) -> bool {
+        self.is_fullscreen && !self.isfakefullscreen
+    }
+
+    /// Get the border width and next client in focus order.
+    #[inline]
+    pub fn border_and_next(&self) -> (i32, Option<WindowId>) {
+        (self.border_width, self.next)
+    }
 }
 
 /// Iterator over a monitor's client list (focus order).

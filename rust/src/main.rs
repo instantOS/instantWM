@@ -14,6 +14,8 @@ mod globals;
 mod ipc;
 mod keyboard;
 mod layouts;
+#[macro_use]
+mod macros;
 mod monitor;
 mod mouse;
 mod overlay;

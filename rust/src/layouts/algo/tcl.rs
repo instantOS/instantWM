@@ -33,17 +33,14 @@
 //! When there is only one side column (2 clients), it takes the full remaining width.
 
 use crate::client::{client_height, next_tiled_ctx, resize};
+use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
+use crate::layouts::query::count_tiled_clients;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
@@ -65,7 +62,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .g
         .clients
         .get(&first_win)
-        .map(|c| (2 * c.border_width, c.next))
+        .map(|c| c.border_and_next())
+        .map(|(bw, next)| (BORDER_MULTIPLIER * bw, next))
         .unwrap_or((0, None));
 
     // When n < 3 the two side columns collapse into one, so the master starts
@@ -135,14 +133,14 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 .g
                 .clients
                 .get(&win)
-                .map(|c| (c.border_width, c.next))
+                .map(|c| c.border_and_next())
                 .unwrap_or((0, None));
 
             // Last client in the column absorbs rounding remainder.
             let h = if idx + 1 == right_n {
-                m.work_rect.y + m.work_rect.h - y - 2 * border_width
+                m.work_rect.y + m.work_rect.h - y - BORDER_MULTIPLIER * border_width
             } else {
-                cell_h - 2 * border_width
+                cell_h - BORDER_MULTIPLIER * border_width
             };
 
             resize(
@@ -151,7 +149,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: col_x,
                     y,
-                    w: col_w - 2 * border_width,
+                    w: col_w - BORDER_MULTIPLIER * border_width,
                     h,
                 },
                 false,
@@ -211,13 +209,13 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 .g
                 .clients
                 .get(&win)
-                .map(|c| (c.border_width, c.next))
+                .map(|c| c.border_and_next())
                 .unwrap_or((0, None));
 
             let h = if idx + 1 == left_n {
-                m.work_rect.y + m.work_rect.h - y - 2 * border_width
+                m.work_rect.y + m.work_rect.h - y - BORDER_MULTIPLIER * border_width
             } else {
-                cell_h - 2 * border_width
+                cell_h - BORDER_MULTIPLIER * border_width
             };
 
             resize(
@@ -226,7 +224,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: col_x,
                     y,
-                    w: col_w - 2 * border_width,
+                    w: col_w - BORDER_MULTIPLIER * border_width,
                     h,
                 },
                 false,

@@ -1,3 +1,4 @@
+use crate::bar::color::hex_to_u32;
 use crate::contexts::WmCtx;
 use crate::globals::{get_globals, get_globals_mut, get_x11};
 use crate::types::{Monitor, WindowId};
@@ -117,8 +118,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bh = ctx.g.cfg.bar_height;
         let showsystray = ctx.g.cfg.showsystray;
-        let status_bg =
-            parse_color_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
+        let status_bg = hex_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
         let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
         let root = ctx.g.cfg.root;
         let selmon = ctx.g.selmon_id();
@@ -249,16 +249,4 @@ fn get_text_prop(ctx: &WmCtx, win: Window, atom: u32) -> Option<String> {
         .position(|&b| b == 0)
         .unwrap_or(reply.value.len());
     String::from_utf8(reply.value[..nul_pos].to_vec()).ok()
-}
-
-fn parse_color_to_u32(color: &str) -> u32 {
-    let color = color.trim_start_matches('#');
-    if color.len() == 6 {
-        let r = u32::from_str_radix(&color[0..2], 16).unwrap_or(0);
-        let g = u32::from_str_radix(&color[2..4], 16).unwrap_or(0);
-        let b = u32::from_str_radix(&color[4..6], 16).unwrap_or(0);
-        (r << 16) | (g << 8) | b
-    } else {
-        0x121212
-    }
 }

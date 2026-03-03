@@ -5,6 +5,7 @@ use crate::backend::{BackendKind, BackendOps};
 use crate::client::{resize, restore_border_width_ctx};
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
+use crate::require_x11;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -18,9 +19,7 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
     ctx.backend.set_border_width(win, restored_bw);
 
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let x11_win: Window = win.into();
         if let Some(ref scheme) = ctx.g.cfg.borderscheme {
@@ -65,9 +64,7 @@ pub fn apply_float_change(
             let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
             ctx.backend.set_border_width(win, restored_bw);
 
-            if ctx.backend_kind() == BackendKind::Wayland {
-                return;
-            }
+            require_x11!(ctx);
             if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
                 let x11_win: Window = win.into();
                 if let Some(ref scheme) = ctx.g.cfg.borderscheme {
@@ -126,7 +123,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         match mon.sel {
             Some(sel) if Some(sel) != mon.overlay => {
                 if let Some(c) = ctx.g.clients.get(&sel) {
-                    if c.is_fullscreen && !c.isfakefullscreen {
+                    if c.is_true_fullscreen() {
                         return;
                     }
                 }
@@ -156,7 +153,7 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
         None => return,
     };
 
-    if is_fullscreen && !is_fake_fullscreen {
+    if is_fake_fullscreen {
         return;
     }
 
@@ -166,12 +163,12 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating) = match ctx.g.clients.get(&win) {
-        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating),
+    let (is_true_fullscreen, is_floating) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.is_true_fullscreen(), c.isfloating),
         None => return,
     };
 
-    if is_fullscreen && !is_fake_fullscreen {
+    if is_true_fullscreen {
         return;
     }
     if is_floating {
@@ -186,12 +183,12 @@ pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
 }
 
 pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
-        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
+    let (is_true_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
         None => return,
     };
 
-    if is_fullscreen && !is_fake_fullscreen {
+    if is_true_fullscreen {
         return;
     }
     if !is_floating && !is_fixed {
@@ -250,9 +247,7 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
         arrange(ctx, Some(ctx.g.selmon_id()));
     }
 
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     if let Some(win) = ctx.g.selmon().and_then(|m| m.fullscreen) {
         if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
             let x11_win: Window = win.into();

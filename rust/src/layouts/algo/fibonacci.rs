@@ -47,7 +47,9 @@
 //! | `false` | away from centre (dwindle)   |
 
 use crate::client::{next_tiled_ctx, resize};
+use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
+use crate::layouts::query::count_tiled_clients;
 use crate::types::{Monitor, Rect};
 
 // ── public entry points ───────────────────────────────────────────────────────
@@ -83,12 +85,7 @@ pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 ///                      outward (dwindle / Fibonacci staircase).
 pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
@@ -110,7 +107,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         // Split the remaining rect starting from the second client.
@@ -140,8 +137,8 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
             &Rect {
                 x,
                 y,
-                w: w - 2 * border_width,
-                h: h - 2 * border_width,
+                w: w - BORDER_MULTIPLIER * border_width,
+                h: h - BORDER_MULTIPLIER * border_width,
             },
             false,
         );

@@ -28,6 +28,8 @@
 
 use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
+use crate::require_x11;
+use crate::require_x11_ret;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -46,9 +48,7 @@ use x11rb::CURRENT_TIME;
 /// After a successful grab, use [`wait_event`] to poll events inside the
 /// loop and [`ungrab_ctx`] to release the grab when done.
 pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return false;
-    }
+    require_x11_ret!(ctx, false);
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return false;
     };
@@ -84,9 +84,7 @@ pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
 /// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
 pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return false;
-    }
+    require_x11_ret!(ctx, false);
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return false;
     };
@@ -130,9 +128,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
 /// Borrows the connection only for the duration of the call, so the caller
 /// can freely mutate `ctx` between events.
 pub fn wait_event(ctx: &WmCtx) -> Option<x11rb::protocol::Event> {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return None;
-    }
+    require_x11_ret!(ctx, None);
     ctx.x11_conn()
         .and_then(|x11| x11.conn.wait_for_event().ok())
 }
@@ -152,9 +148,7 @@ pub fn ungrab(conn: &x11rb::rust_connection::RustConnection) {
 /// Convenience wrapper around [`ungrab`] that extracts the connection from ctx.
 #[inline]
 pub fn ungrab_ctx(ctx: &WmCtx) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         ungrab(conn);
     }
@@ -168,9 +162,7 @@ pub fn ungrab_ctx(ctx: &WmCtx) {
 /// * When `focused` is **`false`**: grabs are installed for buttons 1 and 3
 ///   with every combination of NumLock and CapsLock modifiers.
 pub fn grab_buttons(ctx: &WmCtx, c_win: WindowId, focused: bool) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };

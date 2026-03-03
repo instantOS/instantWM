@@ -44,8 +44,9 @@
 
 use crate::animation::animate_client;
 use crate::client::{client_height, client_width, next_tiled_ctx, resize};
+use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
-use crate::layouts::query::client_count;
+use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
@@ -58,12 +59,7 @@ use std::cmp::min;
 /// only the topmost is visible, giving a card-deck feel.
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
@@ -90,7 +86,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
@@ -103,8 +99,8 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x,
                     y: m.work_rect.y + master_column_offset as i32,
-                    w: mw as i32 - 2 * border_width,
-                    h: h - 2 * border_width,
+                    w: mw as i32 - BORDER_MULTIPLIER * border_width,
+                    h: h - BORDER_MULTIPLIER * border_width,
                 },
                 false,
             );
@@ -120,8 +116,8 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x + mw as i32,
                     y: m.work_rect.y,
-                    w: m.work_rect.w - mw as i32 - 2 * border_width,
-                    h: m.work_rect.h - 2 * border_width,
+                    w: m.work_rect.w - mw as i32 - BORDER_MULTIPLIER * border_width,
+                    h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
                 },
                 false,
             );
@@ -139,21 +135,10 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// The first `nmaster` clients share a horizontal master row at the top.
 /// Remaining clients are divided into equal-width vertical columns below.
 pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let framecount = {
-        if ctx.g.animated && client_count(ctx.g) > 4 {
-            4
-        } else {
-            7
-        }
-    };
+    let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
@@ -187,7 +172,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
@@ -199,8 +184,8 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x + master_row_offset,
                     y: m.work_rect.y,
-                    w: w - 2 * border_width,
-                    h: mh - 2 * border_width,
+                    w: w - BORDER_MULTIPLIER * border_width,
+                    h: mh - BORDER_MULTIPLIER * border_width,
                 },
                 framecount,
                 0,
@@ -218,8 +203,8 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: tx,
                     y: stack_y_offset,
-                    w: tw - 2 * border_width,
-                    h: h - 2 * border_width,
+                    w: tw - BORDER_MULTIPLIER * border_width,
+                    h: h - BORDER_MULTIPLIER * border_width,
                 },
                 framecount,
                 0,
@@ -244,21 +229,10 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// Like [`bottom_stack`] but stack clients are arranged as horizontal rows rather
 /// than vertical columns — each stack client spans the full work width.
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let framecount = {
-        if ctx.g.animated && client_count(ctx.g) > 4 {
-            4
-        } else {
-            7
-        }
-    };
+    let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
-    while c_win.is_some() {
-        n += 1;
-        c_win = c_win.and_then(|w| ctx.g.clients.get(&w)?.next);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
@@ -292,7 +266,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
@@ -304,8 +278,8 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x + master_row_offset,
                     y: m.work_rect.y,
-                    w: w - 2 * border_width,
-                    h: mh - 2 * border_width,
+                    w: w - BORDER_MULTIPLIER * border_width,
+                    h: mh - BORDER_MULTIPLIER * border_width,
                 },
                 framecount,
                 0,
@@ -322,8 +296,8 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: tx,
                     y: stack_y_offset,
-                    w: m.work_rect.w - 2 * border_width,
-                    h: th - 2 * border_width,
+                    w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
+                    h: th - BORDER_MULTIPLIER * border_width,
                 },
                 framecount,
                 0,

@@ -22,6 +22,7 @@ use crate::backend::BackendKind;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
+use crate::require_x11;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
 
@@ -33,9 +34,7 @@ use crate::types::ResizeDirection;
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
@@ -43,7 +42,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         .g
         .clients
         .get(&win)
-        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .map(|c| c.is_true_fullscreen())
         .unwrap_or(false);
     if is_blocked {
         return;
@@ -94,9 +93,7 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
 pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
@@ -104,7 +101,7 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         .g
         .clients
         .get(&win)
-        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .map(|c| c.is_true_fullscreen())
         .unwrap_or(false);
     if is_blocked {
         return;
@@ -142,7 +139,7 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
             }
 
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / rate {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
@@ -193,9 +190,7 @@ pub fn resize_mouse_directional(
     direction: Option<ResizeDirection>,
     btn: MouseButton,
 ) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(win) = ctx.g.selected_win() else {
         return;
     };
@@ -203,7 +198,7 @@ pub fn resize_mouse_directional(
         .g
         .clients
         .get(&win)
-        .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+        .map(|c| c.is_true_fullscreen())
         .unwrap_or(false);
     if is_blocked {
         return;
@@ -250,7 +245,7 @@ pub fn resize_mouse_directional(
             }
 
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / rate {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
@@ -350,9 +345,7 @@ pub fn force_resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
 pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let is_fullscreen = ctx
         .g
         .clients
@@ -395,7 +388,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
             }
 
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / rate {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;

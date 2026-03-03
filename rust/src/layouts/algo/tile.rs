@@ -19,27 +19,23 @@
 
 use crate::animation::animate_client;
 use crate::client::{client_height, next_tiled_ctx};
+use crate::constants::animation::BORDER_MULTIPLIER;
+use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
+use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
 pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let framecount = {
-        if ctx.g.animated && crate::layouts::query::client_count(ctx.g) > 5 {
-            4
-        } else {
-            7
-        }
-    };
+    let framecount = framecount_for_layout(
+        ctx.g,
+        FAST_ANIM_THRESHOLD,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let mut n: u32 = 0;
-    let mut current_window = next_tiled_ctx(ctx, m.clients);
-    while let Some(win) = current_window {
-        n += 1;
-        let next_client = ctx.g.clients.get(&win).and_then(|c| c.next);
-        current_window = next_tiled_ctx(ctx, next_client);
-    }
+    let n = count_tiled_clients(ctx, m);
 
     if n == 0 {
         return;
@@ -73,7 +69,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             .g
             .clients
             .get(&win)
-            .map(|c| (c.border_width, c.next))
+            .map(|c| c.border_and_next())
             .unwrap_or((0, None));
 
         if i < m.nmaster as u32 {
@@ -90,8 +86,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x,
                     y: m.work_rect.y + master_y_offset as i32,
-                    w: mw - 2 * border_width,
-                    h: h - 2 * border_width,
+                    w: mw - BORDER_MULTIPLIER * border_width,
+                    h: h - BORDER_MULTIPLIER * border_width,
                 },
                 frames,
                 0,
@@ -120,8 +116,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x + mw,
                     y: m.work_rect.y + stack_y_offset as i32,
-                    w: m.work_rect.w - mw - 2 * border_width,
-                    h: h - 2 * border_width,
+                    w: m.work_rect.w - mw - BORDER_MULTIPLIER * border_width,
+                    h: h - BORDER_MULTIPLIER * border_width,
                 },
                 framecount,
                 0,

@@ -34,3 +34,17 @@ pub fn rgba_from_hex(color: &str) -> Option<Rgba> {
 pub fn rgba_from_hex_opt(color: Option<&str>) -> Option<Rgba> {
     rgba_from_hex(color?)
 }
+
+/// Parse a hex color string (e.g., "#RRGGBB" or "RRGGBB") to a packed u32.
+/// Returns the default color (0x121212) if parsing fails.
+pub fn hex_to_u32(color: &str) -> u32 {
+    let color = color.trim_start_matches('#');
+    if color.len() == 6 {
+        let r = u32::from_str_radix(&color[0..2], 16).unwrap_or(0);
+        let g = u32::from_str_radix(&color[2..4], 16).unwrap_or(0);
+        let b = u32::from_str_radix(&color[4..6], 16).unwrap_or(0);
+        (r << 16) | (g << 8) | b
+    } else {
+        0x121212
+    }
+}

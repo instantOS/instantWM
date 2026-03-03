@@ -29,6 +29,7 @@ use crate::client::resize;
 use crate::config::commands::Cmd;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
+use crate::require_x11;
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
 use crate::mouse::warp::warp_into;
@@ -139,7 +140,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         let sel = mon.sel?;
         let c = ctx.g.clients.get(&sel)?;
 
-        if c.is_fullscreen && !c.isfakefullscreen {
+        if c.is_true_fullscreen() {
             return None;
         }
         if Some(sel) == mon.overlay {
@@ -533,9 +534,7 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>) -
 ///
 /// Grab → event loop → release handling. See helpers above for each phase.
 pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     let Some(win) = prepare_drag_target(ctx) else {
         return;
     };
@@ -577,7 +576,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
                 }
             }
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / rate {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
@@ -611,9 +610,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
 pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
     if !grab_pointer(ctx, 2) {
         return;
     }
@@ -636,7 +633,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
                 }
             }
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
@@ -837,9 +834,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
     }
 
     // On Wayland the calloop drives motion/finish asynchronously.
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
 
     // ── X11 synchronous grab loop ─────────────────────────────────────────
     if !grab_pointer(ctx, 2) {
@@ -864,7 +859,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
                 }
             }
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
@@ -910,7 +905,7 @@ pub fn title_drag_begin(
             .g
             .clients
             .get(&win)
-            .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+            .map(|c| c.is_true_fullscreen())
             .unwrap_or(false)
         {
             return false;
@@ -1122,7 +1117,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         return;
     }
 
-    if ctx.backend_kind() == BackendKind::Wayland && ctx.g.title_drag.dragging {
+    if ctx.backend_kind() == BackendKind::X11 && ctx.g.title_drag.dragging {
         let win = ctx.g.title_drag.win;
         let right_click = ctx.g.title_drag.right_click;
         let grab_start_x = ctx.g.title_drag.win_start_x;
@@ -1182,9 +1177,7 @@ pub fn window_title_mouse_handler(
     }
 
     // On Wayland the calloop drives motion/finish asynchronously.
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
     if !grab_pointer(ctx, 0) {
@@ -1205,7 +1198,7 @@ pub fn window_title_mouse_handler(
                 }
             }
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
@@ -1242,9 +1235,7 @@ pub fn window_title_mouse_handler_right(
     }
 
     // On Wayland the calloop drives motion/finish asynchronously.
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+    require_x11!(ctx);
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
     if !grab_pointer(ctx, 2) {
@@ -1265,7 +1256,7 @@ pub fn window_title_mouse_handler_right(
                 }
             }
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
