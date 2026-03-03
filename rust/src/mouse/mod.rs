@@ -51,6 +51,7 @@ pub mod warp;
 // ── warp ──────────────────────────────────────────────────────────────────────
 
 pub use warp::reset_cursor;
+pub use cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
 
 // ── grab ──────────────────────────────────────────────────────────────────────
 

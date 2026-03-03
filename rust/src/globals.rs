@@ -177,6 +177,57 @@ pub struct TitleDragState {
     pub dragging: bool,
 }
 
+/// State for Wayland hover-border move/resize interactions.
+#[derive(Debug, Clone)]
+pub struct HoverResizeDragState {
+    /// Whether a hover-border drag is currently active.
+    pub active: bool,
+    /// Target window being moved/resized.
+    pub win: WindowId,
+    /// Mouse button that started the interaction.
+    pub button: MouseButton,
+    /// Resize direction chosen at press time.
+    pub direction: ResizeDirection,
+    /// `true` for move mode, `false` for resize mode.
+    pub move_mode: bool,
+    /// Pointer anchor in root coords at press time.
+    pub start_x: i32,
+    /// Pointer anchor in root coords at press time.
+    pub start_y: i32,
+    /// Window position at press time.
+    pub win_start_x: i32,
+    /// Window position at press time.
+    pub win_start_y: i32,
+    /// Window size at press time.
+    pub win_start_w: i32,
+    /// Window size at press time.
+    pub win_start_h: i32,
+    /// Last pointer position seen for this interaction.
+    pub last_root_x: i32,
+    /// Last pointer position seen for this interaction.
+    pub last_root_y: i32,
+}
+
+impl Default for HoverResizeDragState {
+    fn default() -> Self {
+        Self {
+            active: false,
+            win: WindowId::default(),
+            button: MouseButton::Left,
+            direction: ResizeDirection::BottomRight,
+            move_mode: false,
+            start_x: 0,
+            start_y: 0,
+            win_start_x: 0,
+            win_start_y: 0,
+            win_start_w: 0,
+            win_start_h: 0,
+            last_root_x: 0,
+            last_root_y: 0,
+        }
+    }
+}
+
 /// On X11, the synchronous grab loop drives this. On Wayland, the calloop
 /// press/motion/release events drive it asynchronously.
 #[derive(Debug, Clone, Default)]
@@ -227,6 +278,7 @@ pub struct Globals {
     pub bar_dragging: bool,
     pub tag_drag: TagDragState,
     pub title_drag: TitleDragState,
+    pub hover_resize_drag: HoverResizeDragState,
     pub status_text_width: i32,
     pub status_text: String,
 }
@@ -368,6 +420,7 @@ impl Default for Globals {
             bar_dragging: false,
             tag_drag: TagDragState::default(),
             title_drag: TitleDragState::default(),
+            hover_resize_drag: HoverResizeDragState::default(),
             status_text_width: 0,
             status_text: String::new(),
         }

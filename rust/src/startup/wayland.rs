@@ -56,8 +56,10 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 use crate::bar::color::rgba_from_hex;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
+use crate::client::resize;
 use crate::config::init_config;
 use crate::monitor;
+use crate::mouse::{set_cursor_default, set_cursor_move, set_cursor_resize};
 use crate::types::*;
 use crate::wm::Wm;
 
@@ -345,6 +347,16 @@ fn handle_pointer_motion(
     // ── Bar hit-testing ──────────────────────────────────────────────
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
+
+    if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
+        return;
+    }
+
+    {
+        let mut ctx = wm.ctx();
+        let _ = crate::mouse::handle_floating_resize_hover(&mut ctx, root_x, root_y, false);
+    }
+
     let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
 
     // ── Tag-drag state machine (motion) ──────────────────────────────
@@ -387,17 +399,24 @@ fn handle_pointer_button(
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let button = smithay::input::pointer::ButtonEvent {
-        serial,
-        time: event.time() as u32,
-        button: event.button_code(),
-        state: event.state(),
-    };
-    pointer_handle.button(state, &button);
+    let root_x = pointer_location.x.round() as i32;
+    let root_y = pointer_location.y.round() as i32;
+    let wm_button = wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
 
     if event.state() == smithay::backend::input::ButtonState::Pressed {
-        let root_x = pointer_location.x.round() as i32;
-        let root_y = pointer_location.y.round() as i32;
+        if let Some(btn) = wm_button {
+            if wayland_hover_resize_drag_begin(wm, root_x, root_y, btn) {
+                return;
+            }
+        }
+
+        let button = smithay::input::pointer::ButtonEvent {
+            serial,
+            time: event.time() as u32,
+            button: event.button_code(),
+            state: event.state(),
+        };
+        pointer_handle.button(state, &button);
 
         // Bar click dispatch.
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
@@ -423,8 +442,20 @@ fn handle_pointer_button(
             });
         keyboard_handle.set_focus(state, keyboard_focus, serial);
     } else if event.state() == smithay::backend::input::ButtonState::Released {
-        let released_btn =
-            wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
+        if let Some(btn) = wm_button {
+            if wayland_hover_resize_drag_finish(wm, btn) {
+                return;
+            }
+        }
+
+        let button = smithay::input::pointer::ButtonEvent {
+            serial,
+            time: event.time() as u32,
+            button: event.button_code(),
+            state: event.state(),
+        };
+        pointer_handle.button(state, &button);
+        let released_btn = wm_button;
 
         // Tag-drag state machine (release).
         if wm.g.tag_drag.active && released_btn == Some(wm.g.tag_drag.button) {
@@ -539,6 +570,128 @@ fn find_hovered_window(
         .space
         .element_under(pointer_location)
         .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.0))
+}
+
+fn wayland_hover_resize_drag_begin(wm: &mut Wm, root_x: i32, root_y: i32, btn: MouseButton) -> bool {
+    if btn != MouseButton::Left && btn != MouseButton::Right {
+        return false;
+    }
+    let mut ctx = wm.ctx();
+    let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&ctx, root_x, root_y) else {
+        return false;
+    };
+    let Some((geo, is_floating, has_tiling)) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (c.geo, c.isfloating, ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true)))
+    else {
+        return false;
+    };
+    if !is_floating && has_tiling {
+        return false;
+    }
+    let move_mode = btn == MouseButton::Right || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
+    ctx.g.hover_resize_drag = crate::globals::HoverResizeDragState {
+        active: true,
+        win,
+        button: btn,
+        direction: dir,
+        move_mode,
+        start_x: root_x,
+        start_y: root_y,
+        win_start_x: geo.x,
+        win_start_y: geo.y,
+        win_start_w: geo.w,
+        win_start_h: geo.h,
+        last_root_x: root_x,
+        last_root_y: root_y,
+    };
+    ctx.g.altcursor = AltCursor::Resize;
+    ctx.g.resize_direction = Some(dir);
+    if move_mode {
+        set_cursor_move(&mut ctx);
+    } else {
+        set_cursor_resize(&mut ctx, Some(dir));
+    }
+    crate::focus::focus_soft(&mut ctx, Some(win));
+    true
+}
+
+fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bool {
+    let mut ctx = wm.ctx();
+    if !ctx.g.hover_resize_drag.active {
+        return false;
+    }
+    let drag = ctx.g.hover_resize_drag.clone();
+    ctx.g.hover_resize_drag.last_root_x = root_x;
+    ctx.g.hover_resize_drag.last_root_y = root_y;
+    if drag.move_mode {
+        let new_x = drag.win_start_x + (root_x - drag.start_x);
+        let new_y = drag.win_start_y + (root_y - drag.start_y);
+        resize(
+            &mut ctx,
+            drag.win,
+            &Rect {
+                x: new_x,
+                y: new_y,
+                w: drag.win_start_w.max(1),
+                h: drag.win_start_h.max(1),
+            },
+            true,
+        );
+        if let Some(client) = ctx.g.clients.get_mut(&drag.win) {
+            client.float_geo.x = new_x;
+            client.float_geo.y = new_y;
+        }
+        return true;
+    }
+
+    let orig_left = drag.win_start_x;
+    let orig_top = drag.win_start_y;
+    let orig_right = drag.win_start_x + drag.win_start_w;
+    let orig_bottom = drag.win_start_y + drag.win_start_h;
+    let (affects_left, affects_right, affects_top, affects_bottom) = drag.direction.affected_edges();
+    let (new_x, new_w) = if affects_left {
+        (root_x, (orig_right - root_x).max(1))
+    } else if affects_right {
+        (orig_left, (root_x - orig_left + 1).max(1))
+    } else {
+        (orig_left, drag.win_start_w.max(1))
+    };
+    let (new_y, new_h) = if affects_top {
+        (root_y, (orig_bottom - root_y).max(1))
+    } else if affects_bottom {
+        (orig_top, (root_y - orig_top + 1).max(1))
+    } else {
+        (orig_top, drag.win_start_h.max(1))
+    };
+    resize(
+        &mut ctx,
+        drag.win,
+        &Rect {
+            x: new_x,
+            y: new_y,
+            w: new_w,
+            h: new_h,
+        },
+        true,
+    );
+    true
+}
+
+fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
+    let mut ctx = wm.ctx();
+    if !ctx.g.hover_resize_drag.active || ctx.g.hover_resize_drag.button != btn {
+        return false;
+    }
+    let win = ctx.g.hover_resize_drag.win;
+    ctx.g.hover_resize_drag = crate::globals::HoverResizeDragState::default();
+    ctx.g.altcursor = AltCursor::None;
+    ctx.g.resize_direction = None;
+    set_cursor_default(&mut ctx);
+    crate::mouse::monitor::handle_client_monitor_switch(&mut ctx, win);
+    true
 }
 
 // =============================================================================

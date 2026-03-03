@@ -23,6 +23,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
+use super::cursor::{set_cursor_default, set_cursor_resize};
 use super::grab::{grab_pointer_with_keys, ungrab_ctx, wait_event};
 use super::warp::get_root_ptr;
 
@@ -34,29 +35,13 @@ use super::resize::resize_mouse_directional;
 
 /// Returns `true` when the cursor (in root coordinates) is on the top-middle
 /// edge of a window — used to distinguish a *move* from a *resize*.
-fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
+pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
     let at_top = root_y >= geo.y - RESIZE_BORDER_ZONE && root_y < geo.y + RESIZE_BORDER_ZONE;
     let in_middle_third = root_x >= geo.x + geo.w / 3 && root_x <= geo.x + 2 * geo.w / 3;
     at_top && in_middle_third
 }
 
 // ── Cursor helpers ───────────────────────────────────────────────────────────
-
-/// Change the root window cursor to the shape at `cursor_index`.
-fn set_root_cursor(ctx: &WmCtx, cursor_index: usize) {
-    require_x11!(ctx);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-    if let Some(ref cur) = ctx.g.cfg.cursors[cursor_index] {
-        let _ = change_window_attributes(
-            conn,
-            ctx.g.cfg.root,
-            &ChangeWindowAttributesAux::new().cursor(cur.cursor),
-        );
-        let _ = conn.flush();
-    }
-}
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &WmCtx, win: WindowId, dir: ResizeDirection) {
@@ -116,6 +101,28 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
         }
     }
     None
+}
+
+/// Return the floating window + direction currently targeted by hover-resize.
+pub fn hover_resize_target_at(ctx: &WmCtx, root_x: i32, root_y: i32) -> Option<(WindowId, ResizeDirection)> {
+    let win = find_floating_win_at_resize_border(ctx, root_x, root_y)?;
+    let dir = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| {
+            let hit_x = root_x - c.geo.x;
+            let hit_y = root_y - c.geo.y;
+            get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
+        })
+        .unwrap_or(ResizeDirection::BottomRight);
+    Some((win, dir))
+}
+
+fn clear_hover_resize_offer(ctx: &mut WmCtx) {
+    ctx.g.altcursor = AltCursor::None;
+    ctx.g.resize_direction = None;
+    set_cursor_default(ctx);
 }
 
 /// Find a visible tiled window at point (`px`, `py`), skipping `skip_win`.
@@ -206,27 +213,14 @@ pub fn handle_floating_resize_hover(
     root_y: i32,
     do_focus: bool,
 ) -> bool {
-    if let Some(win) = find_floating_win_at_resize_border(ctx, root_x, root_y) {
-        let (cursor_idx, dir, should_focus) = {
-            let (cursor_idx, dir) = if let Some(c) = ctx.g.clients.get(&win) {
-                let hit_x = root_x - c.geo.x;
-                let hit_y = root_y - c.geo.y;
-                let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
-                (dir.cursor_index(), dir)
-            } else {
-                (1, ResizeDirection::BottomRight)
-            };
-            // Only focus when: do_focus requested AND no visible tiled clients.
-            // When tiled clients exist, enter_notify handles focus transitions,
-            // so motion_notify must not steal focus back to the floating window.
-            let should_focus =
-                do_focus && ctx.g.selected_win() != Some(win) && !has_visible_tiled_client(ctx);
-            (cursor_idx, dir, should_focus)
-        };
-
-        set_root_cursor(ctx, cursor_idx);
+    if let Some((win, dir)) = hover_resize_target_at(ctx, root_x, root_y) {
+        set_cursor_resize(ctx, Some(dir));
         ctx.g.altcursor = AltCursor::Resize;
         ctx.g.resize_direction = Some(dir);
+        // Only focus when: do_focus requested AND no visible tiled clients.
+        // When tiled clients exist, enter_notify handles focus transitions,
+        // so motion_notify must not steal focus back to the floating window.
+        let should_focus = do_focus && ctx.g.selected_win() != Some(win) && !has_visible_tiled_client(ctx);
 
         if should_focus {
             crate::focus::focus_soft(ctx, Some(win));
@@ -235,8 +229,7 @@ pub fn handle_floating_resize_hover(
     }
 
     if ctx.g.altcursor == AltCursor::Resize {
-        ctx.g.resize_direction = None;
-        crate::mouse::reset_cursor(ctx);
+        clear_hover_resize_offer(ctx);
     }
     false
 }
@@ -248,7 +241,7 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
         if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.cfg.bar_height + 60 {
-            set_root_cursor(ctx, 8);
+            set_cursor_resize(ctx, Some(ResizeDirection::TopLeft));
             ctx.g.altcursor = AltCursor::Sidebar;
         }
         return true;
@@ -256,7 +249,7 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 
     if ctx.g.altcursor == AltCursor::Sidebar {
         ctx.g.altcursor = AltCursor::None;
-        set_root_cursor(ctx, 0);
+        set_cursor_default(ctx);
         return true;
     }
 
@@ -299,7 +292,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
 
     if !action_started {
         ungrab_ctx(ctx);
-        crate::mouse::reset_cursor(ctx);
+        clear_hover_resize_offer(ctx);
     }
 
     true
@@ -464,7 +457,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 
     if !action_started {
         ungrab_ctx(ctx);
-        crate::mouse::reset_cursor(ctx);
+        clear_hover_resize_offer(ctx);
     }
 
     true
