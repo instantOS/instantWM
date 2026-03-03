@@ -213,7 +213,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             .g
             .selmon()
             .map(|mon| {
-                let local_x = ptr_x - mon.monitor_rect.x;
+                let local_x = ptr_x - mon.work_rect.x;
                 bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x))
             })
             .unwrap_or(Gesture::None);
@@ -397,7 +397,7 @@ fn handle_bar_drop(
         ctx.g
             .selmon()
             .map(|mon| {
-                let local_x = ptr_x - mon.monitor_rect.x;
+                let local_x = ptr_x - mon.work_rect.x;
                 bar_position_at_x(mon, ctx, local_x)
             })
             .unwrap_or(BarPosition::Root)
@@ -670,7 +670,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// grab loop that calls those two functions synchronously.
 pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -> bool {
     let selmon_id = ctx.g.selmon_id();
-    let mon_mx = ctx.g.selmon().map(|m| m.monitor_rect.x).unwrap_or(0);
+    let mon_mx = ctx.g.selmon().map(|m| m.work_rect.x).unwrap_or(0);
 
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => 1u32 << (idx as u32),
@@ -680,7 +680,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
                 .monitors
                 .get(selmon_id)
                 .and_then(|mon| {
-                    let local_x = ptr_x - mon.monitor_rect.x;
+                    let local_x = ptr_x - mon.work_rect.x;
                     match bar_position_at_x(mon, ctx, local_x) {
                         BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
                         _ => None,
@@ -792,7 +792,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                 .g
                 .selmon()
                 .map(|mon| {
-                    let local_x = x - mon.monitor_rect.x;
+                    let local_x = x - mon.work_rect.x;
                     bar_position_at_x(mon, ctx, local_x)
                 })
                 .unwrap_or(BarPosition::Root);

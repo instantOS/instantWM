@@ -75,7 +75,7 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
 /// falls in for the given monitor.
 ///
 /// `local_x` must already be relative to the left edge of the monitor
-/// (i.e. `root_x − monitor.monitor_rect.x` for root-window coordinates, or
+/// (i.e. `root_x − monitor.work_rect.x` for root-window coordinates, or
 /// `event_x` for bar-window coordinates which are already monitor-local).
 ///
 /// This function is the **single canonical hit-test** for the bar. Both click
@@ -159,13 +159,13 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
             };
             let cell_end = cell_start + this_width;
 
-            if local_x <= cell_end {
+            if local_x < cell_end {
                 // Cursor is inside this cell.
                 let resize_start = cell_start + this_width - RESIZE_WIDGET_WIDTH;
                 if mon.sel == Some(c_win) && local_x < cell_start + CLOSE_BUTTON_HIT_WIDTH {
                     return BarPosition::CloseButton(c_win);
                 }
-                if mon.sel == Some(c_win) && local_x > resize_start {
+                if mon.sel == Some(c_win) && local_x >= resize_start {
                     return BarPosition::ResizeWidget(c_win);
                 }
                 return BarPosition::WinTitle(c_win);

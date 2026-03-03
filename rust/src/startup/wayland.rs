@@ -431,36 +431,43 @@ fn find_hovered_window(
     state: &WaylandState,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) -> Option<WindowId> {
-    // Fast path: pointer is over a mapped Wayland surface.
-    let element_under = state.space.element_under(pointer_location);
-    if let Some((window, _)) = element_under.as_ref() {
-        if let Some(id) = window.user_data().get::<WindowIdMarker>().map(|m| m.0) {
-            return Some(id);
+    // Prefer WM outer-rect hit-testing (content + borders) in actual space
+    // z-order so focus transitions match the rendered layout boundaries.
+    let px = pointer_location.x;
+    let py = pointer_location.y;
+    for window in state.space.elements().rev() {
+        let Some(w) = window.user_data().get::<WindowIdMarker>().map(|m| m.0) else {
+            continue;
+        };
+        let Some(c) = wm.g.clients.get(&w) else {
+            continue;
+        };
+        if c.is_hidden {
+            continue;
+        }
+        let is_visible = c
+            .mon_id
+            .and_then(|mid| wm.g.monitor(mid))
+            .map(|m| c.is_visible_on_tags(m.selected_tags()))
+            .unwrap_or(false);
+        if !is_visible {
+            continue;
+        }
+        let bw = c.border_width.max(0) as f64;
+        let ox = c.geo.x as f64;
+        let oy = c.geo.y as f64;
+        let ow = c.geo.w as f64 + 2.0 * bw;
+        let oh = c.geo.h as f64 + 2.0 * bw;
+        if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
+            return Some(w);
         }
     }
 
-    // Slow path: pointer isn't over any surface.  Check outer rect
-    // (content + borders) in stack order.  This handles the case where
-    // the pointer is over a WM-drawn border strip that has no surface.
-    let px = pointer_location.x as i32;
-    let py = pointer_location.y as i32;
-    if let Some(mon) = wm.g.selmon() {
-        let selected = mon.selected_tags();
-        for (w, c) in mon.iter_stack(&wm.g.clients) {
-            if !c.is_visible_on_tags(selected) || c.is_hidden {
-                continue;
-            }
-            let bw = c.border_width.max(0);
-            let ox = c.geo.x;
-            let oy = c.geo.y;
-            let ow = c.geo.w + 2 * bw;
-            let oh = c.geo.h + 2 * bw;
-            if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
-                return Some(w);
-            }
-        }
-    }
-    None
+    // Fallback to Smithay input-region hit-test for non-client surfaces.
+    state
+        .space
+        .element_under(pointer_location)
+        .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.0))
 }
 
 // =============================================================================
@@ -683,7 +690,7 @@ fn update_wayland_bar_hit_state(
     }
 
     let mon = ctx.g.selmon().cloned()?;
-    let local_x = root_x - mon.monitor_rect.x;
+    let local_x = root_x - mon.work_rect.x;
     let pos = bar_position_at_x(&mon, &ctx, local_x);
     if reset_start_menu && pos == BarPosition::StartMenu {
         crate::bar::reset_bar(&mut ctx);

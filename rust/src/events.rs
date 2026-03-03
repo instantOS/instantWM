@@ -440,7 +440,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
         let Some(mon) = ctx.g.selmon() else {
             return;
         };
-        let local_x = root_x - mon.monitor_rect.x;
+        let local_x = root_x - mon.work_rect.x;
         let position = bar_position_at_x(mon, ctx, local_x);
         match position {
             // The status-text and root areas don't produce a hover gesture —
