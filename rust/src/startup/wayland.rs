@@ -338,8 +338,13 @@ fn handle_pointer_motion(
     *pointer_location = Point::from((x, y));
 
     // ── Hover focus ──────────────────────────────────────────────────
-    let hovered_win = find_hovered_window(wm, state, *pointer_location);
-    {
+    if let Some(lock_win) = wayland_active_drag_window(wm) {
+        let mut ctx = wm.ctx();
+        if ctx.g.selected_win() != Some(lock_win) {
+            crate::focus::focus_soft(&mut ctx, Some(lock_win));
+        }
+    } else {
+        let hovered_win = find_hovered_window(wm, state, *pointer_location);
         let mut ctx = wm.ctx();
         crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
     }
@@ -570,6 +575,16 @@ fn find_hovered_window(
         .space
         .element_under(pointer_location)
         .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.id))
+}
+
+fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
+    if wm.g.drag.hover_resize.active {
+        return Some(wm.g.drag.hover_resize.win);
+    }
+    if wm.g.drag.title.active {
+        return Some(wm.g.drag.title.win);
+    }
+    None
 }
 
 fn wayland_hover_resize_drag_begin(
