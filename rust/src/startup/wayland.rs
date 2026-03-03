@@ -25,7 +25,6 @@ use std::time::Duration;
 use smithay::backend::input::{
     AbsolutePositionEvent, InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
 };
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -33,9 +32,10 @@ use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRen
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
-use smithay::desktop::space::render_output;
 use smithay::desktop::layer_map_for_output;
+use smithay::desktop::space::render_output;
 use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::desktop::PopupManager;
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
@@ -87,7 +87,8 @@ pub fn run() -> ! {
         wayland.attach_state(&mut state);
     }
 
-    let (backend_init, mut winit_loop) = winit::init::<GlesRenderer>().expect("failed to init winit backend");
+    let (backend_init, mut winit_loop) =
+        winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
     state.attach_renderer(backend.renderer());
     state.init_dmabuf_global(backend.renderer().dmabuf_formats().into_iter().collect());
@@ -279,6 +280,22 @@ fn handle_keyboard(
     event: impl KeyboardKeyEvent<smithay::backend::winit::WinitInput>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
+    if matches!(
+        keyboard_handle.current_focus(),
+        None | Some(KeyboardFocusTarget::Window(_))
+    ) {
+        if let Some(layer_surface) = state.keyboard_focus_layer_surface() {
+            keyboard_handle.set_focus(
+                state,
+                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
+                serial,
+            );
+        }
+    }
+    let wm_shortcuts_allowed = matches!(
+        keyboard_handle.current_focus(),
+        None | Some(KeyboardFocusTarget::Window(_))
+    );
     keyboard_handle.input(
         state,
         event.key_code(),
@@ -286,7 +303,7 @@ fn handle_keyboard(
         serial,
         event.time() as u32,
         |_data, modifiers, keysym| {
-            if event.state() == smithay::backend::input::KeyState::Pressed {
+            if wm_shortcuts_allowed && event.state() == smithay::backend::input::KeyState::Pressed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let mut ctx = wm.ctx();
                 if crate::keyboard::handle_keysym(

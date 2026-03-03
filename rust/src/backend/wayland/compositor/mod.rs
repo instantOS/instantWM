@@ -34,8 +34,9 @@ pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_layer_shell, delegate_output,
-    delegate_seat, delegate_shm, delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_shell,
+    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_layer_shell,
+    delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------

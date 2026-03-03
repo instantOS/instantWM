@@ -20,9 +20,9 @@ use smithay::{
     utils::{Logical, Point, Transform, SERIAL_COUNTER},
     wayland::{
         compositor::CompositorState,
+        dmabuf::{DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
-        dmabuf::{DmabufGlobal, DmabufState},
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{decoration::XdgDecorationState, ToplevelSurface, XdgShellState},
@@ -230,7 +230,10 @@ impl WaylandState {
         if self.dmabuf_global.is_some() {
             return;
         }
-        self.dmabuf_global = Some(self.dmabuf_state.create_global::<Self>(&self.display_handle, formats));
+        self.dmabuf_global = Some(
+            self.dmabuf_state
+                .create_global::<Self>(&self.display_handle, formats),
+        );
     }
 
     pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
@@ -611,6 +614,21 @@ impl WaylandState {
                 let rel = point - geo.loc.to_f64();
                 if let Some((surface, loc)) = layer.surface_under(rel, WindowSurfaceType::ALL) {
                     return Some((surface, loc + geo.loc));
+                }
+            }
+        }
+        None
+    }
+
+    pub fn keyboard_focus_layer_surface(
+        &self,
+    ) -> Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface> {
+        let outputs: Vec<_> = self.space.outputs().cloned().collect();
+        for output in outputs.iter().rev() {
+            let map = layer_map_for_output(output);
+            for layer in map.layers().rev() {
+                if layer.can_receive_keyboard_focus() {
+                    return Some(layer.wl_surface().clone());
                 }
             }
         }

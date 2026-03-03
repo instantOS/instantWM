@@ -1,6 +1,6 @@
 use smithay::{
-    backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
+    backend::renderer::ImportDma,
     desktop::{
         find_popup_root_surface, layer_map_for_output, LayerSurface as DesktopLayerSurface,
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
@@ -22,7 +22,9 @@ use smithay::{
             SelectionHandler,
         },
         shell::{
-            wlr_layer::{Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState},
+            wlr_layer::{
+                Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState,
+            },
             xdg::{
                 decoration::XdgDecorationHandler, PopupSurface, PositionerState, ToplevelSurface,
                 XdgShellHandler,
