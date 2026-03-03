@@ -504,18 +504,8 @@ impl WaylandState {
             .filter(|w| {
                 w.x11_surface()
                     .map(|x11| {
-                        let class = x11.class().to_ascii_lowercase();
-                        let instance = x11.instance().to_ascii_lowercase();
-                        let title = x11.title().to_ascii_lowercase();
-                        let is_dmenu_like = class.contains("dmenu")
-                            || class.contains("instantmenu")
-                            || instance.contains("dmenu")
-                            || instance.contains("instantmenu")
-                            || title.contains("dmenu")
-                            || title.contains("instantmenu");
-                        x11.is_override_redirect()
+                        if x11.is_override_redirect()
                             || w.user_data().get::<WindowIdMarker>().is_none()
-                            || is_dmenu_like
                             || x11.is_popup()
                             || x11.is_transient_for().is_some()
                             || matches!(
@@ -528,6 +518,18 @@ impl WaylandState {
                                         | smithay::xwayland::xwm::WmWindowType::Notification
                                 )
                             )
+                        {
+                            return true;
+                        }
+                        let class = x11.class().to_ascii_lowercase();
+                        let instance = x11.instance().to_ascii_lowercase();
+                        let title = x11.title().to_ascii_lowercase();
+                        class.contains("dmenu")
+                            || class.contains("instantmenu")
+                            || instance.contains("dmenu")
+                            || instance.contains("instantmenu")
+                            || title.contains("dmenu")
+                            || title.contains("instantmenu")
                     })
                     .unwrap_or(false)
             })
