@@ -44,8 +44,8 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Wind
 /// - No client is currently selected.
 /// - Only one monitor is connected.
 /// - [`find_monitor_by_direction`] returns `None`.
-// TODO: This function is badly named, come up with something better
-pub fn tag_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
+/// Send the selected client to the monitor in the given direction.
+pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
@@ -95,6 +95,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         return;
     }
     // Snapshot source geometry before transfer_client() transfers ownership.
+    // TODO: this looks like it should use rectangle?
     let (
         client_x,
         client_y,
@@ -153,6 +154,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         .get(target_id)
         .map(|m| {
             (
+                //TODO: use more rectangle?
                 m.monitor_rect.x,
                 m.monitor_rect.y,
                 m.work_rect.w,

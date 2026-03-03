@@ -34,7 +34,7 @@ pub use shift::{move_client, shift_tag_by};
 
 pub use sticky::reset_sticky_win;
 
-pub use tag_mon_impl::tag_mon;
+pub use tag_mon_impl::send_to_monitor;
 
 pub fn compute_prefix(ctx: &mut WmCtx, arg: u32) -> u32 {
     let prefix_active = ctx.g.tags.prefix;

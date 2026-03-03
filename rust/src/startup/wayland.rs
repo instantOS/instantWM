@@ -769,15 +769,33 @@ fn init_wayland_globals(wm: &mut Wm) {
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.showbar = true;
+    let font_height = wayland_font_height_from_config(&cfg.fonts);
+    wm.bar_painter.set_font_size(font_height as f32);
     wm.g.cfg.bar_height = if cfg.barheight > 0 {
-        cfg.barheight + 12
+        font_height + cfg.barheight
     } else {
-        24
+        font_height + 12
     };
-    // Approximate font metrics for bar hit-testing (no X11 drw on Wayland).
-    wm.g.cfg.horizontal_padding = 12;
+    // Keep hit-testing metrics aligned with the effective bar font height.
+    wm.g.cfg.horizontal_padding = font_height;
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
+}
+
+fn wayland_font_height_from_config(fonts: &[String]) -> i32 {
+    let size = fonts
+        .iter()
+        .find_map(|font| {
+            let idx = font.find("size=")?;
+            let tail = &font[idx + 5..];
+            let num: String = tail
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            num.parse::<f32>().ok()
+        })
+        .unwrap_or(14.0);
+    size.ceil().max(1.0) as i32
 }
 
 fn apply_wayland_session_env(socket_name: &str) {

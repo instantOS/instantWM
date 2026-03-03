@@ -18,7 +18,7 @@ use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_client, quit, shift_tag_by, shift_view, tag_mon,
+    follow_view, last_view, move_client, quit, send_to_monitor, shift_tag_by, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -173,8 +173,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,  XK_O       => win_view),
         key!(MODKEY, XK_COMMA  => |ctx| focus_mon(ctx, MonitorDirection::PREV)),
         key!(MODKEY, XK_PERIOD => |ctx| focus_mon(ctx, MonitorDirection::NEXT)),
-        key!(MS,     XK_COMMA  => |ctx| tag_mon(ctx, MonitorDirection::PREV)),
-        key!(MS,     XK_PERIOD => |ctx| tag_mon(ctx, MonitorDirection::NEXT)),
+        key!(MS,     XK_COMMA  => |ctx| send_to_monitor(ctx, MonitorDirection::PREV)),
+        key!(MS,     XK_PERIOD => |ctx| send_to_monitor(ctx, MonitorDirection::NEXT)),
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),

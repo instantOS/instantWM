@@ -264,6 +264,13 @@ impl Default for WaylandBarPainter {
 }
 
 impl WaylandBarPainter {
+    pub fn set_font_size(&mut self, font_size: f32) {
+        if font_size.is_finite() && font_size > 0.0 {
+            self.font_size = font_size;
+            self.text_width_cache.borrow_mut().clear();
+        }
+    }
+
     fn text_width_cached(&self, text: &str) -> i32 {
         if text.is_empty() {
             return 0;

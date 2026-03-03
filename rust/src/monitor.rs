@@ -270,7 +270,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         None => return,
     };
 
-    crate::tags::tag_mon(ctx, direction);
+    crate::tags::send_to_monitor(ctx, direction);
 
     if let Some(mon_id) = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id) {
         ctx.g.set_selmon(mon_id);
