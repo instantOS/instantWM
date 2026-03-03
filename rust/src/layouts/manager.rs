@@ -209,7 +209,8 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         return;
     }
 
-    let mut stack: Vec<WindowId> = Vec::new();
+    let mut tiled_stack: Vec<WindowId> = Vec::new();
+    let mut floating_stack: Vec<WindowId> = Vec::new();
     let mut s_win = stack_head;
     while let Some(win) = s_win {
         match ctx.g.clients.get(&win) {
@@ -219,8 +220,12 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
                 let visible = c.is_visible_on_tags(selected_tags);
                 let snext = c.snext;
 
-                if !is_win_floating && visible {
-                    stack.push(win);
+                if visible {
+                    if is_win_floating {
+                        floating_stack.push(win);
+                    } else {
+                        tiled_stack.push(win);
+                    }
                 }
 
                 s_win = snext;
@@ -228,10 +233,13 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         }
     }
 
+    let mut stack: Vec<WindowId> = tiled_stack;
     stack.push(barwin);
     if is_floating {
-        stack.push(sel_win);
+        floating_stack.retain(|w| *w != sel_win);
+        floating_stack.push(sel_win);
     }
+    stack.extend(floating_stack);
     ctx.backend.restack(&stack);
     ctx.backend.flush();
 }
