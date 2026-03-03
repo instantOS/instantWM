@@ -273,7 +273,6 @@ fn on_motion(
         new_y = bar_bottom;
     }
 
-    let snap = ctx.g.cfg.snap;
     let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
 
     let (mut is_floating, mut drag_geo) = ctx
@@ -283,64 +282,18 @@ fn on_motion(
         .map(|c| (c.isfloating, c.geo))
         .unwrap_or((false, Rect::default()));
 
-    // Promote a tiled window to floating once the user drags it far enough.
-    //
-    // The critical constraint: we must issue exactly ONE configure_window for
-    // `win` during this promotion so the compositor never sees an intermediate
-    // position.  toggle_floating() is wrong here because it:
-    //   a) resizes to float_geo  (configure #1  → compositor paints "right" pos)
-    //   b) calls arrange()       (flushes for other windows)
-    //   c) caller then resizes to drag position  (configure #2  → "jumps left")
-    //
-    // set_floating_in_place() only flips isfloating + restores border width
-    // without issuing any configure_window, leaving the single resize below
-    // as the only geometry change the compositor ever sees.
-    if !is_floating
-        && has_tiling
-        && ((new_x - drag_geo.x).abs() > snap || (new_y - drag_geo.y).abs() > snap)
-    {
-        // Resolve float dimensions before touching state.
-        // If the window was never floating, float_geo will be zeroed; fall
-        // back to the current tiled dimensions so the window doesn't collapse.
-        let (float_w, float_h) = {
-            ctx.g
-                .clients
-                .get(&win)
-                .map(|c| {
-                    if c.float_geo.w > 0 && c.float_geo.h > 0 {
-                        (c.float_geo.w, c.float_geo.h)
-                    } else {
-                        (c.geo.w, c.geo.h)
-                    }
-                })
-                .unwrap_or((drag_geo.w, drag_geo.h))
-        };
-
-        // Flip isfloating + restore border — zero configure_window calls.
-        set_floating_in_place(ctx, win);
-
-        // Re-tile the remaining windows (touches only the other clients).
-        arrange(ctx, Some(ctx.g.selmon_id()));
-
-        // The window's width is changing (tiled → floating), so the old
-        // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
-        // is far to the right.  Re-center the floating window under the
-        // cursor and rebase the drag anchors so subsequent motion events
-        // track correctly from the new position.
-        new_x = event_x - float_w / 2;
-        state.grab_start_x = new_x;
-        state.grab_start_y = new_y;
-        state.start_x = event_x;
-        state.start_y = event_y;
-
-        is_floating = true;
-        drag_geo = Rect {
-            x: new_x,
-            y: new_y,
-            w: float_w,
-            h: float_h,
-        };
-    }
+    maybe_promote_tiled_drag_to_floating(
+        ctx,
+        win,
+        event_x,
+        event_y,
+        &mut new_x,
+        &mut new_y,
+        state,
+        has_tiling,
+        &mut is_floating,
+        &mut drag_geo,
+    );
 
     if !has_tiling || is_floating {
         if let Some(client) = ctx.g.clients.get(&win) {
@@ -358,6 +311,67 @@ fn on_motion(
             true,
         );
     }
+}
+
+fn maybe_promote_tiled_drag_to_floating(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    event_x: i32,
+    event_y: i32,
+    new_x: &mut i32,
+    new_y: &mut i32,
+    state: &mut MoveState,
+    has_tiling: bool,
+    is_floating: &mut bool,
+    drag_geo: &mut Rect,
+) {
+    let snap = ctx.g.cfg.snap;
+    if *is_floating
+        || !has_tiling
+        || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)
+    {
+        return;
+    }
+
+    // Resolve float dimensions before touching state.
+    // If the window was never floating, float_geo will be zeroed; fall
+    // back to the current tiled dimensions so the window doesn't collapse.
+    let (float_w, float_h) = {
+        ctx.g
+            .clients
+            .get(&win)
+            .map(|c| {
+                if c.float_geo.w > 0 && c.float_geo.h > 0 {
+                    (c.float_geo.w, c.float_geo.h)
+                } else {
+                    (c.geo.w, c.geo.h)
+                }
+            })
+            .unwrap_or((drag_geo.w, drag_geo.h))
+    };
+
+    // Flip isfloating + restore border — zero configure_window calls.
+    set_floating_in_place(ctx, win);
+
+    // Re-tile the remaining windows (touches only the other clients).
+    arrange(ctx, Some(ctx.g.selmon_id()));
+
+    // The window's width is changing (tiled → floating), so the old
+    // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
+    // is far to the right. Re-center under cursor and rebase drag anchors.
+    *new_x = event_x - float_w / 2;
+    state.grab_start_x = *new_x;
+    state.grab_start_y = *new_y;
+    state.start_x = event_x;
+    state.start_y = event_y;
+
+    *is_floating = true;
+    *drag_geo = Rect {
+        x: *new_x,
+        y: *new_y,
+        w: float_w,
+        h: float_h,
+    };
 }
 
 /// Clears `bar_dragging` and redraws the bar unconditionally.
@@ -387,8 +401,8 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
 fn handle_bar_drop(
     ctx: &mut WmCtx,
     win: WindowId,
-    grab_start_x: i32,
-    grab_start_y: i32,
+    _grab_start_x: i32,
+    _grab_start_y: i32,
     grab_start_w: i32,
     grab_start_h: i32,
     pointer_override: Option<(i32, i32)>,
@@ -450,16 +464,12 @@ fn handle_bar_drop(
         return;
     }
 
-    // ── Correct float_geo using the pre-drag position ─────────────────────
+    // ── Correct float_geo using pre-drag dimensions ───────────────────────
     //
-    // set_tiled saved `client.geo` (the drag position near
-    // the bar) into `float_geo`.  That's wrong — we want the position the
-    // window occupied *before* the drag started:
-    //   x = grab_start_x  (original window x at grab time)
+    // Keep the drop position (x/y from set_tiled's saved client.geo), but
+    // preserve the pre-drag floating size so un-tiling restores dimensions.
     if was_floating {
         if let Some(client) = ctx.g.clients.get_mut(&win) {
-            client.float_geo.x = grab_start_x;
-            client.float_geo.y = grab_start_y;
             client.float_geo.w = grab_start_w;
             client.float_geo.h = grab_start_h;
         }
@@ -958,18 +968,21 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.g.selected_win();
-    let (win_start_x, win_start_y) = ctx
-        .g
-        .clients
-        .get(&win)
-        .map(|c| (c.geo.x, c.geo.y))
-        .unwrap_or((0, 0));
-    let (win_start_w, win_start_h) = ctx
-        .g
-        .clients
-        .get(&win)
-        .map(|c| (c.geo.w, c.geo.h))
-        .unwrap_or((0, 0));
+    let (win_start_x, win_start_y, win_start_w, win_start_h, drop_restore_x, drop_restore_y, drop_restore_w, drop_restore_h) =
+        ctx.g
+            .clients
+            .get(&win)
+            .map(|c| {
+                let (rx, ry, rw, rh) = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
+                    (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+                } else if c.float_geo.w > 0 && c.float_geo.h > 0 {
+                    (c.float_geo.x, c.float_geo.y, c.float_geo.w, c.float_geo.h)
+                } else {
+                    (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+                };
+                (c.geo.x, c.geo.y, c.geo.w, c.geo.h, rx, ry, rw, rh)
+            })
+            .unwrap_or((0, 0, 0, 0, 0, 0, 0, 0));
     ctx.g.drag.title = crate::globals::TitleDragState {
         active: true,
         win,
@@ -983,6 +996,10 @@ pub fn title_drag_begin(
         win_start_y,
         win_start_w,
         win_start_h,
+        drop_restore_x,
+        drop_restore_y,
+        drop_restore_w,
+        drop_restore_h,
         last_root_x: click_root_x,
         last_root_y: click_root_y,
         dragging: false,
@@ -1105,15 +1122,10 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 let mut target_x = geo.x;
                 let mut target_y = geo.y;
                 if !right_click {
-                    // No reliable cursor warp on nested Wayland: place the
-                    // restored floating window so the pointer stays inside it.
-                    let pad = 10;
-                    let max_x = (target_w - pad).max(pad);
-                    let max_y = (target_h - pad).max(pad);
-                    let offset_x = (root_x - geo.x).clamp(pad, max_x);
-                    let offset_y = (root_y - geo.y).clamp(pad, max_y);
-                    target_x = root_x - offset_x;
-                    target_y = root_y - offset_y;
+                    // Match title-drag warp semantics: place the restored
+                    // floating window so its top-middle sits under the cursor.
+                    target_x = root_x - target_w / 2;
+                    target_y = root_y;
                     ctx.g.drag.title.win_start_x = target_x;
                     ctx.g.drag.title.win_start_y = target_y;
                     ctx.g.drag.title.start_x = root_x;
@@ -1209,10 +1221,10 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     if ctx.g.drag.title.dragging {
         let win = ctx.g.drag.title.win;
         let right_click = ctx.g.drag.title.right_click;
-        let grab_start_x = ctx.g.drag.title.win_start_x;
-        let grab_start_y = ctx.g.drag.title.win_start_y;
-        let grab_start_w = ctx.g.drag.title.win_start_w;
-        let grab_start_h = ctx.g.drag.title.win_start_h;
+        let grab_start_x = ctx.g.drag.title.drop_restore_x;
+        let grab_start_y = ctx.g.drag.title.drop_restore_y;
+        let grab_start_w = ctx.g.drag.title.drop_restore_w;
+        let grab_start_h = ctx.g.drag.title.drop_restore_h;
         let last = (ctx.g.drag.title.last_root_x, ctx.g.drag.title.last_root_y);
         ctx.g.drag.title.active = false;
         ctx.g.drag.title.dragging = false;

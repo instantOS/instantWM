@@ -167,6 +167,14 @@ pub struct TitleDragState {
     pub win_start_w: i32,
     /// Window height at press time.
     pub win_start_h: i32,
+    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
+    pub drop_restore_x: i32,
+    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
+    pub drop_restore_y: i32,
+    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
+    pub drop_restore_w: i32,
+    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
+    pub drop_restore_h: i32,
     /// Last pointer X seen for this interaction (root coords).
     pub last_root_x: i32,
     /// Last pointer Y seen for this interaction (root coords).
