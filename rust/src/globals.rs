@@ -175,6 +175,8 @@ pub struct TitleDragState {
     pub last_root_y: i32,
     /// Whether the drag threshold has been exceeded.
     pub dragging: bool,
+    /// Skip bar-title click semantics on release (used for CSD move requests).
+    pub suppress_click_action: bool,
 }
 
 /// State for Wayland hover-border move/resize interactions.

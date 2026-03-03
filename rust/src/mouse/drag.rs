@@ -915,6 +915,7 @@ pub fn title_drag_begin(
     right_click: bool,
     click_root_x: i32,
     click_root_y: i32,
+    suppress_click_action: bool,
 ) -> bool {
     if right_click {
         if ctx
@@ -958,6 +959,7 @@ pub fn title_drag_begin(
         last_root_x: click_root_x,
         last_root_y: click_root_y,
         dragging: false,
+        suppress_click_action,
     };
     true
 }
@@ -1158,8 +1160,12 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     let right_click = ctx.g.title_drag.right_click;
     let was_focused = ctx.g.title_drag.was_focused;
     let was_hidden = ctx.g.title_drag.was_hidden;
+    let suppress_click_action = ctx.g.title_drag.suppress_click_action;
 
     ctx.g.title_drag.active = false;
+    if suppress_click_action {
+        return;
+    }
 
     if right_click {
         if was_hidden {
@@ -1195,7 +1201,7 @@ pub fn window_title_mouse_handler(
     click_root_x: i32,
     click_root_y: i32,
 ) {
-    if !title_drag_begin(ctx, win, btn, false, click_root_x, click_root_y) {
+    if !title_drag_begin(ctx, win, btn, false, click_root_x, click_root_y, false) {
         return;
     }
 
@@ -1253,7 +1259,7 @@ pub fn window_title_mouse_handler_right(
     click_root_x: i32,
     click_root_y: i32,
 ) {
-    if !title_drag_begin(ctx, win, btn, true, click_root_x, click_root_y) {
+    if !title_drag_begin(ctx, win, btn, true, click_root_x, click_root_y, false) {
         return;
     }
 

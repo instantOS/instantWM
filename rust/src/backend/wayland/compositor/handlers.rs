@@ -561,6 +561,41 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface) {
             self.set_focus(win);
             self.raise_window(win);
+            let pointer = self.pointer.current_location();
+            let root_x = pointer.x.round() as i32;
+            let root_y = pointer.y.round() as i32;
+            if let Some(g) = self.globals_mut() {
+                if g.title_drag.active {
+                    return;
+                }
+                let Some(client) = g.clients.get(&win) else {
+                    return;
+                };
+                if !client.isfloating {
+                    return;
+                }
+                let geo = client.geo;
+                let sel = g.selected_win();
+                let was_hidden = client.is_hidden;
+                g.title_drag = crate::globals::TitleDragState {
+                    active: true,
+                    win,
+                    button: crate::types::MouseButton::Left,
+                    right_click: false,
+                    was_focused: sel == Some(win),
+                    was_hidden,
+                    start_x: root_x,
+                    start_y: root_y,
+                    win_start_x: geo.x,
+                    win_start_y: geo.y,
+                    win_start_w: geo.w,
+                    win_start_h: geo.h,
+                    last_root_x: root_x,
+                    last_root_y: root_y,
+                    dragging: false,
+                    suppress_click_action: true,
+                };
+            }
         }
     }
 
