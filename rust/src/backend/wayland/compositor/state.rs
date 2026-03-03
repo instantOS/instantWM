@@ -25,7 +25,7 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{ToplevelSurface, XdgShellState},
+            xdg::{decoration::XdgDecorationState, ToplevelSurface, XdgShellState},
         },
         shm::ShmState,
         xwayland_shell::XWaylandShellState,
@@ -105,6 +105,7 @@ pub struct WaylandState {
     pub compositor_state: CompositorState,
     pub shm_state: ShmState,
     pub xdg_shell_state: XdgShellState,
+    pub xdg_decoration_state: XdgDecorationState,
     pub seat_state: SeatState<WaylandState>,
     pub output_manager_state: OutputManagerState,
     pub data_device_state: DataDeviceState,
@@ -177,6 +178,7 @@ impl WaylandState {
         let compositor_state = CompositorState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
@@ -198,6 +200,7 @@ impl WaylandState {
             compositor_state,
             shm_state,
             xdg_shell_state,
+            xdg_decoration_state,
             seat_state,
             output_manager_state,
             data_device_state,

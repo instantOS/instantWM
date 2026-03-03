@@ -23,7 +23,10 @@ use smithay::{
         },
         shell::{
             wlr_layer::{Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState},
-            xdg::{PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler},
+            xdg::{
+                decoration::XdgDecorationHandler, PopupSurface, PositionerState, ToplevelSurface,
+                XdgShellHandler,
+            },
         },
         shm::ShmHandler,
         xwayland_shell::XWaylandShellHandler,
@@ -570,6 +573,35 @@ impl XdgShellHandler for WaylandState {
             self.set_focus(win);
             self.raise_window(win);
         }
+    }
+}
+
+impl XdgDecorationHandler for WaylandState {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(Mode::ServerSide);
+        });
+        let _ = toplevel.send_configure();
+    }
+
+    fn request_mode(
+        &mut self,
+        toplevel: ToplevelSurface,
+        mode: smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode,
+    ) {
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(mode);
+        });
+        let _ = toplevel.send_configure();
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(Mode::ServerSide);
+        });
+        let _ = toplevel.send_configure();
     }
 }
 
