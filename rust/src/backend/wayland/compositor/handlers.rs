@@ -198,11 +198,16 @@ impl XwmHandler for WaylandState {
 
         let element = smithay::desktop::Window::new_x11_window(window.clone());
         let win = self.alloc_window_id();
+        let is_overlay = is_unmanaged_x11_overlay(&window);
         let _ = element
             .user_data()
-            .get_or_insert_threadsafe(|| WindowIdMarker(win));
+            .get_or_insert_threadsafe(|| WindowIdMarker {
+                id: win,
+                is_overlay,
+            });
         let geo = window.geometry();
-        self.space.map_element(element, geo.loc, true);
+        self.space.map_element(element.clone(), geo.loc, true);
+        self.window_index.insert(win, element);
         self.ensure_client_for_window(win);
         if let Some(g) = self.globals_mut() {
             if let Some(c) = g.clients.get_mut(&win) {

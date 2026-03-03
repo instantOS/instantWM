@@ -473,7 +473,12 @@ fn handle_bar_drop(
 ///
 /// Returns `true` if the drop was fully handled (the caller should skip
 /// `handle_bar_drop` and `handle_client_monitor_switch`).
-fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>, root_y: i32) -> bool {
+fn apply_edge_drop(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    edge: Option<SnapPosition>,
+    root_y: i32,
+) -> bool {
     let edge = match edge {
         Some(e) => e,
         None => return false,
@@ -614,7 +619,13 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     ungrab_ctx(ctx);
     clear_bar_hover(ctx);
 
-    complete_move_drop(ctx, win, state.grab_start_x, state.edge_snap_indicator, None);
+    complete_move_drop(
+        ctx,
+        win,
+        state.grab_start_x,
+        state.edge_snap_indicator,
+        None,
+    );
 }
 
 // ── gesture_mouse ─────────────────────────────────────────────────────────────

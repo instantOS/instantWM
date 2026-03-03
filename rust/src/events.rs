@@ -2,8 +2,8 @@ use crate::backend::BackendOps;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
-    configure, is_hidden, set_client_state, set_fullscreen, unmanage,
-    update_title, update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
+    configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
+    update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::commands::x_command;
 use crate::contexts::WmCtx;
@@ -707,10 +707,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .x11()
         .map(|x11| x11.conn.stream().as_raw_fd())
         .unwrap_or(-1);
-    let ipc_fd = ipc_server
-        .as_ref()
-        .map(|s| s.as_raw_fd())
-        .unwrap_or(-1);
+    let ipc_fd = ipc_server.as_ref().map(|s| s.as_raw_fd()).unwrap_or(-1);
 
     while wm.running {
         // ── 1. Drain all pending X11 events ─────────────────────────────

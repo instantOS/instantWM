@@ -538,7 +538,7 @@ fn find_hovered_window(
     let px = pointer_location.x;
     let py = pointer_location.y;
     for window in state.space.elements().rev() {
-        let Some(w) = window.user_data().get::<WindowIdMarker>().map(|m| m.0) else {
+        let Some(w) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
             continue;
         };
         let Some(c) = wm.g.clients.get(&w) else {
@@ -569,10 +569,15 @@ fn find_hovered_window(
     state
         .space
         .element_under(pointer_location)
-        .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.0))
+        .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.id))
 }
 
-fn wayland_hover_resize_drag_begin(wm: &mut Wm, root_x: i32, root_y: i32, btn: MouseButton) -> bool {
+fn wayland_hover_resize_drag_begin(
+    wm: &mut Wm,
+    root_x: i32,
+    root_y: i32,
+    btn: MouseButton,
+) -> bool {
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
@@ -580,18 +585,20 @@ fn wayland_hover_resize_drag_begin(wm: &mut Wm, root_x: i32, root_y: i32, btn: M
     let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&ctx, root_x, root_y) else {
         return false;
     };
-    let Some((geo, is_floating, has_tiling)) = ctx
-        .g
-        .clients
-        .get(&win)
-        .map(|c| (c.geo, c.isfloating, ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true)))
-    else {
+    let Some((geo, is_floating, has_tiling)) = ctx.g.clients.get(&win).map(|c| {
+        (
+            c.geo,
+            c.isfloating,
+            ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true),
+        )
+    }) else {
         return false;
     };
     if !is_floating && has_tiling {
         return false;
     }
-    let move_mode = btn == MouseButton::Right || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
+    let move_mode = btn == MouseButton::Right
+        || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
     ctx.g.hover_resize_drag = crate::globals::HoverResizeDragState {
         active: true,
         win,
@@ -651,7 +658,8 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     let orig_top = drag.win_start_y;
     let orig_right = drag.win_start_x + drag.win_start_w;
     let orig_bottom = drag.win_start_y + drag.win_start_h;
-    let (affects_left, affects_right, affects_top, affects_bottom) = drag.direction.affected_edges();
+    let (affects_left, affects_right, affects_top, affects_bottom) =
+        drag.direction.affected_edges();
     let (new_x, new_w) = if affects_left {
         (root_x, (orig_right - root_x).max(1))
     } else if affects_right {
@@ -831,7 +839,7 @@ fn wayland_border_elements(wm: &Wm, state: &WaylandState) -> Vec<SolidColorRende
     let mut out = Vec::new();
     let mut mapped_sizes: HashMap<WindowId, (i32, i32)> = HashMap::new();
     for window in state.space.elements() {
-        if let Some(win) = window.user_data().get::<WindowIdMarker>().map(|m| m.0) {
+        if let Some(win) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) {
             let size = window.geometry().size;
             mapped_sizes.insert(win, (size.w.max(1), size.h.max(1)));
         }

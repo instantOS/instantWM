@@ -50,17 +50,16 @@ pub mod warp;
 
 // ── warp ──────────────────────────────────────────────────────────────────────
 
-pub use warp::reset_cursor;
 pub use cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
+pub use warp::reset_cursor;
 
 // ── grab ──────────────────────────────────────────────────────────────────────
 
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    drag_tag, drag_tag_finish, drag_tag_motion, gesture_mouse, move_mouse,
-    title_drag_finish, title_drag_motion, window_title_mouse_handler,
-    window_title_mouse_handler_right,
+    drag_tag, drag_tag_finish, drag_tag_motion, gesture_mouse, move_mouse, title_drag_finish,
+    title_drag_motion, window_title_mouse_handler, window_title_mouse_handler_right,
 };
 
 // moveresize lives in floating::movement; re-exported here so keybindings.rs

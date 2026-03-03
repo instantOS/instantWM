@@ -102,7 +102,11 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
 }
 
 /// Return the floating window + direction currently targeted by hover-resize.
-pub fn hover_resize_target_at(ctx: &WmCtx, root_x: i32, root_y: i32) -> Option<(WindowId, ResizeDirection)> {
+pub fn hover_resize_target_at(
+    ctx: &WmCtx,
+    root_x: i32,
+    root_y: i32,
+) -> Option<(WindowId, ResizeDirection)> {
     let win = find_floating_win_at_resize_border(ctx, root_x, root_y)?;
     let dir = ctx
         .g
@@ -218,7 +222,8 @@ pub fn handle_floating_resize_hover(
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
-        let should_focus = do_focus && ctx.g.selected_win() != Some(win) && !has_visible_tiled_client(ctx);
+        let should_focus =
+            do_focus && ctx.g.selected_win() != Some(win) && !has_visible_tiled_client(ctx);
 
         if should_focus {
             crate::focus::focus_soft(ctx, Some(win));

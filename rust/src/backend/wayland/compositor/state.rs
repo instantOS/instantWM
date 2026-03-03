@@ -130,10 +130,18 @@ pub struct WaylandState {
     globals: Option<NonNull<Globals>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     hidden_windows: HashMap<WindowId, Window>,
+    /// O(1) window lookup index; mirrors `space.elements()` by `WindowId`.
+    window_index: HashMap<WindowId, Window>,
+    /// Currently focused window for O(1) deactivate-old / activate-new.
+    focused_window: Option<WindowId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct WindowIdMarker(pub WindowId);
+pub struct WindowIdMarker {
+    pub id: WindowId,
+    /// Cached: true when this is an unmanaged X11 overlay (dmenu, popup, etc.).
+    pub is_overlay: bool,
+}
 
 impl WaylandState {
     const MIN_WL_DIM: i32 = 64;
@@ -221,6 +229,8 @@ impl WaylandState {
             globals: None,
             last_configured_size: HashMap::new(),
             hidden_windows: HashMap::new(),
+            window_index: HashMap::new(),
+            focused_window: None,
         }
     }
 
@@ -303,7 +313,7 @@ impl WaylandState {
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
-                let client = g.clients.get(&marker.0)?;
+                let client = g.clients.get(&marker.id)?;
                 Some((window.clone(), client.geo, client.border_width))
             })
             .collect();
@@ -316,7 +326,7 @@ impl WaylandState {
                 let key = window
                     .user_data()
                     .get::<WindowIdMarker>()
-                    .map(|m| m.0)
+                    .map(|m| m.id)
                     .unwrap_or_default();
                 let target = (geo.w.max(1), geo.h.max(1));
                 let unchanged = self
@@ -343,9 +353,13 @@ impl WaylandState {
         let window_id = self.alloc_window_id();
         let _ = window
             .user_data()
-            .get_or_insert_threadsafe(|| WindowIdMarker(window_id));
+            .get_or_insert_threadsafe(|| WindowIdMarker {
+                id: window_id,
+                is_overlay: false,
+            });
 
         self.space.map_element(window.clone(), (0, 0), true);
+        self.window_index.insert(window_id, window.clone());
         self.ensure_client_for_window(window_id);
 
         // Set the initial title from the XDG toplevel surface data.
@@ -425,15 +439,29 @@ impl WaylandState {
             .find_window(window)
             .cloned()
             .map(KeyboardFocusTarget::Window);
-        let windows = self.space.elements().cloned().collect::<Vec<_>>();
-        for w in windows {
-            let is_target = w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window);
-            if w.set_activated(is_target) {
-                if let Some(toplevel) = w.toplevel() {
+
+        // Deactivate only the previously focused window (O(1) instead of O(n)).
+        if let Some(old_id) = self.focused_window {
+            if old_id != window {
+                if let Some(old_window) = self.window_index.get(&old_id).cloned() {
+                    if old_window.set_activated(false) {
+                        if let Some(toplevel) = old_window.toplevel() {
+                            toplevel.send_pending_configure();
+                        }
+                    }
+                }
+            }
+        }
+        // Activate the new focus target.
+        if let Some(new_window) = self.window_index.get(&window).cloned() {
+            if new_window.set_activated(true) {
+                if let Some(toplevel) = new_window.toplevel() {
                     toplevel.send_pending_configure();
                 }
             }
         }
+        self.focused_window = Some(window);
+
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, focus, serial);
         }
@@ -470,7 +498,8 @@ impl WaylandState {
                 .and_then(|g| g.clients.get(&window))
                 .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
                 .unwrap_or(Point::from((0, 0)));
-            self.space.map_element(element, loc, false);
+            self.space.map_element(element.clone(), loc, false);
+            self.window_index.insert(window, element);
         }
     }
 
@@ -478,6 +507,7 @@ impl WaylandState {
         if let Some(element) = self.find_window(window).cloned() {
             self.space.unmap_elem(&element);
             self.hidden_windows.insert(window, element);
+            self.window_index.remove(&window);
         }
         self.last_configured_size.remove(&window);
     }
@@ -486,8 +516,12 @@ impl WaylandState {
         if let Some(element) = self.find_window(window).cloned() {
             self.space.unmap_elem(&element);
         }
+        self.window_index.remove(&window);
         self.hidden_windows.remove(&window);
         self.last_configured_size.remove(&window);
+        if self.focused_window == Some(window) {
+            self.focused_window = None;
+        }
     }
 
     pub fn flush(&mut self) {
@@ -500,40 +534,18 @@ impl WaylandState {
     }
 
     fn raise_unmanaged_x11_windows(&mut self) {
+        // Use the cached `is_overlay` flag from WindowIdMarker (set at map
+        // time) to avoid re-scanning class/instance/title strings on every
+        // raise.  Windows without a marker are also treated as overlays
+        // (unmanaged X11 surfaces).
         let overlays: Vec<_> = self
             .space
             .elements()
             .filter(|w| {
-                w.x11_surface()
-                    .map(|x11| {
-                        if x11.is_override_redirect()
-                            || w.user_data().get::<WindowIdMarker>().is_none()
-                            || x11.is_popup()
-                            || x11.is_transient_for().is_some()
-                            || matches!(
-                                x11.window_type(),
-                                Some(
-                                    smithay::xwayland::xwm::WmWindowType::DropdownMenu
-                                        | smithay::xwayland::xwm::WmWindowType::Menu
-                                        | smithay::xwayland::xwm::WmWindowType::PopupMenu
-                                        | smithay::xwayland::xwm::WmWindowType::Tooltip
-                                        | smithay::xwayland::xwm::WmWindowType::Notification
-                                )
-                            )
-                        {
-                            return true;
-                        }
-                        let class = x11.class().to_ascii_lowercase();
-                        let instance = x11.instance().to_ascii_lowercase();
-                        let title = x11.title().to_ascii_lowercase();
-                        class.contains("dmenu")
-                            || class.contains("instantmenu")
-                            || instance.contains("dmenu")
-                            || instance.contains("instantmenu")
-                            || title.contains("dmenu")
-                            || title.contains("instantmenu")
-                    })
-                    .unwrap_or(false)
+                match w.user_data().get::<WindowIdMarker>() {
+                    Some(m) => m.is_overlay,
+                    None => w.x11_surface().is_some(), // untagged X11 = overlay
+                }
             })
             .cloned()
             .collect();
@@ -551,10 +563,9 @@ impl WaylandState {
             let id = self.next_window_id;
             self.next_window_id = self.next_window_id.wrapping_add(1).max(1);
             let window_id = WindowId::from(id);
-            if !self
-                .space
-                .elements()
-                .any(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window_id))
+            // O(1) collision check via the index instead of O(n) space scan.
+            if !self.window_index.contains_key(&window_id)
+                && !self.hidden_windows.contains_key(&window_id)
             {
                 return window_id;
             }
@@ -657,9 +668,8 @@ impl WaylandState {
     }
 
     pub(super) fn find_window(&self, window: WindowId) -> Option<&Window> {
-        self.space
-            .elements()
-            .find(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window))
+        // O(1) via the index instead of O(n) linear scan.
+        self.window_index.get(&window)
     }
 
     pub(super) fn ensure_client_for_window(&mut self, window: WindowId) {
@@ -709,12 +719,12 @@ impl WaylandState {
         self.space
             .elements()
             .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
-            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
             .or_else(|| {
                 self.hidden_windows
                     .values()
                     .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
-                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
             })
     }
 
@@ -725,12 +735,12 @@ impl WaylandState {
         self.space
             .elements()
             .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
-            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
             .or_else(|| {
                 self.hidden_windows
                     .values()
                     .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
-                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
             })
     }
 }

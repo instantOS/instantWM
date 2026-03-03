@@ -43,14 +43,11 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         .cfg
         .keys
         .iter()
-        .find(|key| {
-            keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
-        })
+        .find(|key| keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned)
         .or_else(|| {
             if ctx.g.selected_win().is_none() {
                 ctx.g.cfg.desktop_keybinds.iter().find(|key| {
-                    keysym == key.keysym
-                        && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                    keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                 })
             } else {
                 None
