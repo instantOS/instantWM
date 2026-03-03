@@ -473,14 +473,10 @@ fn handle_bar_drop(
 ///
 /// Returns `true` if the drop was fully handled (the caller should skip
 /// `handle_bar_drop` and `handle_client_monitor_switch`).
-fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>) -> bool {
+fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>, root_y: i32) -> bool {
     let edge = match edge {
         Some(e) => e,
         None => return false,
-    };
-
-    let Some((_root_x, root_y)) = get_root_ptr(ctx) else {
-        return false;
     };
 
     let at_left = edge == SnapPosition::Left;
@@ -526,6 +522,27 @@ fn apply_edge_drop(ctx: &mut WmCtx, win: WindowId, edge: Option<SnapPosition>) -
     }
 
     true
+}
+
+/// Shared post-release drop handling for move-like drags.
+///
+/// This keeps bar-drop and edge-drop behavior identical for all move paths.
+pub fn complete_move_drop(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    grab_start_x: i32,
+    edge_hint: Option<SnapPosition>,
+    pointer_override: Option<(i32, i32)>,
+) {
+    let pointer = pointer_override.or_else(|| get_root_ptr(ctx));
+    let edge = edge_hint.or_else(|| pointer.and_then(|(x, y)| check_edge_snap(ctx, x, y)));
+    let handled_edge = pointer
+        .map(|(_x, y)| apply_edge_drop(ctx, win, edge, y))
+        .unwrap_or(false);
+    if !handled_edge {
+        handle_bar_drop(ctx, win, grab_start_x, pointer);
+        handle_client_monitor_switch(ctx, win);
+    }
 }
 
 // ── move_mouse ────────────────────────────────────────────────────────────────
@@ -597,10 +614,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     ungrab_ctx(ctx);
     clear_bar_hover(ctx);
 
-    if !apply_edge_drop(ctx, win, state.edge_snap_indicator) {
-        handle_bar_drop(ctx, win, state.grab_start_x, None);
-        handle_client_monitor_switch(ctx, win);
-    }
+    complete_move_drop(ctx, win, state.grab_start_x, state.edge_snap_indicator, None);
 }
 
 // ── gesture_mouse ─────────────────────────────────────────────────────────────
@@ -1133,9 +1147,10 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         ctx.g.title_drag.dragging = false;
         set_cursor_default(ctx);
         if !right_click {
-            handle_bar_drop(ctx, win, grab_start_x, Some(last));
+            complete_move_drop(ctx, win, grab_start_x, None, Some(last));
+        } else {
+            handle_client_monitor_switch(ctx, win);
         }
-        handle_client_monitor_switch(ctx, win);
         return;
     }
 

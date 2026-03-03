@@ -685,12 +685,22 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     if !ctx.g.hover_resize_drag.active || ctx.g.hover_resize_drag.button != btn {
         return false;
     }
-    let win = ctx.g.hover_resize_drag.win;
+    let drag = ctx.g.hover_resize_drag.clone();
     ctx.g.hover_resize_drag = crate::globals::HoverResizeDragState::default();
     ctx.g.altcursor = AltCursor::None;
     ctx.g.resize_direction = None;
     set_cursor_default(&mut ctx);
-    crate::mouse::monitor::handle_client_monitor_switch(&mut ctx, win);
+    if drag.move_mode {
+        crate::mouse::drag::complete_move_drop(
+            &mut ctx,
+            drag.win,
+            drag.win_start_x,
+            None,
+            Some((drag.last_root_x, drag.last_root_y)),
+        );
+    } else {
+        crate::mouse::monitor::handle_client_monitor_switch(&mut ctx, drag.win);
+    }
     true
 }
 
