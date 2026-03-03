@@ -401,6 +401,10 @@ impl WaylandState {
         let Some(element) = self.find_window(window).cloned() else {
             return false;
         };
+        if let Some(x11) = element.x11_surface() {
+            let _ = x11.close();
+            return true;
+        }
         if let Some(toplevel) = element.toplevel() {
             toplevel.send_close();
             return true;
@@ -453,7 +457,7 @@ impl WaylandState {
         self.find_window(window).is_some() || self.hidden_windows.contains_key(&window)
     }
 
-    fn alloc_window_id(&mut self) -> WindowId {
+    pub(super) fn alloc_window_id(&mut self) -> WindowId {
         loop {
             let id = self.next_window_id;
             self.next_window_id = self.next_window_id.wrapping_add(1).max(1);
@@ -525,13 +529,13 @@ impl WaylandState {
         })
     }
 
-    fn find_window(&self, window: WindowId) -> Option<&Window> {
+    pub(super) fn find_window(&self, window: WindowId) -> Option<&Window> {
         self.space
             .elements()
             .find(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0) == Some(window))
     }
 
-    fn ensure_client_for_window(&mut self, window: WindowId) {
+    pub(super) fn ensure_client_for_window(&mut self, window: WindowId) {
         let Some(g) = self.globals_mut() else {
             return;
         };
@@ -583,6 +587,22 @@ impl WaylandState {
                 self.hidden_windows
                     .values()
                     .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
+                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+            })
+    }
+
+    pub(super) fn window_id_for_x11_surface(
+        &self,
+        surface: &smithay::xwayland::X11Surface,
+    ) -> Option<WindowId> {
+        self.space
+            .elements()
+            .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
+            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
+            .or_else(|| {
+                self.hidden_windows
+                    .values()
+                    .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
                     .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.0))
             })
     }
