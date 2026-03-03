@@ -23,6 +23,7 @@
 
 use crate::animation::animate_client;
 use crate::backend::BackendKind;
+use crate::backend::BackendOps;
 use crate::client::geometry::resize_client;
 use crate::contexts::WmCtx;
 use crate::globals::get_globals_mut;
@@ -223,6 +224,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
             resize_client(ctx, win, &old_geo);
+            ctx.backend.flush();
 
             if let Some(mid) = mon_id {
                 arrange(ctx, Some(mid));

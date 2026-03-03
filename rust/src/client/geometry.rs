@@ -167,7 +167,6 @@ pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
 
     // Send a synthetic ConfigureNotify so the client knows its geometry.
     crate::client::focus::configure(ctx, win);
-    ctx.backend.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -221,22 +220,30 @@ pub fn apply_size_hints(
     let hintsvalid = c.hintsvalid;
     let isfloating = c.isfloating;
 
-    // Release the mutable borrow of ctx.g before we might need to call update_size_hints.
-    let (cfg, monitors, _tags) = {
-        let g = &*ctx.g;
-        (g.cfg.clone(), g.monitors.clone(), g.tags.clone())
-    };
+    // Extract only the scalar values we need instead of cloning the entire
+    // config / monitors / tags structs (avoids heap allocations).
+    let screen_width = ctx.g.cfg.screen_width;
+    let screen_height = ctx.g.cfg.screen_height;
+    let bar_height = ctx.g.cfg.bar_height;
+    let resizehints = ctx.g.cfg.resizehints;
+    let mon_work_rect = mon_id
+        .and_then(|mid| ctx.g.monitors.get(mid))
+        .map(|m| m.work_rect);
+    let is_tiling = mon_id
+        .and_then(|mid| ctx.g.monitors.get(mid))
+        .map(|mon| mon.is_tiling_layout())
+        .unwrap_or(true);
 
     *w = max(1, *w);
     *h = max(1, *h);
 
     // Clamp position so the window doesn't escape the usable area.
     if interact {
-        if *x > cfg.screen_width {
-            *x = cfg.screen_width - client_w;
+        if *x > screen_width {
+            *x = screen_width - client_w;
         }
-        if *y > cfg.screen_height {
-            *y = cfg.screen_height - client_h;
+        if *y > screen_height {
+            *y = screen_height - client_h;
         }
         if *x + client_w < 0 {
             *x = 0;
@@ -244,41 +251,34 @@ pub fn apply_size_hints(
         if *y + client_h < 0 {
             *y = 0;
         }
-    } else if let Some(mon_id) = mon_id {
-        if let Some(m) = monitors.get(mon_id) {
-            if *x >= m.work_rect.x + m.work_rect.w {
-                *x = m.work_rect.x + m.work_rect.w - client_w;
-            }
-            if *y >= m.work_rect.y + m.work_rect.h {
-                *y = m.work_rect.y + m.work_rect.h - client_h;
-            }
-            if *x + client_w <= m.work_rect.x {
-                *x = m.work_rect.x;
-            }
-            if *y + client_h <= m.work_rect.y {
-                *y = m.work_rect.y;
-            }
+    } else if let Some(wr) = mon_work_rect {
+        if *x >= wr.x + wr.w {
+            *x = wr.x + wr.w - client_w;
+        }
+        if *y >= wr.y + wr.h {
+            *y = wr.y + wr.h - client_h;
+        }
+        if *x + client_w <= wr.x {
+            *x = wr.x;
+        }
+        if *y + client_h <= wr.y {
+            *y = wr.y;
         }
     }
 
     // Enforce a minimum size of one bar-height in each dimension.
-    let bh = cfg.bar_height;
-    if *h < bh {
-        *h = bh;
+    if *h < bar_height {
+        *h = bar_height;
     }
-    if *w < bh {
-        *w = bh;
+    if *w < bar_height {
+        *w = bar_height;
     }
 
     if ctx.backend_kind() == BackendKind::Wayland {
         return *x != old_x || *y != old_y || *w != old_w || *h != old_h;
     }
 
-    let resizehints = cfg.resizehints;
-    let is_tiling = mon_id
-        .and_then(|mid| monitors.get(mid))
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(true);
+    let resizehints_val = resizehints;
 
     // Need to get mutable client again for the size hints section.
     let Some(c) = ctx.g.clients.get_mut(&win) else {
@@ -287,7 +287,7 @@ pub fn apply_size_hints(
 
     // Only apply ICCCM size hints when hints are enabled, or the client is
     // floating / not in a tiling layout.
-    if resizehints != 0 || isfloating || !is_tiling {
+    if resizehints_val != 0 || isfloating || !is_tiling {
         if hintsvalid == 0 {
             let _ = c; // Release mutable borrow before calling update_size_hints
             update_size_hints(ctx, win);

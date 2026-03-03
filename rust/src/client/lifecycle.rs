@@ -357,6 +357,7 @@ fn run_manage_animation(
             h: c.geo.h,
         },
     );
+    ctx.backend.flush();
     animate_client(
         ctx,
         w,

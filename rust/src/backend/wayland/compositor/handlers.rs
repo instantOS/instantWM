@@ -143,6 +143,38 @@ impl DmabufHandler for WaylandState {
     }
 }
 
+/// Classify an X11 surface as an "overlay" (override-redirect, popup, menu,
+/// dmenu/instantmenu) at map time so we can cache the result and avoid
+/// repeated string scans on every raise.
+fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
+    if x11.is_override_redirect() || x11.is_popup() || x11.is_transient_for().is_some() {
+        return true;
+    }
+    if matches!(
+        x11.window_type(),
+        Some(
+            smithay::xwayland::xwm::WmWindowType::DropdownMenu
+                | smithay::xwayland::xwm::WmWindowType::Menu
+                | smithay::xwayland::xwm::WmWindowType::PopupMenu
+                | smithay::xwayland::xwm::WmWindowType::Tooltip
+                | smithay::xwayland::xwm::WmWindowType::Notification
+                | smithay::xwayland::xwm::WmWindowType::Toolbar
+                | smithay::xwayland::xwm::WmWindowType::Utility
+        )
+    ) {
+        return true;
+    }
+    let class = x11.class().to_ascii_lowercase();
+    let instance = x11.instance().to_ascii_lowercase();
+    let title = x11.title().to_ascii_lowercase();
+    class.contains("dmenu")
+        || class.contains("instantmenu")
+        || instance.contains("dmenu")
+        || instance.contains("instantmenu")
+        || title.contains("dmenu")
+        || title.contains("instantmenu")
+}
+
 impl XwmHandler for WaylandState {
     fn xwm_state(&mut self, _xwm: smithay::xwayland::xwm::XwmId) -> &mut smithay::xwayland::X11Wm {
         self.xwm.as_mut().expect("XWayland is not initialized")
@@ -385,39 +417,6 @@ impl XwmHandler for WaylandState {
         self.xwm = None;
         self.xdisplay = None;
     }
-}
-
-fn is_unmanaged_x11_overlay(window: &smithay::xwayland::X11Surface) -> bool {
-    use smithay::xwayland::xwm::WmWindowType;
-
-    if window.is_override_redirect() {
-        return true;
-    }
-
-    if matches!(
-        window.window_type(),
-        Some(
-            WmWindowType::DropdownMenu
-                | WmWindowType::Menu
-                | WmWindowType::PopupMenu
-                | WmWindowType::Tooltip
-                | WmWindowType::Notification
-                | WmWindowType::Toolbar
-                | WmWindowType::Utility
-        )
-    ) {
-        return true;
-    }
-
-    let class = window.class().to_ascii_lowercase();
-    let instance = window.instance().to_ascii_lowercase();
-    let title = window.title().to_ascii_lowercase();
-    class.contains("dmenu")
-        || class.contains("instantmenu")
-        || instance.contains("dmenu")
-        || instance.contains("instantmenu")
-        || title.contains("dmenu")
-        || title.contains("instantmenu")
 }
 
 impl SeatHandler for WaylandState {

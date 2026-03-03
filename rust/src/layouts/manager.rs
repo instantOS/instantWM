@@ -42,6 +42,9 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
         // needs to call mutable methods between iterations; monitors_iter_mut
         // cannot be used here without borrow conflicts.
     }
+
+    // Batch-flush all backend operations from this layout pass.
+    ctx.backend.flush();
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {

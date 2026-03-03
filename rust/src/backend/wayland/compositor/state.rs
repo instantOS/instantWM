@@ -131,7 +131,7 @@ pub struct WaylandState {
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     hidden_windows: HashMap<WindowId, Window>,
     /// O(1) window lookup index; mirrors `space.elements()` by `WindowId`.
-    window_index: HashMap<WindowId, Window>,
+    pub(super) window_index: HashMap<WindowId, Window>,
     /// Currently focused window for O(1) deactivate-old / activate-new.
     focused_window: Option<WindowId>,
 }

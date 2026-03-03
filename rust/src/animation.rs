@@ -176,6 +176,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
     }
 
     try_resize(ctx, win, &final_rect);
+    ctx.backend.flush();
 }
 
 pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
