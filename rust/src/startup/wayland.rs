@@ -672,6 +672,13 @@ fn update_wayland_bar_hit_state(
         .selmon()
         .is_some_and(|m| m.showbar && root_y >= m.by && root_y < m.by + bar_h);
     if !in_bar {
+        let had_hover = ctx
+            .g
+            .selmon()
+            .is_some_and(|m| m.gesture != crate::types::Gesture::None);
+        if had_hover {
+            crate::bar::reset_bar(&mut ctx);
+        }
         return None;
     }
 
@@ -769,21 +776,24 @@ fn init_wayland_globals(wm: &mut Wm) {
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.showbar = true;
-    let font_height = wayland_font_height_from_config(&cfg.fonts);
-    wm.bar_painter.set_font_size(font_height as f32);
-    wm.g.cfg.bar_height = if cfg.barheight > 0 {
+    let font_size = wayland_font_size_from_config(&cfg.fonts);
+    let font_height = wayland_font_height_from_size(font_size);
+    wm.bar_painter.set_font_size(font_size);
+    let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
+    wm.g.cfg.bar_height = (if cfg.barheight > 0 {
         font_height + cfg.barheight
     } else {
         font_height + 12
-    };
+    })
+    .max(min_bar_height);
     // Keep hit-testing metrics aligned with the effective bar font height.
     wm.g.cfg.horizontal_padding = font_height;
     wm.g.cfg.numlockmask = 0;
     monitor::update_geom_ctx(&mut wm.ctx());
 }
 
-fn wayland_font_height_from_config(fonts: &[String]) -> i32 {
-    let size = fonts
+fn wayland_font_size_from_config(fonts: &[String]) -> f32 {
+    fonts
         .iter()
         .find_map(|font| {
             let idx = font.find("size=")?;
@@ -792,10 +802,15 @@ fn wayland_font_height_from_config(fonts: &[String]) -> i32 {
                 .chars()
                 .take_while(|c| c.is_ascii_digit() || *c == '.')
                 .collect();
-            num.parse::<f32>().ok()
+            num.parse::<f32>().ok().filter(|s| *s > 0.0)
         })
-        .unwrap_or(14.0);
-    size.ceil().max(1.0) as i32
+        .unwrap_or(14.0)
+}
+
+fn wayland_font_height_from_size(font_size: f32) -> i32 {
+    // Xft reports ascent+descent, which is typically larger than point size.
+    // Keep Wayland hit-testing/layout aligned with that effective line height.
+    ((font_size * 1.3).ceil() as i32).max(font_size.ceil() as i32 + 2)
 }
 
 fn apply_wayland_session_env(socket_name: &str) {

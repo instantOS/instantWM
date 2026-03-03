@@ -222,6 +222,9 @@ pub(crate) fn draw_close_button(
     else {
         return;
     };
+    let mut scheme = scheme;
+    // Use the scheme detail color for the lower accent bar (matches intended darker tone).
+    scheme.fg = scheme.detail;
     painter.set_scheme(scheme);
 
     let button_x = x + bh / 6;

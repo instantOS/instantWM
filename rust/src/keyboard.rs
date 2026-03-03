@@ -1,7 +1,10 @@
 use crate::contexts::WmCtx;
-use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
-use crate::focus::direction_focus;
+use crate::floating::{
+    center_window, change_snap, key_resize, reset_snap, save_floating_win, toggle_floating, SnapDir,
+};
+use crate::focus::{direction_focus, focus_stack};
 use crate::layouts::arrange;
+use crate::monitor::{focus_mon, follow_mon};
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::unhide_one;
 use crate::types::*;
@@ -396,28 +399,4 @@ pub fn space_toggle(ctx: &mut WmCtx) {
     } else {
         toggle_floating(ctx);
     }
-}
-
-pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    crate::floating::key_resize(ctx, win, dir);
-}
-
-pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
-    crate::floating::center_window(ctx, win);
-}
-
-pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    crate::focus::focus_stack(ctx, direction);
-}
-
-pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
-    crate::monitor::focus_mon(ctx, direction);
-}
-
-pub fn focus_nmon(ctx: &mut WmCtx, index: i32) {
-    crate::monitor::focus_n_mon(ctx, index);
-}
-
-pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
-    crate::monitor::follow_mon(ctx, direction);
 }

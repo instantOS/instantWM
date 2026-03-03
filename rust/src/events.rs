@@ -371,9 +371,18 @@ pub fn map_request(ctx: &mut WmCtx, e: &MapRequestEvent) {
 /// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
 pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     let event_win = WindowId::from(e.event);
-    if event_win != WindowId::from(ctx.g.cfg.root) {
+    let root_win = WindowId::from(ctx.g.cfg.root);
+    if event_win != root_win {
+        let root_y = e.root_y as i32;
+        let in_bar = ctx
+            .g
+            .selmon()
+            .is_some_and(|m| m.showbar && root_y >= m.by && root_y < m.by + ctx.g.cfg.bar_height);
+        if !in_bar && ctx.g.selmon().is_some_and(|m| m.gesture != Gesture::None) {
+            reset_bar(ctx);
+        }
         return;
-    };
+    }
 
     let selmon_id = ctx.g.selmon_id();
     let tagwidth = get_tag_width(ctx);
@@ -411,7 +420,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
         (mon.monitor_rect.y, ctx.g.cfg.bar_height, mon.gesture)
     };
 
-    if root_y >= monitor_y + bar_height - 3 {
+    if root_y >= monitor_y + bar_height {
         if handle_floating_resize_hover(ctx, root_x, root_y, true) {
             return;
         }

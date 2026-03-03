@@ -6,9 +6,9 @@ use super::commands::Cmd;
 use crate::animation;
 use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
-use crate::floating::{center_window, distribute_clients, temp_fullscreen};
+use crate::floating::{center_window, distribute_clients, key_resize, temp_fullscreen};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
-use crate::keyboard::{down_key, down_press, key_resize, space_toggle, up_key, up_press};
+use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
