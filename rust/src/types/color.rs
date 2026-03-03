@@ -233,25 +233,13 @@ impl StatusScheme {
 }
 
 /// Tag scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TagSchemesSet {
     pub inactive: ColorScheme,
     pub filled: ColorScheme,
     pub focus: ColorScheme,
     pub nofocus: ColorScheme,
     pub empty: ColorScheme,
-}
-
-impl Default for TagSchemesSet {
-    fn default() -> Self {
-        Self {
-            inactive: ColorScheme::default(),
-            filled: ColorScheme::default(),
-            focus: ColorScheme::default(),
-            nofocus: ColorScheme::default(),
-            empty: ColorScheme::default(),
-        }
-    }
 }
 
 impl TagSchemesSet {
@@ -286,7 +274,7 @@ pub struct TagSchemes {
 }
 
 /// Window scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowSchemesSet {
     pub focus: ColorScheme,
     pub normal: ColorScheme,
@@ -295,20 +283,6 @@ pub struct WindowSchemesSet {
     pub sticky_focus: ColorScheme,
     pub overlay: ColorScheme,
     pub overlay_focus: ColorScheme,
-}
-
-impl Default for WindowSchemesSet {
-    fn default() -> Self {
-        Self {
-            focus: ColorScheme::default(),
-            normal: ColorScheme::default(),
-            minimized: ColorScheme::default(),
-            sticky: ColorScheme::default(),
-            sticky_focus: ColorScheme::default(),
-            overlay: ColorScheme::default(),
-            overlay_focus: ColorScheme::default(),
-        }
-    }
 }
 
 impl WindowSchemesSet {
@@ -347,21 +321,11 @@ pub struct WindowSchemes {
 }
 
 /// Close button scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CloseButtonSchemesSet {
     pub normal: ColorScheme,
     pub locked: ColorScheme,
     pub fullscreen: ColorScheme,
-}
-
-impl Default for CloseButtonSchemesSet {
-    fn default() -> Self {
-        Self {
-            normal: ColorScheme::default(),
-            locked: ColorScheme::default(),
-            fullscreen: ColorScheme::default(),
-        }
-    }
 }
 
 impl CloseButtonSchemesSet {
@@ -578,21 +542,12 @@ impl ColorSchemeStrings {
 }
 
 /// Tag color configurations using strings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TagColorConfigs {
     /// Non-hover color configs.
     pub no_hover: TagColorSet,
     /// Hover color configs.
     pub hover: TagColorSet,
-}
-
-impl Default for TagColorConfigs {
-    fn default() -> Self {
-        Self {
-            no_hover: TagColorSet::default(),
-            hover: TagColorSet::default(),
-        }
-    }
 }
 
 impl TagColorConfigs {
@@ -620,21 +575,12 @@ impl TagColorConfigs {
 }
 
 /// Window color configurations using strings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct WindowColorConfigs {
     /// Non-hover color configs.
     pub no_hover: WindowColorSet,
     /// Hover color configs.
     pub hover: WindowColorSet,
-}
-
-impl Default for WindowColorConfigs {
-    fn default() -> Self {
-        Self {
-            no_hover: WindowColorSet::default(),
-            hover: WindowColorSet::default(),
-        }
-    }
 }
 
 impl WindowColorConfigs {
@@ -662,21 +608,12 @@ impl WindowColorConfigs {
 }
 
 /// Close button color configurations using strings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CloseButtonColorConfigs {
     /// Non-hover color configs.
     pub no_hover: CloseButtonColorSet,
     /// Hover color configs.
     pub hover: CloseButtonColorSet,
-}
-
-impl Default for CloseButtonColorConfigs {
-    fn default() -> Self {
-        Self {
-            no_hover: CloseButtonColorSet::default(),
-            hover: CloseButtonColorSet::default(),
-        }
-    }
 }
 
 impl CloseButtonColorConfigs {
@@ -708,7 +645,7 @@ impl CloseButtonColorConfigs {
 }
 
 /// Border color configuration using strings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct BorderColorConfig {
     /// Normal border color.
     pub normal: String,
@@ -741,19 +678,8 @@ impl BorderColorConfig {
     }
 }
 
-impl Default for BorderColorConfig {
-    fn default() -> Self {
-        Self {
-            normal: String::new(),
-            tile_focus: String::new(),
-            float_focus: String::new(),
-            snap: String::new(),
-        }
-    }
-}
-
 /// Status color configuration using strings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StatusColorConfig {
     /// Status bar colors.
     pub fg: String,
@@ -782,16 +708,6 @@ impl StatusColorConfig {
             ColIndex::Fg => self.fg = value,
             ColIndex::Bg => self.bg = value,
             ColIndex::Detail => self.detail = value,
-        }
-    }
-}
-
-impl Default for StatusColorConfig {
-    fn default() -> Self {
-        Self {
-            fg: String::new(),
-            bg: String::new(),
-            detail: String::new(),
         }
     }
 }
