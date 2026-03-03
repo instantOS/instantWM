@@ -34,6 +34,7 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend};
 use smithay::desktop::space::render_output;
+use smithay::desktop::layer_map_for_output;
 use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::desktop::PopupManager;
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
@@ -265,6 +266,7 @@ fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
         Some((0, 0).into()),
     );
     output.set_preferred(mode);
+    layer_map_for_output(output).arrange();
 }
 
 fn handle_keyboard(

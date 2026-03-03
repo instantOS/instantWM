@@ -1,10 +1,11 @@
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::{
-        find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupPointerGrab,
-        PopupUngrabStrategy,
+        find_popup_root_surface, layer_map_for_output, LayerSurface as DesktopLayerSurface,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
     },
     input::{pointer::Focus, SeatHandler},
+    output::Output,
     reexports::wayland_server::{protocol::wl_seat, Client},
     utils::SERIAL_COUNTER,
     wayland::{
@@ -18,7 +19,10 @@ use smithay::{
             },
             SelectionHandler,
         },
-        shell::xdg::{PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler},
+        shell::{
+            wlr_layer::{Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState},
+            xdg::{PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler},
+        },
         shm::ShmHandler,
         xwayland_shell::XWaylandShellHandler,
     },
@@ -549,6 +553,48 @@ impl XWaylandShellHandler for WaylandState {
         &mut self,
     ) -> &mut smithay::wayland::xwayland_shell::XWaylandShellState {
         &mut self.xwayland_shell_state
+    }
+}
+
+impl WlrLayerShellHandler for WaylandState {
+    fn shell_state(&mut self) -> &mut WlrLayerShellState {
+        &mut self.wlr_layer_shell_state
+    }
+
+    fn new_layer_surface(
+        &mut self,
+        surface: WlrLayerSurface,
+        output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+        _layer: Layer,
+        namespace: String,
+    ) {
+        let layer_surface = DesktopLayerSurface::new(surface, namespace);
+        let target_output = output
+            .as_ref()
+            .and_then(Output::from_resource)
+            .or_else(|| self.space.outputs().next().cloned());
+        let Some(target_output) = target_output else {
+            return;
+        };
+        let mut map = layer_map_for_output(&target_output);
+        let _ = map.map_layer(&layer_surface);
+        map.arrange();
+        layer_surface.layer_surface().send_configure();
+    }
+
+    fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
+        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
+            let mut map = layer_map_for_output(&output);
+            let wl_surface = surface.wl_surface();
+            let layers: Vec<_> = map
+                .layers()
+                .filter(|l| l.wl_surface() == wl_surface)
+                .cloned()
+                .collect();
+            for layer in layers {
+                map.unmap_layer(&layer);
+            }
+        }
     }
 }
 
