@@ -121,6 +121,9 @@ struct MoveState {
     /// Window position at drag start.
     grab_start_x: i32,
     grab_start_y: i32,
+    /// Window size at drag start.
+    grab_start_w: i32,
+    grab_start_h: i32,
     /// Whether the cursor was over the bar on the previous motion event.
     cursor_on_bar: bool,
     /// The last edge-snap zone the cursor was in.
@@ -376,16 +379,18 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
 /// * Dropped on a tag button → `set_tiled()` + `tag()`
 /// * Dropped elsewhere on bar, window floating → `set_tiled()`
 ///
-/// # `grab_start_x`
+/// # `grab_start_x` / `grab_start_y`
 ///
-/// The window's x position at the moment the drag started.  When the window
-/// was floating, this is the true pre-drag origin; we save it into
-/// `float_geo.x` so that un-tiling later restores the window to where it was
-/// before the user dragged it onto the bar.
+/// The window position at the moment the drag started.  When the window was
+/// floating, this is the true pre-drag origin; we save it into `float_geo`
+/// so un-tiling later restores the original floating position.
 fn handle_bar_drop(
     ctx: &mut WmCtx,
     win: WindowId,
     grab_start_x: i32,
+    grab_start_y: i32,
+    grab_start_w: i32,
+    grab_start_h: i32,
     pointer_override: Option<(i32, i32)>,
 ) {
     let Some((ptr_x, ptr_y)) = pointer_override.or_else(|| get_root_ptr(ctx)) else {
@@ -451,17 +456,12 @@ fn handle_bar_drop(
     // the bar) into `float_geo`.  That's wrong — we want the position the
     // window occupied *before* the drag started:
     //   x = grab_start_x  (original window x at grab time)
-    //   y = just below the bar
     if was_floating {
-        let bar_bottom = {
-            ctx.g
-                .selmon()
-                .map(|m| m.by + ctx.g.cfg.bar_height)
-                .unwrap_or(0)
-        };
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.float_geo.x = grab_start_x;
-            client.float_geo.y = bar_bottom;
+            client.float_geo.y = grab_start_y;
+            client.float_geo.w = grab_start_w;
+            client.float_geo.h = grab_start_h;
         }
     }
 }
@@ -536,6 +536,9 @@ pub fn complete_move_drop(
     ctx: &mut WmCtx,
     win: WindowId,
     grab_start_x: i32,
+    grab_start_y: i32,
+    grab_start_w: i32,
+    grab_start_h: i32,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<(i32, i32)>,
 ) {
@@ -545,7 +548,15 @@ pub fn complete_move_drop(
         .map(|(_x, y)| apply_edge_drop(ctx, win, edge, y))
         .unwrap_or(false);
     if !handled_edge {
-        handle_bar_drop(ctx, win, grab_start_x, pointer);
+        handle_bar_drop(
+            ctx,
+            win,
+            grab_start_x,
+            grab_start_y,
+            grab_start_w,
+            grab_start_h,
+            pointer,
+        );
         handle_client_monitor_switch(ctx, win);
     }
 }
@@ -569,18 +580,20 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
-    let (grab_start_x, grab_start_y) = ctx
+    let (grab_start_x, grab_start_y, grab_start_w, grab_start_h) = ctx
         .g
         .clients
         .get(&win)
-        .map(|c| (c.geo.x, c.geo.y))
-        .unwrap_or((0, 0));
+        .map(|c| (c.geo.x, c.geo.y, c.geo.w, c.geo.h))
+        .unwrap_or((0, 0, 0, 0));
 
     let mut state = MoveState {
         start_x,
         start_y,
         grab_start_x,
         grab_start_y,
+        grab_start_w,
+        grab_start_h,
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
@@ -623,6 +636,9 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         ctx,
         win,
         state.grab_start_x,
+        state.grab_start_y,
+        state.grab_start_w,
+        state.grab_start_h,
         state.edge_snap_indicator,
         None,
     );
@@ -1073,31 +1089,70 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             crate::client::show(ctx, win);
         }
         crate::focus::focus_soft(ctx, Some(win));
-        if let Some((is_floating, geo, border_width)) = ctx
+        if let Some((is_floating, geo, border_width, float_geo)) = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| (c.isfloating, c.geo, c.border_width))
+            .map(|c| (c.isfloating, c.geo, c.border_width, c.float_geo))
         {
+            let mut current_geo = geo;
+            let mut anchor_rebased = false;
             if !is_floating {
                 set_floating_in_place(ctx, win);
                 arrange(ctx, Some(ctx.g.selmon_id()));
+                let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
+                let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
+                let mut target_x = geo.x;
+                let mut target_y = geo.y;
+                if !right_click {
+                    // No reliable cursor warp on nested Wayland: place the
+                    // restored floating window so the pointer stays inside it.
+                    let pad = 10;
+                    let max_x = (target_w - pad).max(pad);
+                    let max_y = (target_h - pad).max(pad);
+                    let offset_x = (root_x - geo.x).clamp(pad, max_x);
+                    let offset_y = (root_y - geo.y).clamp(pad, max_y);
+                    target_x = root_x - offset_x;
+                    target_y = root_y - offset_y;
+                    ctx.g.drag.title.win_start_x = target_x;
+                    ctx.g.drag.title.win_start_y = target_y;
+                    ctx.g.drag.title.start_x = root_x;
+                    ctx.g.drag.title.start_y = root_y;
+                    anchor_rebased = true;
+                }
+                resize(
+                    ctx,
+                    win,
+                    &Rect {
+                        x: target_x,
+                        y: target_y,
+                        w: target_w,
+                        h: target_h,
+                    },
+                    true,
+                );
+                current_geo.x = target_x;
+                current_geo.y = target_y;
+                current_geo.w = target_w;
+                current_geo.h = target_h;
+                ctx.g.drag.title.win_start_w = target_w;
+                ctx.g.drag.title.win_start_h = target_h;
             }
             if right_click {
                 let (x_off, y_off) =
-                    ResizeDirection::BottomRight.warp_offset(geo.w, geo.h, border_width);
-                ctx.g.drag.title.start_x = geo.x + x_off;
-                ctx.g.drag.title.start_y = geo.y + y_off;
-            } else {
+                    ResizeDirection::BottomRight.warp_offset(current_geo.w, current_geo.h, border_width);
+                ctx.g.drag.title.start_x = current_geo.x + x_off;
+                ctx.g.drag.title.start_y = current_geo.y + y_off;
+            } else if !anchor_rebased {
                 // Wayland can't reliably warp the hardware pointer like X11, so
                 // emulate warp_into by rebasing the drag anchor into window bounds.
                 let pad = 10;
-                let max_x = (geo.w - pad).max(pad);
-                let max_y = (geo.h - pad).max(pad);
-                let offset_x = (root_x - geo.x).clamp(pad, max_x);
-                let offset_y = (root_y - geo.y).clamp(pad, max_y);
-                ctx.g.drag.title.start_x = geo.x + offset_x;
-                ctx.g.drag.title.start_y = geo.y + offset_y;
+                let max_x = (current_geo.w - pad).max(pad);
+                let max_y = (current_geo.h - pad).max(pad);
+                let offset_x = (root_x - current_geo.x).clamp(pad, max_x);
+                let offset_y = (root_y - current_geo.y).clamp(pad, max_y);
+                ctx.g.drag.title.start_x = current_geo.x + offset_x;
+                ctx.g.drag.title.start_y = current_geo.y + offset_y;
             }
         }
         if right_click {
@@ -1155,12 +1210,24 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         let win = ctx.g.drag.title.win;
         let right_click = ctx.g.drag.title.right_click;
         let grab_start_x = ctx.g.drag.title.win_start_x;
+        let grab_start_y = ctx.g.drag.title.win_start_y;
+        let grab_start_w = ctx.g.drag.title.win_start_w;
+        let grab_start_h = ctx.g.drag.title.win_start_h;
         let last = (ctx.g.drag.title.last_root_x, ctx.g.drag.title.last_root_y);
         ctx.g.drag.title.active = false;
         ctx.g.drag.title.dragging = false;
         set_cursor_default(ctx);
         if !right_click {
-            complete_move_drop(ctx, win, grab_start_x, None, Some(last));
+            complete_move_drop(
+                ctx,
+                win,
+                grab_start_x,
+                grab_start_y,
+                grab_start_w,
+                grab_start_h,
+                None,
+                Some(last),
+            );
         } else {
             handle_client_monitor_switch(ctx, win);
         }

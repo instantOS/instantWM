@@ -48,6 +48,9 @@ pub fn set_cursor_resize(ctx: &mut WmCtx, dir: Option<ResizeDirection>) {
                 Some(ResizeDirection::Top) | Some(ResizeDirection::Bottom) => {
                     smithay::input::pointer::CursorIcon::NsResize
                 }
+                Some(ResizeDirection::TopRight) | Some(ResizeDirection::BottomLeft) => {
+                    smithay::input::pointer::CursorIcon::NeswResize
+                }
                 _ => smithay::input::pointer::CursorIcon::NwseResize,
             };
             wayland.set_cursor_icon_override(Some(icon));

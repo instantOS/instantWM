@@ -357,7 +357,7 @@ fn handle_pointer_motion(
         return;
     }
 
-    {
+    if wayland_active_drag_window(wm).is_none() {
         let mut ctx = wm.ctx();
         let _ = crate::mouse::handle_floating_resize_hover(&mut ctx, root_x, root_y, false);
     }
@@ -718,6 +718,9 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
             &mut ctx,
             drag.win,
             drag.win_start_x,
+            drag.win_start_y,
+            drag.win_start_w,
+            drag.win_start_h,
             None,
             Some((drag.last_root_x, drag.last_root_y)),
         );
