@@ -14,10 +14,7 @@
 //! | [`warp_to_focus`]           | Keybinding handler – warp to the selected window        |
 //! | [`reset_cursor`]            | Restore the normal (arrow) X11 root cursor              |
 
-use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
-use crate::require_x11;
-use crate::require_x11_ret;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;

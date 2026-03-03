@@ -49,7 +49,7 @@ pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 
 // -- Linked-list management --------------------------------------------------
 pub use list::{
-    attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, next_tiled_ctx, pop, win_to_client,
+    attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, next_tiled_ctx, pop,
 };
 
 // -- Geometry ----------------------------------------------------------------

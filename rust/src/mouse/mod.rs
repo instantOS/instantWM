@@ -58,7 +58,7 @@ pub use cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    drag_tag, drag_tag_begin, drag_tag_finish, drag_tag_motion, gesture_mouse, move_mouse,
+    drag_tag, drag_tag_finish, drag_tag_motion, gesture_mouse, move_mouse,
     title_drag_finish, title_drag_motion, window_title_mouse_handler,
     window_title_mouse_handler_right,
 };

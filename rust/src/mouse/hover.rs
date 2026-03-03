@@ -14,8 +14,6 @@
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
 use crate::contexts::WmCtx;
-use crate::require_x11;
-use crate::require_x11_ret;
 // focus() is used via focus_soft() in this module
 use crate::mouse::warp::warp_into;
 use crate::types::*;

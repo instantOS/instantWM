@@ -26,10 +26,7 @@
 //! ungrab_ctx(ctx);
 //! ```
 
-use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
-use crate::require_x11;
-use crate::require_x11_ret;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;

@@ -18,11 +18,9 @@
 //! by the interactive loops; the others are reserved for future directional
 //! resize support.
 
-use crate::backend::BackendKind;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
-use crate::require_x11;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
 

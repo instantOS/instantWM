@@ -25,19 +25,15 @@
 //! - **Thread safety**: Easier to reason about with explicit state passing
 //! - **Flexibility**: Can work with temporary state without affecting globals
 
-use crate::backend::BackendRef;
 use crate::bar::x11::update_bar_pos_with_bh;
 use crate::client::{
     attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, set_client_tag_prop, unfocus_win,
 };
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::get_globals;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
-
-use crate::bar::BarState;
-use crate::client::focus::FocusState;
 
 #[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;

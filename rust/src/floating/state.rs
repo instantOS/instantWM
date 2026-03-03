@@ -1,7 +1,7 @@
 //! Floating state transitions and geometry persistence.
 
 use crate::animation::animate_client;
-use crate::backend::{BackendKind, BackendOps};
+use crate::backend::BackendOps;
 use crate::client::{resize, restore_border_width_ctx};
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;

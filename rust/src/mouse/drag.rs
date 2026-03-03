@@ -29,7 +29,6 @@ use crate::client::resize;
 use crate::config::commands::Cmd;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
-use crate::require_x11;
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
 use crate::mouse::warp::warp_into;

@@ -1,14 +1,13 @@
+use std::rc::Rc;
+
 use crate::contexts::WmCtx;
-use crate::floating::{
-    center_window, change_snap, key_resize, reset_snap, save_floating_win, toggle_floating, SnapDir,
-};
+use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::{direction_focus, focus_stack};
 use crate::layouts::arrange;
-use crate::monitor::{focus_mon, follow_mon};
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::unhide_one;
 use crate::types::*;
-use crate::types::{Direction, MonitorDirection, StackDirection};
+use crate::types::{Direction, StackDirection};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -36,37 +35,31 @@ fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
 }
 
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
-    let matching_key = {
-        let numlockmask = ctx.g.cfg.numlockmask;
-        let keys = ctx.g.cfg.keys.clone();
-        let desktop_keybinds = ctx.g.cfg.desktop_keybinds.clone();
-        let mut result = None;
-        for key in &keys {
-            if keysym == key.keysym
-                && clean_mask(key.mod_mask as u16, numlockmask)
-                    == clean_mask(mod_mask as u16, numlockmask)
-            {
-                result = Some(key.clone());
-                break;
-            }
-        }
-        let sel_win = ctx.g.selected_win();
-        if result.is_none() && sel_win.is_none() {
-            for key in &desktop_keybinds {
-                if keysym == key.keysym
-                    && clean_mask(key.mod_mask as u16, numlockmask)
-                        == clean_mask(mod_mask as u16, numlockmask)
-                {
-                    result = Some(key.clone());
-                    break;
-                }
-            }
-        }
-        result
-    };
+    let numlockmask = ctx.g.cfg.numlockmask;
+    let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
-    if let Some(key) = matching_key {
-        (key.action)(ctx);
+    let action = ctx
+        .g
+        .cfg
+        .keys
+        .iter()
+        .find(|key| {
+            keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+        })
+        .or_else(|| {
+            if ctx.g.selected_win().is_none() {
+                ctx.g.cfg.desktop_keybinds.iter().find(|key| {
+                    keysym == key.keysym
+                        && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                })
+            } else {
+                None
+            }
+        })
+        .map(|key| Rc::clone(&key.action));
+
+    if let Some(action) = action {
+        action(ctx);
         true
     } else {
         false

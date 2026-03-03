@@ -2,7 +2,7 @@ use crate::backend::BackendOps;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
-    configure, get_transient_for_hint, is_hidden, set_client_state, set_fullscreen, unmanage,
+    configure, is_hidden, set_client_state, set_fullscreen, unmanage,
     update_title, update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::commands::x_command;

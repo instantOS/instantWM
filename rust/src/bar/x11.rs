@@ -1,6 +1,6 @@
 use crate::bar::color::hex_to_u32;
 use crate::contexts::WmCtx;
-use crate::globals::{get_globals, get_globals_mut, get_x11};
+use crate::globals::{get_globals, get_x11};
 use crate::types::{Monitor, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;

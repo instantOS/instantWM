@@ -89,7 +89,9 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
         .map(|m| m.num as u32)
         .unwrap_or(0);
 
-    let data: [u8; 8] = unsafe { std::mem::transmute([c.tags, mon_num]) };
+    let mut data = [0u8; 8];
+    data[..4].copy_from_slice(&c.tags.to_ne_bytes());
+    data[4..].copy_from_slice(&mon_num.to_ne_bytes());
     let _ = conn.change_property(
         PropMode::REPLACE,
         x11_win,
