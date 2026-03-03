@@ -37,6 +37,7 @@
 //! ```
 
 pub mod constants;
+mod cursor;
 pub mod drag;
 pub mod grab;
 pub mod hover;

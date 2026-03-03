@@ -360,12 +360,6 @@ fn handle_pointer_motion(
     if wm.g.title_drag.active {
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
-        backend.window().set_cursor_visible(true);
-        backend.window().set_cursor(if wm.g.title_drag.right_click {
-            smithay::input::pointer::CursorIcon::NwseResize
-        } else {
-            smithay::input::pointer::CursorIcon::Grabbing
-        });
     }
 
     // ── Forward to Smithay's pointer dispatch ────────────────────────
@@ -559,7 +553,7 @@ fn render_frame(
     damage_tracker: &mut OutputDamageTracker,
     start_time: std::time::Instant,
 ) {
-    apply_cursor_image_status(wm, backend, state);
+    apply_cursor_image_status(backend, state);
     // ── Assemble custom render elements ──────────────────────────────
     let damage = {
         let buffer_age = backend.buffer_age().unwrap_or(0);
@@ -643,14 +637,10 @@ fn render_frame(
     }
 }
 
-fn apply_cursor_image_status(wm: &Wm, backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
-    if wm.g.title_drag.active {
+fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
+    if let Some(icon) = state.cursor_icon_override {
         backend.window().set_cursor_visible(true);
-        backend.window().set_cursor(if wm.g.title_drag.right_click {
-            smithay::input::pointer::CursorIcon::NwseResize
-        } else {
-            smithay::input::pointer::CursorIcon::Grabbing
-        });
+        backend.window().set_cursor(icon);
         return;
     }
     match &state.cursor_image_status {

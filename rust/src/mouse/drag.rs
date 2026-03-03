@@ -42,6 +42,7 @@ use x11rb::protocol::xproto::*;
 use super::constants::{
     DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH, REFRESH_RATE_HI, REFRESH_RATE_LO,
 };
+use super::cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
 use super::grab::{grab_pointer, ungrab_ctx, wait_event};
 use super::monitor::handle_client_monitor_switch;
 use super::warp::get_root_ptr;
@@ -713,6 +714,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         last_motion: None,
         button: btn,
     };
+    set_cursor_move(ctx);
     ctx.g.bar_dragging = true;
     draw_bar(ctx, selmon_id);
     true
@@ -814,6 +816,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
     if let Some(mon) = ctx.g.monitor_mut(selmon_id) {
         mon.gesture = Gesture::None;
     }
+    set_cursor_default(ctx);
     draw_bar(ctx, selmon_id);
 }
 
@@ -1071,6 +1074,11 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 ctx.g.title_drag.start_y = geo.y + offset_y;
             }
         }
+        if right_click {
+            set_cursor_resize(ctx, Some(ResizeDirection::BottomRight));
+        } else {
+            set_cursor_move(ctx);
+        }
         ctx.g.title_drag.dragging = true;
         return title_drag_motion(ctx, root_x, root_y);
     }
@@ -1124,6 +1132,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         let last = (ctx.g.title_drag.last_root_x, ctx.g.title_drag.last_root_y);
         ctx.g.title_drag.active = false;
         ctx.g.title_drag.dragging = false;
+        set_cursor_default(ctx);
         if !right_click {
             handle_bar_drop(ctx, win, grab_start_x, Some(last));
         }

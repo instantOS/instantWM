@@ -92,6 +92,12 @@ impl WaylandBackend {
             .flatten()
     }
 
+    pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
+        let _ = self.with_state(|state: &mut WaylandState| {
+            state.cursor_icon_override = icon;
+        });
+    }
+
     fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
         let mut ptr = *self.state.borrow();
         ptr.as_mut().map(|state| unsafe { f(state.as_mut()) })

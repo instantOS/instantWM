@@ -120,6 +120,7 @@ pub struct WaylandState {
     pub keyboard: KeyboardHandle<WaylandState>,
     pub pointer: PointerHandle<WaylandState>,
     pub cursor_image_status: smithay::input::pointer::CursorImageStatus,
+    pub cursor_icon_override: Option<smithay::input::pointer::CursorIcon>,
 
     // -- XWayland --
     pub xwm: Option<X11Wm>,
@@ -213,6 +214,7 @@ impl WaylandState {
             keyboard,
             pointer,
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
+            cursor_icon_override: None,
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
