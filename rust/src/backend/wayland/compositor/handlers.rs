@@ -227,6 +227,18 @@ impl XdgShellHandler for WaylandState {
         let _ = self.map_new_toplevel(surface);
     }
 
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        let title = self.window_title(win);
+        if let Some(g) = self.globals_mut() {
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.name = title.unwrap_or_default();
+            }
+        }
+    }
+
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         let kind = smithay::desktop::PopupKind::Xdg(surface);
         let _ = self.popups.track_popup(kind);

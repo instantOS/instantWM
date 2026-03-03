@@ -305,6 +305,16 @@ impl WaylandState {
 
         self.space.map_element(window.clone(), (0, 0), true);
         self.ensure_client_for_window(window_id);
+
+        // Set the initial title from the XDG toplevel surface data.
+        if let Some(title) = self.window_title(window_id) {
+            if let Some(g) = self.globals_mut() {
+                if let Some(client) = g.clients.get_mut(&window_id) {
+                    client.name = title;
+                }
+            }
+        }
+
         if let Some(toplevel) = window.toplevel() {
             let (w, h) = self
                 .globals()
@@ -494,6 +504,23 @@ impl WaylandState {
             }
         }
         None
+    }
+
+    /// Read the title of a window from its XDG toplevel surface data.
+    pub fn window_title(&self, window: WindowId) -> Option<String> {
+        let element = self
+            .find_window(window)
+            .or_else(|| self.hidden_windows.get(&window))?;
+        let wl_surface = element.wl_surface()?;
+        smithay::wayland::compositor::with_states(&wl_surface, |states| {
+            states
+                .data_map
+                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()?
+                .lock()
+                .ok()?
+                .title
+                .clone()
+        })
     }
 
     fn find_window(&self, window: WindowId) -> Option<&Window> {

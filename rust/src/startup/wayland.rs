@@ -23,8 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use smithay::backend::input::{
-    AbsolutePositionEvent, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
-    PointerButtonEvent,
+    AbsolutePositionEvent, InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
 };
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
@@ -477,8 +476,7 @@ fn render_frame(
                 let wm_ptr = wm as *const Wm as *mut Wm;
                 (*wm_ptr).ctx()
             };
-            let bar_buffers =
-                crate::bar::wayland::render_bar_buffers(&mut ctx, Scale::from(1.0));
+            let bar_buffers = crate::bar::wayland::render_bar_buffers(&mut ctx, Scale::from(1.0));
             for (buffer, x, y) in bar_buffers {
                 match MemoryRenderBufferRenderElement::from_buffer(
                     renderer,

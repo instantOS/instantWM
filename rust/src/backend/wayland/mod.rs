@@ -82,6 +82,11 @@ impl WaylandBackend {
             .unwrap_or(false)
     }
 
+    pub fn window_title(&self, window: WindowId) -> Option<String> {
+        self.with_state(|state: &mut WaylandState| state.window_title(window))
+            .flatten()
+    }
+
     fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
         let mut ptr = *self.state.borrow();
         ptr.as_mut().map(|state| unsafe { f(state.as_mut()) })
@@ -126,5 +131,9 @@ impl BackendOps for WaylandBackend {
 
     fn flush(&self) {
         let _ = self.with_state(WaylandState::flush);
+    }
+
+    fn window_title(&self, window: WindowId) -> Option<String> {
+        self.window_title(window)
     }
 }

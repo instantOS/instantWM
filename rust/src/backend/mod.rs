@@ -31,6 +31,14 @@ pub trait BackendOps {
     fn set_border_width(&self, window: WindowId, width: i32);
     fn window_exists(&self, window: WindowId) -> bool;
     fn flush(&self);
+    /// Read the window title from the backend.
+    ///
+    /// Returns `None` when the title is not available or the backend
+    /// does not track titles (e.g. X11 titles are read separately via
+    /// X properties).
+    fn window_title(&self, _window: WindowId) -> Option<String> {
+        None
+    }
 }
 
 /// Owned backend implementation.
@@ -123,6 +131,13 @@ impl BackendOps for Backend {
         match self {
             Self::X11(x11) => x11.flush(),
             Self::Wayland(wayland) => wayland.flush(),
+        }
+    }
+
+    fn window_title(&self, window: WindowId) -> Option<String> {
+        match self {
+            Self::X11(x11) => x11.window_title(window),
+            Self::Wayland(wayland) => wayland.window_title(window),
         }
     }
 }
@@ -221,6 +236,13 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.flush(),
             BackendRef::Wayland(wayland) => wayland.flush(),
+        }
+    }
+
+    fn window_title(&self, window: WindowId) -> Option<String> {
+        match self {
+            BackendRef::X11(x11) => x11.window_title(window),
+            BackendRef::Wayland(wayland) => wayland.window_title(window),
         }
     }
 }

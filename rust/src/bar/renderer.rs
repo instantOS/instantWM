@@ -86,7 +86,7 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         x = widgets::draw_shutdown_button(ctx, x, bh, painter);
     }
 
-    let title_end_x = if is_selmon {
+    let title_end_x = if is_selmon && status_width > 0 {
         status_start_x
     } else {
         work_rect_w - systray_width

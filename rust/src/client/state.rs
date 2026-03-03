@@ -17,7 +17,7 @@
 //! * [`update_motif_hints`]   – parse Motif `_MOTIF_WM_HINTS` decoration hints.
 //! * [`get_atom_prop`]        – read a single-atom X11 property (internal helper).
 
-use crate::backend::BackendKind;
+use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,
@@ -146,15 +146,19 @@ pub fn update_client_list(ctx: &WmCtx) {
 // Window title
 // ---------------------------------------------------------------------------
 
-/// Read the window title from the X server and store it in `Client::name`.
+/// Read the window title and store it in `Client::name`.
 ///
-/// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
-/// Falls back to [`BROKEN`] when neither property is readable.
+/// On X11, prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
+/// On Wayland, reads the title from the XDG toplevel surface data.
+/// Falls back to [`BROKEN`] when the title is not available.
 pub fn update_title(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let name = read_window_title(ctx, win);
+    let name = if ctx.backend_kind() == BackendKind::Wayland {
+        ctx.backend
+            .window_title(win)
+            .unwrap_or_else(|| BROKEN.to_string())
+    } else {
+        read_window_title(ctx, win)
+    };
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.name = name;
     }
