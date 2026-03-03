@@ -26,12 +26,9 @@
 //! - **Flexibility**: Can work with temporary state without affecting globals
 
 use crate::bar::x11::update_bar_pos_with_bh;
-use crate::client::{
-    attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, set_client_tag_prop, unfocus_win,
-};
+use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win};
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
-use crate::globals::get_globals;
 use crate::types::*;
 use x11rb::protocol::xproto::Window;
 
@@ -138,8 +135,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         unfocus_win(ctx, win, true);
     }
 
-    detach_ctx(ctx, win);
-    detach_stack_ctx(ctx, win);
+    detach(ctx, win);
+    detach_stack(ctx, win);
 
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.mon_id = Some(target_mon);
@@ -152,8 +149,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         crate::tags::reset_sticky_win(ctx, win);
     }
 
-    attach_ctx(ctx, win);
-    attach_stack_ctx(ctx, win);
+    attach(ctx, win);
+    attach_stack(ctx, win);
     set_client_tag_prop(ctx, win);
 
     crate::focus::focus_soft(ctx, None);
@@ -186,7 +183,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     let current_mon = ctx.g.selmon_id();
 
     // Unfocus on current monitor and switch to target
-    if let Some(sel_win) = get_selected_client_win(current_mon) {
+    if let Some(sel_win) = get_selected_client_win(&ctx.g, current_mon) {
         unfocus_win(ctx, sel_win, false);
     }
     ctx.g.set_selmon(target_mon);
@@ -195,7 +192,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     crate::scratchpad::scratchpad_show_name(ctx, &sp_name);
 
     // Unfocus on target monitor and switch back
-    if let Some(sel_win) = get_selected_client_win(target_mon) {
+    if let Some(sel_win) = get_selected_client_win(&ctx.g, target_mon) {
         unfocus_win(ctx, sel_win, false);
     }
     ctx.g.set_selmon(current_mon);
@@ -372,15 +369,15 @@ fn move_clients_to_mon0_ctx(ctx: &mut WmCtx, removed_mon_id: usize) -> bool {
     for win in clients_to_move {
         dirty = true;
 
-        detach_ctx(ctx, win);
-        detach_stack_ctx(ctx, win);
+        detach(ctx, win);
+        detach_stack(ctx, win);
 
         if let Some(c) = ctx.g.clients.get_mut(&win) {
             c.mon_id = Some(0);
         }
 
-        attach_ctx(ctx, win);
-        attach_stack_ctx(ctx, win);
+        attach(ctx, win);
+        attach_stack(ctx, win);
     }
 
     dirty
@@ -524,12 +521,11 @@ pub fn update_geom_ctx(ctx: &mut WmCtx) -> bool {
 }
 
 /// Get the root pointer position for an explicit connection.
-///
-/// This is the dependency-injected version that accepts an X11 connection.
-fn get_root_ptr_with_conn(conn: &x11rb::rust_connection::RustConnection) -> Option<(i32, i32)> {
-    // Legacy helper used by global call-sites.
-    let g = get_globals();
-    get_root_ptr_with_conn_and_root(conn, g.cfg.root)
+fn get_root_ptr_with_conn(
+    conn: &x11rb::rust_connection::RustConnection,
+    root: Window,
+) -> Option<(i32, i32)> {
+    get_root_ptr_with_conn_and_root(conn, root)
 }
 
 fn get_root_ptr_with_conn_and_root(
@@ -544,6 +540,6 @@ fn get_root_ptr_with_conn_and_root(
     None
 }
 
-fn get_selected_client_win(mon_id: MonitorId) -> Option<WindowId> {
-    get_globals().monitor(mon_id).and_then(|m| m.sel)
+fn get_selected_client_win(g: &crate::globals::Globals, mon_id: MonitorId) -> Option<WindowId> {
+    g.monitor(mon_id).and_then(|m| m.sel)
 }

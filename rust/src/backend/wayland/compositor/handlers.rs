@@ -569,7 +569,7 @@ impl XdgShellHandler for WaylandState {
             let root_x = pointer.x.round() as i32;
             let root_y = pointer.y.round() as i32;
             if let Some(g) = self.globals_mut() {
-                if g.title_drag.active {
+                if g.drag.title.active {
                     return;
                 }
                 let Some(client) = g.clients.get(&win) else {
@@ -581,7 +581,7 @@ impl XdgShellHandler for WaylandState {
                 let geo = client.geo;
                 let sel = g.selected_win();
                 let was_hidden = client.is_hidden;
-                g.title_drag = crate::globals::TitleDragState {
+                g.drag.title = crate::globals::TitleDragState {
                     active: true,
                     win,
                     button: crate::types::MouseButton::Left,

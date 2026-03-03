@@ -1,8 +1,6 @@
 use crate::config::commands::ExternalCommands;
 use crate::drw::{Cursor, Drw};
 use crate::types::*;
-use once_cell::sync::Lazy;
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
@@ -252,6 +250,16 @@ pub struct TagDragState {
     pub button: MouseButton,
 }
 
+/// Consolidated state for mouse/touch interactions.
+#[derive(Debug, Clone, Default)]
+pub struct DragState {
+    pub tag: TagDragState,
+    pub title: TitleDragState,
+    pub hover_resize: HoverResizeDragState,
+    pub bar_active: bool,
+    pub resize_direction: Option<ResizeDirection>,
+}
+
 pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
@@ -274,13 +282,9 @@ pub struct Globals {
     pub focusfollowsmouse: bool,
     pub focusfollowsfloatmouse: bool,
     pub altcursor: AltCursor,
-    pub resize_direction: Option<ResizeDirection>,
     pub doubledraw: bool,
     pub specialnext: SpecialNext,
-    pub bar_dragging: bool,
-    pub tag_drag: TagDragState,
-    pub title_drag: TitleDragState,
-    pub hover_resize_drag: HoverResizeDragState,
+    pub drag: DragState,
     pub status_text_width: i32,
     pub status_text: String,
 }
@@ -416,53 +420,16 @@ impl Default for Globals {
             focusfollowsmouse: true,
             focusfollowsfloatmouse: true,
             altcursor: AltCursor::None,
-            resize_direction: None,
             doubledraw: false,
             specialnext: SpecialNext::None,
-            bar_dragging: false,
-            tag_drag: TagDragState::default(),
-            title_drag: TitleDragState::default(),
-            hover_resize_drag: HoverResizeDragState::default(),
+            drag: DragState::default(),
             status_text_width: 0,
             status_text: String::new(),
         }
     }
 }
 
-struct MainThreadCell<T>(UnsafeCell<T>);
-unsafe impl<T> Sync for MainThreadCell<T> {}
-unsafe impl<T> Send for MainThreadCell<T> {}
-
-pub static GLOBALS: Lazy<MainThreadCell<Globals>> =
-    Lazy::new(|| MainThreadCell(UnsafeCell::new(Globals::default())));
-
 pub static RUNNING: AtomicBool = AtomicBool::new(true);
-
-#[inline]
-pub fn get_drw() -> &'static Drw {
-    get_globals()
-        .cfg
-        .drw
-        .as_ref()
-        .expect("get_drw() called before setup() initialised the drawing context")
-}
-
-#[inline]
-pub fn get_drw_mut() -> &'static mut Drw {
-    get_globals_mut()
-        .cfg
-        .drw
-        .as_mut()
-        .expect("get_drw_mut() called before setup() initialised the drawing context")
-}
-
-pub fn get_globals() -> &'static Globals {
-    unsafe { &*GLOBALS.0.get() }
-}
-
-pub fn get_globals_mut() -> &'static mut Globals {
-    unsafe { &mut *GLOBALS.0.get() }
-}
 
 /// Storage for the X11 connection during initialization and shutdown.
 /// After initialization, use [`X11Conn`] which guarantees the connection exists.
@@ -513,17 +480,6 @@ impl X11Connection {
             screen_num: self.screen_num,
         }
     }
-}
-
-pub static X11: Lazy<MainThreadCell<X11Connection>> =
-    Lazy::new(|| MainThreadCell(UnsafeCell::new(X11Connection::default())));
-
-pub fn get_x11() -> &'static X11Connection {
-    unsafe { &*X11.0.get() }
-}
-
-pub fn get_x11_mut() -> &'static mut X11Connection {
-    unsafe { &mut *X11.0.get() }
 }
 
 /// Apply config values to the given `Globals` instance.

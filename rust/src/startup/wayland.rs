@@ -238,7 +238,7 @@ pub fn run() -> ! {
 
             // ── Render + submit ──────────────────────────────────────────
             render_frame(
-                &wm,
+                &mut wm,
                 state,
                 &mut backend,
                 &output,
@@ -360,7 +360,7 @@ fn handle_pointer_motion(
     let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
 
     // ── Tag-drag state machine (motion) ──────────────────────────────
-    if wm.g.tag_drag.active {
+    if wm.g.drag.tag.active {
         let mut ctx = wm.ctx();
         if !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y) {
             let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
@@ -369,7 +369,7 @@ fn handle_pointer_motion(
     }
 
     // ── Title-drag state machine (motion) ────────────────────────────
-    if wm.g.title_drag.active {
+    if wm.g.drag.title.active {
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
     }
@@ -458,14 +458,14 @@ fn handle_pointer_button(
         let released_btn = wm_button;
 
         // Tag-drag state machine (release).
-        if wm.g.tag_drag.active && released_btn == Some(wm.g.tag_drag.button) {
+        if wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button) {
             let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
             let mut ctx = wm.ctx();
             crate::mouse::drag_tag_finish(&mut ctx, mod_state);
         }
 
         // Title-drag state machine (release).
-        if wm.g.title_drag.active && released_btn == Some(wm.g.title_drag.button) {
+        if wm.g.drag.title.active && released_btn == Some(wm.g.drag.title.button) {
             let mut ctx = wm.ctx();
             crate::mouse::title_drag_finish(&mut ctx);
         }
@@ -599,7 +599,7 @@ fn wayland_hover_resize_drag_begin(
     }
     let move_mode = btn == MouseButton::Right
         || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
-    ctx.g.hover_resize_drag = crate::globals::HoverResizeDragState {
+    ctx.g.drag.hover_resize = crate::globals::HoverResizeDragState {
         active: true,
         win,
         button: btn,
@@ -615,7 +615,7 @@ fn wayland_hover_resize_drag_begin(
         last_root_y: root_y,
     };
     ctx.g.altcursor = AltCursor::Resize;
-    ctx.g.resize_direction = Some(dir);
+    ctx.g.drag.resize_direction = Some(dir);
     if move_mode {
         set_cursor_move(&mut ctx);
     } else {
@@ -627,12 +627,12 @@ fn wayland_hover_resize_drag_begin(
 
 fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bool {
     let mut ctx = wm.ctx();
-    if !ctx.g.hover_resize_drag.active {
+    if !ctx.g.drag.hover_resize.active {
         return false;
     }
-    let drag = ctx.g.hover_resize_drag.clone();
-    ctx.g.hover_resize_drag.last_root_x = root_x;
-    ctx.g.hover_resize_drag.last_root_y = root_y;
+    let drag = ctx.g.drag.hover_resize.clone();
+    ctx.g.drag.hover_resize.last_root_x = root_x;
+    ctx.g.drag.hover_resize.last_root_y = root_y;
     if drag.move_mode {
         let new_x = drag.win_start_x + (root_x - drag.start_x);
         let new_y = drag.win_start_y + (root_y - drag.start_y);
@@ -690,13 +690,13 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
 
 fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     let mut ctx = wm.ctx();
-    if !ctx.g.hover_resize_drag.active || ctx.g.hover_resize_drag.button != btn {
+    if !ctx.g.drag.hover_resize.active || ctx.g.drag.hover_resize.button != btn {
         return false;
     }
-    let drag = ctx.g.hover_resize_drag.clone();
-    ctx.g.hover_resize_drag = crate::globals::HoverResizeDragState::default();
+    let drag = ctx.g.drag.hover_resize.clone();
+    ctx.g.drag.hover_resize = crate::globals::HoverResizeDragState::default();
     ctx.g.altcursor = AltCursor::None;
-    ctx.g.resize_direction = None;
+    ctx.g.drag.resize_direction = None;
     set_cursor_default(&mut ctx);
     if drag.move_mode {
         crate::mouse::drag::complete_move_drop(
@@ -717,7 +717,7 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
 // =============================================================================
 
 fn render_frame(
-    wm: &Wm,
+    wm: &mut Wm,
     state: &mut WaylandState,
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     output: &Output,
@@ -733,13 +733,7 @@ fn render_frame(
 
         // Bar.
         if wm.g.cfg.showbar {
-            let mut ctx = unsafe {
-                // SAFETY: wm is borrowed immutably here but ctx() needs &mut.
-                // This is safe because render_bar_buffers only reads globals
-                // for layout and styling — it does not mutate compositor state.
-                let wm_ptr = wm as *const Wm as *mut Wm;
-                (*wm_ptr).ctx()
-            };
+            let mut ctx = wm.ctx();
             let bar_buffers = crate::bar::wayland::render_bar_buffers(&mut ctx, Scale::from(1.0));
             for (buffer, x, y) in bar_buffers {
                 match MemoryRenderBufferRenderElement::from_buffer(
@@ -760,7 +754,7 @@ fn render_frame(
         }
 
         // Window borders.
-        for elem in wayland_border_elements(wm, state) {
+        for elem in wayland_border_elements(&wm.g, state) {
             custom_elements.push(WaylandExtras::Solid(elem));
         }
 
@@ -833,9 +827,12 @@ fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state
 // Border rendering
 // =============================================================================
 
-fn wayland_border_elements(wm: &Wm, state: &WaylandState) -> Vec<SolidColorRenderElement> {
-    let scheme = wm.g.cfg.borderscheme.as_ref();
-    let bordercolors = &wm.g.cfg.bordercolors;
+fn wayland_border_elements(
+    g: &crate::globals::Globals,
+    state: &WaylandState,
+) -> Vec<SolidColorRenderElement> {
+    let scheme = g.cfg.borderscheme.as_ref();
+    let bordercolors = &g.cfg.bordercolors;
     let mut out = Vec::new();
     let mut mapped_sizes: HashMap<WindowId, (i32, i32)> = HashMap::new();
     for window in state.space.elements() {
@@ -844,8 +841,8 @@ fn wayland_border_elements(wm: &Wm, state: &WaylandState) -> Vec<SolidColorRende
             mapped_sizes.insert(win, (size.w.max(1), size.h.max(1)));
         }
     }
-    let sel = wm.g.selected_win();
-    for c in wm.g.clients.values() {
+    let sel = g.selected_win();
+    for c in g.clients.values() {
         let bw = c.border_width.max(0);
         let (content_w, content_h) = mapped_sizes
             .get(&c.win)
@@ -856,7 +853,7 @@ fn wayland_border_elements(wm: &Wm, state: &WaylandState) -> Vec<SolidColorRende
         }
         let is_visible = c
             .mon_id
-            .and_then(|mid| wm.g.monitor(mid))
+            .and_then(|mid| g.monitor(mid))
             .map(|m| c.is_visible_on_tags(m.selected_tags()))
             .unwrap_or(false);
         if !is_visible || c.is_hidden {
@@ -864,7 +861,7 @@ fn wayland_border_elements(wm: &Wm, state: &WaylandState) -> Vec<SolidColorRende
         }
         let has_tiling = c
             .mon_id
-            .and_then(|mid| wm.g.monitor(mid))
+            .and_then(|mid| g.monitor(mid))
             .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
         let rgba = if Some(c.win) == sel {

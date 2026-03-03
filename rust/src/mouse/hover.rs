@@ -123,7 +123,7 @@ pub fn hover_resize_target_at(
 
 fn clear_hover_resize_offer(ctx: &mut WmCtx) {
     ctx.g.altcursor = AltCursor::None;
-    ctx.g.resize_direction = None;
+    ctx.g.drag.resize_direction = None;
     set_cursor_default(ctx);
 }
 
@@ -218,7 +218,7 @@ pub fn handle_floating_resize_hover(
     if let Some((win, dir)) = hover_resize_target_at(ctx, root_x, root_y) {
         set_cursor_resize(ctx, Some(dir));
         ctx.g.altcursor = AltCursor::Resize;
-        ctx.g.resize_direction = Some(dir);
+        ctx.g.drag.resize_direction = Some(dir);
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.

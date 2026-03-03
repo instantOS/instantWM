@@ -111,7 +111,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                     .unwrap_or(false);
                 let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
-                    let dir = ctx.g.resize_direction;
+                    let dir = ctx.g.drag.resize_direction;
                     reset_cursor(ctx);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     if btn == MouseButton::Right {
@@ -225,7 +225,7 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
         // Get monitor reference for resize_bar_win
         let selmon_idx = ctx.g.selmon_id();
         if let Some(mon) = ctx.g.monitor(selmon_idx) {
-            crate::bar::resize_bar_win_ctx(ctx, mon);
+            crate::bar::resize_bar_win(ctx, mon);
         }
         systray::update_systray(ctx);
     };
@@ -666,7 +666,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     );
 
     if let Some(mon) = ctx.g.monitor(selmon_id) {
-        crate::bar::resize_bar_win_ctx(ctx, mon);
+        crate::bar::resize_bar_win(ctx, mon);
     };
 
     systray::update_systray(ctx);
@@ -685,7 +685,7 @@ fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: WindowId) {
 }
 
 fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
-    let is_hidden = is_hidden(win);
+    let is_hidden = is_hidden(&ctx.g, win);
     if is_hidden {
         crate::client::show(ctx, win);
     };

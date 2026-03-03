@@ -1,6 +1,6 @@
 use crate::animation::animate_client;
 use crate::client::save_border_width;
-use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, resize};
+use crate::client::{attach, attach_stack, detach, detach_stack, resize};
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
 use crate::constants::overlay::*;
 use crate::contexts::WmCtx;
@@ -264,7 +264,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
         mon.overlaystatus = 0;
     }
 
-    save_border_width(temp_client);
+    save_border_width(ctx, temp_client);
 
     if let Some(client) = ctx.g.clients.get_mut(&temp_client) {
         client.border_width = 0;
@@ -327,16 +327,16 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 
 /// Prepare the overlay window for display (detach, update state, reattach).
 fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: MonitorId) {
-    detach_ctx(ctx, overlay_win);
-    detach_stack_ctx(ctx, overlay_win);
+    detach(ctx, overlay_win);
+    detach_stack(ctx, overlay_win);
 
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         client.mon_id = Some(selmon_id);
         client.isfloating = true;
     }
 
-    attach_ctx(ctx, overlay_win);
-    attach_stack_ctx(ctx, overlay_win);
+    attach(ctx, overlay_win);
+    attach_stack(ctx, overlay_win);
 }
 
 /// Update overlay client properties for showing.

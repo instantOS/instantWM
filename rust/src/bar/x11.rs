@@ -1,6 +1,5 @@
 use crate::bar::color::hex_to_u32;
 use crate::contexts::WmCtx;
-use crate::globals::{get_globals, get_x11};
 use crate::types::{Monitor, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -37,57 +36,8 @@ pub fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
     m.update_bar_position(bh);
 }
 
-pub fn resize_bar_win(m: &Monitor) {
-    let g = get_globals();
-    let bh = g.cfg.bar_height;
-    let showsystray = g.cfg.showsystray;
-    let is_selmon = g.selmon().is_some_and(|selmon| selmon.num == m.num);
-
-    let mut w = m.work_rect.w as u32;
-    if showsystray && is_selmon {
-        // Use global-based systray width calculation
-        w = w.saturating_sub(get_systray_width_static());
-    }
-
-    let x11 = get_x11();
-    if let Some(ref conn) = x11.conn {
-        let x11_barwin: Window = m.barwin.into();
-        let _ = conn.configure_window(
-            x11_barwin,
-            &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                .x(m.work_rect.x)
-                .y(m.by)
-                .width(w)
-                .height(bh as u32),
-        );
-    }
-}
-
-/// Get systray width using global state (for use when ctx is not available)
-fn get_systray_width_static() -> u32 {
-    let g = get_globals();
-    if !g.cfg.showsystray {
-        return 1;
-    }
-
-    let mut w: u32 = 0;
-    if let Some(ref systray) = g.systray {
-        for &icon_win in &systray.icons {
-            if let Some(c) = g.clients.get(&icon_win) {
-                w += c.geo.w as u32 + g.cfg.systrayspacing as u32;
-            }
-        }
-    }
-
-    if w > 0 {
-        w + g.cfg.systrayspacing as u32
-    } else {
-        1
-    }
-}
-
 /// Resize bar window with dependency injection.
-pub fn resize_bar_win_ctx(ctx: &WmCtx, m: &Monitor) {
+pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
     let bh = ctx.g.cfg.bar_height;
     let showsystray = ctx.g.cfg.showsystray;
     let is_selmon = ctx.g.selmon().is_some_and(|selmon| selmon.num == m.num);
@@ -218,7 +168,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
     let selmon_idx = ctx.g.selmon_id();
     if let Some(m) = ctx.g.monitor(selmon_idx) {
-        resize_bar_win_ctx(ctx, m);
+        resize_bar_win(ctx, m);
     }
 
     if tmp_no_anim {

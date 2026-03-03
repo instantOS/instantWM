@@ -61,7 +61,7 @@ pub(crate) fn draw_tag_indicators(
 ) -> i32 {
     let horizontal_padding = ctx.g.cfg.horizontal_padding;
     let lpad = (horizontal_padding / 2) as u32;
-    let bar_dragging = ctx.g.bar_dragging;
+    let bar_dragging = ctx.g.drag.bar_active;
 
     let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 

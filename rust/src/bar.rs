@@ -10,7 +10,7 @@ pub mod x11;
 mod x11_painter;
 
 pub use model::{bar_position_at_x, bar_position_to_gesture};
-pub use x11::resize_bar_win_ctx;
+pub use x11::resize_bar_win;
 
 use crate::backend::BackendKind;
 use crate::contexts::WmCtx;

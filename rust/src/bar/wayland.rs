@@ -534,7 +534,7 @@ fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
     ctx.g.cfg.bar_height.hash(&mut hasher);
     ctx.g.cfg.horizontal_padding.hash(&mut hasher);
     ctx.g.cfg.startmenusize.hash(&mut hasher);
-    ctx.g.bar_dragging.hash(&mut hasher);
+    ctx.g.drag.bar_active.hash(&mut hasher);
     ctx.g.status_text.hash(&mut hasher);
     ctx.g.selmon_id().hash(&mut hasher);
 

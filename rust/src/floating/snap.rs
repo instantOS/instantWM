@@ -209,7 +209,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, mon_id: Option<usize>) {
 
     // Restore border width for all positions except Maximized (which needs bw=0).
     if snapstatus != SnapPosition::Maximized {
-        restore_border_width(win);
+        restore_border_width(ctx, win);
     }
 
     match snapstatus {
@@ -340,7 +340,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, mon_id: Option<usize>) {
             );
         }
         SnapPosition::Maximized => {
-            save_border_width(win);
+            save_border_width(ctx, win);
             if let Some(client) = ctx.g.clients.get_mut(&win) {
                 client.border_width = 0;
             }
@@ -396,7 +396,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.snapstatus = SnapPosition::None;
         }
-        restore_border_width(win);
+        restore_border_width(ctx, win);
         super::state::restore_floating_win(ctx, win);
         super::helpers::apply_size(ctx, win);
     }

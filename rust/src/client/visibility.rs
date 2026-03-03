@@ -21,7 +21,7 @@ use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
-use crate::globals::{get_globals, get_x11};
+use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::ConnectionExt;
@@ -35,38 +35,7 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state(win: WindowId) -> i32 {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
-        return WM_STATE_NORMAL;
-    };
-    let x11_win: Window = win.into();
-
-    let globals = get_globals();
-    let Ok(cookie) = conn.get_property(
-        false,
-        x11_win,
-        globals.cfg.wmatom.state,
-        globals.cfg.wmatom.state,
-        0,
-        2,
-    ) else {
-        return WM_STATE_NORMAL;
-    };
-
-    let Ok(reply) = cookie.reply() else {
-        return WM_STATE_NORMAL;
-    };
-
-    reply
-        .value32()
-        .and_then(|mut it| it.next())
-        .map(|v| v as i32)
-        .unwrap_or(WM_STATE_NORMAL)
-}
-
-/// Context-based version of [`get_state`] that uses the X11 connection from ctx.
-pub fn get_state_ctx(ctx: &WmCtx, win: WindowId) -> i32 {
+pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return WM_STATE_NORMAL;
     };
@@ -97,12 +66,8 @@ pub fn get_state_ctx(ctx: &WmCtx, win: WindowId) -> i32 {
 /// If you need the live X11 value (e.g. before the client is fully managed),
 /// call [`get_state`] directly.
 #[inline]
-pub fn is_hidden(win: WindowId) -> bool {
-    get_globals()
-        .clients
-        .get(&win)
-        .map(|c| c.is_hidden)
-        .unwrap_or(false)
+pub fn is_hidden(g: &Globals, win: WindowId) -> bool {
+    g.clients.get(&win).map(|c| c.is_hidden).unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------

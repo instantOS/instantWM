@@ -35,7 +35,7 @@ use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
 use crate::client::geometry::{client_height, client_width, resize_client, update_size_hints_win};
-use crate::client::list::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx};
+use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::state::set_client_state;
 use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
@@ -43,7 +43,6 @@ use crate::client::state::{
 };
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
-use crate::globals::get_x11;
 use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect, WindowId};
@@ -93,8 +92,8 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
         ctx.backend.flush();
     }
 
-    attach_ctx(ctx, w);
-    attach_stack_ctx(ctx, w);
+    attach(ctx, w);
+    attach_stack(ctx, w);
     register_client_root(ctx, w);
 
     move_client_offscreen_before_arrange(ctx, w);
@@ -133,8 +132,8 @@ fn assign_initial_monitor_and_tags(ctx: &WmCtx, c: &mut Client, trans: Option<Wi
 }
 
 fn insert_client_and_apply_rules(ctx: &mut WmCtx, w: WindowId, mut c: Client) {
-    c.is_hidden = crate::client::visibility::get_state_ctx(ctx, w)
-        == crate::client::constants::WM_STATE_ICONIC;
+    c.is_hidden =
+        crate::client::visibility::get_state(ctx, w) == crate::client::constants::WM_STATE_ICONIC;
     ctx.g.clients.insert(w, c);
     apply_rules(ctx, w);
 }
@@ -430,8 +429,8 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
         }
     }
 
-    detach_ctx(ctx, win);
-    detach_stack_ctx(ctx, win);
+    detach(ctx, win);
+    detach_stack(ctx, win);
 
     if !destroyed {
         let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
@@ -540,31 +539,6 @@ fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
     }
 
     BROKEN.to_string()
-}
-
-/// Get the `WM_TRANSIENT_FOR` hint for `w`.
-///
-/// Returns the parent window ID, or `None` when the property is absent or
-/// the window is not a transient.
-pub fn get_transient_for_hint(w: WindowId) -> Option<WindowId> {
-    let x11 = get_x11();
-    let Some(ref conn) = x11.conn else {
-        return None;
-    };
-    let x11_win: Window = w.into();
-
-    conn.get_property(
-        false,
-        x11_win,
-        AtomEnum::WM_TRANSIENT_FOR,
-        AtomEnum::WINDOW,
-        0,
-        1,
-    )
-    .ok()
-    .and_then(|cookie| cookie.reply().ok())
-    .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
-    .map(WindowId::from)
 }
 
 /// Read the `_NET_CLIENT_INFO` property from `w` and restore tags / monitor.

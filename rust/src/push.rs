@@ -1,4 +1,4 @@
-use crate::client::list::{attach_ctx, detach_ctx};
+use crate::client::list::{attach, detach};
 use crate::client::next_tiled_ctx;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
@@ -77,7 +77,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
     let selmon_id = ctx.g.selmon_id();
 
     if let Some(prev) = prev_c(ctx, win, include_floating) {
-        detach_ctx(ctx, win);
+        detach(ctx, win);
 
         {
             let selmon_id = ctx.g.selmon_id();
@@ -114,7 +114,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
             }
         }
 
-        detach_ctx(ctx, win);
+        detach(ctx, win);
 
         if let Some(last_win) = last {
             if let Some(client) = ctx.g.clients.get_mut(&last_win) {
@@ -157,7 +157,7 @@ pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
         .and_then(|c| next_c(ctx, c.next, include_floating));
 
     if let Some(next_win) = next {
-        detach_ctx(ctx, win);
+        detach(ctx, win);
 
         let next_c_next = ctx.g.clients.get(&next_win).and_then(|c| c.next);
         if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -168,8 +168,8 @@ pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
             next_c.next = Some(win);
         }
     } else {
-        detach_ctx(ctx, win);
-        attach_ctx(ctx, win);
+        detach(ctx, win);
+        attach(ctx, win);
     }
 
     crate::focus::focus_soft(ctx, Some(win));

@@ -48,7 +48,7 @@ pub mod visibility;
 pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 
 // -- Linked-list management --------------------------------------------------
-pub use list::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx, next_tiled_ctx, pop};
+pub use list::{attach, attach_stack, detach, detach_stack, next_tiled_ctx, pop};
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
@@ -64,8 +64,7 @@ pub use focus::{configure, send_event, set_focus, unfocus_win};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{
-    restore_border_width, restore_border_width_ctx, save_border_width, save_border_width_ctx,
-    set_fullscreen, toggle_fake_fullscreen,
+    restore_border_width, save_border_width, set_fullscreen, toggle_fake_fullscreen,
 };
 
 // -- X11 state / properties --------------------------------------------------
@@ -75,7 +74,7 @@ pub use state::{set_client_state, set_client_tag_prop, set_urgent, update_title,
 pub use kill::{close_win, kill_client, selected_window, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
-pub use lifecycle::{get_transient_for_hint, initial_tags_for_monitor, manage, unmanage};
+pub use lifecycle::{initial_tags_for_monitor, manage, unmanage};
 
 // -- Layout operations -------------------------------------------------------
 pub use layout_ops::zoom;

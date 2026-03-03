@@ -2,7 +2,6 @@ use crate::backend::BackendOps;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, SnapDir};
-use crate::globals::get_globals;
 use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::thread;
@@ -265,7 +264,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => 1,
         };
         let target = current_tag + modifier as u32;
-        check_client_on_target_tag(sel_mon, target);
+        check_client_on_target_tag(&ctx.g, sel_mon, target);
     }
 
     match dir {
@@ -276,8 +275,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 }
 
-fn check_client_on_target_tag(sel_mon: MonitorId, target: u32) {
-    let globals = get_globals();
+fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
     if let Some(mon) = globals.monitor(sel_mon) {
         for (_c_win, c) in mon.iter_clients(&globals.clients) {
             let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;

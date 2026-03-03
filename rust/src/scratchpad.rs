@@ -1,5 +1,5 @@
 use crate::backend::BackendKind;
-use crate::client::{attach_ctx, attach_stack_ctx, detach_ctx, detach_stack_ctx};
+use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client;
 use crate::layouts::{arrange, restack};
@@ -14,7 +14,7 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     let clients: Vec<WindowId> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
-        if crate::client::is_hidden(win) {
+        if crate::client::is_hidden(&ctx.g, win) {
             crate::client::show(ctx, win);
             return true;
         }
@@ -151,8 +151,8 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     }
 
     if target_mon != current_mon {
-        detach_ctx(ctx, found);
-        detach_stack_ctx(ctx, found);
+        detach(ctx, found);
+        detach_stack(ctx, found);
 
         {
             if let Some(client) = ctx.g.clients.get_mut(&found) {
@@ -160,8 +160,8 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
             }
         }
 
-        attach_ctx(ctx, found);
-        attach_stack_ctx(ctx, found);
+        attach(ctx, found);
+        attach_stack(ctx, found);
     }
 
     let focusfollowsmouse = ctx.g.focusfollowsmouse;

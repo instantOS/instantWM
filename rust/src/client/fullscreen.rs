@@ -26,7 +26,7 @@ use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::client::geometry::resize_client;
 use crate::contexts::WmCtx;
-use crate::globals::get_globals_mut;
+
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -47,14 +47,7 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// **Guard:** if `border_width` is already 0 the save is skipped — we must
 /// never clobber a previously saved non-zero value with 0, or restoring would
 /// silently become a no-op.  This matches the C `savebw` implementation.
-pub fn save_border_width(win: WindowId) {
-    let globals = get_globals_mut();
-    save_border_width_in(&mut globals.clients, win);
-}
-
-/// Save border width using the active WM context.
-#[inline]
-pub fn save_border_width_ctx(ctx: &mut WmCtx, win: WindowId) {
+pub fn save_border_width(ctx: &mut WmCtx, win: WindowId) {
     save_border_width_in(&mut ctx.g.clients, win);
 }
 
@@ -77,14 +70,7 @@ pub(crate) fn save_border_width_in(
 /// writing 0 back would remove the border from windows that were managed
 /// without ever going through the strip path.  This matches the C
 /// `restore_border_width` implementation.
-pub fn restore_border_width(win: WindowId) {
-    let globals = get_globals_mut();
-    restore_border_width_in(&mut globals.clients, win);
-}
-
-/// Restore border width using the active WM context.
-#[inline]
-pub fn restore_border_width_ctx(ctx: &mut WmCtx, win: WindowId) {
+pub fn restore_border_width(ctx: &mut WmCtx, win: WindowId) {
     restore_border_width_in(&mut ctx.g.clients, win);
 }
 

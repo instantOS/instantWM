@@ -227,14 +227,14 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             .unwrap_or(false);
 
         if !state.cursor_on_bar || gesture_changed {
-            ctx.g.bar_dragging = true;
+            ctx.g.drag.bar_active = true;
             if let Some(mon) = ctx.g.selmon_mut() {
                 mon.gesture = new_gesture;
             }
             draw_bar(ctx, selmon_id);
         }
     } else if state.cursor_on_bar {
-        ctx.g.bar_dragging = false;
+        ctx.g.drag.bar_active = false;
         if let Some(mon) = ctx.g.selmon_mut() {
             mon.gesture = Gesture::None;
         }
@@ -361,7 +361,7 @@ fn on_motion(
 ///
 /// Called once the drag loop exits so that hover state is always cleaned up.
 fn clear_bar_hover(ctx: &mut WmCtx) {
-    ctx.g.bar_dragging = false;
+    ctx.g.drag.bar_active = false;
     let selmon_id = ctx.g.selmon_id();
     if let Some(mon) = ctx.g.selmon_mut() {
         mon.gesture = Gesture::None;
@@ -728,7 +728,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     }
 
     // Initialise the drag state machine.
-    ctx.g.tag_drag = crate::globals::TagDragState {
+    ctx.g.drag.tag = crate::globals::TagDragState {
         active: true,
         initial_tag,
         mon_id: selmon_id,
@@ -739,7 +739,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         button: btn,
     };
     set_cursor_move(ctx);
-    ctx.g.bar_dragging = true;
+    ctx.g.drag.bar_active = true;
     draw_bar(ctx, selmon_id);
     true
 }
@@ -749,12 +749,12 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 /// Updates gesture highlighting and detects when the cursor leaves the bar.
 /// Returns `false` if the cursor left the bar (caller should finish the drag).
 pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if !ctx.g.tag_drag.active {
+    if !ctx.g.drag.tag.active {
         return false;
     }
 
-    let selmon_id = ctx.g.tag_drag.mon_id;
-    let mon_mx = ctx.g.tag_drag.mon_mx;
+    let selmon_id = ctx.g.drag.tag.mon_id;
+    let mon_mx = ctx.g.drag.tag.mon_mx;
 
     let bar_bottom = ctx
         .g
@@ -763,13 +763,13 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         .unwrap_or(9999);
 
     if root_y > bar_bottom {
-        ctx.g.tag_drag.cursor_on_bar = false;
+        ctx.g.drag.tag.cursor_on_bar = false;
         return false;
     }
 
     // Store last motion for release handling.  Modifier state is not available
     // from root coords alone; the caller sets it via drag_tag_finish.
-    ctx.g.tag_drag.last_motion = Some((root_x, root_y, 0));
+    ctx.g.drag.tag.last_motion = Some((root_x, root_y, 0));
 
     let local_x = root_x - mon_mx;
     let new_gesture = ctx
@@ -783,8 +783,8 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         _ => -1,
     };
 
-    if ctx.g.tag_drag.last_tag != gesture_key {
-        ctx.g.tag_drag.last_tag = gesture_key;
+    if ctx.g.drag.tag.last_tag != gesture_key {
+        ctx.g.drag.tag.last_tag = gesture_key;
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
         }
@@ -799,16 +799,16 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// `modifier_state` is the X11-style modifier bitmask at release time
 /// (Shift, Control, …).
 pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
-    if !ctx.g.tag_drag.active {
+    if !ctx.g.drag.tag.active {
         return;
     }
 
-    let selmon_id = ctx.g.tag_drag.mon_id;
-    let cursor_on_bar = ctx.g.tag_drag.cursor_on_bar;
-    let last_motion = ctx.g.tag_drag.last_motion;
+    let selmon_id = ctx.g.drag.tag.mon_id;
+    let cursor_on_bar = ctx.g.drag.tag.cursor_on_bar;
+    let last_motion = ctx.g.drag.tag.last_motion;
 
     // Clear state first so re-entrant calls are safe.
-    ctx.g.tag_drag.active = false;
+    ctx.g.drag.tag.active = false;
 
     if cursor_on_bar {
         if let Some((x, _, _)) = last_motion {
@@ -836,7 +836,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         }
     }
 
-    ctx.g.bar_dragging = false;
+    ctx.g.drag.bar_active = false;
     if let Some(mon) = ctx.g.monitor_mut(selmon_id) {
         mon.gesture = Gesture::None;
     }
@@ -897,7 +897,7 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
                 let mod_state = u16::from(m.state) as u32;
 
                 // Store motion with modifier state for release handling.
-                ctx.g.tag_drag.last_motion = Some((root_x, root_y, mod_state));
+                ctx.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
 
                 if !drag_tag_motion(ctx, root_x, root_y) {
                     // Cursor left the bar — abort.
@@ -954,13 +954,13 @@ pub fn title_drag_begin(
         .get(&win)
         .map(|c| (c.geo.w, c.geo.h))
         .unwrap_or((0, 0));
-    ctx.g.title_drag = crate::globals::TitleDragState {
+    ctx.g.drag.title = crate::globals::TitleDragState {
         active: true,
         win,
         button: btn,
         right_click,
         was_focused: sel == Some(win),
-        was_hidden: crate::client::is_hidden(win),
+        was_hidden: crate::client::is_hidden(&ctx.g, win),
         start_x: click_root_x,
         start_y: click_root_y,
         win_start_x,
@@ -981,17 +981,17 @@ pub fn title_drag_begin(
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed.
 pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if !ctx.g.title_drag.active {
+    if !ctx.g.drag.title.active {
         return false;
     }
-    ctx.g.title_drag.last_root_x = root_x;
-    ctx.g.title_drag.last_root_y = root_y;
+    ctx.g.drag.title.last_root_x = root_x;
+    ctx.g.drag.title.last_root_y = root_y;
 
-    if ctx.g.title_drag.dragging {
+    if ctx.g.drag.title.dragging {
         if ctx.backend_kind() != BackendKind::Wayland {
             return false;
         }
-        let td = &ctx.g.title_drag;
+        let td = &ctx.g.drag.title;
         let win = td.win;
         if td.right_click {
             let (new_w, new_h, x, y, is_floating) = ctx
@@ -1055,7 +1055,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         return true;
     }
 
-    let td = &ctx.g.title_drag;
+    let td = &ctx.g.drag.title;
     if (root_x - td.start_x).abs() <= DRAG_THRESHOLD
         && (root_y - td.start_y).abs() <= DRAG_THRESHOLD
     {
@@ -1063,10 +1063,10 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
 
     // Threshold exceeded — start the drag action.
-    let win = ctx.g.title_drag.win;
-    let btn = ctx.g.title_drag.button;
-    let right_click = ctx.g.title_drag.right_click;
-    let was_hidden = ctx.g.title_drag.was_hidden;
+    let win = ctx.g.drag.title.win;
+    let btn = ctx.g.drag.title.button;
+    let right_click = ctx.g.drag.title.right_click;
+    let was_hidden = ctx.g.drag.title.was_hidden;
     if ctx.backend_kind() == BackendKind::Wayland {
         // Keep the title drag active so Wayland motion/release can keep driving it.
         if was_hidden {
@@ -1086,8 +1086,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             if right_click {
                 let (x_off, y_off) =
                     ResizeDirection::BottomRight.warp_offset(geo.w, geo.h, border_width);
-                ctx.g.title_drag.start_x = geo.x + x_off;
-                ctx.g.title_drag.start_y = geo.y + y_off;
+                ctx.g.drag.title.start_x = geo.x + x_off;
+                ctx.g.drag.title.start_y = geo.y + y_off;
             } else {
                 // Wayland can't reliably warp the hardware pointer like X11, so
                 // emulate warp_into by rebasing the drag anchor into window bounds.
@@ -1096,8 +1096,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 let max_y = (geo.h - pad).max(pad);
                 let offset_x = (root_x - geo.x).clamp(pad, max_x);
                 let offset_y = (root_y - geo.y).clamp(pad, max_y);
-                ctx.g.title_drag.start_x = geo.x + offset_x;
-                ctx.g.title_drag.start_y = geo.y + offset_y;
+                ctx.g.drag.title.start_x = geo.x + offset_x;
+                ctx.g.drag.title.start_y = geo.y + offset_y;
             }
         }
         if right_click {
@@ -1105,12 +1105,12 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         } else {
             set_cursor_move(ctx);
         }
-        ctx.g.title_drag.dragging = true;
+        ctx.g.drag.title.dragging = true;
         return title_drag_motion(ctx, root_x, root_y);
     }
 
-    ctx.g.title_drag.dragging = true;
-    ctx.g.title_drag.active = false;
+    ctx.g.drag.title.dragging = true;
+    ctx.g.drag.title.active = false;
 
     if was_hidden {
         crate::client::show(ctx, win);
@@ -1147,17 +1147,17 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// Finish a title drag interaction (button release without exceeding the
 /// drag threshold).  Performs the click action.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
-    if !ctx.g.title_drag.active {
+    if !ctx.g.drag.title.active {
         return;
     }
 
-    if ctx.g.title_drag.dragging {
-        let win = ctx.g.title_drag.win;
-        let right_click = ctx.g.title_drag.right_click;
-        let grab_start_x = ctx.g.title_drag.win_start_x;
-        let last = (ctx.g.title_drag.last_root_x, ctx.g.title_drag.last_root_y);
-        ctx.g.title_drag.active = false;
-        ctx.g.title_drag.dragging = false;
+    if ctx.g.drag.title.dragging {
+        let win = ctx.g.drag.title.win;
+        let right_click = ctx.g.drag.title.right_click;
+        let grab_start_x = ctx.g.drag.title.win_start_x;
+        let last = (ctx.g.drag.title.last_root_x, ctx.g.drag.title.last_root_y);
+        ctx.g.drag.title.active = false;
+        ctx.g.drag.title.dragging = false;
         set_cursor_default(ctx);
         if !right_click {
             complete_move_drop(ctx, win, grab_start_x, None, Some(last));
@@ -1167,13 +1167,13 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         return;
     }
 
-    let win = ctx.g.title_drag.win;
-    let right_click = ctx.g.title_drag.right_click;
-    let was_focused = ctx.g.title_drag.was_focused;
-    let was_hidden = ctx.g.title_drag.was_hidden;
-    let suppress_click_action = ctx.g.title_drag.suppress_click_action;
+    let win = ctx.g.drag.title.win;
+    let right_click = ctx.g.drag.title.right_click;
+    let was_focused = ctx.g.drag.title.was_focused;
+    let was_hidden = ctx.g.drag.title.was_hidden;
+    let suppress_click_action = ctx.g.drag.title.suppress_click_action;
 
-    ctx.g.title_drag.active = false;
+    ctx.g.drag.title.active = false;
     if suppress_click_action {
         return;
     }
