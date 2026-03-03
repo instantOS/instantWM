@@ -43,14 +43,18 @@ use x11rb::CURRENT_TIME;
 ///    the window is fullscreen).
 /// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
     let Some(client) = ctx.g.clients.get(&win) else {
         return;
     };
 
     if client.islocked {
+        return;
+    }
+
+    if ctx.backend_kind() == BackendKind::Wayland {
+        if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
+            let _ = wayland.close_window(win);
+        }
         return;
     }
 
@@ -122,6 +126,9 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 /// The window is still animated before the close message is sent.
 pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
     if ctx.backend_kind() == BackendKind::Wayland {
+        if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
+            let _ = wayland.close_window(win);
+        }
         return;
     }
     let (is_locked, mon_mh) = ctx
