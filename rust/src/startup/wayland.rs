@@ -291,6 +291,12 @@ fn handle_pointer_motion(
         }
     }
 
+    // ── Title-drag state machine (motion) ────────────────────────────
+    if wm.g.title_drag.active {
+        let mut ctx = wm.ctx();
+        crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
+    }
+
     // ── Forward to Smithay's pointer dispatch ────────────────────────
     let focus = state
         .surface_under_pointer(*pointer_location)
@@ -346,13 +352,20 @@ fn handle_pointer_button(
             .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()));
         keyboard_handle.set_focus(state, keyboard_focus, serial);
     } else if event.state() == smithay::backend::input::ButtonState::Released {
-        // Tag-drag state machine (release).
         let released_btn =
             wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
+
+        // Tag-drag state machine (release).
         if wm.g.tag_drag.active && released_btn == Some(wm.g.tag_drag.button) {
             let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
             let mut ctx = wm.ctx();
             crate::mouse::drag_tag_finish(&mut ctx, mod_state);
+        }
+
+        // Title-drag state machine (release).
+        if wm.g.title_drag.active && released_btn == Some(wm.g.title_drag.button) {
+            let mut ctx = wm.ctx();
+            crate::mouse::title_drag_finish(&mut ctx);
         }
     }
 

@@ -57,7 +57,8 @@ pub use warp::reset_cursor;
 
 pub use drag::{
     drag_tag, drag_tag_begin, drag_tag_finish, drag_tag_motion, gesture_mouse, move_mouse,
-    window_title_mouse_handler, window_title_mouse_handler_right,
+    title_drag_finish, title_drag_motion, window_title_mouse_handler,
+    window_title_mouse_handler_right,
 };
 
 // moveresize lives in floating::movement; re-exported here so keybindings.rs

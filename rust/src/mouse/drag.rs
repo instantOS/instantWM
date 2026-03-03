@@ -380,8 +380,13 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
 /// was floating, this is the true pre-drag origin; we save it into
 /// `float_geo.x` so that un-tiling later restores the window to where it was
 /// before the user dragged it onto the bar.
-fn handle_bar_drop(ctx: &mut WmCtx, win: WindowId, grab_start_x: i32) {
-    let Some((ptr_x, ptr_y)) = get_root_ptr(ctx) else {
+fn handle_bar_drop(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    grab_start_x: i32,
+    pointer_override: Option<(i32, i32)>,
+) {
+    let Some((ptr_x, ptr_y)) = pointer_override.or_else(|| get_root_ptr(ctx)) else {
         return;
     };
     if !point_is_on_bar(ctx, ptr_x, ptr_y) {
@@ -593,7 +598,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     clear_bar_hover(ctx);
 
     if !apply_edge_drop(ctx, win, state.edge_snap_indicator) {
-        handle_bar_drop(ctx, win, state.grab_start_x);
+        handle_bar_drop(ctx, win, state.grab_start_x, None);
         handle_client_monitor_switch(ctx, win);
     }
 }
@@ -884,68 +889,198 @@ pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_
     drag_tag_finish(ctx, 0);
 }
 
-// ── window_title_mouse_handler ────────────────────────────────────────────────
+// ── window title drag state machine ──────────────────────────────────────────
 
-/// Left-click / drag handler for a window title bar entry.
+/// Initialise a title-bar click/drag interaction.
 ///
-/// Click: hidden → show+focus; focused → hide; otherwise → focus.
-/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`move_mouse`].
-pub fn window_title_mouse_handler(
+/// Returns `true` if the state machine was started.  On X11 the caller
+/// continues into the synchronous grab loop; on Wayland the calloop drives
+/// [`title_drag_motion`] and [`title_drag_finish`].
+pub fn title_drag_begin(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
+    right_click: bool,
     click_root_x: i32,
     click_root_y: i32,
-) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let sel = ctx.g.selected_win();
-    let was_focused = sel == Some(win);
-    let was_hidden = crate::client::is_hidden(win);
-
-    if !grab_pointer(ctx, 0) {
-        return;
-    }
-    let start_x = click_root_x;
-    let start_y = click_root_y;
-
-    let mut last_time: u32 = 0;
-
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
-                    continue;
-                }
-                last_time = m.time;
-                if (m.event_x as i32 - start_x).abs() > DRAG_THRESHOLD
-                    || (m.event_y as i32 - start_y).abs() > DRAG_THRESHOLD
-                {
-                    ungrab_ctx(ctx);
-                    if was_hidden {
-                        crate::client::show(ctx, win);
-                    }
-                    crate::focus::focus_soft(ctx, Some(win));
-                    warp_into(ctx, win);
-                    move_mouse(ctx, btn);
-                    return;
-                }
-            }
-            _ => {}
+) -> bool {
+    if right_click {
+        if ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.is_fullscreen && !c.isfakefullscreen)
+            .unwrap_or(false)
+        {
+            return false;
         }
+        crate::focus::focus_soft(ctx, Some(win));
     }
 
-    ungrab_ctx(ctx);
+    let sel = ctx.g.selected_win();
+    let (win_start_x, win_start_y) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| (c.geo.x, c.geo.y))
+        .unwrap_or((0, 0));
+    ctx.g.title_drag = crate::globals::TitleDragState {
+        active: true,
+        win,
+        button: btn,
+        right_click,
+        was_focused: sel == Some(win),
+        was_hidden: crate::client::is_hidden(win),
+        start_x: click_root_x,
+        start_y: click_root_y,
+        win_start_x,
+        win_start_y,
+        last_root_x: click_root_x,
+        last_root_y: click_root_y,
+        dragging: false,
+    };
+    true
+}
+
+/// Process a pointer motion event during an active title drag.
+///
+/// Returns `true` if the drag threshold was exceeded and the drag action
+/// (move/resize) was initiated — the caller should consider the interaction
+/// consumed.
+pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+    if !ctx.g.title_drag.active {
+        return false;
+    }
+    ctx.g.title_drag.last_root_x = root_x;
+    ctx.g.title_drag.last_root_y = root_y;
+
+    if ctx.g.title_drag.dragging {
+        if ctx.backend_kind() != BackendKind::Wayland {
+            return false;
+        }
+        let td = &ctx.g.title_drag;
+        let win = td.win;
+        let mut new_x = td.win_start_x + (root_x - td.start_x);
+        let mut new_y = td.win_start_y + (root_y - td.start_y);
+
+        let (is_floating, geo) = ctx
+            .g
+            .clients
+            .get(&win)
+            .map(|c| (c.isfloating, c.geo))
+            .unwrap_or((false, Rect::default()));
+        if is_floating {
+            if let Some(c) = ctx.g.clients.get(&win) {
+                snap_to_monitor_edges(ctx, c, &mut new_x, &mut new_y);
+            }
+            resize(
+                ctx,
+                win,
+                &Rect {
+                    x: new_x,
+                    y: new_y,
+                    w: geo.w,
+                    h: geo.h,
+                },
+                true,
+            );
+            if let Some(client) = ctx.g.clients.get_mut(&win) {
+                client.float_geo.x = new_x;
+                client.float_geo.y = new_y;
+            }
+        }
+        return true;
+    }
+
+    let td = &ctx.g.title_drag;
+    if (root_x - td.start_x).abs() <= DRAG_THRESHOLD && (root_y - td.start_y).abs() <= DRAG_THRESHOLD
+    {
+        return false;
+    }
+
+    // Threshold exceeded — start the drag action.
+    let win = ctx.g.title_drag.win;
+    let btn = ctx.g.title_drag.button;
+    let right_click = ctx.g.title_drag.right_click;
+    let was_hidden = ctx.g.title_drag.was_hidden;
+    if ctx.backend_kind() == BackendKind::Wayland {
+        // Keep the title drag active so Wayland motion/release can keep driving it.
+        // Right-click title-drag resize is still X11-only; keep click semantics.
+        if right_click {
+            return false;
+        }
+        if was_hidden {
+            crate::client::show(ctx, win);
+        }
+        crate::focus::focus_soft(ctx, Some(win));
+        if let Some((is_floating, geo)) = ctx.g.clients.get(&win).map(|c| (c.isfloating, c.geo)) {
+            if !is_floating {
+                set_floating_in_place(ctx, win);
+                arrange(ctx, Some(ctx.g.selmon_id()));
+            }
+            // Wayland can't reliably warp the hardware pointer like X11, so
+            // emulate warp_into by rebasing the drag anchor into window bounds.
+            let pad = 10;
+            let max_x = (geo.w - pad).max(pad);
+            let max_y = (geo.h - pad).max(pad);
+            let offset_x = (root_x - geo.x).clamp(pad, max_x);
+            let offset_y = (root_y - geo.y).clamp(pad, max_y);
+            ctx.g.title_drag.start_x = geo.x + offset_x;
+            ctx.g.title_drag.start_y = geo.y + offset_y;
+        }
+        ctx.g.title_drag.dragging = true;
+        return title_drag_motion(ctx, root_x, root_y);
+    }
+
+    ctx.g.title_drag.dragging = true;
+    ctx.g.title_drag.active = false;
+
     if was_hidden {
+        crate::client::show(ctx, win);
+    }
+    crate::focus::focus_soft(ctx, Some(win));
+
+    if right_click {
+        super::resize::resize_mouse_from_cursor(ctx, btn);
+    } else {
+        warp_into(ctx, win);
+        move_mouse(ctx, btn);
+    }
+    true
+}
+
+/// Finish a title drag interaction (button release without exceeding the
+/// drag threshold).  Performs the click action.
+pub fn title_drag_finish(ctx: &mut WmCtx) {
+    if !ctx.g.title_drag.active {
+        return;
+    }
+
+    if ctx.backend_kind() == BackendKind::Wayland && ctx.g.title_drag.dragging {
+        let win = ctx.g.title_drag.win;
+        let grab_start_x = ctx.g.title_drag.win_start_x;
+        let last = (ctx.g.title_drag.last_root_x, ctx.g.title_drag.last_root_y);
+        ctx.g.title_drag.active = false;
+        ctx.g.title_drag.dragging = false;
+        handle_bar_drop(ctx, win, grab_start_x, Some(last));
+        handle_client_monitor_switch(ctx, win);
+        return;
+    }
+
+    let win = ctx.g.title_drag.win;
+    let right_click = ctx.g.title_drag.right_click;
+    let was_focused = ctx.g.title_drag.was_focused;
+    let was_hidden = ctx.g.title_drag.was_hidden;
+
+    ctx.g.title_drag.active = false;
+
+    if right_click {
+        if was_hidden {
+            crate::client::show(ctx, win);
+            crate::focus::focus_soft(ctx, Some(win));
+        }
+        crate::client::zoom(ctx);
+    } else if was_hidden {
         crate::client::show(ctx, win);
         crate::focus::focus_soft(ctx, Some(win));
         restack(ctx, ctx.g.selmon_id());
@@ -957,42 +1092,36 @@ pub fn window_title_mouse_handler(
     }
 }
 
-// ── window_title_mouse_handler_right ─────────────────────────────────────────
+// ── window_title_mouse_handler ────────────────────────────────────────────────
 
-/// Right-click / drag handler for a window title bar entry.
+/// Left-click / drag handler for a window title bar entry.
 ///
-/// Click: show+focus if hidden, otherwise zoom to master.
-/// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, hand off to resize.
-/// No-op when the window is in true fullscreen.
-pub fn window_title_mouse_handler_right(
+/// Click: hidden → show+focus; focused → hide; otherwise → focus.
+/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`move_mouse`].
+///
+/// On Wayland, starts the async state machine and returns immediately.
+/// On X11, runs a synchronous grab loop.
+pub fn window_title_mouse_handler(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
     click_root_x: i32,
     click_root_y: i32,
 ) {
+    if !title_drag_begin(ctx, win, btn, false, click_root_x, click_root_y) {
+        return;
+    }
+
+    // On Wayland the calloop drives motion/finish asynchronously.
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    {
-        if ctx
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.is_fullscreen && !c.isfakefullscreen)
-            .unwrap_or(false)
-        {
-            return;
-        }
-    }
 
-    crate::focus::focus_soft(ctx, Some(win));
-
-    if !grab_pointer(ctx, 2) {
+    // ── X11 synchronous grab loop ─────────────────────────────────────
+    if !grab_pointer(ctx, 0) {
+        title_drag_finish(ctx);
         return;
     }
-    let start_x = click_root_x;
-    let start_y = click_root_y;
 
     let mut last_time: u32 = 0;
 
@@ -1011,15 +1140,7 @@ pub fn window_title_mouse_handler_right(
                     continue;
                 }
                 last_time = m.time;
-                if (m.event_x as i32 - start_x).abs() > DRAG_THRESHOLD
-                    || (m.event_y as i32 - start_y).abs() > DRAG_THRESHOLD
-                {
-                    ungrab_ctx(ctx);
-                    if crate::client::is_hidden(win) {
-                        crate::client::show(ctx, win);
-                        crate::focus::focus_soft(ctx, Some(win));
-                    }
-                    super::resize::resize_mouse_from_cursor(ctx, btn);
+                if title_drag_motion(ctx, m.event_x as i32, m.event_y as i32) {
                     return;
                 }
             }
@@ -1027,11 +1148,67 @@ pub fn window_title_mouse_handler_right(
         }
     }
 
-    // Only reached on ButtonRelease (click, not drag).
     ungrab_ctx(ctx);
-    if crate::client::is_hidden(win) {
-        crate::client::show(ctx, win);
-        crate::focus::focus_soft(ctx, Some(win));
+    title_drag_finish(ctx);
+}
+
+// ── window_title_mouse_handler_right ─────────────────────────────────────────
+
+/// Right-click / drag handler for a window title bar entry.
+///
+/// Click: show+focus if hidden, otherwise zoom to master.
+/// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, hand off to resize.
+/// No-op when the window is in true fullscreen.
+///
+/// On Wayland, starts the async state machine and returns immediately.
+/// On X11, runs a synchronous grab loop.
+pub fn window_title_mouse_handler_right(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    btn: MouseButton,
+    click_root_x: i32,
+    click_root_y: i32,
+) {
+    if !title_drag_begin(ctx, win, btn, true, click_root_x, click_root_y) {
+        return;
     }
-    crate::client::zoom(ctx);
+
+    // On Wayland the calloop drives motion/finish asynchronously.
+    if ctx.backend_kind() == BackendKind::Wayland {
+        return;
+    }
+
+    // ── X11 synchronous grab loop ─────────────────────────────────────
+    if !grab_pointer(ctx, 2) {
+        title_drag_finish(ctx);
+        return;
+    }
+
+    let mut last_time: u32 = 0;
+
+    loop {
+        let Some(event) = wait_event(ctx) else {
+            break;
+        };
+        match &event {
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    break;
+                }
+            }
+            x11rb::protocol::Event::MotionNotify(m) => {
+                if m.time - last_time <= 1000 / REFRESH_RATE_LO {
+                    continue;
+                }
+                last_time = m.time;
+                if title_drag_motion(ctx, m.event_x as i32, m.event_y as i32) {
+                    return;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    ungrab_ctx(ctx);
+    title_drag_finish(ctx);
 }

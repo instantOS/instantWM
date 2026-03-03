@@ -137,6 +137,41 @@ impl Default for RuntimeConfig {
 
 /// State for an in-progress tag-bar drag (backend-agnostic).
 ///
+/// State for an async window-title click/drag on the bar.
+///
+/// On X11, `window_title_mouse_handler` runs a synchronous grab loop.
+/// On Wayland, this state machine is driven by the calloop's pointer
+/// motion and button release events.
+#[derive(Debug, Clone, Default)]
+pub struct TitleDragState {
+    /// Whether a title drag is currently active.
+    pub active: bool,
+    /// The window whose title was clicked.
+    pub win: WindowId,
+    /// The mouse button that started the interaction.
+    pub button: MouseButton,
+    /// Whether this is a right-click interaction.
+    pub right_click: bool,
+    /// Whether the window was focused when the click started.
+    pub was_focused: bool,
+    /// Whether the window was hidden when the click started.
+    pub was_hidden: bool,
+    /// Anchor X position (root coords) at press time.
+    pub start_x: i32,
+    /// Anchor Y position (root coords) at press time.
+    pub start_y: i32,
+    /// Window X position at press time.
+    pub win_start_x: i32,
+    /// Window Y position at press time.
+    pub win_start_y: i32,
+    /// Last pointer X seen for this interaction (root coords).
+    pub last_root_x: i32,
+    /// Last pointer Y seen for this interaction (root coords).
+    pub last_root_y: i32,
+    /// Whether the drag threshold has been exceeded.
+    pub dragging: bool,
+}
+
 /// On X11, the synchronous grab loop drives this. On Wayland, the calloop
 /// press/motion/release events drive it asynchronously.
 #[derive(Debug, Clone, Default)]
@@ -186,6 +221,7 @@ pub struct Globals {
     pub specialnext: SpecialNext,
     pub bar_dragging: bool,
     pub tag_drag: TagDragState,
+    pub title_drag: TitleDragState,
     pub status_text_width: i32,
     pub status_text: String,
 }
@@ -326,6 +362,7 @@ impl Default for Globals {
             specialnext: SpecialNext::None,
             bar_dragging: false,
             tag_drag: TagDragState::default(),
+            title_drag: TitleDragState::default(),
             status_text_width: 0,
             status_text: String::new(),
         }
@@ -510,6 +547,7 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
 }
 
 /// Legacy wrapper for call-sites that still use static globals.
+// TODO: remove this, update callsites
 pub fn init_tags_from_config(cfg: &crate::config::Config) {
     let g = get_globals_mut();
     apply_tags_config(g, cfg);
