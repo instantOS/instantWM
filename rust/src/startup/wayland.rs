@@ -485,6 +485,7 @@ fn render_frame(
     apply_cursor_image_status(backend, state);
     // ── Assemble custom render elements ──────────────────────────────
     let damage = {
+        let buffer_age = backend.buffer_age().unwrap_or(0);
         let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
         let mut custom_elements: Vec<WaylandExtras> = Vec::new();
 
@@ -527,7 +528,7 @@ fn render_frame(
             renderer,
             &mut framebuffer,
             1.0,
-            0, // age
+            buffer_age,
             [&state.space],
             &custom_elements,
             damage_tracker,
