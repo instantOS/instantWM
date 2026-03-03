@@ -27,7 +27,7 @@ use smithay::{
 
 use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
-    state::{detach_client_from_monitor, WaylandClientState, WaylandState},
+    state::{detach_client_from_monitor, WaylandClientState, WaylandState, WindowIdMarker},
 };
 
 impl CompositorHandler for WaylandState {
@@ -128,50 +128,134 @@ impl XwmHandler for WaylandState {
     fn map_window_request(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
+        window: smithay::xwayland::X11Surface,
     ) {
+        let _ = window.set_mapped(true);
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.map_window(win);
+            self.set_focus(win);
+            self.raise_window(win);
+            return;
+        }
+
+        let element = smithay::desktop::Window::new_x11_window(window.clone());
+        let win = self.alloc_window_id();
+        let _ = element
+            .user_data()
+            .get_or_insert_threadsafe(|| WindowIdMarker(win));
+        let geo = window.geometry();
+        self.space.map_element(element, geo.loc, true);
+        self.ensure_client_for_window(win);
+        if let Some(g) = self.globals_mut() {
+            if let Some(c) = g.clients.get_mut(&win) {
+                c.geo.x = geo.loc.x;
+                c.geo.y = geo.loc.y;
+                c.geo.w = geo.size.w.max(1);
+                c.geo.h = geo.size.h.max(1);
+                c.float_geo = c.geo;
+                c.name = window.title();
+            }
+        }
+        let _ = window.configure(Some(geo));
+        self.set_focus(win);
+        self.raise_window(win);
     }
 
     fn mapped_override_redirect_window(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
+        window: smithay::xwayland::X11Surface,
     ) {
+        let geo = window.geometry();
+        let element = smithay::desktop::Window::new_x11_window(window);
+        self.space.map_element(element, geo.loc, true);
     }
 
     fn unmapped_window(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
+        window: smithay::xwayland::X11Surface,
     ) {
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.unmap_window(win);
+        }
+        if !window.is_override_redirect() {
+            let _ = window.set_mapped(false);
+        }
     }
 
     fn destroyed_window(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
+        window: smithay::xwayland::X11Surface,
     ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        self.remove_window_tracking(win);
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
+        if g.clients.contains_key(&win) {
+            detach_client_from_monitor(g, win);
+            g.clients.remove(&win);
+            g.client_list.retain(|id| *id != win.0 as usize);
+        }
     }
 
     fn configure_request(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
-        _x: Option<i32>,
-        _y: Option<i32>,
-        _w: Option<u32>,
-        _h: Option<u32>,
+        window: smithay::xwayland::X11Surface,
+        x: Option<i32>,
+        y: Option<i32>,
+        w: Option<u32>,
+        h: Option<u32>,
         _reorder: Option<smithay::xwayland::xwm::Reorder>,
     ) {
+        let mut geo = window.geometry();
+        if let Some(x) = x {
+            geo.loc.x = x;
+        }
+        if let Some(y) = y {
+            geo.loc.y = y;
+        }
+        if let Some(w) = w {
+            geo.size.w = w as i32;
+        }
+        if let Some(h) = h {
+            geo.size.h = h as i32;
+        }
+        let _ = window.configure(Some(geo));
     }
 
     fn configure_notify(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
-        _geometry: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
+        window: smithay::xwayland::X11Surface,
+        geometry: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
         _above: Option<smithay::xwayland::xwm::X11Window>,
     ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        if let Some(g) = self.globals_mut() {
+            if let Some(c) = g.clients.get_mut(&win) {
+                c.geo.x = geometry.loc.x;
+                c.geo.y = geometry.loc.y;
+                c.geo.w = geometry.size.w.max(1);
+                c.geo.h = geometry.size.h.max(1);
+            }
+        }
+        self.resize_window(
+            win,
+            crate::types::Rect {
+                x: geometry.loc.x,
+                y: geometry.loc.y,
+                w: geometry.size.w.max(1),
+                h: geometry.size.h.max(1),
+            },
+        );
     }
 
     fn resize_request(
@@ -186,9 +270,18 @@ impl XwmHandler for WaylandState {
     fn move_request(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
+        window: smithay::xwayland::X11Surface,
         _button: u32,
     ) {
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.set_focus(win);
+            self.raise_window(win);
+        }
+    }
+
+    fn disconnected(&mut self, _xwm: smithay::xwayland::xwm::XwmId) {
+        self.xwm = None;
+        self.xdisplay = None;
     }
 }
 

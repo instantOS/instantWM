@@ -18,7 +18,7 @@
 //! * **Utilities** — `modifiers_to_x11_mask`, `wayland_button_to_wm_button`,
 //!   colour helpers.
 
-use std::process::{exit, Command};
+use std::process::{exit, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -44,6 +44,7 @@ use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Point, Scale, Transform, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
+use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
 use crate::backend::wayland::compositor::{
     KeyboardFocusTarget, PointerFocusTarget, WaylandClientState, WaylandState, WindowIdMarker,
@@ -112,6 +113,42 @@ pub fn run() -> ! {
                 .insert_client(client, Arc::new(WaylandClientState::default()));
         })
         .expect("listening socket source");
+
+    // Spawn XWayland and attach an XWM, following Smithay's recommended flow.
+    match XWayland::spawn(
+        &state.display_handle,
+        None,
+        std::iter::empty::<(String, String)>(),
+        true,
+        Stdio::null(),
+        Stdio::null(),
+        |_| (),
+    ) {
+        Ok((xwayland, client)) => {
+            let handle_for_wm = loop_handle.clone();
+            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    data.xdisplay = Some(display_number);
+                    std::env::set_var("DISPLAY", format!(":{display_number}"));
+                    match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
+                        Ok(wm) => data.xwm = Some(wm),
+                        Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
+                    }
+                }
+                XWaylandEvent::Error => {
+                    log::error!("XWayland failed to start");
+                }
+            }) {
+                log::error!("failed to insert XWayland source: {err}");
+            }
+        }
+        Err(err) => {
+            log::warn!("failed to spawn XWayland: {err}");
+        }
+    }
 
     run_autostart();
     spawn_wayland_smoke_window();
