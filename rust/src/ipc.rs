@@ -57,6 +57,13 @@ impl Drop for IpcServer {
     }
 }
 
+impl std::os::unix::io::AsRawFd for IpcServer {
+    fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
+        use std::os::unix::io::AsRawFd;
+        self.listener.as_raw_fd()
+    }
+}
+
 fn socket_path() -> PathBuf {
     if let Ok(p) = std::env::var("INSTANTWM_SOCKET") {
         return PathBuf::from(p);

@@ -699,18 +699,63 @@ fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
+    use std::os::unix::io::AsRawFd;
+
+    // Pre-fetch the X11 connection file descriptor for poll(2).
+    let x11_fd = wm
+        .backend
+        .x11()
+        .map(|x11| x11.conn.stream().as_raw_fd())
+        .unwrap_or(-1);
+    let ipc_fd = ipc_server
+        .as_ref()
+        .map(|s| s.as_raw_fd())
+        .unwrap_or(-1);
+
     while wm.running {
-        let event = wm
-            .backend
-            .x11()
-            .and_then(|x11| x11.conn.poll_for_event().ok())
-            .flatten();
-        match event {
-            Some(event) => dispatch_event(wm, event),
-            None => std::thread::sleep(std::time::Duration::from_millis(8)),
+        // ── 1. Drain all pending X11 events ─────────────────────────────
+        let mut handled = false;
+        loop {
+            let event = wm
+                .backend
+                .x11()
+                .and_then(|x11| x11.conn.poll_for_event().ok())
+                .flatten();
+            match event {
+                Some(event) => {
+                    dispatch_event(wm, event);
+                    handled = true;
+                }
+                None => break,
+            }
         }
+
+        // ── 2. Process any pending IPC commands ─────────────────────────
         if let Some(server) = ipc_server.as_mut() {
             server.process_pending(wm);
+        }
+
+        // ── 3. Wait for new data on X11 fd and/or IPC fd ────────────────
+        // Skip the wait when we just handled events — there may be more
+        // events that arrived while we were dispatching.
+        if !handled {
+            let mut fds = [
+                libc::pollfd {
+                    fd: x11_fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+                libc::pollfd {
+                    fd: ipc_fd,
+                    events: libc::POLLIN,
+                    revents: 0,
+                },
+            ];
+            let nfds = if ipc_fd >= 0 { 2 } else { 1 };
+            // Block until data arrives (or 100ms timeout as safety net).
+            unsafe {
+                libc::poll(fds.as_mut_ptr(), nfds as libc::nfds_t, 100);
+            }
         }
     }
 }
