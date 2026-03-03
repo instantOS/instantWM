@@ -87,6 +87,11 @@ impl WaylandBackend {
             .flatten()
     }
 
+    pub fn xdisplay(&self) -> Option<u32> {
+        self.with_state(|state: &mut WaylandState| state.xdisplay)
+            .flatten()
+    }
+
     fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
         let mut ptr = *self.state.borrow();
         ptr.as_mut().map(|state| unsafe { f(state.as_mut()) })

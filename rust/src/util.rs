@@ -51,6 +51,21 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
 pub fn spawn(ctx: &WmCtx, cmd: Cmd) {
     let argv = ctx.g.cfg.external_commands.get(cmd);
     if !argv.is_empty() {
+        let wayland_display_env: Option<CString> =
+            if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
+                let display = if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
+                    wayland
+                        .xdisplay()
+                        .map(|d| format!(":{}", d))
+                        .or_else(|| std::env::var("DISPLAY").ok())
+                } else {
+                    std::env::var("DISPLAY").ok()
+                };
+                display.and_then(|d| CString::new(d).ok())
+            } else {
+                None
+            };
+
         let c_args: Vec<CString> = argv
             .iter()
             .map(|s| CString::new(*s).unwrap_or_else(|_| CString::new("").unwrap()))
@@ -71,6 +86,13 @@ pub fn spawn(ctx: &WmCtx, cmd: Cmd) {
                     libc::setsid();
 
                     libc::sigprocmask(libc::SIG_SETMASK, ptr::null(), ptr::null_mut());
+
+                    // Wayland backend: ensure XWayland DISPLAY is present for X11 apps (dmenu, etc).
+                    if let Some(ref val) = wayland_display_env {
+                        if let Ok(key) = CString::new("DISPLAY") {
+                            libc::setenv(key.as_ptr(), val.as_ptr(), 1);
+                        }
+                    }
 
                     let mut sa: libc::sigaction = std::mem::zeroed();
                     sa.sa_sigaction = libc::SIG_DFL;

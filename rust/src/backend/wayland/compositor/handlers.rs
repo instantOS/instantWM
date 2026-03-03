@@ -22,7 +22,7 @@ use smithay::{
         shm::ShmHandler,
         xwayland_shell::XWaylandShellHandler,
     },
-    xwayland::XwmHandler,
+    xwayland::{XWaylandClientData, XwmHandler},
 };
 
 use super::{
@@ -39,10 +39,13 @@ impl CompositorHandler for WaylandState {
         &self,
         client: &'a Client,
     ) -> &'a smithay::wayland::compositor::CompositorClientState {
-        &client
-            .get_data::<WaylandClientState>()
-            .expect("client missing WaylandClientState")
-            .compositor_state
+        if let Some(data) = client.get_data::<WaylandClientState>() {
+            &data.compositor_state
+        } else if let Some(data) = client.get_data::<XWaylandClientData>() {
+            &data.compositor_state
+        } else {
+            panic!("client missing compositor client state");
+        }
     }
 
     fn commit(
@@ -131,6 +134,27 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
     ) {
         let _ = window.set_mapped(true);
+        if is_unmanaged_x11_overlay(&window) {
+            let window_id = window.window_id();
+            let geo = window.geometry();
+            let existing = self
+                .space
+                .elements()
+                .find(|w| {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                })
+                .cloned();
+            if let Some(existing) = existing {
+                self.space.map_element(existing.clone(), geo.loc, true);
+                self.space.raise_element(&existing, true);
+            } else {
+                let element = smithay::desktop::Window::new_x11_window(window);
+                self.space.map_element(element.clone(), geo.loc, true);
+                self.space.raise_element(&element, true);
+            }
+            return;
+        }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.map_window(win);
             self.set_focus(win);
@@ -168,7 +192,8 @@ impl XwmHandler for WaylandState {
     ) {
         let geo = window.geometry();
         let element = smithay::desktop::Window::new_x11_window(window);
-        self.space.map_element(element, geo.loc, true);
+        self.space.map_element(element.clone(), geo.loc, true);
+        self.space.raise_element(&element, true);
     }
 
     fn unmapped_window(
@@ -176,8 +201,21 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
+        let window_id = window.window_id();
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.unmap_window(win);
+        } else {
+            let element = self
+                .space
+                .elements()
+                .find(|w| {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                })
+                .cloned();
+            if let Some(element) = element {
+                self.space.unmap_elem(&element);
+            }
         }
         if !window.is_override_redirect() {
             let _ = window.set_mapped(false);
@@ -189,7 +227,19 @@ impl XwmHandler for WaylandState {
         _xwm: smithay::xwayland::xwm::XwmId,
         window: smithay::xwayland::X11Surface,
     ) {
+        let window_id = window.window_id();
         let Some(win) = self.window_id_for_x11_surface(&window) else {
+            let element = self
+                .space
+                .elements()
+                .find(|w| {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                })
+                .cloned();
+            if let Some(element) = element {
+                self.space.unmap_elem(&element);
+            }
             return;
         };
         self.remove_window_tracking(win);
@@ -236,7 +286,20 @@ impl XwmHandler for WaylandState {
         geometry: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
         _above: Option<smithay::xwayland::xwm::X11Window>,
     ) {
+        let window_id = window.window_id();
         let Some(win) = self.window_id_for_x11_surface(&window) else {
+            let element = self
+                .space
+                .elements()
+                .find(|w| {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                })
+                .cloned();
+            if let Some(element) = element {
+                self.space.map_element(element.clone(), geometry.loc, true);
+                self.space.raise_element(&element, true);
+            }
             return;
         };
         if let Some(g) = self.globals_mut() {
@@ -283,6 +346,39 @@ impl XwmHandler for WaylandState {
         self.xwm = None;
         self.xdisplay = None;
     }
+}
+
+fn is_unmanaged_x11_overlay(window: &smithay::xwayland::X11Surface) -> bool {
+    use smithay::xwayland::xwm::WmWindowType;
+
+    if window.is_override_redirect() {
+        return true;
+    }
+
+    if matches!(
+        window.window_type(),
+        Some(
+            WmWindowType::DropdownMenu
+                | WmWindowType::Menu
+                | WmWindowType::PopupMenu
+                | WmWindowType::Tooltip
+                | WmWindowType::Notification
+                | WmWindowType::Toolbar
+                | WmWindowType::Utility
+        )
+    ) {
+        return true;
+    }
+
+    let class = window.class().to_ascii_lowercase();
+    let instance = window.instance().to_ascii_lowercase();
+    let title = window.title().to_ascii_lowercase();
+    class.contains("dmenu")
+        || class.contains("instantmenu")
+        || instance.contains("dmenu")
+        || instance.contains("instantmenu")
+        || title.contains("dmenu")
+        || title.contains("instantmenu")
 }
 
 impl SeatHandler for WaylandState {

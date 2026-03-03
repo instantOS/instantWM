@@ -19,7 +19,11 @@ impl BarScheme {
     /// Rectangle fill color parity with X11 drw semantics:
     /// invert=true => background, invert=false => foreground.
     pub fn rect_color(&self, invert: bool) -> Rgba {
-        if invert { self.bg } else { self.fg }
+        if invert {
+            self.bg
+        } else {
+            self.fg
+        }
     }
 
     /// Text colors parity with X11 drw semantics.

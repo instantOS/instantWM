@@ -125,8 +125,12 @@ pub fn run() -> ! {
         |_| (),
     ) {
         Ok((xwayland, client)) => {
+            // Mirror niri's behavior: publish DISPLAY as soon as XWayland picks
+            // a display number so child processes can inherit it reliably.
+            std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number()));
             let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event {
+            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
+            {
                 XWaylandEvent::Ready {
                     x11_socket,
                     display_number,

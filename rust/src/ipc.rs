@@ -81,7 +81,21 @@ fn handle_command(wm: &mut Wm, cmd: &str) -> String {
         if rest.trim().is_empty() {
             return "ERR spawn requires a command\n".to_string();
         }
-        match std::process::Command::new("sh").arg("-c").arg(rest).spawn() {
+        let mut command = std::process::Command::new("sh");
+        command.arg("-c").arg(rest);
+        if wm.backend.kind() == BackendKind::Wayland {
+            match &wm.backend {
+                Backend::Wayland(backend) => {
+                    if let Some(display) = backend.xdisplay() {
+                        command.env("DISPLAY", format!(":{display}"));
+                    } else {
+                        return "ERR XWayland not ready (DISPLAY unavailable)\n".to_string();
+                    }
+                }
+                Backend::X11(_) => {}
+            }
+        }
+        match command.spawn() {
             Ok(child) => return format!("OK pid={}\n", child.id()),
             Err(err) => return format!("ERR spawn failed: {}\n", err),
         }

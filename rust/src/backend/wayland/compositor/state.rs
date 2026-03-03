@@ -296,6 +296,7 @@ impl WaylandState {
                 }
             }
         }
+        self.raise_unmanaged_x11_windows();
     }
 
     pub fn map_new_toplevel(&mut self, surface: ToplevelSurface) -> WindowId {
@@ -367,6 +368,7 @@ impl WaylandState {
                 }
             }
         }
+        self.raise_override_redirect_windows();
     }
 
     pub fn restack(&mut self, windows: &[WindowId]) {
@@ -375,6 +377,7 @@ impl WaylandState {
                 self.space.raise_element(&element, false);
             }
         }
+        self.raise_override_redirect_windows();
     }
 
     pub fn set_focus(&mut self, window: WindowId) {
@@ -451,6 +454,51 @@ impl WaylandState {
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
+    }
+
+    fn raise_override_redirect_windows(&mut self) {
+        self.raise_unmanaged_x11_windows();
+    }
+
+    fn raise_unmanaged_x11_windows(&mut self) {
+        let overlays: Vec<_> = self
+            .space
+            .elements()
+            .filter(|w| {
+                w.x11_surface()
+                    .map(|x11| {
+                        let class = x11.class().to_ascii_lowercase();
+                        let instance = x11.instance().to_ascii_lowercase();
+                        let title = x11.title().to_ascii_lowercase();
+                        let is_dmenu_like = class.contains("dmenu")
+                            || class.contains("instantmenu")
+                            || instance.contains("dmenu")
+                            || instance.contains("instantmenu")
+                            || title.contains("dmenu")
+                            || title.contains("instantmenu");
+                        x11.is_override_redirect()
+                            || w.user_data().get::<WindowIdMarker>().is_none()
+                            || is_dmenu_like
+                            || x11.is_popup()
+                            || x11.is_transient_for().is_some()
+                            || matches!(
+                                x11.window_type(),
+                                Some(
+                                    smithay::xwayland::xwm::WmWindowType::DropdownMenu
+                                        | smithay::xwayland::xwm::WmWindowType::Menu
+                                        | smithay::xwayland::xwm::WmWindowType::PopupMenu
+                                        | smithay::xwayland::xwm::WmWindowType::Tooltip
+                                        | smithay::xwayland::xwm::WmWindowType::Notification
+                                )
+                            )
+                    })
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+        for w in overlays {
+            self.space.raise_element(&w, true);
+        }
     }
 
     pub fn window_exists(&self, window: WindowId) -> bool {
