@@ -4,6 +4,10 @@ mod common_wayland;
 mod drm;
 mod locale;
 mod wayland;
+mod wayland_bar;
+mod wayland_init;
+mod wayland_input;
+mod wayland_render;
 mod x11;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]

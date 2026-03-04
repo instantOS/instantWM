@@ -7,10 +7,8 @@
 //! that both the algorithm modules and the manager can depend on them without
 //! creating circular imports.
 
-use crate::client::next_tiled;
-use crate::contexts::WmCtx;
 use crate::globals::Globals;
-use crate::types::{Monitor, WindowId};
+use crate::types::WindowId;
 
 // ── per-monitor counts ────────────────────────────────────────────────────────
 
@@ -39,27 +37,17 @@ pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<W
 
 // ── layout query ──────────────────────────────────────────────────────────────
 
-/// Returns `hi` if animation is enabled and client count exceeds threshold,
-/// otherwise returns `lo`.
-pub fn framecount_for_layout(g: &Globals, threshold: usize, hi: i32, lo: i32) -> i32 {
+/// Returns `fast_frame_count` if animation is enabled and client count exceeds threshold,
+/// otherwise returns `slow_frame_count`.
+pub fn framecount_for_layout(
+    g: &Globals,
+    threshold: usize,
+    fast_frame_count: i32,
+    slow_frame_count: i32,
+) -> i32 {
     if g.animated && g.selected_monitor().tiled_client_count(&*g.clients) > threshold {
-        hi
+        fast_frame_count
     } else {
-        lo
+        slow_frame_count
     }
-}
-
-/// Counts tiled clients by walking the linked list using `next_tiled`.
-pub fn count_tiled_clients(ctx: &WmCtx, mon: &Monitor) -> u32 {
-    let mut count = 0;
-    let mut c_win = mon
-        .clients
-        .first()
-        .copied()
-        .and_then(|w| next_tiled(ctx, Some(w)));
-    while let Some(win) = c_win {
-        count += 1;
-        c_win = next_tiled(ctx, Some(win));
-    }
-    count
 }
