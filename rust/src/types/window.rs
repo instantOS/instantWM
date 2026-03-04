@@ -125,15 +125,6 @@ impl Clone for Button {
     }
 }
 
-/// An X command that can be invoked by name.
-#[derive(Debug, Clone)]
-pub struct XCommand {
-    /// Command name.
-    pub cmd: &'static str,
-    /// Action function taking context and argument string.
-    pub action: fn(&mut WmCtx, &str),
-}
-
 /// System tray state.
 #[derive(Debug, Clone)]
 pub struct Systray {

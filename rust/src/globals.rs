@@ -61,7 +61,6 @@ pub struct RuntimeConfig {
     pub desktop_keybinds: Vec<Key>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
-    pub commands: Vec<XCommand>,
 
     // Resources
     pub resources: Vec<String>,
@@ -73,6 +72,8 @@ pub struct RuntimeConfig {
     pub external_commands: ExternalCommands,
 
     // Drawing context
+    // TODO: should the WM panic if there is no Drw? This probably causes a bunch of unnecessary
+    // unwrap or match some statements
     pub drw: Option<Drw>,
     pub xlibdisplay: XlibDisplay,
     pub cursors: [Option<Cursor>; 10],
@@ -118,7 +119,6 @@ impl Default for RuntimeConfig {
             desktop_keybinds: Vec::new(),
             buttons: Vec::new(),
             rules: Vec::new(),
-            commands: Vec::new(),
             resources: Vec::new(),
             fonts: Vec::new(),
             config_font: String::new(),
@@ -466,7 +466,6 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.desktop_keybinds = cfg.desktop_keybinds.clone();
     g.cfg.buttons = cfg.buttons.clone();
     g.cfg.rules = cfg.rules.clone();
-    g.cfg.commands = cfg.commands.clone();
     g.cfg.resources = cfg.resources.clone();
     g.cfg.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();

@@ -4,7 +4,6 @@ use crate::client::{
     configure, set_client_state, set_fullscreen, unmanage, update_title, update_wm_hints,
     WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
-use crate::commands::x_command;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::ipc::IpcServer;
@@ -475,9 +474,7 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
     };
 
     if event_win == WindowId::from(ctx.g.cfg.root) && e.atom == AtomEnum::WM_NAME.into() {
-        if x_command(ctx) == 0 {
-            crate::bar::x11::update_status(ctx);
-        }
+        crate::bar::x11::update_status(ctx);
         return;
     };
 

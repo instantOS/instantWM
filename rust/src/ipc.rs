@@ -1,7 +1,25 @@
 use crate::backend::Backend;
 use crate::backend::BackendKind;
 use crate::backend::BackendOps;
+use crate::commands::{command_prefix, set_special_next};
+use crate::focus::warp_to_focus;
 use crate::ipc_types::{IpcCommand, IpcResponse};
+use crate::layouts::command_layout;
+use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
+use crate::overlay::set_overlay;
+use crate::scratchpad::{
+    scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_status,
+    scratchpad_toggle, scratchpad_unmake,
+};
+use crate::tags::send_to_monitor;
+use crate::tags::{name_tag, reset_name_tag, view};
+use crate::toggles::{
+    alt_tab_free, set_border_width, toggle_alt_tag, toggle_animated,
+    toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_show_tags,
+};
+use crate::types::MonitorDirection;
+use crate::types::TagMask;
+use crate::types::ToggleAction;
 use crate::types::WindowId;
 use crate::wm::Wm;
 use std::fs;
@@ -111,13 +129,132 @@ fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Re
 }
 
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
+    let mut ctx = wm.ctx();
+
     match cmd {
         IpcCommand::List => list_windows(wm),
         IpcCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
-        IpcCommand::Spawn(command) => spawn_command(wm, command),
-        IpcCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
+        IpcCommand::Spawn(command) => spawn_command(&mut ctx, command),
+        IpcCommand::Close(window_id) => close_window(&mut ctx, window_id.map(WindowId::from)),
         IpcCommand::Quit => {
             wm.quit();
+            IpcResponse::ok("")
+        }
+        IpcCommand::Overlay => {
+            set_overlay(&mut ctx);
+            IpcResponse::ok("")
+        }
+        IpcCommand::WarpFocus => {
+            warp_to_focus(&mut ctx);
+            IpcResponse::ok("")
+        }
+        IpcCommand::Tag(tag_num) => {
+            let tag = if tag_num == 0 { 2 } else { tag_num };
+            if let Some(mask) = TagMask::single(tag as usize) {
+                view(&mut ctx, mask);
+            }
+            IpcResponse::ok("")
+        }
+        IpcCommand::Animated(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_animated(&mut ctx, action);
+            IpcResponse::ok("")
+        }
+        IpcCommand::FocusFollowsMouse(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_focus_follows_mouse(&mut ctx, action);
+            IpcResponse::ok("")
+        }
+        IpcCommand::FocusFollowsFloatMouse(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_focus_follows_float_mouse(&mut ctx, action);
+            IpcResponse::ok("")
+        }
+        IpcCommand::AltTab(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            alt_tab_free(&mut ctx, action);
+            IpcResponse::ok("")
+        }
+        IpcCommand::AltTag(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_alt_tag(&mut ctx, action);
+            IpcResponse::ok("")
+        }
+        IpcCommand::HideTags(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_show_tags(&mut ctx, action);
+            IpcResponse::ok("")
+        }
+        IpcCommand::Layout(val) => {
+            command_layout(&mut ctx, val);
+            IpcResponse::ok("")
+        }
+        IpcCommand::Prefix(arg) => {
+            let val = arg.unwrap_or(1);
+            command_prefix(&mut ctx, val);
+            IpcResponse::ok("")
+        }
+        IpcCommand::Border(arg) => {
+            let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
+            if let Some(win) = ctx.selected_client() {
+                set_border_width(&mut ctx, win, val as i32);
+            }
+            IpcResponse::ok("")
+        }
+        IpcCommand::SpecialNext(arg) => {
+            let val = arg.unwrap_or(0);
+            set_special_next(&mut ctx, val);
+            IpcResponse::ok("")
+        }
+        IpcCommand::TagMon(dir) => {
+            let direction = MonitorDirection::from(dir);
+            send_to_monitor(&mut ctx, direction);
+            IpcResponse::ok("")
+        }
+        IpcCommand::FollowMon(dir) => {
+            let direction = MonitorDirection::from(dir);
+            follow_mon(&mut ctx, direction);
+            IpcResponse::ok("")
+        }
+        IpcCommand::FocusMon(dir) => {
+            let direction = MonitorDirection::from(dir);
+            focus_mon(&mut ctx, direction);
+            IpcResponse::ok("")
+        }
+        IpcCommand::FocusNMon(val) => {
+            focus_n_mon(&mut ctx, val);
+            IpcResponse::ok("")
+        }
+        IpcCommand::NameTag(name) => {
+            name_tag(&mut ctx, &name);
+            IpcResponse::ok("")
+        }
+        IpcCommand::ResetNameTag => {
+            reset_name_tag(&mut ctx);
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadMake(name) => {
+            scratchpad_make(&mut ctx, name.as_deref());
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadUnmake => {
+            scratchpad_unmake(&mut ctx);
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadToggle(name) => {
+            scratchpad_toggle(&mut ctx, name.as_deref());
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadShow(name) => {
+            scratchpad_show_name(&mut ctx, name.as_deref().unwrap_or(""));
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadHide(name) => {
+            scratchpad_hide_name(&mut ctx, name.as_deref().unwrap_or(""));
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadStatus(name) => {
+            scratchpad_status(&mut ctx, name.as_deref().unwrap_or(""));
             IpcResponse::ok("")
         }
     }
@@ -141,23 +278,13 @@ fn list_windows(wm: &Wm) -> IpcResponse {
     IpcResponse::ok(out)
 }
 
-fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> IpcResponse {
-    let target = parsed_id.or_else(|| wm.g.selected_win());
+fn close_window(ctx: &mut crate::contexts::WmCtx, parsed_id: Option<WindowId>) -> IpcResponse {
+    let target = parsed_id.or_else(|| ctx.g.selected_win());
     let Some(win) = target else {
         return IpcResponse::err("no target window");
     };
-    match wm.backend.kind() {
-        BackendKind::X11 => {
-            let mut ctx = wm.ctx();
-            crate::client::close_win(&mut ctx, win);
-            IpcResponse::ok("")
-        }
-        BackendKind::Wayland => match &wm.backend {
-            Backend::Wayland(backend) if backend.close_window(win) => IpcResponse::ok(""),
-            Backend::Wayland(_) => IpcResponse::err("window not found"),
-            Backend::X11(_) => IpcResponse::err("backend mismatch"),
-        },
-    }
+    crate::client::close_win(ctx, win);
+    IpcResponse::ok("")
 }
 
 fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
@@ -174,22 +301,17 @@ fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
     ))
 }
 
-fn spawn_command(wm: &mut Wm, command: String) -> IpcResponse {
+fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcResponse {
     if command.trim().is_empty() {
         return IpcResponse::err("spawn requires a command");
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if wm.backend.kind() == BackendKind::Wayland {
-        match &wm.backend {
-            Backend::Wayland(backend) => {
-                if let Some(display) = backend.xdisplay() {
-                    cmd.env("DISPLAY", format!(":{display}"));
-                } else {
-                    return IpcResponse::err("XWayland not ready (DISPLAY unavailable)");
-                }
+    if ctx.backend_kind() == BackendKind::Wayland {
+        if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
+            if let Some(display) = wayland.xdisplay() {
+                cmd.env("DISPLAY", format!(":{display}"));
             }
-            Backend::X11(_) => {}
         }
     }
     match cmd.spawn() {

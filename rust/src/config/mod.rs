@@ -10,7 +10,6 @@
 //! | [`keybindings`]   | Normal-mode key bindings (`get_keys`, `get_desktop_keybinds`)      |
 //! | [`buttons`]       | Mouse button bindings (`get_buttons`)                   |
 //! | [`rules`]         | Window placement rules (`get_rules`)                    |
-//! | [`xcommands`]     | IPC socket command dispatch (`get_xcommands`)           |
 //! | [`keysyms`]       | X11 keysym constants (re-exported via `use keysyms::*`) |
 //!
 //! # Quick-start: changing things
@@ -30,7 +29,6 @@ pub mod config_toml;
 pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
-pub mod xcommands;
 
 // Re-export the most commonly referenced items at the crate::config level
 // so callers don't need to dig into sub-modules unless they want to.
@@ -113,7 +111,7 @@ pub fn get_tags_alt() -> Vec<String> {
 
 use crate::types::{
     BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
-    TagColorConfigs, WindowColorConfigs, XCommand,
+    TagColorConfigs, WindowColorConfigs,
 };
 
 /// All WM configuration in one place.
@@ -179,7 +177,6 @@ pub struct Config {
     pub desktop_keybinds: Vec<Key>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
-    pub commands: Vec<XCommand>,
     pub resources: Vec<String>,
     pub fonts: Vec<String>,
 
@@ -234,7 +231,6 @@ pub fn init_config() -> Config {
         desktop_keybinds: get_desktop_keybinds(),
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
-        commands: xcommands::get_xcommands(),
         resources: Vec::new(),
         fonts: appearance::get_fonts(),
 
