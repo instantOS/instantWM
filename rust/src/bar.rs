@@ -48,7 +48,7 @@ impl BarState {
     }
 }
 
-pub fn text_width_ctx(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
+pub fn text_width(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
     if let Some(mut drw) = ctx
         .g
         .cfg
@@ -66,7 +66,7 @@ pub(crate) fn layout_symbol(m: &Monitor) -> String {
 }
 
 pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
-    text_width_ctx(ctx, &layout_symbol(m)) + ctx.g.cfg.horizontal_padding
+    text_width(ctx, &layout_symbol(m)) + ctx.g.cfg.horizontal_padding
 }
 
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {

@@ -150,7 +150,7 @@ pub fn detach_stack(ctx: &mut WmCtx, win: WindowId) {
 // Traversal helpers
 // ---------------------------------------------------------------------------
 
-pub fn next_tiled_ctx(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> {
+pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> {
     let mut current = start_win;
     while let Some(win) = current {
         if let Some(c) = ctx.g.clients.get(&win) {

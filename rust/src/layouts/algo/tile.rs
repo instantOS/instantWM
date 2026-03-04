@@ -18,7 +18,7 @@
 //! - When there is only one client it expands to fill the entire work area.
 
 use crate::animation::animate_client;
-use crate::client::{client_height, next_tiled_ctx};
+use crate::client::{client_height, next_tiled};
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
@@ -62,7 +62,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_y_offset: u32 = 0; // running y-offset inside master column
     let mut stack_y_offset: u32 = 0; // running y-offset inside stack column
     let mut i: u32 = 0;
-    let mut current_window = next_tiled_ctx(ctx, m.clients);
+    let mut current_window = next_tiled(ctx, m.clients);
 
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
@@ -131,6 +131,6 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled_ctx(ctx, next_client);
+        current_window = next_tiled(ctx, next_client);
     }
 }

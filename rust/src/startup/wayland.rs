@@ -103,7 +103,7 @@ pub fn run() -> ! {
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;
     wm.g.cfg.screen_height = initial_h;
-    monitor::update_geom_ctx(&mut wm.ctx());
+    monitor::update_geom(&mut wm.ctx());
 
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
@@ -269,7 +269,7 @@ fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     };
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
-    monitor::update_geom_ctx(&mut wm.ctx());
+    monitor::update_geom(&mut wm.ctx());
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
@@ -1202,7 +1202,7 @@ fn init_wayland_globals(wm: &mut Wm) {
     // Keep hit-testing metrics aligned with the effective bar font height.
     wm.g.cfg.horizontal_padding = font_height;
     wm.g.cfg.numlockmask = 0;
-    monitor::update_geom_ctx(&mut wm.ctx());
+    monitor::update_geom(&mut wm.ctx());
 }
 
 fn apply_wayland_session_env(socket_name: &str) {

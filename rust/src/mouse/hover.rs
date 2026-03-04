@@ -22,7 +22,7 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::{set_cursor_default, set_cursor_resize};
-use super::grab::{grab_pointer_with_keys, ungrab_ctx, wait_event};
+use super::grab::{grab_pointer_with_keys, ungrab, wait_event};
 use super::warp::get_root_ptr;
 
 use super::resize::resize_mouse_directional;
@@ -294,7 +294,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
-        ungrab_ctx(ctx);
+        ungrab(ctx);
         clear_hover_resize_offer(ctx);
     }
 
@@ -349,7 +349,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
 
             x11rb::protocol::Event::ButtonPress(bp) => {
                 action_started = true;
-                ungrab_ctx(ctx);
+                ungrab(ctx);
 
                 let Some(win) = ctx.g.selected_win() else {
                     break;
@@ -459,7 +459,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
-        ungrab_ctx(ctx);
+        ungrab(ctx);
         clear_hover_resize_offer(ctx);
     }
 

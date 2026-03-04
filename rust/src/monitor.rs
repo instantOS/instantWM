@@ -8,10 +8,10 @@
 //!
 //! ```ignore
 //! use crate::contexts::WmCtx;
-//! use crate::monitor::{win_to_mon_with_ctx, focus_mon};
+//! use crate::monitor::{win_to_mon, focus_mon};
 //!
 //! // Find which monitor a window belongs to
-//! let target = win_to_mon_with_ctx(&ctx, some_window);
+//! let target = win_to_mon(&ctx, some_window);
 //!
 //! // Focus next/previous monitor
 //! use crate::types::MonitorDirection;
@@ -68,7 +68,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: MonitorId) {
 /// # Returns
 /// * `Some(monitor_id)` - The monitor ID the window belongs to
 /// * `None` - If no monitor could be determined
-pub fn win_to_mon_with_ctx(ctx: &WmCtx, w: WindowId) -> Option<MonitorId> {
+pub fn win_to_mon(ctx: &WmCtx, w: WindowId) -> Option<MonitorId> {
     let root_win = WindowId::from(ctx.g.cfg.root);
     if w == root_win {
         if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
@@ -208,6 +208,8 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
 /// # Arguments
 /// * `ctx` - WM context with mutable access to monitor state
 /// * `direction` - Direction to move (Next or Previous monitor)
+// TODO: come up with a better name for this, it sounds like I can pass in a monitor instead of a
+// direction
 pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     if ctx.g.monitors.len() <= 1 {
         return;
@@ -493,7 +495,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     // Reset selection to first monitor and try to find better one
     if dirty {
         ctx.g.set_selmon(0);
-        if let Some(m) = win_to_mon_with_ctx(ctx, WindowId::from(ctx.g.cfg.root)) {
+        if let Some(m) = win_to_mon(ctx, WindowId::from(ctx.g.cfg.root)) {
             ctx.g.set_selmon(m);
         }
     }
@@ -501,7 +503,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     Some(dirty)
 }
 
-pub fn update_geom_ctx(ctx: &mut WmCtx) -> bool {
+pub fn update_geom(ctx: &mut WmCtx) -> bool {
     #[cfg(feature = "xinerama")]
     {
         if let Some(result) = update_from_xinerama(ctx) {

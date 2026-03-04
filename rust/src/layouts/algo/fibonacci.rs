@@ -46,7 +46,7 @@
 //! | `true`  | toward the centre (spiral)   |
 //! | `false` | away from centre (dwindle)   |
 
-use crate::client::{next_tiled_ctx, resize};
+use crate::client::{next_tiled, resize};
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
 use crate::layouts::query::count_tiled_clients;
@@ -100,7 +100,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     let mut h = m.work_rect.h;
 
     let mut i: u32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
+    let mut c_win = next_tiled(ctx, m.clients);
 
     while let Some(win) = c_win {
         let (border_width, next_client) = ctx
@@ -153,6 +153,6 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         }
 
         i += 1;
-        c_win = next_tiled_ctx(ctx, next_client);
+        c_win = next_tiled(ctx, next_client);
     }
 }

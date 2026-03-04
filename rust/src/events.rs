@@ -13,7 +13,7 @@ use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::layouts::{arrange, restack};
-use crate::monitor::{update_geom_ctx, win_to_mon_with_ctx};
+use crate::monitor::{update_geom, win_to_mon};
 use crate::mouse::{
     get_cursor_client_win, handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse,
     reset_cursor, resize_mouse_directional,
@@ -59,7 +59,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.g.selmon_id();
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) = win_to_mon_with_ctx(ctx, event_win) {
+    if let Some(clicked_mon) = win_to_mon(ctx, event_win) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selmon(clicked_mon);
             selmon_id = clicked_mon;
@@ -185,7 +185,7 @@ pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
     ctx.g.cfg.screen_width = e.width as i32;
     ctx.g.cfg.screen_height = e.height as i32;
 
-    update_geom_ctx(ctx);
+    update_geom(ctx);
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, None);
 }
@@ -303,7 +303,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 4. Handle Monitor Switch
     if focusfollowsmouse {
-        if let Some(new_mon_id) = win_to_mon_with_ctx(ctx, event_win) {
+        if let Some(new_mon_id) = win_to_mon(ctx, event_win) {
             if new_mon_id != selmon_id {
                 ctx.g.set_selmon(new_mon_id);
                 crate::focus::focus_soft(ctx, None);
@@ -325,7 +325,7 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(mon_id) = win_to_mon_with_ctx(ctx, event_win) {
+    if let Some(mon_id) = win_to_mon(ctx, event_win) {
         let is_barwin = ctx
             .g
             .monitors
@@ -993,7 +993,7 @@ pub fn setup_root(wm: &mut Wm) {
     let _ = conn.flush();
 
     let mut ctx = wm.ctx();
-    update_geom_ctx(&mut ctx);
+    update_geom(&mut ctx);
 }
 
 pub fn cleanup(wm: &mut Wm) {

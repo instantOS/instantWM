@@ -6,7 +6,7 @@
 //!   client window so the WM receives button-press events even when that
 //!   window is not focused.
 //!
-//! * **Pointer grabs** ([`grab_pointer`], [`ungrab`]) – active, modal grabs
+//! * **Pointer grabs** ([`grab_pointer`], [`ungrab_ctx`]) – active, modal grabs
 //!   used during interactive move/resize loops.  Every drag loop in
 //!   `drag.rs` and `resize.rs` calls [`grab_pointer`] at the start and
 //!   [`ungrab_ctx`] when it exits.
@@ -131,23 +131,21 @@ pub fn wait_event(ctx: &WmCtx) -> Option<x11rb::protocol::Event> {
 }
 
 /// Release an active pointer grab and flush pending requests.
-///
-/// Always call this when a drag/resize loop ends, even on early returns,
-/// to avoid leaving the pointer permanently grabbed.
 #[inline]
-pub fn ungrab(conn: &x11rb::rust_connection::RustConnection) {
+fn ungrab_inner(conn: &x11rb::rust_connection::RustConnection) {
     let _ = ungrab_pointer(conn, CURRENT_TIME);
     let _ = conn.flush();
 }
 
 /// Release an active pointer grab via context.
 ///
-/// Convenience wrapper around [`ungrab`] that extracts the connection from ctx.
+/// Always call this when a drag/resize loop ends, even on early returns,
+/// to avoid leaving the pointer permanently grabbed.
 #[inline]
-pub fn ungrab_ctx(ctx: &WmCtx) {
+pub fn ungrab(ctx: &WmCtx) {
     require_x11!(ctx);
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        ungrab(conn);
+        ungrab_inner(conn);
     }
 }
 

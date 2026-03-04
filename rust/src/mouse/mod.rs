@@ -32,7 +32,7 @@
 //!     MotionNotify  → throttle → update geometry
 //!     _             → ignore
 //! }
-//! grab::ungrab(conn)
+//! grab::ungrab(ctx)
 //! monitor::handle_client_monitor_switch(win)   // if applicable
 //! ```
 

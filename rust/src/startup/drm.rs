@@ -521,7 +521,7 @@ fn init_drm_globals(wm: &mut Wm) {
     .max(min_bar_height);
     wm.g.cfg.horizontal_padding = font_height;
     wm.g.cfg.numlockmask = 0;
-    monitor::update_geom_ctx(&mut wm.ctx());
+    monitor::update_geom(&mut wm.ctx());
 }
 
 fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) {

@@ -18,7 +18,7 @@
 
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
-use crate::client::next_tiled_ctx;
+use crate::client::next_tiled;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
@@ -40,7 +40,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let sel_win = ctx.g.selected_win();
 
     // ── resize every tiled client to fill the work area ───────────────────
-    let mut current_window = next_tiled_ctx(ctx, m.clients);
+    let mut current_window = next_tiled(ctx, m.clients);
     while let Some(win) = current_window {
         let (border_width, next_client) = ctx
             .g
@@ -70,6 +70,6 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             0,
         );
 
-        current_window = next_tiled_ctx(ctx, next_client);
+        current_window = next_tiled(ctx, next_client);
     }
 }

@@ -10,7 +10,7 @@
 //!              already is master, promote the next tiled window instead).
 
 use crate::backend::BackendKind;
-use crate::client::list::{next_tiled_ctx, pop};
+use crate::client::list::{next_tiled, pop};
 use crate::contexts::WmCtx;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -73,12 +73,12 @@ pub fn zoom(ctx: &mut WmCtx) {
     // Find the current master (first tiled client on the monitor).
     let first_tiled = mon_id
         .and_then(|mid| ctx.g.monitor(mid))
-        .and_then(|mon| next_tiled_ctx(ctx, mon.clients));
+        .and_then(|mon| next_tiled(ctx, mon.clients));
 
     if first_tiled == Some(win) {
         // The selected window is already master – promote the next one.
         let after_first = first_tiled.and_then(|f| ctx.g.clients.get(&f).and_then(|c| c.next));
-        let next = next_tiled_ctx(ctx, after_first);
+        let next = next_tiled(ctx, after_first);
 
         // Nothing to promote if there is only one tiled window.
         if next.is_none() {

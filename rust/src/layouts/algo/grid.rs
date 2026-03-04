@@ -32,7 +32,7 @@
 //! *column*.
 
 use crate::animation::animate_client;
-use crate::client::next_tiled_ctx;
+use crate::client::next_tiled;
 use crate::constants::animation::{
     BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
 };
@@ -83,7 +83,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place each client ─────────────────────────────────────────────────
     let mut i: i32 = 0;
-    let mut c_win = next_tiled_ctx(ctx, m.clients);
+    let mut c_win = next_tiled(ctx, m.clients);
     while let Some(win) = c_win {
         let (border_width, next_client) = ctx
             .g
@@ -122,7 +122,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         i += 1;
-        c_win = next_tiled_ctx(ctx, next_client);
+        c_win = next_tiled(ctx, next_client);
     }
 }
 
@@ -161,7 +161,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         let cell_width = m.work_rect.w / cols as i32;
 
         // Walk forward to the first client belonging to this column.
-        let mut c_win = next_tiled_ctx(ctx, m.clients);
+        let mut c_win = next_tiled(ctx, m.clients);
         let mut skip = col * (n / cols);
         while skip > 0 {
             if let Some(win) = c_win {
@@ -169,7 +169,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     .g
                     .clients
                     .get(&win)
-                    .and_then(|c| next_tiled_ctx(ctx, c.next));
+                    .and_then(|c| next_tiled(ctx, c.next));
             } else {
                 break;
             }
@@ -209,7 +209,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     0,
                 );
 
-                c_win = next_tiled_ctx(ctx, next_client);
+                c_win = next_tiled(ctx, next_client);
             }
         }
     }

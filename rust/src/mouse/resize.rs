@@ -25,7 +25,7 @@ use crate::types::*;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
-use super::grab::{grab_pointer, ungrab_ctx, wait_event};
+use super::grab::{grab_pointer, ungrab, wait_event};
 use super::monitor::handle_client_monitor_switch;
 use crate::types::ResizeDirection;
 
@@ -115,7 +115,7 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         match ctx.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
-                ungrab_ctx(ctx);
+                ungrab(ctx);
                 return;
             }
         }
@@ -175,7 +175,7 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         }
     }
 
-    ungrab_ctx(ctx);
+    ungrab(ctx);
     handle_client_monitor_switch(ctx, win);
 }
 
@@ -218,7 +218,7 @@ pub fn resize_mouse_directional(
                 c.border_width,
             ),
             None => {
-                ungrab_ctx(ctx);
+                ungrab(ctx);
                 return;
             }
         }
@@ -317,7 +317,7 @@ pub fn resize_mouse_directional(
         }
     }
 
-    ungrab_ctx(ctx);
+    ungrab(ctx);
     handle_client_monitor_switch(ctx, win);
 }
 
@@ -364,7 +364,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         match ctx.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
-                ungrab_ctx(ctx);
+                ungrab(ctx);
                 return;
             }
         }
@@ -442,7 +442,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         }
     }
 
-    ungrab_ctx(ctx);
+    ungrab(ctx);
     handle_client_monitor_switch(ctx, win);
 }
 

@@ -1,5 +1,5 @@
 use crate::client::list::{attach, detach};
-use crate::client::next_tiled_ctx;
+use crate::client::next_tiled;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
@@ -8,7 +8,7 @@ use crate::types::WindowId;
 
 pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> Option<WindowId> {
     if !include_floating {
-        return next_tiled_ctx(ctx, c_win);
+        return next_tiled(ctx, c_win);
     }
 
     let mut current = c_win;

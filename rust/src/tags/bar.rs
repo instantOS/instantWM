@@ -49,7 +49,7 @@ pub(crate) fn visible_tags_ctx<'a>(
 
         let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
-        let width = crate::bar::text_width_ctx(ctx, label) + horizontal_padding;
+        let width = crate::bar::text_width(ctx, label) + horizontal_padding;
 
         out.push(VisibleTag {
             slot,
