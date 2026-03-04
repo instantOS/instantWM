@@ -27,7 +27,6 @@
 use crate::backend::BackendOps;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::layouts::query::all_client_count;
 use crate::types::{Monitor, Rect, WindowId};
 
 /// Save the current geometry as the client's floating geometry.
@@ -41,7 +40,7 @@ fn save_floating(ctx: &mut WmCtx<'_>, win: WindowId) {
 }
 
 pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = all_client_count(ctx.g);
+    let n = ctx.g.clients.len();
     if n == 0 {
         return;
     }
@@ -49,7 +48,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── grid dimensions ───────────────────────────────────────────────────
     // Find the smallest g such that g² ≥ n (i.e. ceil(sqrt(n))).
     let mut gridwidth: i32 = 1;
-    while gridwidth * gridwidth < n {
+    while ((gridwidth * gridwidth) as usize) < (n as usize) {
         gridwidth += 1;
     }
 

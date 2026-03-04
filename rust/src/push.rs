@@ -3,7 +3,6 @@ use crate::client::next_tiled;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
-pub use crate::layouts::query::client_count;
 use crate::types::WindowId;
 
 pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> Option<WindowId> {
@@ -62,7 +61,13 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
 }
 
 pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
-    if client_count(ctx.g) < 2 {
+    if ctx
+        .g
+        .selected_monitor()
+        .map(|m| m.tiled_client_count(ctx.g.clients.map()))
+        .unwrap_or(0)
+        < 2
+    {
         return;
     }
 
@@ -97,7 +102,13 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
-    if client_count(ctx.g) < 2 {
+    if ctx
+        .g
+        .selected_monitor()
+        .map(|m| m.tiled_client_count(ctx.g.clients.map()))
+        .unwrap_or(0)
+        < 2
+    {
         return;
     }
 

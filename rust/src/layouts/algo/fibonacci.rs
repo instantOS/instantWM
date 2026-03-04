@@ -46,7 +46,7 @@
 //! | `true`  | toward the centre (spiral)   |
 //! | `false` | away from centre (dwindle)   |
 
-use crate::client::{next_tiled, resize};
+use crate::client::resize;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
 use crate::layouts::query::count_tiled_clients;
@@ -99,20 +99,20 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     let mut w = m.work_rect.w;
     let mut h = m.work_rect.h;
 
+    let selected_tags = m.selected_tags();
     let mut i: u32 = 0;
-    let mut c_win = m
-        .clients
-        .first()
-        .copied()
-        .and_then(|w| next_tiled(ctx, Some(w)));
 
-    while let Some(win) = c_win {
-        let border_width = ctx
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.border_width())
-            .unwrap_or(0);
+    for &win in &m.clients {
+        let Some(c) = ctx.g.clients.get(&win) else {
+            continue;
+        };
+
+        // Skip non-tiled, hidden, or invisible clients
+        if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+            continue;
+        }
+
+        let border_width = c.border_width();
 
         // Split the remaining rect starting from the second client.
         if i > 0 {
@@ -157,6 +157,5 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         }
 
         i += 1;
-        c_win = next_tiled(ctx, c_win);
     }
 }

@@ -16,43 +16,6 @@ use super::LayoutKind;
 
 // ── per-monitor counts ────────────────────────────────────────────────────────
 
-/// Number of tiled, visible clients on the *selected* monitor.
-pub fn client_count(g: &Globals) -> i32 {
-    let mon = match g.selected_monitor() {
-        Some(m) => m,
-        None => return 0,
-    };
-
-    let selected = mon.selected_tags();
-    let mut count = 0;
-    for (_win, c) in mon.iter_clients(g.clients.map()) {
-        if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
-            count += 1;
-        }
-    }
-
-    count
-}
-
-/// Number of tiled, visible clients on an *arbitrary* monitor `m`.
-pub fn client_count_mon(g: &Globals, m: &Monitor) -> i32 {
-    let selected = m.selected_tags();
-    let mut count = 0;
-
-    for (_win, c) in m.iter_clients(g.clients.map()) {
-        if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
-            count += 1;
-        }
-    }
-
-    count
-}
-
-/// Total number of tracked clients across *all* monitors and tags.
-pub fn all_client_count(g: &Globals) -> i32 {
-    g.clients.len() as i32
-}
-
 // ── visibility walk ───────────────────────────────────────────────────────────
 
 /// Walk the client list starting at `start_win` and return the first
@@ -94,7 +57,12 @@ pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
 /// Returns `hi` if animation is enabled and client count exceeds threshold,
 /// otherwise returns `lo`.
 pub fn framecount_for_layout(g: &Globals, threshold: usize, hi: i32, lo: i32) -> i32 {
-    if g.animated && client_count(g) > threshold as i32 {
+    if g.animated
+        && g.selected_monitor()
+            .map(|m| m.tiled_client_count(g.clients.map()))
+            .unwrap_or(0)
+            > threshold
+    {
         hi
     } else {
         lo

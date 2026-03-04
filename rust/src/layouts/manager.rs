@@ -3,7 +3,6 @@
 use crate::bar::draw_bar;
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
-use crate::layouts::query::{client_count, client_count_mon};
 use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
 
@@ -34,7 +33,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let clientcount = {
         let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
-        client_count_mon(ctx.g, m) as u32
+        m.tiled_client_count(ctx.g.clients.map()) as u32
     };
 
     if let Some(m) = ctx.g.monitor_mut(monitor_id) {
@@ -279,7 +278,11 @@ pub fn command_layout(ctx: &mut WmCtx<'_>, layout_idx: u32) {
 }
 
 pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
-    let ccount = client_count(ctx.g);
+    let ccount = ctx
+        .g
+        .selected_monitor()
+        .map(|m| m.tiled_client_count(ctx.g.clients.map()))
+        .unwrap_or(0) as i32;
     if let Some(m) = ctx.g.selected_monitor_mut() {
         if delta > 0 && m.nmaster >= ccount {
             m.nmaster = ccount;
@@ -318,7 +321,13 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let animation_on = ctx.g.animated && client_count(ctx.g) > 2;
+    let animation_on = ctx.g.animated
+        && ctx
+            .g
+            .selected_monitor()
+            .map(|m| m.tiled_client_count(ctx.g.clients.map()))
+            .unwrap_or(0)
+            > 2;
     if animation_on {
         ctx.g.animated = false;
     }

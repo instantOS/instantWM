@@ -32,7 +32,6 @@
 //! *column*.
 
 use crate::animation::animate_client;
-use crate::client::next_tiled;
 use crate::constants::animation::{
     BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
 };
@@ -81,20 +80,21 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let cell_height = m.work_rect.h / if rows > 0 { rows } else { 1 };
     let cell_width = m.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
 
-    // ── place each client ─────────────────────────────────────────────────
+    // ── place each tiled client ─────────────────────────────────────────
+    let selected_tags = m.selected_tags();
     let mut i: i32 = 0;
-    let mut c_win = m
-        .clients
-        .first()
-        .copied()
-        .and_then(|w| next_tiled(ctx, Some(w)));
-    while let Some(win) = c_win {
-        let border_width = ctx
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.border_width())
-            .unwrap_or(0);
+
+    for &win in &m.clients {
+        let Some(c) = ctx.g.clients.get(&win) else {
+            continue;
+        };
+
+        // Skip non-tiled, hidden, or invisible clients
+        if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+            continue;
+        }
+
+        let border_width = c.border_width();
 
         let cell_x = m.work_rect.x + (i / rows) * cell_width;
         let cell_y = m.work_rect.y + (i % rows) * cell_height;
@@ -126,7 +126,6 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         i += 1;
-        c_win = next_tiled(ctx, c_win);
     }
 }
 
@@ -155,6 +154,20 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // Number of columns = ceil(sqrt(n)).
     let cols = ((n as f32).sqrt() + 0.5) as u32;
 
+    // Collect tiled clients first
+    let selected_tags = m.selected_tags();
+    let tiled_clients: Vec<_> = m
+        .clients
+        .iter()
+        .filter_map(|&win| {
+            let c = ctx.g.clients.get(&win)?;
+            if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+                return None;
+            }
+            Some(win)
+        })
+        .collect();
+
     for col in 0..cols {
         // Clients in this column: last column absorbs any remainder.
         let cn = if col == cols - 1 {
@@ -164,57 +177,46 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         };
         let cell_width = m.work_rect.w / cols as i32;
 
-        // Walk forward to the first client belonging to this column.
-        let mut c_win = m
-            .clients
-            .first()
-            .copied()
-            .and_then(|w| next_tiled(ctx, Some(w)));
-        let mut skip = col * (n / cols);
-        while skip > 0 {
-            if let Some(win) = c_win {
-                c_win = next_tiled(ctx, Some(win));
-            } else {
-                break;
-            }
-            skip -= 1;
-        }
+        // Start index for this column
+        let start_idx = (col * (n / cols)) as usize;
 
         for row in 0..cn {
-            if let Some(win) = c_win {
-                let border_width = ctx
-                    .g
-                    .clients
-                    .get(&win)
-                    .map(|c| c.border_width())
-                    .unwrap_or(0);
-
-                let cell_height = m.work_rect.h / cn as i32;
-                let cell_x = m.work_rect.x + col as i32 * cell_width;
-                let cell_y = m.work_rect.y + row as i32 * cell_height;
-
-                // Last column gets any remaining width from rounding.
-                let extra_w = if col == cols - 1 {
-                    m.work_rect.w - cols as i32 * cell_width + cell_width
-                } else {
-                    0
-                };
-
-                animate_client(
-                    ctx,
-                    win,
-                    &Rect {
-                        x: cell_x,
-                        y: cell_y,
-                        w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
-                        h: cell_height - BORDER_MULTIPLIER * border_width,
-                    },
-                    framecount,
-                    0,
-                );
-
-                c_win = next_tiled(ctx, Some(win));
+            let idx = start_idx + row as usize;
+            if idx >= tiled_clients.len() {
+                break;
             }
+            let win = tiled_clients[idx];
+
+            let border_width = ctx
+                .g
+                .clients
+                .get(&win)
+                .map(|c| c.border_width())
+                .unwrap_or(0);
+
+            let cell_height = m.work_rect.h / cn as i32;
+            let cell_x = m.work_rect.x + col as i32 * cell_width;
+            let cell_y = m.work_rect.y + row as i32 * cell_height;
+
+            // Last column gets any remaining width from rounding.
+            let extra_w = if col == cols - 1 {
+                m.work_rect.w - cols as i32 * cell_width + cell_width
+            } else {
+                0
+            };
+
+            animate_client(
+                ctx,
+                win,
+                &Rect {
+                    x: cell_x,
+                    y: cell_y,
+                    w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
+                    h: cell_height - BORDER_MULTIPLIER * border_width,
+                },
+                framecount,
+                0,
+            );
         }
     }
 }

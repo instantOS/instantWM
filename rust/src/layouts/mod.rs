@@ -127,10 +127,7 @@ impl LayoutKind {
 
 // ── Re-exports: query ─────────────────────────────────────────────────────────
 #[allow(unused_imports)]
-pub use query::{
-    all_client_count, client_count, client_count_mon, find_visible_client,
-    get_current_layout_symbol,
-};
+pub use query::{find_visible_client, get_current_layout_symbol};
 
 // ── Re-exports: manager ───────────────────────────────────────────────────────
 #[allow(unused_imports)]

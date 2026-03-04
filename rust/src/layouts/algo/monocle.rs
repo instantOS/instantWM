@@ -18,7 +18,6 @@
 
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
-use crate::client::next_tiled;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
@@ -38,20 +37,20 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── snapshot selected window before the loop ────────
     let selected_window = ctx.g.selected_win();
+    let selected_tags = m.selected_tags();
 
     // ── resize every tiled client to fill the work area ───────────────────
-    let mut current_window = m
-        .clients
-        .first()
-        .copied()
-        .and_then(|w| next_tiled(ctx, Some(w)));
-    while let Some(win) = current_window {
-        let border_width = ctx
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.border_width())
-            .unwrap_or(0);
+    for &win in &m.clients {
+        let Some(c) = ctx.g.clients.get(&win) else {
+            continue;
+        };
+
+        // Skip non-tiled, hidden, or invisible clients
+        if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+            continue;
+        }
+
+        let border_width = c.border_width();
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.
@@ -73,7 +72,5 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             frames,
             0,
         );
-
-        current_window = next_tiled(ctx, current_window);
     }
 }
