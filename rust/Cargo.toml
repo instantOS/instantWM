@@ -26,6 +26,12 @@ dirs = "5.0"
 # Wayland compositor support via Smithay
 smithay = { version = "0.7", default-features = false, features = [
     "backend_winit",
+    "backend_drm",
+    "backend_gbm",
+    "backend_egl",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
     "renderer_gl",
     "wayland_frontend",
     "desktop",

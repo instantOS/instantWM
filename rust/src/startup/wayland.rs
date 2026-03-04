@@ -772,7 +772,7 @@ fn render_frame(
         }
 
         // Window borders.
-        for elem in wayland_border_elements(&wm.g, state) {
+        for elem in wayland_border_elements_shared(&wm.g, state) {
             custom_elements.push(WaylandExtras::Solid(elem));
         }
 
@@ -845,7 +845,8 @@ fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state
 // Border rendering
 // =============================================================================
 
-fn wayland_border_elements(
+/// Shared border-element builder used by both winit and DRM backends.
+pub(crate) fn wayland_border_elements_shared(
     g: &crate::globals::Globals,
     state: &WaylandState,
 ) -> Vec<SolidColorRenderElement> {

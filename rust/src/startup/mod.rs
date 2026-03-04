@@ -1,5 +1,6 @@
 use clap::{Parser, ValueEnum};
 mod autostart;
+mod drm;
 mod locale;
 mod wayland;
 mod x11;
@@ -8,6 +9,8 @@ mod x11;
 enum CliBackend {
     X11,
     Wayland,
+    /// Run as a standalone Wayland compositor directly on DRM/KMS hardware.
+    Drm,
 }
 
 #[derive(Debug, Parser)]
@@ -35,5 +38,6 @@ pub fn run() {
     match cli.backend {
         CliBackend::X11 => x11::run(),
         CliBackend::Wayland => wayland::run(),
+        CliBackend::Drm => drm::run(),
     }
 }
