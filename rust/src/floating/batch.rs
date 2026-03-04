@@ -81,7 +81,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 
         let tag_mask = 1u32 << tag_idx;
         for (c_win, c) in mon.iter_clients(globals.clients.map()) {
-            if (c.tags & tag_mask) != 0 && c.snapstatus == SnapPosition::None {
+            if (c.tags & tag_mask) != 0 && c.snap_status == SnapPosition::None {
                 wins.push(c_win);
             }
         }
@@ -155,7 +155,7 @@ fn collect_distribute_targets(
         return empty;
     };
 
-    let tagset = mon.selected_tags();
+    let tag_set = mon.selected_tags();
     // work_rect already accounts for bar height and position (top or bottom),
     // so it is the correct region to fill with the grid.
     let work_rect = mon.work_rect;
@@ -164,8 +164,8 @@ fn collect_distribute_targets(
     for (c_win, c) in mon.iter_clients(globals.clients.map()) {
         if c.isfloating
             && !c.isfixed
-            && (c.tags & tagset) != 0
-            && c.snapstatus == SnapPosition::None
+            && (c.tags & tag_set) != 0
+            && c.snap_status == SnapPosition::None
         {
             wins.push(c_win);
         }

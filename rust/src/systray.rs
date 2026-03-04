@@ -191,7 +191,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
         crate::drw::XFlush(ctx.g.cfg.xlibdisplay.0);
     }
 
-    let (x, by, _showbar, barwin) = {
+    let (x, by, _showbar, bar_win) = {
         let m = systray_to_mon(ctx, None);
         let mon = match ctx.g.monitor(m) {
             Some(mon) => mon,
@@ -201,7 +201,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
             mon.monitor_rect.x + mon.monitor_rect.w,
             mon.by,
             mon.showbar,
-            mon.barwin,
+            mon.bar_win,
         )
     };
 
@@ -364,7 +364,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     let systray_win = systray_win;
     let x11_systray_win: Window = systray_win.into();
-    let x11_barwin: Window = barwin.into();
+    let x11_bar_win: Window = bar_win.into();
 
     w = if systray_width > 0 {
         systray_width + systrayspacing as u32
@@ -390,7 +390,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
         x11_systray_win,
         &ConfigureWindowAux::new()
             .stack_mode(StackMode::ABOVE)
-            .sibling(x11_barwin),
+            .sibling(x11_bar_win),
     );
 
     let _ = conn.map_window(x11_systray_win);

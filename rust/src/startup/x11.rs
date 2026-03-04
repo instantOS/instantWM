@@ -198,9 +198,9 @@ fn init_drw_and_schemes(wm: &mut Wm) {
     }
 
     let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
-    let barheight = wm.g.cfg.barheight;
-    let bar_height = if barheight > 0 {
-        font_height + barheight as u32
+    let bar_height = wm.g.cfg.bar_height;
+    let bar_height = if bar_height > 0 {
+        font_height + bar_height as u32
     } else {
         font_height + 12
     };

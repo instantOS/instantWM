@@ -32,7 +32,7 @@ pub struct RuntimeConfig {
     pub nmaster: i32,
     pub showbar: bool,
     pub topbar: bool,
-    pub barheight: i32,
+    pub bar_height: i32,
     pub showsystray: bool,
     pub systraypinning: usize,
     pub systrayspacing: i32,
@@ -76,7 +76,6 @@ pub struct RuntimeConfig {
     pub drw: Option<Drw>,
     pub xlibdisplay: XlibDisplay,
     pub cursors: [Option<Cursor>; 10],
-    pub bar_height: i32,
     pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
@@ -98,7 +97,7 @@ impl Default for RuntimeConfig {
             nmaster: 1,
             showbar: true,
             topbar: true,
-            barheight: 0,
+            bar_height: 0,
             showsystray: true,
             systraypinning: 0,
             systrayspacing: 2,
@@ -128,7 +127,6 @@ impl Default for RuntimeConfig {
             drw: None,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             cursors: [const { None }; 10],
-            bar_height: 0,
             horizontal_padding: 0,
             tag_template: Vec::new(),
         }
@@ -443,7 +441,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.showsystray = cfg.showsystray;
     g.cfg.showbar = cfg.showbar;
     g.cfg.topbar = cfg.topbar;
-    g.cfg.barheight = cfg.barheight;
+    g.cfg.bar_height = cfg.bar_height;
     g.cfg.resizehints = cfg.resizehints;
     g.cfg.decorhints = cfg.decorhints;
     g.cfg.mfact = cfg.mfact;

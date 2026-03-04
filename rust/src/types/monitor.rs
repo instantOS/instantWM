@@ -43,9 +43,9 @@ pub struct Monitor {
     /// Work area geometry (excluding bar).
     pub work_rect: Rect,
     /// Currently selected tag set index.
-    pub seltags: u32,
+    pub sel_tags: u32,
     /// Tag sets (two sets for switching).
-    pub tagset: [u32; 2],
+    pub tag_set: [u32; 2],
     /// Active offset for bar display.
     pub activeoffset: u32,
     /// Title offset for bar display.
@@ -63,7 +63,7 @@ pub struct Monitor {
     /// Current gesture state.
     pub gesture: Gesture,
     /// Bar window handle.
-    pub barwin: WindowId,
+    pub bar_win: WindowId,
     /// Which tags to show.
     pub showtags: u32,
     /// Current tag index (1-based).
@@ -96,8 +96,8 @@ impl Default for Monitor {
             bt: 0,
             monitor_rect: Rect::default(),
             work_rect: Rect::default(),
-            seltags: 0,
-            tagset: [0; 2],
+            sel_tags: 0,
+            tag_set: [0; 2],
             activeoffset: 0,
             titleoffset: 0,
             clientcount: 0,
@@ -106,7 +106,7 @@ impl Default for Monitor {
             overlaystatus: 0,
             overlaymode: OverlayMode::default(),
             gesture: Gesture::default(),
-            barwin: WindowId::default(),
+            bar_win: WindowId::default(),
             showtags: 0,
             current_tag: 0,
             prev_tag: 0,
@@ -130,7 +130,7 @@ impl Monitor {
             nmaster,
             showbar,
             topbar,
-            tagset: [1, 1],
+            tag_set: [1, 1],
             clientcount: 0,
             overlaymode: OverlayMode::Top,
             current_tag: 1,
@@ -158,13 +158,13 @@ impl Monitor {
     /// Get the currently selected tags for this monitor.
     #[inline]
     pub fn selected_tags(&self) -> u32 {
-        self.tagset[self.seltags as usize]
+        self.tag_set[self.sel_tags as usize]
     }
 
     /// Set the currently selected tags for this monitor.
     #[inline]
     pub fn set_selected_tags(&mut self, mask: u32) {
-        self.tagset[self.seltags as usize] = mask;
+        self.tag_set[self.sel_tags as usize] = mask;
     }
 
     /// Get the currently selected tags as a type-safe mask.

@@ -331,7 +331,14 @@ fn subtract_rect(base: IntRect, cut: IntRect) -> Vec<IntRect> {
     out.into_iter().filter(|r| r.w > 0 && r.h > 0).collect()
 }
 
-fn push_solid(out: &mut Vec<SolidColorRenderElement>, x: i32, y: i32, w: i32, h: i32, color: [f32; 4]) {
+fn push_solid(
+    out: &mut Vec<SolidColorRenderElement>,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    color: [f32; 4],
+) {
     if w <= 0 || h <= 0 {
         return;
     }

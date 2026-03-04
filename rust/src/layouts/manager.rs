@@ -134,7 +134,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     draw_bar(ctx, monitor_id);
 
     // Extract data from monitor first to avoid borrow conflicts
-    let (selected_window, is_tiling, selected_tags, barwin, is_floating) = {
+    let (selected_window, is_tiling, selected_tags, bar_win, is_floating) = {
         let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
         let selected_window = match m.sel {
             Some(w) => w,
@@ -142,13 +142,13 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         };
         let is_tiling = m.current_layout().is_tiling();
         let selected_tags = m.selected_tags();
-        let barwin = m.barwin;
+        let bar_win = m.bar_win;
         let is_floating = ctx.client(selected_window).map_or(false, |c| c.isfloating);
         (
             selected_window,
             is_tiling,
             selected_tags,
-            barwin,
+            bar_win,
             is_floating,
         )
     };
@@ -180,7 +180,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     }
 
     let mut stack = tiled_stack;
-    stack.push(barwin);
+    stack.push(bar_win);
     if is_floating {
         stack.retain(|w| *w != selected_window);
         stack.push(selected_window);

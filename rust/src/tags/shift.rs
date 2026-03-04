@@ -8,6 +8,7 @@ use crate::types::{Direction, OverlayMode, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
+//TODO: this seems redundant
 pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     shift_tag(ctx, dir, offset.max(1));
 }

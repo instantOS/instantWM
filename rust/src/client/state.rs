@@ -240,7 +240,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
 
     let special_next = ctx.g.specialnext;
     let rules = ctx.g.cfg.rules.clone();
-    let tagmask = ctx.g.tags.mask();
+    let tag_mask = ctx.g.tags.mask();
     let bar_height = ctx.g.cfg.bar_height;
 
     // --- Handle SpecialNext shortcut ------------------------------------------
@@ -375,8 +375,8 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
         if let Some(mon) = ctx.g.monitor(mid) {
             let active_tags = mon.selected_tags();
             if let Some(c) = ctx.g.clients.get_mut(&win) {
-                c.tags = if client_tags & tagmask != 0 {
-                    client_tags & tagmask
+                c.tags = if client_tags & tag_mask != 0 {
+                    client_tags & tag_mask
                 } else {
                     active_tags
                 };

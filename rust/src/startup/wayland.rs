@@ -27,7 +27,6 @@ mod init;
 mod input;
 mod render;
 
-use super::autostart::run_autostart;
 use self::init::{
     apply_wayland_session_env, init_wayland_globals, sanitize_wayland_size,
     spawn_wayland_smoke_window,
@@ -37,6 +36,7 @@ use self::input::{
     handle_resize,
 };
 use self::render::{render_frame, wayland_border_elements_shared as border_elements_shared_impl};
+use super::autostart::run_autostart;
 
 pub fn run() -> ! {
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
@@ -97,7 +97,8 @@ pub fn run() -> ! {
         Ok((xwayland, client)) => {
             std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number()));
             let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event {
+            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
+            {
                 XWaylandEvent::Ready {
                     x11_socket,
                     display_number,

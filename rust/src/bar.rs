@@ -77,8 +77,12 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     if ctx.x11_conn().is_none() {
         return;
     }
-    let barwin = ctx.g.monitor(mon_idx).map(|m| m.barwin).unwrap_or_default();
-    if barwin == WindowId::default() {
+    let bar_win = ctx
+        .g
+        .monitor(mon_idx)
+        .map(|m| m.bar_win)
+        .unwrap_or_default();
+    if bar_win == WindowId::default() {
         return;
     }
     let work_rect_w = match ctx.g.monitor(mon_idx) {
@@ -105,7 +109,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     renderer::draw_bar_common(ctx, mon_idx, &mut painter);
 
-    painter.map(barwin, 0, 0, work_rect_w as u16, bar_height as u16);
+    painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {

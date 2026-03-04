@@ -243,21 +243,21 @@ pub fn down_press(ctx: &mut WmCtx) {
         return;
     }
 
-    let (selected_window, overlay_win, snapstatus, is_floating) = {
+    let (selected_window, overlay_win, snap_status, is_floating) = {
         let mon = ctx.g.selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
-        let (snapstatus, is_floating) = sel
-            .and_then(|w| ctx.g.clients.get(&w).map(|c| (c.snapstatus, c.isfloating)))
+        let (snap_status, is_floating) = sel
+            .and_then(|w| ctx.g.clients.get(&w).map(|c| (c.snap_status, c.isfloating)))
             .unwrap_or((SnapPosition::None, false));
-        (sel, overlay, snapstatus, is_floating)
+        (sel, overlay, snap_status, is_floating)
     };
 
     if selected_window.is_none() {
         return;
     }
 
-    if snapstatus != SnapPosition::None {
+    if snap_status != SnapPosition::None {
         if let Some(win) = selected_window {
             reset_snap(ctx, win);
         }
@@ -332,15 +332,15 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             return;
         };
 
-        let snapstatus = {
+        let snap_status = {
             ctx.g
                 .clients
                 .get(&win)
-                .map(|c| c.snapstatus)
+                .map(|c| c.snap_status)
                 .unwrap_or(SnapPosition::None)
         };
 
-        if snapstatus != SnapPosition::None {
+        if snap_status != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
             let border_pixel = ctx.g.cfg.borderscheme.as_ref().map(|s| s.normal.bg.pixel());
@@ -357,7 +357,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             save_floating_win(ctx, win);
 
             if let Some(client) = ctx.g.clients.get_mut(&win) {
-                client.snapstatus = SnapPosition::Maximized;
+                client.snap_status = SnapPosition::Maximized;
             }
 
             arrange(ctx, Some(ctx.g.selected_monitor_id()));

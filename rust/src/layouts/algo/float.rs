@@ -12,7 +12,7 @@
 //!
 //! A snap position is stored on each client as a [`SnapPosition`] enum
 //! variant.  When a floating client is dragged to a screen edge the WM sets
-//! `client.snapstatus`; [`float_left`] then calls [`apply_snap_for_window`] to
+//! `client.snap_status`; [`float_left`] then calls [`apply_snap_for_window`] to
 //! compute and apply the corresponding geometry.
 //!
 //! ```text
@@ -61,7 +61,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let snap_targets: Vec<WindowId> = m
         .iter_clients(&*ctx.g.clients)
         .filter_map(|(win, c)| {
-            (c.is_visible_on_tags(selected) && c.snapstatus != SnapPosition::None).then_some(win)
+            (c.is_visible_on_tags(selected) && c.snap_status != SnapPosition::None).then_some(win)
         })
         .collect();
 
@@ -86,11 +86,11 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 /// Compute and apply the geometry dictated by a client's [`SnapPosition`].
 ///
-/// This is a pure geometry function: it reads `client.snapstatus` and
+/// This is a pure geometry function: it reads `client.snap_status` and
 /// `client.border_width`, derives the target `Rect` from the monitor's
-/// `work_rect`, and calls [`resize`].  It does *not* modify `snapstatus`.
+/// `work_rect`, and calls [`resize`].  It does *not* modify `snap_status`.
 ///
-/// Returns immediately if `snapstatus` is [`SnapPosition::None`] or the
+/// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
 /// client window is not found.
 pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
     let c = match ctx.g.clients.get(&win) {
@@ -98,7 +98,7 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
         None => return,
     };
 
-    let snapstatus = c.snapstatus;
+    let snap_status = c.snap_status;
     let bw = c.border_width; // border width in pixels
     let wr = &m.work_rect; // shorthand
 
@@ -106,7 +106,7 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
     let half_w = wr.w / 2;
     let half_h = wr.h / 2;
 
-    let (x, y, w, h) = match snapstatus {
+    let (x, y, w, h) = match snap_status {
         // ── half-screen positions ─────────────────────────────────────────
         SnapPosition::Top => (wr.x, wr.y, wr.w - 2 * bw, half_h - 2 * bw),
         SnapPosition::Bottom => (wr.x, wr.y + half_h, wr.w - 2 * bw, half_h - 2 * bw),

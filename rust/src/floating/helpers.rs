@@ -39,7 +39,7 @@ pub fn check_floating(ctx: &WmCtx, win: WindowId) -> bool {
 
 /// Returns `true` if the client is visible on any monitor.
 ///
-/// A client is visible when it belongs to the currently selected tagset of
+/// A client is visible when it belongs to the currently selected tag_set of
 /// the monitor it is assigned to.
 ///
 /// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for

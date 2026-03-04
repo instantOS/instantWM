@@ -89,7 +89,7 @@ pub struct Client {
     /// Whether the window is minimized/hidden.
     pub is_hidden: bool,
     /// Current snap position.
-    pub snapstatus: SnapPosition,
+    pub snap_status: SnapPosition,
     /// Scratchpad name (empty if not a scratchpad).
     pub scratchpad_name: String,
     /// Tags to restore when unhiding from scratchpad.
@@ -140,8 +140,8 @@ impl Client {
     pub fn set_tags(&mut self, mask: crate::types::TagMask, ctx: &mut crate::contexts::WmCtx) {
         use crate::types::TagMask;
 
-        let tagmask = TagMask::from_bits(ctx.g.tags.mask());
-        let effective_mask = mask & tagmask;
+        let tag_mask = TagMask::from_bits(ctx.g.tags.mask());
+        let effective_mask = mask & tag_mask;
 
         if effective_mask.is_empty() {
             return;

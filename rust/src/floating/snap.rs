@@ -149,24 +149,24 @@ fn snap_pos_to_index(s: SnapPosition) -> usize {
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     require_x11!(ctx);
-    let snapstatus = match ctx.g.clients.get(&win) {
-        Some(c) => c.snapstatus,
+    let snap_status = match ctx.g.clients.get(&win) {
+        Some(c) => c.snap_status,
         None => return,
     };
 
     // Save geometry before entering snap for the first time.
-    if snapstatus == SnapPosition::None && super::helpers::check_floating(ctx, win) {
+    if snap_status == SnapPosition::None && super::helpers::check_floating(ctx, win) {
         super::state::save_floating_win(ctx, win);
     }
 
     let new_snap = {
-        let row = snap_pos_to_index(snapstatus);
+        let row = snap_pos_to_index(snap_status);
         let col = direction as usize;
         SNAP_MATRIX[row][col]
     };
 
     let monitor_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
-        client.snapstatus = new_snap;
+        client.snap_status = new_snap;
         client.monitor_id
     } else {
         return;
@@ -185,8 +185,8 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 /// - All other positions split the monitor into halves or quarters.
 pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, monitor_id: Option<usize>) {
     require_x11!(ctx);
-    let (snapstatus, saved_geo, border_width) = match ctx.g.clients.get(&win) {
-        Some(c) => (c.snapstatus, c.float_geo, c.border_width),
+    let (snap_status, saved_geo, border_width) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.snap_status, c.float_geo, c.border_width),
         None => return,
     };
 
@@ -208,11 +208,11 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, monitor_id: Option<usize>) {
     };
 
     // Restore border width for all positions except Maximized (which needs bw=0).
-    if snapstatus != SnapPosition::Maximized {
+    if snap_status != SnapPosition::Maximized {
         restore_border_width(ctx, win);
     }
 
-    match snapstatus {
+    match snap_status {
         SnapPosition::None => {
             check_animate(
                 ctx,
@@ -381,12 +381,12 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, monitor_id: Option<usize>) {
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     require_x11!(ctx);
-    let (is_floating, snapstatus) = match ctx.g.clients.get(&win) {
-        Some(c) => (c.isfloating, c.snapstatus),
+    let (is_floating, snap_status) = match ctx.g.clients.get(&win) {
+        Some(c) => (c.isfloating, c.snap_status),
         None => return,
     };
 
-    if snapstatus == SnapPosition::None {
+    if snap_status == SnapPosition::None {
         return;
     }
 
@@ -394,7 +394,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
 
     if is_floating || !tiling {
         if let Some(client) = ctx.g.clients.get_mut(&win) {
-            client.snapstatus = SnapPosition::None;
+            client.snap_status = SnapPosition::None;
         }
         restore_border_width(ctx, win);
         super::state::restore_floating_win(ctx, win);
@@ -408,7 +408,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
 /// fields on the [`Client`] struct (e.g. zeroing `border_width` for maximized
 /// windows) so the layout engine sees consistent state during arrange.
 pub fn apply_snap_mut(c: &mut Client, _m: &Monitor) {
-    if c.snapstatus == SnapPosition::Maximized {
+    if c.snap_status == SnapPosition::Maximized {
         c.border_width = 0;
     }
 }

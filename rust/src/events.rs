@@ -88,7 +88,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
             }
         }
     } else if let Some(mon) = ctx.g.monitor(selmon_id) {
-        if event_win == mon.barwin {
+        if event_win == mon.bar_win {
             let position = bar_position_at_x(mon, ctx, e.event_x as i32);
             if position == BarPosition::StartMenu {
                 reset_bar(ctx);
@@ -223,7 +223,7 @@ pub fn destroy_notify(ctx: &mut WmCtx, e: &DestroyNotifyEvent) {
     } else if let Some(icon) = systray::win_to_systray_icon(ctx, event_win) {
         // Remove the icon from the systray list and client map, then resize
         // the bar and redraw the systray — matching the C code's sequence of
-        // removesystrayicon(c) → resizebarwin(selmon) → updatesystray().
+        // removesystrayicon(c) → resizebar_win(selmon) → updatesystray().
         systray::remove_systray_icon(ctx, icon);
         // Get monitor reference for resize_bar_win
         let selmon_idx = ctx.g.selected_monitor_id();
@@ -338,12 +338,12 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
             .monitors
             .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
     {
-        let is_barwin = ctx
+        let is_bar_win = ctx
             .g
             .monitors
             .get(monitor_id)
-            .is_some_and(|m| event_win == m.barwin);
-        if is_barwin {
+            .is_some_and(|m| event_win == m.bar_win);
+        if is_bar_win {
             draw_bar(ctx, monitor_id);
         }
     };

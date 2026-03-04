@@ -157,7 +157,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         .g
         .clients
         .get(&selected_window)
-        .map(|c| c.snapstatus != SnapPosition::None)
+        .map(|c| c.snap_status != SnapPosition::None)
         .unwrap_or(false);
     if is_snapped {
         reset_snap(ctx, selected_window);

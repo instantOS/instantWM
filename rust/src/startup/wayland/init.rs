@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use crate::config::init_config;
 use crate::monitor::update_geom;
-use crate::startup::common_wayland::{wayland_font_height_from_size, wayland_font_size_from_config};
+use crate::startup::common_wayland::{
+    wayland_font_height_from_size, wayland_font_size_from_config,
+};
 use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
 use crate::wm::Wm;
 
@@ -18,8 +20,8 @@ pub(super) fn init_wayland_globals(wm: &mut Wm) {
     let font_height = wayland_font_height_from_size(font_size);
     wm.bar_painter.set_font_size(font_size);
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
-    wm.g.cfg.bar_height = (if cfg.barheight > 0 {
-        font_height + cfg.barheight
+    wm.g.cfg.bar_height = (if cfg.bar_height > 0 {
+        font_height + cfg.bar_height
     } else {
         font_height + 12
     })

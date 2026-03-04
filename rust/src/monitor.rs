@@ -132,7 +132,7 @@ impl MonitorManager {
         }
 
         for (i, m) in self.iter() {
-            if w == m.barwin {
+            if w == m.bar_win {
                 return Some(i);
             }
         }
@@ -158,11 +158,11 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         return;
     }
 
-    let barwin = ctx
+    let bar_win = ctx
         .g
         .monitors
         .get(monitor_id)
-        .map(|m| m.barwin)
+        .map(|m| m.bar_win)
         .unwrap_or_default();
 
     // Remove and fix up IDs
@@ -178,11 +178,11 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         ctx.g.monitors.selected_monitor_idx -= 1;
     }
 
-    if barwin != WindowId::default() {
+    if bar_win != WindowId::default() {
         if let Some(x11) = ctx.x11_conn() {
-            let x11_barwin: Window = barwin.into();
-            let _ = x11rb::protocol::xproto::unmap_window(x11.conn, x11_barwin);
-            let _ = x11rb::protocol::xproto::destroy_window(x11.conn, x11_barwin);
+            let x11_bar_win: Window = bar_win.into();
+            let _ = x11rb::protocol::xproto::unmap_window(x11.conn, x11_bar_win);
+            let _ = x11rb::protocol::xproto::destroy_window(x11.conn, x11_bar_win);
         }
     }
 }

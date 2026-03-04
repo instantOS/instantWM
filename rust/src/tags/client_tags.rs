@@ -41,6 +41,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
     let current_tag = ctx.g.selected_monitor().current_tag;
 
+    //TODO: what does 0 mean here? Magic number?
     if current_tag == 0 {
         return;
     }

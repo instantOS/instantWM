@@ -145,7 +145,7 @@ pub struct Config {
     /// `true` = bar at top, `false` = bar at bottom.
     pub topbar: bool,
     /// Override bar height (0 = derive from font metrics).
-    pub barheight: i32,
+    pub bar_height: i32,
 
     // --- Tiling ---
     /// Respect size hints for tiled clients (`1` = yes).
@@ -209,7 +209,7 @@ pub fn init_config() -> Config {
         showsystray: true,
         showbar: true,
         topbar: true,
-        barheight: 0,
+        bar_height: 0,
 
         // --- Tiling ---
         resizehints: 1,

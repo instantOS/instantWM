@@ -46,9 +46,9 @@ pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
-    let x11_barwin: Window = m.barwin.into();
+    let x11_bar_win: Window = m.bar_win.into();
     let _ = conn.configure_window(
-        x11_barwin,
+        x11_bar_win,
         &x11rb::protocol::xproto::ConfigureWindowAux::new()
             .x(m.work_rect.x)
             .y(m.by)
@@ -78,7 +78,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
         let mut bar_configs = Vec::new();
         for (i, m) in ctx.g.monitors_iter() {
-            if m.barwin != WindowId::default() {
+            if m.bar_win != WindowId::default() {
                 continue;
             }
 
@@ -136,7 +136,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
     for (i, win_id) in created {
         if let Some(mon) = ctx.g.monitor_mut(i) {
-            mon.barwin = WindowId::from(win_id);
+            mon.bar_win = WindowId::from(win_id);
         }
     }
 }

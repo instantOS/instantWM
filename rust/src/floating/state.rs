@@ -104,7 +104,7 @@ pub fn apply_float_change(
             client.isfloating = false;
             client.float_geo = client.geo;
 
-            if update_borders && client_count <= 1 && client.snapstatus == SnapPosition::None {
+            if update_borders && client_count <= 1 && client.snap_status == SnapPosition::None {
                 if client.border_width != 0 {
                     client.old_border_width = client.border_width;
                 }

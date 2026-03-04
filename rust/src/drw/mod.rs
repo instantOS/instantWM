@@ -28,7 +28,7 @@
 //! drw.text(0, 0, 200, bar_height, horizontal_padding as u32 / 2, "Hello, world!", false, 0);
 //!
 //! // …then blit it to the bar window.
-//! drw.map(barwin, 0, 0, 200, bar_height as u16);
+//! drw.map(bar_win, 0, 0, 200, bar_height as u16);
 //! ```
 
 // Sub-modules — ffi is pub(crate) so other modules can reach raw bindings if

@@ -513,8 +513,8 @@ fn init_drm_globals(wm: &mut Wm) {
     let font_height = wayland_font_height_from_size(font_size);
     wm.bar_painter.set_font_size(font_size);
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
-    wm.g.cfg.bar_height = (if cfg.barheight > 0 {
-        font_height + cfg.barheight
+    wm.g.cfg.bar_height = (if cfg.bar_height > 0 {
+        font_height + cfg.bar_height
     } else {
         font_height + 12
     })
@@ -546,7 +546,7 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
         mon.work_rect = Rect { x, y, w, h };
         mon.current_tag = 1;
         mon.prev_tag = 1;
-        mon.tagset = [1, 1];
+        mon.tag_set = [1, 1];
         mon.init_tags(&tag_template);
         mon.update_bar_position(wm.g.cfg.bar_height);
         wm.g.monitors.push(mon);

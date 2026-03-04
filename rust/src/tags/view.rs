@@ -22,7 +22,7 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
     let (_prev_tag, _current_tag) = {
         let mon = ctx.g.selected_monitor_mut();
 
-        mon.seltags ^= 1;
+        mon.sel_tags ^= 1;
         mon.set_selected_tags(effective_mask.bits());
 
         let prev = mon.current_tag;
@@ -33,7 +33,7 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
         } else {
             let new_tag = effective_mask.first_tag().unwrap_or(0);
             if new_tag == mon.current_tag {
-                mon.seltags ^= 1;
+                mon.sel_tags ^= 1;
                 return;
             }
             mon.prev_tag = prev;
@@ -391,7 +391,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     }
 
     let mon = ctx.g.selected_monitor_mut();
-    mon.seltags ^= 1;
+    mon.sel_tags ^= 1;
     mon.set_selected_tags(new_mask.bits());
     mon.prev_tag = mon.current_tag;
     mon.current_tag = new_mask.first_tag().unwrap_or(0);
