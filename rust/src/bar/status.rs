@@ -25,7 +25,7 @@ struct StatusLayout {
 pub(crate) fn draw_status_bar(
     ctx: &mut WmCtx,
     m: &Monitor,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> (i32, i32) {
     let stext = ctx.g.status_text.clone();
@@ -36,7 +36,7 @@ pub(crate) fn draw_status_bar(
     let items = parse_status_items(stext.as_bytes());
     let layout = measure_layout(ctx, m, &items, painter);
 
-    draw_items(painter, m, bh, &items, layout, ctx.g, ctx.bar);
+    draw_items(painter, m, bar_height, &items, layout, ctx.g, ctx.bar);
 
     (layout.draw_start_x, layout.total_width)
 }
@@ -177,7 +177,7 @@ fn measure_layout(
 fn draw_items(
     painter: &mut dyn crate::bar::paint::BarPainter,
     m: &Monitor,
-    bh: i32,
+    bar_height: i32,
     items: &[StatusItem],
     layout: StatusLayout,
     g: &crate::globals::Globals,
@@ -192,7 +192,7 @@ fn draw_items(
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
-        painter.rect(layout.draw_start_x, 0, draw_width, bh, true, true);
+        painter.rect(layout.draw_start_x, 0, draw_width, bar_height, true, true);
     }
 
     let _ = MAX_COMMAND_OFFSETS;
@@ -206,7 +206,7 @@ fn draw_items(
             StatusItem::Text(text) => {
                 let seg_w = painter.text_width(text);
                 if seg_w > 0 {
-                    painter.text(x, 0, seg_w, bh, 0, text, false, 0);
+                    painter.text(x, 0, seg_w, bar_height, 0, text, false, 0);
                 }
                 x += seg_w;
             }

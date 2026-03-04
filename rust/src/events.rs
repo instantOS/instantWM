@@ -84,8 +84,8 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft(ctx, Some(win));
-            if let Some(mon_id) = ctx.g.clients.get(&win).and_then(|c| c.mon_id) {
-                restack(ctx, mon_id);
+            if let Some(monitor_id) = ctx.g.clients.get(&win).and_then(|c| c.monitor_id) {
+                restack(ctx, monitor_id);
             }
         }
     } else if let Some(mon) = ctx.g.monitor(selmon_id) {
@@ -106,11 +106,11 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
 
     if bar_pos == BarPosition::Root {
         if let Some(mon) = ctx.g.monitor(selmon_id) {
-            if let Some(sel_win) = mon.sel {
+            if let Some(selected_window) = mon.sel {
                 let is_floating = ctx
                     .g
                     .clients
-                    .get(&sel_win)
+                    .get(&selected_window)
                     .map(|c| c.isfloating)
                     .unwrap_or(false);
                 let has_tiling = mon.is_tiling_layout();
@@ -254,9 +254,9 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 2. Snapshot selection state before any changes
     let selmon_id = ctx.g.selected_monitor_id();
-    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
+    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
     let is_floating_sel = {
-        let is_floating = sel_win
+        let is_floating = selected_window
             .and_then(|w| ctx.g.clients.get(&w))
             .map(|c| c.isfloating)
             .unwrap_or(false);
@@ -291,7 +291,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         }
         // Case 2: Entering a different client while sel is floating
         else if let Some(ew) = entering_client {
-            if Some(ew) != sel_win {
+            if Some(ew) != selected_window {
                 let resized = hover_resize_mouse(ctx);
                 if focusfollowsfloatmouse {
                     if resized {
@@ -299,7 +299,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
                     }
                     // Use the actual topmost window under cursor for focus
                     if let Some(newc) = get_cursor_client_win(ctx) {
-                        if Some(newc) != sel_win {
+                        if Some(newc) != selected_window {
                             crate::focus::focus_soft(ctx, Some(newc));
                         }
                     }
@@ -338,7 +338,7 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(mon_id) = ctx.g.monitors.win_to_mon(
+    if let Some(monitor_id) = ctx.g.monitors.win_to_mon(
         event_win,
         ctx.g.cfg.root,
         ctx.g.clients.map(),
@@ -347,17 +347,17 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
         let is_barwin = ctx
             .g
             .monitors
-            .get(mon_id)
+            .get(monitor_id)
             .is_some_and(|m| event_win == m.barwin);
         if is_barwin {
-            draw_bar(ctx, mon_id);
+            draw_bar(ctx, monitor_id);
         }
     };
 }
 
 pub fn focus_in(ctx: &mut WmCtx, _e: &FocusInEvent) {
-    if let Some(sel_win) = ctx.g.selected_win() {
-        crate::client::set_focus(ctx, sel_win);
+    if let Some(selected_window) = ctx.g.selected_win() {
+        crate::client::set_focus(ctx, selected_window);
     };
 }
 
@@ -603,7 +603,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         border_width: 0,
         isfloating: true,
         tags: 1,
-        mon_id: Some(selmon_id),
+        monitor_id: Some(selmon_id),
         ..Default::default()
     };
 
@@ -714,9 +714,9 @@ fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
     };
 
     if let Some(c) = ctx.g.clients.get(&win) {
-        if let Some(mon_id) = c.mon_id {
+        if let Some(monitor_id) = c.monitor_id {
             crate::focus::focus_soft(ctx, Some(win));
-            restack(ctx, mon_id);
+            restack(ctx, monitor_id);
         }
     };
 }
@@ -1008,18 +1008,14 @@ pub fn cleanup(wm: &mut Wm) {
     let _ = conn.grab_server();
 
     for (_id, mon) in wm.g.monitors_iter() {
-        let mut current = mon.clients;
-        while let Some(win) = current {
+        for &win in &mon.clients {
             if let Some(c) = wm.g.clients.get(&win) {
                 let old_bw = c.old_border_width;
-                current = c.next;
                 let x11_win: Window = win.into();
                 let _ = conn.configure_window(
                     x11_win,
                     &ConfigureWindowAux::new().border_width(old_bw as u32),
                 );
-            } else {
-                break;
             }
         }
     }

@@ -100,15 +100,19 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     let mut h = m.work_rect.h;
 
     let mut i: u32 = 0;
-    let mut c_win = next_tiled(ctx, m.clients);
+    let mut c_win = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
 
     while let Some(win) = c_win {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         // Split the remaining rect starting from the second client.
         if i > 0 {
@@ -153,6 +157,6 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         }
 
         i += 1;
-        c_win = next_tiled(ctx, next_client);
+        c_win = next_tiled(ctx, c_win);
     }
 }

@@ -25,8 +25,8 @@ fn get_monitor_size(ctx: &WmCtx, win: WindowId) -> (i32, i32) {
     ctx.g
         .clients
         .get(&win)
-        .and_then(|c| c.mon_id)
-        .and_then(|mon_id| ctx.g.monitor(mon_id))
+        .and_then(|c| c.monitor_id)
+        .and_then(|monitor_id| ctx.g.monitor(monitor_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
         .unwrap_or((0, 0))
 }
@@ -231,14 +231,14 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 
     if !has_tiling {
-        if let Some(sel_win) = ctx.g.selected_win() {
+        if let Some(selected_window) = ctx.g.selected_win() {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,
                 Direction::Up => SnapDir::Up,
                 Direction::Down => SnapDir::Down,
             };
-            change_snap(ctx, sel_win, snap_dir);
+            change_snap(ctx, selected_window, snap_dir);
         }
         return;
     }

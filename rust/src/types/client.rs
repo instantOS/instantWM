@@ -95,13 +95,9 @@ pub struct Client {
     /// Tags to restore when unhiding from scratchpad.
     pub scratchpad_restore_tags: u32,
     /// Monitor this client is on.
-    pub mon_id: Option<MonitorId>,
+    pub monitor_id: Option<MonitorId>,
     /// Window ID.
     pub win: WindowId,
-    /// Next client in the client list (focus order).
-    pub next: Option<WindowId>,
-    /// Next client in the stack list (stacking order).
-    pub snext: Option<WindowId>,
 }
 
 impl Client {
@@ -135,10 +131,10 @@ impl Client {
         self.is_fullscreen && !self.isfakefullscreen
     }
 
-    /// Get the border width and next client in focus order.
+    /// Get the border width.
     #[inline]
-    pub fn border_and_next(&self) -> (i32, Option<WindowId>) {
-        (self.border_width, self.next)
+    pub fn border_width(&self) -> i32 {
+        self.border_width
     }
 }
 
@@ -147,17 +143,16 @@ impl Client {
 /// Yields `(Window, &Client)` pairs so call-sites keep the window id and the
 /// corresponding client tightly coupled.
 pub struct ClientListIter<'a> {
-    next: Option<WindowId>,
+    iter: std::slice::Iter<'a, WindowId>,
     clients: &'a HashMap<WindowId, Client>,
 }
 
 impl<'a> ClientListIter<'a> {
-    /// Create a new client list iterator.
     #[inline]
-    pub fn new(head: Option<WindowId>, clients: &'a HashMap<WindowId, Client>) -> Self {
+    pub fn new(clients: &'a Vec<WindowId>, map: &'a HashMap<WindowId, Client>) -> Self {
         Self {
-            next: head,
-            clients,
+            iter: clients.iter(),
+            clients: map,
         }
     }
 }
@@ -166,10 +161,8 @@ impl<'a> Iterator for ClientListIter<'a> {
     type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let win = self.next?;
-        let clients = self.clients;
-        let c = clients.get(&win)?;
-        self.next = c.next;
+        let win = *self.iter.next()?;
+        let c = self.clients.get(&win)?;
         Some((win, c))
     }
 }
@@ -179,17 +172,16 @@ impl<'a> Iterator for ClientListIter<'a> {
 /// Yields `(Window, &Client)` pairs so restack/showhide style logic can use the
 /// correct ordering while keeping the window id available.
 pub struct ClientStackIter<'a> {
-    next: Option<WindowId>,
+    iter: std::slice::Iter<'a, WindowId>,
     clients: &'a HashMap<WindowId, Client>,
 }
 
 impl<'a> ClientStackIter<'a> {
-    /// Create a new stack list iterator.
     #[inline]
-    pub fn new(head: Option<WindowId>, clients: &'a HashMap<WindowId, Client>) -> Self {
+    pub fn new(stack: &'a Vec<WindowId>, map: &'a HashMap<WindowId, Client>) -> Self {
         Self {
-            next: head,
-            clients,
+            iter: stack.iter(),
+            clients: map,
         }
     }
 }
@@ -198,10 +190,8 @@ impl<'a> Iterator for ClientStackIter<'a> {
     type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let win = self.next?;
-        let clients = self.clients;
-        let c = clients.get(&win)?;
-        self.next = c.snext;
+        let win = *self.iter.next()?;
+        let c = self.clients.get(&win)?;
         Some((win, c))
     }
 }

@@ -22,7 +22,7 @@ use crate::types::*;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
 
-/// Snapshot the geometry of every non-snapped floating client on `mon_id`.
+/// Snapshot the geometry of every non-snapped floating client on `monitor_id`.
 ///
 /// Only clients whose tag belongs to a tag that currently has **no** tiling
 /// layout (i.e. a pure floating tag) are included.  Snapped windows are
@@ -31,9 +31,9 @@ use crate::types::*;
 ///
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
-pub fn save_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
+pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
     require_x11!(ctx);
-    let Some(mid) = mon_id else { return };
+    let Some(mid) = monitor_id else { return };
 
     let wins_to_save = collect_floating_wins(ctx.g, mid);
     for win in wins_to_save {
@@ -41,13 +41,13 @@ pub fn save_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
     }
 }
 
-/// Restore the geometry of every non-snapped floating client on `mon_id`.
+/// Restore the geometry of every non-snapped floating client on `monitor_id`.
 ///
 /// Counterpart to [`save_all_floating`]: resizes each window back to the rect
 /// that was captured by the most recent `save_all_floating` call.
-pub fn restore_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
+pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
     require_x11!(ctx);
-    let Some(mid) = mon_id else { return };
+    let Some(mid) = monitor_id else { return };
 
     let wins_to_restore = collect_floating_wins(ctx.g, mid);
     for win in wins_to_restore {
@@ -55,7 +55,7 @@ pub fn restore_all_floating(ctx: &mut WmCtx, mon_id: Option<usize>) {
     }
 }
 
-/// Walk `mon_id`'s client list and return all windows that are:
+/// Walk `monitor_id`'s client list and return all windows that are:
 /// - on a tag that has no tiling layout active, and
 /// - not currently snapped.
 ///

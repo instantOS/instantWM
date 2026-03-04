@@ -84,7 +84,7 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
     };
 
     let mon_num = c
-        .mon_id
+        .monitor_id
         .and_then(|mid| ctx.g.monitor(mid))
         .map(|m| m.num as u32)
         .unwrap_or(0);
@@ -123,8 +123,7 @@ pub fn update_client_list(ctx: &WmCtx) {
     let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.client_list);
 
     for (_id, mon) in ctx.g.monitors_iter() {
-        let mut current = mon.clients;
-        while let Some(cur_win) = current {
+        for &cur_win in &mon.clients {
             let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(
                 PropMode::APPEND,
@@ -133,7 +132,6 @@ pub fn update_client_list(ctx: &WmCtx) {
                 AtomEnum::WINDOW,
                 &[x11_win],
             );
-            current = ctx.g.clients.get(&cur_win).and_then(|c| c.next);
         }
     }
 
@@ -243,7 +241,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
     let special_next = ctx.g.specialnext;
     let rules = ctx.g.cfg.rules.clone();
     let tagmask = ctx.g.tags.mask();
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
 
     // --- Handle SpecialNext shortcut ------------------------------------------
     if special_next != SpecialNext::None {
@@ -300,7 +298,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
-            let cur_mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
+            let cur_mon_id = ctx.g.clients.get(&win).and_then(|c| c.monitor_id);
             let (monitor_width, monitor_work_height, monitor_shows_bar, monitor_y, monitor_x) =
                 cur_mon_id
                     .and_then(|mid| ctx.g.monitor(mid))
@@ -325,7 +323,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
                         c.geo.w = monitor_width;
                         c.geo.h = monitor_work_height;
                         if monitor_shows_bar {
-                            c.geo.y = monitor_y + bh;
+                            c.geo.y = monitor_y + bar_height;
                         }
                         c.geo.x = monitor_x;
                     }
@@ -335,7 +333,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
                     RuleFloat::Float => {
                         c.isfloating = true;
                         if monitor_shows_bar {
-                            c.geo.y = monitor_y + bh;
+                            c.geo.y = monitor_y + bar_height;
                         }
                     }
                     RuleFloat::Tiled => {
@@ -358,7 +356,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
                     .map(|(i, _)| i);
                 if let Some(target_mid) = target_mid {
                     if let Some(c) = ctx.g.clients.get_mut(&win) {
-                        c.mon_id = Some(target_mid);
+                        c.monitor_id = Some(target_mid);
                     }
                 }
             }
@@ -370,7 +368,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
         .g
         .clients
         .get(&win)
-        .map(|c| (c.mon_id, c.tags))
+        .map(|c| (c.monitor_id, c.tags))
         .unwrap_or((None, 0));
 
     if let Some(mid) = client_mon_id {

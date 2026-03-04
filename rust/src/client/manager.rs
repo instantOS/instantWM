@@ -20,55 +20,32 @@ impl ClientManager {
     // -------------------------------------------------------------------------
 
     pub fn attach(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let mon_id = match self.clients.get(&win).and_then(|c| c.mon_id) {
+        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
             Some(id) => id,
             None => return,
         };
-        let old_head = monitors.get(mon_id).and_then(|m| m.clients);
-        if let Some(c) = self.clients.get_mut(&win) {
-            c.next = old_head;
-        }
-        if let Some(mon) = monitors.get_mut(mon_id) {
-            mon.clients = Some(win);
+        if let Some(mon) = monitors.get_mut(monitor_id) {
+            mon.clients.insert(0, win);
         }
     }
 
     pub fn detach(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let mon_id = match self.clients.get(&win).and_then(|c| c.mon_id) {
+        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
             Some(id) => id,
             None => return,
         };
-        let client_next = self.clients.get(&win).and_then(|c| c.next);
-        let mut current = monitors.get(mon_id).and_then(|m| m.clients);
-        let mut prev: Option<WindowId> = None;
-
-        while let Some(cur_win) = current {
-            if cur_win == win {
-                if let Some(p) = prev {
-                    if let Some(pc) = self.clients.get_mut(&p) {
-                        pc.next = client_next;
-                    }
-                } else if let Some(mon) = monitors.get_mut(mon_id) {
-                    mon.clients = client_next;
-                }
-                return;
-            }
-            prev = Some(cur_win);
-            current = self.clients.get(&cur_win).and_then(|c| c.next);
+        if let Some(mon) = monitors.get_mut(monitor_id) {
+            mon.clients.retain(|&w| w != win);
         }
     }
 
     pub fn attach_stack(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let mon_id = match self.clients.get(&win).and_then(|c| c.mon_id) {
+        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
             Some(id) => id,
             None => return,
         };
-        let old_stack = monitors.get(mon_id).and_then(|m| m.stack);
-        if let Some(c) = self.clients.get_mut(&win) {
-            c.snext = old_stack;
-        }
-        if let Some(mon) = monitors.get_mut(mon_id) {
-            mon.stack = Some(win);
+        if let Some(mon) = monitors.get_mut(monitor_id) {
+            mon.stack.insert(0, win);
             if mon.sel.is_none() {
                 mon.sel = Some(win);
             }
@@ -76,32 +53,15 @@ impl ClientManager {
     }
 
     pub fn detach_stack(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let mon_id = match self.clients.get(&win).and_then(|c| c.mon_id) {
+        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
             Some(id) => id,
             None => return,
         };
-        let client_snext = self.clients.get(&win).and_then(|c| c.snext);
-        let mut current = monitors.get(mon_id).and_then(|m| m.stack);
-        let mut prev: Option<WindowId> = None;
-
-        while let Some(cur_win) = current {
-            if cur_win == win {
-                if let Some(p) = prev {
-                    if let Some(pc) = self.clients.get_mut(&p) {
-                        pc.snext = client_snext;
-                    }
-                } else if let Some(mon) = monitors.get_mut(mon_id) {
-                    mon.stack = client_snext;
-                }
-                if let Some(mon) = monitors.get_mut(mon_id) {
-                    if mon.sel == Some(win) {
-                        mon.sel = mon.stack;
-                    }
-                }
-                return;
+        if let Some(mon) = monitors.get_mut(monitor_id) {
+            mon.stack.retain(|&w| w != win);
+            if mon.sel == Some(win) {
+                mon.sel = mon.stack.first().copied();
             }
-            prev = Some(cur_win);
-            current = self.clients.get(&cur_win).and_then(|c| c.snext);
         }
     }
 

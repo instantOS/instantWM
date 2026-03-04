@@ -29,8 +29,8 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         }
     };
 
-    let bh = ctx.g.cfg.bar_height;
-    if work_rect_w <= 0 || bh <= 0 {
+    let bar_height = ctx.g.cfg.bar_height;
+    if work_rect_w <= 0 || bar_height <= 0 {
         unsafe { (*bar).recursion_exit() };
         return;
     }
@@ -50,7 +50,7 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
 
     let (status_start_x, status_width) = if is_selmon {
         let m = ctx.g.monitor(mon_idx).cloned().unwrap();
-        status::draw_status_bar(ctx, &m, bh, painter)
+        status::draw_status_bar(ctx, &m, bar_height, painter)
     } else {
         (0, 0)
     };
@@ -59,7 +59,7 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         ctx.g.status_text_width = status_width;
     }
 
-    widgets::draw_startmenu_icon(ctx, bh, painter);
+    widgets::draw_startmenu_icon(ctx, bar_height, painter);
 
     let (occupied_tags, urgent_tags, visible_clients) = {
         let m = ctx.g.monitor(mon_idx).unwrap();
@@ -78,12 +78,20 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
     {
         let ctx_imm = &*ctx;
         let m = ctx_imm.g.monitor(mon_idx).unwrap();
-        x = widgets::draw_tag_indicators(ctx_imm, m, x, occupied_tags, urgent_tags, bh, painter);
-        x = widgets::draw_layout_indicator(ctx_imm, m, x, bh, painter);
+        x = widgets::draw_tag_indicators(
+            ctx_imm,
+            m,
+            x,
+            occupied_tags,
+            urgent_tags,
+            bar_height,
+            painter,
+        );
+        x = widgets::draw_layout_indicator(ctx_imm, m, x, bar_height, painter);
     }
 
     if !mon_has_sel {
-        x = widgets::draw_shutdown_button(ctx, x, bh, painter);
+        x = widgets::draw_shutdown_button(ctx, x, bar_height, painter);
     }
 
     let title_end_x = if is_selmon && status_width > 0 {
@@ -97,8 +105,15 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
     if title_width > 0 {
         let m = ctx.g.monitor(mon_idx).unwrap();
         let ctx_imm = &*ctx;
-        new_activeoffset =
-            widgets::draw_window_titles(ctx_imm, m, x, title_width, visible_clients, bh, painter);
+        new_activeoffset = widgets::draw_window_titles(
+            ctx_imm,
+            m,
+            x,
+            title_width,
+            visible_clients,
+            bar_height,
+            painter,
+        );
     }
 
     if let Some(m) = ctx.g.monitor_mut(mon_idx) {

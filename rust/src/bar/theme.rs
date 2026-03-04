@@ -33,9 +33,9 @@ pub fn tag_scheme(
         let sel_has_tag = g
             .selected_monitor()
             .and_then(|selmon| {
-                selmon.sel.and_then(|sel_win| {
+                selmon.sel.and_then(|selected_window| {
                     g.clients
-                        .get(&sel_win)
+                        .get(&selected_window)
                         .map(|c| c.tags & (1 << tag_index) != 0)
                 })
             })

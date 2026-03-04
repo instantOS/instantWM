@@ -139,8 +139,8 @@ pub fn grab_keys(ctx: &WmCtx) {
             }
         }
 
-        let sel_win = ctx.g.selected_win();
-        if sel_win.is_none() {
+        let selected_window = ctx.g.selected_win();
+        if selected_window.is_none() {
             for key in desktop_keybinds {
                 let keysym = get_keysym(keycode);
                 if keysym == key.keysym {
@@ -209,7 +209,7 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
 }
 
 pub fn up_press(ctx: &mut WmCtx) {
-    let (sel_win, overlay_win, is_floating) = {
+    let (selected_window, overlay_win, is_floating) = {
         let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
@@ -221,11 +221,11 @@ pub fn up_press(ctx: &mut WmCtx) {
         (sel, overlay, is_floating)
     };
 
-    if sel_win.is_none() {
+    if selected_window.is_none() {
         return;
     }
 
-    if sel_win == overlay_win {
+    if selected_window == overlay_win {
         set_overlay_mode(ctx, OverlayMode::Top);
         return;
     }
@@ -235,7 +235,7 @@ pub fn up_press(ctx: &mut WmCtx) {
         return;
     }
 
-    if let Some(win) = sel_win {
+    if let Some(win) = selected_window {
         crate::client::hide(ctx, win);
     }
 }
@@ -245,7 +245,7 @@ pub fn down_press(ctx: &mut WmCtx) {
         return;
     }
 
-    let (sel_win, overlay_win, snapstatus, is_floating) = {
+    let (selected_window, overlay_win, snapstatus, is_floating) = {
         let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
@@ -257,18 +257,18 @@ pub fn down_press(ctx: &mut WmCtx) {
         (sel, overlay, snapstatus, is_floating)
     };
 
-    if sel_win.is_none() {
+    if selected_window.is_none() {
         return;
     }
 
     if snapstatus != SnapPosition::None {
-        if let Some(win) = sel_win {
+        if let Some(win) = selected_window {
             reset_snap(ctx, win);
         }
         return;
     }
 
-    if sel_win == overlay_win {
+    if selected_window == overlay_win {
         set_overlay_mode(ctx, OverlayMode::Bottom);
         return;
     }

@@ -48,7 +48,7 @@ pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: WindowId) {
 
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: WindowId, w: i32, h: i32) {
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
 
     let (geo_x, geo_y) = ctx
         .g
@@ -57,13 +57,13 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: WindowId, w: i32, h: 
         .map(|client| (client.geo.x, client.geo.y))
         .unwrap_or((0, 0));
 
-    let new_geo_h = bh;
+    let new_geo_h = bar_height;
     let new_geo_w = if w == h {
-        bh
-    } else if h == bh {
+        bar_height
+    } else if h == bar_height {
         w
     } else {
-        (bh as f32 * (w as f32 / h as f32)) as i32
+        (bar_height as f32 * (w as f32 / h as f32)) as i32
     };
 
     let mut x = geo_x;
@@ -88,13 +88,14 @@ pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: WindowId, w: i32, h: 
         client.geo.w = client_width;
         client.geo.h = client_height;
 
-        if client.geo.h > bh {
+        if client.geo.h > bar_height {
             if client.geo.w == client.geo.h {
-                client.geo.w = bh;
+                client.geo.w = bar_height;
             } else {
-                client.geo.w = (bh as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
+                client.geo.w =
+                    (bar_height as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
             }
-            client.geo.h = bh;
+            client.geo.h = bar_height;
         }
     }
 }
@@ -210,7 +211,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     if !systray_exists {
         let root = ctx.g.cfg.root;
-        let bh = ctx.g.cfg.bar_height;
+        let bar_height = ctx.g.cfg.bar_height;
         let net_system_tray = ctx.g.cfg.netatom.system_tray;
         let net_system_tray_horz = ctx.g.cfg.netatom.system_tray_orientation_horz;
         let manager_atom = ctx.g.cfg.xatom.manager;
@@ -232,7 +233,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
                 x as i16,
                 by as i16,
                 w as u16,
-                bh as u16,
+                bar_height as u16,
                 0,
                 WindowClass::INPUT_OUTPUT,
                 x11rb::COPY_FROM_PARENT,
@@ -304,7 +305,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
         None => return,
     };
 
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
     let systrayspacing = ctx.g.cfg.systrayspacing;
     let bg_pixel = ctx
         .g
@@ -382,7 +383,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
             .x(x)
             .y(by)
             .width(w)
-            .height(bh as u32),
+            .height(bar_height as u32),
     );
 
     let _ = conn.configure_window(

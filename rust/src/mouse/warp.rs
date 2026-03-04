@@ -49,7 +49,7 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
     };
 
     let root = ctx.g.cfg.root;
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
 
     // No target window – centre on the selected monitor's work area.
     if win == WindowId::default() {
@@ -86,9 +86,11 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
 
     // Skip if the pointer is on the bar belonging to this client's monitor.
     let on_bar = c
-        .mon_id
+        .monitor_id
         .and_then(|mid| ctx.g.monitor(mid))
-        .is_some_and(|mon| (ptr_y > mon.by && ptr_y < mon.by + bh) || (mon.topbar && ptr_y == 0));
+        .is_some_and(|mon| {
+            (ptr_y > mon.by && ptr_y < mon.by + bar_height) || (mon.topbar && ptr_y == 0)
+        });
 
     if in_window || on_bar {
         return;

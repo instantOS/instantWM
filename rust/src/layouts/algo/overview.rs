@@ -68,7 +68,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         None => return,
     };
 
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
 
     // ── cell dimensions ───────────────────────────────────────────────────
     let cell_w = work_w / gridwidth;
@@ -76,24 +76,22 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // Origin of the first cell — respect the bar if it is shown.
     let origin_x = mon_x;
-    let origin_y = mon_y + if showbar { bh } else { 0 };
+    let origin_y = mon_y + if showbar { bar_height } else { 0 };
 
     let mut cur_x = origin_x;
     let mut cur_y = origin_y;
 
     // ── place every client ────────────────────────────────────────────────
-    let mut c_win = m.clients;
-    while let Some(win) = c_win {
+    for &win in &m.clients {
         let c = match ctx.g.clients.get(&win) {
             Some(c) => c,
-            None => break,
+            None => continue,
         };
 
         let is_hidden = c.oldstate != 0;
         let is_overlay = m.overlay == Some(win);
 
         if is_hidden || is_overlay {
-            c_win = c.next;
             continue;
         }
 
@@ -101,7 +99,6 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         let client_w = c.geo.w;
         let client_h = c.geo.h;
         let is_floating = c.isfloating;
-        let next_client = c.next;
 
         // Persist float geometry so restore works after leaving overview.
         if is_floating {
@@ -130,8 +127,6 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             cur_x = origin_x;
             cur_y += cell_h;
         }
-
-        c_win = next_client;
     }
 
     ctx.backend.flush();

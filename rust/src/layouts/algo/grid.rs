@@ -83,14 +83,18 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place each client ─────────────────────────────────────────────────
     let mut i: i32 = 0;
-    let mut c_win = next_tiled(ctx, m.clients);
+    let mut c_win = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
     while let Some(win) = c_win {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         let cell_x = m.work_rect.x + (i / rows) * cell_width;
         let cell_y = m.work_rect.y + (i % rows) * cell_height;
@@ -122,7 +126,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         i += 1;
-        c_win = next_tiled(ctx, next_client);
+        c_win = next_tiled(ctx, c_win);
     }
 }
 
@@ -161,15 +165,15 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         let cell_width = m.work_rect.w / cols as i32;
 
         // Walk forward to the first client belonging to this column.
-        let mut c_win = next_tiled(ctx, m.clients);
+        let mut c_win = m
+            .clients
+            .first()
+            .copied()
+            .and_then(|w| next_tiled(ctx, Some(w)));
         let mut skip = col * (n / cols);
         while skip > 0 {
             if let Some(win) = c_win {
-                c_win = ctx
-                    .g
-                    .clients
-                    .get(&win)
-                    .and_then(|c| next_tiled(ctx, c.next));
+                c_win = next_tiled(ctx, Some(win));
             } else {
                 break;
             }
@@ -178,12 +182,12 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         for row in 0..cn {
             if let Some(win) = c_win {
-                let (border_width, next_client) = ctx
+                let border_width = ctx
                     .g
                     .clients
                     .get(&win)
-                    .map(|c| c.border_and_next())
-                    .unwrap_or((0, None));
+                    .map(|c| c.border_width())
+                    .unwrap_or(0);
 
                 let cell_height = m.work_rect.h / cn as i32;
                 let cell_x = m.work_rect.x + col as i32 * cell_width;
@@ -209,7 +213,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     0,
                 );
 
-                c_win = next_tiled(ctx, next_client);
+                c_win = next_tiled(ctx, Some(win));
             }
         }
     }

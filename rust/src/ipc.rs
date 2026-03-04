@@ -126,7 +126,7 @@ fn list_windows(wm: &Wm) -> String {
         out.push_str(&format!(
             "{}\t{}\t{}\t{}\t{}\n",
             c.win.0,
-            c.mon_id.unwrap_or(0),
+            c.monitor_id.unwrap_or(0),
             c.isfloating as u8,
             c.is_fullscreen as u8,
             name

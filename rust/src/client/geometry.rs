@@ -137,9 +137,9 @@ pub fn apply_size_hints(
     let old_geo = client.geo;
     let mut new_geo = Rect::new(*x, *y, *w, *h);
     let border_width = client.border_width;
-    let mon_id = client.mon_id;
+    let monitor_id = client.monitor_id;
     let should_apply_hints =
-        ctx.g.cfg.resizehints != 0 || client.isfloating || is_floating_layout(ctx, mon_id);
+        ctx.g.cfg.resizehints != 0 || client.isfloating || is_floating_layout(ctx, monitor_id);
 
     // Phase 1: Ensure positive dimensions.
     new_geo.w = new_geo.w.max(1);
@@ -149,7 +149,7 @@ pub fn apply_size_hints(
     clamp_position_to_bounds(
         ctx,
         &mut new_geo,
-        mon_id,
+        monitor_id,
         interact,
         old_geo.total_width(border_width),
         old_geo.total_height(border_width),
@@ -177,7 +177,7 @@ pub fn apply_size_hints(
 fn clamp_position_to_bounds(
     ctx: &WmCtx,
     geo: &mut Rect,
-    mon_id: Option<MonitorId>,
+    monitor_id: Option<MonitorId>,
     interact: bool,
     total_w: i32,
     total_h: i32,
@@ -185,7 +185,7 @@ fn clamp_position_to_bounds(
     if interact {
         let screen = Rect::new(0, 0, ctx.g.cfg.screen_width, ctx.g.cfg.screen_height);
         geo.clamp_position(&screen, total_w, total_h);
-    } else if let Some(wr) = mon_id
+    } else if let Some(wr) = monitor_id
         .and_then(|mid| ctx.g.monitors.get(mid))
         .map(|m| m.work_rect)
     {
@@ -194,8 +194,8 @@ fn clamp_position_to_bounds(
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(ctx: &WmCtx, mon_id: Option<MonitorId>) -> bool {
-    mon_id
+fn is_floating_layout(ctx: &WmCtx, monitor_id: Option<MonitorId>) -> bool {
+    monitor_id
         .and_then(|mid| ctx.g.monitors.get(mid))
         .map(|mon| !mon.is_tiling_layout())
         .unwrap_or(true)
@@ -335,17 +335,17 @@ pub fn update_size_hints_win(ctx: &mut WmCtx, win: WindowId) {
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
 pub fn scale_client(ctx: &mut WmCtx, win: WindowId, scale: i32) {
-    let (mon_id, old_geo, border_width) = {
+    let (monitor_id, old_geo, border_width) = {
         let c = match ctx.g.clients.get(&win) {
             Some(c) => c,
             None => return,
         };
-        (c.mon_id, c.geo, c.border_width)
+        (c.monitor_id, c.geo, c.border_width)
     };
 
     // Determine the reference rectangle (monitor bounds, or fall back to the
     // client's own geometry when no monitor is assigned).
-    let mon_rect = mon_id
+    let mon_rect = monitor_id
         .and_then(|mid| ctx.g.monitors.get(mid).map(|m| m.monitor_rect))
         .unwrap_or(old_geo);
 

@@ -8,10 +8,10 @@ const STARTMENU_ICON_INNER: i32 = 6;
 
 pub(crate) fn draw_startmenu_icon(
     ctx: &WmCtx,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
-    let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
+    let icon_offset = (bar_height - CLOSE_BUTTON_WIDTH) / 2;
     let startmenu_invert = ctx
         .g
         .selected_monitor()
@@ -24,7 +24,7 @@ pub(crate) fn draw_startmenu_icon(
 
     painter.set_scheme(scheme);
 
-    painter.rect(0, 0, startmenu_size, bh, true, !startmenu_invert);
+    painter.rect(0, 0, startmenu_size, bar_height, true, !startmenu_invert);
     painter.rect(
         5,
         icon_offset,
@@ -56,7 +56,7 @@ pub(crate) fn draw_tag_indicators(
     mut x: i32,
     occupied_tags: u32,
     urg: u32,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
     let horizontal_padding = ctx.g.cfg.horizontal_padding;
@@ -100,7 +100,7 @@ pub(crate) fn draw_tag_indicators(
             x,
             0,
             t.width,
-            bh,
+            bar_height,
             lpad as i32,
             t.label,
             urg & (1 << t.tag_index) != 0,
@@ -115,7 +115,7 @@ pub(crate) fn draw_layout_indicator(
     ctx: &WmCtx,
     m: &Monitor,
     mut x: i32,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
     let horizontal_padding = ctx.g.cfg.horizontal_padding;
@@ -127,7 +127,7 @@ pub(crate) fn draw_layout_indicator(
     if let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) {
         painter.set_scheme(scheme);
     }
-    x = painter.text(x, 0, w, bh, lpad, &ltsymbol, false, 0);
+    x = painter.text(x, 0, w, bar_height, lpad, &ltsymbol, false, 0);
 
     x
 }
@@ -135,13 +135,13 @@ pub(crate) fn draw_layout_indicator(
 /// Draw the shutdown/power-off button that appears after the layout indicator
 /// when no client is selected on the monitor.
 ///
-/// The button is `bh` pixels wide and renders a small power-icon made from
+/// The button is `bar_height` pixels wide and renders a small power-icon made from
 /// filled rectangles so it is visible without a font glyph.  Returns the new
-/// x offset (i.e. `x + bh`).
+/// x offset (i.e. `x + bar_height`).
 pub(crate) fn draw_shutdown_button(
     ctx: &WmCtx,
     x: i32,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
     // Use the status scheme as the base colours.
@@ -150,21 +150,21 @@ pub(crate) fn draw_shutdown_button(
     }
 
     // Background fill for the button cell.
-    painter.rect(x, 0, bh, bh, true, true);
+    painter.rect(x, 0, bar_height, bar_height, true, true);
 
     // Draw a simple power icon using raw X11 rectangles so we don't need a
-    // special font glyph.  The icon is centred inside the `bh × bh` cell.
+    // special font glyph.  The icon is centred inside the `bar_height × bar_height` cell.
     //
     //  Layout (all values relative to cell origin `x, 0`):
     //    • A vertical "stem" bar:  2 px wide, upper-centre of the icon.
     //    • A "C"-shaped arc approximated by three rectangles that form the
     //      left, bottom and right sides of a circle outline.
     //
-    //  We keep the icon proportional to bh so it looks right at any bar height.
+    //  We keep the icon proportional to bar_height so it looks right at any bar height.
 
-    let icon_size = bh * 5 / 8; // overall icon bounding box
-    let icon_x = x + (bh - icon_size) / 2;
-    let icon_y = (bh - icon_size) / 2;
+    let icon_size = bar_height * 5 / 8; // overall icon bounding box
+    let icon_x = x + (bar_height - icon_size) / 2;
+    let icon_y = (bar_height - icon_size) / 2;
 
     let stroke = (icon_size / 6).max(2); // stroke thickness
     let gap = stroke; // gap at the top for the stem notch
@@ -195,13 +195,13 @@ pub(crate) fn draw_shutdown_button(
     // Bottom of arc
     painter.rect(bot_x, bot_y, bot_w, bot_h, true, false);
 
-    x + bh
+    x + bar_height
 }
 pub(crate) fn draw_close_button(
     ctx: &WmCtx,
     c: &Client,
     x: i32,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
     let close_hovered = ctx
@@ -212,10 +212,10 @@ pub(crate) fn draw_close_button(
         .g
         .selected_monitor()
         .and_then(|selmon| {
-            selmon.sel.and_then(|sel_win| {
+            selmon.sel.and_then(|selected_window| {
                 ctx.g
                     .clients
-                    .get(&sel_win)
+                    .get(&selected_window)
                     .map(|sel_c| sel_c.is_fullscreen && sel_c.win == c.win)
             })
         })
@@ -231,13 +231,13 @@ pub(crate) fn draw_close_button(
     scheme.fg = scheme.detail;
     painter.set_scheme(scheme);
 
-    let button_x = x + bh / 6;
+    let button_x = x + bar_height / 6;
     let detail_offset = if close_hovered {
         CLOSE_BUTTON_DETAIL
     } else {
         0
     };
-    let button_y = (bh - CLOSE_BUTTON_WIDTH) / 2 - detail_offset;
+    let button_y = (bar_height - CLOSE_BUTTON_WIDTH) / 2 - detail_offset;
 
     painter.rect(
         button_x,
@@ -249,7 +249,7 @@ pub(crate) fn draw_close_button(
     );
     painter.rect(
         button_x,
-        (bh - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
+        (bar_height - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
         CLOSE_BUTTON_WIDTH,
         CLOSE_BUTTON_DETAIL + detail_offset,
         true,
@@ -263,7 +263,7 @@ fn draw_window_title(
     c: &Client,
     x: i32,
     width: i32,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> Option<u32> {
     let is_hover = ctx
@@ -284,7 +284,7 @@ fn draw_window_title(
         ctx.g.cfg.horizontal_padding / 2 + 20
     };
 
-    painter.text(x, 0, width, bh, lpad, client_name, false, 4);
+    painter.text(x, 0, width, bar_height, lpad, client_name, false, 4);
 
     let is_selected = ctx
         .g
@@ -292,7 +292,7 @@ fn draw_window_title(
         .is_some_and(|selmon| selmon.sel == Some(c.win));
 
     if is_selected {
-        draw_close_button(ctx, c, x, bh, painter);
+        draw_close_button(ctx, c, x, bar_height, painter);
         return Some(m.monitor_rect.x as u32 + x as u32);
     }
 
@@ -305,7 +305,7 @@ pub(crate) fn draw_window_titles(
     x: i32,
     w: i32,
     n: i32,
-    bh: i32,
+    bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> Option<u32> {
     let selected = m.selected_tags();
@@ -343,7 +343,8 @@ pub(crate) fn draw_window_titles(
                 each_width
             };
 
-            if let Some(offset) = draw_window_title(ctx, m, &c, x, this_width, bh, painter) {
+            if let Some(offset) = draw_window_title(ctx, m, &c, x, this_width, bar_height, painter)
+            {
                 new_activeoffset = Some(offset);
             }
             x += this_width;
@@ -354,20 +355,20 @@ pub(crate) fn draw_window_titles(
     if let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) {
         painter.set_scheme(scheme);
     }
-    painter.rect(x, 0, w, bh, true, true);
+    painter.rect(x, 0, w, bar_height, true, true);
 
-    let has_clients = m.clients.is_some();
+    let has_clients = !m.clients.is_empty();
 
     if !has_clients {
         let help_text = "Press space to launch an application";
         let text_w = painter.text_width(help_text);
-        let avail = w - bh;
+        let avail = w - bar_height;
         let title_width = text_w.min(avail);
         painter.text(
-            x + bh + ((avail - title_width + 1) / 2),
+            x + bar_height + ((avail - title_width + 1) / 2),
             0,
             title_width,
-            bh,
+            bar_height,
             0,
             help_text,
             false,

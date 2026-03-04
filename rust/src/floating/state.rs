@@ -115,7 +115,7 @@ pub fn apply_float_change(
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let sel_win = {
+    let selected_window = {
         let mon = match ctx.g.selected_monitor() {
             Some(m) => m,
             None => return,
@@ -133,7 +133,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         }
     };
 
-    let Some(win) = sel_win else { return };
+    let Some(win) = selected_window else { return };
 
     let (is_floating, is_fixed) = ctx
         .g
@@ -203,7 +203,7 @@ pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
 }
 
 pub fn temp_fullscreen(ctx: &mut WmCtx) {
-    let (fullscreen_win, sel_win, animated) = {
+    let (fullscreen_win, selected_window, animated) = {
         let mon = match ctx.g.selected_monitor() {
             Some(m) => m,
             None => return,
@@ -228,7 +228,7 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
             mon.fullscreen = None;
         }
     } else {
-        let Some(win) = sel_win else { return };
+        let Some(win) = selected_window else { return };
 
         if let Some(mon) = ctx.g.selected_monitor_mut() {
             mon.fullscreen = Some(win);

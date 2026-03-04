@@ -358,8 +358,8 @@ pub fn run() -> ! {
             {
                 let mut ctx = wm.ctx();
                 if !ctx.g.clients.is_empty() {
-                    let selmon = ctx.g.selected_monitor_id();
-                    crate::layouts::arrange(&mut ctx, Some(selmon));
+                    let selected_monitor_id = ctx.g.selected_monitor_id();
+                    crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
                 }
             }
             if let Some(server) = ipc_server.as_mut() {

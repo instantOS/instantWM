@@ -52,16 +52,16 @@ pub fn zoom(ctx: &mut WmCtx) {
         let _ = conn.flush();
     }
 
-    let (is_floating, mon_id) = {
+    let (is_floating, monitor_id) = {
         ctx.g
             .clients
             .get(&win)
-            .map(|c| (c.isfloating, c.mon_id))
+            .map(|c| (c.isfloating, c.monitor_id))
             .unwrap_or((true, None))
     };
 
     // Only meaningful in a tiling layout with a non-floating window.
-    let is_tiling = mon_id
+    let is_tiling = monitor_id
         .and_then(|mid| ctx.g.monitor(mid))
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
@@ -71,14 +71,17 @@ pub fn zoom(ctx: &mut WmCtx) {
     }
 
     // Find the current master (first tiled client on the monitor).
-    let first_tiled = mon_id
+    let first_tiled = monitor_id
         .and_then(|mid| ctx.g.monitor(mid))
-        .and_then(|mon| next_tiled(ctx, mon.clients));
+        .and_then(|mon| {
+            mon.clients
+                .first()
+                .copied()
+                .and_then(|w| next_tiled(ctx, Some(w)))
+        });
 
     if first_tiled == Some(win) {
-        // The selected window is already master – promote the next one.
-        let after_first = first_tiled.and_then(|f| ctx.g.clients.get(&f).and_then(|c| c.next));
-        let next = next_tiled(ctx, after_first);
+        let next = next_tiled(ctx, first_tiled);
 
         // Nothing to promote if there is only one tiled window.
         if next.is_none() {

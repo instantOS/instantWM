@@ -29,29 +29,33 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     if is_animated {
         if let Some(mon) = ctx.g.selected_monitor() {
-            if let Some(sel_win) = mon.sel {
-                ctx.backend.raise_window(sel_win);
+            if let Some(selected_window) = mon.sel {
+                ctx.backend.raise_window(selected_window);
                 ctx.backend.flush();
             }
         }
     }
 
     // ── snapshot selected window before the loop ────────
-    let sel_win = ctx.g.selected_win();
+    let selected_window = ctx.g.selected_win();
 
     // ── resize every tiled client to fill the work area ───────────────────
-    let mut current_window = next_tiled(ctx, m.clients);
+    let mut current_window = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
     while let Some(win) = current_window {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.
-        let frames = if ctx.g.animated && Some(win) == sel_win {
+        let frames = if ctx.g.animated && Some(win) == selected_window {
             DEFAULT_FRAME_COUNT
         } else {
             0
@@ -70,6 +74,6 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             0,
         );
 
-        current_window = next_tiled(ctx, next_client);
+        current_window = next_tiled(ctx, current_window);
     }
 }

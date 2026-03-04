@@ -165,32 +165,32 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
         SNAP_MATRIX[row][col]
     };
 
-    let mon_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
+    let monitor_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.snapstatus = new_snap;
-        client.mon_id
+        client.monitor_id
     } else {
         return;
     };
 
-    apply_snap(ctx, win, mon_id);
+    apply_snap(ctx, win, monitor_id);
     warp_cursor_to_client(ctx, win);
     crate::focus::focus_soft(ctx, Some(win));
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the
-/// corresponding screen region on monitor `mon_id`.
+/// corresponding screen region on monitor `monitor_id`.
 ///
 /// - [`SnapPosition::None`] restores the saved floating geometry.
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
-pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, mon_id: Option<usize>) {
+pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, monitor_id: Option<usize>) {
     require_x11!(ctx);
     let (snapstatus, saved_geo, border_width) = match ctx.g.clients.get(&win) {
         Some(c) => (c.snapstatus, c.float_geo, c.border_width),
         None => return,
     };
 
-    let Some(mid) = mon_id else { return };
+    let Some(mid) = monitor_id else { return };
 
     // Geometry of the target monitor.
     let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.g.monitor(mid) {

@@ -110,14 +110,18 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let right_n = stack_n.div_ceil(2); // ceil(stack_n / 2)
     let left_n = stack_n / 2; // floor(stack_n / 2)
 
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
 
     // ── right column (even stack indices) ─────────────────────────────────
     if right_n > 0 {
         let raw_h = m.work_rect.h / right_n as i32;
         // Clamp: if the computed height is smaller than the bar height, just
         // give each client the full work height (only one will be visible).
-        let cell_h = if raw_h < bh { m.work_rect.h } else { raw_h };
+        let cell_h = if raw_h < bar_height {
+            m.work_rect.h
+        } else {
+            raw_h
+        };
 
         let col_x = m.work_rect.x + mw + sw; // right of master, past the gap
         let mut y = m.work_rect.y;
@@ -179,7 +183,11 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── left column (odd stack indices) ───────────────────────────────────
     if left_n > 0 {
         let raw_h = m.work_rect.h / left_n as i32;
-        let cell_h = if raw_h < bh { m.work_rect.h } else { raw_h };
+        let cell_h = if raw_h < bar_height {
+            m.work_rect.h
+        } else {
+            raw_h
+        };
 
         // The left column sits at work_rect.x when n >= 3.
         // When n == 2 there is no left column (left_n == 0), so this block is

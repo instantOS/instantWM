@@ -99,7 +99,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let (work_rect, mon_rect, showbar, bh) = match ctx.g.selected_monitor() {
+    let (work_rect, mon_rect, showbar, bar_height) = match ctx.g.selected_monitor() {
         Some(m) => (m.work_rect, m.monitor_rect, m.showbar, ctx.g.cfg.bar_height),
         None => return,
     };
@@ -108,7 +108,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let y_offset = if showbar { bh } else { -bh };
+    let y_offset = if showbar { bar_height } else { -bar_height };
 
     resize(
         ctx,

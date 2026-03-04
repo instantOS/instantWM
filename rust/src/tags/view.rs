@@ -298,8 +298,8 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn follow_view(ctx: &mut WmCtx) {
     let selmon_id = ctx.g.selected_monitor_id();
-    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
-    let Some(win) = sel_win else { return };
+    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
+    let Some(win) = selected_window else { return };
 
     let prev_tag = match ctx.g.selected_monitor() {
         Some(mon) => mon.prev_tag,

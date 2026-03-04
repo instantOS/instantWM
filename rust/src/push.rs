@@ -11,21 +11,26 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> O
         return next_tiled(ctx, c_win);
     }
 
-    let mut current = c_win;
     let selected = ctx
         .g
         .selected_monitor()
         .map(|m| m.selected_tags())
         .unwrap_or(0);
 
-    while let Some(win) = current {
-        if let Some(c) = ctx.g.clients.get(&win) {
-            if c.is_visible_on_tags(selected) {
-                return Some(win);
+    let mon = ctx.g.selected_monitor()?;
+    if let Some(win) = c_win {
+        let mut found = false;
+        for &client_win in &mon.clients {
+            if found {
+                if let Some(c) = ctx.g.clients.get(&client_win) {
+                    if c.is_visible_on_tags(selected) {
+                        return Some(client_win);
+                    }
+                }
             }
-            current = c.next;
-        } else {
-            break;
+            if client_win == win {
+                found = true;
+            }
         }
     }
     None
@@ -41,8 +46,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
 
     let mut r: Option<WindowId> = None;
 
-    let mut current = mon.clients;
-    while let Some(win) = current {
+    for &win in &mon.clients {
         if win == c_win {
             break;
         }
@@ -51,9 +55,6 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
             if (include_floating || !c.isfloating) && c.is_visible_on_tags(selected) {
                 r = Some(win);
             }
-            current = c.next;
-        } else {
-            break;
         }
     }
 
@@ -76,56 +77,17 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let include_floating = true;
-
     let selmon_id = ctx.g.selected_monitor_id();
 
-    if let Some(prev) = prev_c(ctx, win, include_floating) {
-        detach(ctx, win);
-
-        {
-            let selmon_id = ctx.g.selected_monitor_id();
-            let clients = &mut ctx.g.clients;
-            let monitors = &mut ctx.g.monitors;
-            if let Some(client) = clients.get_mut(&win) {
-                client.next = Some(prev);
-            }
-
-            if let Some(mon) = monitors.get_mut(selmon_id) {
-                if mon.clients == Some(prev) {
-                    mon.clients = Some(win);
-                } else {
-                    let target_c_win = mon.iter_clients(clients.map()).find_map(|(c_win, c)| {
-                        if c.next == Some(prev) {
-                            Some(c_win)
-                        } else {
-                            None
-                        }
-                    });
-                    if let Some(t_win) = target_c_win {
-                        if let Some(c) = clients.get_mut(&t_win) {
-                            c.next = Some(win);
-                        }
-                    }
+    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
+        if let Some(pos) = mon.clients.iter().position(|&w| w == win) {
+            if pos > 0 {
+                mon.clients.swap(pos, pos - 1);
+            } else {
+                let last = mon.clients.pop();
+                if let Some(last_win) = last {
+                    mon.clients.insert(1, last_win);
                 }
-            }
-        }
-    } else {
-        let mut last: Option<WindowId> = None;
-        if let Some(mon) = ctx.g.selected_monitor() {
-            for (c_win, _c) in mon.iter_clients(ctx.g.clients.map()) {
-                last = Some(c_win);
-            }
-        }
-
-        detach(ctx, win);
-
-        if let Some(last_win) = last {
-            if let Some(client) = ctx.g.clients.get_mut(&last_win) {
-                client.next = Some(win);
-            }
-            if let Some(client) = ctx.g.clients.get_mut(&win) {
-                client.next = None;
             }
         }
     }
@@ -150,30 +112,17 @@ pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let include_floating = true;
-
     let selmon_id = ctx.g.selected_monitor_id();
 
-    let next = ctx
-        .g
-        .clients
-        .get(&win)
-        .and_then(|c| next_c(ctx, c.next, include_floating));
-
-    if let Some(next_win) = next {
-        detach(ctx, win);
-
-        let next_c_next = ctx.g.clients.get(&next_win).and_then(|c| c.next);
-        if let Some(client) = ctx.g.clients.get_mut(&win) {
-            client.next = next_c_next;
+    if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
+        if let Some(pos) = mon.clients.iter().position(|&w| w == win) {
+            if pos + 1 < mon.clients.len() {
+                mon.clients.swap(pos, pos + 1);
+            } else {
+                let first = mon.clients.remove(0);
+                mon.clients.push(first);
+            }
         }
-
-        if let Some(next_c) = ctx.g.clients.get_mut(&next_win) {
-            next_c.next = Some(win);
-        }
-    } else {
-        detach(ctx, win);
-        attach(ctx, win);
     }
 
     crate::focus::focus_soft(ctx, Some(win));

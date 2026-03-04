@@ -41,20 +41,24 @@ pub fn detach_stack(ctx: &mut WmCtx, win: WindowId) {
 // ---------------------------------------------------------------------------
 
 pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> {
-    let mut current = start_win;
-    while let Some(win) = current {
+    let mon = ctx.g.selected_monitor()?;
+    let selected = mon.selected_tags();
+
+    let start_idx = if let Some(win) = start_win {
+        mon.clients.iter().position(|&w| w == win)
+    } else {
+        None
+    };
+
+    let clients = &mon.clients;
+    let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
+
+    for i in iter_start..clients.len() {
+        let win = clients[i];
         if let Some(c) = ctx.g.clients.get(&win) {
-            let selected = c
-                .mon_id
-                .and_then(|mid| ctx.g.monitor(mid))
-                .map(|m| m.selected_tags())
-                .unwrap_or(0);
             if !c.isfloating && c.is_visible_on_tags(selected) && !c.is_hidden {
                 return Some(win);
             }
-            current = c.next;
-        } else {
-            break;
         }
     }
     None
@@ -65,10 +69,10 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
 pub fn pop(ctx: &mut WmCtx, win: WindowId) {
     detach(ctx, win);
     attach(ctx, win);
-    let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
+    let monitor_id = ctx.g.clients.get(&win).and_then(|c| c.monitor_id);
     crate::focus::focus_soft(ctx, Some(win));
 
-    if let Some(mid) = mon_id {
+    if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
     }
 }

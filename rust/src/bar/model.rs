@@ -27,7 +27,7 @@ impl ClientBarStats {
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
         let monitor_id = monitor.id();
         for client in globals.clients.values() {
-            if client.mon_id != Some(monitor_id) {
+            if client.monitor_id != Some(monitor_id) {
                 continue;
             }
             stats.occupied_tags |= if client.tags == 255 { 0 } else { client.tags };
@@ -76,8 +76,8 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     }
 
     // ── Shutdown button (only when no client is selected) ─────────────────
-    let bh = ctx.g.cfg.bar_height;
-    if mon.sel.is_none() && local_x < tag_end + blw + bh {
+    let bar_height = ctx.g.cfg.bar_height;
+    if mon.sel.is_none() && local_x < tag_end + blw + bar_height {
         return BarPosition::ShutDown;
     }
 

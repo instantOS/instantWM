@@ -72,14 +72,14 @@ pub struct Monitor {
     pub prev_tag: usize,
     /// Tags owned by this monitor.
     pub tags: Vec<Tag>,
-    /// Head of client list (focus order).
-    pub clients: Option<WindowId>,
+    /// Client list (focus order).
+    pub clients: Vec<WindowId>,
     /// Currently selected client.
     pub sel: Option<WindowId>,
     /// Overlay window.
     pub overlay: Option<WindowId>,
-    /// Head of stack list (stacking order).
-    pub stack: Option<WindowId>,
+    /// Stack list (stacking order).
+    pub stack: Vec<WindowId>,
     /// Currently fullscreen client.
     pub fullscreen: Option<WindowId>,
 }
@@ -111,10 +111,10 @@ impl Default for Monitor {
             current_tag: 0,
             prev_tag: 0,
             tags: Vec::new(),
-            clients: None,
+            clients: Vec::new(),
             sel: None,
             overlay: None,
-            stack: None,
+            stack: Vec::new(),
             fullscreen: None,
         }
     }
@@ -173,13 +173,13 @@ impl Monitor {
         &'a self,
         clients: &'a HashMap<WindowId, Client>,
     ) -> ClientListIter<'a> {
-        ClientListIter::new(self.clients, clients)
+        ClientListIter::new(&self.clients, clients)
     }
 
     /// Iterate the monitor's stack list (stacking order).
     #[inline]
     pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<WindowId, Client>) -> ClientStackIter<'a> {
-        ClientStackIter::new(self.stack, clients)
+        ClientStackIter::new(&self.stack, clients)
     }
 
     /// Check if a point is within this monitor's work area.

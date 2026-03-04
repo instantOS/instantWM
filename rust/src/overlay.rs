@@ -48,8 +48,8 @@ fn raise_window(ctx: &WmCtx, win: WindowId) {
 
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bh = ctx.g.cfg.bar_height;
-    let base_offset = if mon.showbar { bh } else { 0 };
+    let bar_height = ctx.g.cfg.bar_height;
+    let base_offset = if mon.showbar { bar_height } else { 0 };
 
     // Check if any visible client is fullscreen
     for (_win, c) in mon.iter_clients(ctx.g.clients.map()) {
@@ -187,7 +187,7 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 }
 
 /// Create overlay with dependency injection.
-pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
+pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     require_x11!(ctx);
     let (sel_overlay, sel_fullscreen) = {
         let g = &*ctx.g;
@@ -198,7 +198,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
         let sel_overlay = mon.overlay;
         let sel_fullscreen = g
             .clients
-            .get(&sel_win)
+            .get(&selected_window)
             .map(|c| c.is_true_fullscreen())
             .unwrap_or(false);
         (sel_overlay, sel_fullscreen)
@@ -208,7 +208,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
         crate::floating::temp_fullscreen(ctx);
     }
 
-    if Some(sel_win) == sel_overlay {
+    if Some(selected_window) == sel_overlay {
         reset_overlay(ctx);
         for (_i, mon) in ctx.g.monitors_iter_mut() {
             mon.overlay = None;
@@ -216,7 +216,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
         return;
     }
 
-    let temp_client = sel_win;
+    let temp_client = selected_window;
 
     reset_overlay(ctx);
 
@@ -272,7 +272,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         None => return,
     };
 
-    let selmon = ctx.g.selected_monitor_id();
+    let selected_monitor_id = ctx.g.selected_monitor_id();
 
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
         client.border_width = client.old_border_width;
@@ -281,7 +281,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         client.isfloating = true;
     }
 
-    arrange(ctx, Some(selmon));
+    arrange(ctx, Some(selected_monitor_id));
 
     crate::focus::focus_soft(ctx, Some(overlay_win));
 }
@@ -292,7 +292,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
     detach_stack(ctx, overlay_win);
 
     if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
-        client.mon_id = Some(selmon_id);
+        client.monitor_id = Some(selmon_id);
         client.isfloating = true;
     }
 

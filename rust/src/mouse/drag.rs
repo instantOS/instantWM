@@ -138,7 +138,7 @@ struct MoveState {
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
 fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
-    let sel_win = {
+    let selected_window = {
         let mon = ctx.g.selected_monitor()?;
         let sel = mon.sel?;
         let c = ctx.g.clients.get(&sel)?;
@@ -162,11 +162,11 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let is_snapped = ctx
         .g
         .clients
-        .get(&sel_win)
+        .get(&selected_window)
         .map(|c| c.snapstatus != SnapPosition::None)
         .unwrap_or(false);
     if is_snapped {
-        reset_snap(ctx, sel_win);
+        reset_snap(ctx, selected_window);
         return None;
     }
 
@@ -180,10 +180,13 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
             .unwrap_or(true);
 
         if !has_tiling {
-            if let (Some(c), Some(mon)) = (ctx.g.clients.get(&sel_win), ctx.g.selected_monitor()) {
-                let bh = ctx.g.cfg.bar_height;
+            if let (Some(c), Some(mon)) = (
+                ctx.g.clients.get(&selected_window),
+                ctx.g.selected_monitor(),
+            ) {
+                let bar_height = ctx.g.cfg.bar_height;
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
-                    && c.geo.y >= mon.monitor_rect.y + bh - MAX_UNMAXIMIZE_OFFSET
+                    && c.geo.y >= mon.monitor_rect.y + bar_height - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.h >= mon.monitor_rect.h - MAX_UNMAXIMIZE_OFFSET;
                 if nearly_maximized {
@@ -199,10 +202,10 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         }
     };
     if let Some(geo) = restore_geo {
-        resize(ctx, sel_win, &geo, false);
+        resize(ctx, selected_window, &geo, false);
     }
 
-    Some(sel_win)
+    Some(selected_window)
 }
 
 /// Update `bar_dragging` and the gesture (tag hover highlight) while dragging.
@@ -776,7 +779,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     ctx.g.drag.tag = crate::globals::TagDragState {
         active: true,
         initial_tag,
-        mon_id: selmon_id,
+        monitor_id: selmon_id,
         mon_mx,
         last_tag: -1,
         cursor_on_bar: true,
@@ -798,7 +801,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         return false;
     }
 
-    let selmon_id = ctx.g.drag.tag.mon_id;
+    let selmon_id = ctx.g.drag.tag.monitor_id;
     let mon_mx = ctx.g.drag.tag.mon_mx;
 
     let bar_bottom = ctx
@@ -848,7 +851,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         return;
     }
 
-    let selmon_id = ctx.g.drag.tag.mon_id;
+    let selmon_id = ctx.g.drag.tag.monitor_id;
     let cursor_on_bar = ctx.g.drag.tag.cursor_on_bar;
     let last_motion = ctx.g.drag.tag.last_motion;
 

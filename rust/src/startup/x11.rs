@@ -199,7 +199,7 @@ fn init_drw_and_schemes(wm: &mut Wm) {
 
     let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
     let barheight = wm.g.cfg.barheight;
-    let bh = if barheight > 0 {
+    let bar_height = if barheight > 0 {
         font_height + barheight as u32
     } else {
         font_height + 12
@@ -210,7 +210,7 @@ fn init_drw_and_schemes(wm: &mut Wm) {
 
     wm.g.cfg.xlibdisplay = XlibDisplay(drw.display());
     wm.g.cfg.drw = Some(drw);
-    wm.g.cfg.bar_height = bh as i32;
+    wm.g.cfg.bar_height = bar_height as i32;
     wm.g.cfg.horizontal_padding = font_height as i32;
 }
 

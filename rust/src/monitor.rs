@@ -127,7 +127,7 @@ impl MonitorManager {
         }
 
         if let Some(c) = clients.get(&w) {
-            return c.mon_id;
+            return c.monitor_id;
         }
 
         if self.monitors.is_empty() {
@@ -142,28 +142,28 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: usize) {
-    if mon_id >= ctx.g.monitors.len() {
+pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
+    if monitor_id >= ctx.g.monitors.len() {
         return;
     }
 
     let barwin = ctx
         .g
         .monitors
-        .get(mon_id)
+        .get(monitor_id)
         .map(|m| m.barwin)
         .unwrap_or_default();
 
     // Remove and fix up IDs
-    ctx.g.monitors.monitors.remove(mon_id);
+    ctx.g.monitors.monitors.remove(monitor_id);
     for (i, m) in ctx.g.monitors.monitors.iter_mut().enumerate() {
         m.monitor_id = i;
     }
 
     // Adjust selected index
-    if ctx.g.monitors.selected_monitor_idx == mon_id {
+    if ctx.g.monitors.selected_monitor_idx == monitor_id {
         ctx.g.monitors.selected_monitor_idx = 0;
-    } else if ctx.g.monitors.selected_monitor_idx > mon_id {
+    } else if ctx.g.monitors.selected_monitor_idx > monitor_id {
         ctx.g.monitors.selected_monitor_idx -= 1;
     }
 
@@ -186,8 +186,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
             Some(c) => c,
             None => return,
         };
-        let is_sp = client.tags == SCRATCHPAD_MASK;
-        let tags = if !is_sp {
+        let is_scratchpad = client.is_scratchpad();
+        let tags = if !is_scratchpad {
             ctx.g
                 .monitors
                 .get(target_mon)
@@ -196,7 +196,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         } else {
             0
         };
-        (is_sp, tags)
+        (is_scratchpad, tags)
     };
 
     if ctx.g.clients.contains(&win) {
@@ -207,7 +207,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     detach_stack(ctx, win);
 
     if let Some(client) = ctx.g.clients.get_mut(&win) {
-        client.mon_id = Some(target_mon);
+        client.monitor_id = Some(target_mon);
         if !is_scratchpad {
             client.tags = target_tags;
         }
@@ -287,8 +287,8 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    if let Some(mon_id) = ctx.g.clients.get(&c_win).and_then(|c| c.mon_id) {
-        ctx.g.monitors.set_sel_idx(mon_id);
+    if let Some(monitor_id) = ctx.g.clients.get(&c_win).and_then(|c| c.monitor_id) {
+        ctx.g.monitors.set_sel_idx(monitor_id);
     }
 
     crate::focus::focus_soft(ctx, Some(c_win));
@@ -339,15 +339,15 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     let sp_name = client.scratchpad_name.clone();
     let current_mon = ctx.g.monitors.sel_idx();
 
-    if let Some(sel_win) = ctx.g.monitors.get(current_mon).and_then(|m| m.sel) {
-        unfocus_win(ctx, sel_win, false);
+    if let Some(selected_window) = ctx.g.monitors.get(current_mon).and_then(|m| m.sel) {
+        unfocus_win(ctx, selected_window, false);
     }
     ctx.g.monitors.set_sel_idx(target_mon);
 
     crate::scratchpad::scratchpad_show_name(ctx, &sp_name);
 
-    if let Some(sel_win) = ctx.g.monitors.get(target_mon).and_then(|m| m.sel) {
-        unfocus_win(ctx, sel_win, false);
+    if let Some(selected_window) = ctx.g.monitors.get(target_mon).and_then(|m| m.sel) {
+        unfocus_win(ctx, selected_window, false);
     }
     ctx.g.monitors.set_sel_idx(current_mon);
 
@@ -364,7 +364,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     );
     mon.init_tags(&template);
     ctx.g.monitors.push(mon);
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
     if let Some(m) = ctx.g.monitors.get_mut(0) {
         m.num = 0;
         m.monitor_rect = Rect {
@@ -379,7 +379,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
             w: sw,
             h: h,
         };
-        update_bar_pos_with_bh(m, bh);
+        update_bar_pos_with_bh(m, bar_height);
     }
     ctx.g.monitors.set_sel_idx(0);
     true
@@ -396,13 +396,13 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         return false;
     }
 
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
     if let Some(m) = ctx.g.monitors.get_mut(0) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
         m.work_rect.h = sh;
-        update_bar_pos_with_bh(m, bh);
+        update_bar_pos_with_bh(m, bar_height);
     }
     true
 }
@@ -451,7 +451,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     }
 
     let mut dirty = new_count > old_count;
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
 
     for (i, info) in unique.iter().enumerate() {
         if let Some(m) = ctx.g.monitors.get_mut(i) {
@@ -463,7 +463,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
                 m.num = i as i32;
                 m.monitor_rect = *info;
                 m.work_rect = *info;
-                update_bar_pos_with_bh(m, bh);
+                update_bar_pos_with_bh(m, bar_height);
                 dirty = true;
             }
         }
@@ -475,14 +475,14 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
                 .g
                 .clients
                 .values()
-                .filter(|c| c.mon_id == Some(i))
+                .filter(|c| c.monitor_id == Some(i))
                 .map(|c| c.win)
                 .collect();
             for win in clients_to_move {
                 detach(ctx, win);
                 detach_stack(ctx, win);
                 if let Some(c) = ctx.g.clients.get_mut(&win) {
-                    c.mon_id = Some(0);
+                    c.monitor_id = Some(0);
                 }
                 attach(ctx, win);
                 attach_stack(ctx, win);

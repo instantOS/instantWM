@@ -622,9 +622,9 @@ impl WaylandState {
             return;
         }
 
-        let mon_id = g.selected_monitor_id();
+        let monitor_id = g.selected_monitor_id();
         let (base_w, base_h) = g
-            .monitor(mon_id)
+            .monitor(monitor_id)
             .map(|m| {
                 (
                     m.work_rect.w.max(Self::MIN_WL_DIM),
@@ -649,8 +649,8 @@ impl WaylandState {
         c.float_geo = geo;
         c.border_width = g.cfg.borderpx;
         c.old_border_width = g.cfg.borderpx;
-        c.mon_id = Some(mon_id);
-        c.tags = crate::client::initial_tags_for_monitor(g, c.mon_id);
+        c.monitor_id = Some(monitor_id);
+        c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
         g.clients.insert(window, c);
         g.clients.list_push(window.0 as usize);
         attach_client_to_monitor(g, window);
@@ -688,19 +688,13 @@ impl WaylandState {
 }
 
 pub(super) fn attach_client_to_monitor(g: &mut Globals, win: WindowId) {
-    let mon_id = match g.clients.get(&win).and_then(|c| c.mon_id) {
+    let monitor_id = match g.clients.get(&win).and_then(|c| c.monitor_id) {
         Some(mid) => mid,
         None => return,
     };
-    let old_clients = g.monitor(mon_id).and_then(|m| m.clients);
-    let old_stack = g.monitor(mon_id).and_then(|m| m.stack);
-    if let Some(c) = g.clients.get_mut(&win) {
-        c.next = old_clients;
-        c.snext = old_stack;
-    }
-    if let Some(mon) = g.monitor_mut(mon_id) {
-        mon.clients = Some(win);
-        mon.stack = Some(win);
+    if let Some(mon) = g.monitor_mut(monitor_id) {
+        mon.clients.insert(0, win);
+        mon.stack.insert(0, win);
         if mon.sel.is_none() {
             mon.sel = Some(win);
         }
@@ -708,52 +702,16 @@ pub(super) fn attach_client_to_monitor(g: &mut Globals, win: WindowId) {
 }
 
 pub(super) fn detach_client_from_monitor(g: &mut Globals, win: WindowId) {
-    let mon_id = match g.clients.get(&win).and_then(|c| c.mon_id) {
+    let monitor_id = match g.clients.get(&win).and_then(|c| c.monitor_id) {
         Some(mid) => mid,
         None => return,
     };
-    let client_next = g.clients.get(&win).and_then(|c| c.next);
-    let client_snext = g.clients.get(&win).and_then(|c| c.snext);
 
-    let mut cur = g.monitor(mon_id).and_then(|m| m.clients);
-    let mut prev: Option<WindowId> = None;
-    while let Some(w) = cur {
-        let next = g.clients.get(&w).and_then(|c| c.next);
-        if w == win {
-            if let Some(p) = prev {
-                if let Some(pc) = g.clients.get_mut(&p) {
-                    pc.next = client_next;
-                }
-            } else if let Some(mon) = g.monitor_mut(mon_id) {
-                mon.clients = client_next;
-            }
-            break;
-        }
-        prev = Some(w);
-        cur = next;
-    }
-
-    let mut cur = g.monitor(mon_id).and_then(|m| m.stack);
-    let mut prev: Option<WindowId> = None;
-    while let Some(w) = cur {
-        let next = g.clients.get(&w).and_then(|c| c.snext);
-        if w == win {
-            if let Some(p) = prev {
-                if let Some(pc) = g.clients.get_mut(&p) {
-                    pc.snext = client_snext;
-                }
-            } else if let Some(mon) = g.monitor_mut(mon_id) {
-                mon.stack = client_snext;
-            }
-            break;
-        }
-        prev = Some(w);
-        cur = next;
-    }
-
-    if let Some(mon) = g.monitor_mut(mon_id) {
+    if let Some(mon) = g.monitor_mut(monitor_id) {
+        mon.clients.retain(|&w| w != win);
+        mon.stack.retain(|&w| w != win);
         if mon.sel == Some(win) {
-            mon.sel = mon.clients;
+            mon.sel = mon.stack.first().copied();
         }
     }
 }

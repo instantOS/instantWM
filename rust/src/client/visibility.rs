@@ -56,7 +56,7 @@ pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
 // Recursive show/hide pass
 // ---------------------------------------------------------------------------
 
-/// Walk the stack list starting at `win`, moving each client on- or off-screen.
+/// Walk the client list, moving each client on- or off-screen.
 ///
 /// Visible clients (those whose tag-set overlaps the monitor's selected tags)
 /// are positioned at their stored geometry.  Invisible clients are moved
@@ -64,75 +64,55 @@ pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide(ctx: &mut WmCtx, win: Option<WindowId>) {
+pub fn show_hide(ctx: &mut WmCtx) {
     let is_wayland = ctx.backend_kind() == BackendKind::Wayland;
 
-    let current = match win {
-        Some(w) => w,
-        None => return,
-    };
+    for (_id, mon) in ctx.g.monitors_iter() {
+        let selected_tags = mon.selected_tags();
 
-    let Some(c) = ctx.g.clients.get(&current) else {
-        return;
-    };
+        for &win in &mon.clients {
+            let Some(c) = ctx.g.clients.get(&win) else {
+                continue;
+            };
 
-    let selected_tags = c
-        .mon_id
-        .and_then(|mid| ctx.g.monitor(mid))
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
-    let is_vis = c.is_visible_on_tags(selected_tags);
-    let snext = c.snext;
-    let geo = c.geo;
-    let (is_floating, is_fullscreen, is_fake_fullscreen, mon_id) =
-        (c.isfloating, c.is_fullscreen, c.isfakefullscreen, c.mon_id);
+            let is_visible = c.is_visible_on_tags(selected_tags);
+            let geo = c.geo;
+            let (is_floating, is_fullscreen, is_fake_fullscreen) =
+                (c.isfloating, c.is_fullscreen, c.isfakefullscreen);
 
-    if is_vis {
-        if is_wayland {
-            // Ensure the window is mapped in the compositor's space.
-            // The layout algorithm will position it afterward.
-            ctx.backend.map_window(current);
-        } else {
-            // Move the window to its stored on-screen position.
-            let Rect { x, y, w, h } = geo;
-            ctx.backend.resize_window(current, Rect { x, y, w, h });
-            ctx.backend.flush();
+            if is_visible {
+                if is_wayland {
+                    ctx.backend.map_window(win);
+                } else {
+                    let Rect { x, y, w, h } = geo;
+                    ctx.backend.resize_window(win, Rect { x, y, w, h });
+                    ctx.backend.flush();
 
-            // For floating or non-tiling windows, also issue a full resize so the
-            // stored geometry is reflected in the X server's window extents.
-            let is_tiling = mon_id
-                .and_then(|mid| ctx.g.monitor(mid))
-                .map(|mon| mon.is_tiling_layout())
-                .unwrap_or(false);
+                    let is_tiling = mon.is_tiling_layout();
 
-            if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-                resize(ctx, current, &Rect { x, y, w, h }, false);
+                    if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
+                        resize(ctx, win, &Rect { x, y, w, h }, false);
+                    }
+                }
+            } else {
+                if is_wayland {
+                    ctx.backend.unmap_window(win);
+                } else {
+                    let w_val = client_width(c);
+                    let y = geo.y;
+
+                    ctx.backend.resize_window(
+                        win,
+                        Rect {
+                            x: -2 * w_val,
+                            y,
+                            w: geo.w,
+                            h: geo.h,
+                        },
+                    );
+                    ctx.backend.flush();
+                }
             }
-        }
-
-        show_hide(ctx, snext);
-    } else {
-        // Recurse first so children are positioned before we move the parent.
-        show_hide(ctx, snext);
-
-        if is_wayland {
-            // Remove the window from the compositor's space so it is not
-            // rendered or hit-tested while its tag is inactive.
-            ctx.backend.unmap_window(current);
-        } else {
-            let w_val = ctx.g.clients.get(&current).map(client_width).unwrap_or(0);
-            let y = geo.y;
-
-            ctx.backend.resize_window(
-                current,
-                Rect {
-                    x: -2 * w_val,
-                    y,
-                    w: geo.w,
-                    h: geo.h,
-                },
-            );
-            ctx.backend.flush();
         }
     }
 }
@@ -178,8 +158,8 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // Animate: slide down to (x, y) from (x, -50).
     animate_client(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
-    let mon_id = ctx.g.clients.get(&win).and_then(|c| c.mon_id);
-    if let Some(mid) = mon_id {
+    let monitor_id = ctx.g.clients.get(&win).and_then(|c| c.monitor_id);
+    if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
     }
 }
@@ -205,8 +185,8 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     }
 
     let Rect { x, y, w, h } = client.geo;
-    let mon_id = client.mon_id;
-    let bh = ctx.g.cfg.bar_height;
+    let monitor_id = client.monitor_id;
+    let bar_height = ctx.g.cfg.bar_height;
     let animated = ctx.g.animated;
 
     if animated {
@@ -216,7 +196,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
             win,
             &Rect {
                 x,
-                y: bh - h + 40,
+                y: bar_height - h + 40,
                 w: 0,
                 h: 0,
             },
@@ -259,17 +239,21 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     // when shown again.
     resize(ctx, win, &Rect { x, y, w, h }, false);
 
-    let snext = ctx.g.clients.get(&win).and_then(|c| c.snext);
+    let snext = monitor_id.and_then(|mid| {
+        ctx.g
+            .monitor(mid)
+            .and_then(|m| m.stack.iter().find(|&&w| w != win).copied())
+    });
     crate::focus::focus_soft(ctx, snext);
 
-    if let Some(mid) = mon_id {
+    if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
     }
 }
 
 pub fn calculate_yoffset_ctx(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bh = ctx.g.cfg.bar_height;
-    let base_offset = if mon.showbar { bh } else { 0 };
+    let bar_height = ctx.g.cfg.bar_height;
+    let base_offset = if mon.showbar { bar_height } else { 0 };
 
     for (_win, c) in mon.iter_clients(ctx.g.clients.map()) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {

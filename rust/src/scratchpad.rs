@@ -32,9 +32,9 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
+    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
 
-    let sel_win = match sel_win {
+    let selected_window = match selected_window {
         Some(w) => w,
         None => return,
     };
@@ -44,17 +44,17 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     }
 
     let (was_scratchpad, old_tags) = {
-        if let Some(c) = ctx.g.clients.get(&sel_win) {
-            let was_sp = c.is_scratchpad();
-            let old_tags = if !was_sp { c.tags } else { 0 };
-            (was_sp, old_tags)
+        if let Some(c) = ctx.g.clients.get(&selected_window) {
+            let was_scratchpad = c.is_scratchpad();
+            let old_tags = if !was_scratchpad { c.tags } else { 0 };
+            (was_scratchpad, old_tags)
         } else {
             return;
         }
     };
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&sel_win) {
+        if let Some(client) = ctx.g.clients.get_mut(&selected_window) {
             client.scratchpad_name = name.to_string();
 
             if !was_scratchpad {
@@ -70,34 +70,34 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         }
     }
 
-    let selmon = ctx.g.selected_monitor_id();
+    let selected_monitor_id = ctx.g.selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
     if !ctx.g.monitors.is_empty() {
-        arrange(ctx, Some(selmon));
+        arrange(ctx, Some(selected_monitor_id));
     }
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
+    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
 
-    let sel_win = match sel_win {
+    let selected_window = match selected_window {
         Some(w) => w,
         None => return,
     };
 
-    let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
-        let mon_tags = ctx
+    let (is_scratchpad, restore_tags, monitor_id, monitor_tags) = {
+        let monitor_tags = ctx
             .g
             .selected_monitor()
             .map(|m| m.tagset[m.seltags as usize])
             .unwrap_or(1);
 
-        if let Some(c) = ctx.g.clients.get(&sel_win) {
+        if let Some(c) = ctx.g.clients.get(&selected_window) {
             (
                 c.is_scratchpad(),
                 c.scratchpad_restore_tags,
-                c.mon_id,
-                mon_tags,
+                c.monitor_id,
+                monitor_tags,
             )
         } else {
             return;
@@ -109,19 +109,19 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     }
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&sel_win) {
+        if let Some(client) = ctx.g.clients.get_mut(&selected_window) {
             client.scratchpad_name.clear();
             client.issticky = false;
             client.tags = if restore_tags != 0 {
                 restore_tags
             } else {
-                mon_tags
+                monitor_tags
             };
             client.scratchpad_restore_tags = 0;
         }
     }
 
-    if let Some(mid) = mon_id {
+    if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
     }
 }
@@ -138,7 +138,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
             .g
             .clients
             .get(&found)
-            .and_then(|c| c.mon_id)
+            .and_then(|c| c.monitor_id)
             .unwrap_or(current_mon);
         (current_mon, target_mon)
     };
@@ -156,7 +156,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 
         {
             if let Some(client) = ctx.g.clients.get_mut(&found) {
-                client.mon_id = Some(current_mon);
+                client.monitor_id = Some(current_mon);
             }
         }
 
@@ -182,9 +182,9 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         None => return,
     };
 
-    let (is_sticky, mon_id) = {
+    let (is_sticky, monitor_id) = {
         if let Some(c) = ctx.g.clients.get(&found) {
-            (c.issticky, c.mon_id)
+            (c.issticky, c.monitor_id)
         } else {
             return;
         }
@@ -202,7 +202,7 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     }
 
     crate::focus::focus_soft(ctx, None);
-    if let Some(mid) = mon_id {
+    if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
     }
 }

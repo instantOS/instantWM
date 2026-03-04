@@ -230,8 +230,8 @@ pub fn run() -> ! {
             {
                 let mut ctx = wm.ctx();
                 if !ctx.g.clients.is_empty() {
-                    let selmon = ctx.g.selected_monitor_id();
-                    crate::layouts::arrange(&mut ctx, Some(selmon));
+                    let selected_monitor_id = ctx.g.selected_monitor_id();
+                    crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
                 }
             }
             if let Some(server) = ipc_server.as_mut() {
@@ -556,7 +556,7 @@ fn find_hovered_window(
             continue;
         }
         let is_visible = c
-            .mon_id
+            .monitor_id
             .and_then(|mid| wm.g.monitor(mid))
             .map(|m| c.is_visible_on_tags(m.selected_tags()))
             .unwrap_or(false);
@@ -874,7 +874,7 @@ pub(crate) fn wayland_border_elements_shared(
             continue;
         };
         let is_visible = c
-            .mon_id
+            .monitor_id
             .and_then(|mid| g.monitor(mid))
             .map(|m| c.is_visible_on_tags(m.selected_tags()))
             .unwrap_or(false);
@@ -908,7 +908,7 @@ pub(crate) fn wayland_border_elements_shared(
             continue;
         }
         let is_visible = c
-            .mon_id
+            .monitor_id
             .and_then(|mid| g.monitor(mid))
             .map(|m| c.is_visible_on_tags(m.selected_tags()))
             .unwrap_or(false);
@@ -916,7 +916,7 @@ pub(crate) fn wayland_border_elements_shared(
             continue;
         }
         let has_tiling = c
-            .mon_id
+            .monitor_id
             .and_then(|mid| g.monitor(mid))
             .map(|m| m.is_tiling_layout())
             .unwrap_or(true);

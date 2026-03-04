@@ -76,9 +76,9 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         }
     }
 
-    let selmon = ctx.g.selected_monitor_id();
+    let selected_monitor_id = ctx.g.selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon));
+    arrange(ctx, Some(selected_monitor_id));
 }
 
 fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {

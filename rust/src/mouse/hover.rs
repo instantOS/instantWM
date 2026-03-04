@@ -419,11 +419,11 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
 /// Returns `true` if the transition was handled.
 pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     // Selected window must be floating in a tiling layout
-    let sel_win = match ctx.g.selected_win() {
+    let selected_window = match ctx.g.selected_win() {
         Some(w) => w,
         None => return false,
     };
-    let sel_geo = match ctx.g.clients.get(&sel_win) {
+    let sel_geo = match ctx.g.clients.get(&selected_window) {
         Some(c)
             if c.isfloating
                 || !ctx
@@ -439,7 +439,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 
     // Must have a different, tiled window under the cursor
     let hovered_win = match get_cursor_client_win(ctx) {
-        Some(w) if w != sel_win => w,
+        Some(w) if w != selected_window => w,
         _ => return false,
     };
     let has_tiling = ctx

@@ -247,7 +247,7 @@ pub struct TagDragState {
     /// The initial tag bitmask that was clicked.
     pub initial_tag: u32,
     /// Monitor ID where the drag started.
-    pub mon_id: usize,
+    pub monitor_id: usize,
     /// Monitor X origin (for converting root coords to local).
     pub mon_mx: i32,
     /// Last seen tag gesture index (-1 = none).

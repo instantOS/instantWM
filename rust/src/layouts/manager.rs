@@ -9,22 +9,17 @@ use std::cmp::max;
 
 use super::LayoutKind;
 
-pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
+pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     crate::mouse::reset_cursor(ctx);
 
-    if let Some(id) = mon_id {
+    if let Some(id) = monitor_id {
         // First pass: show/hide stack
-        if let Some(mon) = ctx.g.monitor(id) {
-            crate::client::show_hide(ctx, mon.stack);
-        }
+        crate::client::show_hide(ctx);
         // Second pass: arrange and restack
         arrange_monitor(ctx, id);
         restack(ctx, id);
     } else {
-        let stacks: Vec<Option<WindowId>> = ctx.g.monitors_iter().map(|(_i, m)| m.stack).collect();
-        for stack in stacks {
-            crate::client::show_hide(ctx, stack);
-        }
+        crate::client::show_hide(ctx);
 
         let mon_indices: Vec<usize> = (0..ctx.g.monitors.count()).collect();
         for idx in mon_indices {
@@ -36,23 +31,23 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
     ctx.flush();
 }
 
-pub fn arrange_monitor(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let clientcount = {
-        let m = ctx.g.monitor(mon_id).expect("invalid monitor");
+        let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
         client_count_mon(ctx.g, m) as u32
     };
 
-    if let Some(m) = ctx.g.monitor_mut(mon_id) {
+    if let Some(m) = ctx.g.monitor_mut(monitor_id) {
         m.clientcount = clientcount;
     }
 
-    apply_border_widths(ctx, mon_id);
-    run_layout(ctx, mon_id);
-    place_overlay(ctx, mon_id);
+    apply_border_widths(ctx, monitor_id);
+    run_layout(ctx, monitor_id);
+    place_overlay(ctx, monitor_id);
 }
 
-fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let m = match ctx.g.monitor(mon_id) {
+fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+    let m = match ctx.g.monitor(monitor_id) {
         Some(m) => m,
         None => return,
     };
@@ -92,18 +87,21 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     }
 }
 
-fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let layout = ctx.g.monitor(mon_id).map(|m| get_current_layout(ctx.g, m));
+fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+    let layout = ctx
+        .g
+        .monitor(monitor_id)
+        .map(|m| get_current_layout(ctx.g, m));
     if let Some(layout) = layout {
-        if let Some(mut m) = ctx.g.monitor(mon_id).cloned() {
+        if let Some(mut m) = ctx.g.monitor(monitor_id).cloned() {
             layout.arrange(ctx, &mut m);
-            ctx.g.monitors.set_monitor(mon_id, m);
+            ctx.g.monitors.set_monitor(monitor_id, m);
         }
     }
 }
 
-fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
-    let (overlay_win, work_rect) = match ctx.g.monitor(mon_id) {
+fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+    let (overlay_win, work_rect) = match ctx.g.monitor(monitor_id) {
         Some(m) => (m.overlay, m.work_rect),
         None => return,
     };
@@ -129,18 +127,18 @@ fn place_overlay(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     }
 }
 
-pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
+pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     if ctx
         .g
-        .monitor(mon_id)
+        .monitor(monitor_id)
         .map_or(false, |m| get_current_layout(ctx.g, m).is_overview())
     {
         return;
     }
-    draw_bar(ctx, mon_id);
+    draw_bar(ctx, monitor_id);
 
-    let m = ctx.g.monitor(mon_id).expect("invalid monitor");
-    let sel_win = match m.sel {
+    let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
+    let selected_window = match m.sel {
         Some(w) => w,
         None => return,
     };
@@ -149,14 +147,14 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     let barwin = m.barwin;
     let stack_head = m.stack;
 
-    let is_floating = ctx.client(sel_win).map_or(false, |c| c.isfloating);
+    let is_floating = ctx.client(selected_window).map_or(false, |c| c.isfloating);
 
     if is_floating {
-        ctx.raise(sel_win);
+        ctx.raise(selected_window);
     }
 
     if !is_tiling {
-        ctx.raise(sel_win);
+        ctx.raise(selected_window);
         ctx.flush();
         return;
     }
@@ -182,8 +180,8 @@ pub fn restack(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
     let mut stack = tiled_stack;
     stack.push(barwin);
     if is_floating {
-        stack.retain(|w| *w != sel_win);
-        stack.push(sel_win);
+        stack.retain(|w| *w != selected_window);
+        stack.push(selected_window);
     }
     stack.extend(floating_stack);
     ctx.restack(&stack);
@@ -225,11 +223,11 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 }
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selmon = ctx.g.selected_monitor_id();
+    let selected_monitor_id = ctx.g.selected_monitor_id();
     if ctx.g.selected_monitor().and_then(|m| m.sel).is_some() {
-        arrange(ctx, Some(selmon));
+        arrange(ctx, Some(selected_monitor_id));
     } else {
-        draw_bar(ctx, selmon);
+        draw_bar(ctx, selected_monitor_id);
     }
 }
 
@@ -294,8 +292,8 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
             }
         }
     }
-    let selmon = ctx.g.selected_monitor_id();
-    arrange(ctx, Some(selmon));
+    let selected_monitor_id = ctx.g.selected_monitor_id();
+    arrange(ctx, Some(selected_monitor_id));
 }
 
 pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
@@ -333,8 +331,8 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         }
     }
 
-    let selmon = ctx.g.selected_monitor_id();
-    arrange(ctx, Some(selmon));
+    let selected_monitor_id = ctx.g.selected_monitor_id();
+    arrange(ctx, Some(selected_monitor_id));
     if animation_on {
         ctx.g.animated = true;
     }

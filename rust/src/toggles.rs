@@ -34,14 +34,14 @@ pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let mon_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
+    let monitor_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
         client.issticky = !client.issticky;
-        client.mon_id
+        client.monitor_id
     } else {
         return;
     };
 
-    if let Some(mid) = mon_id {
+    if let Some(mid) = monitor_id {
         crate::layouts::arrange(ctx, Some(mid));
     }
 }
@@ -60,7 +60,7 @@ pub fn toggle_animated(ctx: &mut WmCtx, action: ToggleAction) {
 pub fn set_border_width(ctx: &mut WmCtx, win: WindowId, width: i32) {
     let (old_bw, _mon_id) = {
         if let Some(c) = ctx.g.clients.get(&win) {
-            (c.border_width, c.mon_id)
+            (c.border_width, c.monitor_id)
         } else {
             return;
         }
@@ -107,7 +107,7 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     let _mon_id = {
         if let Some(client) = ctx.g.clients.get_mut(&win) {
             client.islocked = !client.islocked;
-            client.mon_id
+            client.monitor_id
         } else {
             return;
         }

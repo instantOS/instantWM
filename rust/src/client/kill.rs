@@ -60,7 +60,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
 
     let is_fullscreen = client.is_fullscreen;
     let mon_mh = client
-        .mon_id
+        .monitor_id
         .and_then(|mid| ctx.g.monitor(mid))
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
@@ -106,7 +106,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
     let has_clients = ctx
         .g
         .selected_monitor()
-        .is_some_and(|m| m.clients.is_some());
+        .is_some_and(|m| !m.clients.is_empty());
 
     if has_clients {
         if let Some(win) = selected_window(ctx) {
@@ -140,7 +140,7 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
         .get(&win)
         .map(|c| {
             let mh = c
-                .mon_id
+                .monitor_id
                 .and_then(|mid| ctx.g.monitor(mid))
                 .map(|m| m.monitor_rect.h)
                 .unwrap_or(0);

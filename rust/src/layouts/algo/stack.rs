@@ -79,15 +79,19 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── place each client ─────────────────────────────────────────────────
     let mut master_column_offset: u32 = 0; // running y-offset inside master column
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(ctx, m.clients);
+    let mut current_window = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
 
     while let Some(win) = current_window {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         if i < m.nmaster as u32 {
             // ── master client — animated vertical split ───────────────────
@@ -124,7 +128,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(ctx, next_client);
+        current_window = next_tiled(ctx, current_window);
     }
 }
 
@@ -165,15 +169,19 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let mut tx: i32 = m.work_rect.x; // running x-offset inside stack row
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(ctx, m.clients);
+    let mut current_window = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
 
     while let Some(win) = current_window {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────
@@ -259,15 +267,19 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_row_offset: i32 = 0; // running x-offset inside master row
     let tx: i32 = m.work_rect.x;
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(ctx, m.clients);
+    let mut current_window = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
 
     while let Some(win) = current_window {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         if i < m.nmaster as u32 {
             // ── master client — horizontal slice of the top row ───────────

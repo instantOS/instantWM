@@ -68,13 +68,14 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             c.is_fullscreen,
             c.isfloating,
             c.isfakefullscreen,
-            c.mon_id,
+            c.monitor_id,
             c.oldstate,
             c.old_geo,
         )
     });
 
-    let Some((is_fs, is_floating, is_fake_fs, mon_id, _oldstate, old_geo)) = client_snapshot else {
+    let Some((is_fs, is_floating, is_fake_fs, monitor_id, _oldstate, old_geo)) = client_snapshot
+    else {
         return;
     };
 
@@ -105,7 +106,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
                 c.border_width = 0;
             }
 
-            let mon_rect = mon_id
+            let mon_rect = monitor_id
                 .and_then(|mid| ctx.g.monitor(mid).map(|m| m.monitor_rect))
                 .unwrap_or_default();
 
@@ -163,7 +164,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             resize_client(ctx, win, &old_geo);
             ctx.backend.flush();
 
-            if let Some(mid) = mon_id {
+            if let Some(mid) = monitor_id {
                 arrange(ctx, Some(mid));
             }
         }
@@ -183,7 +184,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
         return;
     };
 
-    let (is_fullscreen, isfakefullscreen, mon_id, old_border_width) = ctx
+    let (is_fullscreen, isfakefullscreen, monitor_id, old_border_width) = ctx
         .g
         .clients
         .get(&win)
@@ -191,7 +192,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
             (
                 c.is_fullscreen,
                 c.isfakefullscreen,
-                c.mon_id,
+                c.monitor_id,
                 c.old_border_width,
             )
         })
@@ -202,7 +203,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
     if is_fullscreen && isfakefullscreen {
         let borderpx = ctx.g.cfg.borderpx;
 
-        if let Some(mid) = mon_id {
+        if let Some(mid) = monitor_id {
             let mon_rect = ctx
                 .g
                 .monitor(mid)

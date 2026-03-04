@@ -85,8 +85,8 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         Some(m) => m.work_rect.w,
         None => return,
     };
-    let bh = ctx.g.cfg.bar_height;
-    if work_rect_w <= 0 || bh <= 0 {
+    let bar_height = ctx.g.cfg.bar_height;
+    if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
 
@@ -97,7 +97,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
         if !drw.has_display() {
             return;
         }
-        drw.resize(work_rect_w as u32, bh as u32);
+        drw.resize(work_rect_w as u32, bar_height as u32);
         drw.clone()
     };
 
@@ -105,7 +105,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     renderer::draw_bar_common(ctx, mon_idx, &mut painter);
 
-    painter.map(barwin, 0, 0, work_rect_w as u16, bh as u16);
+    painter.map(barwin, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
 pub fn draw_bars(ctx: &mut WmCtx) {

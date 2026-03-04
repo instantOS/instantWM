@@ -32,13 +32,13 @@ pub fn update_status(ctx: &mut WmCtx) {
     crate::systray::update_systray(ctx);
 }
 
-pub fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
-    m.update_bar_position(bh);
+pub fn update_bar_pos_with_bh(m: &mut Monitor, bar_height: i32) {
+    m.update_bar_position(bar_height);
 }
 
 /// Resize bar window with dependency injection.
 pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
     let showsystray = ctx.g.cfg.showsystray;
     let is_selmon = ctx
         .g
@@ -60,7 +60,7 @@ pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
             .x(m.work_rect.x)
             .y(m.by)
             .width(w)
-            .height(bh as u32),
+            .height(bar_height as u32),
     );
 }
 
@@ -69,18 +69,18 @@ pub fn update_bars(ctx: &mut WmCtx) {
         return;
     }
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bh = ctx.g.cfg.bar_height;
+        let bar_height = ctx.g.cfg.bar_height;
         let showsystray = ctx.g.cfg.showsystray;
         let status_bg = hex_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
         let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
         let root = ctx.g.cfg.root;
-        let selmon = ctx.g.selected_monitor_id();
+        let selected_monitor_id = ctx.g.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<usize, u32> =
             std::collections::HashMap::new();
         if showsystray {
-            systray_widths.insert(selmon, crate::systray::get_systray_width(ctx));
+            systray_widths.insert(selected_monitor_id, crate::systray::get_systray_width(ctx));
         }
 
         let mut bar_configs = Vec::new();
@@ -90,10 +90,10 @@ pub fn update_bars(ctx: &mut WmCtx) {
             }
 
             let mut w = m.work_rect.w as u32;
-            if showsystray && selmon == i {
+            if showsystray && selected_monitor_id == i {
                 w = w.saturating_sub(*systray_widths.get(&i).unwrap_or(&0));
             }
-            bar_configs.push((i, m.work_rect.x, m.by, w, bh));
+            bar_configs.push((i, m.work_rect.x, m.by, w, bar_height));
         }
         (bar_configs, xlibdisplay, root, status_bg)
     };
@@ -109,7 +109,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
     if let Some(x11) = ctx.x11_conn() {
         let conn = x11.conn;
-        for (i, wx, by, w, bh) in &bar_configs {
+        for (i, wx, by, w, bar_height) in &bar_configs {
             let win_id = conn.generate_id().unwrap();
 
             let aux = x11rb::protocol::xproto::CreateWindowAux::new()
@@ -128,7 +128,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
                 *wx as i16,
                 *by as i16,
                 *w as u16,
-                *bh as u16,
+                *bar_height as u16,
                 0,
                 x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
                 x11rb::COPY_FROM_PARENT,
@@ -157,7 +157,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         tmp_no_anim = true;
     }
 
-    let bh = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g.cfg.bar_height;
     if let Some(selmon) = ctx.g.selected_monitor_mut() {
         selmon.showbar = !selmon.showbar;
 
@@ -166,7 +166,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
             selmon.tags[current_tag - 1].showbar = selmon.showbar;
         }
 
-        update_bar_pos_with_bh(selmon, bh);
+        update_bar_pos_with_bh(selmon, bar_height);
     }
 
     let selmon_idx = ctx.g.selected_monitor_id();
