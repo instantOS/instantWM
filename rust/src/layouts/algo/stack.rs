@@ -226,7 +226,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(ctx, next_client);
+        current_window = next_tiled(ctx, current_window);
     }
 }
 
@@ -325,6 +325,6 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(ctx, next_client);
+        current_window = next_tiled(ctx, current_window);
     }
 }

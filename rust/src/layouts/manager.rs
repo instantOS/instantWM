@@ -3,7 +3,7 @@
 use crate::bar::draw_bar;
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
-use crate::layouts::query::{client_count, client_count_mon, get_current_layout};
+use crate::layouts::query::{client_count, client_count_mon};
 use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
 
@@ -52,13 +52,12 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         None => return,
     };
 
-    let is_tiling = get_current_layout(ctx.g, m).is_tiling();
-    let is_monocle = get_current_layout(ctx.g, m).is_monocle();
+    let is_tiling = m.current_layout().is_tiling();
+    let is_monocle = m.current_layout().is_monocle();
     let clientcount = m.clientcount;
     let selected_tags = m.selected_tags();
 
-    let mut c_win = m.clients;
-    while let Some(win) = c_win {
+    for &win in &m.clients {
         // Resolve all info first to avoid borrow conflicts
         let client_info = ctx.client(win).map(|c| {
             (
@@ -66,11 +65,10 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
                 c.is_fullscreen,
                 c.is_visible_on_tags(selected_tags) && !c.is_hidden,
                 c.old_border_width,
-                c.next,
             )
         });
 
-        if let Some((is_floating, is_fs, is_visible, old_bw, next)) = client_info {
+        if let Some((is_floating, is_fs, is_visible, old_bw)) = client_info {
             if is_visible {
                 let strip_border =
                     !is_floating && !is_fs && ((clientcount == 1 && is_tiling) || is_monocle);
@@ -80,18 +78,12 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
                     ctx.set_border(win, old_bw);
                 }
             }
-            c_win = next;
-        } else {
-            break;
         }
     }
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let layout = ctx
-        .g
-        .monitor(monitor_id)
-        .map(|m| get_current_layout(ctx.g, m));
+    let layout = ctx.g.monitor(monitor_id).map(|m| m.current_layout());
     if let Some(layout) = layout {
         if let Some(mut m) = ctx.g.monitor(monitor_id).cloned() {
             layout.arrange(ctx, &mut m);
@@ -131,7 +123,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     if ctx
         .g
         .monitor(monitor_id)
-        .map_or(false, |m| get_current_layout(ctx.g, m).is_overview())
+        .map_or(false, |m| m.current_layout().is_overview())
     {
         return;
     }
@@ -142,7 +134,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         Some(w) => w,
         None => return,
     };
-    let is_tiling = get_current_layout(ctx.g, m).is_tiling();
+    let is_tiling = m.current_layout().is_tiling();
     let selected_tags = m.selected_tags();
     let barwin = m.barwin;
     let stack_head = m.stack;
@@ -232,10 +224,7 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx
-        .g
-        .selected_monitor()
-        .map(|m| get_current_layout(ctx.g, m));
+    let current_layout = ctx.g.selected_monitor().map(|m| m.current_layout());
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
     let current_idx = current_layout
@@ -303,7 +292,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     let is_tiling = ctx
         .g
         .selected_monitor()
-        .map_or(false, |m| get_current_layout(ctx.g, m).is_tiling());
+        .map_or(false, |m| m.current_layout().is_tiling());
     if !is_tiling {
         return;
     }

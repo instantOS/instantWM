@@ -46,7 +46,12 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         return;
     }
 
-    let first_win = match next_tiled(ctx, m.clients) {
+    let first_win = match m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)))
+    {
         Some(w) => w,
         None => return,
     };
@@ -58,13 +63,13 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let sw = (m.work_rect.w - mw) / 2;
 
     // ── place the master client ───────────────────────────────────────────
-    let (master_bw, master_next) = ctx
+    let master_bw = ctx
         .g
         .clients
         .get(&first_win)
-        .map(|c| c.border_and_next())
-        .map(|(bw, next)| (BORDER_MULTIPLIER * bw, next))
-        .unwrap_or((0, None));
+        .map(|c| c.border_width())
+        .map(|bw| BORDER_MULTIPLIER * bw)
+        .unwrap_or(0);
 
     // When n < 3 the two side columns collapse into one, so the master starts
     // at work_rect.x; with three columns it is inset by sw.
@@ -125,7 +130,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         let col_x = m.work_rect.x + mw + sw; // right of master, past the gap
         let mut y = m.work_rect.y;
-        let mut c_win = next_tiled(ctx, master_next);
+        let mut c_win = next_tiled(ctx, Some(first_win));
         let mut idx: u32 = 0;
 
         while let Some(win) = c_win {
@@ -133,12 +138,12 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 break;
             }
 
-            let (border_width, next_client) = ctx
+            let border_width = ctx
                 .g
                 .clients
                 .get(&win)
-                .map(|c| c.border_and_next())
-                .unwrap_or((0, None));
+                .map(|c| c.border_width())
+                .unwrap_or(0);
 
             // Last client in the column absorbs rounding remainder.
             let h = if idx + 1 == right_n {
@@ -167,15 +172,11 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
 
             idx += 1;
-            c_win = next_tiled(ctx, next_client);
+            c_win = next_tiled(ctx, c_win);
 
             // Skip the next client — it belongs to the left column.
             if let Some(skip_win) = c_win {
-                c_win = ctx
-                    .g
-                    .clients
-                    .get(&skip_win)
-                    .and_then(|c| next_tiled(ctx, c.next));
+                c_win = next_tiled(ctx, Some(skip_win));
             }
         }
     }
@@ -197,9 +198,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         // Walk to the first odd-index stack client by skipping the first
         // right-column client.
-        let first_right = next_tiled(ctx, master_next);
-        let first_left =
-            first_right.and_then(|w| ctx.g.clients.get(&w).and_then(|c| next_tiled(ctx, c.next)));
+        let first_right = next_tiled(ctx, Some(first_win));
+        let first_left = first_right.and_then(|w| next_tiled(ctx, Some(w)));
 
         let mut c_win = first_left;
         let mut idx: u32 = 0;
@@ -209,12 +209,12 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 break;
             }
 
-            let (border_width, next_client) = ctx
+            let border_width = ctx
                 .g
                 .clients
                 .get(&win)
-                .map(|c| c.border_and_next())
-                .unwrap_or((0, None));
+                .map(|c| c.border_width())
+                .unwrap_or(0);
 
             let h = if idx + 1 == left_n {
                 m.work_rect.y + m.work_rect.h - y - BORDER_MULTIPLIER * border_width
@@ -241,15 +241,11 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
 
             idx += 1;
-            c_win = next_tiled(ctx, next_client);
+            c_win = next_tiled(ctx, c_win);
 
             // Skip the next client — it belongs to the right column.
             if let Some(skip_win) = c_win {
-                c_win = ctx
-                    .g
-                    .clients
-                    .get(&skip_win)
-                    .and_then(|c| next_tiled(ctx, c.next));
+                c_win = next_tiled(ctx, Some(skip_win));
             }
         }
     }

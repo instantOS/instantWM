@@ -70,20 +70,6 @@ pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<W
 
 // ── layout query ──────────────────────────────────────────────────────────────
 
-/// Return the active layout for monitor `m`.
-///
-/// Reads from the monitor's own `tags` list. Falls back to `Tile` when the
-/// tag index is out of range (e.g. monitor not yet fully initialised).
-pub fn get_current_layout(_g: &Globals, m: &Monitor) -> LayoutKind {
-    let tag = m.current_tag;
-
-    if tag > 0 && tag <= m.tags.len() {
-        m.tags[tag - 1].layouts.get_layout()
-    } else {
-        LayoutKind::Tile
-    }
-}
-
 /// Return the active layout symbol string for the *selected* monitor.
 pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
     if let Some(m) = g.selected_monitor() {
@@ -125,10 +111,14 @@ pub fn framecount_for_layout(g: &Globals, threshold: usize, hi: i32, lo: i32) ->
 /// Counts tiled clients by walking the linked list using `next_tiled`.
 pub fn count_tiled_clients(ctx: &WmCtx, mon: &Monitor) -> u32 {
     let mut count = 0;
-    let mut c_win = next_tiled(ctx, mon.clients);
+    let mut c_win = mon
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
     while let Some(win) = c_win {
         count += 1;
-        c_win = next_tiled(ctx, ctx.g.clients.get(&win).and_then(|c| c.next));
+        c_win = next_tiled(ctx, Some(win));
     }
     count
 }

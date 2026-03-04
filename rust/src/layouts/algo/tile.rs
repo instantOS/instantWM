@@ -62,15 +62,19 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut master_y_offset: u32 = 0; // running y-offset inside master column
     let mut stack_y_offset: u32 = 0; // running y-offset inside stack column
     let mut i: u32 = 0;
-    let mut current_window = next_tiled(ctx, m.clients);
+    let mut current_window = m
+        .clients
+        .first()
+        .copied()
+        .and_then(|w| next_tiled(ctx, Some(w)));
 
     while let Some(win) = current_window {
-        let (border_width, next_client) = ctx
+        let border_width = ctx
             .g
             .clients
             .get(&win)
-            .map(|c| c.border_and_next())
-            .unwrap_or((0, None));
+            .map(|c| c.border_width())
+            .unwrap_or(0);
 
         if i < m.nmaster as u32 {
             // ── master client ─────────────────────────────────────────────
@@ -131,6 +135,6 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
 
         i += 1;
-        current_window = next_tiled(ctx, next_client);
+        current_window = next_tiled(ctx, current_window);
     }
 }
