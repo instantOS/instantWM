@@ -80,31 +80,6 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    /// Attach a window to its monitor's client list.
-    pub fn attach(&mut self, win: WindowId) {
-        self.g.clients.attach(&mut self.g.monitors, win);
-    }
-
-    /// Detach a window from its monitor's client list.
-    pub fn detach(&mut self, win: WindowId) {
-        self.g.clients.detach(&mut self.g.monitors, win);
-    }
-
-    /// Attach a window to its monitor's stack list.
-    pub fn attach_stack(&mut self, win: WindowId) {
-        self.g.clients.attach_stack(&mut self.g.monitors, win);
-    }
-
-    /// Detach a window from its monitor's stack list.
-    pub fn detach_stack(&mut self, win: WindowId) {
-        self.g.clients.detach_stack(&mut self.g.monitors, win);
-    }
-
-    /// Check if a window is hidden.
-    pub fn is_hidden(&self, win: WindowId) -> bool {
-        self.g.clients.is_hidden(win)
-    }
-
     /// Raise a window to the top of the stack.
     pub fn raise(&mut self, win: WindowId) {
         self.backend.raise_window(win);
