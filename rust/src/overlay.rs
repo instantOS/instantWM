@@ -210,7 +210,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
 
     if Some(sel_win) == sel_overlay {
         reset_overlay(ctx);
-        for mon in ctx.g.monitors.iter_mut() {
+        for (_i, mon) in ctx.g.monitors_iter_mut() {
             mon.overlay = None;
         }
         return;
@@ -220,7 +220,7 @@ pub fn create_overlay(ctx: &mut WmCtx, sel_win: WindowId) {
 
     reset_overlay(ctx);
 
-    for mon in ctx.g.monitors.iter_mut() {
+    for (_i, mon) in ctx.g.monitors_iter_mut() {
         mon.overlay = Some(temp_client);
         mon.overlaystatus = 0;
     }
@@ -336,7 +336,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     let yoffset = calculate_yoffset(ctx, mon, current_tag);
 
     // Mark overlay as shown on all monitors
-    for mon in &mut ctx.g.monitors {
+    for (_i, mon) in ctx.g.monitors_iter_mut() {
         mon.overlaystatus = 1;
     }
 
@@ -344,7 +344,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data in one place
     let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
-        let mon = ctx.g.monitors.get(selmon_id).unwrap();
+        let mon = ctx.g.monitor(selmon_id).unwrap();
         let client = match ctx.g.clients.get(&overlay_win) {
             Some(c) => c,
             None => return,
@@ -415,8 +415,8 @@ fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
 }
 
 /// Reset overlay status on all monitors.
-fn reset_all_overlay_status(monitors: &mut [Monitor]) {
-    for mon in monitors {
+fn reset_all_overlay_status(ctx: &mut WmCtx) {
+    for (_i, mon) in ctx.g.monitors_iter_mut() {
         mon.overlaystatus = 0;
     }
 }
@@ -480,7 +480,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
         animate_client(ctx, overlay_win, &hide_rect, OVERLAY_ANIMATION_FRAMES, 0);
     }
 
-    reset_all_overlay_status(&mut ctx.g.monitors);
+    reset_all_overlay_status(ctx);
 
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
@@ -523,7 +523,7 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 
 pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
     require_x11!(ctx);
-    for mon in &mut ctx.g.monitors {
+    for (_i, mon) in ctx.g.monitors_iter_mut() {
         mon.overlaymode = mode;
     }
 

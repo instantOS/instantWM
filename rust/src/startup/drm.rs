@@ -40,7 +40,7 @@ use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
-use crate::monitor;
+use crate::monitor::update_geom;
 use crate::startup::common_wayland::{
     wayland_font_height_from_size, wayland_font_size_from_config,
 };
@@ -521,7 +521,7 @@ fn init_drm_globals(wm: &mut Wm) {
     .max(min_bar_height);
     wm.g.cfg.horizontal_padding = font_height;
     wm.g.cfg.numlockmask = 0;
-    monitor::update_geom(&mut wm.ctx());
+    update_geom(&mut wm.ctx());
 }
 
 fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) {
@@ -595,11 +595,11 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
         wm.g.monitors.push(mon);
     }
 
-    for (i, mon) in wm.g.monitors.iter_mut().enumerate() {
-        mon.monitor_id = i;
+    for (i, mon) in wm.g.monitors.iter_mut() {
+        mon.num = i as i32;
     }
 
-    if wm.g.selmon_id() >= wm.g.monitors.len() {
+    if wm.g.selmon_id() >= wm.g.monitors.count() {
         wm.g.set_selmon(0);
     }
 }

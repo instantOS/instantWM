@@ -1,5 +1,6 @@
 use crate::config::commands::ExternalCommands;
 use crate::drw::{Cursor, Drw};
+use crate::monitor::MonitorManager;
 use crate::types::*;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -273,13 +274,7 @@ pub struct Globals {
     pub cfg: RuntimeConfig,
 
     // Runtime state (changes during WM operation)
-    pub monitors: Vec<Monitor>,
-    /// Index of the currently selected monitor in `monitors`.
-    ///
-    /// Private – use `selmon()`, `selmon_mut()`, `selmon_id()`, and
-    /// `set_selmon()` to read/write this value so that `Monitor::monitor_id`
-    /// is kept in sync automatically.
-    selmon_idx: MonitorId,
+    pub monitors: MonitorManager,
     pub clients: HashMap<WindowId, Client>,
     pub client_list: Vec<ClientId>,
     pub tags: TagSet,
@@ -299,118 +294,58 @@ pub struct Globals {
 
 impl Globals {
     // -------------------------------------------------------------------------
-    // Selected-monitor accessors
-    // -------------------------------------------------------------------------
-
-    /// Return a reference to the currently selected monitor, if one exists.
-    #[inline]
-    pub fn selmon(&self) -> Option<&Monitor> {
-        self.monitors.get(self.selmon_idx)
-    }
-
-    /// Return a mutable reference to the currently selected monitor, if one exists.
-    #[inline]
-    pub fn selmon_mut(&mut self) -> Option<&mut Monitor> {
-        self.monitors.get_mut(self.selmon_idx)
-    }
-
-    /// Return the `MonitorId` of the currently selected monitor.
-    ///
-    /// Equivalent to `selmon().map(|m| m.id())` but without a borrow.
-    /// Prefer this over reaching into `g.selmon_idx` directly.
-    #[inline]
-    pub fn selmon_id(&self) -> MonitorId {
-        self.selmon_idx
-    }
-
-    /// Change the currently selected monitor.
-    ///
-    /// `id` must be a valid index into `monitors`; passing an out-of-bounds
-    /// value is not unsafe but `selmon()` will return `None` until corrected.
-    #[inline]
-    pub fn set_selmon(&mut self, id: MonitorId) {
-        self.selmon_idx = id;
-    }
-
-    // -------------------------------------------------------------------------
-    // Monitor vec management
-    // -------------------------------------------------------------------------
-
-    /// Append a monitor to the vec, stamp its `monitor_id`, and return the
-    /// new id.  Always use this instead of `monitors.push()` directly so
-    /// that `Monitor::monitor_id` is always correct.
-    pub fn push_monitor(&mut self, mut m: Monitor) -> MonitorId {
-        let id = self.monitors.len();
-        m.monitor_id = id;
-        self.monitors.push(m);
-        id
-    }
-
-    /// Remove the monitor at `mon_id` and fix up all stored indices.
-    ///
-    /// After removal every monitor whose index shifted down by one has its
-    /// `monitor_id` decremented, and `selmon_idx` is clamped / adjusted to
-    /// remain valid.
-    pub fn remove_monitor(&mut self, mon_id: MonitorId) {
-        if mon_id >= self.monitors.len() {
-            return;
-        }
-        self.monitors.remove(mon_id);
-        // Re-stamp ids for monitors that shifted.
-        for (i, m) in self.monitors.iter_mut().enumerate() {
-            m.monitor_id = i;
-        }
-        // Adjust selected-monitor index.
-        if self.selmon_idx == mon_id {
-            self.selmon_idx = 0;
-        } else if self.selmon_idx > mon_id {
-            self.selmon_idx -= 1;
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Arbitrary-monitor accessors
-    // -------------------------------------------------------------------------
-
-    /// Return a reference to the monitor with the given id, if it exists.
-    #[inline]
-    pub fn monitor(&self, id: MonitorId) -> Option<&Monitor> {
-        self.monitors.get(id)
-    }
-
-    /// Return a mutable reference to the monitor with the given id, if it exists.
-    #[inline]
-    pub fn monitor_mut(&mut self, id: MonitorId) -> Option<&mut Monitor> {
-        self.monitors.get_mut(id)
-    }
-
-    // -------------------------------------------------------------------------
-    // Monitor iteration
-    // -------------------------------------------------------------------------
-
-    /// Iterate over all monitors, yielding `(MonitorId, &Monitor)` pairs.
-    ///
-    /// Prefer this over `monitors.iter().enumerate()` at call-sites that need
-    /// the index alongside the monitor reference.
-    #[inline]
-    pub fn monitors_iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
-        self.monitors.iter().enumerate()
-    }
-
-    /// Iterate mutably over all monitors, yielding `(MonitorId, &mut Monitor)` pairs.
-    #[inline]
-    pub fn monitors_iter_mut(&mut self) -> impl Iterator<Item = (MonitorId, &mut Monitor)> {
-        self.monitors.iter_mut().enumerate()
-    }
-
-    // -------------------------------------------------------------------------
     // Selected-monitor convenience helpers
     // -------------------------------------------------------------------------
 
     /// Return the window currently selected on the selected monitor, if any.
     #[inline]
     pub fn selected_win(&self) -> Option<WindowId> {
-        self.selmon().and_then(|m| m.sel)
+        self.monitors.sel().and_then(|m| m.sel)
+    }
+
+    /// Return the numlock mask from config.
+    pub fn numlockmask(&self) -> u32 {
+        self.cfg.numlockmask
+    }
+
+    /// Return the ID of the currently selected monitor.
+    pub fn selmon_id(&self) -> usize {
+        self.monitors.sel_idx()
+    }
+
+    /// Change the currently selected monitor.
+    pub fn set_selmon(&mut self, id: usize) {
+        self.monitors.set_sel_idx(id);
+    }
+
+    /// Shorthand to get the selected monitor.
+    pub fn selmon(&self) -> Option<&Monitor> {
+        self.monitors.sel()
+    }
+
+    /// Shorthand to get the selected monitor mutably.
+    pub fn selmon_mut(&mut self) -> Option<&mut Monitor> {
+        self.monitors.sel_mut()
+    }
+
+    /// Delegation to get a monitor by index.
+    pub fn monitor(&self, id: usize) -> Option<&Monitor> {
+        self.monitors.get(id)
+    }
+
+    /// Delegation to get a mutable monitor by index.
+    pub fn monitor_mut(&mut self, id: usize) -> Option<&mut Monitor> {
+        self.monitors.get_mut(id)
+    }
+
+    /// Delegation to iterate over monitors.
+    pub fn monitors_iter(&self) -> impl Iterator<Item = (usize, &Monitor)> {
+        self.monitors.iter()
+    }
+
+    /// Delegation to iterate over monitors mutably.
+    pub fn monitors_iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut Monitor)> {
+        self.monitors.iter_mut()
     }
 }
 
@@ -418,8 +353,7 @@ impl Default for Globals {
     fn default() -> Self {
         Self {
             cfg: RuntimeConfig::default(),
-            monitors: Vec::new(),
-            selmon_idx: 0,
+            monitors: MonitorManager::new(),
             clients: HashMap::new(),
             client_list: Vec::new(),
             tags: TagSet::default(),
@@ -559,7 +493,7 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.tags.num_tags = cfg.num_tags;
     g.cfg.tag_template = template.clone();
     // Initialise any monitors that already exist (re-init on config reload).
-    for mon in g.monitors.iter_mut() {
+    for (_i, mon) in g.monitors.iter_mut() {
         mon.init_tags(&template);
     }
 }

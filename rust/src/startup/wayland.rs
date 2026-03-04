@@ -58,7 +58,7 @@ use crate::bar::color::rgba_from_hex;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::client::resize;
 use crate::config::init_config;
-use crate::monitor;
+use crate::monitor::update_geom;
 use crate::mouse::{set_cursor_default, set_cursor_move, set_cursor_resize};
 use crate::startup::common_wayland::{
     modifiers_to_x11_mask, wayland_font_height_from_size, wayland_font_size_from_config,
@@ -103,7 +103,7 @@ pub fn run() -> ! {
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;
     wm.g.cfg.screen_height = initial_h;
-    monitor::update_geom(&mut wm.ctx());
+    update_geom(&mut wm.ctx());
 
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
@@ -269,7 +269,7 @@ fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     };
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
-    monitor::update_geom(&mut wm.ctx());
+    update_geom(&mut wm.ctx());
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
@@ -1073,10 +1073,10 @@ fn update_wayland_bar_hit_state(
         w: 1,
         h: 1,
     };
-    let mid = crate::types::find_monitor_by_rect(&wm.g.monitors, &rect)?;
+    let mid = crate::types::find_monitor_by_rect(wm.g.monitors.monitors(), &rect)?;
     let mut ctx = wm.ctx();
     if mid != ctx.g.selmon_id() {
-        ctx.g.set_selmon(mid);
+        ctx.g.monitors.set_sel_idx(mid);
     }
 
     let bar_h = ctx.g.cfg.bar_height.max(1);
@@ -1202,7 +1202,7 @@ fn init_wayland_globals(wm: &mut Wm) {
     // Keep hit-testing metrics aligned with the effective bar font height.
     wm.g.cfg.horizontal_padding = font_height;
     wm.g.cfg.numlockmask = 0;
-    monitor::update_geom(&mut wm.ctx());
+    update_geom(&mut wm.ctx());
 }
 
 fn apply_wayland_session_env(socket_name: &str) {

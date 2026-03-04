@@ -134,4 +134,3 @@ pub fn reset_bar(ctx: &mut WmCtx) {
     renderer::reset_bar_common(ctx);
     draw_bar(ctx, selmon_idx);
 }
-

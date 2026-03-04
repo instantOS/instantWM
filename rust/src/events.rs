@@ -1,4 +1,3 @@
-use crate::backend::BackendOps;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
@@ -13,7 +12,7 @@ use crate::keyboard::{
     grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
 };
 use crate::layouts::{arrange, restack};
-use crate::monitor::{update_geom, win_to_mon};
+use crate::monitor::update_geom;
 use crate::mouse::{
     get_cursor_client_win, handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse,
     reset_cursor, resize_mouse_directional,
@@ -53,13 +52,17 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
     let _ = conn.flush();
 
-    let numlockmask = ctx.g.cfg.numlockmask;
+    let numlockmask = ctx.g.numlockmask();
     let buttons_clone = ctx.g.cfg.buttons.clone();
     let altcursor = ctx.g.altcursor;
     let mut selmon_id = ctx.g.selmon_id();
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) = win_to_mon(ctx, event_win) {
+    if let Some(clicked_mon) =
+        ctx.g
+            .monitors
+            .win_to_mon(event_win, ctx.g.cfg.root, &ctx.g.clients, ctx.x11_conn())
+    {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selmon(clicked_mon);
             selmon_id = clicked_mon;
@@ -303,7 +306,11 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 4. Handle Monitor Switch
     if focusfollowsmouse {
-        if let Some(new_mon_id) = win_to_mon(ctx, event_win) {
+        if let Some(new_mon_id) =
+            ctx.g
+                .monitors
+                .win_to_mon(event_win, ctx.g.cfg.root, &ctx.g.clients, ctx.x11_conn())
+        {
             if new_mon_id != selmon_id {
                 ctx.g.set_selmon(new_mon_id);
                 crate::focus::focus_soft(ctx, None);
@@ -325,7 +332,11 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(mon_id) = win_to_mon(ctx, event_win) {
+    if let Some(mon_id) =
+        ctx.g
+            .monitors
+            .win_to_mon(event_win, ctx.g.cfg.root, &ctx.g.clients, ctx.x11_conn())
+    {
         let is_barwin = ctx
             .g
             .monitors
@@ -401,8 +412,8 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
             w: 1,
             h: 1,
         };
-        if let Some(new_mon) =
-            crate::types::find_monitor_by_rect(&ctx.g.monitors, &rect).or(Some(ctx.g.selmon_id()))
+        if let Some(new_mon) = crate::types::find_monitor_by_rect(ctx.g.monitors.monitors(), &rect)
+            .or(Some(ctx.g.selmon_id()))
         {
             if new_mon != selmon_id {
                 ctx.g.set_selmon(new_mon);
@@ -789,8 +800,7 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
 
 /// Fetch the geometry and border width for `win`.
 ///
-/// Returns a sensible fallback (`800×600`, border `1`) when the request fails,
-/// so callers never have to handle `None`.
+/// Returns a fallback (`800×600`, border `1`) when the request fails.
 fn get_win_geometry(ctx: &WmCtx, win: WindowId) -> (Rect, u32) {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return (
@@ -830,9 +840,6 @@ fn get_win_geometry(ctx: &WmCtx, win: WindowId) -> (Rect, u32) {
 }
 
 /// Returns `true` when the `override_redirect` attribute is set on `win`.
-///
-/// Such windows manage themselves (e.g. tooltips, menus) and must be ignored
-/// by the WM.
 fn is_override_redirect(ctx: &WmCtx, win: WindowId) -> bool {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return false;
@@ -846,16 +853,6 @@ fn is_override_redirect(ctx: &WmCtx, win: WindowId) -> bool {
 }
 
 /// Partition `children` into `(managed, transients)`.
-///
-/// A window is eligible for management when **all** of the following hold:
-///
-/// 1. Its `override_redirect` flag is **not** set.
-/// 2. It is either viewable (`MapState::VIEWABLE`) or iconic (`WM_STATE_ICONIC`).
-/// 3. It is not already tracked as a client.
-///
-/// Eligible windows whose `WM_TRANSIENT_FOR` hint names an owner go into
-/// `transients`; all others go into `managed`.  The caller should manage the
-/// `managed` slice first so that owner windows exist before their transients.
 fn classify_windows(ctx: &WmCtx, children: Vec<Window>) -> (Vec<WindowId>, Vec<WindowId>) {
     let mut managed = Vec::new();
     let mut transients = Vec::new();
@@ -934,10 +931,6 @@ fn is_window_iconic(ctx: &WmCtx, win: WindowId) -> bool {
 }
 
 /// Adopt all pre-existing X11 windows at WM startup.
-///
-/// Regular windows are managed first; transients second — matching the order
-/// the original C dwm uses so that transient windows end up above their owners
-/// in the client list.
 pub fn scan(wm: &mut Wm) {
     let mut ctx = wm.ctx();
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
@@ -968,9 +961,7 @@ pub fn check_other_wm(conn: &x11rb::rust_connection::RustConnection, root: Windo
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
 }
 
-pub fn setup(_wm: &mut Wm) {
-    // setup is performed by main during wm_init.
-}
+pub fn setup(_wm: &mut Wm) {}
 
 pub fn setup_root(wm: &mut Wm) {
     let Some(x11) = wm.backend.x11() else {

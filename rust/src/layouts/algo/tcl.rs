@@ -190,12 +190,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         // Walk to the first odd-index stack client by skipping the first
         // right-column client.
         let first_right = next_tiled(ctx, master_next);
-        let first_left = first_right.and_then(|w| {
-            ctx.g
-                .clients
-                .get(&w)
-                .and_then(|c| next_tiled(ctx, c.next))
-        });
+        let first_left =
+            first_right.and_then(|w| ctx.g.clients.get(&w).and_then(|c| next_tiled(ctx, c.next)));
 
         let mut c_win = first_left;
         let mut idx: u32 = 0;

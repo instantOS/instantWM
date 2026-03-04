@@ -277,7 +277,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let mut status = String::from("ipc:scratchpads:");
     let mut first = true;
 
-    for mon in &ctx.g.monitors {
+    for (_i, mon) in ctx.g.monitors_iter() {
         for (_c_win, c) in mon.iter_clients(&ctx.g.clients) {
             if c.is_scratchpad() {
                 if !first {
@@ -314,7 +314,7 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
         return None;
     }
 
-    for mon in &ctx.g.monitors {
+    for (_i, mon) in ctx.g.monitors_iter() {
         for (c_win, c) in mon.iter_clients(&ctx.g.clients) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);

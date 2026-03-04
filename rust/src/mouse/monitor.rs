@@ -19,7 +19,6 @@
 use crate::backend::BackendKind;
 use crate::client::unfocus_win;
 use crate::contexts::WmCtx;
-// focus() is used via focus_soft() in this module
 use crate::monitor::transfer_client;
 use crate::types::*;
 
@@ -38,8 +37,9 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let new_mon =
-        crate::types::find_monitor_by_rect(&ctx.g.monitors, rect).or(Some(ctx.g.selmon_id()));
+    let new_mon = crate::types::find_monitor_by_rect(ctx.g.monitors.monitors(), rect)
+        .or(Some(ctx.g.selmon_id()));
+
     let current_mon = ctx.g.selmon_id();
 
     let Some(target) = new_mon else { return };

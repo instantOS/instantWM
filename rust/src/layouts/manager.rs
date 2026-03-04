@@ -27,13 +27,13 @@ pub fn arrange(ctx: &mut WmCtx<'_>, mon_id: Option<MonitorId>) {
             restack(ctx, id);
         }
     } else {
-        let stacks: Vec<Option<WindowId>> = ctx.g.monitors.iter().map(|m| m.stack).collect();
+        let stacks: Vec<Option<WindowId>> = ctx.g.monitors_iter().map(|(_i, m)| m.stack).collect();
 
         for stack in stacks {
             crate::client::show_hide(ctx, stack);
         }
 
-        let mon_indices: Vec<usize> = (0..ctx.g.monitors.len()).collect();
+        let mon_indices: Vec<usize> = (0..ctx.g.monitors.count()).collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
             restack(ctx, idx);
@@ -125,7 +125,7 @@ fn run_layout(ctx: &mut WmCtx<'_>, mon_id: MonitorId) {
         // monitor data from `m`; restack is handled by the caller.
         if let Some(mut m) = ctx.g.monitor(mon_id).cloned() {
             layout.arrange(ctx, &mut m);
-            ctx.g.monitors[mon_id] = m;
+            ctx.g.monitors.set_monitor(mon_id, m);
         }
     }
 }
@@ -248,7 +248,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
     let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        for mon in ctx.g.monitors.iter_mut() {
+        for (_i, mon) in ctx.g.monitors_iter_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.set_layout(layout);
             }
@@ -272,7 +272,7 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     let tagprefix = ctx.g.tags.prefix;
 
     if tagprefix {
-        for mon in ctx.g.monitors.iter_mut() {
+        for (_i, mon) in ctx.g.monitors_iter_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.toggle_slot();
             }

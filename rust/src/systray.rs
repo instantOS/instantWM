@@ -192,7 +192,7 @@ pub fn update_systray(ctx: &mut WmCtx) {
 
     let (x, by, _showbar, barwin) = {
         let m = systray_to_mon(ctx, None);
-        let mon = match ctx.g.monitors.get(m) {
+        let mon = match ctx.g.monitor(m) {
             Some(mon) => mon,
             None => return,
         };
@@ -428,7 +428,7 @@ pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
         };
     }
 
-    let n = ctx.g.monitors.len();
+    let n = ctx.g.monitors.count();
     let target = ctx.g.cfg.systraypinning.min(n);
 
     if ctx.g.cfg.systraypinning > n {

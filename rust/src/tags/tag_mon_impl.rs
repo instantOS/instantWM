@@ -15,7 +15,6 @@ use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
-use crate::types::monitor::find_monitor_by_direction;
 use crate::types::{MonitorDirection, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
@@ -24,26 +23,6 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Wind
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Send the selected client to the monitor in the given direction.
-///
-/// The `direction` is passed to [`find_monitor_by_direction`] which resolves
-/// it to an absolute monitor index. Use `MonitorDirection::NEXT` for the next
-/// monitor or `MonitorDirection::PREV` for the previous monitor.
-///
-/// # Floating client repositioning
-///
-/// When the client is floating its (x, y) position is converted to a fraction
-/// of the *work area* of the source monitor, then mapped onto the work area of
-/// the target monitor. This keeps the window at roughly the same place on
-/// screen even when the monitors have different resolutions.
-///
-/// After the move the window is raised to the top of the stacking order so it
-/// is immediately visible.
-///
-/// # No-ops
-/// - No client is currently selected.
-/// - Only one monitor is connected.
-/// - [`find_monitor_by_direction`] returns `None`.
 /// Send the selected client to the monitor in the given direction.
 pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     if ctx.backend_kind() == BackendKind::Wayland {
@@ -62,8 +41,11 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         return;
     }
 
-    let Some(target_id) = find_monitor_by_direction(&ctx.g.monitors, ctx.g.selmon_id(), direction)
-    else {
+    let Some(target_id) = crate::types::monitor::find_monitor_by_direction(
+        ctx.g.monitors.monitors(),
+        ctx.g.selmon_id(),
+        direction,
+    ) else {
         return;
     };
 
@@ -95,7 +77,6 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         return;
     }
     // Snapshot source geometry before transfer_client() transfers ownership.
-    // TODO: this looks like it should use rectangle?
     let (
         client_x,
         client_y,
@@ -154,7 +135,6 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         .get(target_id)
         .map(|m| {
             (
-                //TODO: use more rectangle?
                 m.monitor_rect.x,
                 m.monitor_rect.y,
                 m.work_rect.w,
