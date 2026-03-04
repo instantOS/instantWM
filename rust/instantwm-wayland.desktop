@@ -1,0 +1,8 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=instantWM (Wayland)
+Comment=instantOS window manager (Wayland)
+Exec=instantwm-rs --backend wayland
+DesktopNames=instantwm
+Icon=instantwm
+Type=Application

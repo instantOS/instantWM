@@ -1,0 +1,8 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=instantWM (X11)
+Comment=instantOS window manager (X11)
+Exec=instantwm-rs
+DesktopNames=instantwm
+Icon=instantwm
+Type=XSession
