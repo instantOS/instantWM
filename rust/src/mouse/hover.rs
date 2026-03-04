@@ -58,29 +58,29 @@ fn warp_pointer_resize(ctx: &WmCtx, win: WindowId, dir: ResizeDirection) {
 
 // ── Border detection ─────────────────────────────────────────────────────────
 
-/// Check if point (px, py) is in the resize-border zone of a window with geometry geo.
+/// Check if point (x, y) is in the resize-border zone of a window with geometry geo.
 /// The zone is a [`RESIZE_BORDER_ZONE`]-pixel band around the outside of the window.
-fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
-    if px > geo.x && px < geo.x + geo.w && py > geo.y && py < geo.y + geo.h {
+fn is_point_in_resize_border(geo: &Rect, x: i32, y: i32) -> bool {
+    if x > geo.x && x < geo.x + geo.w && y > geo.y && y < geo.y + geo.h {
         return false;
     }
-    if py < geo.y - RESIZE_BORDER_ZONE
-        || px < geo.x - RESIZE_BORDER_ZONE
-        || py > geo.y + geo.h + RESIZE_BORDER_ZONE
-        || px > geo.x + geo.w + RESIZE_BORDER_ZONE
+    if y < geo.y - RESIZE_BORDER_ZONE
+        || x < geo.x - RESIZE_BORDER_ZONE
+        || y > geo.y + geo.h + RESIZE_BORDER_ZONE
+        || x > geo.x + geo.w + RESIZE_BORDER_ZONE
     {
         return false;
     }
     true
 }
 
-/// Find a visible floating window whose resize border zone contains (`px`, `py`).
+/// Find a visible floating window whose resize border zone contains (`x`, `y`).
 /// Returns `None` if the cursor is on the bar or no window matches.
-pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Option<WindowId> {
+pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option<WindowId> {
     let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     let mon = ctx.g.selected_monitor();
-    if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
+    if mon.showbar && y < mon.monitor_rect.y + ctx.g.cfg.bar_height {
         return None;
     }
 
@@ -92,7 +92,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
         if !c.isfloating && has_tiling {
             continue;
         }
-        if is_point_in_resize_border(&c.geo, px, py) {
+        if is_point_in_resize_border(&c.geo, x, y) {
             return Some(w);
         }
     }
@@ -125,7 +125,7 @@ fn clear_hover_resize_offer(ctx: &mut WmCtx) {
     set_cursor_default(ctx);
 }
 
-/// Find a visible tiled window at point (`px`, `py`), skipping `skip_win`.
+/// Find a visible tiled window at point (`x`, `y`), skipping `skip_win`.
 ///
 /// Unlike [`get_cursor_client_win`] (which uses `query_pointer` and returns the
 /// topmost X11 window), this walks the monitor's client list directly. This is
@@ -133,8 +133,8 @@ fn clear_hover_resize_offer(ctx: &mut WmCtx) {
 /// the floating window, but we want the tiled window *behind* it.
 fn find_tiled_win_at_point(
     ctx: &WmCtx,
-    px: i32,
-    py: i32,
+    x: i32,
+    y: i32,
     skip_win: Option<WindowId>,
 ) -> Option<WindowId> {
     let mon = ctx.g.selected_monitor();
@@ -153,10 +153,10 @@ fn find_tiled_win_at_point(
         }
         // Check if the cursor is within the window's geometry (including border).
         let bw = c.border_width;
-        if px >= c.geo.x - bw
-            && px <= c.geo.x + c.geo.w + bw
-            && py >= c.geo.y - bw
-            && py <= c.geo.y + c.geo.h + bw
+        if x >= c.geo.x - bw
+            && x <= c.geo.x + c.geo.w + bw
+            && y >= c.geo.y - bw
+            && y <= c.geo.y + c.geo.h + bw
         {
             return Some(w);
         }
@@ -164,8 +164,8 @@ fn find_tiled_win_at_point(
     None
 }
 
-/// Return `true` when (`px`, `py`) is in the resize-border zone of the selected floating window.
-pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
+/// Return `true` when (`x`, `y`) is in the resize-border zone of the selected floating window.
+pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
     let Some(win) = ctx.selected_client() else {
         return false;
     };
@@ -178,10 +178,10 @@ pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
     }
 
     let mon = ctx.g.selected_monitor();
-    if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
+    if mon.showbar && y < mon.monitor_rect.y + ctx.g.cfg.bar_height {
         return false;
     }
-    is_point_in_resize_border(&c.geo, px, py)
+    is_point_in_resize_border(&c.geo, x, y)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
@@ -269,11 +269,11 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// focus/event handling), `false` if the cursor was not in a resize border.
 pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     require_x11_ret!(ctx, false);
-    let Some((px, py)) = get_root_ptr(ctx) else {
+    let Some((x, y)) = get_root_ptr(ctx) else {
         return false;
     };
     let _sel = ctx.selected_client();
-    let in_border = is_in_resize_border(ctx, px, py);
+    let in_border = is_in_resize_border(ctx, x, y);
     if !in_border {
         return false;
     }
@@ -282,7 +282,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
         return false;
     }
 
-    crate::mouse::handle_floating_resize_hover(ctx, px, py, false);
+    crate::mouse::handle_floating_resize_hover(ctx, x, y, false);
 
     let action_started = run_hover_resize_loop(ctx);
 
@@ -312,7 +312,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
 
             x11rb::protocol::Event::MotionNotify(_) => {
                 let in_border = get_root_ptr(ctx)
-                    .map(|(px, py)| is_in_resize_border(ctx, px, py))
+                    .map(|(x, y)| is_in_resize_border(ctx, x, y))
                     .unwrap_or(false);
                 if !in_border {
                     // Focus the window under the cursor when leaving the
@@ -324,8 +324,8 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                     let target = get_cursor_client_win(ctx)
                         .filter(|&w| Some(w) != sel)
                         .or_else(|| {
-                            let (px, py) = get_root_ptr(ctx)?;
-                            find_tiled_win_at_point(ctx, px, py, sel)
+                            let (x, y) = get_root_ptr(ctx)?;
+                            find_tiled_win_at_point(ctx, x, y, sel)
                         });
                     if let Some(win) = target {
                         crate::focus::focus_soft(ctx, Some(win));
@@ -428,18 +428,18 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         return false;
     }
 
-    let Some((px, py)) = get_root_ptr(ctx) else {
+    let Some((x, y)) = get_root_ptr(ctx) else {
         return false;
     };
 
     // If cursor is already outside the resize border, just focus the tiled window
-    if !is_point_in_resize_border(&sel_geo, px, py) {
+    if !is_point_in_resize_border(&sel_geo, x, y) {
         crate::focus::focus_soft(ctx, Some(hovered_win));
         return true;
     }
 
     // Activate resize cursor and enter the grab loop
-    handle_floating_resize_hover(ctx, px, py, false);
+    handle_floating_resize_hover(ctx, x, y, false);
 
     if !grab_pointer_with_keys(ctx, 1) {
         return false;

@@ -30,8 +30,8 @@ impl Rect {
 
     /// Check if a point is contained within this rectangle.
     #[inline]
-    pub fn contains_point(&self, px: i32, py: i32) -> bool {
-        px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
+    pub fn contains_point(&self, x: i32, y: i32) -> bool {
+        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
     }
 
     /// Check if this rectangle intersects with another.

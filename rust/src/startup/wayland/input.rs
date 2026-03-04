@@ -289,8 +289,8 @@ fn find_hovered_window(
     state: &WaylandState,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) -> Option<WindowId> {
-    let px = pointer_location.x;
-    let py = pointer_location.y;
+    let pointer_x = pointer_location.x;
+    let pointer_y = pointer_location.y;
     for window in state.space.elements().rev() {
         let Some(w) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
             continue;
@@ -314,7 +314,7 @@ fn find_hovered_window(
         let oy = c.geo.y as f64;
         let ow = c.geo.w as f64 + 2.0 * bw;
         let oh = c.geo.h as f64 + 2.0 * bw;
-        if px >= ox && px < ox + ow && py >= oy && py < oy + oh {
+        if pointer_x >= ox && pointer_x < ox + ow && pointer_y >= oy && pointer_y < oy + oh {
             return Some(w);
         }
     }
@@ -462,13 +462,16 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     ctx.g.drag.resize_direction = None;
     set_cursor_default(&mut ctx);
     if drag.move_mode {
-        crate::mouse::drag::complete_move_drop(
-            &mut ctx,
-            drag.win,
+        let grab_start_rect = Rect::new(
             drag.win_start_x,
             drag.win_start_y,
             drag.win_start_w,
             drag.win_start_h,
+        );
+        crate::mouse::drag::complete_move_drop(
+            &mut ctx,
+            drag.win,
+            grab_start_rect,
             None,
             Some((drag.last_root_x, drag.last_root_y)),
         );

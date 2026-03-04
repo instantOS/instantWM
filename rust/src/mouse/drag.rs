@@ -33,6 +33,7 @@ use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled,
 use crate::layouts::{arrange, restack};
 use crate::mouse::warp::warp_into;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
+use crate::types::geometry::Rect;
 use crate::types::SnapPosition;
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -112,12 +113,8 @@ struct MoveState {
     /// Drag origin in root coordinates.
     start_x: i32,
     start_y: i32,
-    /// Window position at drag start.
-    grab_start_x: i32,
-    grab_start_y: i32,
-    /// Window size at drag start.
-    grab_start_w: i32,
-    grab_start_h: i32,
+    /// Window geometry at drag start.
+    grab_start_rect: Rect,
     /// Whether the cursor was over the bar on the previous motion event.
     cursor_on_bar: bool,
     /// The last edge-snap zone the cursor was in.
@@ -243,8 +240,8 @@ fn on_motion(
     state.cursor_on_bar = update_bar_hover(ctx, root_x, root_y, state);
     state.edge_snap_indicator = check_edge_snap(ctx, root_x, root_y);
 
-    let mut new_x = state.grab_start_x + (event_x - state.start_x);
-    let mut new_y = state.grab_start_y + (event_y - state.start_y);
+    let mut new_x = state.grab_start_rect.x + (event_x - state.start_x);
+    let mut new_y = state.grab_start_rect.y + (event_y - state.start_y);
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
@@ -339,8 +336,8 @@ fn maybe_promote_tiled_drag_to_floating(
     // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
     // is far to the right. Re-center under cursor and rebase drag anchors.
     *new_x = event_x - float_w / 2;
-    state.grab_start_x = *new_x;
-    state.grab_start_y = *new_y;
+    state.grab_start_rect.x = *new_x;
+    state.grab_start_rect.y = *new_y;
     state.start_x = event_x;
     state.start_y = event_y;
 
@@ -370,18 +367,15 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
 /// * Dropped on a tag button → `set_tiled()` + `tag()`
 /// * Dropped elsewhere on bar, window floating → `set_tiled()`
 ///
-/// # `grab_start_x` / `grab_start_y`
+/// # `grab_start_rect`
 ///
-/// The window position at the moment the drag started.  When the window was
+/// The window geometry at the moment the drag started.  When the window was
 /// floating, this is the true pre-drag origin; we save it into `float_geo`
 /// so un-tiling later restores the original floating position.
 fn handle_bar_drop(
     ctx: &mut WmCtx,
     win: WindowId,
-    _grab_start_x: i32,
-    _grab_start_y: i32,
-    grab_start_w: i32,
-    grab_start_h: i32,
+    grab_start_rect: Rect,
     pointer_override: Option<(i32, i32)>,
 ) {
     let Some((ptr_x, ptr_y)) = pointer_override.or_else(|| get_root_ptr(ctx)) else {
@@ -443,8 +437,8 @@ fn handle_bar_drop(
     // preserve the pre-drag floating size so un-tiling restores dimensions.
     if was_floating {
         if let Some(client) = ctx.g.clients.get_mut(&win) {
-            client.float_geo.w = grab_start_w;
-            client.float_geo.h = grab_start_h;
+            client.float_geo.w = grab_start_rect.w;
+            client.float_geo.h = grab_start_rect.h;
         }
     }
 }
@@ -517,10 +511,7 @@ fn apply_edge_drop(
 pub fn complete_move_drop(
     ctx: &mut WmCtx,
     win: WindowId,
-    grab_start_x: i32,
-    grab_start_y: i32,
-    grab_start_w: i32,
-    grab_start_h: i32,
+    grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<(i32, i32)>,
 ) {
@@ -530,15 +521,7 @@ pub fn complete_move_drop(
         .map(|(_x, y)| apply_edge_drop(ctx, win, edge, y))
         .unwrap_or(false);
     if !handled_edge {
-        handle_bar_drop(
-            ctx,
-            win,
-            grab_start_x,
-            grab_start_y,
-            grab_start_w,
-            grab_start_h,
-            pointer,
-        );
+        handle_bar_drop(ctx, win, grab_start_rect, pointer);
         handle_client_monitor_switch(ctx, win);
     }
 }
@@ -562,20 +545,17 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
-    let (grab_start_x, grab_start_y, grab_start_w, grab_start_h) = ctx
+    let grab_start_rect = ctx
         .g
         .clients
         .get(&win)
-        .map(|c| (c.geo.x, c.geo.y, c.geo.w, c.geo.h))
-        .unwrap_or((0, 0, 0, 0));
+        .map(|c| c.geo)
+        .unwrap_or(Rect::default());
 
     let mut state = MoveState {
         start_x,
         start_y,
-        grab_start_x,
-        grab_start_y,
-        grab_start_w,
-        grab_start_h,
+        grab_start_rect,
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
@@ -617,10 +597,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     complete_move_drop(
         ctx,
         win,
-        state.grab_start_x,
-        state.grab_start_y,
-        state.grab_start_w,
-        state.grab_start_h,
+        state.grab_start_rect,
         state.edge_snap_indicator,
         None,
     );
@@ -1198,25 +1175,18 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     if ctx.g.drag.title.dragging {
         let win = ctx.g.drag.title.win;
         let right_click = ctx.g.drag.title.right_click;
-        let grab_start_x = ctx.g.drag.title.drop_restore_x;
-        let grab_start_y = ctx.g.drag.title.drop_restore_y;
-        let grab_start_w = ctx.g.drag.title.drop_restore_w;
-        let grab_start_h = ctx.g.drag.title.drop_restore_h;
+        let grab_start_rect = Rect::new(
+            ctx.g.drag.title.drop_restore_x,
+            ctx.g.drag.title.drop_restore_y,
+            ctx.g.drag.title.drop_restore_w,
+            ctx.g.drag.title.drop_restore_h,
+        );
         let last = (ctx.g.drag.title.last_root_x, ctx.g.drag.title.last_root_y);
         ctx.g.drag.title.active = false;
         ctx.g.drag.title.dragging = false;
         set_cursor_default(ctx);
         if !right_click {
-            complete_move_drop(
-                ctx,
-                win,
-                grab_start_x,
-                grab_start_y,
-                grab_start_w,
-                grab_start_h,
-                None,
-                Some(last),
-            );
+            complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
         } else {
             handle_client_monitor_switch(ctx, win);
         }
