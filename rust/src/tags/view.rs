@@ -249,7 +249,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     }
 
     let mon = ctx.g.selected_monitor_mut();
-    mon.tagset[mon.seltags as usize] = newtag.bits();
+    mon.set_selected_tags(newtag.bits());
     if mon.prev_tag == target_idx {
         mon.prev_tag = current_tag;
     }
@@ -342,7 +342,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     let mon = ctx.g.selected_monitor();
     let (current_tag, tagset, _tagmask) = (
         mon.current_tag,
-        TagMask::from_bits(mon.tagset[mon.seltags as usize]),
+        TagMask::from_bits(mon.selected_tags()),
         TagMask::from_bits(ctx.g.tags.mask()),
     );
 
@@ -392,7 +392,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
 
     let mon = ctx.g.selected_monitor_mut();
     mon.seltags ^= 1;
-    mon.tagset[mon.seltags as usize] = new_mask.bits();
+    mon.set_selected_tags(new_mask.bits());
     mon.prev_tag = mon.current_tag;
     mon.current_tag = new_mask.first_tag().unwrap_or(0);
     apply_pertag_settings(ctx);

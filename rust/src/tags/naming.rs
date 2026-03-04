@@ -29,20 +29,17 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 
     // Apply the new (or default) name to every tag in the current tagset
     // on every monitor, so secondary monitors stay in sync.
-    let mon_count = ctx.g.monitors.len();
-    for mon_idx in 0..mon_count {
+    for mon in ctx.g.monitors.iter_mut() {
         for i in 0..numtags.min(MAX_TAGS) {
             if (tagset & (1 << i)) == 0 {
                 continue;
             }
-            if let Some(mon) = ctx.g.monitors.get_mut(mon_idx) {
-                if let Some(tag) = mon.tags.get_mut(i) {
-                    tag.name = if !arg.is_empty() {
-                        arg.to_string()
-                    } else {
-                        default_tag_name(i)
-                    };
-                }
+            if let Some(tag) = mon.tags.get_mut(i) {
+                tag.name = if !arg.is_empty() {
+                    arg.to_string()
+                } else {
+                    default_tag_name(i)
+                };
             }
         }
     }
@@ -54,14 +51,10 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.) on all monitors.
 pub fn reset_name_tag(ctx: &mut WmCtx) {
     let num_tags = ctx.g.tags.num_tags.min(MAX_TAGS);
-    let mon_count = ctx.g.monitors.len();
-
-    for mon_idx in 0..mon_count {
+    for mon in ctx.g.monitors.iter_mut() {
         for i in 0..num_tags {
-            if let Some(mon) = ctx.g.monitors.get_mut(mon_idx) {
-                if let Some(tag) = mon.tags.get_mut(i) {
-                    tag.name = default_tag_name(i);
-                }
+            if let Some(tag) = mon.tags.get_mut(i) {
+                tag.name = default_tag_name(i);
             }
         }
     }

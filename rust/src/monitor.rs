@@ -202,7 +202,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
             ctx.g
                 .monitors
                 .get(target_mon)
-                .map(|m| m.tagset[m.seltags as usize])
+                .map(|m| m.selected_tags())
                 .unwrap_or(1)
         } else {
             0
