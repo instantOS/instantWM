@@ -50,15 +50,14 @@ pub(super) mod palette {
 }
 
 use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag};
+use palette::*;
 
 // ---------------------------------------------------------------------------
 // Color table builders
 // ---------------------------------------------------------------------------
 
 /// Tag bar color table: `[hover][SchemeTag][ColIndex]`
-/// //TODO should more be imported to make this less awkward?
 pub fn get_tag_colors() -> crate::types::TagColorConfigs {
-    use palette::*;
     crate::types::TagColorConfigs {
         no_hover: crate::types::TagColorSet {
             inactive: crate::types::ColorSchemeStrings::new(TEXT, BG, BG),
@@ -79,7 +78,6 @@ pub fn get_tag_colors() -> crate::types::TagColorConfigs {
 
 /// Window title color table: `[hover][SchemeWin][ColIndex]`
 pub fn get_window_colors() -> crate::types::WindowColorConfigs {
-    use palette::*;
     crate::types::WindowColorConfigs {
         no_hover: crate::types::WindowColorSet {
             focus: crate::types::ColorSchemeStrings::new(TEXT, BG_ACCENT, LIGHT_BLUE),
@@ -112,7 +110,6 @@ pub fn get_window_colors() -> crate::types::WindowColorConfigs {
 
 /// Close button color table: `[hover][SchemeClose][ColIndex]`
 pub fn get_close_button_colors() -> crate::types::CloseButtonColorConfigs {
-    use palette::*;
     crate::types::CloseButtonColorConfigs {
         no_hover: crate::types::CloseButtonColorSet {
             normal: crate::types::ColorSchemeStrings::new(TEXT, LIGHT_RED, RED),
@@ -129,7 +126,6 @@ pub fn get_close_button_colors() -> crate::types::CloseButtonColorConfigs {
 
 /// Border colors.
 pub fn get_border_colors() -> crate::types::BorderColorConfig {
-    use palette::*;
     crate::types::BorderColorConfig {
         normal: BG_ACCENT.to_string(),
         tile_focus: LIGHT_BLUE.to_string(),
@@ -140,7 +136,6 @@ pub fn get_border_colors() -> crate::types::BorderColorConfig {
 
 /// Status bar colors.
 pub fn get_status_bar_colors() -> crate::types::StatusColorConfig {
-    use palette::*;
     crate::types::StatusColorConfig {
         fg: TEXT.to_string(),
         bg: BG.to_string(),
@@ -153,7 +148,6 @@ pub fn get_status_bar_colors() -> crate::types::StatusColorConfig {
 // ---------------------------------------------------------------------------
 
 pub fn tag_color(hover: SchemeHover, scheme: SchemeTag, col: ColIndex) -> &'static str {
-    use palette::*;
     match (hover, scheme, col) {
         (SchemeHover::NoHover, SchemeTag::Inactive, ColIndex::Fg) => TEXT,
         (SchemeHover::NoHover, SchemeTag::Inactive, ColIndex::Bg) => BG,
@@ -190,7 +184,6 @@ pub fn tag_color(hover: SchemeHover, scheme: SchemeTag, col: ColIndex) -> &'stat
 }
 
 pub fn close_button_color(hover: SchemeHover, scheme: SchemeClose, col: ColIndex) -> &'static str {
-    use palette::*;
     match (hover, scheme, col) {
         (SchemeHover::NoHover, SchemeClose::Normal, ColIndex::Fg) => TEXT,
         (SchemeHover::NoHover, SchemeClose::Normal, ColIndex::Bg) => LIGHT_RED,
@@ -215,7 +208,6 @@ pub fn close_button_color(hover: SchemeHover, scheme: SchemeClose, col: ColIndex
 }
 
 pub fn border_color(scheme: SchemeBorder) -> &'static str {
-    use palette::*;
     match scheme {
         SchemeBorder::Normal => BG_ACCENT,
         SchemeBorder::TileFocus => LIGHT_BLUE,

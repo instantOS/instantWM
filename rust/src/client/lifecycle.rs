@@ -34,7 +34,7 @@ use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
-use crate::client::geometry::{resize_client, update_size_hints_win};
+use crate::client::geometry::resize_client;
 use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::state::set_client_state;
 use crate::client::state::{
@@ -223,7 +223,7 @@ fn configure_client_border(
 fn apply_manage_hints(ctx: &mut WmCtx, w: WindowId) {
     crate::client::focus::configure(ctx, w);
     update_window_type(ctx, w);
-    update_size_hints_win(ctx, w);
+    crate::client::geometry::update_size_hints(ctx, w);
     update_wm_hints(ctx, w);
     read_client_info(ctx, w);
     set_client_tag_prop(ctx, w);

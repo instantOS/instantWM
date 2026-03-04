@@ -3,7 +3,6 @@ use crate::config::commands::ExternalCommands;
 use crate::drw::{Cursor, Drw};
 use crate::monitor::MonitorManager;
 use crate::types::*;
-use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
 
@@ -148,9 +147,6 @@ pub struct TitleDragState {
     pub win: WindowId,
     /// The mouse button that started the interaction.
     pub button: MouseButton,
-    /// Whether this is a right-click interaction.
-    // TODO: do we need both this and MouseButton?
-    pub right_click: bool,
     /// Whether the window was focused when the click started.
     pub was_focused: bool,
     /// Whether the window was hidden when the click started.
@@ -159,22 +155,10 @@ pub struct TitleDragState {
     pub start_x: i32,
     /// Anchor Y position (root coords) at press time.
     pub start_y: i32,
-    /// Window X position at press time.
-    pub win_start_x: i32,
-    /// Window Y position at press time.
-    pub win_start_y: i32,
-    /// Window width at press time.
-    pub win_start_w: i32,
-    /// Window height at press time.
-    pub win_start_h: i32,
+    /// Window geometry at press time.
+    pub win_start_geo: Rect,
     /// Geometry to persist when a drag is dropped on the bar and re-tiled.
-    pub drop_restore_x: i32,
-    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
-    pub drop_restore_y: i32,
-    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
-    pub drop_restore_w: i32,
-    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
-    pub drop_restore_h: i32,
+    pub drop_restore_geo: Rect,
     /// Last pointer X seen for this interaction (root coords).
     pub last_root_x: i32,
     /// Last pointer Y seen for this interaction (root coords).
@@ -202,14 +186,8 @@ pub struct HoverResizeDragState {
     pub start_x: i32,
     /// Pointer anchor in root coords at press time.
     pub start_y: i32,
-    /// Window position at press time.
-    pub win_start_x: i32,
-    /// Window position at press time.
-    pub win_start_y: i32,
-    /// Window size at press time.
-    pub win_start_w: i32,
-    /// Window size at press time.
-    pub win_start_h: i32,
+    /// Window geometry at press time.
+    pub win_start_geo: Rect,
     /// Last pointer position seen for this interaction.
     pub last_root_x: i32,
     /// Last pointer position seen for this interaction.
@@ -226,10 +204,7 @@ impl Default for HoverResizeDragState {
             move_mode: false,
             start_x: 0,
             start_y: 0,
-            win_start_x: 0,
-            win_start_y: 0,
-            win_start_w: 0,
-            win_start_h: 0,
+            win_start_geo: Rect::default(),
             last_root_x: 0,
             last_root_y: 0,
         }

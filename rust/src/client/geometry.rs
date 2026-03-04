@@ -309,13 +309,6 @@ fn fetch_wm_normal_hints(ctx: &mut WmCtx, win: WindowId) -> Option<Vec<u32>> {
     reply.value32().map(|v| v.collect())
 }
 
-/// Convenience wrapper: look up `win` in the global client map and call
-/// [`update_size_hints`] on the found [`Client`].
-//TODO: remove this
-pub fn update_size_hints_win(ctx: &mut WmCtx, win: WindowId) {
-    update_size_hints(ctx, win);
-}
-
 // ---------------------------------------------------------------------------
 // Scale helper
 // ---------------------------------------------------------------------------

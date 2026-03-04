@@ -891,12 +891,11 @@ pub fn title_drag_begin(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
-    right_click: bool,
     click_root_x: i32,
     click_root_y: i32,
     suppress_click_action: bool,
 ) -> bool {
-    if right_click {
+    if btn == MouseButton::Right {
         if ctx
             .g
             .clients
@@ -910,47 +909,31 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.selected_client();
-    let (
-        win_start_x,
-        win_start_y,
-        win_start_w,
-        win_start_h,
-        drop_restore_x,
-        drop_restore_y,
-        drop_restore_w,
-        drop_restore_h,
-    ) = ctx
+    let (win_start_geo, drop_restore_geo) = ctx
         .g
         .clients
         .get(&win)
         .map(|c| {
-            let (rx, ry, rw, rh) = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
-                (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+            let restore = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
+                c.geo
             } else if c.float_geo.w > 0 && c.float_geo.h > 0 {
-                (c.float_geo.x, c.float_geo.y, c.float_geo.w, c.float_geo.h)
+                c.float_geo
             } else {
-                (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+                c.geo
             };
-            (c.geo.x, c.geo.y, c.geo.w, c.geo.h, rx, ry, rw, rh)
+            (c.geo, restore)
         })
-        .unwrap_or((0, 0, 0, 0, 0, 0, 0, 0));
+        .unwrap_or((Rect::default(), Rect::default()));
     ctx.g.drag.title = crate::globals::TitleDragState {
         active: true,
         win,
         button: btn,
-        right_click,
         was_focused: sel == Some(win),
         was_hidden: ctx.g.clients.is_hidden(win),
         start_x: click_root_x,
         start_y: click_root_y,
-        win_start_x,
-        win_start_y,
-        win_start_w,
-        win_start_h,
-        drop_restore_x,
-        drop_restore_y,
-        drop_restore_w,
-        drop_restore_h,
+        win_start_geo,
+        drop_restore_geo,
         last_root_x: click_root_x,
         last_root_y: click_root_y,
         dragging: false,
@@ -977,15 +960,15 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         }
         let td = &ctx.g.drag.title;
         let win = td.win;
-        if td.right_click {
+        if td.button == MouseButton::Right {
             let (new_w, new_h, x, y, is_floating) = ctx
                 .g
                 .clients
                 .get(&win)
                 .map(|c| {
                     (
-                        (td.win_start_w + (root_x - td.start_x)).max(1),
-                        (td.win_start_h + (root_y - td.start_y)).max(1),
+                        (td.win_start_geo.w + (root_x - td.start_x)).max(1),
+                        (td.win_start_geo.h + (root_y - td.start_y)).max(1),
                         c.geo.x,
                         c.geo.y,
                         c.isfloating,
@@ -1007,8 +990,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             }
             return true;
         }
-        let mut new_x = td.win_start_x + (root_x - td.start_x);
-        let mut new_y = td.win_start_y + (root_y - td.start_y);
+        let mut new_x = td.win_start_geo.x + (root_x - td.start_x);
+        let mut new_y = td.win_start_geo.y + (root_y - td.start_y);
 
         let (is_floating, geo) = ctx
             .g
@@ -1049,8 +1032,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     // Threshold exceeded — start the drag action.
     let win = ctx.g.drag.title.win;
     let btn = ctx.g.drag.title.button;
-    let right_click = ctx.g.drag.title.right_click;
     let was_hidden = ctx.g.drag.title.was_hidden;
+    let is_right_click = btn == MouseButton::Right;
     if ctx.backend_kind() == BackendKind::Wayland {
         // Keep the title drag active so Wayland motion/release can keep driving it.
         if was_hidden {
@@ -1072,13 +1055,13 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
                 let mut target_x = geo.x;
                 let mut target_y = geo.y;
-                if !right_click {
+                if !is_right_click {
                     // Match title-drag warp semantics: place the restored
                     // floating window so its top-middle sits under the cursor.
                     target_x = root_x - target_w / 2;
                     target_y = root_y;
-                    ctx.g.drag.title.win_start_x = target_x;
-                    ctx.g.drag.title.win_start_y = target_y;
+                    ctx.g.drag.title.win_start_geo.x = target_x;
+                    ctx.g.drag.title.win_start_geo.y = target_y;
                     ctx.g.drag.title.start_x = root_x;
                     ctx.g.drag.title.start_y = root_y;
                     anchor_rebased = true;
@@ -1098,10 +1081,10 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 current_geo.y = target_y;
                 current_geo.w = target_w;
                 current_geo.h = target_h;
-                ctx.g.drag.title.win_start_w = target_w;
-                ctx.g.drag.title.win_start_h = target_h;
+                ctx.g.drag.title.win_start_geo.w = target_w;
+                ctx.g.drag.title.win_start_geo.h = target_h;
             }
-            if right_click {
+            if is_right_click {
                 let (x_off, y_off) = ResizeDirection::BottomRight.warp_offset(
                     current_geo.w,
                     current_geo.h,
@@ -1121,7 +1104,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 ctx.g.drag.title.start_y = current_geo.y + offset_y;
             }
         }
-        if right_click {
+        if is_right_click {
             set_cursor_resize(ctx, Some(ResizeDirection::BottomRight));
         } else {
             set_cursor_move(ctx);
@@ -1138,7 +1121,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
     crate::focus::focus_soft(ctx, Some(win));
 
-    if right_click {
+    if btn == MouseButton::Right {
         if let Some(c) = ctx.g.clients.get(&win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -1172,20 +1155,16 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         return;
     }
 
+    let is_right_click = ctx.g.drag.title.button == MouseButton::Right;
+
     if ctx.g.drag.title.dragging {
         let win = ctx.g.drag.title.win;
-        let right_click = ctx.g.drag.title.right_click;
-        let grab_start_rect = Rect::new(
-            ctx.g.drag.title.drop_restore_x,
-            ctx.g.drag.title.drop_restore_y,
-            ctx.g.drag.title.drop_restore_w,
-            ctx.g.drag.title.drop_restore_h,
-        );
+        let grab_start_rect = ctx.g.drag.title.drop_restore_geo;
         let last = (ctx.g.drag.title.last_root_x, ctx.g.drag.title.last_root_y);
         ctx.g.drag.title.active = false;
         ctx.g.drag.title.dragging = false;
         set_cursor_default(ctx);
-        if !right_click {
+        if !is_right_click {
             complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
         } else {
             handle_client_monitor_switch(ctx, win);
@@ -1194,7 +1173,6 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     }
 
     let win = ctx.g.drag.title.win;
-    let right_click = ctx.g.drag.title.right_click;
     let was_focused = ctx.g.drag.title.was_focused;
     let was_hidden = ctx.g.drag.title.was_hidden;
     let suppress_click_action = ctx.g.drag.title.suppress_click_action;
@@ -1204,7 +1182,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         return;
     }
 
-    if right_click {
+    if is_right_click {
         if was_hidden {
             crate::client::show(ctx, win);
             crate::focus::focus_soft(ctx, Some(win));
@@ -1238,7 +1216,7 @@ pub fn window_title_mouse_handler(
     click_root_x: i32,
     click_root_y: i32,
 ) {
-    if !title_drag_begin(ctx, win, btn, false, click_root_x, click_root_y, false) {
+    if !title_drag_begin(ctx, win, btn, click_root_x, click_root_y, false) {
         return;
     }
 
@@ -1296,7 +1274,7 @@ pub fn window_title_mouse_handler_right(
     click_root_x: i32,
     click_root_y: i32,
 ) {
-    if !title_drag_begin(ctx, win, btn, true, click_root_x, click_root_y, false) {
+    if !title_drag_begin(ctx, win, btn, click_root_x, click_root_y, false) {
         return;
     }
 

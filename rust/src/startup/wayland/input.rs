@@ -370,10 +370,7 @@ fn wayland_hover_resize_drag_begin(
         move_mode,
         start_x: root_x,
         start_y: root_y,
-        win_start_x: geo.x,
-        win_start_y: geo.y,
-        win_start_w: geo.w,
-        win_start_h: geo.h,
+        win_start_geo: geo,
         last_root_x: root_x,
         last_root_y: root_y,
     };
@@ -397,16 +394,16 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     ctx.g.drag.hover_resize.last_root_x = root_x;
     ctx.g.drag.hover_resize.last_root_y = root_y;
     if drag.move_mode {
-        let new_x = drag.win_start_x + (root_x - drag.start_x);
-        let new_y = drag.win_start_y + (root_y - drag.start_y);
+        let new_x = drag.win_start_geo.x + (root_x - drag.start_x);
+        let new_y = drag.win_start_geo.y + (root_y - drag.start_y);
         resize(
             &mut ctx,
             drag.win,
             &Rect {
                 x: new_x,
                 y: new_y,
-                w: drag.win_start_w.max(1),
-                h: drag.win_start_h.max(1),
+                w: drag.win_start_geo.w.max(1),
+                h: drag.win_start_geo.h.max(1),
             },
             true,
         );
@@ -417,10 +414,10 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
         return true;
     }
 
-    let orig_left = drag.win_start_x;
-    let orig_top = drag.win_start_y;
-    let orig_right = drag.win_start_x + drag.win_start_w;
-    let orig_bottom = drag.win_start_y + drag.win_start_h;
+    let orig_left = drag.win_start_geo.x;
+    let orig_top = drag.win_start_geo.y;
+    let orig_right = drag.win_start_geo.x + drag.win_start_geo.w;
+    let orig_bottom = drag.win_start_geo.y + drag.win_start_geo.h;
     let (affects_left, affects_right, affects_top, affects_bottom) =
         drag.direction.affected_edges();
     let (new_x, new_w) = if affects_left {
@@ -428,14 +425,14 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     } else if affects_right {
         (orig_left, (root_x - orig_left + 1).max(1))
     } else {
-        (orig_left, drag.win_start_w.max(1))
+        (orig_left, drag.win_start_geo.w.max(1))
     };
     let (new_y, new_h) = if affects_top {
         (root_y, (orig_bottom - root_y).max(1))
     } else if affects_bottom {
         (orig_top, (root_y - orig_top + 1).max(1))
     } else {
-        (orig_top, drag.win_start_h.max(1))
+        (orig_top, drag.win_start_geo.h.max(1))
     };
     resize(
         &mut ctx,
@@ -462,16 +459,10 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     ctx.g.drag.resize_direction = None;
     set_cursor_default(&mut ctx);
     if drag.move_mode {
-        let grab_start_rect = Rect::new(
-            drag.win_start_x,
-            drag.win_start_y,
-            drag.win_start_w,
-            drag.win_start_h,
-        );
         crate::mouse::drag::complete_move_drop(
             &mut ctx,
             drag.win,
-            grab_start_rect,
+            drag.win_start_geo,
             None,
             Some((drag.last_root_x, drag.last_root_y)),
         );
