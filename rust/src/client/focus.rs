@@ -100,13 +100,13 @@ pub fn send_event(
     };
     let x11_win: Window = win.into();
 
-    let wmatom_protocols = ctx.g.cfg.wmatom.protocols;
-    let wmatom_take_focus = ctx.g.cfg.wmatom.take_focus;
-    let wmatom_delete = ctx.g.cfg.wmatom.delete;
+    let wmatom_protocols = ctx.g.x11.wmatom.protocols;
+    let wmatom_take_focus = ctx.g.x11.wmatom.take_focus;
+    let wmatom_delete = ctx.g.x11.wmatom.delete;
 
     let (exists, message_type) = if proto == wmatom_take_focus || proto == wmatom_delete {
         // Check whether the client advertises support for this protocol.
-        let supported = read_wm_protocols(conn, x11_win, ctx.g.cfg.wmatom.protocols)
+        let supported = read_wm_protocols(conn, x11_win, ctx.g.x11.wmatom.protocols)
             .into_iter()
             .any(|p| p == proto);
         (supported, wmatom_protocols)
@@ -151,8 +151,8 @@ pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
             let x11_win: Window = win.into();
             let _ = conn.change_property32(
                 PropMode::REPLACE,
-                ctx.g.cfg.root,
-                ctx.g.cfg.netatom.active_window,
+                ctx.g.x11.root,
+                ctx.g.x11.netatom.active_window,
                 AtomEnum::WINDOW,
                 &[x11_win],
             );
@@ -181,9 +181,9 @@ pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
     let _ = send_event(
         ctx,
         win,
-        ctx.g.cfg.wmatom.take_focus,
+        ctx.g.x11.wmatom.take_focus,
         0,
-        ctx.g.cfg.wmatom.take_focus as i64,
+        ctx.g.x11.wmatom.take_focus as i64,
         CURRENT_TIME as i64,
         0,
         0,
@@ -223,8 +223,8 @@ pub fn unfocus_win(ctx: &mut WmCtx, win: WindowId, redirect_to_root: bool) {
         }
 
         if redirect_to_root {
-            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, ctx.g.cfg.root, CURRENT_TIME);
-            let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.active_window);
+            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, ctx.g.x11.root, CURRENT_TIME);
+            let _ = conn.delete_property(ctx.g.x11.root, ctx.g.x11.netatom.active_window);
         }
 
         ctx.backend.flush();
@@ -254,7 +254,7 @@ pub fn grab_buttons(ctx: &mut WmCtx, win: WindowId, focused: bool) {
     let _ = ungrab_button(conn, ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
 
     if !focused {
-        let numlockmask = ctx.g.cfg.numlockmask;
+        let numlockmask = ctx.g.x11.numlockmask;
         let lock_mask = ModMask::LOCK.bits() as u32;
         let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
 

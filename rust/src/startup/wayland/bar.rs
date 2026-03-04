@@ -91,7 +91,7 @@ fn dispatch_wayland_bar_button(
     root_y: i32,
     clean_state: u32,
 ) {
-    let numlockmask = ctx.g.cfg.numlockmask;
+    let numlockmask = ctx.g.x11.numlockmask;
     let buttons = ctx.g.cfg.buttons.clone();
     for b in &buttons {
         if !b.matches(pos) || b.button != btn {

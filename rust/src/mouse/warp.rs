@@ -31,7 +31,7 @@ const WARP_INTO_PADDING: i32 = 10;
 pub(crate) fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
     require_x11_ret!(ctx, None);
     let conn = ctx.x11_conn().map(|x11| x11.conn)?;
-    let cookie = query_pointer(conn, ctx.g.cfg.root).ok()?;
+    let cookie = query_pointer(conn, ctx.g.x11.root).ok()?;
     let reply = cookie.reply().ok()?;
     Some((reply.root_x as i32, reply.root_y as i32))
 }
@@ -48,7 +48,7 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
         return;
     };
 
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
     let bar_height = ctx.g.cfg.bar_height;
 
     // No target window – centre on the selected monitor's work area.
@@ -183,7 +183,7 @@ pub fn warp_into(ctx: &WmCtx, win: WindowId) {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
-    let _ = conn.warp_pointer(CURRENT_TIME, ctx.g.cfg.root, 0, 0, 0, 0, x as i16, y as i16);
+    let _ = conn.warp_pointer(CURRENT_TIME, ctx.g.x11.root, 0, 0, 0, 0, x as i16, y as i16);
     let _ = conn.flush();
 }
 
@@ -214,7 +214,7 @@ pub fn reset_cursor(ctx: &mut WmCtx) {
     if let Some(ref cursor) = ctx.g.cfg.cursors[0] {
         let _ = change_window_attributes(
             conn,
-            ctx.g.cfg.root,
+            ctx.g.x11.root,
             &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
         );
         let _ = conn.flush();

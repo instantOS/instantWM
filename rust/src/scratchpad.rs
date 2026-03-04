@@ -234,7 +234,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
 
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;

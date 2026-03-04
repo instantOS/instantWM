@@ -57,8 +57,8 @@ pub fn set_client_state(ctx: &WmCtx, win: WindowId, state: i32) {
     let _ = conn.change_property32(
         PropMode::REPLACE,
         x11_win,
-        ctx.g.cfg.wmatom.state,
-        ctx.g.cfg.wmatom.state,
+        ctx.g.x11.wmatom.state,
+        ctx.g.x11.wmatom.state,
         &data,
     );
     let _ = conn.flush();
@@ -95,7 +95,7 @@ pub fn set_client_tag_prop(ctx: &WmCtx, win: WindowId) {
     let _ = conn.change_property(
         PropMode::REPLACE,
         x11_win,
-        ctx.g.cfg.netatom.client_info,
+        ctx.g.x11.netatom.client_info,
         AtomEnum::CARDINAL,
         8u8,
         data.len() as u32,
@@ -120,15 +120,15 @@ pub fn update_client_list(ctx: &WmCtx) {
     };
 
     // Delete the existing property first so we start with a clean slate.
-    let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.client_list);
+    let _ = conn.delete_property(ctx.g.x11.root, ctx.g.x11.netatom.client_list);
 
     for mon in ctx.g.monitors_iter_all() {
         for &cur_win in &mon.clients {
             let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(
                 PropMode::APPEND,
-                ctx.g.cfg.root,
-                ctx.g.cfg.netatom.client_list,
+                ctx.g.x11.root,
+                ctx.g.x11.netatom.client_list,
                 AtomEnum::WINDOW,
                 &[x11_win],
             );
@@ -170,7 +170,7 @@ fn read_window_title(ctx: &WmCtx, win: WindowId) -> String {
         return BROKEN.to_string();
     };
     let x11_win: Window = win.into();
-    let net_wm_name = ctx.g.cfg.netatom.wm_name;
+    let net_wm_name = ctx.g.x11.netatom.wm_name;
 
     for atom in [net_wm_name, AtomEnum::WM_NAME.into()] {
         if atom == 0 {
@@ -425,11 +425,11 @@ pub fn update_window_type(ctx: &mut WmCtx, win: WindowId) {
         return;
     };
     let x11_win: Window = win.into();
-    let state = get_atom_prop(conn, x11_win, ctx.g.cfg.netatom.wm_state);
-    let wtype = get_atom_prop(conn, x11_win, ctx.g.cfg.netatom.wm_window_type);
+    let state = get_atom_prop(conn, x11_win, ctx.g.x11.netatom.wm_state);
+    let wtype = get_atom_prop(conn, x11_win, ctx.g.x11.netatom.wm_window_type);
 
-    let atom_fullscreen = ctx.g.cfg.netatom.wm_fullscreen;
-    let atom_dialog = ctx.g.cfg.netatom.wm_window_type_dialog;
+    let atom_fullscreen = ctx.g.x11.netatom.wm_fullscreen;
+    let atom_dialog = ctx.g.x11.netatom.wm_window_type_dialog;
 
     if state == Some(atom_fullscreen) {
         set_fullscreen(ctx, win, true);
@@ -576,7 +576,7 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let motif_atom = ctx.g.cfg.motifatom;
+    let motif_atom = ctx.g.x11.motifatom;
     let borderpx = ctx.g.cfg.borderpx;
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;

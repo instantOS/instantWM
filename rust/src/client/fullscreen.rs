@@ -59,8 +59,8 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
     }
     let x11_win: Window = win.into();
 
-    let net_wm_fullscreen = ctx.g.cfg.netatom.wm_fullscreen;
-    let net_wm_state = ctx.g.cfg.netatom.wm_state;
+    let net_wm_fullscreen = ctx.g.x11.netatom.wm_fullscreen;
+    let net_wm_state = ctx.g.x11.netatom.wm_state;
 
     // Snapshot what we need before taking a mutable borrow.
     let client_snapshot = ctx.g.clients.get(&win).map(|c| {

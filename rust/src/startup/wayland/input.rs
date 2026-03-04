@@ -190,7 +190,7 @@ pub(super) fn handle_pointer_button(
                 let ctx = wm.ctx();
                 crate::util::clean_mask(
                     modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    ctx.g.cfg.numlockmask,
+                    ctx.g.x11.numlockmask,
                 )
             };
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
@@ -273,7 +273,7 @@ pub(super) fn handle_pointer_axis(
                 let ctx = wm.ctx();
                 crate::util::clean_mask(
                     modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    ctx.g.cfg.numlockmask,
+                    ctx.g.x11.numlockmask,
                 )
             };
             dispatch_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);

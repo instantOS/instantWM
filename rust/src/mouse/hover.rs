@@ -468,7 +468,7 @@ pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
     let conn = ctx.x11_conn().map(|x11| x11.conn)?;
 
     // Query pointer on root to get the actual child window under cursor
-    let reply = conn.query_pointer(ctx.g.cfg.root).ok()?.reply().ok()?;
+    let reply = conn.query_pointer(ctx.g.x11.root).ok()?.reply().ok()?;
 
     // child will be NONE if cursor is over root (no window)
     if reply.child == x11rb::NONE {

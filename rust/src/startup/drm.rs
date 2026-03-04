@@ -49,6 +49,11 @@ use crate::wm::Wm;
 
 use super::autostart::run_autostart;
 
+/// Default screen width when no DRM outputs are detected
+const DEFAULT_SCREEN_WIDTH: i32 = 1280;
+/// Default screen height when no DRM outputs are detected
+const DEFAULT_SCREEN_HEIGHT: i32 = 800;
+
 // Access drm/rustix types through smithay's re-exports.
 use drm::control::{connector, crtc};
 use smithay::reexports::drm;
@@ -520,7 +525,7 @@ fn init_drm_globals(wm: &mut Wm) {
     })
     .max(min_bar_height);
     wm.g.cfg.horizontal_padding = font_height;
-    wm.g.cfg.numlockmask = 0;
+    wm.g.x11.numlockmask = 0;
     update_geom(&mut wm.ctx());
 }
 
@@ -560,7 +565,7 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
             pos.x + mode.size.w
         })
         .max()
-        .unwrap_or(1280);
+        .unwrap_or(DEFAULT_SCREEN_WIDTH);
     wm.g.cfg.screen_height = surfaces
         .iter()
         .map(|s| {
@@ -569,7 +574,7 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
             pos.y + mode.size.h
         })
         .max()
-        .unwrap_or(800);
+        .unwrap_or(DEFAULT_SCREEN_HEIGHT);
 
     if wm.g.monitors.is_empty() {
         let mut mon = crate::types::Monitor::new_with_values(
@@ -581,14 +586,14 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
         mon.monitor_rect = Rect {
             x: 0,
             y: 0,
-            w: 1280,
-            h: 800,
+            w: DEFAULT_SCREEN_WIDTH,
+            h: DEFAULT_SCREEN_HEIGHT,
         };
         mon.work_rect = Rect {
             x: 0,
             y: 0,
-            w: 1280,
-            h: 800,
+            w: DEFAULT_SCREEN_WIDTH,
+            h: DEFAULT_SCREEN_HEIGHT,
         };
         mon.init_tags(&tag_template);
         mon.update_bar_position(wm.g.cfg.bar_height);

@@ -99,10 +99,10 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
         return;
     }
 
-    let effective_frames = if ctx.x11_conn().is_some() && !ctx.g.cfg.xlibdisplay.0.is_null() {
+    let effective_frames = if ctx.x11_conn().is_some() && !ctx.g.x11.xlibdisplay.0.is_null() {
         let queued_events = unsafe {
             crate::drw::XEventsQueued(
-                ctx.g.cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
+                ctx.g.x11.xlibdisplay.0 as *mut std::os::raw::c_void,
                 QUEUED_ALREADY,
             )
         };

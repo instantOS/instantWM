@@ -55,8 +55,8 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
             sel_mon_id,
             mon.sel,
             target,
-            ctx.g.cfg.root,
-            ctx.g.cfg.netatom.active_window,
+            ctx.g.x11.root,
+            ctx.g.x11.netatom.active_window,
         )
     };
 
@@ -219,8 +219,8 @@ pub fn set_focus_win(ctx: &WmCtx, win: WindowId) {
             let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
             let _ = conn.change_property32_ctx(
                 PropMode::REPLACE,
-                ctx.g.cfg.root,
-                ctx.g.cfg.netatom.active_window,
+                ctx.g.x11.root,
+                ctx.g.x11.netatom.active_window,
                 AtomEnum::WINDOW,
                 &[x11_win],
             );

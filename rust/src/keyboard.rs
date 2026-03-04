@@ -35,7 +35,7 @@ fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
 }
 
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
-    let numlockmask = ctx.g.cfg.numlockmask;
+    let numlockmask = ctx.g.x11.numlockmask;
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
     let action = ctx
@@ -83,8 +83,8 @@ pub fn grab_keys(ctx: &WmCtx) {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
-    let root = ctx.g.cfg.root;
-    let numlockmask = ctx.g.cfg.numlockmask;
+    let root = ctx.g.x11.root;
+    let numlockmask = ctx.g.x11.numlockmask;
     let keys = ctx.g.cfg.keys.as_slice();
     let desktop_keybinds = ctx.g.cfg.desktop_keybinds.as_slice();
     let free_alt_tab = true;
@@ -205,7 +205,7 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
         new_numlockmask
     };
 
-    ctx.g.cfg.numlockmask = new_numlockmask;
+    ctx.g.x11.numlockmask = new_numlockmask;
 }
 
 pub fn up_press(ctx: &mut WmCtx) {

@@ -11,7 +11,7 @@ pub fn update_status(ctx: &mut WmCtx) {
     if ctx.x11_conn().is_none() {
         return;
     }
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
 
     let text = get_text_prop(ctx, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
     match text {
@@ -65,8 +65,8 @@ pub fn update_bars(ctx: &mut WmCtx) {
         let bar_height = ctx.g.cfg.bar_height;
         let showsystray = ctx.g.cfg.showsystray;
         let status_bg = hex_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
-        let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
-        let root = ctx.g.cfg.root;
+        let xlibdisplay = ctx.g.x11.xlibdisplay.0;
+        let root = ctx.g.x11.root;
         let selected_monitor_id = ctx.g.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues

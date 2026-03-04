@@ -515,8 +515,8 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
         ctx.g.monitors.set_sel_idx(0);
         let x11 = ctx.x11_conn();
         if let Some(m) = ctx.g.monitors.win_to_mon(
-            WindowId::from(ctx.g.cfg.root),
-            ctx.g.cfg.root,
+            WindowId::from(ctx.g.x11.root),
+            ctx.g.x11.root,
             &*ctx.g.clients,
             x11,
         ) {

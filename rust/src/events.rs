@@ -60,7 +60,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     if let Some(clicked_mon) =
         ctx.g
             .monitors
-            .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
+            .win_to_mon(event_win, ctx.g.x11.root, &*ctx.g.clients, ctx.x11_conn())
     {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selected_monitor(clicked_mon);
@@ -153,9 +153,9 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
 pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
     let showsystray = ctx.g.cfg.showsystray;
     let systray_win = ctx.g.systray.as_ref().map(|s| s.win).unwrap_or_default();
-    let net_system_tray_op = ctx.g.cfg.netatom.system_tray_op;
-    let net_wm_state = ctx.g.cfg.netatom.wm_state;
-    let net_active_window = ctx.g.cfg.netatom.active_window;
+    let net_system_tray_op = ctx.g.x11.netatom.system_tray_op;
+    let net_wm_state = ctx.g.x11.netatom.wm_state;
+    let net_active_window = ctx.g.x11.netatom.active_window;
     let event_win = WindowId::from(e.window);
 
     if showsystray && event_win == systray_win && e.type_ == net_system_tray_op {
@@ -179,7 +179,7 @@ pub fn client_message(ctx: &mut WmCtx, e: &ClientMessageEvent) {
 
 pub fn configure_notify(ctx: &mut WmCtx, e: &ConfigureNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    let root_win = WindowId::from(ctx.g.cfg.root);
+    let root_win = WindowId::from(ctx.g.x11.root);
     if event_win != root_win {
         return;
     };
@@ -243,7 +243,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
     let focusfollowsfloatmouse = ctx.g.focusfollowsfloatmouse;
     let event_win = WindowId::from(e.event);
-    let entering_root = event_win == WindowId::from(ctx.g.cfg.root);
+    let entering_root = event_win == WindowId::from(ctx.g.x11.root);
 
     // 1. Filter out invalid crossing events (grab/ungrab, inferior notify)
     if (e.mode != NotifyMode::NORMAL || e.detail == NotifyDetail::INFERIOR) && !entering_root {
@@ -309,7 +309,7 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
         if let Some(new_mon_id) =
             ctx.g
                 .monitors
-                .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
+                .win_to_mon(event_win, ctx.g.x11.root, &*ctx.g.clients, ctx.x11_conn())
         {
             if new_mon_id != selmon_id {
                 ctx.g.set_selected_monitor(new_mon_id);
@@ -335,7 +335,7 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     if let Some(monitor_id) =
         ctx.g
             .monitors
-            .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
+            .win_to_mon(event_win, ctx.g.x11.root, &*ctx.g.clients, ctx.x11_conn())
     {
         let is_bar_win = ctx
             .g
@@ -382,7 +382,7 @@ pub fn map_request(ctx: &mut WmCtx, e: &MapRequestEvent) {
 /// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
 pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     let event_win = WindowId::from(e.event);
-    let root_win = WindowId::from(ctx.g.cfg.root);
+    let root_win = WindowId::from(ctx.g.x11.root);
     if event_win != root_win {
         let root_y = e.root_y as i32;
         let selmon = ctx.g.selected_monitor();
@@ -473,7 +473,7 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if event_win == WindowId::from(ctx.g.cfg.root) && e.atom == AtomEnum::WM_NAME.into() {
+    if event_win == WindowId::from(ctx.g.x11.root) && e.atom == AtomEnum::WM_NAME.into() {
         crate::bar::x11::update_status(ctx);
         return;
     };
@@ -492,7 +492,7 @@ pub fn property_notify(ctx: &mut WmCtx, e: &PropertyNotifyEvent) {
             _ => {}
         }
 
-        let net_wm_name = ctx.g.cfg.netatom.wm_name;
+        let net_wm_name = ctx.g.x11.netatom.wm_name;
         if e.atom == AtomEnum::WM_NAME.into() || e.atom == net_wm_name {
             update_title(ctx, win);
         }
@@ -620,7 +620,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtx, e: &ClientMessageEvent) {
         let _ = conn.flush();
     }
 
-    let xembed_atom = ctx.g.cfg.xatom.xembed;
+    let xembed_atom = ctx.g.x11.xatom.xembed;
     let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
 
     crate::client::send_event(
@@ -907,7 +907,7 @@ fn is_window_iconic(ctx: &WmCtx, win: WindowId) -> bool {
     };
     let x11_win: Window = win.into();
 
-    let state_atom = ctx.g.cfg.wmatom.state;
+    let state_atom = ctx.g.x11.wmatom.state;
     let Ok(cookie) = conn.get_property(false, x11_win, state_atom, state_atom, 0, 2) else {
         return false;
     };
@@ -928,7 +928,7 @@ pub fn scan(wm: &mut Wm) {
     let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
         return;
     };
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
 
     let children = {
         let Ok(tree_cookie) = conn.query_tree(root) else {
@@ -960,7 +960,7 @@ pub fn setup_root(wm: &mut Wm) {
         return;
     };
     let conn = &x11.conn;
-    let root = wm.g.cfg.root;
+    let root = wm.g.x11.root;
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS

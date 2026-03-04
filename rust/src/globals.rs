@@ -11,13 +11,42 @@ pub struct XlibDisplay(pub *mut libc::c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
+/// X11-specific runtime configuration.
+/// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.
+#[derive(Clone)]
+pub struct X11RuntimeConfig {
+    pub wmatom: WmAtoms,
+    pub netatom: NetAtoms,
+    pub xatom: XAtoms,
+    pub motifatom: Atom,
+    pub numlockmask: u32,
+    pub screen: i32,
+    pub root: Window,
+    pub xlibdisplay: XlibDisplay,
+    pub drw: Option<Drw>,
+}
+
+impl Default for X11RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            wmatom: WmAtoms::default(),
+            netatom: NetAtoms::default(),
+            xatom: XAtoms::default(),
+            motifatom: 0,
+            numlockmask: 0,
+            screen: 0,
+            root: 0,
+            xlibdisplay: XlibDisplay(std::ptr::null_mut()),
+            drw: None,
+        }
+    }
+}
+
 /// Runtime configuration - values loaded from config
 /// These are set during initialization and updated on reload
 #[derive(Clone)]
 pub struct RuntimeConfig {
     // Screen/Display info
-    pub screen: i32,
-    pub root: Window,
     pub screen_width: i32,
     pub screen_height: i32,
 
@@ -35,13 +64,6 @@ pub struct RuntimeConfig {
     pub showsystray: bool,
     pub systraypinning: usize,
     pub systrayspacing: i32,
-
-    // X11 atoms
-    pub wmatom: WmAtoms,
-    pub netatom: NetAtoms,
-    pub xatom: XAtoms,
-    pub motifatom: Atom,
-    pub numlockmask: u32,
 
     // Color schemes
     pub borderscheme: Option<BorderScheme>,
@@ -70,11 +92,7 @@ pub struct RuntimeConfig {
     // External commands
     pub external_commands: ExternalCommands,
 
-    // Drawing context
-    // TODO: should the WM panic if there is no Drw? This probably causes a bunch of unnecessary
-    // unwrap or match some statements
-    pub drw: Option<Drw>,
-    pub xlibdisplay: XlibDisplay,
+    // Cursors
     pub cursors: [Option<Cursor>; 10],
     pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
@@ -84,8 +102,6 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            screen: 0,
-            root: 0,
             screen_width: 0,
             screen_height: 0,
             borderpx: 1,
@@ -101,11 +117,6 @@ impl Default for RuntimeConfig {
             showsystray: true,
             systraypinning: 0,
             systrayspacing: 2,
-            wmatom: WmAtoms::default(),
-            netatom: NetAtoms::default(),
-            xatom: XAtoms::default(),
-            motifatom: 0,
-            numlockmask: 0,
             borderscheme: None,
             statusscheme: None,
             windowschemes: WindowSchemes::default(),
@@ -123,8 +134,6 @@ impl Default for RuntimeConfig {
             config_font: String::new(),
             instantmenumon: String::new(),
             external_commands: crate::config::commands::default_commands(),
-            drw: None,
-            xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             cursors: [const { None }; 10],
             horizontal_padding: 0,
             tag_template: Vec::new(),
@@ -247,6 +256,9 @@ pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
 
+    // X11-specific runtime configuration
+    pub x11: X11RuntimeConfig,
+
     // Runtime state (changes during WM operation)
     pub monitors: MonitorManager,
     pub clients: ClientManager,
@@ -278,7 +290,7 @@ impl Globals {
 
     /// Return the numlock mask from config.
     pub fn numlockmask(&self) -> u32 {
-        self.cfg.numlockmask
+        self.x11.numlockmask
     }
 
     /// Return the ID of the currently selected monitor.
@@ -346,6 +358,7 @@ impl Default for Globals {
     fn default() -> Self {
         Self {
             cfg: RuntimeConfig::default(),
+            x11: X11RuntimeConfig::default(),
             monitors: MonitorManager::new(),
             clients: ClientManager::new(),
             tags: TagSet::default(),

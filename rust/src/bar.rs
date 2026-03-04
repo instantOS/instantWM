@@ -51,7 +51,7 @@ impl BarState {
 pub fn text_width(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
     if let Some(mut drw) = ctx
         .g
-        .cfg
+        .x11
         .drw
         .as_ref()
         .and_then(|drw| drw.has_display().then(|| drw.clone()))
@@ -61,6 +61,7 @@ pub fn text_width(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
     ctx.bar_painter.measure_text_width(text)
 }
 
+//TODO: remove, redundant
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
     m.layout_symbol()
 }
@@ -69,6 +70,7 @@ pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
     text_width(ctx, &layout_symbol(m)) + ctx.g.cfg.horizontal_padding
 }
 
+//TODO: wayland and X11 should be at the same level of hierarchy, not one inside the other
 pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     if ctx.backend_kind() == BackendKind::Wayland {
         wayland::draw_bar_wayland(ctx, mon_idx);
@@ -95,7 +97,7 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     }
 
     let drw = {
-        let Some(drw) = ctx.g.cfg.drw.as_mut() else {
+        let Some(drw) = ctx.g.x11.drw.as_mut() else {
             return;
         };
         if !drw.has_display() {

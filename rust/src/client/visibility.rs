@@ -36,7 +36,7 @@ pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
     };
     let x11_win: Window = win.into();
 
-    let wm_state_atom = ctx.g.cfg.wmatom.state;
+    let wm_state_atom = ctx.g.x11.wmatom.state;
     let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
         return WM_STATE_NORMAL;
     };
@@ -228,7 +228,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         );
     }
 
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
     let has_x11 = ctx.x11_conn().is_some();
     let x11_win: Window = win.into();
 

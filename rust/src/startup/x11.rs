@@ -95,8 +95,8 @@ fn init_globals(
 ) {
     let cfg = init_config();
 
-    wm.g.cfg.screen = screen_num as i32;
-    wm.g.cfg.root = root;
+    wm.g.x11.screen = screen_num as i32;
+    wm.g.x11.root = root;
     wm.g.cfg.screen_width = screen.width_in_pixels as i32;
     wm.g.cfg.screen_height = screen.height_in_pixels as i32;
 
@@ -143,13 +143,13 @@ fn init_atoms(g: &mut crate::globals::Globals, conn: &RustConnection) {
     let xembed = intern_atom(conn, "_XEMBED", false);
     let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
 
-    g.cfg.wmatom = crate::types::WmAtoms {
+    g.x11.wmatom = crate::types::WmAtoms {
         protocols: wm_protocols,
         delete: wm_delete,
         state: wm_state,
         take_focus: wm_take_focus,
     };
-    g.cfg.netatom = crate::types::NetAtoms {
+    g.x11.netatom = crate::types::NetAtoms {
         active_window: net_active_window,
         supported: net_supported,
         system_tray: net_system_tray,
@@ -165,8 +165,8 @@ fn init_atoms(g: &mut crate::globals::Globals, conn: &RustConnection) {
         client_list: net_client_list,
         client_info: net_client_info,
     };
-    g.cfg.motifatom = motifatom;
-    g.cfg.xatom = crate::types::XAtoms {
+    g.x11.motifatom = motifatom;
+    g.x11.xatom = crate::types::XAtoms {
         manager: xembed_manager,
         xembed,
         xembed_info,
@@ -208,8 +208,8 @@ fn init_drw_and_schemes(wm: &mut Wm) {
     init_cursors(wm, &mut drw);
     init_schemes(wm, &mut drw);
 
-    wm.g.cfg.xlibdisplay = XlibDisplay(drw.display());
-    wm.g.cfg.drw = Some(drw);
+    wm.g.x11.xlibdisplay = XlibDisplay(drw.display());
+    wm.g.x11.drw = Some(drw);
     wm.g.cfg.bar_height = bar_height as i32;
     wm.g.cfg.horizontal_padding = font_height as i32;
 }

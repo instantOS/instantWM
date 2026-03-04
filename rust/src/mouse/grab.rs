@@ -50,7 +50,7 @@ pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
         return false;
     };
 
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
     let cursor = ctx
         .g
         .cfg
@@ -86,7 +86,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
         return false;
     };
 
-    let root = ctx.g.cfg.root;
+    let root = ctx.g.x11.root;
     let cursor = ctx
         .g
         .cfg
@@ -171,7 +171,7 @@ pub fn grab_buttons(ctx: &WmCtx, c_win: WindowId, focused: bool) {
         return;
     }
 
-    let numlockmask = ctx.g.cfg.numlockmask as u16;
+    let numlockmask = ctx.g.x11.numlockmask as u16;
 
     let modifier_variants: [u16; 4] = [
         0,

@@ -11,7 +11,7 @@ fn set_x11_root_cursor(ctx: &WmCtx, cursor_index: usize) {
     if let Some(ref cursor) = ctx.g.cfg.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
-            ctx.g.cfg.root,
+            ctx.g.x11.root,
             &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
         );
         let _ = conn.flush();

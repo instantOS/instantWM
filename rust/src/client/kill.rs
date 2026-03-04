@@ -84,7 +84,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
         );
     }
 
-    let wmatom_delete = ctx.g.cfg.wmatom.delete;
+    let wmatom_delete = ctx.g.x11.wmatom.delete;
     force_close(ctx, win, wmatom_delete);
 }
 
@@ -157,7 +157,7 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
         0,
     );
 
-    let wmatom_delete = ctx.g.cfg.wmatom.delete;
+    let wmatom_delete = ctx.g.x11.wmatom.delete;
     force_close(ctx, win, wmatom_delete);
 }
 

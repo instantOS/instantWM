@@ -273,8 +273,8 @@ fn register_client_root(ctx: &mut WmCtx, w: WindowId) {
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         let _ = conn.change_property32(
             PropMode::APPEND,
-            ctx.g.cfg.root,
-            ctx.g.cfg.netatom.client_list,
+            ctx.g.x11.root,
+            ctx.g.x11.netatom.client_list,
             AtomEnum::WINDOW,
             &[x11_win],
         );
@@ -501,7 +501,7 @@ fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
         return BROKEN.to_string();
     };
     let x11_win: Window = win.into();
-    let net_wm_name = ctx.g.cfg.netatom.wm_name;
+    let net_wm_name = ctx.g.x11.netatom.wm_name;
 
     for atom in [
         net_wm_name,
@@ -555,7 +555,7 @@ fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
     };
     let x11_win: Window = w.into();
 
-    let client_info_atom = ctx.g.cfg.netatom.client_info;
+    let client_info_atom = ctx.g.x11.netatom.client_info;
 
     let Ok(cookie) = conn.get_property(false, x11_win, client_info_atom, AtomEnum::CARDINAL, 0, 2)
     else {

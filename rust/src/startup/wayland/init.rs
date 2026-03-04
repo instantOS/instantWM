@@ -27,7 +27,7 @@ pub(super) fn init_wayland_globals(wm: &mut Wm) {
     })
     .max(min_bar_height);
     wm.g.cfg.horizontal_padding = font_height;
-    wm.g.cfg.numlockmask = 0;
+    wm.g.x11.numlockmask = 0;
     update_geom(&mut wm.ctx());
 }
 

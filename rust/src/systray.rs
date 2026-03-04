@@ -106,7 +106,7 @@ pub fn update_systray_icon_state(ctx: &mut WmCtx, icon_win: WindowId, ev: &Prope
         return;
     }
 
-    let xembed_info_atom = ctx.g.cfg.xatom.xembed_info;
+    let xembed_info_atom = ctx.g.x11.xatom.xembed_info;
     if ev.atom != xembed_info_atom {
         return;
     }
@@ -182,13 +182,13 @@ pub fn update_systray(ctx: &mut WmCtx) {
         return;
     }
 
-    if ctx.g.cfg.xlibdisplay.0.is_null() {
+    if ctx.g.x11.xlibdisplay.0.is_null() {
         return;
     }
 
     // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
     unsafe {
-        crate::drw::XFlush(ctx.g.cfg.xlibdisplay.0);
+        crate::drw::XFlush(ctx.g.x11.xlibdisplay.0);
     }
 
     let (x, bar_y, _showbar, bar_win) = {
@@ -210,11 +210,11 @@ pub fn update_systray(ctx: &mut WmCtx) {
     let systray_exists = ctx.g.systray.is_some();
 
     if !systray_exists {
-        let root = ctx.g.cfg.root;
+        let root = ctx.g.x11.root;
         let bar_height = ctx.g.cfg.bar_height;
-        let net_system_tray = ctx.g.cfg.netatom.system_tray;
-        let net_system_tray_horz = ctx.g.cfg.netatom.system_tray_orientation_horz;
-        let manager_atom = ctx.g.cfg.xatom.manager;
+        let net_system_tray = ctx.g.x11.netatom.system_tray;
+        let net_system_tray_horz = ctx.g.x11.netatom.system_tray_orientation_horz;
+        let manager_atom = ctx.g.x11.xatom.manager;
         let bg_pixel = ctx
             .g
             .cfg
