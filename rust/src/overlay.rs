@@ -10,46 +10,6 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-pub struct OverlayController;
-
-impl OverlayController {
-    //TODO: investigate these and maybe remove or move logic in here
-    #[inline]
-    pub fn create(ctx: &mut WmCtx, sel_win: WindowId) {
-        create_overlay(ctx, sel_win)
-    }
-
-    #[inline]
-    pub fn set(ctx: &mut WmCtx) {
-        set_overlay(ctx)
-    }
-
-    #[inline]
-    pub fn show(ctx: &mut WmCtx) {
-        show_overlay(ctx)
-    }
-
-    #[inline]
-    pub fn hide(ctx: &mut WmCtx) {
-        hide_overlay(ctx)
-    }
-
-    #[inline]
-    pub fn reset(ctx: &mut WmCtx) {
-        reset_overlay(ctx)
-    }
-
-    #[inline]
-    pub fn set_mode(ctx: &mut WmCtx, mode: OverlayMode) {
-        set_overlay_mode(ctx, mode)
-    }
-
-    #[inline]
-    pub fn exists(ctx: &WmCtx) -> bool {
-        overlay_exists(ctx)
-    }
-}
-
 /// Information needed to position an overlay window.
 #[derive(Debug, Clone, Copy)]
 struct OverlayPositionInfo {
