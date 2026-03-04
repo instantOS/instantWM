@@ -711,7 +711,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         }
     };
 
-    let current_tagset = ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize];
+    let current_tagset = ctx.g.selected_monitor().selected_tags();
     let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset;
     let has_sel = ctx.g.selected_monitor().sel.is_some();
 

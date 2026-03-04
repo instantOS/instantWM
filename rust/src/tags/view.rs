@@ -23,7 +23,7 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
         let mon = ctx.g.selected_monitor_mut();
 
         mon.seltags ^= 1;
-        mon.tagset[mon.seltags as usize] = effective_mask.bits();
+        mon.set_selected_tags(effective_mask.bits());
 
         let prev = mon.current_tag;
 
@@ -53,9 +53,7 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.g.selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
 
-    let new_mask = TagMask::from_bits(
-        ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize],
-    ) ^ (mask & tagmask);
+    let new_mask = TagMask::from_bits(ctx.g.selected_monitor().selected_tags()) ^ (mask & tagmask);
 
     if new_mask.is_empty() {
         return;
@@ -63,7 +61,7 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
 
     let mon = ctx.g.selected_monitor_mut();
 
-    mon.tagset[mon.seltags as usize] = new_mask.bits();
+    mon.set_selected_tags(new_mask.bits());
 
     if new_mask == TagMask::ALL_BITS {
         mon.prev_tag = mon.current_tag;
@@ -106,9 +104,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
         return;
     }
 
-    let current = TagMask::from_bits(
-        ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize],
-    );
+    let current = TagMask::from_bits(ctx.g.selected_monitor().selected_tags());
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -122,10 +118,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 
 pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     let mon = ctx.g.selected_monitor();
-    let (tagset, numtags) = (
-        TagMask::from_bits(mon.tagset[mon.seltags as usize]),
-        ctx.g.tags.count(),
-    );
+    let (tagset, numtags) = (TagMask::from_bits(mon.selected_tags()), ctx.g.tags.count());
 
     let mut next_mask = tagset;
     let mut found = false;
@@ -220,10 +213,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let newtag = mask & tagmask;
 
     let mon = ctx.g.selected_monitor();
-    let (current_tag, current_tagset) = (
-        mon.current_tag,
-        TagMask::from_bits(mon.tagset[mon.seltags as usize]),
-    );
+    let (current_tag, current_tagset) = (mon.current_tag, TagMask::from_bits(mon.selected_tags()));
 
     // Can only swap from single-tag view
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {

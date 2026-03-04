@@ -373,7 +373,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
 
     if let Some(mid) = client_mon_id {
         if let Some(mon) = ctx.g.monitor(mid) {
-            let active_tags = mon.tagset[mon.seltags as usize];
+            let active_tags = mon.selected_tags();
             if let Some(c) = ctx.g.clients.get_mut(&win) {
                 c.tags = if client_tags & tagmask != 0 {
                     client_tags & tagmask

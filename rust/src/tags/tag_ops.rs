@@ -29,9 +29,7 @@ use crate::types::{TagMask, TagSelection};
 /// ```
 pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
     let num_tags = ctx.g.tags.count();
-    let current_mask = TagMask::from_bits(
-        ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize],
-    );
+    let current_mask = TagMask::from_bits(ctx.g.selected_monitor().selected_tags());
     let prev_tag = ctx.g.selected_monitor().prev_tag;
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);

@@ -44,14 +44,14 @@ pub fn tag_scheme(
 
         if is_selected && sel_has_tag {
             SchemeTag::Focus
-        } else if m.tagset[m.seltags as usize] & (1 << tag_index) != 0 {
+        } else if m.selected_tags() & (1 << tag_index) != 0 {
             SchemeTag::NoFocus
         } else if m.showtags == 0 {
             SchemeTag::Filled
         } else {
             SchemeTag::Inactive
         }
-    } else if m.tagset[m.seltags as usize] & (1 << tag_index) != 0 {
+    } else if m.selected_tags() & (1 << tag_index) != 0 {
         SchemeTag::Empty
     } else {
         SchemeTag::Inactive

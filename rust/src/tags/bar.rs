@@ -129,7 +129,7 @@ fn should_skip(monitor: &Monitor, tag_index: usize, occupied: u32) -> bool {
         return false;
     }
     let bit = 1u32 << tag_index;
-    (occupied & bit) == 0 && (monitor.tagset[monitor.seltags as usize] & bit) == 0
+    (occupied & bit) == 0 && (monitor.selected_tags() & bit) == 0
 }
 
 /// Choose between the regular name and the alt-name for display.

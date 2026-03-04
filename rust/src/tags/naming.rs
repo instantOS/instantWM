@@ -21,7 +21,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     }
 
     let mon = ctx.g.selected_monitor();
-    let (numtags, tagset) = (mon.tags.len(), mon.tagset[mon.seltags as usize]);
+    let (numtags, tagset) = (mon.tags.len(), mon.selected_tags());
 
     if tagset == 0 {
         return;

@@ -44,7 +44,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let (tagset, tagmask) = (mon.tagset[mon.seltags as usize], ctx.g.tags.mask());
+    let (tagset, tagmask) = (mon.selected_tags(), ctx.g.tags.mask());
 
     if (tagset & tagmask).count_ones() != 1 {
         return;

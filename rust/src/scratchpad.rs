@@ -82,8 +82,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     };
 
     let (is_scratchpad, restore_tags, monitor_id, monitor_tags) = {
-        let monitor_tags =
-            ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize];
+        let monitor_tags = ctx.g.selected_monitor().selected_tags();
 
         if let Some(c) = ctx.g.clients.get(&selected_window) {
             (

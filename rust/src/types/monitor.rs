@@ -161,6 +161,12 @@ impl Monitor {
         self.tagset[self.seltags as usize]
     }
 
+    /// Set the currently selected tags for this monitor.
+    #[inline]
+    pub fn set_selected_tags(&mut self, mask: u32) {
+        self.tagset[self.seltags as usize] = mask;
+    }
+
     /// Get the currently selected tags as a type-safe mask.
     #[inline]
     pub fn selected_tag_mask(&self) -> TagMask {

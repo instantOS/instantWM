@@ -371,7 +371,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         resize(ctx, overlay_win, &initial_rect, true);
     }
 
-    let tags = ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize];
+    let tags = ctx.g.selected_monitor().selected_tags();
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
@@ -497,7 +497,7 @@ pub fn set_overlay(ctx: &mut WmCtx) {
             false
         };
 
-        (mon.overlaystatus, visible, mon.tagset[mon.seltags as usize])
+        (mon.overlaystatus, visible, mon.selected_tags())
     };
 
     if overlaystatus == 0 {
