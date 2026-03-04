@@ -87,7 +87,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Opti
 
     let mon = ctx.g.selmon()?;
     let selected = mon.selected_tags();
-    for (w, c) in mon.iter_clients(&ctx.g.clients) {
+    for (w, c) in mon.iter_clients(ctx.g.clients.map()) {
         if !c.is_visible_on_tags(selected) {
             continue;
         }
@@ -146,7 +146,7 @@ fn find_tiled_win_at_point(
         return None;
     }
 
-    for (w, c) in mon.iter_clients(&ctx.g.clients) {
+    for (w, c) in mon.iter_clients(ctx.g.clients.map()) {
         if Some(w) == skip_win {
             continue;
         }
@@ -196,7 +196,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     };
     let selected = mon.selected_tags();
 
-    for (_w, c) in mon.iter_clients(&ctx.g.clients) {
+    for (_w, c) in mon.iter_clients(ctx.g.clients.map()) {
         if c.is_visible_on_tags(selected) && !(c.isfloating || !has_tiling) {
             return true;
         }
@@ -487,7 +487,7 @@ pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
     }
 
     let win = WindowId::from(reply.child);
-    if ctx.g.clients.contains_key(&win) {
+    if ctx.g.clients.contains(&win) {
         Some(win)
     } else {
         None

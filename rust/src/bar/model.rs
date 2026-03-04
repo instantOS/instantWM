@@ -13,34 +13,18 @@ pub(crate) struct ClientBarStats {
 
 impl ClientBarStats {
     /// Collect bar statistics for the given monitor.
-    ///
-    /// * `visible_clients` — counted by walking the intrusive linked list so
-    ///   the number exactly matches what `draw_window_titles` will draw and
-    ///   what `bar_position_at_x` uses for hit-testing.  The draw/hit-test
-    ///   code skips clients that fail `is_visible_on_tags()`, so we apply the same
-    ///   predicate here.
-    ///
-    /// * `occupied_tags` / `urgent_tags` — accumulated from all clients on the
-    ///   monitor regardless of list order; order does not matter for bitmasks.
     pub(crate) fn collect(monitor: &Monitor, globals: &Globals) -> Self {
         let mut stats = Self::default();
         let selected = monitor.selected_tags();
 
         // ── Pass 1: visible_clients via the linked list ───────────────────
-        // Walking the linked list (monitor.clients → client.next) gives the
-        // same iteration order as draw_window_titles and bar_position_at_x,
-        // so the count is guaranteed to be consistent with what is drawn and
-        // what click regions are calculated for.
-        for (_win, client) in monitor.iter_clients(&globals.clients) {
+        for (_win, client) in monitor.iter_clients(globals.clients.map()) {
             if client.is_visible_on_tags(selected) {
                 stats.visible_clients += 1;
             }
         }
 
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
-        // Use monitor.id() (the Vec index stored as MonitorId) for matching
-        // because Client::mon_id holds the Vec index, not monitor.num (which is
-        // the Xinerama display number and can diverge from the Vec index).
         let monitor_id = monitor.id();
         for client in globals.clients.values() {
             if client.mon_id != Some(monitor_id) {
@@ -57,33 +41,18 @@ impl ClientBarStats {
 }
 
 /// Map a `BarPosition` to the `Gesture` used for hover highlighting.
-///
-/// Not every `BarPosition` maps to a meaningful gesture; those that don't
-/// map to `Gesture::None`.
 pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
     match pos {
         BarPosition::StartMenu => Gesture::StartMenu,
         BarPosition::Tag(idx) => Gesture::Tag(idx),
         BarPosition::CloseButton(_) => Gesture::CloseButton,
         BarPosition::WinTitle(w) => Gesture::WinTitle(w),
-        // Most positions don't map to a gesture.
         _ => Gesture::None,
     }
 }
 
 /// Compute which logical bar region the cursor's **monitor-local** x coordinate
 /// falls in for the given monitor.
-///
-/// `local_x` must already be relative to the left edge of the monitor
-/// (i.e. `root_x − monitor.work_rect.x` for root-window coordinates, or
-/// `event_x` for bar-window coordinates which are already monitor-local).
-///
-/// This function is the **single canonical hit-test** for the bar. Both click
-/// handling and hover-gesture detection should call it rather than reimplementing
-/// the geometry themselves.
-///
-/// Outside-bar cases (`ClientWin`, `SideBar`, `Root`) are set directly by
-/// `button_press`; this function only returns bar-interior variants.
 pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPosition {
     use crate::bar::get_layout_symbol_width;
 
@@ -125,19 +94,15 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     }
 
     // ── Window title cells ────────────────────────────────────────────────
-    // Build the ordered list of visible clients exactly as draw_window_titles
-    // does (intrusive linked list walk). draw_window_titles and all click/hover
-    // consumers delegate to this function, so the order is always consistent.
     let mut visible_clients: Vec<WindowId> = Vec::new();
     let selected = mon.selected_tags();
-    for (c_win, c) in mon.iter_clients(&ctx.g.clients) {
+    for (c_win, c) in mon.iter_clients(ctx.g.clients.map()) {
         if c.is_visible_on_tags(selected) {
             visible_clients.push(c_win);
         }
     }
 
     if !visible_clients.is_empty() {
-        // Total width of the title area.
         let title_area_start = tag_end + blw;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
@@ -160,7 +125,6 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
             let cell_end = cell_start + this_width;
 
             if local_x < cell_end {
-                // Cursor is inside this cell.
                 let resize_start = cell_start + this_width - RESIZE_WIDGET_WIDTH;
                 if mon.sel == Some(c_win) && local_x < cell_start + CLOSE_BUTTON_HIT_WIDTH {
                     return BarPosition::CloseButton(c_win);

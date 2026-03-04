@@ -1,17 +1,16 @@
 //! Unified context for WM operations.
 //!
-//! Use a single context to avoid proliferation and keep dependencies explicit.
+//! WmCtx is the high-level orchestration layer. It delegates data management
+//! to specialized Managers (MonitorManager, ClientManager) while providing
+//! a simple, "fluent" API for the rest of the codebase.
 
 use crate::backend::{BackendKind, BackendOps, BackendRef};
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
+use crate::types::{Client, Rect, WindowId};
 use x11rb::rust_connection::RustConnection;
 
-/// Unified WM context with globals and backend connection.
-///
-/// `WmCtx` keeps backend access explicit while allowing X11-only code paths to
-/// opt-in to X11 connections when available.
 pub struct WmCtx<'a> {
     pub g: &'a mut Globals,
     pub backend: BackendRef<'a>,
@@ -21,14 +20,7 @@ pub struct WmCtx<'a> {
     pub focus: &'a mut FocusState,
 }
 
-/// An X11 connection reference, available only for X11 backends.
-pub struct X11Conn<'a> {
-    pub conn: &'a RustConnection,
-    pub screen_num: usize,
-}
-
 impl<'a> WmCtx<'a> {
-    /// Create a new unified context with a backend reference.
     pub fn new(
         g: &'a mut Globals,
         backend: BackendRef<'a>,
@@ -47,24 +39,92 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn x11_conn(&self) -> Option<X11Conn<'_>> {
-        self.backend
-            .x11_conn()
-            .map(|(conn, screen_num)| X11Conn { conn, screen_num })
+    // -------------------------------------------------------------------------
+    // High-Level Action API (The DX Bridge)
+    // -------------------------------------------------------------------------
+
+    /// Get a client by window ID.
+    pub fn client(&self, win: WindowId) -> Option<&Client> {
+        self.g.clients.get(&win)
     }
 
-    pub fn with_x11_conn<T>(&self, f: impl FnOnce(&RustConnection, usize) -> T) -> Option<T> {
+    /// Move/resize a client and sync with the backend.
+    pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
+        if let Some(c) = self.g.clients.get_mut(&win) {
+            c.old_geo = c.geo;
+            c.geo = rect;
+            self.backend.resize_window(win, rect);
+        }
+    }
+
+    /// Update a client's border width in both memory and the window system.
+    pub fn set_border(&mut self, win: WindowId, width: i32) {
+        if let Some(c) = self.g.clients.get_mut(&win) {
+            c.border_width = width;
+            self.backend.set_border_width(win, width);
+        }
+    }
+
+    /// Attach a window to its monitor's client list.
+    pub fn attach(&mut self, win: WindowId) {
+        self.g.clients.attach(&mut self.g.monitors, win);
+    }
+
+    /// Detach a window from its monitor's client list.
+    pub fn detach(&mut self, win: WindowId) {
+        self.g.clients.detach(&mut self.g.monitors, win);
+    }
+
+    /// Attach a window to its monitor's stack list.
+    pub fn attach_stack(&mut self, win: WindowId) {
+        self.g.clients.attach_stack(&mut self.g.monitors, win);
+    }
+
+    /// Detach a window from its monitor's stack list.
+    pub fn detach_stack(&mut self, win: WindowId) {
+        self.g.clients.detach_stack(&mut self.g.monitors, win);
+    }
+
+    /// Check if a window is hidden.
+    pub fn is_hidden(&self, win: WindowId) -> bool {
+        self.g.clients.is_hidden(win)
+    }
+
+    /// Raise a window to the top of the stack.
+    pub fn raise(&mut self, win: WindowId) {
+        self.backend.raise_window(win);
+    }
+
+    /// Update stacking order.
+    pub fn restack(&mut self, windows: &[WindowId]) {
+        self.backend.restack(windows);
+    }
+
+    /// Flush all backend operations.
+    pub fn flush(&mut self) {
+        self.backend.flush();
+    }
+
+    // -------------------------------------------------------------------------
+    // System Accessors
+    // -------------------------------------------------------------------------
+
+    pub fn x11_conn(&self) -> Option<crate::contexts::X11Conn<'_>> {
         self.backend
             .x11_conn()
-            .map(|(conn, screen_num)| f(conn, screen_num))
+            .map(|(conn, screen_num)| crate::contexts::X11Conn { conn, screen_num })
     }
 
     pub fn quit(&mut self) {
         *self.running = false;
     }
 
-    #[inline]
     pub fn backend_kind(&self) -> BackendKind {
         self.backend.kind()
     }
+}
+
+pub struct X11Conn<'a> {
+    pub conn: &'a RustConnection,
+    pub screen_num: usize,
 }

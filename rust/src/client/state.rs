@@ -231,7 +231,7 @@ pub fn apply_rules(ctx: &mut WmCtx, win: WindowId) {
     let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
 
     // --- Initialise fields we are about to set -------------------------------
-    if !ctx.g.clients.contains_key(&win) {
+    if !ctx.g.clients.contains(&win) {
         return;
     }
 

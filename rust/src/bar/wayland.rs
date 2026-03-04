@@ -557,7 +557,7 @@ fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
         }
 
         let selected = m.selected_tags();
-        for (win, c) in m.iter_clients(&ctx.g.clients) {
+        for (win, c) in m.iter_clients(ctx.g.clients.map()) {
             if !c.is_visible_on_tags(selected) {
                 continue;
             }

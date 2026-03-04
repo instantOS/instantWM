@@ -14,7 +14,9 @@ use smithay::{
     },
     output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{
+            generic::Generic, Interest, Interest as Interest2, LoopHandle, Mode, PostAction,
+        },
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point, Transform, SERIAL_COUNTER},
@@ -72,27 +74,6 @@ impl smithay::reexports::wayland_server::backend::ClientData for WaylandClientSt
 /// This struct owns all Smithay protocol state objects and is the target
 /// of every `delegate_*!` macro.  It also bridges into instantWM's
 /// `Globals` for shared WM state (tags, clients, config, etc.).
-///
-/// # Fields by category
-///
-/// ## Wayland infrastructure
-/// - `display_handle` — cheap clone of the `Display` handle for registering
-///   globals and inserting clients.
-///
-/// ## Desktop abstractions
-/// - `space` — Smithay's 2D workspace plane; maps windows and outputs at
-///   logical coordinates and handles hit-testing.
-/// - `popups` — popup manager for xdg-popup tracking.
-///
-/// ## Protocol states (one per Wayland global)
-/// - `compositor_state`, `shm_state`, `xdg_shell_state`, `seat_state`,
-///   `output_manager_state`.  More will be added as protocols are needed.
-///
-/// ## Input
-/// - `seat` — the compositor's input seat (keyboard + pointer + touch).
-///
-/// ## XWayland
-/// - `xwayland_shell_state`, `xwm`, `xdisplay` — XWayland integration.
 pub struct WaylandState {
     // -- Wayland infrastructure --
     pub display_handle: DisplayHandle,
@@ -146,15 +127,6 @@ pub struct WindowIdMarker {
 impl WaylandState {
     const MIN_WL_DIM: i32 = 64;
     /// Create a new `WaylandState` and register all Wayland globals.
-    ///
-    /// This follows Smithay's Anvil pattern:
-    /// 1. Create a `Display` and extract its `DisplayHandle`.
-    /// 2. Insert the display as a calloop source for dispatching.
-    /// 3. Create each protocol state with `FooState::new::<WaylandState>(&dh)`.
-    /// 4. Create a seat and add input devices.
-    /// 5. Create at least one output.
-    ///
-    /// The caller is responsible for creating the `EventLoop` and running it.
     pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
         let dh = display.handle();
 
@@ -267,9 +239,6 @@ impl WaylandState {
     }
 
     /// Create and register a default output.
-    ///
-    /// Call this after construction to set up an initial output that
-    /// matches the physical display (or a default for testing).
     pub fn create_output(&mut self, name: &str, width: i32, height: i32) -> Output {
         let safe_width = width.max(Self::MIN_WL_DIM);
         let safe_height = height.max(Self::MIN_WL_DIM);
@@ -318,8 +287,6 @@ impl WaylandState {
             })
             .collect();
         for (window, geo, bw) in updates {
-            // map_element positions the window GEOMETRY at the given
-            // location (Smithay offsets by geometry().loc internally).
             self.space
                 .map_element(window.clone(), (geo.x + bw, geo.y + bw), false);
             if let Some(toplevel) = window.toplevel() {
@@ -362,7 +329,6 @@ impl WaylandState {
         self.window_index.insert(window_id, window.clone());
         self.ensure_client_for_window(window_id);
 
-        // Set the initial title from the XDG toplevel surface data.
         if let Some(title) = self.window_title(window_id) {
             if let Some(g) = self.globals_mut() {
                 if let Some(client) = g.clients.get_mut(&window_id) {
@@ -391,8 +357,6 @@ impl WaylandState {
 
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {
-            // map_element positions the window GEOMETRY at the given
-            // location (Smithay offsets by geometry().loc internally).
             let bw = self
                 .globals()
                 .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
@@ -440,7 +404,6 @@ impl WaylandState {
             .cloned()
             .map(KeyboardFocusTarget::Window);
 
-        // Deactivate only the previously focused window (O(1) instead of O(n)).
         if let Some(old_id) = self.focused_window {
             if old_id != window {
                 if let Some(old_window) = self.window_index.get(&old_id).cloned() {
@@ -452,7 +415,6 @@ impl WaylandState {
                 }
             }
         }
-        // Activate the new focus target.
         if let Some(new_window) = self.window_index.get(&window).cloned() {
             if new_window.set_activated(true) {
                 if let Some(toplevel) = new_window.toplevel() {
@@ -534,18 +496,12 @@ impl WaylandState {
     }
 
     fn raise_unmanaged_x11_windows(&mut self) {
-        // Use the cached `is_overlay` flag from WindowIdMarker (set at map
-        // time) to avoid re-scanning class/instance/title strings on every
-        // raise.  Windows without a marker are also treated as overlays
-        // (unmanaged X11 surfaces).
         let overlays: Vec<_> = self
             .space
             .elements()
-            .filter(|w| {
-                match w.user_data().get::<WindowIdMarker>() {
-                    Some(m) => m.is_overlay,
-                    None => w.x11_surface().is_some(), // untagged X11 = overlay
-                }
+            .filter(|w| match w.user_data().get::<WindowIdMarker>() {
+                Some(m) => m.is_overlay,
+                None => w.x11_surface().is_some(),
             })
             .cloned()
             .collect();
@@ -563,7 +519,6 @@ impl WaylandState {
             let id = self.next_window_id;
             self.next_window_id = self.next_window_id.wrapping_add(1).max(1);
             let window_id = WindowId::from(id);
-            // O(1) collision check via the index instead of O(n) space scan.
             if !self.window_index.contains_key(&window_id)
                 && !self.hidden_windows.contains_key(&window_id)
             {
@@ -572,11 +527,6 @@ impl WaylandState {
         }
     }
 
-    /// Find the topmost surface (popup or toplevel) under a point.
-    ///
-    /// Iterates all space elements top-to-bottom and checks their popup
-    /// surfaces first (via `WindowSurfaceType::ALL`).  This correctly
-    /// handles popups that extend beyond the parent window's bounds.
     pub fn surface_under_pointer(
         &self,
         point: Point<f64, Logical>,
@@ -584,14 +534,10 @@ impl WaylandState {
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, Logical>,
     )> {
-        // First pass: check popups only (they render on top of everything).
         for window in self.space.elements().rev() {
             let Some(loc) = self.space.element_location(window) else {
                 continue;
             };
-            // For popups: element_location is the GEOMETRY origin, but popup
-            // surface positions from Window::surface_under are relative to
-            // the SURFACE origin.  Adjust by the CSD geometry offset.
             let geo_offset = window.geometry().loc;
             let surface_origin = loc - geo_offset;
             if let Some(result) =
@@ -600,8 +546,6 @@ impl WaylandState {
                 return Some((result.0, result.1 + surface_origin));
             }
         }
-        // Second pass: toplevel + subsurfaces.
-        // No geometry offset needed — clients handle their own CSD offset.
         if let Some((window, loc)) = self.space.element_under(point) {
             if let Some(result) =
                 window.surface_under(point - loc.to_f64(), WindowSurfaceType::TOPLEVEL)
@@ -650,7 +594,6 @@ impl WaylandState {
         None
     }
 
-    /// Read the title of a window from its XDG toplevel surface data.
     pub fn window_title(&self, window: WindowId) -> Option<String> {
         let element = self
             .find_window(window)
@@ -668,7 +611,6 @@ impl WaylandState {
     }
 
     pub(super) fn find_window(&self, window: WindowId) -> Option<&Window> {
-        // O(1) via the index instead of O(n) linear scan.
         self.window_index.get(&window)
     }
 
@@ -676,7 +618,7 @@ impl WaylandState {
         let Some(g) = self.globals_mut() else {
             return;
         };
-        if g.clients.contains_key(&window) {
+        if g.clients.contains(&window) {
             return;
         }
 
@@ -710,7 +652,7 @@ impl WaylandState {
         c.mon_id = Some(mon_id);
         c.tags = crate::client::initial_tags_for_monitor(g, c.mon_id);
         g.clients.insert(window, c);
-        g.client_list.push(window.0 as usize);
+        g.clients.list_push(window.0 as usize);
         attach_client_to_monitor(g, window);
     }
 

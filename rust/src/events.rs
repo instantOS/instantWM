@@ -1,8 +1,8 @@
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
-    configure, is_hidden, set_client_state, set_fullscreen, unmanage, update_title,
-    update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
+    configure, set_client_state, set_fullscreen, unmanage, update_title, update_wm_hints,
+    WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::commands::x_command;
 use crate::contexts::WmCtx;
@@ -36,7 +36,7 @@ pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 #[inline]
 fn win_to_client_ctx(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
-    if ctx.g.clients.contains_key(&win) {
+    if ctx.g.clients.contains(&win) {
         Some(win)
     } else {
         None
@@ -58,11 +58,12 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.g.selmon_id();
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) =
-        ctx.g
-            .monitors
-            .win_to_mon(event_win, ctx.g.cfg.root, &ctx.g.clients, ctx.x11_conn())
-    {
+    if let Some(clicked_mon) = ctx.g.monitors.win_to_mon(
+        event_win,
+        ctx.g.cfg.root,
+        ctx.g.clients.map(),
+        ctx.x11_conn(),
+    ) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selmon(clicked_mon);
             selmon_id = clicked_mon;
@@ -306,11 +307,12 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 4. Handle Monitor Switch
     if focusfollowsmouse {
-        if let Some(new_mon_id) =
-            ctx.g
-                .monitors
-                .win_to_mon(event_win, ctx.g.cfg.root, &ctx.g.clients, ctx.x11_conn())
-        {
+        if let Some(new_mon_id) = ctx.g.monitors.win_to_mon(
+            event_win,
+            ctx.g.cfg.root,
+            ctx.g.clients.map(),
+            ctx.x11_conn(),
+        ) {
             if new_mon_id != selmon_id {
                 ctx.g.set_selmon(new_mon_id);
                 crate::focus::focus_soft(ctx, None);
@@ -332,11 +334,12 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(mon_id) =
-        ctx.g
-            .monitors
-            .win_to_mon(event_win, ctx.g.cfg.root, &ctx.g.clients, ctx.x11_conn())
-    {
+    if let Some(mon_id) = ctx.g.monitors.win_to_mon(
+        event_win,
+        ctx.g.cfg.root,
+        ctx.g.clients.map(),
+        ctx.x11_conn(),
+    ) {
         let is_barwin = ctx
             .g
             .monitors
@@ -696,7 +699,7 @@ fn handle_net_wm_state(ctx: &mut WmCtx, e: &ClientMessageEvent, win: WindowId) {
 }
 
 fn handle_active_window(ctx: &mut WmCtx, win: WindowId) {
-    let is_hidden = is_hidden(&ctx.g, win);
+    let is_hidden = ctx.g.clients.is_hidden(win);
     if is_hidden {
         crate::client::show(ctx, win);
     };

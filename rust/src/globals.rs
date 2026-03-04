@@ -1,3 +1,4 @@
+use crate::client::manager::ClientManager;
 use crate::config::commands::ExternalCommands;
 use crate::drw::{Cursor, Drw};
 use crate::monitor::MonitorManager;
@@ -275,8 +276,7 @@ pub struct Globals {
 
     // Runtime state (changes during WM operation)
     pub monitors: MonitorManager,
-    pub clients: HashMap<WindowId, Client>,
-    pub client_list: Vec<ClientId>,
+    pub clients: ClientManager,
     pub tags: TagSet,
     pub systray: Option<Systray>,
 
@@ -354,8 +354,7 @@ impl Default for Globals {
         Self {
             cfg: RuntimeConfig::default(),
             monitors: MonitorManager::new(),
-            clients: HashMap::new(),
-            client_list: Vec::new(),
+            clients: ClientManager::new(),
             tags: TagSet::default(),
             systray: None,
             animated: true,

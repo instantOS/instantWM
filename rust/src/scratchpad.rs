@@ -14,7 +14,7 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     let clients: Vec<WindowId> = ctx.g.clients.keys().copied().collect();
 
     for win in clients {
-        if crate::client::is_hidden(&ctx.g, win) {
+        if ctx.g.clients.is_hidden(win) {
             crate::client::show(ctx, win);
             return true;
         }
@@ -278,7 +278,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let mut first = true;
 
     for (_i, mon) in ctx.g.monitors_iter() {
-        for (_c_win, c) in mon.iter_clients(&ctx.g.clients) {
+        for (_c_win, c) in mon.iter_clients(ctx.g.clients.map()) {
             if c.is_scratchpad() {
                 if !first {
                     status.push(',');
@@ -315,7 +315,7 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
     }
 
     for (_i, mon) in ctx.g.monitors_iter() {
-        for (c_win, c) in mon.iter_clients(&ctx.g.clients) {
+        for (c_win, c) in mon.iter_clients(ctx.g.clients.map()) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);
             }

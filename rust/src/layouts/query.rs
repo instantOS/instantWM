@@ -25,7 +25,7 @@ pub fn client_count(g: &Globals) -> i32 {
 
     let selected = mon.selected_tags();
     let mut count = 0;
-    for (_win, c) in mon.iter_clients(&g.clients) {
+    for (_win, c) in mon.iter_clients(g.clients.map()) {
         if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
             count += 1;
         }
@@ -39,7 +39,7 @@ pub fn client_count_mon(g: &Globals, m: &Monitor) -> i32 {
     let selected = m.selected_tags();
     let mut count = 0;
 
-    for (_win, c) in m.iter_clients(&g.clients) {
+    for (_win, c) in m.iter_clients(g.clients.map()) {
         if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
             count += 1;
         }
@@ -59,7 +59,7 @@ pub fn all_client_count(g: &Globals) -> i32 {
 /// client that passes [`Client::is_visible_on_tags`].
 pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
     let selected = g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
-    for (win, c) in crate::types::ClientListIter::new(start_win, &g.clients) {
+    for (win, c) in crate::types::ClientListIter::new(start_win, g.clients.map()) {
         if c.is_visible_on_tags(selected) {
             return Some(win);
         }

@@ -317,10 +317,10 @@ impl XwmHandler for WaylandState {
         let Some(g) = self.globals_mut() else {
             return;
         };
-        if g.clients.contains_key(&win) {
+        if g.clients.contains(&win) {
             detach_client_from_monitor(g, win);
             g.clients.remove(&win);
-            g.client_list.retain(|id| *id != win.0 as usize);
+            g.clients.list_retain(|id| *id != win.0 as usize);
         }
     }
 
@@ -480,10 +480,10 @@ impl XdgShellHandler for WaylandState {
             let Some(g) = self.globals_mut() else {
                 return;
             };
-            if g.clients.contains_key(&win) {
+            if g.clients.contains(&win) {
                 detach_client_from_monitor(g, win);
                 g.clients.remove(&win);
-                g.client_list.retain(|id| *id != win.0 as usize);
+                g.clients.list_retain(|id| *id != win.0 as usize);
             }
             g.selected_win()
         };

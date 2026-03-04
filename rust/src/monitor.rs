@@ -199,7 +199,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         (is_sp, tags)
     };
 
-    if ctx.g.clients.contains_key(&win) {
+    if ctx.g.clients.contains(&win) {
         unfocus_win(ctx, win, true);
     }
 
@@ -498,7 +498,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
         if let Some(m) = ctx.g.monitors.win_to_mon(
             WindowId::from(ctx.g.cfg.root),
             ctx.g.cfg.root,
-            &ctx.g.clients,
+            ctx.g.clients.map(),
             x11,
         ) {
             ctx.g.monitors.set_sel_idx(m);

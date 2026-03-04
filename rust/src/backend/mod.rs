@@ -166,6 +166,13 @@ impl<'a> BackendRef<'a> {
             BackendRef::Wayland(_) => None,
         }
     }
+
+    pub fn reborrow(&self) -> BackendRef<'_> {
+        match self {
+            BackendRef::X11(x11) => BackendRef::X11(X11BackendRef::new(x11.conn, x11.screen_num)),
+            BackendRef::Wayland(wayland) => BackendRef::Wayland(wayland),
+        }
+    }
 }
 
 impl BackendOps for BackendRef<'_> {

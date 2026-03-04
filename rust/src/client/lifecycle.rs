@@ -119,7 +119,7 @@ fn build_initial_client(ctx: &WmCtx, w: WindowId, wa_geo: Rect, wa_border_width:
 }
 
 fn assign_initial_monitor_and_tags(ctx: &WmCtx, c: &mut Client, trans: Option<WindowId>) {
-    let trans_client = trans.filter(|win| ctx.g.clients.contains_key(win));
+    let trans_client = trans.filter(|win| ctx.g.clients.contains(win));
     if let Some(tc_win) = trans_client {
         if let Some(tc) = ctx.g.clients.get(&tc_win) {
             c.mon_id = tc.mon_id;

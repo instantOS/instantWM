@@ -33,6 +33,7 @@ pub mod kill;
 pub mod layout_ops;
 pub mod lifecycle;
 pub mod list;
+pub mod manager;
 pub mod state;
 pub mod visibility;
 
@@ -57,7 +58,7 @@ pub use geometry::{
 };
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{hide, is_hidden, show, show_hide};
+pub use visibility::{hide, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{configure, send_event, set_focus, unfocus_win};

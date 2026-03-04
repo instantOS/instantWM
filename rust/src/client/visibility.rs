@@ -5,10 +5,6 @@
 //! * [`get_state`]   – read the current `WM_STATE` property from the X server.
 //!                     Used once during [`crate::client::manage`] to seed
 //!                     [`crate::types::Client::is_hidden`].
-//! * [`is_hidden`]   – check whether a window is minimized by reading the
-//!                     cached [`crate::types::Client::is_hidden`] field.
-//!                     No X11 roundtrip; call `get_state` directly if you need
-//!                     the live property value.
 //! * [`show_hide`]   – recursively walk the stack list, positioning visible
 //!                     clients on-screen and off-screen clients off to the left.
 //! * [`show`]        – unmap → animate → arrange a previously hidden client.
@@ -21,9 +17,8 @@ use crate::client::geometry::{client_width, resize};
 use crate::client::state::set_client_state;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
-use crate::globals::Globals;
 use crate::layouts::arrange;
-use crate::types::{Rect, WindowId};
+use crate::types::{Monitor, Rect, WindowId};
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -55,19 +50,6 @@ pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
         .and_then(|mut it| it.next())
         .map(|v| v as i32)
         .unwrap_or(WM_STATE_NORMAL)
-}
-
-/// Returns `true` when `win` is in the minimized (iconic) state.
-///
-/// Reads the cached [`crate::types::Client::is_hidden`] field — no X11
-/// roundtrip.  The field is seeded from the live `WM_STATE` property during
-/// [`crate::client::manage`] and kept in sync by [`hide`] and [`show`].
-///
-/// If you need the live X11 value (e.g. before the client is fully managed),
-/// call [`get_state`] directly.
-#[inline]
-pub fn is_hidden(g: &Globals, win: WindowId) -> bool {
-    g.clients.get(&win).map(|c| c.is_hidden).unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -283,6 +265,19 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     if let Some(mid) = mon_id {
         arrange(ctx, Some(mid));
     }
+}
+
+pub fn calculate_yoffset_ctx(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
+    let bh = ctx.g.cfg.bar_height;
+    let base_offset = if mon.showbar { bh } else { 0 };
+
+    for (_win, c) in mon.iter_clients(ctx.g.clients.map()) {
+        if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
+            return 0;
+        }
+    }
+
+    base_offset
 }
 
 // ---------------------------------------------------------------------------

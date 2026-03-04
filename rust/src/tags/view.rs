@@ -449,7 +449,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
 }
 
 fn find_client_for_window(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
-    if ctx.g.clients.contains_key(&win) {
+    if ctx.g.clients.contains(&win) {
         return Some(win);
     }
 

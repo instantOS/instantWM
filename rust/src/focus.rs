@@ -276,7 +276,7 @@ where
 
     let candidates = get_directional_candidates(
         mon.clients,
-        &ctx.g.clients,
+        ctx.g.clients.map(),
         selected,
         source_win,
         source_center_x,
@@ -400,7 +400,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
 
         get_directional_candidates(
             mon.clients,
-            &ctx.g.clients,
+            ctx.g.clients.map(),
             selected,
             source_win,
             source_center_x,
@@ -476,7 +476,7 @@ where
     };
 
     let sel_win = mon.sel;
-    let stack = get_visible_stack(mon, &ctx.g.clients);
+    let stack = get_visible_stack(mon, ctx.g.clients.map());
 
     if stack.is_empty() {
         focus_fn(None);
@@ -525,7 +525,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         let Some(mon) = ctx.g.selmon() else {
             return;
         };
-        get_visible_stack(mon, &ctx.g.clients)
+        get_visible_stack(mon, ctx.g.clients.map())
     };
 
     if stack.is_empty() {

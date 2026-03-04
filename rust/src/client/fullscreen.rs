@@ -39,51 +39,13 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 /// Copy `client.border_width` → `client.old_border_width`.
-///
-/// Call this just before entering fullscreen (or stripping the border for a
-/// single-client tiling layout) so that [`restore_border_width`] can put the
-/// border back on exit.
-///
-/// **Guard:** if `border_width` is already 0 the save is skipped — we must
-/// never clobber a previously saved non-zero value with 0, or restoring would
-/// silently become a no-op.  This matches the C `savebw` implementation.
 pub fn save_border_width(ctx: &mut WmCtx, win: WindowId) {
-    save_border_width_in(&mut ctx.g.clients, win);
-}
-
-/// Save border width using an explicit client map reference.
-pub(crate) fn save_border_width_in(
-    clients: &mut std::collections::HashMap<WindowId, crate::types::Client>,
-    win: WindowId,
-) {
-    if let Some(client) = clients.get_mut(&win) {
-        if client.border_width != 0 {
-            client.old_border_width = client.border_width;
-        }
-    }
+    ctx.g.clients.save_border_width(win);
 }
 
 /// Copy `client.old_border_width` → `client.border_width`.
-///
-/// **Guard:** if `old_border_width` is 0 (i.e. was never saved, or the
-/// window genuinely had no border) the restore is skipped — unconditionally
-/// writing 0 back would remove the border from windows that were managed
-/// without ever going through the strip path.  This matches the C
-/// `restore_border_width` implementation.
 pub fn restore_border_width(ctx: &mut WmCtx, win: WindowId) {
-    restore_border_width_in(&mut ctx.g.clients, win);
-}
-
-/// Restore border width using an explicit client map reference.
-pub(crate) fn restore_border_width_in(
-    clients: &mut std::collections::HashMap<WindowId, crate::types::Client>,
-    win: WindowId,
-) {
-    if let Some(client) = clients.get_mut(&win) {
-        if client.old_border_width != 0 {
-            client.border_width = client.old_border_width;
-        }
-    }
+    ctx.g.clients.restore_border_width(win);
 }
 
 // ---------------------------------------------------------------------------
@@ -91,17 +53,6 @@ pub(crate) fn restore_border_width_in(
 // ---------------------------------------------------------------------------
 
 /// Enter or exit fullscreen for `win`.
-///
-/// * `fullscreen = true`  – removes the border, raises the window, resizes it
-///                          to the monitor rectangle, and sets
-///                          `_NET_WM_STATE_FULLSCREEN`.
-/// * `fullscreen = false` – restores the saved geometry and border, clears
-///                          the `_NET_WM_STATE` property, and re-arranges the
-///                          monitor.
-///
-/// When the client has `isfakefullscreen` enabled, geometry/border changes are
-/// skipped – only the EWMH property is toggled so the application remains happy
-/// while the window keeps participating in the tiling layout.
 pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
@@ -146,7 +97,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             c.oldstate = c.isfloating as i32;
         }
 
-        save_border_width_in(&mut ctx.g.clients, win);
+        ctx.g.clients.save_border_width(win);
 
         if !is_fake_fs {
             // Remove the border.
@@ -205,7 +156,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
             c.isfloating = c.oldstate != 0;
         }
 
-        restore_border_width_in(&mut ctx.g.clients, win);
+        ctx.g.clients.restore_border_width(win);
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
@@ -224,13 +175,6 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
 // ---------------------------------------------------------------------------
 
 /// Toggle the "fake fullscreen" mode on the currently selected window.
-///
-/// When switching *out* of fake fullscreen (i.e. `isfakefullscreen` was `true`
-/// and `is_fullscreen` is still `true`), the window is resized to fill the
-/// monitor rectangle with the current border and raised above everything else.
-///
-/// The `isfakefullscreen` flag itself is flipped at the end regardless of the
-/// current state.
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;

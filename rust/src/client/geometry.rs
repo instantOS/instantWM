@@ -46,7 +46,7 @@ pub fn client_height(c: &Client) -> i32 {
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
 pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
-    if !ctx.g.clients.contains_key(&win) {
+    if !ctx.g.clients.contains(&win) {
         return;
     }
 
@@ -89,18 +89,7 @@ pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
 pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
-        // Snapshot old geometry before overwriting.
-        client.old_geo.x = client.geo.x;
-        client.old_geo.y = client.geo.y;
-        client.old_geo.w = client.geo.w;
-        client.old_geo.h = client.geo.h;
-
-        client.geo.x = rect.x;
-        client.geo.y = rect.y;
-        client.geo.w = rect.w;
-        client.geo.h = rect.h;
-    }
+    ctx.g.clients.update_geometry(win, *rect);
 
     ctx.backend.resize_window(win, *rect);
 
@@ -357,7 +346,7 @@ pub fn scale_client(ctx: &mut WmCtx, win: WindowId, scale: i32) {
     // Determine the reference rectangle (monitor bounds, or fall back to the
     // client's own geometry when no monitor is assigned).
     let mon_rect = mon_id
-        .and_then(|mid| ctx.g.monitor(mid).map(|m| m.monitor_rect))
+        .and_then(|mid| ctx.g.monitors.get(mid).map(|m| m.monitor_rect))
         .unwrap_or(old_geo);
 
     let new_w = old_geo.w * scale / 100;

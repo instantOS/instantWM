@@ -31,7 +31,7 @@ fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
 
 /// Check if the overlay window exists in the clients map.
 pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    get_overlay_win(ctx).is_some_and(|win| ctx.g.clients.contains_key(&win))
+    get_overlay_win(ctx).is_some_and(|win| ctx.g.clients.contains(&win))
 }
 
 /// Raise a window to the top of the stack.
@@ -52,7 +52,7 @@ fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
     let base_offset = if mon.showbar { bh } else { 0 };
 
     // Check if any visible client is fullscreen
-    for (_win, c) in mon.iter_clients(&ctx.g.clients) {
+    for (_win, c) in mon.iter_clients(ctx.g.clients.map()) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
             return 0;
         }

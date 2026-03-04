@@ -277,7 +277,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
 
 fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
     if let Some(mon) = globals.monitor(sel_mon) {
-        for (_c_win, c) in mon.iter_clients(&globals.clients) {
+        for (_c_win, c) in mon.iter_clients(globals.clients.map()) {
             let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
         }
     }

@@ -91,7 +91,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
                 if mon.clients == Some(prev) {
                     mon.clients = Some(win);
                 } else {
-                    let target_c_win = mon.iter_clients(clients).find_map(|(c_win, c)| {
+                    let target_c_win = mon.iter_clients(clients.map()).find_map(|(c_win, c)| {
                         if c.next == Some(prev) {
                             Some(c_win)
                         } else {
@@ -109,7 +109,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
     } else {
         let mut last: Option<WindowId> = None;
         if let Some(mon) = ctx.g.selmon() {
-            for (c_win, _c) in mon.iter_clients(&ctx.g.clients) {
+            for (c_win, _c) in mon.iter_clients(ctx.g.clients.map()) {
                 last = Some(c_win);
             }
         }

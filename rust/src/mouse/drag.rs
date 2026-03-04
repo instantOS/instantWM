@@ -607,7 +607,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
-    let rate = refresh_rate(ctx);
+    let _rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -998,7 +998,7 @@ pub fn title_drag_begin(
         button: btn,
         right_click,
         was_focused: sel == Some(win),
-        was_hidden: crate::client::is_hidden(&ctx.g, win),
+        was_hidden: ctx.g.clients.is_hidden(win),
         start_x: click_root_x,
         start_y: click_root_y,
         win_start_x,
