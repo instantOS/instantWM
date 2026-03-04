@@ -22,16 +22,21 @@ use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
 use crate::wm::Wm;
 
+mod bar;
+mod init;
+mod input;
+mod render;
+
 use super::autostart::run_autostart;
-use super::wayland_init::{
+use self::init::{
     apply_wayland_session_env, init_wayland_globals, sanitize_wayland_size,
     spawn_wayland_smoke_window,
 };
-use super::wayland_input::{
+use self::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     handle_resize,
 };
-use super::wayland_render::{render_frame, wayland_border_elements_shared as border_elements_shared_impl};
+use self::render::{render_frame, wayland_border_elements_shared as border_elements_shared_impl};
 
 pub fn run() -> ! {
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));

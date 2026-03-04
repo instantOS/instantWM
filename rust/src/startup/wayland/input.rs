@@ -19,11 +19,11 @@ use crate::startup::common_wayland::modifiers_to_x11_mask;
 use crate::types::*;
 use crate::wm::Wm;
 
-use super::wayland_bar::{
+use super::bar::{
     dispatch_wayland_bar_click, dispatch_wayland_bar_scroll, update_wayland_bar_hit_state,
     wayland_button_to_wm_button,
 };
-use super::wayland_init::sanitize_wayland_size;
+use super::init::sanitize_wayland_size;
 
 pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     let (safe_w, safe_h) = sanitize_wayland_size(w, h);
