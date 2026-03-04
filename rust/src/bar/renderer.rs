@@ -114,7 +114,6 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
     }
 
     if let Some(m) = ctx.g.monitor_mut(mon_idx) {
-        m.bt = visible_clients;
         m.bar_clients_width = title_width;
         if let Some(offset) = new_activeoffset {
             m.activeoffset = offset;

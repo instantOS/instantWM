@@ -36,8 +36,6 @@ pub struct Monitor {
     pub bar_y: i32,
     /// Width reserved for client title display in the bar.
     pub bar_clients_width: i32,
-    /// Bar thickness/height in pixels.
-    pub bt: i32,
     /// Full monitor geometry (including bar).
     pub monitor_rect: Rect,
     /// Work area geometry (excluding bar).
@@ -93,7 +91,6 @@ impl Default for Monitor {
             num: 0,
             bar_y: 0,
             bar_clients_width: 0,
-            bt: 0,
             monitor_rect: Rect::default(),
             work_rect: Rect::default(),
             sel_tags: 0,
