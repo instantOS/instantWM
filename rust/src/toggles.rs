@@ -121,11 +121,7 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
         let selmon_id = ctx.g.selected_monitor_id();
 
-        let showtags = if let Some(mon) = ctx.g.selected_monitor() {
-            mon.showtags
-        } else {
-            0
-        };
+        let showtags = ctx.g.selected_monitor().showtags;
 
         let mut show_bool = showtags != 0;
         ctrl_toggle(&mut show_bool, action);
@@ -134,9 +130,7 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
         (selmon_id, new_showtags)
     };
 
-    if let Some(mon) = ctx.g.selected_monitor_mut() {
-        mon.showtags = new_showtags;
-    }
+    ctx.g.selected_monitor_mut().showtags = new_showtags;
 
     let tagwidth = get_tag_width(ctx);
     ctx.g.tags.width = tagwidth;

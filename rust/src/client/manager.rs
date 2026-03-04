@@ -3,11 +3,20 @@
 use crate::monitor::MonitorManager;
 use crate::types::{Client, ClientId, WindowId};
 use std::collections::HashMap;
+use std::ops::Deref;
 
 #[derive(Default)]
 pub struct ClientManager {
     pub clients: HashMap<WindowId, Client>,
     pub client_list: Vec<ClientId>,
+}
+
+impl Deref for ClientManager {
+    type Target = HashMap<WindowId, Client>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.clients
+    }
 }
 
 impl ClientManager {

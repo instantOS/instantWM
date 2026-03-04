@@ -35,10 +35,7 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         return;
     }
 
-    let is_selmon = ctx
-        .g
-        .selected_monitor()
-        .is_some_and(|selmon| selmon.num == monitor_num);
+    let is_selmon = ctx.g.selected_monitor().num == monitor_num;
 
     let systray_width = if ctx.backend_kind() == BackendKind::Wayland {
         0
@@ -128,17 +125,12 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
 }
 
 pub fn reset_bar_common(ctx: &mut WmCtx) {
-    let should_reset = ctx
-        .g
-        .selected_monitor()
-        .is_some_and(|selmon| selmon.gesture != Gesture::None);
-    if !should_reset {
+    let selmon = ctx.g.selected_monitor();
+    if selmon.gesture == Gesture::None {
         return;
     }
 
-    if let Some(selmon) = ctx.g.selected_monitor_mut() {
-        selmon.gesture = Gesture::None;
-    }
+    ctx.g.selected_monitor_mut().gesture = Gesture::None;
 }
 
 pub fn should_draw_bar_common(ctx: &WmCtx) -> bool {

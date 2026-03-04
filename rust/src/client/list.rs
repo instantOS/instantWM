@@ -41,7 +41,7 @@ pub fn detach_stack(ctx: &mut WmCtx, win: WindowId) {
 // ---------------------------------------------------------------------------
 
 pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> {
-    let mon = ctx.g.selected_monitor()?;
+    let mon = ctx.g.selected_monitor();
     let selected = mon.selected_tags();
 
     let start_idx = if let Some(win) = start_win {

@@ -127,7 +127,7 @@ impl LayoutKind {
 
 // ── Re-exports: query ─────────────────────────────────────────────────────────
 #[allow(unused_imports)]
-pub use query::{find_visible_client, get_current_layout_symbol};
+pub use query::find_visible_client;
 
 // ── Re-exports: manager ───────────────────────────────────────────────────────
 #[allow(unused_imports)]

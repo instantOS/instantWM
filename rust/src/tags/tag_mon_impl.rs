@@ -32,7 +32,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
     let (selected_window, has_multiple_mons) = {
-        let sel = ctx.g.selected_monitor().and_then(|mon| mon.sel);
+        let sel = ctx.g.selected_monitor().sel;
         (sel, ctx.g.monitors.len() > 1)
     };
 
@@ -85,18 +85,13 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         src_work_area_width,
         src_work_area_height,
     ) = {
-        let (monitor_x, monitor_y, work_area_width, work_area_height) = ctx
-            .g
-            .selected_monitor()
-            .map(|m| {
-                (
-                    m.monitor_rect.x,
-                    m.monitor_rect.y,
-                    m.work_rect.w,
-                    m.work_rect.h,
-                )
-            })
-            .unwrap_or((0, 0, 0, 0));
+        let mon = ctx.g.selected_monitor();
+        let (monitor_x, monitor_y, work_area_width, work_area_height) = (
+            mon.monitor_rect.x,
+            mon.monitor_rect.y,
+            mon.work_rect.w,
+            mon.work_rect.h,
+        );
 
         let (win_x, win_y) = ctx
             .g

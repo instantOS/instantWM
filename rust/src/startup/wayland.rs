@@ -607,10 +607,7 @@ fn wayland_hover_resize_drag_begin(
         (
             c.geo,
             c.isfloating,
-            ctx.g
-                .selected_monitor()
-                .map(|m| m.is_tiling_layout())
-                .unwrap_or(true),
+            ctx.g.selected_monitor().is_tiling_layout(),
         )
     }) else {
         return false;
@@ -1083,22 +1080,17 @@ fn update_wayland_bar_hit_state(
     }
 
     let bar_h = ctx.g.cfg.bar_height.max(1);
-    let in_bar = ctx
-        .g
-        .selected_monitor()
-        .is_some_and(|m| m.showbar && root_y >= m.by && root_y < m.by + bar_h);
+    let mon = ctx.g.selected_monitor();
+    let in_bar = mon.showbar && root_y >= mon.by && root_y < mon.by + bar_h;
     if !in_bar {
-        let had_hover = ctx
-            .g
-            .selected_monitor()
-            .is_some_and(|m| m.gesture != crate::types::Gesture::None);
+        let had_hover = mon.gesture != crate::types::Gesture::None;
         if had_hover {
             crate::bar::reset_bar(&mut ctx);
         }
         return None;
     }
 
-    let mon = ctx.g.selected_monitor().cloned()?;
+    let mon = ctx.g.selected_monitor();
     let local_x = root_x - mon.work_rect.x;
     let pos = bar_position_at_x(&mon, &ctx, local_x);
     if reset_start_menu && pos == BarPosition::StartMenu {
@@ -1106,16 +1098,11 @@ fn update_wayland_bar_hit_state(
     }
 
     let gesture = if pos == BarPosition::StatusText {
-        ctx.g
-            .selected_monitor()
-            .map(|m| m.gesture)
-            .unwrap_or_default()
+        ctx.g.selected_monitor().gesture
     } else {
         bar_position_to_gesture(pos)
     };
-    if let Some(m) = ctx.g.selected_monitor_mut() {
-        m.gesture = gesture;
-    }
+    ctx.g.selected_monitor_mut().gesture = gesture;
 
     Some(pos)
 }

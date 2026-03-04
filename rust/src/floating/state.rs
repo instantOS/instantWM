@@ -116,10 +116,7 @@ pub fn apply_float_change(
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
     let selected_window = {
-        let mon = match ctx.g.selected_monitor() {
-            Some(m) => m,
-            None => return,
-        };
+        let mon = ctx.g.selected_monitor();
         match mon.sel {
             Some(sel) if Some(sel) != mon.overlay => {
                 if let Some(c) = ctx.g.clients.get(&sel) {
@@ -204,10 +201,7 @@ pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
 
 pub fn temp_fullscreen(ctx: &mut WmCtx) {
     let (fullscreen_win, selected_window, animated) = {
-        let mon = match ctx.g.selected_monitor() {
-            Some(m) => m,
-            None => return,
-        };
+        let mon = ctx.g.selected_monitor();
         (mon.fullscreen, mon.sel, ctx.g.animated)
     };
 
@@ -224,15 +218,11 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
             super::helpers::apply_size(ctx, win);
         }
 
-        if let Some(mon) = ctx.g.selected_monitor_mut() {
-            mon.fullscreen = None;
-        }
+        ctx.g.selected_monitor_mut().fullscreen = None;
     } else {
         let Some(win) = selected_window else { return };
 
-        if let Some(mon) = ctx.g.selected_monitor_mut() {
-            mon.fullscreen = Some(win);
-        }
+        ctx.g.selected_monitor_mut().fullscreen = Some(win);
 
         if super::helpers::check_floating(ctx, win) {
             save_floating_win(ctx, win);
@@ -248,7 +238,7 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
     }
 
     require_x11!(ctx);
-    if let Some(win) = ctx.g.selected_monitor().and_then(|m| m.fullscreen) {
+    if let Some(win) = ctx.g.selected_monitor().fullscreen {
         if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
             let x11_win: Window = win.into();
             let _ = configure_window(

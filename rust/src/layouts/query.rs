@@ -12,8 +12,6 @@ use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::types::{Monitor, WindowId};
 
-use super::LayoutKind;
-
 // ── per-monitor counts ────────────────────────────────────────────────────────
 
 // ── visibility walk ───────────────────────────────────────────────────────────
@@ -21,18 +19,17 @@ use super::LayoutKind;
 /// Walk the client list starting at `start_win` and return the first
 /// client that passes [`Client::is_visible_on_tags`].
 pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
-    let selected = g.selected_monitor().map(|m| m.selected_tags()).unwrap_or(0);
+    let selected = g.selected_monitor().selected_tags();
 
-    if let Some(m) = g.selected_monitor() {
-        let start_idx = start_win.and_then(|w| m.clients.iter().position(|&x| x == w));
-        let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
+    let m = g.selected_monitor();
+    let start_idx = start_win.and_then(|w| m.clients.iter().position(|&x| x == w));
+    let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
 
-        for i in iter_start..m.clients.len() {
-            let win = m.clients[i];
-            if let Some(c) = g.clients.get(&win) {
-                if c.is_visible_on_tags(selected) {
-                    return Some(win);
-                }
+    for i in iter_start..m.clients.len() {
+        let win = m.clients[i];
+        if let Some(c) = g.clients.get(&win) {
+            if c.is_visible_on_tags(selected) {
+                return Some(win);
             }
         }
     }
@@ -42,27 +39,10 @@ pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<W
 
 // ── layout query ──────────────────────────────────────────────────────────────
 
-/// Return the active layout symbol string for the *selected* monitor.
-pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
-    if let Some(m) = g.selected_monitor() {
-        let tag = m.current_tag;
-        if tag > 0 && tag <= m.tags.len() {
-            return Some(m.tags[tag - 1].layouts.symbol());
-        }
-    }
-
-    Some(LayoutKind::Tile.symbol())
-}
-
 /// Returns `hi` if animation is enabled and client count exceeds threshold,
 /// otherwise returns `lo`.
 pub fn framecount_for_layout(g: &Globals, threshold: usize, hi: i32, lo: i32) -> i32 {
-    if g.animated
-        && g.selected_monitor()
-            .map(|m| m.tiled_client_count(g.clients.map()))
-            .unwrap_or(0)
-            > threshold
-    {
+    if g.animated && g.selected_monitor().tiled_client_count(&*g.clients) > threshold {
         hi
     } else {
         lo

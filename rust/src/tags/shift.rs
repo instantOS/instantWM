@@ -18,18 +18,13 @@ pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
 }
 
 fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    let Some(win) = ctx.g.selected_monitor().and_then(|mon| mon.sel) else {
+    let mon = ctx.g.selected_monitor();
+    let Some(win) = mon.sel else {
         return;
     };
 
-    let (current_tag, overlay_win) = (
-        ctx.g.selected_monitor().map(|m| m.current_tag as u32),
-        ctx.g.selected_monitor().and_then(|m| m.overlay),
-    );
-
-    let Some(current_tag) = current_tag else {
-        return;
-    };
+    let current_tag = mon.current_tag as u32;
+    let overlay_win = mon.overlay;
 
     if Some(win) == overlay_win {
         let mode = match dir {
@@ -49,10 +44,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let (tagset, tagmask) = match ctx.g.selected_monitor() {
-        Some(mon) => (mon.tagset[mon.seltags as usize], ctx.g.tags.mask()),
-        None => return,
-    };
+    let (tagset, tagmask) = (mon.tagset[mon.seltags as usize], ctx.g.tags.mask());
 
     if (tagset & tagmask).count_ones() != 1 {
         return;
@@ -82,13 +74,14 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 }
 
 fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let target_tags = ctx.g.selected_monitor().and_then(|mon| {
+    let target_tags = {
+        let mon = ctx.g.selected_monitor();
         if mon.current_tag > 0 {
             Some(1u32 << (mon.current_tag - 1))
         } else {
             None
         }
-    });
+    };
 
     if let Some(client) = ctx.g.clients.get_mut(&win) {
         if client.issticky {
@@ -110,11 +103,7 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         let _ = conn.flush();
     }
 
-    let mon_w = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.monitor_rect.w)
-        .unwrap_or(0);
+    let mon_w = ctx.g.selected_monitor().monitor_rect.w;
     let (client_x, client_y) = ctx
         .g
         .clients

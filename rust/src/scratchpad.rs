@@ -32,9 +32,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
-
-    let selected_window = match selected_window {
+    let selected_window = match ctx.g.selected_monitor().sel {
         Some(w) => w,
         None => return,
     };
@@ -78,19 +76,14 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
-
-    let selected_window = match selected_window {
+    let selected_window = match ctx.g.selected_monitor().sel {
         Some(w) => w,
         None => return,
     };
 
     let (is_scratchpad, restore_tags, monitor_id, monitor_tags) = {
-        let monitor_tags = ctx
-            .g
-            .selected_monitor()
-            .map(|m| m.tagset[m.seltags as usize])
-            .unwrap_or(1);
+        let monitor_tags =
+            ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize];
 
         if let Some(c) = ctx.g.clients.get(&selected_window) {
             (
@@ -213,12 +206,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_overview = {
-        ctx.g
-            .selected_monitor()
-            .map(|m| !m.is_tiling_layout())
-            .unwrap_or(false)
-    };
+    let is_overview = !ctx.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
         return;
@@ -278,7 +266,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let mut first = true;
 
     for (_i, mon) in ctx.g.monitors_iter() {
-        for (_c_win, c) in mon.iter_clients(ctx.g.clients.map()) {
+        for (_c_win, c) in mon.iter_clients(&*ctx.g.clients) {
             if c.is_scratchpad() {
                 if !first {
                     status.push(',');
@@ -315,7 +303,7 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
     }
 
     for (_i, mon) in ctx.g.monitors_iter() {
-        for (c_win, c) in mon.iter_clients(ctx.g.clients.map()) {
+        for (c_win, c) in mon.iter_clients(&*ctx.g.clients) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);
             }

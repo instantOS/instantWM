@@ -36,7 +36,7 @@ use crate::constants::animation::{
     BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
 };
 use crate::contexts::WmCtx;
-use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
+use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 
 // ── grid ─────────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, FAST_ANIM_THRESHOLD, 3, 6);
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = count_tiled_clients(ctx, m) as i32;
+    let n = m.tiled_client_count(&ctx.g.clients) as i32;
 
     if n == 0 {
         return;
@@ -138,7 +138,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// so there are never empty cells.
 pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = count_tiled_clients(ctx, m);
+    let n = m.tiled_client_count(&ctx.g.clients) as u32;
 
     if n == 0 {
         return;

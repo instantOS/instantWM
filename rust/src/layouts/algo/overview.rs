@@ -56,16 +56,14 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if ctx.g.monitors.is_empty() {
         return;
     }
-    let (mon_x, mon_y, work_h, work_w, showbar) = match ctx.g.selected_monitor() {
-        Some(mon) => (
-            mon.monitor_rect.x,
-            mon.monitor_rect.y,
-            mon.work_rect.h,
-            mon.work_rect.w,
-            mon.showbar,
-        ),
-        None => return,
-    };
+    let mon = ctx.g.selected_monitor();
+    let (mon_x, mon_y, work_h, work_w, showbar) = (
+        mon.monitor_rect.x,
+        mon.monitor_rect.y,
+        mon.work_rect.h,
+        mon.work_rect.w,
+        mon.showbar,
+    );
 
     let bar_height = ctx.g.cfg.bar_height;
 

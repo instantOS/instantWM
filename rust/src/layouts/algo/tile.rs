@@ -21,7 +21,7 @@ use crate::animation::animate_client;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
-use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
+use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
@@ -40,7 +40,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         DEFAULT_FRAME_COUNT,
     );
 
-    let n = count_tiled_clients(ctx, m);
+    let n = m.tiled_client_count(&ctx.g.clients) as u32;
 
     if n == 0 {
         return;

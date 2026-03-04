@@ -59,9 +59,7 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 fn snap_to_monitor_edges(ctx: &WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
     let snap = ctx.g.cfg.snap;
-    let Some(mon) = ctx.g.selected_monitor() else {
-        return;
-    };
+    let mon = ctx.g.selected_monitor();
 
     let width = c.geo.total_width(c.border_width);
     let height = c.geo.total_height(c.border_width);
@@ -81,9 +79,7 @@ fn snap_to_monitor_edges(ctx: &WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i
 
 /// Returns edge snap position based on cursor position.
 fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
-    let Some(mon) = ctx.g.selected_monitor() else {
-        return None;
-    };
+    let mon = ctx.g.selected_monitor();
 
     if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
         return Some(SnapPosition::Left);
@@ -101,9 +97,7 @@ fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
 
 /// Returns `true` when `(x, y)` (root-space) is inside the bar of `selmon`.
 fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
-    let Some(mon) = ctx.g.selected_monitor() else {
-        return false;
-    };
+    let mon = ctx.g.selected_monitor();
     mon.showbar
         && y >= mon.by
         && y < mon.by + ctx.g.cfg.bar_height
@@ -139,7 +133,7 @@ struct MoveState {
 /// * restores a near-maximized floating window to its saved geometry
 fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let selected_window = {
-        let mon = ctx.g.selected_monitor()?;
+        let mon = ctx.g.selected_monitor();
         let sel = mon.sel?;
         let c = ctx.g.clients.get(&sel)?;
 
@@ -173,16 +167,12 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     // In a floating layout, if the window fills (nearly) the whole monitor,
     // restore the saved float geometry so we drag the real size, not a maximized one.
     let restore_geo: Option<Rect> = {
-        let has_tiling = ctx
-            .g
-            .selected_monitor()
-            .map(|m| m.is_tiling_layout())
-            .unwrap_or(true);
+        let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
         if !has_tiling {
             if let (Some(c), Some(mon)) = (
                 ctx.g.clients.get(&selected_window),
-                ctx.g.selected_monitor(),
+                Some(ctx.g.selected_monitor()),
             ) {
                 let bar_height = ctx.g.cfg.bar_height;
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
@@ -218,36 +208,22 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
     let selmon_id = ctx.g.selected_monitor_id();
 
     if on_bar {
-        // Use the canonical bar hit-test so that tag hover highlighting during
-        // a window-drag uses exactly the same geometry as click dispatch and
-        // motion_notify gesture detection.
-        let new_gesture = ctx
-            .g
-            .selected_monitor()
-            .map(|mon| {
-                let local_x = ptr_x - mon.work_rect.x;
-                bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x))
-            })
-            .unwrap_or(Gesture::None);
+        let new_gesture = {
+            let mon = ctx.g.selected_monitor();
+            let local_x = ptr_x - mon.work_rect.x;
+            bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x))
+        };
 
-        let gesture_changed = ctx
-            .g
-            .selected_monitor()
-            .map(|m| m.gesture != new_gesture)
-            .unwrap_or(false);
+        let gesture_changed = ctx.g.selected_monitor().gesture != new_gesture;
 
         if !state.cursor_on_bar || gesture_changed {
             ctx.g.drag.bar_active = true;
-            if let Some(mon) = ctx.g.selected_monitor_mut() {
-                mon.gesture = new_gesture;
-            }
+            ctx.g.selected_monitor_mut().gesture = new_gesture;
             draw_bar(ctx, selmon_id);
         }
     } else if state.cursor_on_bar {
         ctx.g.drag.bar_active = false;
-        if let Some(mon) = ctx.g.selected_monitor_mut() {
-            mon.gesture = Gesture::None;
-        }
+        ctx.g.selected_monitor_mut().gesture = Gesture::None;
         draw_bar(ctx, selmon_id);
     }
 
@@ -272,19 +248,11 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx
-            .g
-            .selected_monitor()
-            .map(|m| m.by + ctx.g.cfg.bar_height)
-            .unwrap_or(new_y);
+        let bar_bottom = ctx.g.selected_monitor().by + ctx.g.cfg.bar_height;
         new_y = bar_bottom;
     }
 
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     let (mut is_floating, mut drag_geo) = ctx
         .g
@@ -391,9 +359,7 @@ fn maybe_promote_tiled_drag_to_floating(
 fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g.drag.bar_active = false;
     let selmon_id = ctx.g.selected_monitor_id();
-    if let Some(mon) = ctx.g.selected_monitor_mut() {
-        mon.gesture = Gesture::None;
-    }
+    ctx.g.selected_monitor_mut().gesture = Gesture::None;
     draw_bar(ctx, selmon_id);
 }
 
@@ -426,13 +392,9 @@ fn handle_bar_drop(
     }
 
     let position = {
-        ctx.g
-            .selected_monitor()
-            .map(|mon| {
-                let local_x = ptr_x - mon.work_rect.x;
-                bar_position_at_x(mon, ctx, local_x)
-            })
-            .unwrap_or(BarPosition::Root)
+        let mon = ctx.g.selected_monitor();
+        let local_x = ptr_x - mon.work_rect.x;
+        bar_position_at_x(mon, ctx, local_x)
     };
 
     // Remember whether the window was floating *before* any state change so
@@ -512,18 +474,13 @@ fn apply_edge_drop(
         return false;
     }
 
-    let is_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let is_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if is_tiling {
-        let (mon_my, mon_mh) = ctx
-            .g
-            .selected_monitor()
-            .map(|m| (m.monitor_rect.y, m.monitor_rect.h))
-            .unwrap_or((0, 1));
+        let (mon_my, mon_mh) = (
+            ctx.g.selected_monitor().monitor_rect.y,
+            ctx.g.selected_monitor().monitor_rect.h,
+        );
 
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
@@ -704,11 +661,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
                 }
                 last_time = m.time;
 
-                let threshold = ctx
-                    .g
-                    .selected_monitor()
-                    .map(|m| m.monitor_rect.h / 30)
-                    .unwrap_or(0);
+                let threshold = ctx.g.selected_monitor().monitor_rect.h / 30;
                 if (last_y - m.event_y as i32).abs() > threshold {
                     let event_y = m.event_y as i32;
                     let cmd = if event_y < last_y {
@@ -738,7 +691,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// grab loop that calls those two functions synchronously.
 pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -> bool {
     let selmon_id = ctx.g.selected_monitor_id();
-    let mon_mx = ctx.g.selected_monitor().map(|m| m.work_rect.x).unwrap_or(0);
+    let mon_mx = ctx.g.selected_monitor().work_rect.x;
 
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => 1u32 << (idx as u32),
@@ -758,12 +711,9 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         }
     };
 
-    let current_tagset = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.tagset[m.seltags as usize]);
-    let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset.unwrap_or(0);
-    let has_sel = ctx.g.selected_monitor().and_then(|m| m.sel).is_some();
+    let current_tagset = ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize];
+    let is_current_tag = (initial_tag & ctx.g.tags.mask()) == current_tagset;
+    let has_sel = ctx.g.selected_monitor().sel.is_some();
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
@@ -804,11 +754,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let selmon_id = ctx.g.drag.tag.monitor_id;
     let mon_mx = ctx.g.drag.tag.mon_mx;
 
-    let bar_bottom = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.by + ctx.g.cfg.bar_height + 1)
-        .unwrap_or(9999);
+    let bar_bottom = ctx.g.selected_monitor().by + ctx.g.cfg.bar_height + 1;
 
     if root_y > bar_bottom {
         ctx.g.drag.tag.cursor_on_bar = false;
@@ -860,14 +806,11 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
 
     if cursor_on_bar {
         if let Some((x, _, _)) = last_motion {
-            let position = ctx
-                .g
-                .selected_monitor()
-                .map(|mon| {
-                    let local_x = x - mon.work_rect.x;
-                    bar_position_at_x(mon, ctx, local_x)
-                })
-                .unwrap_or(BarPosition::Root);
+            let position = {
+                let mon = ctx.g.selected_monitor();
+                let local_x = x - mon.work_rect.x;
+                bar_position_at_x(mon, ctx, local_x)
+            };
 
             if let BarPosition::Tag(tag_idx) = position {
                 let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);

@@ -30,20 +30,17 @@ pub fn tag_scheme(
     is_hover: bool,
 ) -> Option<BarScheme> {
     let scheme_idx = if occupied_tags & (1 << tag_index) != 0 {
-        let sel_has_tag = g
-            .selected_monitor()
-            .and_then(|selmon| {
-                selmon.sel.and_then(|selected_window| {
-                    g.clients
-                        .get(&selected_window)
-                        .map(|c| c.tags & (1 << tag_index) != 0)
-                })
+        let selmon = g.selected_monitor();
+        let sel_has_tag = selmon
+            .sel
+            .and_then(|selected_window| {
+                g.clients
+                    .get(&selected_window)
+                    .map(|c| c.tags & (1 << tag_index) != 0)
             })
             .unwrap_or(false);
 
-        let is_selected = g
-            .selected_monitor()
-            .is_some_and(|selmon| selmon.num == m.num);
+        let is_selected = selmon.num == m.num;
 
         if is_selected && sel_has_tag {
             SchemeTag::Focus
@@ -77,12 +74,9 @@ pub fn tag_hover_fill_scheme(g: &Globals) -> Option<BarScheme> {
 }
 
 pub fn window_scheme(g: &Globals, c: &Client, is_hover: bool) -> Option<BarScheme> {
-    let is_selected = g
-        .selected_monitor()
-        .is_some_and(|selmon| selmon.sel == Some(c.win));
-    let is_overlay = g
-        .selected_monitor()
-        .is_some_and(|selmon| selmon.overlay == Some(c.win));
+    let selmon = g.selected_monitor();
+    let is_selected = selmon.sel == Some(c.win);
+    let is_overlay = selmon.overlay == Some(c.win);
 
     let scheme_idx = if is_selected {
         if is_overlay {

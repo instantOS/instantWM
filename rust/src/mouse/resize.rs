@@ -148,11 +148,7 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
                 let snap = ctx.g.cfg.snap;
 
                 if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx
-                        .g
-                        .selected_monitor()
-                        .map(|m| m.is_tiling_layout())
-                        .unwrap_or(true);
+                    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
                     if !client.isfloating
                         && has_tiling
@@ -280,11 +276,7 @@ pub fn resize_mouse_directional(
                 let snap = ctx.g.cfg.snap;
 
                 let should_toggle = if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx
-                        .g
-                        .selected_monitor()
-                        .map(|m| m.is_tiling_layout())
-                        .unwrap_or(true);
+                    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
                     !client.isfloating
                         && has_tiling
@@ -303,11 +295,7 @@ pub fn resize_mouse_directional(
                         .get(&win)
                         .map(|c| c.isfloating)
                         .unwrap_or(false);
-                    let has_tiling = ctx
-                        .g
-                        .selected_monitor()
-                        .map(|m| m.is_tiling_layout())
-                        .unwrap_or(true);
+                    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
                     if !has_tiling || is_floating {
                         resize(

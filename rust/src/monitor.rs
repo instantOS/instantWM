@@ -3,7 +3,6 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::bar::x11::update_bar_pos_with_bh;
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win};
 use crate::contexts::{WmCtx, X11Conn};
 use crate::focus::warp_cursor_to_client;
@@ -52,8 +51,20 @@ impl MonitorManager {
         self.monitors.get(self.selected_monitor_idx)
     }
 
+    pub fn sel_unchecked(&self) -> &Monitor {
+        self.monitors
+            .get(self.selected_monitor_idx)
+            .expect("no monitors")
+    }
+
     pub fn sel_mut(&mut self) -> Option<&mut Monitor> {
         self.monitors.get_mut(self.selected_monitor_idx)
+    }
+
+    pub fn sel_mut_unchecked(&mut self) -> &mut Monitor {
+        self.monitors
+            .get_mut(self.selected_monitor_idx)
+            .expect("no monitors")
     }
 
     pub fn count(&self) -> usize {
@@ -379,7 +390,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
             w: sw,
             h: h,
         };
-        update_bar_pos_with_bh(m, bar_height);
+        m.update_bar_position(bar_height);
     }
     ctx.g.monitors.set_sel_idx(0);
     true
@@ -402,7 +413,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
         m.work_rect.h = sh;
-        update_bar_pos_with_bh(m, bar_height);
+        m.update_bar_position(bar_height);
     }
     true
 }
@@ -463,7 +474,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
                 m.num = i as i32;
                 m.monitor_rect = *info;
                 m.work_rect = *info;
-                update_bar_pos_with_bh(m, bar_height);
+                m.update_bar_position(bar_height);
                 dirty = true;
             }
         }
@@ -498,7 +509,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
         if let Some(m) = ctx.g.monitors.win_to_mon(
             WindowId::from(ctx.g.cfg.root),
             ctx.g.cfg.root,
-            ctx.g.clients.map(),
+            &*ctx.g.clients,
             x11,
         ) {
             ctx.g.monitors.set_sel_idx(m);

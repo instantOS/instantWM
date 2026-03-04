@@ -26,7 +26,7 @@ struct OverlayPositionInfo {
 
 /// Get the overlay window for the selected monitor, if it exists.
 fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
-    ctx.g.selected_monitor().and_then(|m| m.overlay)
+    ctx.g.selected_monitor().overlay
 }
 
 /// Check if the overlay window exists in the clients map.
@@ -52,7 +52,7 @@ fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
     let base_offset = if mon.showbar { bar_height } else { 0 };
 
     // Check if any visible client is fullscreen
-    for (_win, c) in mon.iter_clients(ctx.g.clients.map()) {
+    for (_win, c) in mon.iter_clients(&*ctx.g.clients) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
             return 0;
         }
@@ -191,10 +191,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     require_x11!(ctx);
     let (sel_overlay, sel_fullscreen) = {
         let g = &*ctx.g;
-        let mon = match g.selected_monitor() {
-            Some(m) => m,
-            None => return,
-        };
+        let mon = g.selected_monitor();
         let sel_overlay = mon.overlay;
         let sel_fullscreen = g
             .clients
@@ -236,9 +233,9 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
         }
     }
 
-    let (overlay_mode, mon_ww, mon_wh) = match ctx.g.selected_monitor() {
-        Some(mon) => (mon.overlaymode, mon.work_rect.w, mon.work_rect.h),
-        None => (OverlayMode::default(), 0, 0),
+    let (overlay_mode, mon_ww, mon_wh) = {
+        let mon = ctx.g.selected_monitor();
+        (mon.overlaymode, mon.work_rect.w, mon.work_rect.h)
     };
 
     if let Some(client) = ctx.g.clients.get_mut(&temp_client) {
@@ -267,7 +264,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         return;
     }
 
-    let overlay_win = match ctx.g.selected_monitor().and_then(|m| m.overlay) {
+    let overlay_win = match ctx.g.selected_monitor().overlay {
         Some(w) => w,
         None => return,
     };
@@ -318,10 +315,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     }
 
     let selmon_id = ctx.g.selected_monitor_id();
-    let mon = match ctx.g.selected_monitor() {
-        Some(m) => m,
-        None => return,
-    };
+    let mon = ctx.g.selected_monitor();
 
     if mon.overlaystatus != 0 {
         return;
@@ -377,8 +371,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         resize(ctx, overlay_win, &initial_rect, true);
     }
 
-    let tags = ctx.g.selected_monitor().unwrap().tagset
-        [ctx.g.selected_monitor().unwrap().seltags as usize];
+    let tags = ctx.g.selected_monitor().tagset[ctx.g.selected_monitor().seltags as usize];
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
@@ -429,10 +422,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
     }
 
     let selmon_id = ctx.g.selected_monitor_id();
-    let mon = match ctx.g.selected_monitor() {
-        Some(m) => m,
-        None => return,
-    };
+    let mon = ctx.g.selected_monitor();
 
     if mon.overlaystatus == 0 {
         return;
@@ -449,7 +439,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             Some(c) => c,
             None => return,
         };
-        let mon = ctx.g.selected_monitor().unwrap();
+        let mon = ctx.g.selected_monitor();
 
         let hide_info = HideAnimationInfo {
             mode: mon.overlaymode,
@@ -494,23 +484,20 @@ pub fn set_overlay(ctx: &mut WmCtx) {
     }
 
     let (overlaystatus, overlay_visible, _mon_tags) = {
-        if let Some(mon) = ctx.g.selected_monitor() {
-            let overlay_win = match mon.overlay {
-                Some(w) => w,
-                None => return,
-            };
+        let mon = ctx.g.selected_monitor();
+        let overlay_win = match mon.overlay {
+            Some(w) => w,
+            None => return,
+        };
 
-            let visible = if let Some(c) = ctx.g.clients.get(&overlay_win) {
-                let selected = mon.selected_tags();
-                c.is_visible_on_tags(selected)
-            } else {
-                false
-            };
-
-            (mon.overlaystatus, visible, mon.tagset[mon.seltags as usize])
+        let visible = if let Some(c) = ctx.g.clients.get(&overlay_win) {
+            let selected = mon.selected_tags();
+            c.is_visible_on_tags(selected)
         } else {
-            return;
-        }
+            false
+        };
+
+        (mon.overlaystatus, visible, mon.tagset[mon.seltags as usize])
     };
 
     if overlaystatus == 0 {
@@ -531,10 +518,10 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
     let (has_overlay, mon_wh, mon_ww, overlaystatus) = {
         let mon = ctx.g.selected_monitor();
         (
-            mon.and_then(|m| m.overlay).is_some(),
-            mon.map(|m| m.work_rect.h).unwrap_or(0),
-            mon.map(|m| m.work_rect.w).unwrap_or(0),
-            mon.map(|m| m.overlaystatus).unwrap_or(0),
+            mon.overlay.is_some(),
+            mon.work_rect.h,
+            mon.work_rect.w,
+            mon.overlaystatus,
         )
     };
 
@@ -542,14 +529,13 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
         return;
     }
 
-    if let Some(mon) = ctx.g.selected_monitor() {
-        if let Some(overlay_win) = mon.overlay {
-            if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
-                if mode.is_vertical() {
-                    client.geo.h = mon_wh / 3;
-                } else {
-                    client.geo.w = mon_ww / 3;
-                }
+    let mon = ctx.g.selected_monitor();
+    if let Some(overlay_win) = mon.overlay {
+        if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+            if mode.is_vertical() {
+                client.geo.h = mon_wh / 3;
+            } else {
+                client.geo.w = mon_ww / 3;
             }
         }
     }

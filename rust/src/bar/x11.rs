@@ -32,18 +32,11 @@ pub fn update_status(ctx: &mut WmCtx) {
     crate::systray::update_systray(ctx);
 }
 
-pub fn update_bar_pos_with_bh(m: &mut Monitor, bar_height: i32) {
-    m.update_bar_position(bar_height);
-}
-
 /// Resize bar window with dependency injection.
 pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
     let bar_height = ctx.g.cfg.bar_height;
     let showsystray = ctx.g.cfg.showsystray;
-    let is_selmon = ctx
-        .g
-        .selected_monitor()
-        .is_some_and(|selmon| selmon.num == m.num);
+    let is_selmon = ctx.g.selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
@@ -158,16 +151,15 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 
     let bar_height = ctx.g.cfg.bar_height;
-    if let Some(selmon) = ctx.g.selected_monitor_mut() {
-        selmon.showbar = !selmon.showbar;
+    let selmon = ctx.g.selected_monitor_mut();
+    selmon.showbar = !selmon.showbar;
 
-        let current_tag = selmon.current_tag;
-        if current_tag > 0 && current_tag <= selmon.tags.len() {
-            selmon.tags[current_tag - 1].showbar = selmon.showbar;
-        }
-
-        update_bar_pos_with_bh(selmon, bar_height);
+    let current_tag = selmon.current_tag;
+    if current_tag > 0 && current_tag <= selmon.tags.len() {
+        selmon.tags[current_tag - 1].showbar = selmon.showbar;
     }
+
+    selmon.update_bar_position(bar_height);
 
     let selmon_idx = ctx.g.selected_monitor_id();
     if let Some(m) = ctx.g.monitor(selmon_idx) {

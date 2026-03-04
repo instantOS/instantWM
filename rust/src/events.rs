@@ -58,12 +58,11 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.g.selected_monitor_id();
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) = ctx.g.monitors.win_to_mon(
-        event_win,
-        ctx.g.cfg.root,
-        ctx.g.clients.map(),
-        ctx.x11_conn(),
-    ) {
+    if let Some(clicked_mon) =
+        ctx.g
+            .monitors
+            .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
+    {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.g.set_selected_monitor(clicked_mon);
             selmon_id = clicked_mon;
@@ -254,17 +253,14 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 2. Snapshot selection state before any changes
     let selmon_id = ctx.g.selected_monitor_id();
-    let selected_window = ctx.g.selected_monitor().and_then(|m| m.sel);
+    let selmon = ctx.g.selected_monitor();
+    let selected_window = selmon.sel;
     let is_floating_sel = {
         let is_floating = selected_window
             .and_then(|w| ctx.g.clients.get(&w))
             .map(|c| c.isfloating)
             .unwrap_or(false);
-        let has_tiling = ctx
-            .g
-            .selected_monitor()
-            .map(|m| m.is_tiling_layout())
-            .unwrap_or(true);
+        let has_tiling = selmon.is_tiling_layout();
         is_floating || !has_tiling
     };
     let entering_client = win_to_client_ctx(ctx, event_win);
@@ -311,12 +307,11 @@ pub fn enter_notify(ctx: &mut WmCtx, e: &EnterNotifyEvent) {
 
     // 4. Handle Monitor Switch
     if focusfollowsmouse {
-        if let Some(new_mon_id) = ctx.g.monitors.win_to_mon(
-            event_win,
-            ctx.g.cfg.root,
-            ctx.g.clients.map(),
-            ctx.x11_conn(),
-        ) {
+        if let Some(new_mon_id) =
+            ctx.g
+                .monitors
+                .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
+        {
             if new_mon_id != selmon_id {
                 ctx.g.set_selected_monitor(new_mon_id);
                 crate::focus::focus_soft(ctx, None);
@@ -338,12 +333,11 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(monitor_id) = ctx.g.monitors.win_to_mon(
-        event_win,
-        ctx.g.cfg.root,
-        ctx.g.clients.map(),
-        ctx.x11_conn(),
-    ) {
+    if let Some(monitor_id) =
+        ctx.g
+            .monitors
+            .win_to_mon(event_win, ctx.g.cfg.root, &*ctx.g.clients, ctx.x11_conn())
+    {
         let is_barwin = ctx
             .g
             .monitors
@@ -392,16 +386,10 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     let root_win = WindowId::from(ctx.g.cfg.root);
     if event_win != root_win {
         let root_y = e.root_y as i32;
-        let in_bar = ctx
-            .g
-            .selected_monitor()
-            .is_some_and(|m| m.showbar && root_y >= m.by && root_y < m.by + ctx.g.cfg.bar_height);
-        if !in_bar
-            && ctx
-                .g
-                .selected_monitor()
-                .is_some_and(|m| m.gesture != Gesture::None)
-        {
+        let selmon = ctx.g.selected_monitor();
+        let in_bar =
+            selmon.showbar && root_y >= selmon.by && root_y < selmon.by + ctx.g.cfg.bar_height;
+        if !in_bar && selmon.gesture != Gesture::None {
             reset_bar(ctx);
         }
         return;
@@ -437,9 +425,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
 
     // Early-out: cursor is below the bar area.
     let (monitor_y, bar_height, current_gesture) = {
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return;
-        };
+        let mon = ctx.g.selected_monitor();
         (mon.monitor_rect.y, ctx.g.cfg.bar_height, mon.gesture)
     };
 
@@ -460,9 +446,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     // Compute the bar position from the cursor's monitor-local x coordinate,
     // then convert to a gesture for hover highlighting.
     let new_gesture = {
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return;
-        };
+        let mon = ctx.g.selected_monitor();
         let local_x = root_x - mon.work_rect.x;
         let position = bar_position_at_x(mon, ctx, local_x);
         match position {
@@ -477,9 +461,7 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     };
 
     if new_gesture != current_gesture {
-        if let Some(mon) = ctx.g.selected_monitor_mut() {
-            mon.gesture = new_gesture;
-        }
+        ctx.g.selected_monitor_mut().gesture = new_gesture;
         draw_bar(ctx, selmon_id);
     };
 }

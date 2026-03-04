@@ -53,19 +53,18 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
 
     // No target window – centre on the selected monitor's work area.
     if win == WindowId::default() {
-        if let Some(mon) = ctx.g.selected_monitor() {
-            let _ = conn.warp_pointer(
-                CURRENT_TIME,
-                root,
-                0,
-                0,
-                0,
-                0,
-                (mon.work_rect.x + mon.work_rect.w / 2) as i16,
-                (mon.work_rect.y + mon.work_rect.h / 2) as i16,
-            );
-            let _ = conn.flush();
-        }
+        let mon = ctx.g.selected_monitor();
+        let _ = conn.warp_pointer(
+            CURRENT_TIME,
+            root,
+            0,
+            0,
+            0,
+            0,
+            (mon.work_rect.x + mon.work_rect.w / 2) as i16,
+            (mon.work_rect.y + mon.work_rect.h / 2) as i16,
+        );
+        let _ = conn.flush();
         return;
     }
 

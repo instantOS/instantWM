@@ -35,11 +35,10 @@
 use crate::client::resize;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
-use crate::layouts::query::count_tiled_clients;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = count_tiled_clients(ctx, m);
+    let n = m.tiled_client_count(&ctx.g.clients) as u32;
 
     if n == 0 {
         return;

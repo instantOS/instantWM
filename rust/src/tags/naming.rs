@@ -20,10 +20,8 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
 
-    let (numtags, tagset) = match ctx.g.selected_monitor() {
-        Some(mon) => (mon.tags.len(), mon.tagset[mon.seltags as usize]),
-        None => return,
-    };
+    let mon = ctx.g.selected_monitor();
+    let (numtags, tagset) = (mon.tags.len(), mon.tagset[mon.seltags as usize]);
 
     if tagset == 0 {
         return;

@@ -202,10 +202,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     let sel_mon = ctx.g.selected_monitor_id();
 
     let (_is_floating, has_tiling, current_tag) = {
-        let mon = match ctx.g.selected_monitor() {
-            Some(m) => m,
-            None => return,
-        };
+        let mon = ctx.g.selected_monitor();
         let is_floating = mon
             .sel
             .and_then(|w| ctx.g.clients.get(&w).map(|c| c.isfloating))
@@ -277,7 +274,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
 
 fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
     if let Some(mon) = globals.monitor(sel_mon) {
-        for (_c_win, c) in mon.iter_clients(globals.clients.map()) {
+        for (_c_win, c) in mon.iter_clients(&globals.clients) {
             let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
         }
     }

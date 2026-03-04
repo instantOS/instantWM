@@ -10,13 +10,8 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> O
         return next_tiled(ctx, c_win);
     }
 
-    let selected = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
-
-    let mon = ctx.g.selected_monitor()?;
+    let mon = ctx.g.selected_monitor();
+    let selected = mon.selected_tags();
     if let Some(win) = c_win {
         let mut found = false;
         for &client_win in &mon.clients {
@@ -40,7 +35,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
         return None;
     }
 
-    let mon = ctx.g.selected_monitor()?;
+    let mon = ctx.g.selected_monitor();
     let selected = mon.selected_tags();
 
     let mut r: Option<WindowId> = None;
@@ -61,13 +56,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
 }
 
 pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
-    if ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.tiled_client_count(ctx.g.clients.map()))
-        .unwrap_or(0)
-        < 2
-    {
+    if ctx.g.selected_monitor().tiled_client_count(&ctx.g.clients) < 2 {
         return;
     }
 
@@ -102,13 +91,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
-    if ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.tiled_client_count(ctx.g.clients.map()))
-        .unwrap_or(0)
-        < 2
-    {
+    if ctx.g.selected_monitor().tiled_client_count(&ctx.g.clients) < 2 {
         return;
     }
 

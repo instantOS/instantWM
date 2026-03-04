@@ -5,7 +5,7 @@ use crate::animation::animate_client;
 use crate::client::resize;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
-use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
+use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
@@ -19,7 +19,7 @@ struct TiledClient {
 // ── deck ─────────────────────────────────────────────────────────────────────
 
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = count_tiled_clients(ctx, m);
+    let n = m.tiled_client_count(&ctx.g.clients) as u32;
 
     if n == 0 {
         return;
@@ -92,7 +92,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = count_tiled_clients(ctx, m);
+    let n = m.tiled_client_count(&ctx.g.clients) as u32;
 
     if n == 0 {
         return;
@@ -176,7 +176,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = count_tiled_clients(ctx, m);
+    let n = m.tiled_client_count(&ctx.g.clients) as u32;
 
     if n == 0 {
         return;

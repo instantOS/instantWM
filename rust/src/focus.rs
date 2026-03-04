@@ -27,9 +27,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
             return Ok(());
         }
         let sel_mon_id = ctx.g.selected_monitor_id();
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return Ok(());
-        };
+        let mon = ctx.g.selected_monitor();
 
         let selected = mon.selected_tag_mask();
 
@@ -112,9 +110,7 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         return Ok(());
     }
     let sel_mon_id = ctx.g.selected_monitor_id();
-    let Some(mon) = ctx.g.selected_monitor() else {
-        return Ok(());
-    };
+    let mon = ctx.g.selected_monitor();
 
     let selected = mon.selected_tag_mask();
 
@@ -129,7 +125,6 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
     });
 
     if target.is_none() {
-        let mon = ctx.g.selected_monitor().unwrap();
         for &c_win in &mon.stack {
             let Some(c) = ctx.g.clients.get(&c_win) else {
                 continue;
@@ -141,7 +136,7 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         }
     }
 
-    let current_sel = ctx.g.selected_monitor().and_then(|m| m.sel);
+    let current_sel = ctx.g.selected_monitor().sel;
     let selection_state_changed = current_sel.is_none() != target.is_none();
 
     if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
@@ -193,11 +188,7 @@ pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, enteri
         .get(&hovered_win)
         .map(|c| c.isfloating)
         .unwrap_or(false);
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
     if !ctx.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
         return;
     }
@@ -207,9 +198,7 @@ pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, enteri
     }
 
     if ctx.backend_kind() == BackendKind::Wayland {
-        if let Some(mon) = ctx.g.selected_monitor_mut() {
-            mon.sel = Some(hovered_win);
-        }
+        ctx.g.selected_monitor_mut().sel = Some(hovered_win);
         ctx.backend.set_focus(hovered_win);
         draw_bars(ctx);
     } else {
@@ -255,10 +244,7 @@ pub fn focus_direction<F>(ctx: &WmCtx, direction: Direction, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let Some(mon) = ctx.g.selected_monitor() else {
-        focus_fn(None);
-        return;
-    };
+    let mon = ctx.g.selected_monitor();
 
     let selected = mon.selected_tag_mask();
 
@@ -276,7 +262,7 @@ where
 
     let candidates = get_directional_candidates(
         &mon.clients,
-        ctx.g.clients.map(),
+        &*ctx.g.clients,
         selected,
         source_win,
         source_center_x,
@@ -385,9 +371,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
         if ctx.g.monitors.is_empty() {
             return;
         }
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return;
-        };
+        let mon = ctx.g.selected_monitor();
         let Some(source_win) = mon.sel else {
             return;
         };
@@ -400,7 +384,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
 
         get_directional_candidates(
             &mon.clients,
-            ctx.g.clients.map(),
+            &*ctx.g.clients,
             selected,
             source_win,
             source_center_x,
@@ -470,13 +454,10 @@ pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let Some(mon) = ctx.g.selected_monitor() else {
-        focus_fn(None);
-        return;
-    };
+    let mon = ctx.g.selected_monitor();
 
     let selected_window = mon.sel;
-    let stack = get_visible_stack(mon, ctx.g.clients.map());
+    let stack = get_visible_stack(mon, &*ctx.g.clients);
 
     if stack.is_empty() {
         focus_fn(None);
@@ -522,10 +503,8 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         if ctx.g.monitors.is_empty() {
             return;
         }
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return;
-        };
-        get_visible_stack(mon, ctx.g.clients.map())
+        let mon = ctx.g.selected_monitor();
+        get_visible_stack(mon, &*ctx.g.clients)
     };
 
     if stack.is_empty() {

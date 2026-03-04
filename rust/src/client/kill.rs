@@ -103,10 +103,7 @@ pub fn selected_window(ctx: &WmCtx) -> Option<WindowId> {
 /// an orderly system shutdown; pressing it when windows are open closes the
 /// focused window instead.
 pub fn shut_kill(ctx: &mut WmCtx) {
-    let has_clients = ctx
-        .g
-        .selected_monitor()
-        .is_some_and(|m| !m.clients.is_empty());
+    let has_clients = !ctx.g.selected_monitor().clients.is_empty();
 
     if has_clients {
         if let Some(win) = selected_window(ctx) {

@@ -14,10 +14,7 @@ use crate::types::WindowId;
 /// should be no-ops when a tiling layout is active and the window is not
 /// explicitly floating.
 pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
-    if let Some(mon) = ctx.g.selected_monitor() {
-        return mon.is_tiling_layout();
-    }
-    true
+    ctx.g.selected_monitor().is_tiling_layout()
 }
 
 // ── Per-client queries ────────────────────────────────────────────────────────
@@ -33,10 +30,8 @@ pub fn check_floating(ctx: &WmCtx, win: WindowId) -> bool {
         if client.isfloating {
             return true;
         }
-        if let Some(mon) = ctx.g.selected_monitor() {
-            if !mon.is_tiling_layout() {
-                return true;
-            }
+        if !ctx.g.selected_monitor().is_tiling_layout() {
+            return true;
         }
     }
     false
@@ -50,11 +45,7 @@ pub fn check_floating(ctx: &WmCtx, win: WindowId) -> bool {
 /// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
 pub fn visible_client(ctx: &WmCtx, win: WindowId) -> bool {
-    let selected = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.selected_tags())
-        .unwrap_or(0);
+    let selected = ctx.g.selected_monitor().selected_tags();
     ctx.g
         .clients
         .get(&win)

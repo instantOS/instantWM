@@ -77,21 +77,15 @@ fn is_point_in_resize_border(geo: &Rect, px: i32, py: i32) -> bool {
 /// Find a visible floating window whose resize border zone contains (`px`, `py`).
 /// Returns `None` if the cursor is on the bar or no window matches.
 pub fn find_floating_win_at_resize_border(ctx: &WmCtx, px: i32, py: i32) -> Option<WindowId> {
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
-    if let Some(mon) = ctx.g.selected_monitor() {
-        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
-            return None;
-        }
+    let mon = ctx.g.selected_monitor();
+    if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
+        return None;
     }
 
-    let mon = ctx.g.selected_monitor()?;
     let selected = mon.selected_tags();
-    for (w, c) in mon.iter_clients(ctx.g.clients.map()) {
+    for (w, c) in mon.iter_clients(&*ctx.g.clients) {
         if !c.is_visible_on_tags(selected) {
             continue;
         }
@@ -143,14 +137,14 @@ fn find_tiled_win_at_point(
     py: i32,
     skip_win: Option<WindowId>,
 ) -> Option<WindowId> {
-    let mon = ctx.g.selected_monitor()?;
+    let mon = ctx.g.selected_monitor();
     let selected = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
     if !has_tiling {
         return None;
     }
 
-    for (w, c) in mon.iter_clients(ctx.g.clients.map()) {
+    for (w, c) in mon.iter_clients(&*ctx.g.clients) {
         if Some(w) == skip_win {
             continue;
         }
@@ -178,37 +172,26 @@ pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
     let Some(c) = ctx.g.clients.get(&win) else {
         return false;
     };
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
     if !c.isfloating && has_tiling {
         return false;
     }
 
-    if let Some(mon) = ctx.g.selected_monitor() {
-        if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
-            return false;
-        }
+    let mon = ctx.g.selected_monitor();
+    if mon.showbar && py < mon.monitor_rect.y + ctx.g.cfg.bar_height {
+        return false;
     }
     is_point_in_resize_border(&c.geo, px, py)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
 fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
-    let Some(mon) = ctx.g.selected_monitor() else {
-        return false;
-    };
+    let mon = ctx.g.selected_monitor();
     let selected = mon.selected_tags();
 
-    for (_w, c) in mon.iter_clients(ctx.g.clients.map()) {
+    for (_w, c) in mon.iter_clients(&*ctx.g.clients) {
         if c.is_visible_on_tags(selected) && !(c.isfloating || !has_tiling) {
             return true;
         }
@@ -250,9 +233,7 @@ pub fn handle_floating_resize_hover(
 }
 
 pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    let Some(mon) = ctx.g.selected_monitor() else {
-        return false;
-    };
+    let mon = ctx.g.selected_monitor();
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
         if ctx.g.altcursor == AltCursor::None && root_y > ctx.g.cfg.bar_height + 60 {
@@ -424,16 +405,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         None => return false,
     };
     let sel_geo = match ctx.g.clients.get(&selected_window) {
-        Some(c)
-            if c.isfloating
-                || !ctx
-                    .g
-                    .selected_monitor()
-                    .map(|m| m.is_tiling_layout())
-                    .unwrap_or(true) =>
-        {
-            c.geo
-        }
+        Some(c) if c.isfloating || !ctx.g.selected_monitor().is_tiling_layout() => c.geo,
         _ => return false,
     };
 
@@ -442,11 +414,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         Some(w) if w != selected_window => w,
         _ => return false,
     };
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
     if !has_tiling {
         return false;
     }

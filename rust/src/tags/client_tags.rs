@@ -40,7 +40,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let current_tag = ctx.g.selected_monitor().map(|m| m.current_tag).unwrap_or(0);
+    let current_tag = ctx.g.selected_monitor().current_tag;
 
     if current_tag == 0 {
         return;
@@ -49,14 +49,12 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
     let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
-    let clients_on_tag: Vec<_> = if let Some(m) = ctx.g.selected_monitor() {
-        m.iter_clients(ctx.g.clients.map())
-            .filter(|(_, c)| TagMask::from_bits(c.tags).intersects(current_tag_mask))
-            .map(|(win, _)| win)
-            .collect()
-    } else {
-        Vec::new()
-    };
+    let m = ctx.g.selected_monitor();
+    let clients_on_tag: Vec<_> = m
+        .iter_clients(&*ctx.g.clients)
+        .filter(|(_, c)| TagMask::from_bits(c.tags).intersects(current_tag_mask))
+        .map(|(win, _)| win)
+        .collect();
 
     for win in clients_on_tag {
         if let Some(client) = ctx.g.clients.get_mut(&win) {

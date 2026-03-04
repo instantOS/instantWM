@@ -319,12 +319,22 @@ impl Globals {
     }
 
     /// Shorthand to get the selected monitor.
-    pub fn selected_monitor(&self) -> Option<&Monitor> {
-        self.monitors.sel()
+    pub fn selected_monitor(&self) -> &Monitor {
+        self.monitors.sel_unchecked()
     }
 
     /// Shorthand to get the selected monitor mutably.
-    pub fn selected_monitor_mut(&mut self) -> Option<&mut Monitor> {
+    pub fn selected_monitor_mut(&mut self) -> &mut Monitor {
+        self.monitors.sel_mut_unchecked()
+    }
+
+    /// Shorthand to get the selected monitor (Option version for cases that need it).
+    pub fn selected_monitor_opt(&self) -> Option<&Monitor> {
+        self.monitors.sel()
+    }
+
+    /// Shorthand to get the selected monitor mutably (Option version).
+    pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut Monitor> {
         self.monitors.sel_mut()
     }
 

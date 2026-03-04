@@ -210,9 +210,7 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
 
 pub fn up_press(ctx: &mut WmCtx) {
     let (selected_window, overlay_win, is_floating) = {
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return;
-        };
+        let mon = ctx.g.selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let is_floating = sel
@@ -246,9 +244,7 @@ pub fn down_press(ctx: &mut WmCtx) {
     }
 
     let (selected_window, overlay_win, snapstatus, is_floating) = {
-        let Some(mon) = ctx.g.selected_monitor() else {
-            return;
-        };
+        let mon = ctx.g.selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let (snapstatus, is_floating) = sel
@@ -279,22 +275,14 @@ pub fn down_press(ctx: &mut WmCtx) {
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = ctx
-        .g
-        .selected_monitor()
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(false);
+    let is_overview = !ctx.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
         direction_focus(ctx, Direction::Up);
         return;
     }
 
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
         if let Some(win) = ctx.g.selected_win() {
@@ -317,22 +305,14 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = ctx
-        .g
-        .selected_monitor()
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(false);
+    let is_overview = ctx.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
         direction_focus(ctx, Direction::Down);
         return;
     }
 
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
         if let Some(win) = ctx.g.selected_win() {
@@ -345,11 +325,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn space_toggle(ctx: &mut WmCtx) {
-    let has_tiling = ctx
-        .g
-        .selected_monitor()
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(true);
+    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
         let Some(win) = ctx.g.selected_win() else {

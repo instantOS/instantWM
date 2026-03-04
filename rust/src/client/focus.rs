@@ -161,11 +161,7 @@ pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
 
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
         if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let has_tiling = ctx
-                .g
-                .selected_monitor()
-                .map(|m| m.is_tiling_layout())
-                .unwrap_or(true);
+            let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
             let isfloating = c.isfloating || !has_tiling;
             let pixel = if isfloating {
                 scheme.float_focus.bg.pixel()

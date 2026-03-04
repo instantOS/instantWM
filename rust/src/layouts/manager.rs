@@ -33,7 +33,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let clientcount = {
         let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
-        m.tiled_client_count(ctx.g.clients.map()) as u32
+        m.tiled_client_count(&*ctx.g.clients) as u32
     };
 
     if let Some(m) = ctx.g.monitor_mut(monitor_id) {
@@ -198,7 +198,8 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
             }
         }
         ctx.g.tags.prefix = false;
-    } else if let Some(m) = ctx.g.selected_monitor_mut() {
+    } else {
+        let m = ctx.g.selected_monitor_mut();
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             m.tags[tag - 1].layouts.set_layout(layout);
@@ -215,7 +216,8 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
             }
         }
         ctx.g.tags.prefix = false;
-    } else if let Some(m) = ctx.g.selected_monitor_mut() {
+    } else {
+        let m = ctx.g.selected_monitor_mut();
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             m.tags[tag - 1].layouts.toggle_slot();
@@ -226,7 +228,7 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.g.selected_monitor_id();
-    if ctx.g.selected_monitor().and_then(|m| m.sel).is_some() {
+    if ctx.g.selected_monitor().sel.is_some() {
         arrange(ctx, Some(selected_monitor_id));
     } else {
         draw_bar(ctx, selected_monitor_id);
@@ -234,11 +236,12 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx.g.selected_monitor().map(|m| m.current_layout());
+    let current_layout = ctx.g.selected_monitor().current_layout();
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
-    let current_idx = current_layout
-        .map(|l| all_layouts.iter().position(|&x| x == l).unwrap_or(0))
+    let current_idx = all_layouts
+        .iter()
+        .position(|&x| x == current_layout)
         .unwrap_or(0);
 
     let candidate = if forward {
@@ -278,21 +281,16 @@ pub fn command_layout(ctx: &mut WmCtx<'_>, layout_idx: u32) {
 }
 
 pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
-    let ccount = ctx
-        .g
-        .selected_monitor()
-        .map(|m| m.tiled_client_count(ctx.g.clients.map()))
-        .unwrap_or(0) as i32;
-    if let Some(m) = ctx.g.selected_monitor_mut() {
-        if delta > 0 && m.nmaster >= ccount {
-            m.nmaster = ccount;
-        } else {
-            let new_nmaster = max(m.nmaster + delta, 0);
-            m.nmaster = new_nmaster;
-            let tag = m.current_tag;
-            if tag > 0 && tag <= m.tags.len() {
-                m.tags[tag - 1].nmaster = new_nmaster;
-            }
+    let ccount = ctx.g.selected_monitor().tiled_client_count(&*ctx.g.clients) as i32;
+    let m = ctx.g.selected_monitor_mut();
+    if delta > 0 && m.nmaster >= ccount {
+        m.nmaster = ccount;
+    } else {
+        let new_nmaster = max(m.nmaster + delta, 0);
+        m.nmaster = new_nmaster;
+        let tag = m.current_tag;
+        if tag > 0 && tag <= m.tags.len() {
+            m.tags[tag - 1].nmaster = new_nmaster;
         }
     }
     let selected_monitor_id = ctx.g.selected_monitor_id();
@@ -303,15 +301,12 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     if mfact_val == 0.0 {
         return;
     }
-    let is_tiling = ctx
-        .g
-        .selected_monitor()
-        .map_or(false, |m| m.current_layout().is_tiling());
+    let is_tiling = ctx.g.selected_monitor().current_layout().is_tiling();
     if !is_tiling {
         return;
     }
 
-    let current_mfact = ctx.g.selected_monitor().map_or(0.55, |m| m.mfact);
+    let current_mfact = ctx.g.selected_monitor().mfact;
     let new_mfact = if mfact_val < 1.0 {
         mfact_val + current_mfact
     } else {
@@ -321,23 +316,17 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let animation_on = ctx.g.animated
-        && ctx
-            .g
-            .selected_monitor()
-            .map(|m| m.tiled_client_count(ctx.g.clients.map()))
-            .unwrap_or(0)
-            > 2;
+    let animation_on =
+        ctx.g.animated && ctx.g.selected_monitor().tiled_client_count(&*ctx.g.clients) > 2;
     if animation_on {
         ctx.g.animated = false;
     }
 
-    if let Some(m) = ctx.g.selected_monitor_mut() {
-        m.mfact = new_mfact;
-        let tag = m.current_tag;
-        if tag > 0 && tag <= m.tags.len() {
-            m.tags[tag - 1].mfact = new_mfact;
-        }
+    let m = ctx.g.selected_monitor_mut();
+    m.mfact = new_mfact;
+    let tag = m.current_tag;
+    if tag > 0 && tag <= m.tags.len() {
+        m.tags[tag - 1].mfact = new_mfact;
     }
 
     let selected_monitor_id = ctx.g.selected_monitor_id();
