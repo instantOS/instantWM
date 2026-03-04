@@ -15,8 +15,8 @@ use crate::client::constants::{
     SIZE_HINTS_P_RESIZE_INC,
 };
 use crate::contexts::WmCtx;
-use crate::types::{Client, Rect, WindowId};
-use std::cmp::{max, min};
+use crate::types::{Client, MonitorId, Rect, WindowId};
+
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -46,44 +46,9 @@ pub fn client_height(c: &Client) -> i32 {
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
 pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
-    // Extract needed data first to avoid borrow conflict
-    let (
-        base_width,
-        base_height,
-        min_width,
-        min_height,
-        max_width,
-        max_height,
-        inc_width,
-        inc_height,
-        base_aspect_num,
-        base_aspect_denom,
-        min_aspect_num,
-        min_aspect_denom,
-        max_aspect_num,
-        max_aspect_denom,
-    ) = {
-        let client = match ctx.g.clients.get(&win) {
-            Some(c) => c,
-            None => return,
-        };
-        (
-            client.base_width,
-            client.base_height,
-            client.min_width,
-            client.min_height,
-            client.max_width,
-            client.max_height,
-            client.inc_width,
-            client.inc_height,
-            client.base_aspect_num,
-            client.base_aspect_denom,
-            client.min_aspect_num,
-            client.min_aspect_denom,
-            client.max_aspect_num,
-            client.max_aspect_denom,
-        )
-    };
+    if !ctx.g.clients.contains_key(&win) {
+        return;
+    }
 
     let mut new_x = rect.x;
     let mut new_y = rect.y;
@@ -97,20 +62,6 @@ pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
         &mut new_width,
         &mut new_height,
         interact,
-        base_width,
-        base_height,
-        min_width,
-        min_height,
-        max_width,
-        max_height,
-        inc_width,
-        inc_height,
-        base_aspect_num,
-        base_aspect_denom,
-        min_aspect_num,
-        min_aspect_denom,
-        max_aspect_num,
-        max_aspect_denom,
     );
     let client_count = ctx.g.clients.len();
     if changed || client_count == 1 {
@@ -180,7 +131,6 @@ pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
 ///
 /// Returns `true` if the resulting geometry differs from the client's current
 /// stored geometry (i.e. an actual change would occur).
-#[allow(clippy::too_many_arguments)]
 pub fn apply_size_hints(
     ctx: &mut WmCtx,
     win: WindowId,
@@ -189,329 +139,201 @@ pub fn apply_size_hints(
     w: &mut i32,
     h: &mut i32,
     interact: bool,
-    _base_width: i32,
-    _base_height: i32,
-    _min_width: i32,
-    _min_height: i32,
-    _max_width: i32,
-    _max_height: i32,
-    _inc_width: i32,
-    _inc_height: i32,
-    _base_aspect_num: i32,
-    _base_aspect_denom: i32,
-    _min_aspect_num: i32,
-    _min_aspect_denom: i32,
-    _max_aspect_num: i32,
-    _max_aspect_denom: i32,
 ) -> bool {
-    let Some(c) = ctx.g.clients.get_mut(&win) else {
-        return false;
+    let client = match ctx.g.clients.get(&win) {
+        Some(c) => c,
+        None => return false,
     };
 
-    // Snapshot current geometry before any modifications.
-    let old_x = c.geo.x;
-    let old_y = c.geo.y;
-    let old_w = c.geo.w;
-    let old_h = c.geo.h;
-    let _border_width = c.border_width;
-    let client_w = c.geo.w + 2 * c.border_width;
-    let client_h = c.geo.h + 2 * c.border_width;
-    let mon_id = c.mon_id;
-    let hintsvalid = c.hintsvalid;
-    let isfloating = c.isfloating;
+    let old_geo = client.geo;
+    let mut new_geo = Rect::new(*x, *y, *w, *h);
+    let border_width = client.border_width;
+    let mon_id = client.mon_id;
+    let should_apply_hints =
+        ctx.g.cfg.resizehints != 0 || client.isfloating || is_floating_layout(ctx, mon_id);
 
-    // Extract only the scalar values we need instead of cloning the entire
-    // config / monitors / tags structs (avoids heap allocations).
-    let screen_width = ctx.g.cfg.screen_width;
-    let screen_height = ctx.g.cfg.screen_height;
+    // Phase 1: Ensure positive dimensions.
+    new_geo.w = new_geo.w.max(1);
+    new_geo.h = new_geo.h.max(1);
+
+    // Phase 2: Clamp position to keep window visible.
+    clamp_position_to_bounds(
+        ctx,
+        &mut new_geo,
+        mon_id,
+        interact,
+        old_geo.total_width(border_width),
+        old_geo.total_height(border_width),
+    );
+
+    // Phase 3: Enforce minimum size (bar height).
     let bar_height = ctx.g.cfg.bar_height;
-    let resizehints = ctx.g.cfg.resizehints;
-    let mon_work_rect = mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
-        .map(|m| m.work_rect);
-    let is_tiling = mon_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(true);
+    new_geo.enforce_minimum(bar_height, bar_height);
 
-    *w = max(1, *w);
-    *h = max(1, *h);
-
-    // Clamp position so the window doesn't escape the usable area.
-    if interact {
-        if *x > screen_width {
-            *x = screen_width - client_w;
-        }
-        if *y > screen_height {
-            *y = screen_height - client_h;
-        }
-        if *x + client_w < 0 {
-            *x = 0;
-        }
-        if *y + client_h < 0 {
-            *y = 0;
-        }
-    } else if let Some(wr) = mon_work_rect {
-        if *x >= wr.x + wr.w {
-            *x = wr.x + wr.w - client_w;
-        }
-        if *y >= wr.y + wr.h {
-            *y = wr.y + wr.h - client_h;
-        }
-        if *x + client_w <= wr.x {
-            *x = wr.x;
-        }
-        if *y + client_h <= wr.y {
-            *y = wr.y;
-        }
+    // Phase 4: Apply ICCCM size hints (X11 only).
+    if ctx.backend_kind() == BackendKind::X11 && should_apply_hints {
+        apply_icccm_size_hints(ctx, win, &mut new_geo);
     }
 
-    // Enforce a minimum size of one bar-height in each dimension.
-    if *h < bar_height {
-        *h = bar_height;
-    }
-    if *w < bar_height {
-        *w = bar_height;
-    }
+    // Write back results.
+    *x = new_geo.x;
+    *y = new_geo.y;
+    *w = new_geo.w;
+    *h = new_geo.h;
 
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return *x != old_x || *y != old_y || *w != old_w || *h != old_h;
-    }
-
-    let resizehints_val = resizehints;
-
-    // Need to get mutable client again for the size hints section.
-    let Some(c) = ctx.g.clients.get_mut(&win) else {
-        return false;
-    };
-
-    // Only apply ICCCM size hints when hints are enabled, or the client is
-    // floating / not in a tiling layout.
-    if resizehints_val != 0 || isfloating || !is_tiling {
-        if hintsvalid == 0 {
-            let _ = c; // Release mutable borrow before calling update_size_hints
-            update_size_hints(ctx, win);
-            let c = ctx.g.clients.get_mut(&win).unwrap();
-
-            let base_is_min =
-                c.size_hints.basew == c.size_hints.minw && c.size_hints.baseh == c.size_hints.minh;
-
-            // Step 1: subtract base size before aspect / increment checks.
-            if !base_is_min {
-                *w -= c.size_hints.basew;
-                *h -= c.size_hints.baseh;
-            }
-
-            // Step 2: enforce aspect ratio.
-            if c.min_aspect > 0.0 && c.max_aspect > 0.0 {
-                if c.max_aspect < (*w as f32) / (*h as f32) {
-                    *w = (*h as f32 * c.max_aspect + 0.5) as i32;
-                } else if c.min_aspect < (*h as f32) / (*w as f32) {
-                    *h = (*w as f32 * c.min_aspect + 0.5) as i32;
-                }
-            }
-
-            // Step 3: when base == min, subtract base *after* the aspect check.
-            if base_is_min {
-                *w -= c.size_hints.basew;
-                *h -= c.size_hints.baseh;
-            }
-
-            // Step 4: snap to resize increments.
-            if c.size_hints.incw != 0 {
-                *w -= *w % c.size_hints.incw;
-            }
-            if c.size_hints.inch != 0 {
-                *h -= *h % c.size_hints.inch;
-            }
-
-            // Step 5: re-add base and clamp to [min, max].
-            *w = max(*w + c.size_hints.basew, c.size_hints.minw);
-            *h = max(*h + c.size_hints.baseh, c.size_hints.minh);
-
-            if c.size_hints.maxw != 0 {
-                *w = min(*w, c.size_hints.maxw);
-            }
-            if c.size_hints.maxh != 0 {
-                *h = min(*h, c.size_hints.maxh);
-            }
-        } else {
-            // hintsvalid != 0, already have valid hints
-            let base_is_min =
-                c.size_hints.basew == c.size_hints.minw && c.size_hints.baseh == c.size_hints.minh;
-
-            // Step 1: subtract base size before aspect / increment checks.
-            if !base_is_min {
-                *w -= c.size_hints.basew;
-                *h -= c.size_hints.baseh;
-            }
-
-            // Step 2: enforce aspect ratio.
-            if c.min_aspect > 0.0 && c.max_aspect > 0.0 {
-                if c.max_aspect < (*w as f32) / (*h as f32) {
-                    *w = (*h as f32 * c.max_aspect + 0.5) as i32;
-                } else if c.min_aspect < (*h as f32) / (*w as f32) {
-                    *h = (*w as f32 * c.min_aspect + 0.5) as i32;
-                }
-            }
-
-            // Step 3: when base == min, subtract base *after* the aspect check.
-            if base_is_min {
-                *w -= c.size_hints.basew;
-                *h -= c.size_hints.baseh;
-            }
-
-            // Step 4: snap to resize increments.
-            if c.size_hints.incw != 0 {
-                *w -= *w % c.size_hints.incw;
-            }
-            if c.size_hints.inch != 0 {
-                *h -= *h % c.size_hints.inch;
-            }
-
-            // Step 5: re-add base and clamp to [min, max].
-            *w = max(*w + c.size_hints.basew, c.size_hints.minw);
-            *h = max(*h + c.size_hints.baseh, c.size_hints.minh);
-
-            if c.size_hints.maxw != 0 {
-                *w = min(*w, c.size_hints.maxw);
-            }
-            if c.size_hints.maxh != 0 {
-                *h = min(*h, c.size_hints.maxh);
-            }
-        }
-    }
-
-    *x != old_x || *y != old_y || *w != old_w || *h != old_h
+    new_geo.differs_from(&old_geo)
 }
 
-// ---------------------------------------------------------------------------
+/// Clamp window position to keep it within usable screen area.
+fn clamp_position_to_bounds(
+    ctx: &WmCtx,
+    geo: &mut Rect,
+    mon_id: Option<MonitorId>,
+    interact: bool,
+    total_w: i32,
+    total_h: i32,
+) {
+    if interact {
+        let screen = Rect::new(0, 0, ctx.g.cfg.screen_width, ctx.g.cfg.screen_height);
+        geo.clamp_position(&screen, total_w, total_h);
+    } else if let Some(wr) = mon_id
+        .and_then(|mid| ctx.g.monitors.get(mid))
+        .map(|m| m.work_rect)
+    {
+        geo.clamp_position(&wr, total_w, total_h);
+    }
+}
+
+/// Check if the client's monitor is using a floating layout.
+fn is_floating_layout(ctx: &WmCtx, mon_id: Option<MonitorId>) -> bool {
+    mon_id
+        .and_then(|mid| ctx.g.monitors.get(mid))
+        .map(|mon| !mon.is_tiling_layout())
+        .unwrap_or(true)
+}
+
+/// Apply ICCCM WM_NORMAL_HINTS constraints to the geometry.
+fn apply_icccm_size_hints(ctx: &mut WmCtx, win: WindowId, geo: &mut Rect) {
+    let needs_update = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.hintsvalid == 0)
+        .unwrap_or(false);
+
+    if needs_update {
+        update_size_hints(ctx, win);
+    }
+
+    let client = match ctx.g.clients.get(&win) {
+        Some(c) => c,
+        None => return,
+    };
+
+    let (w, h) =
+        client
+            .size_hints
+            .constrain_size(geo.w, geo.h, client.min_aspect, client.max_aspect);
+    geo.w = w;
+    geo.h = h;
+}
+
+// -----------------------------------------------------------------------------
 // WM_NORMAL_HINTS parsing
 // ---------------------------------------------------------------------------
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
 /// `min_aspect`, `max_aspect`, and `isfixed`.
-///
-/// The raw property is a packed C struct; we read individual 4-byte integers
-/// at well-known byte offsets defined by the ICCCM / Xlib `XSizeHints` layout.
 pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
-    let (data, flags) = {
-        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-            return;
-        };
-        let x11_win: Window = win.into();
+    let Some(data) = fetch_wm_normal_hints(ctx, win) else {
+        return;
+    };
+    let Some(c) = ctx.g.clients.get_mut(&win) else {
+        return;
+    };
+    let flags = *data.first().unwrap_or(&0);
+    let at = |idx: usize| -> i32 { data.get(idx).copied().unwrap_or(0) as i32 };
 
-        let Ok(cookie) = conn.get_property(
+    // Base size (idx 15-16), fallback to min size (idx 5-6)
+    (c.size_hints.basew, c.size_hints.baseh) =
+        if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() > 16 {
+            (at(15), at(16))
+        } else if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
+            (at(5), at(6))
+        } else {
+            (0, 0)
+        };
+
+    // Min size (idx 5-6), fallback to base size
+    (c.size_hints.minw, c.size_hints.minh) = if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6
+    {
+        (at(5), at(6))
+    } else if flags & SIZE_HINTS_P_BASE_SIZE != 0 {
+        (c.size_hints.basew, c.size_hints.baseh)
+    } else {
+        (0, 0)
+    };
+
+    // Max size (idx 7-8)
+    (c.size_hints.maxw, c.size_hints.maxh) = if flags & SIZE_HINTS_P_MAX_SIZE != 0 && data.len() > 8
+    {
+        (at(7), at(8))
+    } else {
+        (0, 0)
+    };
+
+    // Resize increments (idx 9-10)
+    (c.size_hints.incw, c.size_hints.inch) =
+        if flags & SIZE_HINTS_P_RESIZE_INC != 0 && data.len() > 10 {
+            (at(9), at(10))
+        } else {
+            (0, 0)
+        };
+
+    // Aspect ratios (idx 11-14)
+    (c.min_aspect, c.max_aspect) = if flags & SIZE_HINTS_P_ASPECT != 0 && data.len() > 14 {
+        let min_d = at(12);
+        let max_d = at(14);
+        (
+            if min_d != 0 {
+                at(11) as f32 / min_d as f32
+            } else {
+                0.0
+            },
+            if max_d != 0 {
+                at(13) as f32 / max_d as f32
+            } else {
+                0.0
+            },
+        )
+    } else {
+        (0.0, 0.0)
+    };
+
+    c.isfixed = c.size_hints.is_fixed();
+    c.hintsvalid = 1;
+}
+
+fn fetch_wm_normal_hints(ctx: &mut WmCtx, win: WindowId) -> Option<Vec<u32>> {
+    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
+    let reply = conn
+        .get_property(
             false,
-            x11_win,
+            win.into(),
             AtomEnum::WM_NORMAL_HINTS,
             AtomEnum::WM_SIZE_HINTS,
             0,
             24,
-        ) else {
-            return;
-        };
-
-        let Ok(reply) = cookie.reply() else { return };
-
-        let data: Vec<u32> = reply.value32().map(|v| v.collect()).unwrap_or_default();
-        let flags = if !data.is_empty() { data[0] } else { 0 };
-        (data, flags)
-    };
-
-    // Helper: read a u32 at index `idx`, or 0 if out of range.
-    let read_i32 = |idx: usize| -> i32 {
-        if data.len() > idx {
-            data[idx] as i32
-        } else {
-            0
-        }
-    };
-
-    // Re-acquire mutable reference.
-    let c = match ctx.g.clients.get_mut(&win) {
-        Some(c) => c,
-        None => return,
-    };
-
-    // --- base size (index 15) / min size (index 5) ---
-    if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() > 16 {
-        c.size_hints.basew = read_i32(15);
-        c.size_hints.baseh = read_i32(16);
-    } else if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
-        // Fall back to min size when base size is absent.
-        c.size_hints.basew = read_i32(5);
-        c.size_hints.baseh = read_i32(6);
-    } else {
-        c.size_hints.basew = 0;
-        c.size_hints.baseh = 0;
-    }
-
-    // --- resize increments (index 9) ---
-    if flags & SIZE_HINTS_P_RESIZE_INC != 0 && data.len() > 10 {
-        c.size_hints.incw = read_i32(9);
-        c.size_hints.inch = read_i32(10);
-    } else {
-        c.size_hints.incw = 0;
-        c.size_hints.inch = 0;
-    }
-
-    // --- max size (index 7) ---
-    if flags & SIZE_HINTS_P_MAX_SIZE != 0 && data.len() > 8 {
-        c.size_hints.maxw = read_i32(7);
-        c.size_hints.maxh = read_i32(8);
-    } else {
-        c.size_hints.maxw = 0;
-        c.size_hints.maxh = 0;
-    }
-
-    // --- min size (index 5) ---
-    if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
-        c.size_hints.minw = read_i32(5);
-        c.size_hints.minh = read_i32(6);
-    } else if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() > 16 {
-        // Fall back to base size when min size is absent.
-        c.size_hints.minw = c.size_hints.basew;
-        c.size_hints.minh = c.size_hints.baseh;
-    } else {
-        c.size_hints.minw = 0;
-        c.size_hints.minh = 0;
-    }
-
-    // --- aspect ratio (indices 11 / 12 / 13 / 14) ---
-    if flags & SIZE_HINTS_P_ASPECT != 0 && data.len() > 14 {
-        let min_aspect_num = read_i32(11);
-        let min_aspect_denom = read_i32(12);
-        let max_aspect_num = read_i32(13);
-        let max_aspect_denom = read_i32(14);
-
-        c.min_aspect = if min_aspect_denom != 0 {
-            min_aspect_num as f32 / min_aspect_denom as f32
-        } else {
-            0.0
-        };
-        c.max_aspect = if max_aspect_denom != 0 {
-            max_aspect_num as f32 / max_aspect_denom as f32
-        } else {
-            0.0
-        };
-    } else {
-        c.min_aspect = 0.0;
-        c.max_aspect = 0.0;
-    }
-
-    // A client is "fixed size" when its max and min dimensions are identical
-    // and non-zero – it cannot be resized at all.
-    c.isfixed = c.size_hints.maxw != 0
-        && c.size_hints.maxh != 0
-        && c.size_hints.maxw == c.size_hints.minw
-        && c.size_hints.maxh == c.size_hints.minh;
-
-    c.hintsvalid = 1;
+        )
+        .ok()?
+        .reply()
+        .ok()?;
+    reply.value32().map(|v| v.collect())
 }
 
 /// Convenience wrapper: look up `win` in the global client map and call
 /// [`update_size_hints`] on the found [`Client`].
+//TODO: remove this
 pub fn update_size_hints_win(ctx: &mut WmCtx, win: WindowId) {
     update_size_hints(ctx, win);
 }

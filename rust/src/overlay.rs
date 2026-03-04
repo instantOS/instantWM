@@ -13,6 +13,7 @@ use x11rb::protocol::xproto::*;
 pub struct OverlayController;
 
 impl OverlayController {
+    //TODO: investigate these and maybe remove or move logic in here
     #[inline]
     pub fn create(ctx: &mut WmCtx, sel_win: WindowId) {
         create_overlay(ctx, sel_win)

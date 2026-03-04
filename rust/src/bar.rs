@@ -135,6 +135,3 @@ pub fn reset_bar(ctx: &mut WmCtx) {
     draw_bar(ctx, selmon_idx);
 }
 
-pub fn should_draw_bar(ctx: &WmCtx) -> bool {
-    renderer::should_draw_bar_common(ctx)
-}

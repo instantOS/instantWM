@@ -50,104 +50,51 @@ pub fn remove_systray_icon(ctx: &mut WmCtx, icon_win: WindowId) {
 pub fn update_systray_icon_geom(ctx: &mut WmCtx, icon_win: WindowId, w: i32, h: i32) {
     let bh = ctx.g.cfg.bar_height;
 
-    // Extract client data first to avoid borrow issues
-    let client_data = ctx.g.clients.get(&icon_win).map(|client| {
-        (
-            client.geo.x,
-            client.geo.y,
-            client.geo.w,
-            client.geo.h,
-            client.base_width,
-            client.base_height,
-            client.min_width,
-            client.min_height,
-            client.max_width,
-            client.max_height,
-            client.inc_width,
-            client.inc_height,
-            client.base_aspect_num,
-            client.base_aspect_denom,
-            client.min_aspect_num,
-            client.min_aspect_denom,
-            client.max_aspect_num,
-            client.max_aspect_denom,
-        )
-    });
+    let (geo_x, geo_y) = ctx
+        .g
+        .clients
+        .get(&icon_win)
+        .map(|client| (client.geo.x, client.geo.y))
+        .unwrap_or((0, 0));
 
-    if let Some((
-        geo_x,
-        geo_y,
-        _geo_w,
-        _geo_h,
-        base_w,
-        base_h,
-        min_w,
-        min_h,
-        max_w,
-        max_h,
-        inc_w,
-        inc_h,
-        base_aspect_num,
-        base_aspect_denom,
-        min_aspect_num,
-        min_aspect_denom,
-        max_aspect_num,
-        max_aspect_denom,
-    )) = client_data
-    {
-        let new_geo_h = bh;
-        let new_geo_w = if w == h {
-            bh
-        } else if h == bh {
-            w
-        } else {
-            (bh as f32 * (w as f32 / h as f32)) as i32
-        };
+    let new_geo_h = bh;
+    let new_geo_w = if w == h {
+        bh
+    } else if h == bh {
+        w
+    } else {
+        (bh as f32 * (w as f32 / h as f32)) as i32
+    };
 
-        let mut x = geo_x;
-        let mut y = geo_y;
-        let mut client_width = new_geo_w;
-        let mut client_height = new_geo_h;
+    let mut x = geo_x;
+    let mut y = geo_y;
+    let mut client_width = new_geo_w;
+    let mut client_height = new_geo_h;
 
-        let _ = apply_size_hints(
-            ctx,
-            icon_win,
-            &mut x,
-            &mut y,
-            &mut client_width,
-            &mut client_height,
-            false,
-            base_w,
-            base_h,
-            min_w,
-            min_h,
-            max_w,
-            max_h,
-            inc_w,
-            inc_h,
-            base_aspect_num,
-            base_aspect_denom,
-            min_aspect_num,
-            min_aspect_denom,
-            max_aspect_num,
-            max_aspect_denom,
-        );
+    let _ = apply_size_hints(
+        ctx,
+        icon_win,
+        &mut x,
+        &mut y,
+        &mut client_width,
+        &mut client_height,
+        false,
+    );
 
-        // Now update the client with the computed values
-        if let Some(client) = ctx.g.clients.get_mut(&icon_win) {
-            client.geo.x = x;
-            client.geo.y = y;
-            client.geo.w = client_width;
-            client.geo.h = client_height;
+    // Now update the client with the computed values
+    if let Some(client) = ctx.g.clients.get_mut(&icon_win) {
+        client.geo.x = x;
+        client.geo.y = y;
+        client.geo.w = client_width;
+        client.geo.h = client_height;
 
-            if client.geo.h > bh {
-                if client.geo.w == client.geo.h {
-                    client.geo.w = bh;
-                } else {
-                    client.geo.w = (bh as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
-                }
-                client.geo.h = bh;
+        if client.geo.h > bh {
+            if client.geo.w == client.geo.h {
+                client.geo.w = bh;
+            } else {
+                client.geo.w = (bh as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
             }
+            client.geo.h = bh;
         }
     }
 }
