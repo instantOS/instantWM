@@ -30,7 +30,7 @@ pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
 
     c.issticky = false;
 
-    if let Some(mon) = ctx.g.selmon() {
+    if let Some(mon) = ctx.g.selected_monitor() {
         if mon.current_tag > 0 {
             c.tags = 1 << (mon.current_tag - 1);
         }
@@ -42,7 +42,7 @@ pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
 /// and need to avoid borrow checker issues.
 pub fn reset_sticky_win(ctx: &mut WmCtx, win: WindowId) {
     // Extract data first to avoid borrow issues
-    let target_tags = ctx.g.selmon().and_then(|mon| {
+    let target_tags = ctx.g.selected_monitor().and_then(|mon| {
         if mon.current_tag > 0 {
             Some(1 << (mon.current_tag - 1))
         } else {

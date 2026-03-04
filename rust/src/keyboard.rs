@@ -210,7 +210,7 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
 
 pub fn up_press(ctx: &mut WmCtx) {
     let (sel_win, overlay_win, is_floating) = {
-        let Some(mon) = ctx.g.selmon() else {
+        let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
         let sel = mon.sel;
@@ -246,7 +246,7 @@ pub fn down_press(ctx: &mut WmCtx) {
     }
 
     let (sel_win, overlay_win, snapstatus, is_floating) = {
-        let Some(mon) = ctx.g.selmon() else {
+        let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
         let sel = mon.sel;
@@ -281,7 +281,7 @@ pub fn down_press(ctx: &mut WmCtx) {
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -292,7 +292,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 
     let has_tiling = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(true);
 
@@ -319,7 +319,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -330,7 +330,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 
     let has_tiling = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(true);
 
@@ -347,7 +347,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 pub fn space_toggle(ctx: &mut WmCtx) {
     let has_tiling = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(true);
 
@@ -384,7 +384,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
                 client.snapstatus = SnapPosition::Maximized;
             }
 
-            arrange(ctx, Some(ctx.g.selmon_id()));
+            arrange(ctx, Some(ctx.g.selected_monitor_id()));
         }
     } else {
         toggle_floating(ctx);

@@ -47,7 +47,7 @@ pub fn compute_prefix(ctx: &mut WmCtx, arg: u32) -> u32 {
 }
 
 pub fn zoom(ctx: &mut WmCtx) {
-    let sel_win = ctx.g.selmon().and_then(|mon| mon.sel);
+    let sel_win = ctx.g.selected_monitor().and_then(|mon| mon.sel);
     if let Some(win) = sel_win {
         crate::client::pop(ctx, win);
     }

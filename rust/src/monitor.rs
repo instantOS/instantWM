@@ -18,7 +18,7 @@ use x11rb::protocol::xinerama;
 #[derive(Default)]
 pub struct MonitorManager {
     pub monitors: Vec<Monitor>,
-    pub selmon_idx: usize,
+    pub selected_monitor_idx: usize,
 }
 
 impl MonitorManager {
@@ -31,12 +31,12 @@ impl MonitorManager {
     // -------------------------------------------------------------------------
 
     pub fn sel_idx(&self) -> usize {
-        self.selmon_idx
+        self.selected_monitor_idx
     }
 
     pub fn set_sel_idx(&mut self, idx: usize) {
         if idx < self.monitors.len() {
-            self.selmon_idx = idx;
+            self.selected_monitor_idx = idx;
         }
     }
 
@@ -49,11 +49,11 @@ impl MonitorManager {
     }
 
     pub fn sel(&self) -> Option<&Monitor> {
-        self.monitors.get(self.selmon_idx)
+        self.monitors.get(self.selected_monitor_idx)
     }
 
     pub fn sel_mut(&mut self) -> Option<&mut Monitor> {
-        self.monitors.get_mut(self.selmon_idx)
+        self.monitors.get_mut(self.selected_monitor_idx)
     }
 
     pub fn count(&self) -> usize {
@@ -70,7 +70,7 @@ impl MonitorManager {
 
     pub fn clear(&mut self) {
         self.monitors.clear();
-        self.selmon_idx = 0;
+        self.selected_monitor_idx = 0;
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (usize, &Monitor)> {
@@ -110,13 +110,13 @@ impl MonitorManager {
                 if let Some((x, y)) = get_root_ptr_with_conn_and_root(conn.conn, root) {
                     let rect = Rect { x, y, w: 1, h: 1 };
                     return crate::types::find_monitor_by_rect(&self.monitors, &rect)
-                        .or(Some(self.selmon_idx));
+                        .or(Some(self.selected_monitor_idx));
                 }
             }
             return if self.monitors.is_empty() {
                 None
             } else {
-                Some(self.selmon_idx)
+                Some(self.selected_monitor_idx)
             };
         }
 
@@ -133,7 +133,7 @@ impl MonitorManager {
         if self.monitors.is_empty() {
             None
         } else {
-            Some(self.selmon_idx)
+            Some(self.selected_monitor_idx)
         }
     }
 }
@@ -161,10 +161,10 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, mon_id: usize) {
     }
 
     // Adjust selected index
-    if ctx.g.monitors.selmon_idx == mon_id {
-        ctx.g.monitors.selmon_idx = 0;
-    } else if ctx.g.monitors.selmon_idx > mon_id {
-        ctx.g.monitors.selmon_idx -= 1;
+    if ctx.g.monitors.selected_monitor_idx == mon_id {
+        ctx.g.monitors.selected_monitor_idx = 0;
+    } else if ctx.g.monitors.selected_monitor_idx > mon_id {
+        ctx.g.monitors.selected_monitor_idx -= 1;
     }
 
     if barwin != WindowId::default() {
@@ -244,7 +244,7 @@ pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         if mgr.monitors.len() <= 1 {
             return;
         }
-        match find_monitor_by_direction(&mgr.monitors, mgr.selmon_idx, direction) {
+        match find_monitor_by_direction(&mgr.monitors, mgr.selected_monitor_idx, direction) {
             Some(id) => id,
             None => return,
         }

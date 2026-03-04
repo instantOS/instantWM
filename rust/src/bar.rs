@@ -130,7 +130,7 @@ pub fn reset_bar(ctx: &mut WmCtx) {
     if ctx.x11_conn().is_none() {
         return;
     }
-    let selmon_idx = ctx.g.selmon_id();
+    let selmon_idx = ctx.g.selected_monitor_id();
     renderer::reset_bar_common(ctx);
     draw_bar(ctx, selmon_idx);
 }

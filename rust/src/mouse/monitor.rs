@@ -38,9 +38,9 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         return;
     }
     let new_mon = crate::types::find_monitor_by_rect(ctx.g.monitors.monitors(), rect)
-        .or(Some(ctx.g.selmon_id()));
+        .or(Some(ctx.g.selected_monitor_id()));
 
-    let current_mon = ctx.g.selmon_id();
+    let current_mon = ctx.g.selected_monitor_id();
 
     let Some(target) = new_mon else { return };
     if target == current_mon {
@@ -54,7 +54,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 
     transfer_client(ctx, c_win, target);
 
-    ctx.g.set_selmon(target);
+    ctx.g.set_selected_monitor(target);
     crate::focus::focus_soft(ctx, None);
 }
 

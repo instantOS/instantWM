@@ -127,7 +127,7 @@ fn assign_initial_monitor_and_tags(ctx: &WmCtx, c: &mut Client, trans: Option<Wi
             return;
         }
     }
-    c.mon_id = Some(ctx.g.selmon_id());
+    c.mon_id = Some(ctx.g.selected_monitor_id());
     c.tags = initial_tags_for_monitor(ctx.g, c.mon_id);
 }
 

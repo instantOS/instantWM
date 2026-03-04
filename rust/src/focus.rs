@@ -26,8 +26,8 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         if ctx.g.monitors.is_empty() {
             return Ok(());
         }
-        let sel_mon_id = ctx.g.selmon_id();
-        let Some(mon) = ctx.g.selmon() else {
+        let sel_mon_id = ctx.g.selected_monitor_id();
+        let Some(mon) = ctx.g.selected_monitor() else {
             return Ok(());
         };
 
@@ -113,8 +113,8 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
     if ctx.g.monitors.is_empty() {
         return Ok(());
     }
-    let sel_mon_id = ctx.g.selmon_id();
-    let Some(mon) = ctx.g.selmon() else {
+    let sel_mon_id = ctx.g.selected_monitor_id();
+    let Some(mon) = ctx.g.selected_monitor() else {
         return Ok(());
     };
 
@@ -131,7 +131,7 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
     });
 
     if target.is_none() {
-        let mon = ctx.g.selmon().unwrap();
+        let mon = ctx.g.selected_monitor().unwrap();
         let mut stack = mon.stack;
         while let Some(c_win) = stack {
             let Some(c) = ctx.g.clients.get(&c_win) else {
@@ -145,7 +145,7 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         }
     }
 
-    let current_sel = ctx.g.selmon().and_then(|m| m.sel);
+    let current_sel = ctx.g.selected_monitor().and_then(|m| m.sel);
     let selection_state_changed = current_sel.is_none() != target.is_none();
 
     if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
@@ -186,8 +186,8 @@ pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, enteri
     }
 
     if let Some(mid) = ctx.g.clients.get(&hovered_win).and_then(|c| c.mon_id) {
-        if mid != ctx.g.selmon_id() {
-            ctx.g.set_selmon(mid);
+        if mid != ctx.g.selected_monitor_id() {
+            ctx.g.set_selected_monitor(mid);
         }
     }
 
@@ -197,7 +197,11 @@ pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, enteri
         .get(&hovered_win)
         .map(|c| c.isfloating)
         .unwrap_or(false);
-    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
+    let has_tiling = ctx
+        .g
+        .selected_monitor()
+        .map(|m| m.is_tiling_layout())
+        .unwrap_or(true);
     if !ctx.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
         return;
     }
@@ -207,7 +211,7 @@ pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, enteri
     }
 
     if ctx.backend_kind() == BackendKind::Wayland {
-        if let Some(mon) = ctx.g.selmon_mut() {
+        if let Some(mon) = ctx.g.selected_monitor_mut() {
             mon.sel = Some(hovered_win);
         }
         ctx.backend.set_focus(hovered_win);
@@ -255,7 +259,7 @@ pub fn focus_direction<F>(ctx: &WmCtx, direction: Direction, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let Some(mon) = ctx.g.selmon() else {
+    let Some(mon) = ctx.g.selected_monitor() else {
         focus_fn(None);
         return;
     };
@@ -385,7 +389,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
         if ctx.g.monitors.is_empty() {
             return;
         }
-        let Some(mon) = ctx.g.selmon() else {
+        let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
         let Some(source_win) = mon.sel else {
@@ -435,11 +439,11 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_mon_id = last_client.mon_id;
 
     if let Some(last_mid) = last_mon_id {
-        let sel_mon_id = ctx.g.selmon_id();
+        let sel_mon_id = ctx.g.selected_monitor_id();
         if !ctx.g.monitors.is_empty() && sel_mon_id != last_mid {
             if let Some(sel) = ctx.g.monitor(sel_mon_id).and_then(|m| m.sel) {
                 unfocus_win(ctx, sel, false);
-                ctx.g.set_selmon(last_mid);
+                ctx.g.set_selected_monitor(last_mid);
             }
         }
     }
@@ -451,7 +455,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     view(ctx, TagMask::from_bits(tags));
     focus_soft(ctx, Some(last_win));
 
-    let mon_id = ctx.g.selmon_id();
+    let mon_id = ctx.g.selected_monitor_id();
     crate::layouts::arrange(ctx, Some(mon_id));
 }
 
@@ -470,7 +474,7 @@ pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let Some(mon) = ctx.g.selmon() else {
+    let Some(mon) = ctx.g.selected_monitor() else {
         focus_fn(None);
         return;
     };
@@ -522,7 +526,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         if ctx.g.monitors.is_empty() {
             return;
         }
-        let Some(mon) = ctx.g.selmon() else {
+        let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
         get_visible_stack(mon, ctx.g.clients.map())

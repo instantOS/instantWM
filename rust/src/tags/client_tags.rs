@@ -8,7 +8,7 @@ use crate::types::{TagMask, WindowId, SCRATCHPAD_MASK};
 
 /// Set the selected client's tags using type-safe mask.
 pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let effective_mask = mask & tagmask;
 
@@ -32,7 +32,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
 
 /// Tag all clients on current tag with the given mask.
 pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let effective_mask = mask & tagmask;
 
@@ -40,7 +40,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let current_tag = ctx.g.selmon().map(|m| m.current_tag).unwrap_or(0);
+    let current_tag = ctx.g.selected_monitor().map(|m| m.current_tag).unwrap_or(0);
 
     if current_tag == 0 {
         return;
@@ -49,22 +49,13 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
     let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
-    let clients_on_tag: Vec<_> = {
-        let mut result = Vec::new();
-        let mut cursor = ctx.g.selmon().and_then(|m| m.clients);
-
-        while let Some(win) = cursor {
-            match ctx.g.clients.get(&win) {
-                Some(c) => {
-                    if TagMask::from_bits(c.tags).intersects(current_tag_mask) {
-                        result.push(win);
-                    }
-                    cursor = c.next;
-                }
-                None => break,
-            }
-        }
-        result
+    let clients_on_tag: Vec<_> = if let Some(m) = ctx.g.selected_monitor() {
+        m.iter_clients(ctx.g.clients.map())
+            .filter(|(_, c)| TagMask::from_bits(c.tags).intersects(current_tag_mask))
+            .map(|(win, _)| win)
+            .collect()
+    } else {
+        Vec::new()
     };
 
     for win in clients_on_tag {
@@ -82,11 +73,12 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
 /// Toggle tags on the selected client.
 pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
 
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let _scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
+    //TODO: is_scratchpad should probably be a method on Client
     let (current_tags, is_scratchpad) = ctx
         .g
         .clients
@@ -100,6 +92,7 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         return;
     }
 
+    //TODO: maybe make this typesafe?
     let new_tags = current_tags ^ (mask & tagmask);
 
     if new_tags.is_empty() {

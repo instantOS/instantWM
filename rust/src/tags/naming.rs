@@ -20,7 +20,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
 
-    let (numtags, tagset) = match ctx.g.selmon() {
+    let (numtags, tagset) = match ctx.g.selected_monitor() {
         Some(mon) => (mon.tags.len(), mon.tagset[mon.seltags as usize]),
         None => return,
     };

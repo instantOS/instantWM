@@ -479,7 +479,10 @@ pub fn update_wm_hints(ctx: &mut WmCtx, win: WindowId) {
 
     let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
-    let is_selected = ctx.g.selmon().is_some_and(|mon| mon.sel == Some(win));
+    let is_selected = ctx
+        .g
+        .selected_monitor()
+        .is_some_and(|mon| mon.sel == Some(win));
 
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.

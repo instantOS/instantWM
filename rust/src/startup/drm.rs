@@ -358,7 +358,7 @@ pub fn run() -> ! {
             {
                 let mut ctx = wm.ctx();
                 if !ctx.g.clients.is_empty() {
-                    let selmon = ctx.g.selmon_id();
+                    let selmon = ctx.g.selected_monitor_id();
                     crate::layouts::arrange(&mut ctx, Some(selmon));
                 }
             }
@@ -599,8 +599,8 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
         mon.num = i as i32;
     }
 
-    if wm.g.selmon_id() >= wm.g.monitors.count() {
-        wm.g.set_selmon(0);
+    if wm.g.selected_monitor_id() >= wm.g.monitors.count() {
+        wm.g.set_selected_monitor(0);
     }
 }
 

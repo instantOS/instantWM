@@ -536,7 +536,7 @@ fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
     ctx.g.cfg.startmenusize.hash(&mut hasher);
     ctx.g.drag.bar_active.hash(&mut hasher);
     ctx.g.status_text.hash(&mut hasher);
-    ctx.g.selmon_id().hash(&mut hasher);
+    ctx.g.selected_monitor_id().hash(&mut hasher);
 
     for (_idx, m) in ctx.g.monitors_iter() {
         m.num.hash(&mut hasher);

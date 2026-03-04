@@ -622,7 +622,7 @@ impl WaylandState {
             return;
         }
 
-        let mon_id = g.selmon_id();
+        let mon_id = g.selected_monitor_id();
         let (base_w, base_h) = g
             .monitor(mon_id)
             .map(|m| {

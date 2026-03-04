@@ -309,22 +309,22 @@ impl Globals {
     }
 
     /// Return the ID of the currently selected monitor.
-    pub fn selmon_id(&self) -> usize {
+    pub fn selected_monitor_id(&self) -> usize {
         self.monitors.sel_idx()
     }
 
     /// Change the currently selected monitor.
-    pub fn set_selmon(&mut self, id: usize) {
+    pub fn set_selected_monitor(&mut self, id: usize) {
         self.monitors.set_sel_idx(id);
     }
 
     /// Shorthand to get the selected monitor.
-    pub fn selmon(&self) -> Option<&Monitor> {
+    pub fn selected_monitor(&self) -> Option<&Monitor> {
         self.monitors.sel()
     }
 
     /// Shorthand to get the selected monitor mutably.
-    pub fn selmon_mut(&mut self) -> Option<&mut Monitor> {
+    pub fn selected_monitor_mut(&mut self) -> Option<&mut Monitor> {
         self.monitors.sel_mut()
     }
 

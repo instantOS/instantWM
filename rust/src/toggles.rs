@@ -49,7 +49,7 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 pub fn toggle_prefix(ctx: &mut WmCtx) {
     ctx.g.tags.prefix = !ctx.g.tags.prefix;
 
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     draw_bar(ctx, selmon_id);
 }
 
@@ -113,15 +113,15 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
         }
     };
 
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     draw_bar(ctx, selmon_id);
 }
 
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
-        let selmon_id = ctx.g.selmon_id();
+        let selmon_id = ctx.g.selected_monitor_id();
 
-        let showtags = if let Some(mon) = ctx.g.selmon() {
+        let showtags = if let Some(mon) = ctx.g.selected_monitor() {
             mon.showtags
         } else {
             0
@@ -134,7 +134,7 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
         (selmon_id, new_showtags)
     };
 
-    if let Some(mon) = ctx.g.selmon_mut() {
+    if let Some(mon) = ctx.g.selected_monitor_mut() {
         mon.showtags = new_showtags;
     }
 

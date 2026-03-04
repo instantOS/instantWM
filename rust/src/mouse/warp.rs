@@ -53,7 +53,7 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
 
     // No target window – centre on the selected monitor's work area.
     if win == WindowId::default() {
-        if let Some(mon) = ctx.g.selmon() {
+        if let Some(mon) = ctx.g.selected_monitor() {
             let _ = conn.warp_pointer(
                 CURRENT_TIME,
                 root,

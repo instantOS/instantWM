@@ -418,13 +418,13 @@ pub fn systray_to_mon(ctx: &mut WmCtx, m: Option<MonitorId>) -> MonitorId {
     if ctx.g.cfg.systraypinning == 0 {
         return match m {
             Some(id) => {
-                if id == ctx.g.selmon_id() {
+                if id == ctx.g.selected_monitor_id() {
                     id
                 } else {
-                    ctx.g.selmon_id()
+                    ctx.g.selected_monitor_id()
                 }
             }
-            None => ctx.g.selmon_id(),
+            None => ctx.g.selected_monitor_id(),
         };
     }
 

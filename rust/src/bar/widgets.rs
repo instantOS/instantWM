@@ -14,7 +14,7 @@ pub(crate) fn draw_startmenu_icon(
     let icon_offset = (bh - CLOSE_BUTTON_WIDTH) / 2;
     let startmenu_invert = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .is_some_and(|mon| mon.gesture == Gesture::StartMenu);
 
     let startmenu_size = ctx.g.cfg.startmenusize;
@@ -65,7 +65,11 @@ pub(crate) fn draw_tag_indicators(
 
     let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 
-    let selmon_gesture = ctx.g.selmon().map(|s| s.gesture).unwrap_or_default();
+    let selmon_gesture = ctx
+        .g
+        .selected_monitor()
+        .map(|s| s.gesture)
+        .unwrap_or_default();
 
     for t in &tags {
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
@@ -202,11 +206,11 @@ pub(crate) fn draw_close_button(
 ) {
     let close_hovered = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .is_some_and(|selmon| selmon.gesture == Gesture::CloseButton);
     let is_fullscreen = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .and_then(|selmon| {
             selmon.sel.and_then(|sel_win| {
                 ctx.g
@@ -264,7 +268,7 @@ fn draw_window_title(
 ) -> Option<u32> {
     let is_hover = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .is_some_and(|selmon| selmon.gesture == Gesture::WinTitle(c.win));
 
     let client_name = c.name.as_str();
@@ -284,7 +288,7 @@ fn draw_window_title(
 
     let is_selected = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .is_some_and(|selmon| selmon.sel == Some(c.win));
 
     if is_selected {

@@ -105,7 +105,7 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.g.selmon_id());
+    crate::layouts::restack(ctx, ctx.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
@@ -148,7 +148,11 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
                 let snap = ctx.g.cfg.snap;
 
                 if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
+                    let has_tiling = ctx
+                        .g
+                        .selected_monitor()
+                        .map(|m| m.is_tiling_layout())
+                        .unwrap_or(true);
 
                     if !client.isfloating
                         && has_tiling
@@ -202,7 +206,7 @@ pub fn resize_mouse_directional(
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.g.selmon_id());
+    crate::layouts::restack(ctx, ctx.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
@@ -276,7 +280,11 @@ pub fn resize_mouse_directional(
                 let snap = ctx.g.cfg.snap;
 
                 let should_toggle = if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
+                    let has_tiling = ctx
+                        .g
+                        .selected_monitor()
+                        .map(|m| m.is_tiling_layout())
+                        .unwrap_or(true);
 
                     !client.isfloating
                         && has_tiling
@@ -295,7 +303,11 @@ pub fn resize_mouse_directional(
                         .get(&win)
                         .map(|c| c.isfloating)
                         .unwrap_or(false);
-                    let has_tiling = ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true);
+                    let has_tiling = ctx
+                        .g
+                        .selected_monitor()
+                        .map(|m| m.is_tiling_layout())
+                        .unwrap_or(true);
 
                     if !has_tiling || is_floating {
                         resize(
@@ -354,7 +366,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.g.selmon_id());
+    crate::layouts::restack(ctx, ctx.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;

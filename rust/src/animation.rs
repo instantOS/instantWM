@@ -199,10 +199,10 @@ pub fn down_scale_client(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
-    let sel_mon = ctx.g.selmon_id();
+    let sel_mon = ctx.g.selected_monitor_id();
 
     let (_is_floating, has_tiling, current_tag) = {
-        let mon = match ctx.g.selmon() {
+        let mon = match ctx.g.selected_monitor() {
             Some(m) => m,
             None => return,
         };

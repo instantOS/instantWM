@@ -102,7 +102,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 /// Does nothing when there are no qualifying windows.
 pub fn distribute_clients(ctx: &mut WmCtx) {
     require_x11!(ctx);
-    let sel_mon_id = ctx.g.selmon_id();
+    let sel_mon_id = ctx.g.selected_monitor_id();
 
     let (floating_wins, work_rect) = collect_distribute_targets(ctx.g, sel_mon_id);
 

@@ -198,7 +198,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
             }
         }
         ctx.g.tags.prefix = false;
-    } else if let Some(m) = ctx.g.selmon_mut() {
+    } else if let Some(m) = ctx.g.selected_monitor_mut() {
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             m.tags[tag - 1].layouts.set_layout(layout);
@@ -215,7 +215,7 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
             }
         }
         ctx.g.tags.prefix = false;
-    } else if let Some(m) = ctx.g.selmon_mut() {
+    } else if let Some(m) = ctx.g.selected_monitor_mut() {
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             m.tags[tag - 1].layouts.toggle_slot();
@@ -225,8 +225,8 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 }
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selmon = ctx.g.selmon_id();
-    if ctx.g.selmon().and_then(|m| m.sel).is_some() {
+    let selmon = ctx.g.selected_monitor_id();
+    if ctx.g.selected_monitor().and_then(|m| m.sel).is_some() {
         arrange(ctx, Some(selmon));
     } else {
         draw_bar(ctx, selmon);
@@ -234,7 +234,10 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx.g.selmon().map(|m| get_current_layout(ctx.g, m));
+    let current_layout = ctx
+        .g
+        .selected_monitor()
+        .map(|m| get_current_layout(ctx.g, m));
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
     let current_idx = current_layout
@@ -279,7 +282,7 @@ pub fn command_layout(ctx: &mut WmCtx<'_>, layout_idx: u32) {
 
 pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = client_count(ctx.g);
-    if let Some(m) = ctx.g.selmon_mut() {
+    if let Some(m) = ctx.g.selected_monitor_mut() {
         if delta > 0 && m.nmaster >= ccount {
             m.nmaster = ccount;
         } else {
@@ -291,7 +294,7 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
             }
         }
     }
-    let selmon = ctx.g.selmon_id();
+    let selmon = ctx.g.selected_monitor_id();
     arrange(ctx, Some(selmon));
 }
 
@@ -301,13 +304,13 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     }
     let is_tiling = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map_or(false, |m| get_current_layout(ctx.g, m).is_tiling());
     if !is_tiling {
         return;
     }
 
-    let current_mfact = ctx.g.selmon().map_or(0.55, |m| m.mfact);
+    let current_mfact = ctx.g.selected_monitor().map_or(0.55, |m| m.mfact);
     let new_mfact = if mfact_val < 1.0 {
         mfact_val + current_mfact
     } else {
@@ -322,7 +325,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         ctx.g.animated = false;
     }
 
-    if let Some(m) = ctx.g.selmon_mut() {
+    if let Some(m) = ctx.g.selected_monitor_mut() {
         m.mfact = new_mfact;
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
@@ -330,7 +333,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         }
     }
 
-    let selmon = ctx.g.selmon_id();
+    let selmon = ctx.g.selected_monitor_id();
     arrange(ctx, Some(selmon));
     if animation_on {
         ctx.g.animated = true;

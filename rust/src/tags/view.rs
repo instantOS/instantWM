@@ -9,7 +9,7 @@ use x11rb::protocol::xproto::ConnectionExt;
 
 /// View tags using type-safe mask.
 pub fn view(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
 
     // Validate mask
@@ -20,7 +20,7 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
 
     // Get all needed state in one globals access
     let (_prev_tag, _current_tag) = {
-        let mon = match ctx.g.selmon_mut() {
+        let mon = match ctx.g.selected_monitor_mut() {
             Some(m) => m,
             None => return,
         };
@@ -53,12 +53,12 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
 
 /// Toggle view of tags using type-safe mask.
 pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
 
     let new_mask = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|m| TagMask::from_bits(m.tagset[m.seltags as usize]))
         .unwrap_or(TagMask::EMPTY)
         ^ (mask & tagmask);
@@ -67,7 +67,7 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let mon = match ctx.g.selmon_mut() {
+    let mon = match ctx.g.selected_monitor_mut() {
         Some(m) => m,
         None => return,
     };
@@ -117,7 +117,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 
     let current = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .map(|m| TagMask::from_bits(m.tagset[m.seltags as usize]))
         .unwrap_or(TagMask::EMPTY);
 
@@ -132,7 +132,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 }
 
 pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
-    let (tagset, numtags) = match ctx.g.selmon() {
+    let (tagset, numtags) = match ctx.g.selected_monitor() {
         Some(mon) => (
             TagMask::from_bits(mon.tagset[mon.seltags as usize]),
             ctx.g.tags.count(),
@@ -149,7 +149,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
             Direction::Left | Direction::Up => tagset.rotate_right(step as usize, numtags),
         };
 
-        let mut cursor = ctx.g.selmon().and_then(|m| m.clients);
+        let mut cursor = ctx.g.selected_monitor().and_then(|m| m.clients);
 
         while let Some(win) = cursor {
             match ctx.g.clients.get(&win) {
@@ -181,7 +181,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
 }
 
 pub fn last_view(ctx: &mut WmCtx) {
-    let (current_tag, prev_tag) = match ctx.g.selmon() {
+    let (current_tag, prev_tag) = match ctx.g.selected_monitor() {
         Some(mon) => (mon.current_tag, mon.prev_tag),
         None => return,
     };
@@ -222,7 +222,7 @@ pub fn win_view(ctx: &mut WmCtx) {
     let tag_mask = TagMask::from_bits(tags);
 
     if tag_mask == scratchpad {
-        let current_tag = ctx.g.selmon().map(|m| m.current_tag).unwrap_or(1);
+        let current_tag = ctx.g.selected_monitor().map(|m| m.current_tag).unwrap_or(1);
         if let Some(mask) = TagMask::single(current_tag) {
             view(ctx, mask);
         }
@@ -234,11 +234,11 @@ pub fn win_view(ctx: &mut WmCtx) {
 }
 
 pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let newtag = mask & tagmask;
 
-    let (current_tag, current_tagset) = match ctx.g.selmon() {
+    let (current_tag, current_tagset) = match ctx.g.selected_monitor() {
         Some(mon) => (
             mon.current_tag,
             TagMask::from_bits(mon.tagset[mon.seltags as usize]),
@@ -255,7 +255,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
-        let mut cursor = ctx.g.selmon().and_then(|m| m.clients);
+        let mut cursor = ctx.g.selected_monitor().and_then(|m| m.clients);
 
         while let Some(win) = cursor {
             match ctx.g.clients.get(&win) {
@@ -284,7 +284,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
         }
     }
 
-    if let Some(mon) = ctx.g.selmon_mut() {
+    if let Some(mon) = ctx.g.selected_monitor_mut() {
         mon.tagset[mon.seltags as usize] = newtag.bits();
         if mon.prev_tag == target_idx {
             mon.prev_tag = current_tag;
@@ -297,11 +297,11 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
-    let selmon_id = ctx.g.selmon_id();
-    let sel_win = ctx.g.selmon().and_then(|m| m.sel);
+    let selmon_id = ctx.g.selected_monitor_id();
+    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
     let Some(win) = sel_win else { return };
 
-    let prev_tag = match ctx.g.selmon() {
+    let prev_tag = match ctx.g.selected_monitor() {
         Some(mon) => mon.prev_tag,
         None => return,
     };
@@ -322,10 +322,14 @@ pub fn follow_view(ctx: &mut WmCtx) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
     let (has_clients, current_tag, num_tags) = {
-        let has_clients = ctx.g.selmon().map(|m| m.clients.is_some()).unwrap_or(false);
-        let current_tag = ctx.g.selmon().map(|m| m.current_tag);
+        let has_clients = ctx
+            .g
+            .selected_monitor()
+            .map(|m| m.clients.is_some())
+            .unwrap_or(false);
+        let current_tag = ctx.g.selected_monitor().map(|m| m.current_tag);
         (has_clients, current_tag, ctx.g.tags.count())
     };
 
@@ -351,7 +355,7 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
 }
 
 pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let current_tag = ctx.g.selmon().map(|m| m.current_tag);
+    let current_tag = ctx.g.selected_monitor().map(|m| m.current_tag);
 
     match current_tag {
         Some(0) => win_view(ctx),
@@ -365,7 +369,7 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
 
 pub(super) fn apply_pertag_settings(ctx: &mut WmCtx) {
     let (nmaster, mfact) = {
-        let Some(mon) = ctx.g.selmon() else {
+        let Some(mon) = ctx.g.selected_monitor() else {
             return;
         };
         let current_tag = mon.current_tag;
@@ -376,15 +380,15 @@ pub(super) fn apply_pertag_settings(ctx: &mut WmCtx) {
         (tag.nmaster, tag.mfact)
     };
 
-    if let Some(mon) = ctx.g.selmon_mut() {
+    if let Some(mon) = ctx.g.selected_monitor_mut() {
         mon.nmaster = nmaster;
         mon.mfact = mfact;
     }
 }
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
-    let selmon_id = ctx.g.selmon_id();
-    let (current_tag, tagset, _tagmask) = match ctx.g.selmon() {
+    let selmon_id = ctx.g.selected_monitor_id();
+    let (current_tag, tagset, _tagmask) = match ctx.g.selected_monitor() {
         Some(mon) => (
             mon.current_tag,
             TagMask::from_bits(mon.tagset[mon.seltags as usize]),
@@ -437,7 +441,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
         return;
     }
 
-    if let Some(mon) = ctx.g.selmon_mut() {
+    if let Some(mon) = ctx.g.selected_monitor_mut() {
         mon.seltags ^= 1;
         mon.tagset[mon.seltags as usize] = new_mask.bits();
         mon.prev_tag = mon.current_tag;
@@ -453,7 +457,7 @@ fn find_client_for_window(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
         return Some(win);
     }
 
-    let mut cursor = ctx.g.selmon().and_then(|m| m.clients);
+    let mut cursor = ctx.g.selected_monitor().and_then(|m| m.clients);
 
     while let Some(c_win) = cursor {
         match ctx.g.clients.get(&c_win) {

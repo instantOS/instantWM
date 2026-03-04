@@ -12,7 +12,11 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> O
     }
 
     let mut current = c_win;
-    let selected = ctx.g.selmon().map(|m| m.selected_tags()).unwrap_or(0);
+    let selected = ctx
+        .g
+        .selected_monitor()
+        .map(|m| m.selected_tags())
+        .unwrap_or(0);
 
     while let Some(win) = current {
         if let Some(c) = ctx.g.clients.get(&win) {
@@ -32,7 +36,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
         return None;
     }
 
-    let mon = ctx.g.selmon()?;
+    let mon = ctx.g.selected_monitor()?;
     let selected = mon.selected_tags();
 
     let mut r: Option<WindowId> = None;
@@ -74,13 +78,13 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
 
     let include_floating = true;
 
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
 
     if let Some(prev) = prev_c(ctx, win, include_floating) {
         detach(ctx, win);
 
         {
-            let selmon_id = ctx.g.selmon_id();
+            let selmon_id = ctx.g.selected_monitor_id();
             let clients = &mut ctx.g.clients;
             let monitors = &mut ctx.g.monitors;
             if let Some(client) = clients.get_mut(&win) {
@@ -108,7 +112,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
         }
     } else {
         let mut last: Option<WindowId> = None;
-        if let Some(mon) = ctx.g.selmon() {
+        if let Some(mon) = ctx.g.selected_monitor() {
             for (c_win, _c) in mon.iter_clients(ctx.g.clients.map()) {
                 last = Some(c_win);
             }
@@ -148,7 +152,7 @@ pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
 
     let include_floating = true;
 
-    let selmon_id = ctx.g.selmon_id();
+    let selmon_id = ctx.g.selected_monitor_id();
 
     let next = ctx
         .g

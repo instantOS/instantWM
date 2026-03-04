@@ -26,7 +26,7 @@ pub fn update_status(ctx: &mut WmCtx) {
         }
     }
 
-    let selmon_idx = ctx.g.selmon_id();
+    let selmon_idx = ctx.g.selected_monitor_id();
     super::draw_bar(ctx, selmon_idx);
 
     crate::systray::update_systray(ctx);
@@ -40,7 +40,10 @@ pub fn update_bar_pos_with_bh(m: &mut Monitor, bh: i32) {
 pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
     let bh = ctx.g.cfg.bar_height;
     let showsystray = ctx.g.cfg.showsystray;
-    let is_selmon = ctx.g.selmon().is_some_and(|selmon| selmon.num == m.num);
+    let is_selmon = ctx
+        .g
+        .selected_monitor()
+        .is_some_and(|selmon| selmon.num == m.num);
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
@@ -71,7 +74,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
         let status_bg = hex_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
         let xlibdisplay = ctx.g.cfg.xlibdisplay.0;
         let root = ctx.g.cfg.root;
-        let selmon = ctx.g.selmon_id();
+        let selmon = ctx.g.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<usize, u32> =
@@ -155,7 +158,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 
     let bh = ctx.g.cfg.bar_height;
-    if let Some(selmon) = ctx.g.selmon_mut() {
+    if let Some(selmon) = ctx.g.selected_monitor_mut() {
         selmon.showbar = !selmon.showbar;
 
         let current_tag = selmon.current_tag;
@@ -166,7 +169,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         update_bar_pos_with_bh(selmon, bh);
     }
 
-    let selmon_idx = ctx.g.selmon_id();
+    let selmon_idx = ctx.g.selected_monitor_id();
     if let Some(m) = ctx.g.monitor(selmon_idx) {
         resize_bar_win(ctx, m);
     }

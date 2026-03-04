@@ -230,7 +230,7 @@ pub fn run() -> ! {
             {
                 let mut ctx = wm.ctx();
                 if !ctx.g.clients.is_empty() {
-                    let selmon = ctx.g.selmon_id();
+                    let selmon = ctx.g.selected_monitor_id();
                     crate::layouts::arrange(&mut ctx, Some(selmon));
                 }
             }
@@ -607,7 +607,10 @@ fn wayland_hover_resize_drag_begin(
         (
             c.geo,
             c.isfloating,
-            ctx.g.selmon().map(|m| m.is_tiling_layout()).unwrap_or(true),
+            ctx.g
+                .selected_monitor()
+                .map(|m| m.is_tiling_layout())
+                .unwrap_or(true),
         )
     }) else {
         return false;
@@ -1075,19 +1078,19 @@ fn update_wayland_bar_hit_state(
     };
     let mid = crate::types::find_monitor_by_rect(wm.g.monitors.monitors(), &rect)?;
     let mut ctx = wm.ctx();
-    if mid != ctx.g.selmon_id() {
+    if mid != ctx.g.selected_monitor_id() {
         ctx.g.monitors.set_sel_idx(mid);
     }
 
     let bar_h = ctx.g.cfg.bar_height.max(1);
     let in_bar = ctx
         .g
-        .selmon()
+        .selected_monitor()
         .is_some_and(|m| m.showbar && root_y >= m.by && root_y < m.by + bar_h);
     if !in_bar {
         let had_hover = ctx
             .g
-            .selmon()
+            .selected_monitor()
             .is_some_and(|m| m.gesture != crate::types::Gesture::None);
         if had_hover {
             crate::bar::reset_bar(&mut ctx);
@@ -1095,7 +1098,7 @@ fn update_wayland_bar_hit_state(
         return None;
     }
 
-    let mon = ctx.g.selmon().cloned()?;
+    let mon = ctx.g.selected_monitor().cloned()?;
     let local_x = root_x - mon.work_rect.x;
     let pos = bar_position_at_x(&mon, &ctx, local_x);
     if reset_start_menu && pos == BarPosition::StartMenu {
@@ -1103,11 +1106,14 @@ fn update_wayland_bar_hit_state(
     }
 
     let gesture = if pos == BarPosition::StatusText {
-        ctx.g.selmon().map(|m| m.gesture).unwrap_or_default()
+        ctx.g
+            .selected_monitor()
+            .map(|m| m.gesture)
+            .unwrap_or_default()
     } else {
         bar_position_to_gesture(pos)
     };
-    if let Some(m) = ctx.g.selmon_mut() {
+    if let Some(m) = ctx.g.selected_monitor_mut() {
         m.gesture = gesture;
     }
 

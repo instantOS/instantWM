@@ -32,7 +32,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let sel_win = ctx.g.selmon().and_then(|m| m.sel);
+    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
 
     let sel_win = match sel_win {
         Some(w) => w,
@@ -70,7 +70,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         }
     }
 
-    let selmon = ctx.g.selmon_id();
+    let selmon = ctx.g.selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
     if !ctx.g.monitors.is_empty() {
         arrange(ctx, Some(selmon));
@@ -78,7 +78,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let sel_win = ctx.g.selmon().and_then(|m| m.sel);
+    let sel_win = ctx.g.selected_monitor().and_then(|m| m.sel);
 
     let sel_win = match sel_win {
         Some(w) => w,
@@ -88,7 +88,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     let (is_scratchpad, restore_tags, mon_id, mon_tags) = {
         let mon_tags = ctx
             .g
-            .selmon()
+            .selected_monitor()
             .map(|m| m.tagset[m.seltags as usize])
             .unwrap_or(1);
 
@@ -133,7 +133,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     };
 
     let (current_mon, target_mon) = {
-        let current_mon = ctx.g.selmon_id();
+        let current_mon = ctx.g.selected_monitor_id();
         let target_mon = ctx
             .g
             .clients
@@ -166,7 +166,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
     if !ctx.g.monitors.is_empty() {
-        let mid = ctx.g.selmon_id();
+        let mid = ctx.g.selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
         restack(ctx, mid);
@@ -215,7 +215,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 
     let is_overview = {
         ctx.g
-            .selmon()
+            .selected_monitor()
             .map(|m| !m.is_tiling_layout())
             .unwrap_or(false)
     };

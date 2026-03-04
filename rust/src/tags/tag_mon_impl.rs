@@ -32,7 +32,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
     let (sel_win, has_multiple_mons) = {
-        let sel = ctx.g.selmon().and_then(|mon| mon.sel);
+        let sel = ctx.g.selected_monitor().and_then(|mon| mon.sel);
         (sel, ctx.g.monitors.len() > 1)
     };
 
@@ -43,7 +43,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     let Some(target_id) = crate::types::monitor::find_monitor_by_direction(
         ctx.g.monitors.monitors(),
-        ctx.g.selmon_id(),
+        ctx.g.selected_monitor_id(),
         direction,
     ) else {
         return;
@@ -87,7 +87,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     ) = {
         let (monitor_x, monitor_y, work_area_width, work_area_height) = ctx
             .g
-            .selmon()
+            .selected_monitor()
             .map(|m| {
                 (
                     m.monitor_rect.x,
@@ -152,7 +152,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }
 
-    arrange(ctx, Some(ctx.g.selmon_id()));
+    arrange(ctx, Some(ctx.g.selected_monitor_id()));
 
     // Raise so the window is immediately visible on the new monitor.
     if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
