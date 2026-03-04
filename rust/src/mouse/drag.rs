@@ -932,7 +932,7 @@ pub fn title_drag_begin(
         crate::focus::focus_soft(ctx, Some(win));
     }
 
-    let sel = ctx.g.selected_win();
+    let sel = ctx.selected_client();
     let (
         win_start_x,
         win_start_y,

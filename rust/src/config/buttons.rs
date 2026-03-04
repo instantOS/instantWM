@@ -48,7 +48,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(LtSymbol, 0,      button:MouseButton::Right  => |ctx, _| cycle_layout_direction(ctx, true)),
         btn!(LtSymbol, 0,      button:MouseButton::Middle => |ctx, _| set_layout(ctx, LayoutKind::Tile)),
         btn!(LtSymbol, MODKEY, button:MouseButton::Left   => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 create_overlay(ctx, win)
             }
         }),
@@ -75,22 +75,22 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 push_up(ctx, win)
             }
         }),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollDown => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 push_down(ctx, win)
             }
         }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollUp   => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 up_scale_client(ctx, win)
             }
         }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollDown => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 down_scale_client(ctx, win)
             }
         }),
@@ -123,17 +123,17 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Left)),
         btn!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Right)),
         btn!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 set_client_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
         btn!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 toggle_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
         btn!(Tag(0), MOD1,   button:MouseButton::Left => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 follow_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
@@ -153,18 +153,18 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(ClientWin, MODKEY, button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
         btn!(ClientWin, MA,     button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
         btn!(ClientWin, MS,     button:MouseButton::Right  => |ctx, arg| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 resize_aspect_mouse(ctx, win, arg.btn)
             }
         }),
         // ── Close button ──────────────────────────────────────────────────
         btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Left  => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 kill_client(ctx, win)
             }
         }),
         btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => |ctx, _| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 toggle_locked(ctx, win)
             }
         }),

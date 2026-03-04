@@ -52,7 +52,6 @@ pub(super) fn spawn_wayland_smoke_window() {
     });
 }
 
-#[inline]
 pub(super) fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))

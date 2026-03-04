@@ -166,7 +166,7 @@ fn find_tiled_win_at_point(
 
 /// Return `true` when (`px`, `py`) is in the resize-border zone of the selected floating window.
 pub fn is_in_resize_border(ctx: &WmCtx, px: i32, py: i32) -> bool {
-    let Some(win) = ctx.g.selected_win() else {
+    let Some(win) = ctx.selected_client() else {
         return false;
     };
     let Some(c) = ctx.g.clients.get(&win) else {
@@ -218,7 +218,7 @@ pub fn handle_floating_resize_hover(
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
         let should_focus =
-            do_focus && ctx.g.selected_win() != Some(win) && !has_visible_tiled_client(ctx);
+            do_focus && ctx.selected_client() != Some(win) && !has_visible_tiled_client(ctx);
 
         if should_focus {
             crate::focus::focus_soft(ctx, Some(win));
@@ -272,7 +272,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     let Some((px, py)) = get_root_ptr(ctx) else {
         return false;
     };
-    let _sel = ctx.g.selected_win();
+    let _sel = ctx.selected_client();
     let in_border = is_in_resize_border(ctx, px, py);
     if !in_border {
         return false;
@@ -320,7 +320,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                     // returns the correct window (since the cursor is outside
                     // the floating window).  Fall back to searching the
                     // client list if it returns the already-selected window.
-                    let sel = ctx.g.selected_win();
+                    let sel = ctx.selected_client();
                     let target = get_cursor_client_win(ctx)
                         .filter(|&w| Some(w) != sel)
                         .or_else(|| {
@@ -344,7 +344,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                 action_started = true;
                 ungrab(ctx);
 
-                let Some(win) = ctx.g.selected_win() else {
+                let Some(win) = ctx.selected_client() else {
                     break;
                 };
                 let (geo, w, h) = {
@@ -400,7 +400,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
 /// Returns `true` if the transition was handled.
 pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     // Selected window must be floating in a tiling layout
-    let selected_window = match ctx.g.selected_win() {
+    let selected_window = match ctx.selected_client() {
         Some(w) => w,
         None => return false,
     };

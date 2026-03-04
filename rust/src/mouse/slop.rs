@@ -148,7 +148,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     if ctx.backend_kind() == BackendKind::Wayland {
         return;
     }
-    let Some(win) = ctx.g.selected_win() else {
+    let Some(win) = ctx.selected_client() else {
         return;
     };
 

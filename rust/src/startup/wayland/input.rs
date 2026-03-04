@@ -106,7 +106,7 @@ pub(super) fn handle_pointer_motion(
 
     if let Some(lock_win) = wayland_active_drag_window(wm) {
         let mut ctx = wm.ctx();
-        if ctx.g.selected_win() != Some(lock_win) {
+        if ctx.selected_client() != Some(lock_win) {
             crate::focus::focus_soft(&mut ctx, Some(lock_win));
         }
     } else {
@@ -168,8 +168,7 @@ pub(super) fn handle_pointer_button(
     let serial = SERIAL_COUNTER.next_serial();
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
-    let wm_button =
-        wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
+    let wm_button = wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
 
     if event.state() == smithay::backend::input::ButtonState::Pressed {
         if let Some(btn) = wm_button {
@@ -336,7 +335,12 @@ fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
     None
 }
 
-fn wayland_hover_resize_drag_begin(wm: &mut Wm, root_x: i32, root_y: i32, btn: MouseButton) -> bool {
+fn wayland_hover_resize_drag_begin(
+    wm: &mut Wm,
+    root_x: i32,
+    root_y: i32,
+    btn: MouseButton,
+) -> bool {
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
@@ -356,8 +360,8 @@ fn wayland_hover_resize_drag_begin(wm: &mut Wm, root_x: i32, root_y: i32, btn: M
     if !is_floating && has_tiling {
         return false;
     }
-    let move_mode =
-        btn == MouseButton::Right || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
+    let move_mode = btn == MouseButton::Right
+        || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
     ctx.g.drag.hover_resize = crate::globals::HoverResizeDragState {
         active: true,
         win,
@@ -417,7 +421,8 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     let orig_top = drag.win_start_y;
     let orig_right = drag.win_start_x + drag.win_start_w;
     let orig_bottom = drag.win_start_y + drag.win_start_h;
-    let (affects_left, affects_right, affects_top, affects_bottom) = drag.direction.affected_edges();
+    let (affects_left, affects_right, affects_top, affects_bottom) =
+        drag.direction.affected_edges();
     let (new_x, new_w) = if affects_left {
         (root_x, (orig_right - root_x).max(1))
     } else if affects_right {

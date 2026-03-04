@@ -350,7 +350,7 @@ pub fn expose(ctx: &mut WmCtx, e: &ExposeEvent) {
 }
 
 pub fn focus_in(ctx: &mut WmCtx, _e: &FocusInEvent) {
-    if let Some(selected_window) = ctx.g.selected_win() {
+    if let Some(selected_window) = ctx.selected_client() {
         crate::client::set_focus(ctx, selected_window);
     };
 }

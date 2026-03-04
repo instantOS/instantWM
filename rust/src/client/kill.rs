@@ -88,11 +88,6 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
     force_close(ctx, win, wmatom_delete);
 }
 
-/// Return the selected window for the current monitor.
-pub fn selected_window(ctx: &WmCtx) -> Option<WindowId> {
-    ctx.g.selected_win()
-}
-
 // ---------------------------------------------------------------------------
 // shut_kill
 // ---------------------------------------------------------------------------
@@ -106,7 +101,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
     let has_clients = !ctx.g.selected_monitor().clients.is_empty();
 
     if has_clients {
-        if let Some(win) = selected_window(ctx) {
+        if let Some(win) = ctx.selected_client() {
             kill_client(ctx, win);
         }
     } else {

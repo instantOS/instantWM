@@ -58,6 +58,11 @@ impl<'a> WmCtx<'a> {
         self.g.selected_win()
     }
 
+    /// Set the currently selected client on the selected monitor.
+    pub fn set_selected_client(&mut self, win: Option<WindowId>) {
+        self.g.selected_monitor_mut().sel = win;
+    }
+
     /// Move/resize a client and sync with the backend.
     pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
         if let Some(c) = self.g.clients.get_mut(&win) {

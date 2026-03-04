@@ -45,7 +45,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         .iter()
         .find(|key| keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned)
         .or_else(|| {
-            if ctx.g.selected_win().is_none() {
+            if ctx.selected_client().is_none() {
                 ctx.g.cfg.desktop_keybinds.iter().find(|key| {
                     keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                 })
@@ -139,7 +139,7 @@ pub fn grab_keys(ctx: &WmCtx) {
             }
         }
 
-        let selected_window = ctx.g.selected_win();
+        let selected_window = ctx.selected_client();
         if selected_window.is_none() {
             for key in desktop_keybinds {
                 let keysym = get_keysym(keycode);
@@ -285,7 +285,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.g.selected_win() {
+        if let Some(win) = ctx.selected_client() {
             let border_pixel = ctx.g.cfg.borderscheme.as_ref().map(|s| s.normal.bg.pixel());
             if let (Some(conn), Some(pixel)) = (ctx.x11_conn().map(|x11| x11.conn), border_pixel) {
                 let x11_win: Window = win.into();
@@ -315,7 +315,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.g.selected_win() {
+        if let Some(win) = ctx.selected_client() {
             change_snap(ctx, win, SnapDir::Down);
         }
         return;
@@ -328,7 +328,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
     let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        let Some(win) = ctx.g.selected_win() else {
+        let Some(win) = ctx.selected_client() else {
             return;
         };
 

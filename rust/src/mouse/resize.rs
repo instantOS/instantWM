@@ -33,7 +33,7 @@ use crate::types::ResizeDirection;
 
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     require_x11!(ctx);
-    let Some(win) = ctx.g.selected_win() else {
+    let Some(win) = ctx.selected_client() else {
         return;
     };
     let is_blocked = ctx
@@ -92,7 +92,7 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// boundary during the resize.
 pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     require_x11!(ctx);
-    let Some(win) = ctx.g.selected_win() else {
+    let Some(win) = ctx.selected_client() else {
         return;
     };
     let is_blocked = ctx
@@ -189,7 +189,7 @@ pub fn resize_mouse_directional(
     btn: MouseButton,
 ) {
     require_x11!(ctx);
-    let Some(win) = ctx.g.selected_win() else {
+    let Some(win) = ctx.selected_client() else {
         return;
     };
     let is_blocked = ctx

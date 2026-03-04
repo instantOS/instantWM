@@ -112,7 +112,6 @@ fn dispatch_wayland_bar_button(
     }
 }
 
-#[inline]
 pub(super) fn wayland_button_to_wm_button(code: u32) -> Option<u8> {
     match code {
         0x110 => Some(1),

@@ -358,7 +358,7 @@ pub fn apply_snap(ctx: &mut WmCtx, win: WindowId, monitor_id: Option<usize>) {
             );
 
             // Raise the window if it is the focused one.
-            let is_sel = ctx.g.selected_win() == Some(win);
+            let is_sel = ctx.selected_client() == Some(win);
             if is_sel {
                 if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
                     let x11_win: Window = win.into();

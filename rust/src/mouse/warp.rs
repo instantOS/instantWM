@@ -192,7 +192,7 @@ pub fn warp_into(ctx: &WmCtx, win: WindowId) {
 /// Reads `selmon → sel` and delegates to [`warp_impl`].  Does nothing when no
 /// window is selected.
 pub fn warp_to_focus(ctx: &WmCtx) {
-    if let Some(win) = ctx.g.selected_win() {
+    if let Some(win) = ctx.selected_client() {
         warp_impl(ctx, win);
     }
 }

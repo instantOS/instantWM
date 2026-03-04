@@ -64,19 +64,19 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
         }),
         // Set client tag: MOD+Shift+num
         key!(MODKEY | SHIFT, keysym => move |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 crate::tags::set_client_tag(ctx, win, TagMask::single(tag_idx + 1).unwrap())
             }
         }),
         // Follow tag: MOD+Alt+num
         key!(MODKEY | MOD1, keysym => move |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 crate::tags::follow_tag(ctx, win, TagMask::single(tag_idx + 1).unwrap())
             }
         }),
         // Toggle tag: MOD+Ctrl+Shift+num
         key!(MODKEY | CONTROL | SHIFT, keysym => move |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 crate::tags::toggle_tag(ctx, win, TagMask::single(tag_idx + 1).unwrap())
             }
         }),
@@ -98,22 +98,22 @@ const MSCA: u32 = MODKEY | SHIFT | CONTROL | MOD1;
 pub fn get_keys() -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
         key!(MA, XK_J => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Down)
             }
         }),
         key!(MA, XK_K => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Up)
             }
         }),
         key!(MA, XK_L => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Right)
             }
         }),
         key!(MA, XK_H => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Left)
             }
         }),
@@ -135,12 +135,12 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,     XK_DOWN => down_press),
         key!(MS,     XK_UP   => up_press),
         key!(MC, XK_J => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 push_down(ctx, win)
             }
         }),
         key!(MC, XK_K => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 push_up(ctx, win)
             }
         }),
@@ -166,7 +166,7 @@ pub fn get_keys() -> Vec<Key> {
         // Move client to all tags
         key!(MS,      XK_0       => |ctx| {
             use crate::types::TagMask;
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 crate::tags::set_client_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
@@ -181,28 +181,28 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,   XK_D      => distribute_clients),
         key!(MS,   XK_D      => draw_window),
         key!(MA,   XK_W      => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 center_window(ctx, win)
             }
         }),
         key!(MS,   XK_W      => |ctx| warp_to_focus(ctx)),
         key!(MS,   XK_J      => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
             }
         }),
         key!(MS,   XK_K      => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Up)
             }
         }),
         key!(MS,   XK_L      => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Right)
             }
         }),
         key!(MS,   XK_H      => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Left)
             }
         }),
@@ -219,7 +219,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,     XK_E  => |ctx| spawn(ctx, Cmd::InstantSkippy)),
         key!(MODKEY, XK_W  => set_overlay),
         key!(MC,     XK_W  => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 create_overlay(ctx, win)
             }
         }),
@@ -229,7 +229,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,     XK_F  => toggle_fake_fullscreen),
         key!(MC,     XK_F  => temp_fullscreen),
         key!(MC,     XK_S  => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 toggle_sticky(ctx, win)
             }
         }),
@@ -241,14 +241,14 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, ToggleAction::Toggle)),
         key!(MC,     XK_R     => redraw_win),
         key!(MC,  XK_H => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 hide_window(ctx, win)
             }
         }),
         key!(MCA, XK_H => unhide_all),
         key!(MODKEY, XK_Q   => shut_kill),
         key!(MOD1,   XK_F4  => |ctx| {
-            if let Some(win) = crate::client::selected_window(ctx) {
+            if let Some(win) = ctx.selected_client() {
                 kill_client(ctx, win)
             }
         }),

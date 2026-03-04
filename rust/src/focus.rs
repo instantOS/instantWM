@@ -193,12 +193,12 @@ pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, enteri
         return;
     }
 
-    if ctx.g.selected_win() == Some(hovered_win) {
+    if ctx.selected_client() == Some(hovered_win) {
         return;
     }
 
     if ctx.backend_kind() == BackendKind::Wayland {
-        ctx.g.selected_monitor_mut().sel = Some(hovered_win);
+        ctx.set_selected_client(Some(hovered_win));
         ctx.backend.set_focus(hovered_win);
         draw_bars(ctx);
     } else {
@@ -428,7 +428,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
         }
     }
 
-    if let Some(cur) = get_selected_window(ctx) {
+    if let Some(cur) = ctx.selected_client() {
         ctx.focus.last_client = cur;
     }
 
@@ -444,7 +444,7 @@ pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: WindowId) {
 }
 
 pub fn warp_to_focus(ctx: &WmCtx) {
-    if let Some(win) = get_selected_window(ctx) {
+    if let Some(win) = ctx.selected_client() {
         warp_cursor_to_client(ctx, win);
     }
 }
@@ -497,7 +497,7 @@ fn get_visible_stack(
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    let selected_window = get_selected_window(ctx);
+    let selected_window = ctx.selected_client();
 
     let stack = {
         if ctx.g.monitors.is_empty() {
@@ -525,8 +525,4 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     };
 
     focus_soft(ctx, Some(stack[next_idx]));
-}
-
-fn get_selected_window(ctx: &WmCtx) -> Option<WindowId> {
-    ctx.g.selected_win()
 }

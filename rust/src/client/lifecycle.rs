@@ -315,7 +315,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     if !initially_hidden {
         set_client_state(ctx, w, WM_STATE_NORMAL);
     }
-    if let Some(selected_window) = ctx.g.selected_win() {
+    if let Some(selected_window) = ctx.selected_client() {
         unfocus_win(ctx, selected_window, false);
     }
     initially_hidden

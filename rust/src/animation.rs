@@ -228,7 +228,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 
     if !has_tiling {
-        if let Some(selected_window) = ctx.g.selected_win() {
+        if let Some(selected_window) = ctx.selected_client() {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,

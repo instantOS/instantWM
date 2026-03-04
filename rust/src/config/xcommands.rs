@@ -116,7 +116,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
                 } else {
                     arg.parse().unwrap_or(BORDERPX)
                 };
-                if let Some(win) = crate::client::selected_window(ctx) {
+                if let Some(win) = ctx.selected_client() {
                     set_border_width(ctx, win, val);
                 }
             },

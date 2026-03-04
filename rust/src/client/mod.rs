@@ -69,7 +69,7 @@ pub use fullscreen::{
 pub use state::{set_client_state, set_client_tag_prop, set_urgent, update_title, update_wm_hints};
 
 // -- Kill --------------------------------------------------------------------
-pub use kill::{close_win, kill_client, selected_window, shut_kill};
+pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
 pub use lifecycle::{initial_tags_for_monitor, manage, unmanage};
