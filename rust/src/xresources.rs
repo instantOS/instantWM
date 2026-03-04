@@ -3,7 +3,7 @@ use crate::contexts::WmCtx;
 const MAX_TAGLEN: usize = 16;
 
 pub fn verify_tags_config(ctx: &mut WmCtx) {
-    for (_idx, mon) in ctx.g.monitors.iter_mut() {
+    for mon in ctx.g.monitors.iter_all_mut() {
         for i in 0..9 {
             if i < mon.tags.len() {
                 let len = mon.tags[i].name.len();

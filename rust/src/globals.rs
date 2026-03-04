@@ -351,9 +351,19 @@ impl Globals {
         self.monitors.iter()
     }
 
+    /// Iterate over all monitors (without index).
+    pub fn monitors_iter_all(&self) -> impl Iterator<Item = &Monitor> {
+        self.monitors.iter_all()
+    }
+
     /// Delegation to iterate over monitors mutably.
     pub fn monitors_iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut Monitor)> {
         self.monitors.iter_mut()
+    }
+
+    /// Iterate over all monitors mutably (without index).
+    pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
+        self.monitors.iter_all_mut()
     }
 }
 

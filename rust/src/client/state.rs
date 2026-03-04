@@ -122,7 +122,7 @@ pub fn update_client_list(ctx: &WmCtx) {
     // Delete the existing property first so we start with a clean slate.
     let _ = conn.delete_property(ctx.g.cfg.root, ctx.g.cfg.netatom.client_list);
 
-    for (_id, mon) in ctx.g.monitors_iter() {
+    for mon in ctx.g.monitors_iter_all() {
         for &cur_win in &mon.clients {
             let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(

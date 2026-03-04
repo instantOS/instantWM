@@ -88,7 +88,7 @@ pub(crate) fn warp_impl(ctx: &WmCtx, win: WindowId) {
         .monitor_id
         .and_then(|mid| ctx.g.monitor(mid))
         .is_some_and(|mon| {
-            (ptr_y > mon.by && ptr_y < mon.by + bar_height) || (mon.topbar && ptr_y == 0)
+            (ptr_y > mon.bar_y && ptr_y < mon.bar_y + bar_height) || (mon.topbar && ptr_y == 0)
         });
 
     if in_window || on_bar {

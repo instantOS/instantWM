@@ -33,7 +33,7 @@ pub struct Monitor {
     /// Monitor index number (0-based).
     pub num: i32,
     /// Bar Y position (vertical position of the status bar).
-    pub by: i32,
+    pub bar_y: i32,
     /// Width reserved for client title display in the bar.
     pub bar_clients_width: i32,
     /// Bar thickness/height in pixels.
@@ -91,7 +91,7 @@ impl Default for Monitor {
             mfact: 0.55,
             nmaster: 1,
             num: 0,
-            by: 0,
+            bar_y: 0,
             bar_clients_width: 0,
             bt: 0,
             monitor_rect: Rect::default(),
@@ -318,7 +318,7 @@ impl Monitor {
                 self.monitor_rect.y
             };
             self.work_rect.h = (self.monitor_rect.h - safe_bh).max(1);
-            self.by = if self.topbar {
+            self.bar_y = if self.topbar {
                 self.monitor_rect.y
             } else {
                 self.monitor_rect.y + self.monitor_rect.h - safe_bh
@@ -326,7 +326,7 @@ impl Monitor {
         } else {
             self.work_rect.y = self.monitor_rect.y;
             self.work_rect.h = self.monitor_rect.h.max(1);
-            self.by = if self.topbar {
+            self.bar_y = if self.topbar {
                 -safe_bh
             } else {
                 self.monitor_rect.h.max(0)

@@ -88,8 +88,16 @@ impl MonitorManager {
         self.monitors.iter().enumerate()
     }
 
+    pub fn iter_all(&self) -> impl Iterator<Item = &Monitor> {
+        self.monitors.iter()
+    }
+
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut Monitor)> {
         self.monitors.iter_mut().enumerate()
+    }
+
+    pub fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
+        self.monitors.iter_mut()
     }
 
     pub fn push(&mut self, mut m: Monitor) -> usize {

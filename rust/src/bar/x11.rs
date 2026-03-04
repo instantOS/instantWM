@@ -51,7 +51,7 @@ pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
         x11_bar_win,
         &x11rb::protocol::xproto::ConfigureWindowAux::new()
             .x(m.work_rect.x)
-            .y(m.by)
+            .y(m.bar_y)
             .width(w)
             .height(bar_height as u32),
     );
@@ -86,7 +86,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
             if showsystray && selected_monitor_id == i {
                 w = w.saturating_sub(*systray_widths.get(&i).unwrap_or(&0));
             }
-            bar_configs.push((i, m.work_rect.x, m.by, w, bar_height));
+            bar_configs.push((i, m.work_rect.x, m.bar_y, w, bar_height));
         }
         (bar_configs, xlibdisplay, root, status_bg)
     };
@@ -102,7 +102,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
 
     if let Some(x11) = ctx.x11_conn() {
         let conn = x11.conn;
-        for (i, wx, by, w, bar_height) in &bar_configs {
+        for (i, wx, bar_y, w, bar_height) in &bar_configs {
             let win_id = conn.generate_id().unwrap();
 
             let aux = x11rb::protocol::xproto::CreateWindowAux::new()
@@ -119,7 +119,7 @@ pub fn update_bars(ctx: &mut WmCtx) {
                 win_id,
                 root,
                 *wx as i16,
-                *by as i16,
+                *bar_y as i16,
                 *w as u16,
                 *bar_height as u16,
                 0,

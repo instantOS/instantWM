@@ -192,7 +192,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
     if ctx.g.tags.prefix {
-        for (_i, mon) in ctx.g.monitors_iter_mut() {
+        for mon in ctx.g.monitors_iter_all_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.set_layout(layout);
             }
@@ -210,7 +210,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     if ctx.g.tags.prefix {
-        for (_i, mon) in ctx.g.monitors_iter_mut() {
+        for mon in ctx.g.monitors_iter_all_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.toggle_slot();
             }

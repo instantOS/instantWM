@@ -207,7 +207,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
     if Some(selected_window) == sel_overlay {
         reset_overlay(ctx);
-        for (_i, mon) in ctx.g.monitors_iter_mut() {
+        for mon in ctx.g.monitors_iter_all_mut() {
             mon.overlay = None;
         }
         return;

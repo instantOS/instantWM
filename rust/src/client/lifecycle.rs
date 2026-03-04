@@ -419,7 +419,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
     // Clear overlay and fullscreen references so those code paths don't hold
     // dangling window IDs after the client is gone.
     {
-        for (_id, mon) in ctx.g.monitors_iter_mut() {
+        for mon in ctx.g.monitors_iter_all_mut() {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
             }

@@ -22,7 +22,7 @@ pub(super) fn update_wayland_bar_hit_state(
 
     let bar_h = ctx.g.cfg.bar_height.max(1);
     let mon = ctx.g.selected_monitor();
-    let in_bar = mon.showbar && root_y >= mon.by && root_y < mon.by + bar_h;
+    let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
     if !in_bar {
         let had_hover = mon.gesture != crate::types::Gesture::None;
         if had_hover {

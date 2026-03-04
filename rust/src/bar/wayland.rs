@@ -476,7 +476,7 @@ pub fn render_bar_buffers(
             if !m.shows_bar() {
                 return None;
             }
-            Some((i, m.work_rect.x, m.by, m.work_rect.w, ctx.g.cfg.bar_height))
+            Some((i, m.work_rect.x, m.bar_y, m.work_rect.w, ctx.g.cfg.bar_height))
         })
         .collect();
 
@@ -538,13 +538,13 @@ fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
     ctx.g.status_text.hash(&mut hasher);
     ctx.g.selected_monitor_id().hash(&mut hasher);
 
-    for (_idx, m) in ctx.g.monitors_iter() {
+    for m in ctx.g.monitors_iter_all() {
         m.num.hash(&mut hasher);
         m.work_rect.x.hash(&mut hasher);
         m.work_rect.y.hash(&mut hasher);
         m.work_rect.w.hash(&mut hasher);
         m.work_rect.h.hash(&mut hasher);
-        m.by.hash(&mut hasher);
+        m.bar_y.hash(&mut hasher);
         m.showbar.hash(&mut hasher);
         m.current_tag.hash(&mut hasher);
         m.sel.hash(&mut hasher);

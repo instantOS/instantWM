@@ -99,8 +99,8 @@ fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
 fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
     let mon = ctx.g.selected_monitor();
     mon.showbar
-        && y >= mon.by
-        && y < mon.by + ctx.g.cfg.bar_height
+        && y >= mon.bar_y
+        && y < mon.bar_y + ctx.g.cfg.bar_height
         && x >= mon.monitor_rect.x
         && x < mon.monitor_rect.x + mon.monitor_rect.w
 }
@@ -248,7 +248,7 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx.g.selected_monitor().by + ctx.g.cfg.bar_height;
+        let bar_bottom = ctx.g.selected_monitor().bar_y + ctx.g.cfg.bar_height;
         new_y = bar_bottom;
     }
 
@@ -754,7 +754,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let selmon_id = ctx.g.drag.tag.monitor_id;
     let mon_mx = ctx.g.drag.tag.mon_mx;
 
-    let bar_bottom = ctx.g.selected_monitor().by + ctx.g.cfg.bar_height + 1;
+    let bar_bottom = ctx.g.selected_monitor().bar_y + ctx.g.cfg.bar_height + 1;
 
     if root_y > bar_bottom {
         ctx.g.drag.tag.cursor_on_bar = false;

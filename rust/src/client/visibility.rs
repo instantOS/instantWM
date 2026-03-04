@@ -70,7 +70,7 @@ pub fn show_hide(ctx: &mut WmCtx) {
     // Collect operations to avoid borrow conflicts
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
-    for (_id, mon) in ctx.g.monitors_iter() {
+    for mon in ctx.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
         let is_tiling = mon.is_tiling_layout();
 
