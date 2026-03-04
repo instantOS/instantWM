@@ -136,6 +136,27 @@ impl Client {
     pub fn border_width(&self) -> i32 {
         self.border_width
     }
+
+    pub fn set_tags(&mut self, mask: crate::types::TagMask, ctx: &mut crate::contexts::WmCtx) {
+        use crate::types::TagMask;
+
+        let tagmask = TagMask::from_bits(ctx.g.tags.mask());
+        let effective_mask = mask & tagmask;
+
+        if effective_mask.is_empty() {
+            return;
+        }
+
+        if self.tags == crate::types::SCRATCHPAD_MASK {
+            self.issticky = false;
+        }
+
+        self.tags = effective_mask.bits();
+
+        crate::client::set_client_tag_prop(ctx, self.win);
+        crate::focus::focus_soft(ctx, None);
+        crate::layouts::arrange(ctx, Some(ctx.g.selected_monitor_id()));
+    }
 }
 
 /// Iterator over a monitor's client list (focus order).

@@ -1,14 +1,13 @@
 //! Client-to-tag assignment.
 
-use crate::client::set_client_tag_prop;
 use crate::contexts::WmCtx;
-// focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::{TagMask, WindowId, SCRATCHPAD_MASK};
 
 /// Set the selected client's tags using type-safe mask.
 pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let selmon_id = ctx.g.selected_monitor_id();
+
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
     let effective_mask = mask & tagmask;
 
@@ -18,16 +17,16 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
 
     let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.client_mut(win) {
         if TagMask::from_bits(client.tags) == scratchpad {
             client.issticky = false;
         }
         client.tags = effective_mask.bits();
-    }
 
-    set_client_tag_prop(ctx, win);
-    crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+        crate::client::set_client_tag_prop(ctx, win);
+        crate::focus::focus_soft(ctx, None);
+        arrange(ctx, Some(selmon_id));
+    }
 }
 
 /// Tag all clients on current tag with the given mask.
@@ -71,39 +70,24 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
 /// Toggle tags on the selected client.
 pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let selmon_id = ctx.g.selected_monitor_id();
-
     let tagmask = TagMask::from_bits(ctx.g.tags.mask());
-    let _scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
-    //TODO: is_scratchpad should probably be a method on Client
-    let (current_tags, is_scratchpad) = ctx
-        .g
-        .clients
-        .get(&win)
-        .map_or((TagMask::EMPTY, false), |c| {
-            (TagMask::from_bits(c.tags), c.tags == SCRATCHPAD_MASK)
-        });
+    let current_tags = ctx
+        .client(win)
+        .map_or(TagMask::EMPTY, |c| TagMask::from_bits(c.tags));
 
-    if is_scratchpad {
+    if current_tags.bits() == SCRATCHPAD_MASK {
         set_client_tag(ctx, win, mask);
         return;
     }
 
-    //TODO: maybe make this typesafe?
     let new_tags = current_tags ^ (mask & tagmask);
 
     if new_tags.is_empty() {
         return;
     }
 
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
-        client.tags = new_tags.bits();
-    }
-
-    set_client_tag_prop(ctx, win);
-    crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    set_client_tag(ctx, win, new_tags);
 }
 
 /// Follow a tag (move client to tag and view it).
