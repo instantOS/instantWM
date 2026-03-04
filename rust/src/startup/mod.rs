@@ -1,5 +1,6 @@
 use clap::{Parser, ValueEnum};
 mod autostart;
+mod common_wayland;
 mod drm;
 mod locale;
 mod wayland;

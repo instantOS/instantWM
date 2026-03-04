@@ -60,6 +60,9 @@ use crate::client::resize;
 use crate::config::init_config;
 use crate::monitor;
 use crate::mouse::{set_cursor_default, set_cursor_move, set_cursor_resize};
+use crate::startup::common_wayland::{
+    modifiers_to_x11_mask, wayland_font_height_from_size, wayland_font_size_from_config,
+};
 use crate::types::*;
 use crate::wm::Wm;
 
@@ -897,10 +900,7 @@ pub(crate) fn wayland_border_elements_shared(
             continue;
         };
         let bw = c.border_width.max(0);
-        let (content_w, content_h) = mapped_sizes
-            .get(win)
-            .copied()
-            .unwrap_or((c.geo.w, c.geo.h));
+        let (content_w, content_h) = mapped_sizes.get(win).copied().unwrap_or((c.geo.w, c.geo.h));
         if bw <= 0 || content_w <= 0 || content_h <= 0 {
             continue;
         }
@@ -938,9 +938,19 @@ pub(crate) fn wayland_border_elements_shared(
         let ow = content_w + 2 * bw;
         let oh = content_h + 2 * bw;
         let mut border_parts = vec![
-            IntRect { x, y, w: ow, h: bw },                    // Top
-            IntRect { x, y: y + oh - bw, w: ow, h: bw },       // Bottom
-            IntRect { x, y: y + bw, w: bw, h: (oh - 2 * bw).max(0) }, // Left
+            IntRect { x, y, w: ow, h: bw }, // Top
+            IntRect {
+                x,
+                y: y + oh - bw,
+                w: ow,
+                h: bw,
+            }, // Bottom
+            IntRect {
+                x,
+                y: y + bw,
+                w: bw,
+                h: (oh - 2 * bw).max(0),
+            }, // Left
             IntRect {
                 x: x + ow - bw,
                 y: y + bw,
@@ -1195,27 +1205,6 @@ fn init_wayland_globals(wm: &mut Wm) {
     monitor::update_geom_ctx(&mut wm.ctx());
 }
 
-fn wayland_font_size_from_config(fonts: &[String]) -> f32 {
-    fonts
-        .iter()
-        .find_map(|font| {
-            let idx = font.find("size=")?;
-            let tail = &font[idx + 5..];
-            let num: String = tail
-                .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '.')
-                .collect();
-            num.parse::<f32>().ok().filter(|s| *s > 0.0)
-        })
-        .unwrap_or(14.0)
-}
-
-fn wayland_font_height_from_size(font_size: f32) -> i32 {
-    // Xft reports ascent+descent, which is typically larger than point size.
-    // Keep Wayland hit-testing/layout aligned with that effective line height.
-    ((font_size * 1.3).ceil() as i32).max(font_size.ceil() as i32 + 2)
-}
-
 fn apply_wayland_session_env(socket_name: &str) {
     std::env::set_var("WAYLAND_DISPLAY", socket_name);
     std::env::set_var("XDG_SESSION_TYPE", "wayland");
@@ -1277,23 +1266,6 @@ fn color_to_rgba(color: &crate::drw::Color) -> [f32; 4] {
         color.color.color.blue as f32 / 65535.0,
         color.color.color.alpha as f32 / 65535.0,
     ]
-}
-
-fn modifiers_to_x11_mask(mods: &smithay::input::keyboard::ModifiersState) -> u32 {
-    let mut mask = 0u32;
-    if mods.shift {
-        mask |= crate::config::SHIFT;
-    }
-    if mods.ctrl {
-        mask |= crate::config::CONTROL;
-    }
-    if mods.alt {
-        mask |= crate::config::MOD1;
-    }
-    if mods.logo {
-        mask |= crate::config::MODKEY;
-    }
-    mask
 }
 
 #[inline]

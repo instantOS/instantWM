@@ -968,21 +968,30 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.g.selected_win();
-    let (win_start_x, win_start_y, win_start_w, win_start_h, drop_restore_x, drop_restore_y, drop_restore_w, drop_restore_h) =
-        ctx.g
-            .clients
-            .get(&win)
-            .map(|c| {
-                let (rx, ry, rw, rh) = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
-                    (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
-                } else if c.float_geo.w > 0 && c.float_geo.h > 0 {
-                    (c.float_geo.x, c.float_geo.y, c.float_geo.w, c.float_geo.h)
-                } else {
-                    (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
-                };
-                (c.geo.x, c.geo.y, c.geo.w, c.geo.h, rx, ry, rw, rh)
-            })
-            .unwrap_or((0, 0, 0, 0, 0, 0, 0, 0));
+    let (
+        win_start_x,
+        win_start_y,
+        win_start_w,
+        win_start_h,
+        drop_restore_x,
+        drop_restore_y,
+        drop_restore_w,
+        drop_restore_h,
+    ) = ctx
+        .g
+        .clients
+        .get(&win)
+        .map(|c| {
+            let (rx, ry, rw, rh) = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
+                (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+            } else if c.float_geo.w > 0 && c.float_geo.h > 0 {
+                (c.float_geo.x, c.float_geo.y, c.float_geo.w, c.float_geo.h)
+            } else {
+                (c.geo.x, c.geo.y, c.geo.w, c.geo.h)
+            };
+            (c.geo.x, c.geo.y, c.geo.w, c.geo.h, rx, ry, rw, rh)
+        })
+        .unwrap_or((0, 0, 0, 0, 0, 0, 0, 0));
     ctx.g.drag.title = crate::globals::TitleDragState {
         active: true,
         win,
@@ -1151,8 +1160,11 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 ctx.g.drag.title.win_start_h = target_h;
             }
             if right_click {
-                let (x_off, y_off) =
-                    ResizeDirection::BottomRight.warp_offset(current_geo.w, current_geo.h, border_width);
+                let (x_off, y_off) = ResizeDirection::BottomRight.warp_offset(
+                    current_geo.w,
+                    current_geo.h,
+                    border_width,
+                );
                 ctx.g.drag.title.start_x = current_geo.x + x_off;
                 ctx.g.drag.title.start_y = current_geo.y + y_off;
             } else if !anchor_rebased {
