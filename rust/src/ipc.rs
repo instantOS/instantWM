@@ -114,6 +114,10 @@ fn handle_command(wm: &mut Wm, cmd: &str) -> String {
             .map(WindowId::from);
         return close_window(wm, parsed_id);
     }
+    if cmd.eq_ignore_ascii_case("quit") {
+        wm.quit();
+        return "OK\n".to_string();
+    }
     "ERR unknown command\n".to_string()
 }
 
