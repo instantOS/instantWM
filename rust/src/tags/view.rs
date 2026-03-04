@@ -149,18 +149,16 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
             Direction::Left | Direction::Up => tagset.rotate_right(step as usize, numtags),
         };
 
-        let mut cursor = ctx.g.selected_monitor().and_then(|m| m.clients);
+        let mut cursor = ctx.g.selected_monitor().map(|m| m.clients.clone());
 
-        while let Some(win) = cursor {
-            match ctx.g.clients.get(&win) {
-                Some(c) => {
+        if let Some(clients) = cursor {
+            for &win in &clients {
+                if let Some(c) = ctx.g.clients.get(&win) {
                     if TagMask::from_bits(c.tags).intersects(next_mask) {
                         found = true;
                         break;
                     }
-                    cursor = c.next;
                 }
-                None => break,
             }
         }
 
@@ -255,18 +253,14 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
-        let mut cursor = ctx.g.selected_monitor().and_then(|m| m.clients);
-
-        while let Some(win) = cursor {
-            match ctx.g.clients.get(&win) {
-                Some(c) => {
+        if let Some(m) = ctx.g.selected_monitor() {
+            for &win in &m.clients {
+                if let Some(c) = ctx.g.clients.get(&win) {
                     let ctags = TagMask::from_bits(c.tags);
                     if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
                         result.push(win);
                     }
-                    cursor = c.next;
                 }
-                None => break,
             }
         }
         result
@@ -327,7 +321,7 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
         let has_clients = ctx
             .g
             .selected_monitor()
-            .map(|m| m.clients.is_some())
+            .map(|m| !m.clients.is_empty())
             .unwrap_or(false);
         let current_tag = ctx.g.selected_monitor().map(|m| m.current_tag);
         (has_clients, current_tag, ctx.g.tags.count())
@@ -457,17 +451,13 @@ fn find_client_for_window(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
         return Some(win);
     }
 
-    let mut cursor = ctx.g.selected_monitor().and_then(|m| m.clients);
-
-    while let Some(c_win) = cursor {
-        match ctx.g.clients.get(&c_win) {
-            Some(c) => {
+    if let Some(m) = ctx.g.selected_monitor() {
+        for &c_win in &m.clients {
+            if let Some(c) = ctx.g.clients.get(&c_win) {
                 if c.win == win {
                     return Some(c_win);
                 }
-                cursor = c.next;
             }
-            None => break,
         }
     }
 

@@ -57,28 +57,33 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let clientcount = m.clientcount;
     let selected_tags = m.selected_tags();
 
-    for &win in &m.clients {
-        // Resolve all info first to avoid borrow conflicts
-        let client_info = ctx.client(win).map(|c| {
-            (
-                c.isfloating,
-                c.is_fullscreen,
-                c.is_visible_on_tags(selected_tags) && !c.is_hidden,
-                c.old_border_width,
-            )
-        });
-
-        if let Some((is_floating, is_fs, is_visible, old_bw)) = client_info {
-            if is_visible {
-                let strip_border =
-                    !is_floating && !is_fs && ((clientcount == 1 && is_tiling) || is_monocle);
-                if strip_border {
-                    ctx.set_border(win, 0);
-                } else if old_bw != 0 {
-                    ctx.set_border(win, old_bw);
-                }
+    // Collect border changes first to avoid borrow conflicts
+    let border_changes: Vec<(WindowId, i32)> = m
+        .clients
+        .iter()
+        .filter_map(|&win| {
+            let info = ctx.client(win)?;
+            let is_visible = info.is_visible_on_tags(selected_tags) && !info.is_hidden;
+            if !is_visible {
+                return None;
             }
-        }
+
+            let strip_border = !info.isfloating
+                && !info.is_fullscreen
+                && ((clientcount == 1 && is_tiling) || is_monocle);
+
+            let new_border = if strip_border {
+                0
+            } else {
+                info.old_border_width
+            };
+            Some((win, new_border))
+        })
+        .collect();
+
+    // Apply border changes
+    for (win, border) in border_changes {
+        ctx.set_border(win, border);
     }
 }
 
@@ -129,17 +134,25 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     }
     draw_bar(ctx, monitor_id);
 
-    let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
-    let selected_window = match m.sel {
-        Some(w) => w,
-        None => return,
+    // Extract data from monitor first to avoid borrow conflicts
+    let (selected_window, is_tiling, selected_tags, barwin, is_floating) = {
+        let m = ctx.g.monitor(monitor_id).expect("invalid monitor");
+        let selected_window = match m.sel {
+            Some(w) => w,
+            None => return,
+        };
+        let is_tiling = m.current_layout().is_tiling();
+        let selected_tags = m.selected_tags();
+        let barwin = m.barwin;
+        let is_floating = ctx.client(selected_window).map_or(false, |c| c.isfloating);
+        (
+            selected_window,
+            is_tiling,
+            selected_tags,
+            barwin,
+            is_floating,
+        )
     };
-    let is_tiling = m.current_layout().is_tiling();
-    let selected_tags = m.selected_tags();
-    let barwin = m.barwin;
-    let stack_head = m.stack;
-
-    let is_floating = ctx.client(selected_window).map_or(false, |c| c.isfloating);
 
     if is_floating {
         ctx.raise(selected_window);
@@ -153,19 +166,17 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
-    let mut s_win = stack_head;
-    while let Some(win) = s_win {
-        if let Some(c) = ctx.client(win) {
-            if c.is_visible_on_tags(selected_tags) {
-                if c.isfloating {
-                    floating_stack.push(win);
-                } else {
-                    tiled_stack.push(win);
+    if let Some(m) = ctx.g.monitor(monitor_id) {
+        for &win in &m.stack {
+            if let Some(c) = ctx.client(win) {
+                if c.is_visible_on_tags(selected_tags) {
+                    if c.isfloating {
+                        floating_stack.push(win);
+                    } else {
+                        tiled_stack.push(win);
+                    }
                 }
             }
-            s_win = c.snext;
-        } else {
-            break;
         }
     }
 

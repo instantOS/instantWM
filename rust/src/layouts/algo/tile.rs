@@ -18,7 +18,7 @@
 //! - When there is only one client it expands to fill the entire work area.
 
 use crate::animation::animate_client;
-use crate::client::{client_height, next_tiled};
+use crate::client::next_tiled;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
@@ -106,8 +106,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
 
             if let Some(c) = ctx.g.clients.get(&win) {
-                if master_y_offset as i32 + client_height(c) < m.work_rect.h {
-                    master_y_offset += client_height(c) as u32;
+                if master_y_offset as i32 + c.total_height() < m.work_rect.h {
+                    master_y_offset += c.total_height() as u32;
                 }
             }
         } else {
@@ -128,8 +128,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if let Some(c) = ctx.g.clients.get(&win) {
-                if stack_y_offset as i32 + client_height(c) < m.work_rect.h {
-                    stack_y_offset += client_height(c) as u32;
+                if stack_y_offset as i32 + c.total_height() < m.work_rect.h {
+                    stack_y_offset += c.total_height() as u32;
                 }
             }
         }

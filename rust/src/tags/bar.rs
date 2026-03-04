@@ -150,17 +150,13 @@ fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
 fn occupied_tags_on_selmon(globals: &Globals) -> u32 {
     let mut occupied: u32 = 0;
 
-    let mut current = globals.selected_monitor().and_then(|m| m.clients);
-
-    while let Some(win) = current {
-        match globals.clients.get(&win) {
-            Some(c) => {
+    if let Some(m) = globals.selected_monitor() {
+        for &win in &m.clients {
+            if let Some(c) = globals.clients.get(&win) {
                 if c.tags != 255 {
                     occupied |= c.tags;
                 }
-                current = c.next;
             }
-            None => break,
         }
     }
 

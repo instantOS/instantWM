@@ -32,7 +32,7 @@
 //! The column width for the two side columns is `(work_width - mfact_width) / 2`.
 //! When there is only one side column (2 clients), it takes the full remaining width.
 
-use crate::client::{client_height, next_tiled, resize};
+use crate::client::{next_tiled, resize};
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
 use crate::layouts::query::count_tiled_clients;
@@ -167,7 +167,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             // Advance y only when cells are a fixed height.
             if cell_h != m.work_rect.h {
                 if let Some(c) = ctx.g.clients.get(&win) {
-                    y = c.geo.y + client_height(c);
+                    y = c.geo.y + c.total_height();
                 }
             }
 
@@ -236,7 +236,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
             if cell_h != m.work_rect.h {
                 if let Some(c) = ctx.g.clients.get(&win) {
-                    y = c.geo.y + client_height(c);
+                    y = c.geo.y + c.total_height();
                 }
             }
 

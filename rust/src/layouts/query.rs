@@ -55,13 +55,22 @@ pub fn all_client_count(g: &Globals) -> i32 {
 
 // ── visibility walk ───────────────────────────────────────────────────────────
 
-/// Walk the client linked-list starting at `start_win` and return the first
+/// Walk the client list starting at `start_win` and return the first
 /// client that passes [`Client::is_visible_on_tags`].
 pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
     let selected = g.selected_monitor().map(|m| m.selected_tags()).unwrap_or(0);
-    for (win, c) in crate::types::ClientListIter::new(start_win, g.clients.map()) {
-        if c.is_visible_on_tags(selected) {
-            return Some(win);
+
+    if let Some(m) = g.selected_monitor() {
+        let start_idx = start_win.and_then(|w| m.clients.iter().position(|&x| x == w));
+        let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
+
+        for i in iter_start..m.clients.len() {
+            let win = m.clients[i];
+            if let Some(c) = g.clients.get(&win) {
+                if c.is_visible_on_tags(selected) {
+                    return Some(win);
+                }
+            }
         }
     }
 
@@ -80,22 +89,6 @@ pub fn get_current_layout_symbol(g: &Globals) -> Option<&'static str> {
     }
 
     Some(LayoutKind::Tile.symbol())
-}
-
-/// Returns `true` when the active layout for the *selected* monitor is
-/// a tiling layout.
-pub fn selmon_has_tiling_layout(g: &Globals) -> bool {
-    match g.selected_monitor() {
-        Some(m) => {
-            let tag = m.current_tag;
-            if tag > 0 && tag <= m.tags.len() {
-                m.tags[tag - 1].layouts.is_tiling()
-            } else {
-                true
-            }
-        }
-        None => false,
-    }
 }
 
 /// Returns `hi` if animation is enabled and client count exceeds threshold,

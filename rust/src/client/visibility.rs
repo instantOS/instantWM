@@ -13,7 +13,7 @@
 use crate::animation::animate_client;
 use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
-use crate::client::geometry::{client_width, resize};
+use crate::client::geometry::resize;
 use crate::client::state::set_client_state;
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
@@ -67,8 +67,12 @@ pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
 pub fn show_hide(ctx: &mut WmCtx) {
     let is_wayland = ctx.backend_kind() == BackendKind::Wayland;
 
+    // Collect operations to avoid borrow conflicts
+    let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
+
     for (_id, mon) in ctx.g.monitors_iter() {
         let selected_tags = mon.selected_tags();
+        let is_tiling = mon.is_tiling_layout();
 
         for &win in &mon.clients {
             let Some(c) = ctx.g.clients.get(&win) else {
@@ -80,38 +84,57 @@ pub fn show_hide(ctx: &mut WmCtx) {
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
                 (c.isfloating, c.is_fullscreen, c.isfakefullscreen);
 
-            if is_visible {
-                if is_wayland {
-                    ctx.backend.map_window(win);
-                } else {
-                    let Rect { x, y, w, h } = geo;
-                    ctx.backend.resize_window(win, Rect { x, y, w, h });
-                    ctx.backend.flush();
+            operations.push((
+                win,
+                geo,
+                is_visible,
+                is_floating,
+                is_fullscreen,
+                is_fake_fullscreen,
+            ));
+        }
+    }
 
-                    let is_tiling = mon.is_tiling_layout();
-
-                    if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-                        resize(ctx, win, &Rect { x, y, w, h }, false);
-                    }
-                }
+    // Execute operations
+    for (win, geo, is_visible, is_floating, is_fullscreen, is_fake_fullscreen) in operations {
+        if is_visible {
+            if is_wayland {
+                ctx.backend.map_window(win);
             } else {
-                if is_wayland {
-                    ctx.backend.unmap_window(win);
-                } else {
-                    let w_val = client_width(c);
-                    let y = geo.y;
+                let Rect { x, y, w, h } = geo;
+                ctx.backend.resize_window(win, Rect { x, y, w, h });
+                ctx.backend.flush();
 
-                    ctx.backend.resize_window(
-                        win,
-                        Rect {
-                            x: -2 * w_val,
-                            y,
-                            w: geo.w,
-                            h: geo.h,
-                        },
-                    );
-                    ctx.backend.flush();
+                // We need to get is_tiling again for each iteration
+                let is_tiling = ctx.g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
+
+                if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
+                    resize(ctx, win, &Rect { x, y, w, h }, false);
                 }
+            }
+        } else {
+            if is_wayland {
+                ctx.backend.unmap_window(win);
+            } else {
+                let w_val = geo.w
+                    + 2 * ctx
+                        .g
+                        .clients
+                        .get(&win)
+                        .map(|c| c.border_width())
+                        .unwrap_or(0);
+                let y = geo.y;
+
+                ctx.backend.resize_window(
+                    win,
+                    Rect {
+                        x: -2 * w_val,
+                        y,
+                        w: geo.w,
+                        h: geo.h,
+                    },
+                );
+                ctx.backend.flush();
             }
         }
     }

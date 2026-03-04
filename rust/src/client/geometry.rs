@@ -2,12 +2,17 @@
 //!
 //! # Responsibilities
 //!
-//! * [`client_width`] / [`client_height`] – total on-screen extent including borders.
 //! * [`resize`] – high-level resize that runs size-hint validation first.
 //! * [`resize_client`] – low-level X11 configure + state update.
 //! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM `WM_NORMAL_HINTS`.
 //! * [`update_size_hints`] / [`update_size_hints_win`] – read `WM_NORMAL_HINTS` from X.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
+//!
+//! # Dimension helpers
+//!
+//! Client dimensions including borders are available as methods:
+//! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
+//! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
 use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::{
@@ -15,26 +20,10 @@ use crate::client::constants::{
     SIZE_HINTS_P_RESIZE_INC,
 };
 use crate::contexts::WmCtx;
-use crate::types::{Client, MonitorId, Rect, WindowId};
+use crate::types::{MonitorId, Rect, WindowId};
 
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
-
-// ---------------------------------------------------------------------------
-// Dimension helpers
-// ---------------------------------------------------------------------------
-
-/// Total width of the client window on screen, including both borders.
-#[inline]
-pub fn client_width(c: &Client) -> i32 {
-    c.geo.w + 2 * c.border_width
-}
-
-/// Total height of the client window on screen, including both borders.
-#[inline]
-pub fn client_height(c: &Client) -> i32 {
-    c.geo.h + 2 * c.border_width
-}
 
 // ---------------------------------------------------------------------------
 // High-level resize (validates size hints)

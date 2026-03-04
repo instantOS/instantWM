@@ -24,7 +24,7 @@ use crate::client::constants::{
 };
 use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen;
-use crate::client::geometry::{client_height, client_width, resize};
+use crate::client::geometry::resize;
 use crate::contexts::WmCtx;
 use crate::require_x11;
 use crate::require_x11_ret;
@@ -612,7 +612,7 @@ pub fn update_motif_hints(ctx: &mut WmCtx, win: WindowId) {
         .g
         .clients
         .get(&win)
-        .map(|c| (client_width(c), client_height(c), c.geo.x, c.geo.y))
+        .map(|c| (c.total_width(), c.total_height(), c.geo.x, c.geo.y))
         .unwrap_or((0, 0, 0, 0));
 
     let decorations = motif.get(MWM_HINTS_DECORATIONS_FIELD).copied().unwrap_or(0);

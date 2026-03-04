@@ -34,7 +34,7 @@ use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
-use crate::client::geometry::{client_height, client_width, resize_client, update_size_hints_win};
+use crate::client::geometry::{resize_client, update_size_hints_win};
 use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::state::set_client_state;
 use crate::client::state::{
@@ -157,11 +157,11 @@ fn monitor_rects_for_client(ctx: &WmCtx, w: WindowId) -> (Rect, Rect) {
 
 fn clamp_client_to_work_area(ctx: &mut WmCtx, w: WindowId, mon_work_rect: Rect) {
     if let Some(client) = ctx.g.clients.get_mut(&w) {
-        if client.geo.x + client_width(client) > mon_work_rect.x + mon_work_rect.w {
-            client.geo.x = mon_work_rect.x + mon_work_rect.w - client_width(client);
+        if client.geo.x + client.total_width() > mon_work_rect.x + mon_work_rect.w {
+            client.geo.x = mon_work_rect.x + mon_work_rect.w - client.total_width();
         }
-        if client.geo.y + client_height(client) > mon_work_rect.y + mon_work_rect.h {
-            client.geo.y = mon_work_rect.y + mon_work_rect.h - client_height(client);
+        if client.geo.y + client.total_height() > mon_work_rect.y + mon_work_rect.h {
+            client.geo.y = mon_work_rect.y + mon_work_rect.h - client.total_height();
         }
         client.geo.x = max(client.geo.x, mon_work_rect.x);
         client.geo.y = max(client.geo.y, mon_work_rect.y);

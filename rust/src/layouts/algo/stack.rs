@@ -43,7 +43,7 @@
 //! ```
 
 use crate::animation::animate_client;
-use crate::client::{client_height, client_width, next_tiled, resize};
+use crate::client::{next_tiled, resize};
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::layouts::query::{count_tiled_clients, framecount_for_layout};
@@ -110,7 +110,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if let Some(c) = ctx.g.clients.get(&win) {
-                master_column_offset += client_height(c) as u32;
+                master_column_offset += c.total_height() as u32;
             }
         } else {
             // ── stack client — all overlap in the same rect ───────────────
@@ -200,7 +200,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if let Some(c) = ctx.g.clients.get(&win) {
-                master_row_offset += client_width(c);
+                master_row_offset += c.total_width();
             }
         } else {
             // ── stack client — column in the bottom row ───────────────────
@@ -220,7 +220,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
             if let Some(c) = ctx.g.clients.get(&win) {
                 if tw != m.work_rect.w {
-                    tx += client_width(c);
+                    tx += c.total_width();
                 }
             }
         }
@@ -298,7 +298,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if let Some(c) = ctx.g.clients.get(&win) {
-                master_row_offset += client_width(c);
+                master_row_offset += c.total_width();
             }
         } else {
             // ── stack client — full-width horizontal row ──────────────────
@@ -319,7 +319,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             // (i.e. there are multiple stack clients).
             if let Some(c) = ctx.g.clients.get(&win) {
                 if th != m.work_rect.h {
-                    stack_y_offset += client_height(c);
+                    stack_y_offset += c.total_height();
                 }
             }
         }
