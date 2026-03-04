@@ -387,8 +387,9 @@ pub fn motion_notify(ctx: &mut WmCtx, e: &MotionNotifyEvent) {
     if event_win != root_win {
         let root_y = e.root_y as i32;
         let selmon = ctx.g.selected_monitor();
-        let in_bar =
-            selmon.showbar && root_y >= selmon.bar_y && root_y < selmon.bar_y + ctx.g.cfg.bar_height;
+        let in_bar = selmon.showbar
+            && root_y >= selmon.bar_y
+            && root_y < selmon.bar_y + ctx.g.cfg.bar_height;
         if !in_bar && selmon.gesture != Gesture::None {
             reset_bar(ctx);
         }

@@ -1,10 +1,11 @@
 use crate::backend::Backend;
 use crate::backend::BackendKind;
 use crate::backend::BackendOps;
+use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::types::WindowId;
 use crate::wm::Wm;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufReader, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
@@ -38,16 +39,42 @@ impl IpcServer {
     }
 
     fn handle_client(&self, mut stream: UnixStream, wm: &mut Wm) {
-        let mut line = String::new();
+        let mut buffer = Vec::new();
         let mut reader = BufReader::new(&stream);
-        let read_ok = reader.read_line(&mut line).ok().is_some_and(|n| n > 0);
-        if !read_ok {
-            let _ = stream.write_all(b"ERR empty request\n");
+
+        loop {
+            let mut byte = [0u8; 1];
+            match reader.read(&mut byte) {
+                Ok(1) => buffer.push(byte[0]),
+                Ok(0) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(_) => {
+                    let _ = send_response(&mut stream, &IpcResponse::err("read error"));
+                    return;
+                }
+                _ => break,
+            }
+        }
+
+        if buffer.is_empty() {
+            let _ = send_response(&mut stream, &IpcResponse::err("empty request"));
             return;
         }
-        let response = handle_command(wm, line.trim());
-        let _ = stream.write_all(response.as_bytes());
-        let _ = stream.flush();
+
+        let cmd: IpcCommand = match bincode::decode_from_slice(&buffer, bincode::config::standard())
+        {
+            Ok((cmd, _)) => cmd,
+            Err(e) => {
+                let _ = send_response(
+                    &mut stream,
+                    &IpcResponse::err(format!("deserialize error: {}", e)),
+                );
+                return;
+            }
+        };
+
+        let response = handle_command(wm, cmd);
+        let _ = send_response(&mut stream, &response);
     }
 }
 
@@ -71,60 +98,35 @@ fn socket_path() -> PathBuf {
     PathBuf::from(format!("/tmp/instantwm-{}.sock", uid))
 }
 
-fn handle_command(wm: &mut Wm, cmd: &str) -> String {
-    if cmd.eq_ignore_ascii_case("list") {
-        return list_windows(wm);
-    }
-    if cmd.eq_ignore_ascii_case("geom") || cmd.starts_with("geom ") {
-        let parsed_id = cmd
-            .split_whitespace()
-            .nth(1)
-            .and_then(|s| s.parse::<u32>().ok())
-            .map(WindowId::from);
-        return window_geometry(wm, parsed_id);
-    }
-    if let Some(rest) = cmd.strip_prefix("spawn ") {
-        if rest.trim().is_empty() {
-            return "ERR spawn requires a command\n".to_string();
-        }
-        let mut command = std::process::Command::new("sh");
-        command.arg("-c").arg(rest);
-        if wm.backend.kind() == BackendKind::Wayland {
-            match &wm.backend {
-                Backend::Wayland(backend) => {
-                    if let Some(display) = backend.xdisplay() {
-                        command.env("DISPLAY", format!(":{display}"));
-                    } else {
-                        return "ERR XWayland not ready (DISPLAY unavailable)\n".to_string();
-                    }
-                }
-                Backend::X11(_) => {}
-            }
-        }
-        match command.spawn() {
-            Ok(child) => return format!("OK pid={}\n", child.id()),
-            Err(err) => return format!("ERR spawn failed: {}\n", err),
-        }
-    }
-    if cmd.eq_ignore_ascii_case("close") || cmd.starts_with("close ") {
-        let parsed_id = cmd
-            .split_whitespace()
-            .nth(1)
-            .and_then(|s| s.parse::<u32>().ok())
-            .map(WindowId::from);
-        return close_window(wm, parsed_id);
-    }
-    if cmd.eq_ignore_ascii_case("quit") {
-        wm.quit();
-        return "OK\n".to_string();
-    }
-    "ERR unknown command\n".to_string()
+fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Result<()> {
+    let data = bincode::encode_to_vec(response, bincode::config::standard()).unwrap_or_else(|_| {
+        bincode::encode_to_vec(
+            &IpcResponse::err("serialization error"),
+            bincode::config::standard(),
+        )
+        .unwrap()
+    });
+    stream.write_all(&data)?;
+    stream.flush()
 }
 
-fn list_windows(wm: &Wm) -> String {
+fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
+    match cmd {
+        IpcCommand::List => list_windows(wm),
+        IpcCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
+        IpcCommand::Spawn(command) => spawn_command(wm, command),
+        IpcCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
+        IpcCommand::Quit => {
+            wm.quit();
+            IpcResponse::ok("")
+        }
+    }
+}
+
+fn list_windows(wm: &Wm) -> IpcResponse {
     let mut wins: Vec<_> = wm.g.clients.values().collect();
     wins.sort_by_key(|c| c.win.0);
-    let mut out = String::from("OK\n");
+    let mut out = String::new();
     for c in wins {
         let name = c.name.replace('\n', " ").replace('\t', " ");
         out.push_str(&format!(
@@ -136,38 +138,62 @@ fn list_windows(wm: &Wm) -> String {
             name
         ));
     }
-    out
+    IpcResponse::ok(out)
 }
 
-fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> String {
+fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> IpcResponse {
     let target = parsed_id.or_else(|| wm.g.selected_win());
     let Some(win) = target else {
-        return "ERR no target window\n".to_string();
+        return IpcResponse::err("no target window");
     };
     match wm.backend.kind() {
         BackendKind::X11 => {
             let mut ctx = wm.ctx();
             crate::client::close_win(&mut ctx, win);
-            "OK\n".to_string()
+            IpcResponse::ok("")
         }
         BackendKind::Wayland => match &wm.backend {
-            Backend::Wayland(backend) if backend.close_window(win) => "OK\n".to_string(),
-            Backend::Wayland(_) => "ERR window not found\n".to_string(),
-            Backend::X11(_) => "ERR backend mismatch\n".to_string(),
+            Backend::Wayland(backend) if backend.close_window(win) => IpcResponse::ok(""),
+            Backend::Wayland(_) => IpcResponse::err("window not found"),
+            Backend::X11(_) => IpcResponse::err("backend mismatch"),
         },
     }
 }
 
-fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> String {
+fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
     let target = parsed_id.or_else(|| wm.g.selected_win());
     let Some(win) = target else {
-        return "ERR no target window\n".to_string();
+        return IpcResponse::err("no target window");
     };
     let Some(c) = wm.g.clients.get(&win) else {
-        return "ERR window not found\n".to_string();
+        return IpcResponse::err("window not found");
     };
-    format!(
-        "OK\n{}\t{}\t{}\t{}\t{}\n",
+    IpcResponse::ok(format!(
+        "{}\t{}\t{}\t{}\t{}",
         c.win.0, c.geo.x, c.geo.y, c.geo.w, c.geo.h
-    )
+    ))
+}
+
+fn spawn_command(wm: &mut Wm, command: String) -> IpcResponse {
+    if command.trim().is_empty() {
+        return IpcResponse::err("spawn requires a command");
+    }
+    let mut cmd = std::process::Command::new("sh");
+    cmd.arg("-c").arg(&command);
+    if wm.backend.kind() == BackendKind::Wayland {
+        match &wm.backend {
+            Backend::Wayland(backend) => {
+                if let Some(display) = backend.xdisplay() {
+                    cmd.env("DISPLAY", format!(":{display}"));
+                } else {
+                    return IpcResponse::err("XWayland not ready (DISPLAY unavailable)");
+                }
+            }
+            Backend::X11(_) => {}
+        }
+    }
+    match cmd.spawn() {
+        Ok(child) => IpcResponse::ok(format!("pid={}", child.id())),
+        Err(err) => IpcResponse::err(format!("spawn failed: {}", err)),
+    }
 }

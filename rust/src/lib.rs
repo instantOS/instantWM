@@ -30,7 +30,3 @@ mod types;
 mod util;
 mod wm;
 mod xresources;
-
-fn main() {
-    startup::run();
-}

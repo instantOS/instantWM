@@ -476,7 +476,13 @@ pub fn render_bar_buffers(
             if !m.shows_bar() {
                 return None;
             }
-            Some((i, m.work_rect.x, m.bar_y, m.work_rect.w, ctx.g.cfg.bar_height))
+            Some((
+                i,
+                m.work_rect.x,
+                m.bar_y,
+                m.work_rect.w,
+                ctx.g.cfg.bar_height,
+            ))
         })
         .collect();
 
