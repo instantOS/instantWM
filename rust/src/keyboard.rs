@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::{direction_focus, focus_stack};
 use crate::layouts::arrange;
@@ -34,19 +34,19 @@ fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
             | ModMask::M5.bits())
 }
 
-pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
-    let numlockmask = ctx.g.x11.numlockmask;
+pub fn handle_keysym(core: &mut CoreCtx, keysym: u32, mod_mask: u32) -> bool {
+    let numlockmask = core.g.x11.numlockmask;
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
-    let action = ctx
+    let action = core
         .g
         .cfg
         .keys
         .iter()
         .find(|key| keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned)
         .or_else(|| {
-            if ctx.selected_client().is_none() {
-                ctx.g.cfg.desktop_keybinds.iter().find(|key| {
+            if core.selected_client().is_none() {
+                core.g.cfg.desktop_keybinds.iter().find(|key| {
                     keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                 })
             } else {
@@ -56,37 +56,30 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         .map(|key| Rc::clone(&key.action));
 
     if let Some(action) = action {
-        action(ctx);
+        action(core);
         true
     } else {
         false
     }
 }
 
-pub fn key_press(ctx: &mut WmCtx, e: &KeyPressEvent) {
+pub fn key_press_x11(core: &mut CoreCtx, x11: &X11Ctx, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
 
-    let keysym = {
-        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-            return;
-        };
-        keycode_to_keysym(conn, keycode, 0)
-    };
+    let keysym = { keycode_to_keysym(x11.conn, keycode, 0) };
 
-    let _ = handle_keysym(ctx, keysym, state.bits() as u32);
+    let _ = handle_keysym(core, keysym, state.bits() as u32);
 }
 
-pub fn key_release(_ctx: &mut WmCtx, _e: &KeyReleaseEvent) {}
+pub fn key_release_x11(_core: &mut CoreCtx, _x11: &X11Ctx, _e: &KeyReleaseEvent) {}
 
-pub fn grab_keys(ctx: &WmCtx) {
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-    let root = ctx.g.x11.root;
-    let numlockmask = ctx.g.x11.numlockmask;
-    let keys = ctx.g.cfg.keys.as_slice();
-    let desktop_keybinds = ctx.g.cfg.desktop_keybinds.as_slice();
+pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
+    let conn = x11.conn;
+    let root = core.g.x11.root;
+    let numlockmask = core.g.x11.numlockmask;
+    let keys = core.g.cfg.keys.as_slice();
+    let desktop_keybinds = core.g.cfg.desktop_keybinds.as_slice();
     let free_alt_tab = true;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);

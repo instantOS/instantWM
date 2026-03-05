@@ -52,21 +52,32 @@ pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{apply_size_hints, resize, resize_client, scale_client, update_size_hints};
+pub use geometry::{
+    apply_size_hints_x11, resize_client_x11, resize_x11, scale_client_x11, update_size_hints_x11,
+};
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{hide, show, show_hide};
+pub use visibility::{
+    calculate_yoffset, get_state_x11, hide_x11, show_hide_wayland, show_hide_x11, show_x11,
+};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{configure, send_event, set_focus, unfocus_win};
+pub use focus::{
+    clear_urgency_hint, configure_x11, grab_buttons_x11, send_event_x11, set_focus_x11,
+    unfocus_win_x11,
+};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{
-    restore_border_width, save_border_width, set_fullscreen, toggle_fake_fullscreen,
+    restore_border_width, save_border_width, set_fullscreen_x11, toggle_fake_fullscreen_x11,
 };
 
 // -- X11 state / properties --------------------------------------------------
-pub use state::{set_client_state, set_client_tag_prop, set_urgent, update_title, update_wm_hints};
+pub use state::{
+    apply_rules, set_client_state, set_client_tag_prop, set_urgent, update_client_list,
+    update_motif_hints, update_title_wayland, update_title_x11, update_window_type,
+    update_wm_hints,
+};
 
 // -- Kill --------------------------------------------------------------------
 pub use kill::{close_win, kill_client, shut_kill};

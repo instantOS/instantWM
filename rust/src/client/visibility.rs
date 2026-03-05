@@ -11,11 +11,10 @@
 //! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
 use crate::animation::animate_client;
-use crate::backend::{BackendKind, BackendOps};
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
-use crate::client::geometry::resize;
+use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::{Monitor, Rect, WindowId};
@@ -30,13 +29,11 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return WM_STATE_NORMAL;
-    };
+pub fn get_state_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> i32 {
+    let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let wm_state_atom = ctx.g.x11.wmatom.state;
+    let wm_state_atom = core.g.x11.wmatom.state;
     let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
         return WM_STATE_NORMAL;
     };
@@ -64,18 +61,14 @@ pub fn get_state(ctx: &WmCtx, win: WindowId) -> i32 {
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide(ctx: &mut WmCtx) {
-    let is_wayland = ctx.backend_kind() == BackendKind::Wayland;
-
-    // Collect operations to avoid borrow conflicts
+pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
-    for mon in ctx.g.monitors_iter_all() {
+    for mon in core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
-        let is_tiling = mon.is_tiling_layout();
 
         for &win in &mon.clients {
-            let Some(c) = ctx.g.clients.get(&win) else {
+            let Some(c) = core.g.clients.get(&win) else {
                 continue;
             };
 
@@ -95,47 +88,70 @@ pub fn show_hide(ctx: &mut WmCtx) {
         }
     }
 
-    // Execute operations
     for (win, geo, is_visible, is_floating, is_fullscreen, is_fake_fullscreen) in operations {
         if is_visible {
-            if is_wayland {
-                ctx.backend.map_window(win);
-            } else {
-                let Rect { x, y, w, h } = geo;
-                ctx.backend.resize_window(win, Rect { x, y, w, h });
-                ctx.backend.flush();
+            let Rect { x, y, w, h } = geo;
+            let x11_win: Window = win.into();
+            let width = w.max(1) as u32;
+            let height = h.max(1) as u32;
+            let _ = x11.conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new()
+                    .x(x)
+                    .y(y)
+                    .width(width)
+                    .height(height),
+            );
+            let _ = x11.conn.flush();
 
-                // We need to get is_tiling again for each iteration
-                let is_tiling = ctx.g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
+            let is_tiling = core.g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
 
-                if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-                    resize(ctx, win, &Rect { x, y, w, h }, false);
-                }
+            if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
+                resize_x11(core, x11, win, &Rect { x, y, w, h }, false);
             }
         } else {
-            if is_wayland {
-                ctx.backend.unmap_window(win);
-            } else {
-                let w_val = geo.w
-                    + 2 * ctx
-                        .g
-                        .clients
-                        .get(&win)
-                        .map(|c| c.border_width())
-                        .unwrap_or(0);
-                let y = geo.y;
+            let w_val = geo.w
+                + 2 * core
+                    .g
+                    .clients
+                    .get(&win)
+                    .map(|c| c.border_width())
+                    .unwrap_or(0);
+            let y = geo.y;
 
-                ctx.backend.resize_window(
-                    win,
-                    Rect {
-                        x: -2 * w_val,
-                        y,
-                        w: geo.w,
-                        h: geo.h,
-                    },
-                );
-                ctx.backend.flush();
-            }
+            let x11_win: Window = win.into();
+            let _ = x11.conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new()
+                    .x(-2 * w_val)
+                    .y(y)
+                    .width(geo.w as u32)
+                    .height(geo.h as u32),
+            );
+            let _ = x11.conn.flush();
+        }
+    }
+}
+
+pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
+    let mut operations: Vec<(WindowId, bool)> = Vec::new();
+
+    for mon in core.g.monitors_iter_all() {
+        let selected_tags = mon.selected_tags();
+        for &win in &mon.clients {
+            let Some(c) = core.g.clients.get(&win) else {
+                continue;
+            };
+            let is_visible = c.is_visible_on_tags(selected_tags);
+            operations.push((win, is_visible));
+        }
+    }
+
+    for (win, is_visible) in operations {
+        if is_visible {
+            wayland.backend.map_window(win);
+        } else {
+            wayland.backend.unmap_window(win);
         }
     }
 }
@@ -147,11 +163,8 @@ pub fn show_hide(ctx: &mut WmCtx) {
 /// Unminimize `win`: map it, animate it sliding in from above, then arrange.
 ///
 /// Does nothing if `win` is not currently in the iconic state.
-pub fn show(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let Some(client) = ctx.g.clients.get(&win) else {
+pub fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let Some(client) = core.g.clients.get(&win) else {
         return;
     };
 
@@ -162,28 +175,32 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     let Rect { x, y, w, h } = client.geo;
 
     // Clear the cached flag before any redraws that might be triggered below.
-    if let Some(c) = ctx.g.clients.get_mut(&win) {
+    if let Some(c) = core.g.clients.get_mut(&win) {
         c.is_hidden = false;
     }
 
-    ctx.backend.map_window(win);
-    ctx.backend.flush();
+    let x11_win: Window = win.into();
+    let _ = x11.conn.map_window(x11_win);
+    let _ = x11.conn.flush();
 
-    set_client_state(ctx, win, WM_STATE_NORMAL);
+    set_client_state(core, x11, win, WM_STATE_NORMAL);
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
-    resize(ctx, win, &Rect { x, y: -50, w, h }, false);
+    resize_x11(core, x11, win, &Rect { x, y: -50, w, h }, false);
 
-    ctx.backend.raise_window(win);
-    ctx.backend.flush();
+    let _ = x11.conn.configure_window(
+        x11_win,
+        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+    );
+    let _ = x11.conn.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client(core, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
-    let monitor_id = ctx.g.clients.get(&win).and_then(|c| c.monitor_id);
+    let monitor_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
     if let Some(mid) = monitor_id {
-        arrange(ctx, Some(mid));
+        arrange(core, Some(mid));
     }
 }
 
@@ -195,11 +212,8 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
 /// the next client in the stack.
 ///
 /// Does nothing if `win` is already hidden.
-pub fn hide(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let Some(client) = ctx.g.clients.get(&win) else {
+pub fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let Some(client) = core.g.clients.get(&win) else {
         return;
     };
 
@@ -209,13 +223,13 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 
     let Rect { x, y, w, h } = client.geo;
     let monitor_id = client.monitor_id;
-    let bar_height = ctx.g.cfg.bar_height;
-    let animated = ctx.g.animated;
+    let bar_height = core.g.cfg.bar_height;
+    let animated = core.g.animated;
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
         animate_client(
-            ctx,
+            core,
             win,
             &Rect {
                 x,
@@ -228,57 +242,48 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         );
     }
 
-    let root = ctx.g.x11.root;
-    let has_x11 = ctx.x11_conn().is_some();
+    let root = core.g.x11.root;
     let x11_win: Window = win.into();
 
-    if has_x11 {
-        // Phase 1: grab server and suppress events (borrows conn briefly)
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.grab_server();
-            suppress_unmap_events(conn, root, x11_win);
-        }
-    }
+    // Phase 1: grab server and suppress events
+    let _ = x11.conn.grab_server();
+    suppress_unmap_events(x11.conn, root, x11_win);
 
     // Phase 2: unmap and update state (no conn borrow needed)
-    ctx.backend.unmap_window(win);
-    ctx.backend.flush();
-    set_client_state(ctx, win, WM_STATE_ICONIC);
+    let _ = x11.conn.unmap_window(x11_win);
+    let _ = x11.conn.flush();
+    set_client_state(core, x11, win, WM_STATE_ICONIC);
 
-    if let Some(c) = ctx.g.clients.get_mut(&win) {
+    if let Some(c) = core.g.clients.get_mut(&win) {
         c.is_hidden = true;
     }
 
-    if has_x11 {
-        // Phase 3: restore events and ungrab (borrows conn briefly)
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            restore_event_masks(conn, root, x11_win);
-            let _ = conn.ungrab_server();
-        }
-        ctx.backend.flush();
-    }
+    // Phase 3: restore events and ungrab
+    restore_event_masks(x11.conn, root, x11_win);
+    let _ = x11.conn.ungrab_server();
+    let _ = x11.conn.flush();
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.
-    resize(ctx, win, &Rect { x, y, w, h }, false);
+    resize_x11(core, x11, win, &Rect { x, y, w, h }, false);
 
     let snext = monitor_id.and_then(|mid| {
-        ctx.g
+        core.g
             .monitor(mid)
             .and_then(|m| m.stack.iter().find(|&&w| w != win).copied())
     });
-    crate::focus::focus_soft(ctx, snext);
+    crate::focus::focus_soft_x11(core, x11, snext);
 
     if let Some(mid) = monitor_id {
-        arrange(ctx, Some(mid));
+        arrange(core, Some(mid));
     }
 }
 
-pub fn calculate_yoffset_ctx(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bar_height = ctx.g.cfg.bar_height;
+pub fn calculate_yoffset(core: &CoreCtx, mon: &Monitor, current_tag: u32) -> i32 {
+    let bar_height = core.g.cfg.bar_height;
     let base_offset = if mon.showbar { bar_height } else { 0 };
 
-    for (_win, c) in mon.iter_clients(ctx.g.clients.map()) {
+    for (_win, c) in mon.iter_clients(core.g.clients.map()) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
             return 0;
         }

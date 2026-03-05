@@ -5,7 +5,7 @@ use std::rc::Rc;
 use super::commands::Cmd;
 use crate::animation;
 use crate::bar::x11::toggle_bar;
-use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
+use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::floating::{center_window, distribute_clients, key_resize, temp_fullscreen};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus};
 use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
@@ -225,8 +225,8 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
-        key!(MODKEY, XK_B  => |ctx| toggle_bar(ctx)),
-        key!(MS,     XK_F  => toggle_fake_fullscreen),
+        key!(MODKEY, XK_B  => |ctx| toggle_bar(ctx, &ctx.x11)),
+        key!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(ctx, &ctx.x11)),
         key!(MC,     XK_F  => temp_fullscreen),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {

@@ -2,22 +2,19 @@
 //!
 //! # Responsibilities
 //!
-//! * [`configure`]     – send a synthetic `ConfigureNotify` to a client so it
+//! * [`configure_x11`]  – send a synthetic `ConfigureNotify` to a client so it
 //!                       knows its current geometry without waiting for a real
 //!                       configure event.
-//! * [`send_event`]    – send an arbitrary `ClientMessage`, with optional
+//! * [`send_event_x11`] – send an arbitrary `ClientMessage`, with optional
 //!                       `WM_PROTOCOLS` existence check.
-//! * [`set_focus`]     – give input focus to a client window.
-//! * [`unfocus_win`]   – remove focus from a client (reset border colour,
+//! * [`set_focus_x11`]  – give input focus to a client window.
+//! * [`unfocus_win_x11`]- remove focus from a client (reset border colour,
 //!                       optionally redirect focus to the root).
-//! * [`grab_buttons`]  – (un)grab mouse buttons on a client depending on
+//! * [`grab_buttons_x11`]- (un)grab mouse buttons on a client depending on
 //!                       whether it is currently focused.
 
-use crate::backend::BackendOps;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
-use crate::contexts::WmCtx;
-use crate::require_x11;
-use crate::require_x11_ret;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::WindowId;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -42,14 +39,11 @@ pub struct FocusState {
 /// learn about position/size changes that did not originate from their own
 /// `ConfigureRequest`.  We send it after every [`super::geometry::resize_client`]
 /// call.
-pub fn configure(ctx: &mut WmCtx, win: WindowId) {
-    require_x11!(ctx);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+pub fn configure_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let Some(c) = ctx.g.clients.get(&win) else {
+    let Some(c) = core.g.clients.get(&win) else {
         return;
     };
 
@@ -68,7 +62,7 @@ pub fn configure(ctx: &mut WmCtx, win: WindowId) {
     };
 
     let _ = conn.send_event(false, x11_win, EventMask::STRUCTURE_NOTIFY, event);
-    ctx.backend.flush();
+    let _ = conn.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -83,8 +77,9 @@ pub fn configure(ctx: &mut WmCtx, win: WindowId) {
 ///
 /// For any other `proto` value the message is sent unconditionally and `true`
 /// is returned.
-pub fn send_event(
-    ctx: &mut WmCtx,
+pub fn send_event_x11(
+    core: &mut CoreCtx,
+    x11: &X11Ctx,
     win: WindowId,
     proto: u32,
     mask: u32,
@@ -94,19 +89,16 @@ pub fn send_event(
     d3: i64,
     d4: i64,
 ) -> bool {
-    require_x11_ret!(ctx, false);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return false;
-    };
+    let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let wmatom_protocols = ctx.g.x11.wmatom.protocols;
-    let wmatom_take_focus = ctx.g.x11.wmatom.take_focus;
-    let wmatom_delete = ctx.g.x11.wmatom.delete;
+    let wmatom_protocols = core.g.x11.wmatom.protocols;
+    let wmatom_take_focus = core.g.x11.wmatom.take_focus;
+    let wmatom_delete = core.g.x11.wmatom.delete;
 
     let (exists, message_type) = if proto == wmatom_take_focus || proto == wmatom_delete {
         // Check whether the client advertises support for this protocol.
-        let supported = read_wm_protocols(conn, x11_win, ctx.g.x11.wmatom.protocols)
+        let supported = read_wm_protocols(conn, x11_win, core.g.x11.wmatom.protocols)
             .into_iter()
             .any(|p| p == proto);
         (supported, wmatom_protocols)
@@ -124,7 +116,7 @@ pub fn send_event(
             data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
         };
         let _ = conn.send_event(false, x11_win, EventMask::from(mask), event);
-        ctx.backend.flush();
+        let _ = conn.flush();
     }
 
     exists
@@ -139,58 +131,56 @@ pub fn send_event(
 /// Sets the X input focus (unless the client has `neverfocus` set) and updates
 /// `_NET_ACTIVE_WINDOW` on the root.  Also sends `WM_TAKE_FOCUS` so that
 /// clients using the "locally active" input model receive focus correctly.
-pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
-    require_x11!(ctx);
-    let Some(c) = ctx.g.clients.get(&win) else {
+pub fn set_focus_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let Some(c) = core.g.clients.get(&win) else {
         return;
     };
 
     if !c.neverfocus {
-        ctx.backend.set_focus(win);
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let x11_win: Window = win.into();
-            let _ = conn.change_property32(
-                PropMode::REPLACE,
-                ctx.g.x11.root,
-                ctx.g.x11.netatom.active_window,
-                AtomEnum::WINDOW,
-                &[x11_win],
-            );
-        }
+        let x11_win: Window = win.into();
+        let _ = x11
+            .conn
+            .set_input_focus(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
+        let _ = x11.conn.change_property32(
+            PropMode::REPLACE,
+            core.g.x11.root,
+            core.g.x11.netatom.active_window,
+            AtomEnum::WINDOW,
+            &[x11_win],
+        );
     }
 
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
-            let isfloating = c.isfloating || !has_tiling;
-            let pixel = if isfloating {
-                scheme.float_focus.bg.pixel()
-            } else {
-                scheme.tile_focus.bg.pixel()
-            };
-            let x11_win: Window = win.into();
-            let _ = conn.change_window_attributes(
-                x11_win,
-                &ChangeWindowAttributesAux::new().border_pixel(pixel),
-            );
-        }
+    if let Some(ref scheme) = core.g.cfg.borderscheme {
+        let has_tiling = core.g.selected_monitor().is_tiling_layout();
+        let isfloating = c.isfloating || !has_tiling;
+        let pixel = if isfloating {
+            scheme.float_focus.bg.pixel()
+        } else {
+            scheme.tile_focus.bg.pixel()
+        };
+        let x11_win: Window = win.into();
+        let _ = x11.conn.change_window_attributes(
+            x11_win,
+            &ChangeWindowAttributesAux::new().border_pixel(pixel),
+        );
     }
 
-    grab_buttons(ctx, win, true);
+    grab_buttons_x11(core, x11, win, true);
 
-    let _ = send_event(
-        ctx,
+    let _ = send_event_x11(
+        core,
+        x11,
         win,
-        ctx.g.x11.wmatom.take_focus,
+        core.g.x11.wmatom.take_focus,
         0,
-        ctx.g.x11.wmatom.take_focus as i64,
+        core.g.x11.wmatom.take_focus as i64,
         CURRENT_TIME as i64,
         0,
         0,
         0,
     );
 
-    ctx.backend.flush();
+    let _ = x11.conn.flush();
 }
 
 /// Remove focus from `win`.
@@ -202,33 +192,34 @@ pub fn set_focus(ctx: &mut WmCtx, win: WindowId) {
 /// If `redirect_to_root` is `true`, focus is explicitly returned to the root
 /// window and `_NET_ACTIVE_WINDOW` is deleted – this is used when no other
 /// client is taking focus.
-pub fn unfocus_win(ctx: &mut WmCtx, win: WindowId, redirect_to_root: bool) {
-    require_x11!(ctx);
+pub fn unfocus_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, redirect_to_root: bool) {
     if win == WindowId::default() {
         return;
     }
 
-    ctx.focus.last_client = win;
-    grab_buttons(ctx, win, false);
+    core.focus.last_client = win;
+    grab_buttons_x11(core, x11, win, false);
 
     // Reset the border to the normal (unfocused) colour.
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let pixel = scheme.normal.bg.pixel();
-            let x11_win: Window = win.into();
-            let _ = conn.change_window_attributes(
-                x11_win,
-                &ChangeWindowAttributesAux::new().border_pixel(pixel),
-            );
-        }
-
-        if redirect_to_root {
-            let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, ctx.g.x11.root, CURRENT_TIME);
-            let _ = conn.delete_property(ctx.g.x11.root, ctx.g.x11.netatom.active_window);
-        }
-
-        ctx.backend.flush();
+    if let Some(ref scheme) = core.g.cfg.borderscheme {
+        let pixel = scheme.normal.bg.pixel();
+        let x11_win: Window = win.into();
+        let _ = x11.conn.change_window_attributes(
+            x11_win,
+            &ChangeWindowAttributesAux::new().border_pixel(pixel),
+        );
     }
+
+    if redirect_to_root {
+        let _ = x11
+            .conn
+            .set_input_focus(InputFocus::POINTER_ROOT, core.g.x11.root, CURRENT_TIME);
+        let _ = x11
+            .conn
+            .delete_property(core.g.x11.root, core.g.x11.netatom.active_window);
+    }
+
+    let _ = x11.conn.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -243,18 +234,15 @@ pub fn unfocus_win(ctx: &mut WmCtx, win: WindowId, redirect_to_root: bool) {
 ///
 /// When `focused` is `true`, all button grabs are released so the client
 /// receives button events directly.
-pub fn grab_buttons(ctx: &mut WmCtx, win: WindowId, focused: bool) {
-    require_x11!(ctx);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+pub fn grab_buttons_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, focused: bool) {
+    let conn = x11.conn;
     let x11_win: Window = win.into();
 
     // Always start clean.
     let _ = ungrab_button(conn, ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
 
     if !focused {
-        let numlockmask = ctx.g.x11.numlockmask;
+        let numlockmask = core.g.x11.numlockmask;
         let lock_mask = ModMask::LOCK.bits() as u32;
         let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
 
@@ -291,7 +279,7 @@ pub fn grab_buttons(ctx: &mut WmCtx, win: WindowId, focused: bool) {
         }
     }
 
-    ctx.backend.flush();
+    let _ = conn.flush();
 }
 
 // ---------------------------------------------------------------------------
@@ -332,11 +320,8 @@ fn ungrab_button(
 ///
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
-pub fn clear_urgency_hint(ctx: &mut WmCtx, win: WindowId) {
-    require_x11!(ctx);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+pub fn clear_urgency_hint(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let conn = x11.conn;
     let x11_win: Window = win.into();
 
     let Ok(cookie) =
@@ -363,5 +348,5 @@ pub fn clear_urgency_hint(ctx: &mut WmCtx, win: WindowId) {
         &data,
     );
 
-    ctx.backend.flush();
+    let _ = conn.flush();
 }

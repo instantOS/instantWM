@@ -12,7 +12,7 @@ use smithay::utils::{Point, Transform, SERIAL_COUNTER};
 use crate::backend::wayland::compositor::{
     KeyboardFocusTarget, PointerFocusTarget, WaylandState, WindowIdMarker,
 };
-use crate::client::resize;
+use crate::client::resize_x11;
 use crate::monitor::update_geom;
 use crate::mouse::{set_cursor_default, set_cursor_move, set_cursor_resize};
 use crate::startup::common_wayland::modifiers_to_x11_mask;
@@ -77,8 +77,11 @@ pub(super) fn handle_keyboard(
             if wm_shortcuts_allowed && event.state() == smithay::backend::input::KeyState::Pressed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let mut ctx = wm.ctx();
+                let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+                    return FilterResult::Forward;
+                };
                 if crate::keyboard::handle_keysym(
-                    &mut ctx,
+                    &mut ctx.core,
                     u32::from(keysym.modified_sym()),
                     mod_mask,
                 ) {

@@ -5,7 +5,7 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
@@ -48,7 +48,7 @@ pub struct Key {
     /// Keysym value.
     pub keysym: u32,
     /// Action to execute when key is pressed.
-    pub action: Rc<dyn Fn(&mut WmCtx)>,
+    pub action: Rc<dyn Fn(&mut CoreCtx)>,
 }
 
 impl Debug for Key {
@@ -88,9 +88,9 @@ pub struct Button {
     /// Action to execute when button is pressed.
     ///
     /// Arguments:
-    /// * `&mut WmCtx` — the window manager context
+    /// * `&mut CoreCtx` — the window manager core context
     /// * `ButtonArg` — The exact bar region that was clicked, the mouse button that was pressed, and the x/y coordinates.
-    pub action: Rc<dyn Fn(&mut WmCtx, ButtonArg)>,
+    pub action: Rc<dyn Fn(&mut CoreCtx, ButtonArg)>,
 }
 
 impl Button {

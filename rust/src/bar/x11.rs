@@ -1,5 +1,5 @@
 use crate::bar::color::hex_to_u32;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::{Monitor, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -7,45 +7,40 @@ use x11rb::protocol::xproto::Window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn update_status(ctx: &mut WmCtx) {
-    if ctx.x11_conn().is_none() {
-        return;
-    }
-    let root = ctx.g.x11.root;
+pub fn update_status(core: &mut CoreCtx, x11: &X11Ctx) {
+    let root = core.g.x11.root;
 
-    let text = get_text_prop(ctx, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
+    let text = get_text_prop(x11, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
     match text {
         Some(t) => {
             if t.starts_with("ipc:") {
                 return;
             }
-            ctx.g.status_text = t;
+            core.g.status_text = t;
         }
         None => {
-            ctx.g.status_text = format!("instantwm-{}", VERSION);
+            core.g.status_text = format!("instantwm-{}", VERSION);
         }
     }
 
-    let selmon_idx = ctx.g.selected_monitor_id();
-    super::draw_bar(ctx, selmon_idx);
+    let selmon_idx = core.g.selected_monitor_id();
+    super::draw_bar(core, selmon_idx);
 
-    crate::systray::update_systray(ctx);
+    crate::systray::update_systray(core, x11);
 }
 
 /// Resize bar window with dependency injection.
-pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
-    let bar_height = ctx.g.cfg.bar_height;
-    let showsystray = ctx.g.cfg.showsystray;
-    let is_selmon = ctx.g.selected_monitor().num == m.num;
+pub fn resize_bar_win(core: &CoreCtx, x11: &X11Ctx, m: &Monitor) {
+    let bar_height = core.g.cfg.bar_height;
+    let showsystray = core.g.cfg.showsystray;
+    let is_selmon = core.g.selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
-        w = w.saturating_sub(crate::systray::get_systray_width(ctx));
+        w = w.saturating_sub(crate::systray::get_systray_width(core));
     }
 
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+    let conn = x11.conn;
     let x11_bar_win: Window = m.bar_win.into();
     let _ = conn.configure_window(
         x11_bar_win,
@@ -57,27 +52,24 @@ pub fn resize_bar_win(ctx: &WmCtx, m: &Monitor) {
     );
 }
 
-pub fn update_bars(ctx: &mut WmCtx) {
-    if ctx.x11_conn().is_none() {
-        return;
-    }
+pub fn update_bars(core: &mut CoreCtx, x11: &X11Ctx) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = ctx.g.cfg.bar_height;
-        let showsystray = ctx.g.cfg.showsystray;
-        let status_bg = hex_to_u32(ctx.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
-        let xlibdisplay = ctx.g.x11.xlibdisplay.0;
-        let root = ctx.g.x11.root;
-        let selected_monitor_id = ctx.g.selected_monitor_id();
+        let bar_height = core.g.cfg.bar_height;
+        let showsystray = core.g.cfg.showsystray;
+        let status_bg = hex_to_u32(core.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
+        let xlibdisplay = core.g.x11.xlibdisplay.0;
+        let root = core.g.x11.root;
+        let selected_monitor_id = core.g.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<usize, u32> =
             std::collections::HashMap::new();
         if showsystray {
-            systray_widths.insert(selected_monitor_id, crate::systray::get_systray_width(ctx));
+            systray_widths.insert(selected_monitor_id, crate::systray::get_systray_width(core));
         }
 
         let mut bar_configs = Vec::new();
-        for (i, m) in ctx.g.monitors_iter() {
+        for (i, m) in core.g.monitors_iter() {
             if m.bar_win != WindowId::default() {
                 continue;
             }
@@ -100,58 +92,56 @@ pub fn update_bars(ctx: &mut WmCtx) {
     // borrow conflicts between the X11 connection ref and ctx.g.
     let mut created: Vec<(usize, u32)> = Vec::new();
 
-    if let Some(x11) = ctx.x11_conn() {
-        let conn = x11.conn;
-        for (i, wx, bar_y, w, bar_height) in &bar_configs {
-            let win_id = conn.generate_id().unwrap();
+    let conn = x11.conn;
+    for (i, wx, bar_y, w, bar_height) in &bar_configs {
+        let win_id = conn.generate_id().unwrap();
 
-            let aux = x11rb::protocol::xproto::CreateWindowAux::new()
-                .override_redirect(1)
-                .background_pixel(status_bg)
-                .event_mask(
-                    x11rb::protocol::xproto::EventMask::BUTTON_PRESS
-                        | x11rb::protocol::xproto::EventMask::EXPOSURE
-                        | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
-                );
-
-            let _ = conn.create_window(
-                x11rb::COPY_FROM_PARENT as u8,
-                win_id,
-                root,
-                *wx as i16,
-                *bar_y as i16,
-                *w as u16,
-                *bar_height as u16,
-                0,
-                x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
-                x11rb::COPY_FROM_PARENT,
-                &aux,
+        let aux = x11rb::protocol::xproto::CreateWindowAux::new()
+            .override_redirect(1)
+            .background_pixel(status_bg)
+            .event_mask(
+                x11rb::protocol::xproto::EventMask::BUTTON_PRESS
+                    | x11rb::protocol::xproto::EventMask::EXPOSURE
+                    | x11rb::protocol::xproto::EventMask::LEAVE_WINDOW,
             );
 
-            let _ = conn.map_window(win_id);
-            let _ = conn.flush();
-            created.push((*i, win_id));
-        }
+        let _ = conn.create_window(
+            x11rb::COPY_FROM_PARENT as u8,
+            win_id,
+            root,
+            *wx as i16,
+            *bar_y as i16,
+            *w as u16,
+            *bar_height as u16,
+            0,
+            x11rb::protocol::xproto::WindowClass::INPUT_OUTPUT,
+            x11rb::COPY_FROM_PARENT,
+            &aux,
+        );
+
+        let _ = conn.map_window(win_id);
+        let _ = conn.flush();
+        created.push((*i, win_id));
     }
 
     for (i, win_id) in created {
-        if let Some(mon) = ctx.g.monitor_mut(i) {
+        if let Some(mon) = core.g.monitor_mut(i) {
             mon.bar_win = WindowId::from(win_id);
         }
     }
 }
 
-pub fn toggle_bar(ctx: &mut WmCtx) {
-    let animated = ctx.g.animated;
-    let client_count = ctx.g.clients.len() as i32;
+pub fn toggle_bar(core: &mut CoreCtx, x11: &X11Ctx) {
+    let animated = core.g.animated;
+    let client_count = core.g.clients.len() as i32;
     let mut tmp_no_anim = false;
     if animated && client_count > 6 {
-        ctx.g.animated = false;
+        core.g.animated = false;
         tmp_no_anim = true;
     }
 
-    let bar_height = ctx.g.cfg.bar_height;
-    let selmon = ctx.g.selected_monitor_mut();
+    let bar_height = core.g.cfg.bar_height;
+    let selmon = core.g.selected_monitor_mut();
     selmon.showbar = !selmon.showbar;
 
     let current_tag = selmon.current_tag;
@@ -161,18 +151,18 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
     selmon.update_bar_position(bar_height);
 
-    let selmon_idx = ctx.g.selected_monitor_id();
-    if let Some(m) = ctx.g.monitor(selmon_idx) {
-        resize_bar_win(ctx, m);
+    let selmon_idx = core.g.selected_monitor_id();
+    if let Some(m) = core.g.monitor(selmon_idx) {
+        resize_bar_win(core, x11, m);
     }
 
     if tmp_no_anim {
-        ctx.g.animated = true;
+        core.g.animated = true;
     }
 }
 
-fn get_text_prop(ctx: &WmCtx, win: Window, atom: u32) -> Option<String> {
-    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
+fn get_text_prop(x11: &X11Ctx, win: Window, atom: u32) -> Option<String> {
+    let conn = x11.conn;
     let reply = conn
         .get_property(
             false,

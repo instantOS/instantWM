@@ -57,7 +57,7 @@ Key rule: modules should accept the smallest of `CoreCtx`, `X11Ctx`, `WaylandCtx
 
 ---
 
-## 3) Create small helper conversions at the boundary
+## 3) Create small helper conversions at the boundary (done)
 
 In `Wm::ctx()` (or `Wm::ctx_x11()` / `Wm::ctx_wayland()`):
 

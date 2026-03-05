@@ -79,11 +79,14 @@ fn wm_init(wm: &mut Wm) {
     // After atoms + drw exist, we can verify tag naming and create bars.
     {
         let mut ctx = wm.ctx();
-        crate::xresources::verify_tags_config(&mut ctx);
-        crate::bar::x11::update_bars(&mut ctx);
-        crate::bar::x11::update_status(&mut ctx);
-        crate::keyboard::grab_keys(&ctx);
-        crate::focus::focus_soft(&mut ctx, None);
+        let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+            return;
+        };
+        crate::xresources::verify_tags_config(&mut ctx.core);
+        crate::bar::x11::update_bars(&mut ctx.core, &ctx.x11);
+        crate::bar::x11::update_status(&mut ctx.core, &ctx.x11);
+        crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11);
+        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
     }
 }
 

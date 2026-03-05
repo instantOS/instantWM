@@ -10,7 +10,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 use crate::config::commands::Cmd;
-use crate::contexts::{CoreCtx, WaylandCtx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
 
 pub fn die(fmt: &str) -> ! {

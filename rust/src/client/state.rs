@@ -9,7 +9,8 @@
 //! * [`set_client_state`]     – write `WM_STATE` (normal / iconic / withdrawn).
 //! * [`set_client_tag_prop`]  – write `_NET_CLIENT_INFO` (tag mask + monitor).
 //! * [`update_client_list`]   – rebuild `_NET_CLIENT_LIST` on the root window.
-//! * [`update_title`]         – refresh `Client::name` from `_NET_WM_NAME` / `WM_NAME`.
+//! * [`update_title_x11`]     – refresh `Client::name` from `_NET_WM_NAME` / `WM_NAME`.
+//! * [`update_title_wayland`] – refresh `Client::name` from Wayland surfaces.
 //! * [`apply_rules`]          – match the client against the configured rules and
 //!                              apply floating / tag / monitor overrides.
 //! * [`update_window_type`]   – handle `_NET_WM_WINDOW_TYPE` and `_NET_WM_STATE`.
@@ -463,7 +464,7 @@ pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.
     if is_selected && is_urgent {
-        clear_urgency_hint(core, win);
+        clear_urgency_hint(core, x11, win);
     }
 
     if let Some(client) = core.g.clients.get_mut(&win) {

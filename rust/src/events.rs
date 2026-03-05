@@ -1,10 +1,10 @@
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars, reset_bar};
 use crate::client::{
-    configure, set_client_state, set_fullscreen, unmanage, update_title, update_wm_hints,
-    WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
+    configure_x11, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
+    update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
-use crate::contexts::WmCtx;
+use crate::contexts::{WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
 use crate::ipc::IpcServer;
 use crate::keyboard::{
@@ -42,30 +42,29 @@ fn win_to_client_ctx(ctx: &WmCtx, win: WindowId) -> Option<WindowId> {
     }
 }
 
-pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
+pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+    let conn = ctx.x11.conn;
     let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
     let _ = conn.flush();
 
-    let numlockmask = ctx.g.numlockmask();
-    let buttons_clone = ctx.g.cfg.buttons.clone();
-    let altcursor = ctx.g.altcursor;
-    let mut selmon_id = ctx.g.selected_monitor_id();
-    let focusfollowsmouse = ctx.g.focusfollowsmouse;
+    let numlockmask = ctx.core.g.numlockmask();
+    let buttons_clone = ctx.core.g.cfg.buttons.clone();
+    let altcursor = ctx.core.g.altcursor;
+    let mut selmon_id = ctx.core.g.selected_monitor_id();
+    let focusfollowsmouse = ctx.core.g.focusfollowsmouse;
 
     if let Some(clicked_mon) =
-        ctx.g
+        ctx.core
+            .g
             .monitors
-            .win_to_mon(event_win, ctx.g.x11.root, &*ctx.g.clients, ctx.x11_conn())
+            .win_to_mon(event_win, ctx.core.g.x11.root, &*ctx.core.g.clients, None)
     {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
-            ctx.g.set_selected_monitor(clicked_mon);
+            ctx.core.g.set_selected_monitor(clicked_mon);
             selmon_id = clicked_mon;
-            crate::focus::focus_soft(ctx, None);
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
         }
     };
 
@@ -73,7 +72,7 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     // (tag index, window handle, etc.) through to the button action.
     let bar_pos: BarPosition;
 
-    if let Some(win) = win_to_client_ctx(ctx, event_win) {
+    if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
         bar_pos = BarPosition::ClientWin;
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
@@ -81,16 +80,16 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus_soft(ctx, Some(win));
-            if let Some(monitor_id) = ctx.g.clients.get(&win).and_then(|c| c.monitor_id) {
-                restack(ctx, monitor_id);
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
+            if let Some(monitor_id) = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id) {
+                restack(&mut ctx.core, &ctx.backend, monitor_id);
             }
         }
-    } else if let Some(mon) = ctx.g.monitor(selmon_id) {
+    } else if let Some(mon) = ctx.core.g.monitor(selmon_id) {
         if event_win == mon.bar_win {
-            let position = bar_position_at_x(mon, ctx, e.event_x as i32);
+            let position = bar_position_at_x(mon, &ctx.core, e.event_x as i32);
             if position == BarPosition::StartMenu {
-                reset_bar(ctx);
+                reset_bar(&mut ctx.core, &ctx.x11);
             }
             bar_pos = position;
         } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
@@ -103,9 +102,10 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     };
 
     if bar_pos == BarPosition::Root {
-        if let Some(mon) = ctx.g.monitor(selmon_id) {
+        if let Some(mon) = ctx.core.g.monitor(selmon_id) {
             if let Some(selected_window) = mon.sel {
                 let is_floating = ctx
+                    .core
                     .g
                     .clients
                     .get(&selected_window)
@@ -113,16 +113,16 @@ pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
                     .unwrap_or(false);
                 let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
-                    let dir = ctx.g.drag.resize_direction;
-                    reset_cursor(ctx);
+                    let dir = ctx.core.g.drag.resize_direction;
+                    reset_cursor(&mut ctx.core, &ctx.x11);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     if btn == MouseButton::Right {
-                        crate::mouse::move_mouse(ctx, btn);
+                        crate::mouse::move_mouse_x11(&mut ctx.core, &ctx.x11, btn);
                     } else if btn == MouseButton::Left {
                         if dir == Some(crate::types::ResizeDirection::Top) {
-                            crate::mouse::move_mouse(ctx, btn);
+                            crate::mouse::move_mouse_x11(&mut ctx.core, &ctx.x11, btn);
                         } else {
-                            resize_mouse_directional(ctx, dir, btn);
+                            resize_mouse_directional(&mut ctx.core, &ctx.x11, dir, btn);
                         }
                     }
                     return;
