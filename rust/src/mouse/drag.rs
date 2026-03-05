@@ -1121,6 +1121,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             crate::client::show(ctx, win);
         }
         crate::focus::focus_soft(ctx, Some(win));
+        ctx.raise(win);
         if let Some((is_floating, geo, border_width, float_geo)) = ctx
             .g()
             .clients

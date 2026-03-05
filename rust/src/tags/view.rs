@@ -237,7 +237,11 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
         if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
             let ctags = TagMask::from_bits(client.tags);
             let new_tags = ctags ^ current_tagset ^ newtag;
-            client.tags = if new_tags.is_empty() { newtag.bits() } else { new_tags.bits() };
+            client.tags = if new_tags.is_empty() {
+                newtag.bits()
+            } else {
+                new_tags.bits()
+            };
         }
     }
     let mon = ctx.g_mut().selected_monitor_mut();
