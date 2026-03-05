@@ -221,6 +221,12 @@ impl WaylandState {
         self.globals().map(|g| g.animated).unwrap_or(false)
     }
 
+    fn interactive_motion_active(&self) -> bool {
+        self.globals()
+            .map(|g| g.drag.title.active || g.drag.title.dragging || g.drag.hover_resize.active)
+            .unwrap_or(false)
+    }
+
     fn set_window_target_location(
         &mut self,
         window_id: WindowId,
@@ -449,11 +455,12 @@ impl WaylandState {
                 .globals()
                 .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
                 .unwrap_or(0);
+            let remap_immediately = self.interactive_motion_active();
             self.set_window_target_location(
                 window,
                 element.clone(),
                 Point::from((rect.x + bw, rect.y + bw)),
-                false,
+                remap_immediately,
             );
             if let Some(toplevel) = element.toplevel() {
                 let target = (rect.w.max(1), rect.h.max(1));

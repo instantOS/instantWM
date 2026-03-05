@@ -626,7 +626,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         }
     };
 
-    crate::client::update_size_hints_x11(&mut ctx.core, &ctx.x11, icon_win);
+    crate::backend::x11::update_size_hints_x11(&mut ctx.core, &ctx.x11, icon_win);
     systray::update_systray_icon_geom(&mut ctx.core, &ctx.x11, icon_win, geo.w, geo.h);
 
     let conn = ctx.x11.conn;

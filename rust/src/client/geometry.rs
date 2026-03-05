@@ -101,87 +101,72 @@ pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: 
 }
 
 // ---------------------------------------------------------------------------
-// Size-hint enforcement (ICCCM §4.1.2.3)
-// ---------------------------------------------------------------------------
-
-// Re-export from X11 backend for backward compatibility.
-pub use crate::backend::x11::client::update_size_hints_x11;
-
-// ---------------------------------------------------------------------------
 // Scale helper
 // ---------------------------------------------------------------------------
 
-/// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
-///
-/// `scale` is an integer percentage (e.g. `75` means 75 %).
-pub fn scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, scale: i32) {
-    let (monitor_id, old_geo, border_width) = {
-        let c = match core.g.clients.get(&win) {
-            Some(c) => c,
-            None => return,
-        };
-        (c.monitor_id, c.geo, c.border_width)
-    };
-
-    // Determine the reference rectangle (monitor bounds, or fall back to the
-    // client's own geometry when no monitor is assigned).
-    let mon_rect = monitor_id
-        .and_then(|mid| core.g.monitors.get(mid).map(|m| m.monitor_rect))
-        .unwrap_or(old_geo);
+/// Calculate the target rect for scaling a client to `scale` percent of its monitor.
+fn calculate_scaled_geometry(
+    monitor_id: Option<crate::types::MonitorId>,
+    old_geo: Rect,
+    border_width: i32,
+    scale: i32,
+    get_monitor_rect: impl FnOnce(Option<crate::types::MonitorId>) -> Rect,
+) -> Rect {
+    let mon_rect = get_monitor_rect(monitor_id).unwrap_or(old_geo);
 
     let new_w = old_geo.w * scale / 100;
     let new_h = old_geo.h * scale / 100;
     let new_x = mon_rect.x + (mon_rect.w - new_w) / 2 - border_width;
     let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
 
-    resize_x11(
-        core,
-        x11,
-        win,
-        &Rect {
-            x: new_x,
-            y: new_y,
-            w: new_w,
-            h: new_h,
-        },
-        false,
-    );
+    Rect {
+        x: new_x,
+        y: new_y,
+        w: new_w,
+        h: new_h,
+    }
 }
 
+/// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
+///
+/// `scale` is an integer percentage (e.g. `75` means 75 %).
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
-    match ctx {
+    let target = match ctx {
         crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
-            scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, scale)
+            let c = match x11_ctx.core.g.clients.get(&win) {
+                Some(c) => c,
+                None => return,
+            };
+            calculate_scaled_geometry(
+                c.monitor_id,
+                c.geo,
+                c.border_width,
+                scale,
+                |mid| {
+                    mid.and_then(|m| x11_ctx.core.g.monitors.get(m))
+                        .map(|m| m.monitor_rect)
+                        .unwrap_or(c.geo)
+                },
+            )
         }
         crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
-            let (monitor_id, old_geo, border_width) = {
-                let c = match wl_ctx.core.g.clients.get(&win) {
-                    Some(c) => c,
-                    None => return,
-                };
-                (c.monitor_id, c.geo, c.border_width)
+            let c = match wl_ctx.core.g.clients.get(&win) {
+                Some(c) => c,
+                None => return,
             };
-            let mon_rect = monitor_id
-                .and_then(|mid| wl_ctx.core.g.monitors.get(mid).map(|m| m.monitor_rect))
-                .unwrap_or(old_geo);
-            let new_w = old_geo.w * scale / 100;
-            let new_h = old_geo.h * scale / 100;
-            let new_x = mon_rect.x + (mon_rect.w - new_w) / 2 - border_width;
-            let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
-            let target = Rect {
-                x: new_x,
-                y: new_y,
-                w: new_w,
-                h: new_h,
-            };
-            if let Some(c) = wl_ctx.core.g.clients.get_mut(&win) {
-                c.old_geo = c.geo;
-                c.geo = target;
-                if c.isfloating {
-                    c.float_geo = target;
-                }
-            }
-            wl_ctx.backend.resize_window(win, target);
+            calculate_scaled_geometry(
+                c.monitor_id,
+                c.geo,
+                c.border_width,
+                scale,
+                |mid| {
+                    mid.and_then(|m| wl_ctx.core.g.monitors.get(m))
+                        .map(|m| m.monitor_rect)
+                        .unwrap_or(c.geo)
+                },
+            )
         }
-    }
+    };
+
+    resize(ctx, win, &target, false);
 }

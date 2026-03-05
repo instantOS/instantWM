@@ -1,4 +1,5 @@
-use crate::client::{apply_size_hints_x11, set_client_state};
+use crate::backend::x11::apply_size_hints_x11;
+use crate::client::set_client_state;
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::*;
 use x11rb::connection::Connection;
