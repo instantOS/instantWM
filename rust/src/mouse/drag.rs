@@ -58,11 +58,27 @@ fn refresh_rate(ctx: &mut WmCtx) -> u32 {
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
-    let snap = ctx.g_mut().cfg.snap;
-    let mon = ctx.g_mut().selected_monitor();
+    snap_window_to_monitor_edges(ctx, c.win, c.geo.w, c.geo.h, new_x, new_y);
+}
 
-    let width = c.geo.total_width(c.border_width);
-    let height = c.geo.total_height(c.border_width);
+pub fn snap_window_to_monitor_edges(
+    ctx: &WmCtx,
+    win: WindowId,
+    w: i32,
+    h: i32,
+    new_x: &mut i32,
+    new_y: &mut i32,
+) {
+    let snap = ctx.g().cfg.snap;
+    let mon = ctx.g().selected_monitor();
+    let bw = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|client| client.border_width.max(0))
+        .unwrap_or(0);
+    let width = w + bw * 2;
+    let height = h + bw * 2;
 
     if (mon.work_rect.x - *new_x).abs() < snap {
         *new_x = mon.work_rect.x;
