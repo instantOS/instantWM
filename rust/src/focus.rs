@@ -260,7 +260,7 @@ pub fn hover_focus_target_x11(
             event_win,
             core.g.x11.root,
             &*core.g.clients,
-            Some(crate::globals::X11Conn { conn: x11.conn }),
+            Some(crate::globals::X11Conn::new(x11.conn, x11.screen_num)),
         ) {
             if new_mon_id != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(new_mon_id);

@@ -79,14 +79,8 @@ pub fn manage_x11(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width
     let borderpx = apply_default_border(core.g, w);
     let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(core.g, w);
     clamp_client_to_work_area(core.g, w, mon_work_rect);
-    configure_client_border(
-        core.g,
-        x11,
-        w,
-        borderpx,
-        mon_monitor_rect,
-        is_monocle_on_client_monitor(ctx, w),
-    );
+    let is_monocle = is_monocle_on_client_monitor(core.g, w);
+    configure_client_border(core.g, x11, w, borderpx, mon_monitor_rect, is_monocle);
 
     apply_manage_hints(core, x11, w);
     snapshot_float_geo(core.g, w, mon_monitor_rect);
@@ -156,9 +150,9 @@ fn insert_client_and_apply_rules(core: &mut CoreCtx, x11: &X11Ctx, w: WindowId, 
     apply_rules(core, x11, w);
 }
 
-fn apply_default_border(g: &crate::globals::Globals, w: WindowId) -> i32 {
+fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
     let borderpx = g.cfg.borderpx;
-    if let Some(client) = g.clients.get(&w) {
+    if let Some(client) = g.clients.get_mut(&w) {
         client.border_width = borderpx;
         client.old_border_width = borderpx;
     }
@@ -186,10 +180,10 @@ fn clamp_client_to_work_area(g: &mut crate::globals::Globals, w: WindowId, mon_w
     }
 }
 
-fn is_monocle_on_client_monitor(ctx: &WmCtx, w: WindowId) -> bool {
-    let monitor_id = ctx.g().clients.get(&w).and_then(|c| c.monitor_id);
+fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
+    let monitor_id = g.clients.get(&w).and_then(|c| c.monitor_id);
     monitor_id
-        .and_then(|mid| ctx.g().monitor(mid))
+        .and_then(|mid| g.monitor(mid))
         .map(|mon| !mon.is_tiling_layout())
         .unwrap_or(false)
 }
@@ -381,6 +375,7 @@ fn run_manage_animation(
             w: c.geo.w,
             h: c.geo.h,
         },
+        true,
     );
     ctx.backend().flush();
     animate_client_x11(
@@ -461,8 +456,14 @@ pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         }
     }
 
-    detach(&mut WmCtx::X11(ctx.reborrow()), win);
-    detach_stack(&mut WmCtx::X11(ctx.reborrow()), win);
+    {
+        let mut tmp = ctx.reborrow();
+        detach(&mut WmCtx::X11(tmp), win);
+    }
+    {
+        let mut tmp = ctx.reborrow();
+        detach_stack(&mut WmCtx::X11(tmp), win);
+    }
 
     if !destroyed {
         let x11_win: Window = win.into();
@@ -499,11 +500,15 @@ pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     // Remove from the global map.
     core.g.clients.remove(&win);
 
-    focus_soft(&mut WmCtx::X11(ctx.reborrow()), None);
+    {
+        let mut tmp = ctx.reborrow();
+        focus_soft(&mut WmCtx::X11(tmp), None);
+    }
     update_client_list(core, x11);
 
     if let Some(mid) = monitor_id {
-        arrange(&mut WmCtx::X11(ctx.reborrow()), Some(mid));
+        let mut tmp = ctx.reborrow();
+        arrange(&mut WmCtx::X11(tmp), Some(mid));
     }
 }
 
