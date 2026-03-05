@@ -234,6 +234,18 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Warp cursor to client (X11 only, no-op on Wayland).
+    pub fn warp_cursor_to_client(&mut self, win: WindowId) {
+        match self {
+            WmCtx::X11(x11) => {
+                crate::focus::warp_cursor_to_client_x11(&x11.core, &x11.x11, win);
+            }
+            WmCtx::Wayland(_) => {
+                // Wayland doesn't allow compositor cursor warping - no-op
+            }
+        }
+    }
+
     pub fn backend_kind_REMOVED(&self) -> BackendKind {
         self.backend().kind()
     }
