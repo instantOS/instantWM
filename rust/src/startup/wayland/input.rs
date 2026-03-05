@@ -13,6 +13,7 @@ use crate::backend::wayland::compositor::{
     KeyboardFocusTarget, PointerFocusTarget, WaylandState, WindowIdMarker,
 };
 use crate::monitor::update_geom;
+use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::{
     set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland,
 };
@@ -108,8 +109,22 @@ pub(super) fn handle_pointer_motion(
     let x = event.x_transformed(size.w);
     let y = event.y_transformed(size.h);
     *pointer_location = Point::from((x, y));
+    let root_x = pointer_location.x.round() as i32;
+    let root_y = pointer_location.y.round() as i32;
 
-    if let Some(lock_win) = wayland_active_drag_window(wm) {
+    if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
+        return;
+    }
+
+    let active_drag_window = wayland_active_drag_window(wm);
+    let resize_offer_window = if active_drag_window.is_none() {
+        update_wayland_selected_resize_offer(wm, root_x, root_y)
+    } else {
+        None
+    };
+    let focus_lock_window = active_drag_window.or(resize_offer_window);
+
+    if let Some(lock_win) = focus_lock_window {
         let mut ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
@@ -125,18 +140,6 @@ pub(super) fn handle_pointer_motion(
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
         crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false);
-    }
-
-    let root_x = pointer_location.x.round() as i32;
-    let root_y = pointer_location.y.round() as i32;
-
-    if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
-        return;
-    }
-
-    if wayland_active_drag_window(wm).is_none() {
-        let mut ctx = wm.ctx();
-        let _ = crate::mouse::handle_floating_resize_hover(&mut ctx, root_x, root_y, false);
     }
 
     let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
@@ -360,23 +363,9 @@ fn wayland_hover_resize_drag_begin(
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
-    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&wm_ctx, root_x, root_y)
-    else {
+    let Some((win, dir, geo)) = wayland_selected_resize_target_at(&ctx, root_x, root_y) else {
         return false;
     };
-    let Some((geo, is_floating, has_tiling)) = ctx.core.g.clients.get(&win).map(|c| {
-        (
-            c.geo,
-            c.isfloating,
-            ctx.core.g.selected_monitor().is_tiling_layout(),
-        )
-    }) else {
-        return false;
-    };
-    if !is_floating && has_tiling {
-        return false;
-    }
     let move_mode = btn == MouseButton::Right
         || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
     ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
@@ -400,6 +389,71 @@ fn wayland_hover_resize_drag_begin(
     }
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
     crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise(win);
+    true
+}
+
+fn wayland_selected_resize_target_at(
+    ctx: &crate::contexts::WmCtxWayland<'_>,
+    root_x: i32,
+    root_y: i32,
+) -> Option<(WindowId, ResizeDirection, Rect)> {
+    let win = ctx.core.selected_client()?;
+    let mon = ctx.core.g.selected_monitor();
+    if mon.showbar && root_y < mon.monitor_rect.y + ctx.core.g.cfg.bar_height {
+        return None;
+    }
+    let selected_tags = mon.selected_tags();
+    let c = ctx.core.g.clients.get(&win)?;
+    if c.is_hidden || !c.is_visible_on_tags(selected_tags) {
+        return None;
+    }
+    let has_tiling = mon.is_tiling_layout();
+    if !c.isfloating && has_tiling {
+        return None;
+    }
+    if !is_point_in_resize_border(c.geo, root_x, root_y) {
+        return None;
+    }
+    let hit_x = root_x - c.geo.x;
+    let hit_y = root_y - c.geo.y;
+    let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
+    Some((win, dir, c.geo))
+}
+
+fn update_wayland_selected_resize_offer(wm: &mut Wm, root_x: i32, root_y: i32) -> Option<WindowId> {
+    let mut ctx = wm.ctx();
+    let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        return None;
+    };
+    let Some((win, dir, _)) = wayland_selected_resize_target_at(&ctx, root_x, root_y) else {
+        if ctx.core.g.altcursor == AltCursor::Resize {
+            clear_wayland_hover_resize_offer(&mut ctx);
+        }
+        return None;
+    };
+    set_cursor_resize_wayland(&mut ctx, Some(dir));
+    ctx.core.g.altcursor = AltCursor::Resize;
+    ctx.core.g.drag.resize_direction = Some(dir);
+    Some(win)
+}
+
+fn clear_wayland_hover_resize_offer(ctx: &mut crate::contexts::WmCtxWayland<'_>) {
+    ctx.core.g.altcursor = AltCursor::None;
+    ctx.core.g.drag.resize_direction = None;
+    set_cursor_default_wayland(ctx);
+}
+
+fn is_point_in_resize_border(geo: Rect, x: i32, y: i32) -> bool {
+    if x > geo.x && x < geo.x + geo.w && y > geo.y && y < geo.y + geo.h {
+        return false;
+    }
+    if y < geo.y - RESIZE_BORDER_ZONE
+        || x < geo.x - RESIZE_BORDER_ZONE
+        || y > geo.y + geo.h + RESIZE_BORDER_ZONE
+        || x > geo.x + geo.w + RESIZE_BORDER_ZONE
+    {
+        return false;
+    }
     true
 }
 
