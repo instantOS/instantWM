@@ -431,6 +431,7 @@ fn render_drm_output(
         let mut ctx = wm.ctx();
         let bar_buffers = crate::bar::wayland::render_bar_buffers(
             &mut ctx.core,
+            &mut wm.bar_painter,
             smithay::utils::Scale::from(1.0),
         );
         for (buffer, x, y) in bar_buffers {

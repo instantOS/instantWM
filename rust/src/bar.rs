@@ -48,17 +48,17 @@ impl BarState {
     }
 }
 
-pub fn text_width(core: &CoreCtx, text: &str) -> i32 {
-    core.bar_painter.measure_text_width(text)
-}
-
 //TODO: remove, redundant
 pub(crate) fn layout_symbol(m: &Monitor) -> String {
     m.layout_symbol()
 }
 
-pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
-    text_width(core, &layout_symbol(m)) + core.g.cfg.horizontal_padding
+pub fn get_layout_symbol_width(
+    core: &CoreCtx,
+    m: &Monitor,
+    painter: &mut dyn crate::bar::paint::BarPainter,
+) -> i32 {
+    painter.text_width(&layout_symbol(m)) + core.g.cfg.horizontal_padding
 }
 
 pub fn draw_bar(core: &mut CoreCtx, x11: &X11Ctx, mon_idx: usize) {

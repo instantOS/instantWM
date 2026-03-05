@@ -226,10 +226,10 @@ pub struct WaylandBarPainter {
     has_cached_buffers: bool,
 }
 
-struct BarBuffer {
-    buffer: MemoryRenderBuffer,
-    x: i32,
-    y: i32,
+pub struct BarBuffer {
+    pub buffer: MemoryRenderBuffer,
+    pub x: i32,
+    pub y: i32,
 }
 
 impl Clone for BarBuffer {
@@ -438,13 +438,17 @@ impl BarPainter for WaylandBarPainter {
     }
 }
 
-pub fn draw_bar_wayland(core: &mut crate::contexts::CoreCtx, mon_idx: usize) {
-    draw_bar_common_with_painter(core, mon_idx);
+pub fn draw_bar_wayland(
+    core: &mut crate::contexts::CoreCtx,
+    painter: &mut WaylandBarPainter,
+    mon_idx: usize,
+) {
+    draw_bar_common(core, None, mon_idx, painter);
 }
 
-pub fn draw_bars_wayland(core: &mut crate::contexts::CoreCtx) {
+pub fn draw_bars_wayland(core: &mut crate::contexts::CoreCtx, painter: &mut WaylandBarPainter) {
     core.g.status_text_width =
-        crate::bar::renderer::compute_status_hit_width(core.bar_painter, &core.g.status_text);
+        crate::bar::renderer::compute_status_hit_width(painter, &core.g.status_text);
 }
 
 pub fn reset_bar_wayland(core: &mut crate::contexts::CoreCtx) {
@@ -457,12 +461,12 @@ pub fn should_draw_bar_wayland(core: &crate::contexts::CoreCtx) -> bool {
 
 pub fn render_bar_buffers(
     core: &mut crate::contexts::CoreCtx,
+    painter: &mut WaylandBarPainter,
     scale: Scale<f64>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
     let key = bar_render_key(core);
-    if core.bar_painter.has_cached_buffers && core.bar_painter.cached_key == key {
-        return core
-            .bar_painter
+    if painter.has_cached_buffers && painter.cached_key == key {
+        return painter
             .cached_buffers
             .iter()
             .map(|b| (b.buffer.clone(), b.x, b.y))
@@ -487,14 +491,13 @@ pub fn render_bar_buffers(
         .collect();
 
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
-        core.bar_painter
-            .begin(scale, origin_x, origin_y, width, height);
-        draw_bar_common_with_painter(core, mon_idx);
-        core.bar_painter.finish();
+        painter.begin(scale, origin_x, origin_y, width, height);
+        draw_bar_common(core, None, mon_idx, painter);
+        painter.finish();
     }
 
-    let rendered = core.bar_painter.take_buffers();
-    core.bar_painter.cached_buffers = rendered
+    let rendered = painter.take_buffers();
+    painter.cached_buffers = rendered
         .iter()
         .map(|(buffer, x, y)| BarBuffer {
             buffer: buffer.clone(),
@@ -502,17 +505,10 @@ pub fn render_bar_buffers(
             y: *y,
         })
         .collect();
-    core.bar_painter.cached_key = key;
-    core.bar_painter.has_cached_buffers = true;
+    painter.cached_key = key;
+    painter.has_cached_buffers = true;
 
     rendered
-}
-
-fn draw_bar_common_with_painter(core: &mut crate::contexts::CoreCtx, mon_idx: usize) {
-    let painter_ptr = core.bar_painter as *mut WaylandBarPainter;
-    unsafe {
-        draw_bar_common(core, None, mon_idx, &mut *painter_ptr);
-    }
 }
 
 fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {

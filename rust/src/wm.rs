@@ -48,38 +48,27 @@ impl Wm {
 
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let backend = BackendRef::from_backend(&self.backend);
+        let core = CoreCtx::new(
+            &mut self.g,
+            &mut self.running,
+            &mut self.bar,
+            &mut self.focus,
+        );
         match &self.backend {
-            Backend::X11(x11) => {
-                let core = CoreCtx::new_without_painter(
-                    &mut self.g,
-                    &mut self.running,
-                    &mut self.bar,
-                    &mut self.focus,
-                );
-                WmCtx::X11(WmCtxX11 {
-                    core,
-                    backend,
-                    x11: X11Ctx {
-                        conn: &x11.conn,
-                        screen_num: x11.screen_num,
-                    },
-                })
-            }
-            Backend::Wayland(wayland) => {
-                let core = CoreCtx::new_with_wayland_painter(
-                    &mut self.g,
-                    &mut self.running,
-                    &mut self.bar,
-                    &mut self.bar_painter,
-                    &mut self.focus,
-                );
-                WmCtx::Wayland(WmCtxWayland {
-                    core,
-                    backend,
-                    wayland: WaylandCtx { backend: wayland },
-                    xwayland: None,
-                })
-            }
+            Backend::X11(x11) => WmCtx::X11(WmCtxX11 {
+                core,
+                backend,
+                x11: X11Ctx {
+                    conn: &x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            }),
+            Backend::Wayland(wayland) => WmCtx::Wayland(WmCtxWayland {
+                core,
+                backend,
+                wayland: WaylandCtx { backend: wayland },
+                xwayland: None,
+            }),
         }
     }
 }

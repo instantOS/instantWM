@@ -12,26 +12,10 @@ use crate::globals::Globals;
 use crate::types::{Client, Rect, WindowId};
 use x11rb::rust_connection::RustConnection;
 
-/// Backend-specific bar painter enum.
-pub enum BarPainter<'a> {
-    Wayland(&'a mut crate::bar::wayland::WaylandBarPainter),
-    None,
-}
-
-impl<'a> BarPainter<'a> {
-    pub fn wayland(&mut self) -> Option<&mut crate::bar::wayland::WaylandBarPainter> {
-        match self {
-            BarPainter::Wayland(p) => Some(p),
-            _ => None,
-        }
-    }
-}
-
 pub struct CoreCtx<'a> {
     pub g: &'a mut Globals,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
-    pub bar_painter: BarPainter<'a>,
     pub focus: &'a mut FocusState,
 }
 
@@ -40,45 +24,12 @@ impl<'a> CoreCtx<'a> {
         g: &'a mut Globals,
         running: &'a mut bool,
         bar: &'a mut BarState,
-        bar_painter: BarPainter<'a>,
         focus: &'a mut FocusState,
     ) -> Self {
         Self {
             g,
             running,
             bar,
-            bar_painter,
-            focus,
-        }
-    }
-
-    pub fn new_with_wayland_painter(
-        g: &'a mut Globals,
-        running: &'a mut bool,
-        bar: &'a mut BarState,
-        bar_painter: &'a mut crate::bar::wayland::WaylandBarPainter,
-        focus: &'a mut FocusState,
-    ) -> Self {
-        Self {
-            g,
-            running,
-            bar,
-            bar_painter: BarPainter::Wayland(bar_painter),
-            focus,
-        }
-    }
-
-    pub fn new_without_painter(
-        g: &'a mut Globals,
-        running: &'a mut bool,
-        bar: &'a mut BarState,
-        focus: &'a mut FocusState,
-    ) -> Self {
-        Self {
-            g,
-            running,
-            bar,
-            bar_painter: BarPainter::None,
             focus,
         }
     }
@@ -108,10 +59,6 @@ impl<'a> CoreCtx<'a> {
             g: self.g,
             running: self.running,
             bar: self.bar,
-            bar_painter: match &mut self.bar_painter {
-                BarPainter::Wayland(p) => BarPainter::Wayland(p),
-                BarPainter::None => BarPainter::None,
-            },
             focus: self.focus,
         }
     }
