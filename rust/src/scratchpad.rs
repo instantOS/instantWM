@@ -140,28 +140,21 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 }
 
 pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
-    let found = match scratchpad_find(ctx, name) {
-        Some(w) => w,
-        None => return,
+    let Some(found) = scratchpad_find(ctx, name) else {
+        return;
     };
 
-    let (is_sticky, monitor_id) = {
-        if let Some(c) = ctx.g_mut().clients.get(&found) {
-            (c.issticky, c.monitor_id)
-        } else {
-            return;
-        }
+    let Some(client) = ctx.g_mut().clients.get(&found) else {
+        return;
     };
-
-    if !is_sticky {
+    if !client.issticky {
         return;
     }
+    let monitor_id = client.monitor_id;
 
-    {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
-            client.issticky = false;
-            client.tags = SCRATCHPAD_MASK;
-        }
+    if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
+        client.issticky = false;
+        client.tags = SCRATCHPAD_MASK;
     }
 
     crate::focus::focus_soft(ctx, None);
