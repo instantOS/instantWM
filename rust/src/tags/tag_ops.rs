@@ -3,7 +3,7 @@
 //! This module provides ergonomic wrappers around tag operations using
 //! the new `TagMask` and `TagSelection` types.
 
-use crate::contexts::WmCtxX11;
+use crate::contexts::WmCtx;
 use crate::types::{TagMask, TagSelection};
 
 /// View tags using a type-safe selection.
@@ -18,21 +18,20 @@ use crate::types::{TagMask, TagSelection};
 /// use crate::tags::tag_ops;
 ///
 /// // View a single tag
-/// tag_ops::view_selection(TagSelection::Single(3));
+/// tag_ops::view_selection(ctx, TagSelection::Single(3));
 ///
 /// // View all tags (overview)
-/// tag_ops::view_selection(TagSelection::All);
+/// tag_ops::view_selection(ctx, TagSelection::All);
 ///
 /// // View specific tags
 /// let mask = TagMask::single(1).unwrap() | TagMask::single(2).unwrap();
-/// tag_ops::view_selection(TagSelection::Multi(mask));
+/// tag_ops::view_selection(ctx, TagSelection::Multi(mask));
 /// ```
-pub fn view_selection(ctx: &mut WmCtxX11, selection: TagSelection) {
-    let num_tags = ctx.core.g.tags.count();
-    let current_mask = TagMask::from_bits(ctx.core.g.selected_monitor().selected_tags());
-    let prev_tag = ctx.core.g.selected_monitor().prev_tag;
+pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
+    let num_tags = ctx.g().tags.count();
+    let current_mask = TagMask::from_bits(ctx.g().selected_monitor().selected_tags());
+    let prev_tag = ctx.g().selected_monitor().prev_tag;
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);
-    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    super::view::view(&mut wm_ctx, mask);
+    super::view::view(ctx, mask);
 }
