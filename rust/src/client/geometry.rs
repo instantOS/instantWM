@@ -18,6 +18,7 @@ use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,
 };
+use crate::backend::BackendOps;
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::{MonitorId, Rect, WindowId};
 
@@ -70,14 +71,21 @@ pub fn resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect, 
 
 /// Backend-agnostic resize entry point.
 ///
-/// Wayland resize is not wired yet.
 pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
     match ctx {
         crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
             resize_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect, interact)
         }
-        crate::contexts::WmCtx::Wayland(_) => {
-            println!("Wayland resize not yet implemented");
+        crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
+            let _ = interact;
+            if let Some(c) = wl_ctx.core.g.clients.get_mut(&win) {
+                c.old_geo = c.geo;
+                c.geo = *rect;
+                if c.isfloating {
+                    c.float_geo = *rect;
+                }
+                wl_ctx.backend.resize_window(win, *rect);
+            }
         }
     }
 }
@@ -116,17 +124,6 @@ pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: 
 
     // Send a synthetic ConfigureNotify so the client knows its geometry.
     crate::client::focus::configure_x11(core, x11, win);
-}
-
-pub fn resize_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect) {
-    match ctx {
-        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
-            resize_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect)
-        }
-        crate::contexts::WmCtx::Wayland(_) => {
-            println!("Wayland resize_client not yet implemented");
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -223,6 +220,7 @@ fn is_floating_layout(core: &CoreCtx, monitor_id: Option<MonitorId>) -> bool {
 }
 
 /// Apply ICCCM WM_NORMAL_HINTS constraints to the geometry.
+/// TODO: this should probably be moved to the X11 backend
 fn apply_icccm_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, geo: &mut Rect) {
     let needs_update = core
         .g
@@ -254,6 +252,7 @@ fn apply_icccm_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, g
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
 /// `min_aspect`, `max_aspect`, and `isfixed`.
+/// TODO: this should probably be moved to the X11 backend
 pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     let Some(data) = fetch_wm_normal_hints(x11, win) else {
         return;
@@ -322,17 +321,6 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 
     c.isfixed = c.size_hints.is_fixed();
     c.hintsvalid = 1;
-}
-
-pub fn update_size_hints(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId) {
-    match ctx {
-        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
-            update_size_hints_x11(&mut x11_ctx.core, &x11_ctx.x11, win)
-        }
-        crate::contexts::WmCtx::Wayland(_) => {
-            println!("Wayland update_size_hints not yet implemented");
-        }
-    }
 }
 
 fn fetch_wm_normal_hints(x11: &X11Ctx, win: WindowId) -> Option<Vec<u32>> {

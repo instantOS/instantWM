@@ -183,7 +183,7 @@ pub fn run() -> ! {
 
             {
                 let mut ctx = wm.ctx();
-                if !ctx.g.clients.is_empty() {
+                if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
                     let selected_monitor_id = ctx.g.selected_monitor_id();
                     crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
                 }

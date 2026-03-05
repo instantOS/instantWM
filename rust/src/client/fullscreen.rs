@@ -32,20 +32,6 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 // ---------------------------------------------------------------------------
-// Border-width save / restore
-// ---------------------------------------------------------------------------
-
-/// Copy `client.border_width` → `client.old_border_width`.
-pub fn save_border_width(core: &mut CoreCtx, win: WindowId) {
-    core.g.clients.save_border_width(win);
-}
-
-/// Copy `client.old_border_width` → `client.border_width`.
-pub fn restore_border_width(core: &mut CoreCtx, win: WindowId) {
-    core.g.clients.restore_border_width(win);
-}
-
-// ---------------------------------------------------------------------------
 // Real fullscreen
 // ---------------------------------------------------------------------------
 

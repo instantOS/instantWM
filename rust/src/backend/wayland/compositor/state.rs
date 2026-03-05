@@ -286,6 +286,10 @@ impl WaylandState {
         }
     }
 
+    pub fn has_active_window_animations(&self) -> bool {
+        !self.window_animations.is_empty()
+    }
+
     pub fn attach_globals(&mut self, globals: &mut Globals) {
         self.globals = Some(NonNull::from(globals));
     }

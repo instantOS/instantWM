@@ -69,8 +69,16 @@ pub use focus::{
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{
-    restore_border_width, save_border_width, set_fullscreen_x11, toggle_fake_fullscreen_x11,
+    set_fullscreen_x11, toggle_fake_fullscreen_x11,
 };
+
+pub fn save_border_width(core: &mut crate::contexts::CoreCtx, win: crate::types::WindowId) {
+    core.g.clients.save_border_width(win);
+}
+
+pub fn restore_border_width(core: &mut crate::contexts::CoreCtx, win: crate::types::WindowId) {
+    core.g.clients.restore_border_width(win);
+}
 
 // -- X11 state / properties --------------------------------------------------
 pub use state::{
