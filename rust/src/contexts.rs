@@ -172,4 +172,100 @@ impl<'a> WmCtx<'a> {
     pub fn set_border(&self, win: WindowId, width: i32) {
         self.backend().set_border_width(win, width);
     }
+
+    /// Get a reference to CoreCtx.
+    pub fn core(&self) -> &CoreCtx<'_> {
+        match self {
+            WmCtx::X11(ctx) => &ctx.core,
+            WmCtx::Wayland(ctx) => &ctx.core,
+        }
+    }
+
+    /// Get a mutable reference to CoreCtx.
+    pub fn core_mut(&mut self) -> &mut CoreCtx<'_> {
+        match self {
+            WmCtx::X11(ctx) => &mut ctx.core,
+            WmCtx::Wayland(ctx) => &mut ctx.core,
+        }
+    }
+
+    /// Get a reference to X11Ctx (only valid for X11 backend).
+    pub fn x11(&self) -> Option<&X11Ctx<'_>> {
+        match self {
+            WmCtx::X11(ctx) => Some(&ctx.x11),
+            WmCtx::Wayland(_) => None,
+        }
+    }
+
+    /// Get a mutable reference to X11Ctx (only valid for X11 backend).
+    pub fn x11_mut(&mut self) -> Option<&mut X11Ctx<'_>> {
+        match self {
+            WmCtx::X11(ctx) => Some(&mut ctx.x11),
+            WmCtx::Wayland(_) => None,
+        }
+    }
+
+    /// Get a reference to WaylandCtx (only valid for Wayland backend).
+    pub fn wayland(&self) -> Option<&WaylandCtx<'_>> {
+        match self {
+            WmCtx::X11(_) => None,
+            WmCtx::Wayland(ctx) => Some(&ctx.wayland),
+        }
+    }
+
+    /// Get a mutable reference to WaylandCtx (only valid for Wayland backend).
+    pub fn wayland_mut(&mut self) -> Option<&mut WaylandCtx<'_>> {
+        match self {
+            WmCtx::X11(_) => None,
+            WmCtx::Wayland(ctx) => Some(&mut ctx.wayland),
+        }
+    }
+
+    /// Get an Option of WaylandCtx for backend-agnostic code.
+    pub fn wayland_ctx_opt(&self) -> Option<&WaylandCtx<'_>> {
+        self.wayland()
+    }
+
+    /// Convert to &mut WmCtxX11, panics if not X11.
+    pub fn as_x11_mut(&mut self) -> &mut WmCtxX11<'_> {
+        match self {
+            WmCtx::X11(ctx) => ctx,
+            WmCtx::Wayland(_) => panic!("as_x11_mut called on Wayland backend"),
+        }
+    }
+
+    /// Execute a closure with &mut CoreCtx and &X11Ctx (X11 only).
+    pub fn with_x11_ctx<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut CoreCtx<'_>, &X11Ctx<'_>) -> R,
+    {
+        match self {
+            WmCtx::X11(ctx) => f(&mut ctx.core, &ctx.x11),
+            WmCtx::Wayland(_) => panic!("with_x11_ctx called on Wayland backend"),
+        }
+    }
+
+    /// Execute a closure with &mut CoreCtx and &X11Ctx (X11 only), returning mutable reference.
+    pub fn with_x11_ctx_mut<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut CoreCtx<'_>, &mut X11Ctx<'_>) -> R,
+    {
+        match self {
+            WmCtx::X11(ctx) => f(&mut ctx.core, &mut ctx.x11),
+            WmCtx::Wayland(_) => panic!("with_x11_ctx_mut called on Wayland backend"),
+        }
+    }
+
+    /// Convert to &mut WmCtxWayland, panics if not Wayland.
+    pub fn as_wayland_mut(&mut self) -> &mut WmCtxWayland<'_> {
+        match self {
+            WmCtx::X11(_) => panic!("as_wayland_mut called on X11 backend"),
+            WmCtx::Wayland(ctx) => ctx,
+        }
+    }
+
+    /// Spawn a command using the core context.
+    pub fn spawn(&self, cmd: crate::config::commands::Cmd) {
+        crate::util::spawn(self.core(), self.wayland_ctx_opt(), cmd);
+    }
 }

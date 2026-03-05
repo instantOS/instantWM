@@ -10,3 +10,8 @@ compile_commands.json
 .cache/clangd/index
 /rust/target
 /tags
+
+# Gas Town (added by gt)
+.runtime/
+.claude/commands/
+.logs/

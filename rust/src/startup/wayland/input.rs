@@ -77,11 +77,11 @@ pub(super) fn handle_keyboard(
             if wm_shortcuts_allowed && event.state() == smithay::backend::input::KeyState::Pressed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let mut ctx = wm.ctx();
-                let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+                let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
                 };
                 if crate::keyboard::handle_keysym(
-                    &mut ctx.core,
+                    ctx,
                     u32::from(keysym.modified_sym()),
                     mod_mask,
                 ) {

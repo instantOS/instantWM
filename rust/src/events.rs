@@ -380,11 +380,11 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn key_press(ctx: &mut WmCtxX11<'_>, e: &KeyPressEvent) {
-    keyboard_key_press(&mut ctx.core, &ctx.x11, e);
+    keyboard_key_press(ctx, e);
 }
 
 pub fn key_release(ctx: &mut WmCtxX11<'_>, e: &KeyReleaseEvent) {
-    keyboard_key_release(&mut ctx.core, &ctx.x11, e);
+    keyboard_key_release(ctx, e);
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
