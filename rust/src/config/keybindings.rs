@@ -22,8 +22,8 @@ use crate::tags::{
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
-    alt_tab_free, hide_window, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw,
-    toggle_prefix, toggle_show_tags, toggle_sticky, unhide_all,
+    alt_tab_free, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix,
+    toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{Direction, Key, StackDirection, ToggleAction};
 use crate::util::spawn;
@@ -280,7 +280,7 @@ pub fn get_keys() -> Vec<Key> {
         key_x11!(MC,     XK_R     => |ctx| redraw_win(&mut ctx.core, &ctx.x11)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
-                hide_window(ctx, win)
+                crate::client::hide(ctx, win)
             }
         }),
         key!(MCA, XK_H => |ctx| unhide_all(ctx)),

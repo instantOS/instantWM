@@ -135,10 +135,6 @@ pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) 
     draw_bar(core, x11, selmon_id);
 }
 
-pub fn hide_window(ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-    crate::client::hide(ctx, win);
-}
-
 pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     let clients: Vec<WindowId> = ctx.g().clients.keys().copied().collect();
 

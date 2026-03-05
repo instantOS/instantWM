@@ -144,7 +144,7 @@ pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
             let Some(c) = core.g.clients.get(&win) else {
                 continue;
             };
-            let is_visible = c.is_visible_on_tags(selected_tags);
+            let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             operations.push((win, is_visible));
         }
     }
