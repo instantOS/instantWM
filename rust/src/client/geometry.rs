@@ -112,7 +112,7 @@ fn calculate_scaled_geometry(
     scale: i32,
     get_monitor_rect: impl FnOnce(Option<crate::types::MonitorId>) -> Rect,
 ) -> Rect {
-    let mon_rect = get_monitor_rect(monitor_id).unwrap_or(old_geo);
+    let mon_rect = get_monitor_rect(monitor_id);
 
     let new_w = old_geo.w * scale / 100;
     let new_h = old_geo.h * scale / 100;

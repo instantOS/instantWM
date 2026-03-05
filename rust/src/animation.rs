@@ -208,14 +208,6 @@ pub fn check_animate_x11(
     }
 }
 
-pub fn up_scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
-    crate::client::scale_client_x11(core, x11, win, 110);
-}
-
-pub fn down_scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
-    crate::client::scale_client_x11(core, x11, win, 90);
-}
-
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     let sel_mon = ctx.g().selected_monitor_id();
 

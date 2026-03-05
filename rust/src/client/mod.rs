@@ -51,7 +51,7 @@ pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{resize, resize_client_x11, resize_x11, scale_client_x11};
+pub use geometry::{resize, resize_client_x11, resize_x11, scale_client};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{

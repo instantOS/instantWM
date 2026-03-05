@@ -258,7 +258,10 @@ pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
             Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
             None => return,
         },
-        WmCtx::Wayland(_) => return,
+        WmCtx::Wayland(wl) => match wl.core.g.clients.get(&win) {
+            Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
+            None => return,
+        },
     };
 
     if is_true_fullscreen {
@@ -268,7 +271,15 @@ pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
         return;
     }
 
-    apply_float_change(ctx, win, false, false, false);
+    match ctx {
+        WmCtx::X11(_) => apply_float_change(ctx, win, false, false, false),
+        WmCtx::Wayland(wl) => {
+            if let Some(client) = wl.core.g.clients.get_mut(&win) {
+                client.isfloating = false;
+                client.float_geo = client.geo;
+            }
+        }
+    }
 
     if should_arrange {
         let selmon_id = ctx.g().selected_monitor_id();
