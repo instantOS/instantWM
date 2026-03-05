@@ -42,9 +42,12 @@ pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 // ── Cursor helpers ───────────────────────────────────────────────────────────
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
-fn warp_pointer_resize(ctx: &crate::contexts::WmCtxX11, win: WindowId, dir: ResizeDirection) {
-    let conn = ctx.x11.conn;
-    let Some(c) = ctx.core.g.clients.get(&win) else {
+fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
+    let (conn, clients) = match ctx {
+        WmCtx::X11(x11) => (&x11.x11.conn, &mut x11.core.g.clients),
+        WmCtx::Wayland(_) => return,
+    };
+    let Some(c) = clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -104,7 +107,7 @@ pub fn hover_resize_target_at(
 ) -> Option<(WindowId, ResizeDirection)> {
     let win = find_floating_win_at_resize_border(ctx, root_x, root_y)?;
     let dir = ctx
-        .g
+        .g()
         .clients
         .get(&win)
         .map(|c| {
@@ -416,7 +419,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         return false;
     }
     let hovered_is_tiled = ctx
-        .g
+        .g()
         .clients
         .get(&hovered_win)
         .map(|c| !c.isfloating)
@@ -460,11 +463,12 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 /// cursor, respecting stacking order. This ensures that if multiple windows
 /// overlap, the topmost (visible) one is returned, not just any window whose
 /// geometry contains the cursor.
-pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
-    require_x11_ret!(ctx, None);
-    let conn = ctx.x11_conn_REMOVED().map(|x11| x11.conn)?;
-    let root = ctx.g_mut().x11.root;
-    get_cursor_client_win_with_conn(ctx, conn, root)
+pub fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
+    let (conn, root, core) = match ctx {
+        WmCtx::X11(x11) => (x11.x11.conn, x11.core.g.x11.root, &mut x11.core),
+        WmCtx::Wayland(_) => return None,
+    };
+    get_cursor_client_win_with_conn(core, conn, root)
 }
 
 pub fn get_cursor_client_win_x11(core: &CoreCtx, x11: &X11Ctx) -> Option<WindowId> {
@@ -493,8 +497,11 @@ fn get_cursor_client_win_with_conn(
 }
 
 /// Query the pointer position in both root and window-local coordinates.
-fn query_pointer_on_win(ctx: &WmCtx, win: WindowId) -> Option<(i32, i32, i32, i32)> {
-    let conn = ctx.x11_conn_REMOVED().map(|x11| x11.conn)?;
+fn query_pointer_on_win(ctx: &mut WmCtx, win: WindowId) -> Option<(i32, i32, i32, i32)> {
+    let conn = match ctx {
+        WmCtx::X11(x11) => x11.x11.conn,
+        WmCtx::Wayland(_) => return None,
+    };
     let x11_win: Window = win.into();
     let reply = conn.query_pointer(x11_win).ok()?.reply().ok()?;
     Some((

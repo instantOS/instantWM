@@ -184,8 +184,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,      XK_RIGHT   => |ctx| move_client(ctx, Direction::Right)),
         key!(MS,      XK_LEFT    => |ctx| shift_tag_by(ctx, Direction::Left, 1)),
         key!(MS,      XK_RIGHT   => |ctx| shift_tag_by(ctx, Direction::Right, 1)),
-        key_x11!(MSC,     XK_RIGHT   => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key_x11!(MSC,     XK_LEFT    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(MSC,     XK_RIGHT   => |ctx| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        key_x11!(MSC,     XK_LEFT    => |ctx| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
         // View all tags (overview mode)
         key_x11!(MODKEY,  XK_0       => |ctx| {
             tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::All)
@@ -347,14 +347,14 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
         key!(0, XK_TAB    => |ctx| spawn(ctx, Cmd::CaretInstantSwitch)),
         key!(0, XK_PLUS   => |ctx| spawn(ctx, Cmd::UpVol)),
         key!(0, XK_MINUS  => |ctx| spawn(ctx, Cmd::DownVol)),
-        key_x11!(0, XK_H     => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key_x11!(0, XK_L     => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key_x11!(0, XK_LEFT  => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key_x11!(0, XK_RIGHT => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key_x11!(0, XK_K     => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key_x11!(0, XK_J     => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key_x11!(0, XK_UP    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key_x11!(0, XK_DOWN  => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(0, XK_H     => |ctx| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
+        key_x11!(0, XK_L     => |ctx| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        key_x11!(0, XK_LEFT  => |ctx| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
+        key_x11!(0, XK_RIGHT => |ctx| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        key_x11!(0, XK_K     => |ctx| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        key_x11!(0, XK_J     => |ctx| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
+        key_x11!(0, XK_UP    => |ctx| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        key_x11!(0, XK_DOWN  => |ctx| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
         // Type-safe tag views with clear semantics
         key_x11!(0, XK_1 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(1))),
         key_x11!(0, XK_2 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(2))),
@@ -395,5 +395,3 @@ macro_rules! btn_x11 {
         }
     };
 }
-
-

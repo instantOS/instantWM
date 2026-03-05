@@ -4,14 +4,15 @@ use crate::types::ResizeDirection;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{change_window_attributes, ChangeWindowAttributesAux};
 
-fn set_x11_root_cursor(ctx: &WmCtx, cursor_index: usize) {
-    let Some(conn) = ctx.x11_conn_REMOVED().map(|x11| x11.conn) else {
-        return;
+fn set_x11_root_cursor(ctx: &mut WmCtx, cursor_index: usize) {
+    let (conn, root) = match ctx {
+        WmCtx::X11(x11) => (x11.x11.conn, x11.core.g.x11.root),
+        WmCtx::Wayland(_) => return,
     };
     if let Some(ref cursor) = ctx.g_mut().cfg.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
-            ctx.g_mut().x11.root,
+            root,
             &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
         );
         let _ = conn.flush();

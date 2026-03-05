@@ -19,7 +19,7 @@
 //! resize support.
 
 use crate::client::resize;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
@@ -31,11 +31,14 @@ use crate::types::ResizeDirection;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-pub fn resize_mouse_from_cursor(ctx: &mut WmCtxX11, btn: MouseButton) {
-    let Some(win) = ctx.core.selected_client() else {
+pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
+    let WmCtx::X11(x11) = ctx else {
         return;
     };
-    let is_blocked = ctx
+    let Some(win) = x11.core.selected_client() else {
+        return;
+    };
+    let is_blocked = x11
         .core
         .g
         .clients
@@ -47,11 +50,11 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtxX11, btn: MouseButton) {
     };
 
     let dir = {
-        let Some(c) = ctx.core.g.clients.get(&win) else {
+        let Some(c) = x11.core.g.clients.get(&win) else {
             return;
         };
 
-        let conn = ctx.x11.conn;
+        let conn = x11.x11.conn;
         let x11_win: Window = win.into();
         let Ok(cookie) = conn.query_pointer(x11_win) else {
             return;
@@ -88,11 +91,14 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// The loop ends on `ButtonRelease`.  After the grab is released,
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
-pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
-    let Some(win) = ctx.core.selected_client() else {
+pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
+    let WmCtx::X11(x11) = ctx else {
         return;
     };
-    let is_blocked = ctx
+    let Some(win) = x11.core.selected_client() else {
+        return;
+    };
+    let is_blocked = x11
         .core
         .g
         .clients
@@ -103,17 +109,17 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.core.g.selected_monitor_id());
+    crate::layouts::restack(ctx, x11.core.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
     }
 
     let (orig_left, orig_top) = {
-        match ctx.core.g.clients.get(&win) {
+        match x11.core.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
-                ungrab(ctx);
+                ungrab(x11);
                 return;
             }
         }
@@ -123,7 +129,7 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
     let mut last_time: u32 = 0;
 
     loop {
-        let Some(event) = wait_event(ctx) else {
+        let Some(event) = wait_event(x11) else {
             break;
         };
 
@@ -143,10 +149,10 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
                 let nw = (m.event_x as i32 - orig_left + 1).max(1);
                 let nh = (m.event_y as i32 - orig_top + 1).max(1);
 
-                let snap = ctx.g.cfg.snap;
+                let snap = x11.core.g.cfg.snap;
 
-                if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
+                if let Some(client) = x11.core.g.clients.get(&win) {
+                    let has_tiling = x11.core.g.selected_monitor().is_tiling_layout();
 
                     if !client.isfloating
                         && has_tiling
@@ -173,7 +179,7 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         }
     }
 
-    ungrab(ctx);
+    ungrab(x11);
     handle_client_monitor_switch(ctx, win);
 }
 
@@ -182,14 +188,17 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
 pub fn resize_mouse_directional(
-    ctx: &mut WmCtxX11,
+    ctx: &mut WmCtx,
     direction: Option<ResizeDirection>,
     btn: MouseButton,
 ) {
-    let Some(win) = ctx.core.selected_client() else {
+    let WmCtx::X11(x11) = ctx else {
         return;
     };
-    let is_blocked = ctx
+    let Some(win) = x11.core.selected_client() else {
+        return;
+    };
+    let is_blocked = x11
         .core
         .g
         .clients
@@ -200,14 +209,14 @@ pub fn resize_mouse_directional(
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.core.g.selected_monitor_id());
+    crate::layouts::restack(ctx, x11.core.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
     }
 
     let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
-        match ctx.core.g.clients.get(&win) {
+        match x11.core.g.clients.get(&win) {
             Some(c) => (
                 c.geo.x,
                 c.geo.y,
@@ -216,7 +225,7 @@ pub fn resize_mouse_directional(
                 c.border_width,
             ),
             None => {
-                ungrab(ctx);
+                ungrab(x11);
                 return;
             }
         }
@@ -229,7 +238,7 @@ pub fn resize_mouse_directional(
     let mut last_time: u32 = 0;
 
     loop {
-        let Some(event) = wait_event(ctx) else {
+        let Some(event) = wait_event(x11) else {
             break;
         };
 
@@ -271,10 +280,10 @@ pub fn resize_mouse_directional(
                     (orig_top, orig_bottom - orig_top)
                 };
 
-                let snap = ctx.g.cfg.snap;
+                let snap = x11.core.g.cfg.snap;
 
-                let should_toggle = if let Some(client) = ctx.g.clients.get(&win) {
-                    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
+                let should_toggle = if let Some(client) = x11.core.g.clients.get(&win) {
+                    let has_tiling = x11.core.g.selected_monitor().is_tiling_layout();
 
                     !client.isfloating
                         && has_tiling
@@ -287,13 +296,14 @@ pub fn resize_mouse_directional(
                 if should_toggle {
                     toggle_floating(ctx);
                 } else {
-                    let is_floating = ctx
+                    let is_floating = x11
+                        .core
                         .g
                         .clients
                         .get(&win)
                         .map(|c| c.isfloating)
                         .unwrap_or(false);
-                    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
+                    let has_tiling = x11.core.g.selected_monitor().is_tiling_layout();
 
                     if !has_tiling || is_floating {
                         resize(
@@ -315,7 +325,7 @@ pub fn resize_mouse_directional(
         }
     }
 
-    ungrab(ctx);
+    ungrab(x11);
     handle_client_monitor_switch(ctx, win);
 }
 
@@ -340,8 +350,11 @@ pub fn force_resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let is_fullscreen = ctx
+pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
+    let WmCtx::X11(x11) = ctx else {
+        return;
+    };
+    let is_fullscreen = x11
         .core
         .g
         .clients
@@ -352,17 +365,17 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.core.g.selected_monitor_id());
+    crate::layouts::restack(ctx, x11.core.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
     }
 
     let (orig_left, orig_top) = {
-        match ctx.core.g.clients.get(&win) {
+        match x11.core.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
-                ungrab(ctx);
+                ungrab(x11);
                 return;
             }
         }
@@ -372,7 +385,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
     let mut last_time: u32 = 0;
 
     loop {
-        let Some(event) = wait_event(ctx) else {
+        let Some(event) = wait_event(x11) else {
             break;
         };
 
@@ -392,7 +405,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
                 let raw_nw = (m.event_x as i32 - orig_left + 1).max(1);
                 let raw_nh = (m.event_y as i32 - orig_top + 1).max(1);
 
-                if let Some(client) = ctx.g.clients.get(&win) {
+                if let Some(client) = x11.core.g.clients.get(&win) {
                     let sh = &client.size_hints;
                     let (min_aspect, max_aspect) = (client.min_aspect, client.max_aspect);
 
@@ -440,7 +453,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
         }
     }
 
-    ungrab(ctx);
+    ungrab(x11);
     handle_client_monitor_switch(ctx, win);
 }
 

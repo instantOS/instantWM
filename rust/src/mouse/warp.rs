@@ -214,3 +214,14 @@ pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         let _ = x11.conn.flush();
     }
 }
+
+/// Backend-agnostic reset_cursor - dispatches to X11 or is a no-op on Wayland.
+pub fn reset_cursor(ctx: &mut crate::contexts::WmCtx) {
+    use crate::contexts::{WmCtx::*, WmCtxX11};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => reset_cursor_x11(core, x11),
+        Wayland(_) => {
+            // Wayland handles cursor reset differently - no-op for now
+        }
+    }
+}

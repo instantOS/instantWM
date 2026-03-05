@@ -187,10 +187,10 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
     }
 
     if bar_win != WindowId::default() {
-        if let Some(x11) = ctx.x11_conn_REMOVED() {
+        if let WmCtx::X11(x11) = ctx {
             let x11_bar_win: Window = bar_win.into();
-            let _ = x11rb::protocol::xproto::unmap_window(x11.conn, x11_bar_win);
-            let _ = x11rb::protocol::xproto::destroy_window(x11.conn, x11_bar_win);
+            let _ = x11rb::protocol::xproto::unmap_window(x11.x11.conn, x11_bar_win);
+            let _ = x11rb::protocol::xproto::destroy_window(x11.x11.conn, x11_bar_win);
         }
     }
 }
@@ -312,17 +312,16 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     focus_soft(ctx, Some(c_win));
 
-    if let Some(x11) = ctx.x11_conn_REMOVED() {
+    if let WmCtx::X11(x11) = ctx {
         let x11_win: Window = c_win.into();
         let _ = x11rb::protocol::xproto::configure_window(
-            x11.conn,
+            x11.x11.conn,
             x11_win,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
         );
+        warp_cursor_to_client_x11(ctx, &x11.x11, c_win);
     }
-
-    warp_cursor_to_client_x11(ctx, &ctx.x11, c_win);
 }
 
 pub fn update_geom(ctx: &mut WmCtx) -> bool {
@@ -508,12 +507,15 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
 
     if dirty {
         ctx.g_mut().monitors.set_sel_idx(0);
-        let x11 = ctx.x11_conn_REMOVED();
+        let x11_conn = match ctx {
+            WmCtx::X11(x11) => Some((x11.x11.conn, x11.x11.screen_num)),
+            WmCtx::Wayland(_) => None,
+        };
         if let Some(m) = ctx.g_mut().monitors.win_to_mon(
             WindowId::from(ctx.g_mut().x11.root),
             ctx.g_mut().x11.root,
             &*ctx.g_mut().clients,
-            x11,
+            x11_conn,
         ) {
             ctx.g_mut().monitors.set_sel_idx(m);
         }

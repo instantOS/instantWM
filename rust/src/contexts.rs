@@ -4,6 +4,8 @@
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
 //! receives explicit `X11Ctx` / `WaylandCtx` instead of runtime checks.
 
+use std::ops::Deref;
+
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
@@ -202,4 +204,12 @@ impl<'a> WmCtx<'a> {
 
     // For backend-specific operations, use match on the enum directly
     // instead of accessor methods that return Option.
+}
+
+impl<'a> Deref for WmCtx<'a> {
+    type Target = CoreCtx<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        self.core()
+    }
 }

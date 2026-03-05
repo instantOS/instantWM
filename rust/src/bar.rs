@@ -10,7 +10,7 @@ pub mod x11;
 mod x11_painter;
 
 pub use model::{bar_position_at_x, bar_position_to_gesture};
-pub use wayland::{draw_bar_wayland, draw_bars_wayland, reset_bar_wayland};
+pub use wayland::{draw_bars_wayland, reset_bar_wayland};
 pub use x11::resize_bar_win;
 
 use crate::contexts::{CoreCtx, X11Ctx};

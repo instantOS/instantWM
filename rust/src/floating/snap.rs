@@ -17,7 +17,7 @@
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::animation::check_animate;
+use crate::animation::{check_animate, check_animate_x11};
 use crate::client::{restore_border_width, save_border_width};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::warp_cursor_to_client_x11;
@@ -216,13 +216,14 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
 
     // Restore border width for all positions except Maximized (which needs bw=0).
     if snap_status != SnapPosition::Maximized {
-        restore_border_width(ctx, win);
+        restore_border_width(&mut ctx.core, win);
     }
 
     match snap_status {
         SnapPosition::None => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: saved_geo.x,
@@ -235,8 +236,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::Top => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx,
@@ -249,8 +251,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::TopRight => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -263,8 +266,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::Right => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -277,8 +281,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::BottomRight => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -291,8 +296,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::Bottom => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx,
@@ -305,8 +311,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::BottomLeft => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx,
@@ -319,8 +326,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::Left => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx,
@@ -333,8 +341,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::TopLeft => {
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx,
@@ -347,12 +356,13 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             );
         }
         SnapPosition::Maximized => {
-            save_border_width(ctx, win);
-            if let Some(client) = ctx.g.clients.get_mut(&win) {
+            save_border_width(&mut ctx.core, win);
+            if let Some(client) = ctx.core.g.clients.get_mut(&win) {
                 client.border_width = 0;
             }
-            check_animate(
-                ctx,
+            check_animate_x11(
+                &mut ctx.core,
+                &ctx.x11,
                 win,
                 &Rect {
                     x: m_mx,
@@ -367,7 +377,8 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             // Raise the window if it is the focused one.
             let is_sel = ctx.selected_client() == Some(win);
             if is_sel {
-                if let Some(conn) = ctx.x11_conn_REMOVED().map(|x11| x11.conn) {
+                if let WmCtx::X11(x11) = ctx {
+                    let conn = x11.x11.conn;
                     let x11_win: Window = win.into();
                     let _ = configure_window(
                         conn,
@@ -402,7 +413,7 @@ pub fn reset_snap(ctx: &mut WmCtxX11, win: WindowId) {
         if let Some(client) = ctx.core.g.clients.get_mut(&win) {
             client.snap_status = SnapPosition::None;
         }
-        restore_border_width(ctx, win);
+        restore_border_width(&mut ctx.core, win);
         super::state::restore_floating_win(ctx, win);
         super::helpers::apply_size(&mut ctx.core, &ctx.x11, win);
     }

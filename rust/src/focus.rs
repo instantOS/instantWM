@@ -9,7 +9,8 @@ use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
 use crate::tags::view;
 use crate::types::*;
-use x11rb::protocol::xproto::{AtomEnum, InputFocus, PropMode, Window};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
 use x11rb::CURRENT_TIME;
 
 /// Set focus to a window, or to the root if None.

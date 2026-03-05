@@ -15,7 +15,7 @@ use smithay::{
     output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{
-            generic::Generic, Interest, Interest as Interest2, LoopHandle, Mode, PostAction,
+            generic::Generic, Interest, LoopHandle, Mode, PostAction,
         },
         wayland_server::{Display, DisplayHandle},
     },

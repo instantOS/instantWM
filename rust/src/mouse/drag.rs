@@ -49,7 +49,7 @@ use super::warp::get_root_ptr_x11 as get_root_ptr;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-fn refresh_rate(ctx: &WmCtx) -> u32 {
+fn refresh_rate(ctx: &mut WmCtx) -> u32 {
     if ctx.g_mut().doubledraw {
         REFRESH_RATE_HI
     } else {
@@ -58,7 +58,7 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 }
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
-fn snap_to_monitor_edges(ctx: &WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
+fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
     let snap = ctx.g_mut().cfg.snap;
     let mon = ctx.g_mut().selected_monitor();
 
@@ -90,7 +90,13 @@ fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     {
         return Some(SnapPosition::Right);
     }
-    if y <= mon.monitor_rect.y + if mon.showbar { ctx.g_mut().cfg.bar_height } else { 5 } {
+    if y <= mon.monitor_rect.y
+        + if mon.showbar {
+            ctx.g_mut().cfg.bar_height
+        } else {
+            5
+        }
+    {
         return Some(SnapPosition::Top);
     }
     None
@@ -151,13 +157,15 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 
     // Un-snap: surface the real window first; the user re-drags after.
     let is_snapped = ctx
-        .g
+        .g()
         .clients
         .get(&selected_window)
         .map(|c| c.snap_status != SnapPosition::None)
         .unwrap_or(false);
     if is_snapped {
-        reset_snap(ctx, selected_window);
+        if let WmCtx::X11(x11) = ctx {
+            reset_snap(x11, selected_window);
+        }
         return None;
     }
 
@@ -208,7 +216,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
         let new_gesture = {
             let mon = ctx.g_mut().selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
-            bar_position_to_gesture(bar_position_at_x(mon, &ctx.core, local_x))
+            bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x))
         };
 
         let gesture_changed = ctx.g_mut().selected_monitor().gesture != new_gesture;
@@ -216,12 +224,18 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
         if !state.cursor_on_bar || gesture_changed {
             ctx.g_mut().drag.bar_active = true;
             ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
-            draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
+            match ctx {
+                WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
+                WmCtx::Wayland(_) => {}
+            }
         }
     } else if state.cursor_on_bar {
         ctx.g_mut().drag.bar_active = false;
         ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
-        draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
+        match ctx {
+            WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
+            WmCtx::Wayland(_) => {}
+        }
     }
 
     on_bar
@@ -313,7 +327,7 @@ fn maybe_promote_tiled_drag_to_floating(
     // If the window was never floating, float_geo will be zeroed; fall
     // back to the current tiled dimensions so the window doesn't collapse.
     let (float_w, float_h) = {
-        ctx.g
+        ctx.g()
             .clients
             .get(&win)
             .map(|c| {
@@ -357,7 +371,10 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g_mut().drag.bar_active = false;
     let selmon_id = ctx.g_mut().selected_monitor_id();
     ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
-    draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
+    match ctx {
+        WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
+        WmCtx::Wayland(_) => {}
+    }
 }
 
 /// Handle a drop onto the bar: tile the window, optionally moving it to the
@@ -388,7 +405,7 @@ fn handle_bar_drop(
     let position = {
         let mon = ctx.g_mut().selected_monitor();
         let local_x = ptr_x - mon.work_rect.x;
-        bar_position_at_x(mon, &ctx.core, local_x)
+        bar_position_at_x(mon, ctx, local_x)
     };
 
     // Remember whether the window was floating *before* any state change so
@@ -415,12 +432,15 @@ fn handle_bar_drop(
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
         set_tiled(ctx, win, false);
-        set_client_tag(
-            &mut ctx.core,
-            &ctx.x11,
-            win,
-            TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
-        );
+        match ctx {
+            WmCtx::X11(x11) => set_client_tag(
+                &mut x11.core,
+                &x11.x11,
+                win,
+                TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
+            ),
+            WmCtx::Wayland(_) => {}
+        }
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
@@ -480,14 +500,14 @@ fn apply_edge_drop(
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_client(&mut ctx.core, &ctx.x11, Direction::Left);
+                move_client(ctx, Direction::Left);
             } else {
-                move_client(&mut ctx.core, &ctx.x11, Direction::Right);
+                move_client(ctx, Direction::Right);
             }
         } else if at_left {
-            shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Left, 1);
+            shift_tag_by(ctx, Direction::Left, 1);
         } else {
-            shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Right, 1);
+            shift_tag_by(ctx, Direction::Right, 1);
         }
 
         if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
@@ -638,7 +658,7 @@ pub fn gesture_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
                 }
                 last_time = m.time;
 
-                let threshold = ctx.g.selected_monitor().monitor_rect.h / 30;
+                let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
                 if (last_y - m.event_y as i32).abs() > threshold {
                     let event_y = m.event_y as i32;
                     let cmd = if event_y < last_y {
@@ -674,12 +694,12 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         BarPosition::Tag(idx) => 1u32 << (idx as u32),
         _ => {
             let ptr_x = get_root_ptr(ctx).map(|(x, _)| x).unwrap_or(0);
-            ctx.g
+            ctx.g()
                 .monitors
                 .get(selmon_id)
                 .and_then(|mon| {
                     let local_x = ptr_x - mon.work_rect.x;
-                    match bar_position_at_x(mon, &ctx.core, local_x) {
+                    match bar_position_at_x(mon, ctx.core(), local_x) {
                         BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
                         _ => None,
                     }
@@ -694,7 +714,10 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
-        view(&mut ctx.core, &ctx.x11, TagMask::from_bits(initial_tag));
+        match ctx {
+            WmCtx::X11(x11) => view(&mut x11.core, &x11.x11, TagMask::from_bits(initial_tag)),
+            WmCtx::Wayland(_) => {}
+        }
         return false;
     }
     // No selected window → nothing to drag.
@@ -715,7 +738,10 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     };
     set_cursor_move(ctx);
     ctx.g_mut().drag.bar_active = true;
-    draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
+    match ctx {
+        WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
+        WmCtx::Wayland(_) => {}
+    }
     true
 }
 
@@ -744,10 +770,10 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 
     let local_x = root_x - mon_mx;
     let new_gesture = ctx
-        .g
+        .g()
         .monitors
         .get(selmon_id)
-        .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, &ctx.core, local_x)))
+        .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, ctx.core(), local_x)))
         .unwrap_or(Gesture::None);
     let gesture_key = match new_gesture {
         Gesture::Tag(idx) => idx as i32,
@@ -759,7 +785,10 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if let Some(mon) = ctx.g_mut().monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
         }
-        draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
+        match ctx {
+            WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
+            WmCtx::Wayland(_) => {}
+        }
     }
     true
 }
@@ -786,19 +815,30 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
             let position = {
                 let mon = ctx.g_mut().selected_monitor();
                 let local_x = x - mon.work_rect.x;
-                bar_position_at_x(mon, &ctx.core, local_x)
+                bar_position_at_x(mon, ctx.core(), local_x)
             };
 
             if let BarPosition::Tag(tag_idx) = position {
                 let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
                 if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
                     if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
-                        set_client_tag(&mut ctx.core, &ctx.x11, win, tag_mask);
+                        match ctx {
+                            WmCtx::X11(x11) => {
+                                set_client_tag(&mut x11.core, &x11.x11, win, tag_mask)
+                            }
+                            WmCtx::Wayland(_) => {}
+                        }
                     }
                 } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
-                    tag_all(&mut ctx.core, &ctx.x11, tag_mask);
+                    match ctx {
+                        WmCtx::X11(x11) => tag_all(&mut x11.core, &x11.x11, tag_mask),
+                        WmCtx::Wayland(_) => {}
+                    }
                 } else if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
-                    follow_tag(&mut ctx.core, &ctx.x11, win, tag_mask);
+                    match ctx {
+                        WmCtx::X11(x11) => follow_tag(&mut x11.core, &x11.x11, win, tag_mask),
+                        WmCtx::Wayland(_) => {}
+                    }
                 }
             }
         }
@@ -809,7 +849,10 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         mon.gesture = Gesture::None;
     }
     set_cursor_default(ctx);
-    draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
+    match ctx {
+        WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
+        WmCtx::Wayland(_) => {}
+    }
 }
 
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.
@@ -862,7 +905,7 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
                 let mod_state = u16::from(m.state) as u32;
 
                 // Store motion with modifier state for release handling.
-                ctx.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
+                ctx.core.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
 
                 if !drag_tag_motion(ctx, root_x, root_y) {
                     // Cursor left the bar — abort.
@@ -1122,7 +1165,9 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if let Some(c) = ctx.g_mut().clients.get(&win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
-            if let Some(conn) = ctx.x11_conn_REMOVED().map(|x11| x11.conn) {
+            if let WmCtx::X11(x11) = ctx {
+                let conn = x11.x11.conn;
+                let x11_win: Window = win.into();
                 let x11_win: Window = win.into();
                 let _ = conn.warp_pointer(
                     x11rb::NONE,
@@ -1157,7 +1202,10 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     if ctx.g_mut().drag.title.dragging {
         let win = ctx.g_mut().drag.title.win;
         let grab_start_rect = ctx.g_mut().drag.title.drop_restore_geo;
-        let last = (ctx.g_mut().drag.title.last_root_x, ctx.g_mut().drag.title.last_root_y);
+        let last = (
+            ctx.g_mut().drag.title.last_root_x,
+            ctx.g_mut().drag.title.last_root_y,
+        );
         ctx.g_mut().drag.title.active = false;
         ctx.g_mut().drag.title.dragging = false;
         set_cursor_default(ctx);

@@ -46,12 +46,15 @@ use x11rb::CURRENT_TIME;
 /// loop and [`ungrab_ctx`] to release the grab when done.
 pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
     require_x11_ret!(ctx, false);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return false;
+    let ctx_x11 = match ctx {
+        WmCtx::X11(x) => x,
+        WmCtx::Wayland(_) => return false,
     };
+    let conn = ctx_x11.x11.conn;
 
-    let root = ctx.g.x11.root;
-    let cursor = ctx
+    let root = ctx_x11.core.g.x11.root;
+    let cursor = ctx_x11
+        .core
         .g
         .cfg
         .cursors
@@ -83,8 +86,9 @@ pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
 pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     let conn = ctx.x11.conn;
 
-    let root = ctx.g.x11.root;
+    let root = ctx.core.g.x11.root;
     let cursor = ctx
+        .core
         .g
         .cfg
         .cursors

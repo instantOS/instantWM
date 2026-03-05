@@ -1,6 +1,6 @@
 //! View (workspace) navigation.
 
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, WindowId, SCRATCHPAD_MASK};
@@ -90,7 +90,12 @@ pub fn toggle_view(core: &mut CoreCtx, x11: &X11Ctx, mask: TagMask) {
 ///   we never leave the user with an empty view.
 /// * If the tag is **already** in the current view, remove it (toggle off).
 /// * If the tag is **not** in the current view, add it (toggle on).
-pub fn toggle_view_tag(core: &mut CoreCtx, x11: &X11Ctx, tag_idx: usize) {
+pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
+    let (core, x11) = match ctx {
+        WmCtx::X11(x11) => (&mut x11.core, &x11.x11),
+        WmCtx::Wayland(_) => return,
+    };
+
     // BarPosition uses 0-based indices; TagMask::single() takes 1-based.
     let clicked_mask = match TagMask::single(tag_idx + 1) {
         Some(m) => m,
@@ -115,7 +120,12 @@ pub fn toggle_view_tag(core: &mut CoreCtx, x11: &X11Ctx, tag_idx: usize) {
     toggle_view(core, x11, clicked_mask);
 }
 
-pub fn shift_view(core: &mut CoreCtx, x11: &X11Ctx, direction: Direction) {
+pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
+    let (core, x11) = match ctx {
+        WmCtx::X11(x11) => (&mut x11.core, &x11.x11),
+        WmCtx::Wayland(_) => return,
+    };
+
     let mon = core.g.selected_monitor();
     let (tagset, numtags) = (TagMask::from_bits(mon.selected_tags()), core.g.tags.count());
 
@@ -331,7 +341,8 @@ pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
     mon.mfact = mfact;
 }
 
-pub fn scroll_view(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction) {
+pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
+    let core = ctx.core_mut();
     let selmon_id = core.g.selected_monitor_id();
     let mon = core.g.selected_monitor();
     let (current_tag, tagset, _tagmask) = (
@@ -384,14 +395,19 @@ pub fn scroll_view(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction) {
         return;
     }
 
-    let mon = core.g.selected_monitor_mut();
-    mon.sel_tags ^= 1;
-    mon.set_selected_tags(new_mask.bits());
-    mon.prev_tag = mon.current_tag;
-    mon.current_tag = new_mask.first_tag().unwrap_or(0);
+    // Get mutable access to monitor and apply changes
+    {
+        let mon = core.g.selected_monitor_mut();
+        mon.sel_tags ^= 1;
+        mon.set_selected_tags(new_mask.bits());
+        mon.prev_tag = mon.current_tag;
+        mon.current_tag = new_mask.first_tag().unwrap_or(0);
+    }
     apply_pertag_settings(core);
-    crate::focus::focus_soft_x11(core, x11, None);
-    arrange(core, Some(selmon_id));
+    // Release core borrow before calling ctx methods
+    drop(core);
+    crate::focus::focus_soft(ctx, None);
+    arrange(ctx, Some(selmon_id));
 }
 
 fn find_client_for_window(core: &CoreCtx, win: WindowId) -> Option<WindowId> {

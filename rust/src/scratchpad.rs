@@ -236,14 +236,21 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     }
     let root = ctx.g_mut().x11.root;
 
-    let Some(conn) = ctx.x11_conn_REMOVED().map(|x11| x11.conn) else {
-        return;
+    let conn = match ctx {
+        WmCtx::X11(x11) => x11.x11.conn,
+        WmCtx::Wayland(_) => return,
     };
 
     if !name.is_empty() && name != "all" {
         let found = scratchpad_find(ctx, name);
         let visible = found
-            .map(|w| ctx.g_mut().clients.get(&w).map(|c| c.issticky).unwrap_or(false))
+            .map(|w| {
+                ctx.g_mut()
+                    .clients
+                    .get(&w)
+                    .map(|c| c.issticky)
+                    .unwrap_or(false)
+            })
             .unwrap_or(false);
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
