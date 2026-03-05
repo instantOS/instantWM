@@ -4,11 +4,11 @@ use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
     update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtxX11, X11Ctx};
 // focus() is used via focus_soft() in this module
 use crate::ipc::IpcServer;
 use crate::keyboard::{
-    grab_keys, key_press as keyboard_key_press, key_release as keyboard_key_release,
+    grab_keys_x11, key_press_x11 as keyboard_key_press, key_release_x11 as keyboard_key_release,
 };
 use crate::layouts::{arrange, restack};
 use crate::monitor::update_geom;
@@ -370,7 +370,7 @@ pub fn key_release(ctx: &mut WmCtxX11<'_>, e: &KeyReleaseEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    grab_keys(&ctx.core, &ctx.x11);
+    grab_keys_x11(&ctx.core, &ctx.x11);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {

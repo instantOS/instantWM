@@ -10,7 +10,7 @@ use crate::floating::{center_window, distribute_clients, key_resize, temp_fullsc
 use crate::focus::{
     direction_focus_x11, focus_last_client_x11, focus_stack_x11, warp_to_focus_x11,
 };
-use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
+use crate::keyboard::{down_key_x11, down_press_x11, space_toggle_x11, up_key_x11, up_press_x11};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
@@ -132,10 +132,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack_x11(ctx, &ctx.x11, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack_x11(ctx, &ctx.x11, StackDirection::Previous)),
-        key!(MODKEY, XK_DOWN => |ctx| down_key(ctx, StackDirection::Next)),
-        key!(MODKEY, XK_UP   => |ctx| up_key(ctx, StackDirection::Previous)),
-        key!(MS,     XK_DOWN => down_press),
-        key!(MS,     XK_UP   => up_press),
+        key!(MODKEY, XK_DOWN => |ctx| down_key_x11(ctx, &ctx.x11, StackDirection::Next)),
+        key!(MODKEY, XK_UP   => |ctx| up_key_x11(ctx, &ctx.x11, StackDirection::Previous)),
+        key!(MS,     XK_DOWN => |ctx| down_press_x11(ctx, &ctx.x11)),
+        key!(MS,     XK_UP   => |ctx| up_press_x11(ctx, &ctx.x11)),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 push_down(ctx, win)
@@ -239,7 +239,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSA,    XK_S  => |ctx| toggle_animated(ctx, ToggleAction::Toggle)),
         key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, &ctx.x11, ToggleAction::Toggle)),
         key!(MSA,    XK_D  => toggle_double_draw),
-        key!(MS,     XK_SPACE => space_toggle),
+        key!(MS,     XK_SPACE => |ctx| space_toggle_x11(ctx, &ctx.x11)),
         key!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, &ctx.x11, ToggleAction::Toggle)),
         key!(MC,     XK_R     => |ctx| redraw_win(ctx, &ctx.x11)),
         key!(MC,  XK_H => |ctx| {

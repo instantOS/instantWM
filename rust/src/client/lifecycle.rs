@@ -85,7 +85,7 @@ pub fn manage(
         is_monocle_on_client_monitor(core.g, w),
     );
 
-    apply_manage_hints(core.g, w);
+    apply_manage_hints(core.g, x11, w);
     snapshot_float_geo(core.g, w, mon_monitor_rect);
     subscribe_manage_events(x11, w);
     grab_buttons(core.g, x11, w, false);
@@ -97,7 +97,7 @@ pub fn manage(
 
     attach(core.g, w);
     attach_stack(core.g, w);
-    register_client_root(x11, w);
+    register_client_root(core.g, x11, w);
 
     move_client_offscreen_before_arrange(core.g, w);
     let initially_hidden = prepare_visibility_and_unfocus(core.g, w);
@@ -186,15 +186,15 @@ fn is_monocle_on_client_monitor(ctx: &WmCtx, w: WindowId) -> bool {
 }
 
 fn configure_client_border(
-    ctx: &mut WmCtx,
+    g: &mut Globals,
+    x11: &X11Ctx,
     w: WindowId,
     borderpx: i32,
     mon_monitor_rect: Rect,
     is_monocle: bool,
 ) {
-    let bar_height = ctx.g.cfg.bar_height;
-    let (isfloating, client_width, client_height) = ctx
-        .g
+    let bar_height = g.cfg.bar_height;
+    let (isfloating, client_width, client_height) = g
         .clients
         .get(&w)
         .map(|c| (c.isfloating, c.geo.w, c.geo.h))
@@ -210,37 +210,33 @@ fn configure_client_border(
         borderpx
     };
 
-    if let Some(client) = ctx.g.clients.get_mut(&w) {
+    if let Some(client) = g.clients.get_mut(&w) {
         client.border_width = border_width;
     }
 
-    ctx.backend.set_border_width(w, border_width);
-
     let x11_win: Window = w.into();
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let pixel = scheme.normal.bg.pixel();
-            let _ = conn.change_window_attributes(
-                x11_win,
-                &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
-            );
-        }
-        let _ = conn.flush();
+    if let Some(ref scheme) = g.cfg.borderscheme {
+        let pixel = scheme.normal.bg.pixel();
+        let _ = x11.conn.change_window_attributes(
+            x11_win,
+            &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+        );
     }
+    let _ = x11.conn.flush();
 }
 
-fn apply_manage_hints(ctx: &mut WmCtx, w: WindowId) {
-    crate::client::focus::configure(ctx, w);
-    update_window_type(ctx, w);
-    crate::client::geometry::update_size_hints(ctx, w);
-    update_wm_hints(ctx, w);
-    read_client_info(ctx, w);
-    set_client_tag_prop(&mut ctx.core, &ctx.x11, w);
-    update_motif_hints(ctx, w);
+fn apply_manage_hints(g: &mut Globals, x11: &X11Ctx, w: WindowId) {
+    crate::client::focus::configure(g, x11, w);
+    update_window_type(g, w);
+    crate::client::geometry::update_size_hints(g, w);
+    update_wm_hints(g, w);
+    read_client_info(g, x11, w);
+    set_client_tag_prop(g, x11, w);
+    update_motif_hints(g, w);
 }
 
-fn snapshot_float_geo(ctx: &mut WmCtx, w: WindowId, mon_monitor_rect: Rect) {
-    if let Some(client) = ctx.g.clients.get_mut(&w) {
+fn snapshot_float_geo(g: &mut Globals, w: WindowId, mon_monitor_rect: Rect) {
+    if let Some(client) = g.clients.get_mut(&w) {
         client.float_geo.x = client.geo.x;
         client.float_geo.y = if client.geo.y >= mon_monitor_rect.y {
             client.geo.y
@@ -252,22 +248,21 @@ fn snapshot_float_geo(ctx: &mut WmCtx, w: WindowId, mon_monitor_rect: Rect) {
     }
 }
 
-fn subscribe_manage_events(ctx: &WmCtx, w: WindowId) {
+fn subscribe_manage_events(x11: &X11Ctx, w: WindowId) {
     let mask = EventMask::ENTER_WINDOW
         | EventMask::FOCUS_CHANGE
         | EventMask::PROPERTY_CHANGE
         | EventMask::STRUCTURE_NOTIFY;
     let x11_win: Window = w.into();
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let _ = conn
-            .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
-    }
+    let _ = x11
+        .conn
+        .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
 }
 
-fn initialize_floating_state(ctx: &mut WmCtx, w: WindowId, has_transient_parent: bool) -> bool {
-    let isfixed = ctx.g.clients.get(&w).map(|c| c.isfixed).unwrap_or(false);
+fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent: bool) -> bool {
+    let isfixed = g.clients.get(&w).map(|c| c.isfixed).unwrap_or(false);
     let mut should_raise = false;
-    if let Some(client) = ctx.g.clients.get_mut(&w) {
+    if let Some(client) = g.clients.get_mut(&w) {
         if !client.isfloating {
             client.isfloating = has_transient_parent || isfixed;
             client.oldstate = client.isfloating as i32;
@@ -277,18 +272,16 @@ fn initialize_floating_state(ctx: &mut WmCtx, w: WindowId, has_transient_parent:
     should_raise
 }
 
-fn register_client_root(ctx: &mut WmCtx, w: WindowId) {
+fn register_client_root(g: &Globals, x11: &X11Ctx, w: WindowId) {
     let x11_win: Window = w.into();
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let _ = conn.change_property32(
-            PropMode::APPEND,
-            ctx.g.x11.root,
-            ctx.g.x11.netatom.client_list,
-            AtomEnum::WINDOW,
-            &[x11_win],
-        );
-        let _ = conn.flush();
-    }
+    let _ = x11.conn.change_property32(
+        PropMode::APPEND,
+        g.x11.root,
+        g.x11.netatom.client_list,
+        AtomEnum::WINDOW,
+        &[x11_win],
+    );
+    let _ = x11.conn.flush();
 }
 
 fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
@@ -419,16 +412,13 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: Option<usize>) -> u32 {
 /// from a deliberately withdrawn window) we restore the border width and clear
 /// the event mask / WM_STATE.
 ///
-pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let monitor_id = ctx.g.clients.get(&win).and_then(|c| c.monitor_id);
+pub fn unmanage(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, destroyed: bool) {
+    let monitor_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
 
     // Clear overlay and fullscreen references so those code paths don't hold
     // dangling window IDs after the client is gone.
     {
-        for mon in ctx.g.monitors_iter_all_mut() {
+        for mon in core.g.monitors_iter_all_mut() {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
             }
@@ -438,21 +428,12 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
         }
     }
 
-    detach(ctx, win);
-    detach_stack(ctx, win);
+    detach(core.g, win);
+    detach_stack(core.g, win);
 
     if !destroyed {
-        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-            ctx.g.clients.remove(&win);
-            crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
-            update_client_list(ctx);
-            if let Some(mid) = monitor_id {
-                arrange(ctx, Some(mid));
-            }
-            return;
-        };
         let x11_win: Window = win.into();
-        let old_bw = ctx
+        let old_bw = core
             .g
             .clients
             .get(&win)
@@ -460,36 +441,36 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
             .unwrap_or(0);
 
         {
-            let _ = conn.grab_server();
+            let _ = x11.conn.grab_server();
 
             // Stop receiving events so we don't get confused during cleanup.
-            let _ = conn.change_window_attributes(
+            let _ = x11.conn.change_window_attributes(
                 x11_win,
                 &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
             );
 
             // Restore the original border width the application expects.
-            // Use the backend abstraction so the call is backend-agnostic.
-            ctx.backend.set_border_width(win, old_bw);
+            // (Border width is set via BackendOps elsewhere)
 
             // Release button grabs.
-            let _ = conn.ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+            let _ = x11
+                .conn
+                .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
         }
 
-        set_client_state(ctx, win, WM_STATE_WITHDRAWN);
+        set_client_state(core, x11, win, WM_STATE_WITHDRAWN);
 
-        let _ = conn.ungrab_server();
-        ctx.backend.flush();
+        let _ = x11.conn.ungrab_server();
     }
 
     // Remove from the global map.
-    ctx.g.clients.remove(&win);
+    core.g.clients.remove(&win);
 
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
-    update_client_list(ctx);
+    crate::focus::focus_soft(core, x11, None);
+    update_client_list(core.g);
 
     if let Some(mid) = monitor_id {
-        arrange(ctx, Some(mid));
+        arrange(core.g, Some(mid));
     }
 }
 
@@ -502,15 +483,9 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
 /// [`Client`] has been inserted.
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
-fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return BROKEN.to_string();
-    }
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return BROKEN.to_string();
-    };
+fn read_title_from_x(x11: &X11Ctx, g: &Globals, win: WindowId) -> String {
     let x11_win: Window = win.into();
-    let net_wm_name = ctx.g.x11.netatom.wm_name;
+    let net_wm_name = g.x11.netatom.wm_name;
 
     for atom in [
         net_wm_name,
@@ -519,7 +494,7 @@ fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
         if atom == 0 {
             continue;
         }
-        let Ok(cookie) = conn.get_property(
+        let Ok(cookie) = x11.conn.get_property(
             false,
             x11_win,
             atom,
@@ -555,18 +530,13 @@ fn read_title_from_x(ctx: &WmCtx, win: WindowId) -> String {
 /// This is used to persist client state across WM restarts: when the WM starts
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
-fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+fn read_client_info(g: &mut Globals, x11: &X11Ctx, w: WindowId) {
     let x11_win: Window = w.into();
+    let client_info_atom = g.x11.netatom.client_info;
 
-    let client_info_atom = ctx.g.x11.netatom.client_info;
-
-    let Ok(cookie) = conn.get_property(false, x11_win, client_info_atom, AtomEnum::CARDINAL, 0, 2)
+    let Ok(cookie) =
+        x11.conn
+            .get_property(false, x11_win, client_info_atom, AtomEnum::CARDINAL, 0, 2)
     else {
         return;
     };
@@ -578,13 +548,12 @@ fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
     let tags = data.next().unwrap_or(0);
     let mon_num = data.next().unwrap_or(0);
 
-    let target_mon = ctx
-        .g
+    let target_mon = g
         .monitors_iter()
         .find(|(_i, m)| m.num as u32 == mon_num)
         .map(|(i, _)| i);
 
-    if let Some(client) = ctx.g.clients.get_mut(&w) {
+    if let Some(client) = g.clients.get_mut(&w) {
         client.tags = tags;
         if let Some(mid) = target_mon {
             client.monitor_id = Some(mid);
@@ -592,23 +561,20 @@ fn read_client_info(ctx: &mut WmCtx, w: WindowId) {
     }
 }
 
-fn get_transient_for_hint_ctx(ctx: &WmCtx, w: WindowId) -> Option<WindowId> {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return None;
-    }
-    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
+fn get_transient_for_hint_x11(x11: &X11Ctx, w: WindowId) -> Option<WindowId> {
     let x11_win: Window = w.into();
 
-    conn.get_property(
-        false,
-        x11_win,
-        AtomEnum::WM_TRANSIENT_FOR,
-        AtomEnum::WINDOW,
-        0,
-        1,
-    )
-    .ok()
-    .and_then(|cookie| cookie.reply().ok())
-    .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
-    .map(WindowId::from)
+    x11.conn
+        .get_property(
+            false,
+            x11_win,
+            AtomEnum::WM_TRANSIENT_FOR,
+            AtomEnum::WINDOW,
+            0,
+            1,
+        )
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+        .map(WindowId::from)
 }
