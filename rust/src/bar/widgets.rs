@@ -48,7 +48,7 @@ pub(crate) fn draw_startmenu_icon(
     );
 }
 pub(crate) fn draw_tag_indicators(
-    ctx: &CoreCtx,
+    ctx: &mut CoreCtx,
     m: &Monitor,
     mut x: i32,
     occupied_tags: u32,
@@ -68,10 +68,14 @@ pub(crate) fn draw_tag_indicators(
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
         let is_hover = selmon_gesture == Gesture::Tag(t.slot);
 
+        let text_w = painter.text_width(t.label);
+        let width = (text_w + horizontal_padding).max(horizontal_padding);
+        ctx.bar.cache_tag_width(t.slot, width);
+
         let Some(scheme) =
             crate::bar::theme::tag_scheme(ctx.g, m, t.tag_index as u32, occupied_tags, is_hover)
         else {
-            x += t.width;
+            x += width;
             continue;
         };
 
@@ -92,7 +96,7 @@ pub(crate) fn draw_tag_indicators(
         x = painter.text(
             x,
             0,
-            t.width,
+            width,
             bar_height,
             lpad as i32,
             t.label,
@@ -100,12 +104,13 @@ pub(crate) fn draw_tag_indicators(
             detail_height,
         );
     }
+    ctx.bar.tag_strip_width = x;
 
     x
 }
 
 pub(crate) fn draw_layout_indicator(
-    ctx: &CoreCtx,
+    ctx: &mut CoreCtx,
     m: &Monitor,
     mut x: i32,
     bar_height: i32,
@@ -114,6 +119,7 @@ pub(crate) fn draw_layout_indicator(
     let horizontal_padding = ctx.g.cfg.horizontal_padding;
     let ltsymbol = super::layout_symbol(m);
     let text_w = painter.text_width(&ltsymbol);
+    ctx.bar.layout_symbol_width = text_w;
     let w = (text_w + horizontal_padding).max(horizontal_padding);
     let lpad = ((w - text_w) / 2).max(0);
 

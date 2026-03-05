@@ -49,8 +49,12 @@ pub(crate) fn visible_tags_ctx<'a>(
 
         let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
-        // Use cached width if available, otherwise estimate
-        let width = core.bar.get_tag_width(slot).max(horizontal_padding);
+        let cached = core.bar.get_tag_width(slot);
+        let width = if cached > 0 {
+            cached
+        } else {
+            ((label.chars().count() as i32) * 8 + horizontal_padding).max(horizontal_padding)
+        };
 
         out.push(VisibleTag {
             slot,

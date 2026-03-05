@@ -83,20 +83,34 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Window title ──────────────────────────────────────────────────
         // Left/right title clicks pass the event coordinates so the drag
         // handlers can use them as the anchor without a redundant round-trip.
-        btn_x11!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => |ctx, arg| {
+        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
-            window_title_mouse_handler(ctx, win, arg.btn, arg.rx, arg.ry)
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => {
+                    window_title_mouse_handler(ctx_x11, win, arg.btn, arg.rx, arg.ry)
+                }
+                crate::contexts::WmCtx::Wayland(_) => {
+                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
+                }
+            }
         }),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Middle => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
             close_win(ctx, win)
         }),
-        btn_x11!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => |ctx, arg| {
+        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
-            window_title_mouse_handler_right(ctx, win, arg.btn, arg.rx, arg.ry)
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => {
+                    window_title_mouse_handler_right(ctx_x11, win, arg.btn, arg.rx, arg.ry)
+                }
+                crate::contexts::WmCtx::Wayland(_) => {
+                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
+                }
+            }
         }),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::Notify)),
@@ -138,18 +152,23 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Tag bar ───────────────────────────────────────────────────────
         // Left-click: pass bar_pos + event coords so drag_tag needs no
         // get_root_ptr round-trip to identify the initial tag or anchor.
-        btn_x11!(Tag(0), 0, button:MouseButton::Left => |ctx, arg| {
-            drag_tag(ctx, arg.pos, arg.btn, arg.rx)
+        btn!(Tag(0), 0, button:MouseButton::Left => |ctx, arg| {
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => drag_tag(ctx_x11, arg.pos, arg.btn, arg.rx),
+                crate::contexts::WmCtx::Wayland(_) => {
+                    crate::mouse::drag::drag_tag_begin(ctx, arg.pos, arg.btn);
+                }
+            }
         }),
         // Right-click: tag index arrives directly in pos — toggle it in/out
         // of the current view, unless it is the only visible tag.
-        btn_x11!(Tag(0), 0, button:MouseButton::Right => |ctx, arg| {
+        btn!(Tag(0), 0, button:MouseButton::Right => |ctx, arg| {
             if let BarPosition::Tag(idx) = arg.pos {
-                toggle_view_tag(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), idx);
+                toggle_view_tag(ctx, idx);
             }
         }),
-        btn_x11!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
-        btn_x11!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        btn!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Left)),
+        btn!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Right)),
         btn_x11!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
                 set_client_tag(ctx, win, TagMask::ALL_BITS)

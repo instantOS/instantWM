@@ -51,6 +51,7 @@ pub fn draw_bar_common(
     if is_selmon {
         core.g.status_text_width = status_width;
     }
+    core.bar.clear_cached_widths();
 
     widgets::draw_startmenu_icon(core, bar_height, painter);
 
@@ -69,18 +70,9 @@ pub fn draw_bar_common(
     let mon_has_sel = core.g.monitor(mon_idx).is_some_and(|m| m.sel.is_some());
 
     {
-        let ctx_imm = &*core;
-        let m = ctx_imm.g.monitor(mon_idx).unwrap();
-        x = widgets::draw_tag_indicators(
-            ctx_imm,
-            m,
-            x,
-            occupied_tags,
-            urgent_tags,
-            bar_height,
-            painter,
-        );
-        x = widgets::draw_layout_indicator(ctx_imm, m, x, bar_height, painter);
+        let m = core.g.monitor(mon_idx).cloned().unwrap();
+        x = widgets::draw_tag_indicators(core, &m, x, occupied_tags, urgent_tags, bar_height, painter);
+        x = widgets::draw_layout_indicator(core, &m, x, bar_height, painter);
     }
 
     if !mon_has_sel {
