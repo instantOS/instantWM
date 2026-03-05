@@ -7,12 +7,12 @@
 //!
 //! # The two entry points
 //!
-//! * [`manage`]   – called when the WM first sees a window (either at startup
+//! * [`manage_x11`]   – called when the WM first sees a window (either at startup
 //!                  via `QueryTree`, or at runtime via a `MapRequest` event).
 //!                  Builds a [`Client`], attaches it to the correct monitor and
 //!                  linked lists, applies rules/hints, and arranges the monitor.
 //!
-//! * [`unmanage`] – called when a window is destroyed or deliberately withdrawn.
+//! * [`unmanage_x11`] – called when a window is destroyed or deliberately withdrawn.
 //!                  Detaches it from every list, optionally restores X11 state
 //!                  (border, event mask, WM_STATE), and re-focuses.
 //!
@@ -55,18 +55,6 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 // manage
 // ---------------------------------------------------------------------------
-
-/// Adopt `w` as a managed client window.
-///
-/// `wa_*` arguments come directly from the `GetWindowAttributesReply` /
-/// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
-///
-pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
-    match ctx {
-        WmCtx::X11(ctx_x11) => manage_x11(ctx_x11, w, wa_geo, wa_border_width),
-        WmCtx::Wayland(_) => {}
-    }
-}
 
 pub fn manage_x11(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
     let trans = get_transient_for_hint_x11(&ctx.x11, w);
@@ -427,13 +415,6 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: Option<usize>) -> u32 {
 /// from a deliberately withdrawn window) we restore the border width and clear
 /// the event mask / WM_STATE.
 ///
-pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
-    match ctx {
-        WmCtx::X11(ctx_x11) => unmanage_x11(ctx_x11, win, destroyed),
-        WmCtx::Wayland(_) => {}
-    }
-}
-
 pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     let monitor_id = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id);
 
@@ -513,7 +494,7 @@ pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
 // ---------------------------------------------------------------------------
 
 /// Read the window title string directly from the X server without going
-/// through the global client map.  Used during [`manage`] before the new
+/// through the global client map.  Used during [`manage_x11`] before the new
 /// [`Client`] has been inserted.
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.

@@ -16,6 +16,7 @@ use crate::types::{Rect, WindowId};
 pub mod bar;
 pub mod client;
 pub mod events;
+pub mod lifecycle;
 pub mod mouse;
 
 /// Log X11 errors instead of silently ignoring them.

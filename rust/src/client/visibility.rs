@@ -3,7 +3,7 @@
 //! # Responsibilities
 //!
 //! * [`get_state`]   – read the current `WM_STATE` property from the X server.
-//!                     Used once during [`crate::client::manage`] to seed
+//!                     Used once during [`crate::client::manage_x11`] to seed
 //!                     [`crate::types::Client::is_hidden`].
 //! * [`show_hide`]   – recursively walk the stack list, positioning visible
 //!                     clients on-screen and off-screen clients off to the left.

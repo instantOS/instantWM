@@ -1,7 +1,8 @@
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
+use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::client::{
-    configure_x11, manage, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
+    configure_x11, set_client_state, set_fullscreen_x11, update_title_x11,
     update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
@@ -234,7 +235,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
         let mut tmp = ctx.reborrow();
-        unmanage(&mut WmCtx::X11(tmp), win, true);
+        unmanage(&mut tmp, win, true);
     } else if let Some(icon) = systray::win_to_systray_icon(&mut ctx.core, event_win) {
         // Remove the icon from the systray list and client map, then resize
         // the bar and redraw the systray — matching the C code's sequence of
@@ -405,7 +406,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, event_win);
         let mut tmp = ctx.reborrow();
-        manage(&mut WmCtx::X11(tmp), event_win, geo, border_width);
+        manage(&mut tmp, event_win, geo, border_width);
     };
 }
 
@@ -544,7 +545,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
             set_client_state(&ctx.core, &ctx.x11, win, WM_STATE_WITHDRAWN);
         } else {
             let mut tmp = ctx.reborrow();
-            unmanage(&mut WmCtx::X11(tmp), win, false);
+            unmanage(&mut tmp, win, false);
         }
     } else if let Some(_icon) = systray::win_to_systray_icon(&mut ctx.core, event_win) {
         // Systray icons sometimes unmap without destroying; re-map them.
@@ -971,7 +972,7 @@ pub fn scan(wm: &mut Wm) {
     for win in managed.into_iter().chain(transients) {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, win);
         let mut tmp = ctx.reborrow();
-        manage(&mut WmCtx::X11(tmp), win, geo, border_width);
+        manage(&mut tmp, win, geo, border_width);
     }
 }
 
