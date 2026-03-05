@@ -164,7 +164,8 @@ pub fn last_view(ctx: &mut WmCtxX11) {
     let (current_tag, prev_tag) = (mon.current_tag, mon.prev_tag);
 
     if current_tag == prev_tag {
-        crate::focus::focus_last_client_x11(&mut ctx.core, &ctx.x11);
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::focus::focus_last_client(&mut wm_ctx);
         return;
     }
 

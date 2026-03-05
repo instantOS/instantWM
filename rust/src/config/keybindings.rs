@@ -7,7 +7,7 @@ use crate::animation;
 use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::floating::{center_window, distribute_clients, key_resize, temp_fullscreen};
-use crate::focus::{direction_focus, focus_last_client_x11, focus_stack, warp_to_focus_x11};
+use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus_x11};
 use crate::keyboard::{down_key_x11, down_press_x11, space_toggle_x11, up_key_x11, up_press_x11};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
@@ -187,7 +187,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
         key!(MC, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
         key_x11!(MODKEY,  XK_TAB     => |ctx| last_view(ctx)),
-        key_x11!(MS,      XK_TAB     => |ctx| focus_last_client_x11(&mut ctx.core, &ctx.x11)),
+        key!(MS,      XK_TAB     => |ctx| focus_last_client(ctx)),
         key_x11!(MA,      XK_TAB     => |ctx| follow_view(ctx)),
         key!(MODKEY,  XK_LEFT    => |ctx| animation::anim_scroll(ctx, Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),

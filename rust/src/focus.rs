@@ -5,7 +5,7 @@
 
 use crate::backend::BackendOps;
 use crate::bar::draw_bars_x11;
-use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
+use crate::client::{set_focus_x11, set_urgent, unfocus_win, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
 use crate::tags::view;
@@ -504,28 +504,20 @@ pub fn direction_focus_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: Directio
     }
 }
 
-pub fn focus_last_client_x11(core: &mut CoreCtx, x11: &X11Ctx) {
-    let last_client_win = core.focus.last_client;
+pub fn focus_last_client(ctx: &mut WmCtx) {
+    let last_client_win = ctx.core().focus.last_client;
     if last_client_win == WindowId::default() {
         return;
     }
     let last_win = last_client_win;
 
-    let last_client = match core.g.clients.get(&last_win) {
+    let last_client = match ctx.g().clients.get(&last_win) {
         Some(c) => c.clone(),
         None => return,
     };
 
     if last_client.is_scratchpad() {
-        let mut wm_ctx = WmCtx::X11(WmCtxX11 {
-            core: core.reborrow(),
-            backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-            x11: X11Ctx {
-                conn: x11.conn,
-                screen_num: x11.screen_num,
-            },
-        });
-        crate::scratchpad::scratchpad_show_name(&mut wm_ctx, &last_client.scratchpad_name);
+        crate::scratchpad::scratchpad_show_name(ctx, &last_client.scratchpad_name);
         return;
     }
 
@@ -533,40 +525,24 @@ pub fn focus_last_client_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     let last_mon_id = last_client.monitor_id;
 
     if let Some(last_mid) = last_mon_id {
-        let sel_mon_id = core.g.selected_monitor_id();
-        if !core.g.monitors.is_empty() && sel_mon_id != last_mid {
-            if let Some(sel) = core.g.monitor(sel_mon_id).and_then(|m| m.sel) {
-                unfocus_win_x11(core, x11, sel, false);
-                core.g.set_selected_monitor(last_mid);
+        let sel_mon_id = ctx.g().selected_monitor_id();
+        if !ctx.g().monitors.is_empty() && sel_mon_id != last_mid {
+            if let Some(sel) = ctx.g().monitor(sel_mon_id).and_then(|m| m.sel) {
+                unfocus_win(ctx, sel, false);
+                ctx.g_mut().set_selected_monitor(last_mid);
             }
         }
     }
 
-    if let Some(cur) = core.selected_client() {
-        core.focus.last_client = cur;
+    if let Some(cur) = ctx.selected_client() {
+        ctx.core_mut().focus.last_client = cur;
     }
 
-    let mut x11_ctx = WmCtxX11 {
-        core: core.reborrow(),
-        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-        x11: X11Ctx {
-            conn: x11.conn,
-            screen_num: x11.screen_num,
-        },
-    };
-    view(&mut x11_ctx, TagMask::from_bits(tags));
-    focus_soft_x11(core, x11, Some(last_win));
+    crate::tags::view::view_ctx(ctx, TagMask::from_bits(tags));
+    focus_soft(ctx, Some(last_win));
 
-    let monitor_id = core.g.selected_monitor_id();
-    let mut wm_ctx = WmCtx::X11(WmCtxX11 {
-        core: core.reborrow(),
-        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-        x11: X11Ctx {
-            conn: x11.conn,
-            screen_num: x11.screen_num,
-        },
-    });
-    crate::layouts::arrange(&mut wm_ctx, Some(monitor_id));
+    let monitor_id = ctx.g().selected_monitor_id();
+    crate::layouts::arrange(ctx, Some(monitor_id));
 }
 
 pub fn warp_cursor_to_client_x11(core: &CoreCtx, x11: &X11Ctx, c_win: WindowId) {
