@@ -64,41 +64,30 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let selected_window = match ctx.g_mut().selected_monitor().sel {
-        Some(w) => w,
-        None => return,
+    let Some(selected_window) = ctx.g_mut().selected_monitor().sel else {
+        return;
     };
 
-    let (is_scratchpad, restore_tags, monitor_id, monitor_tags) = {
-        let monitor_tags = ctx.g_mut().selected_monitor().selected_tags();
+    let monitor_tags = ctx.g_mut().selected_monitor().selected_tags();
 
-        if let Some(c) = ctx.g_mut().clients.get(&selected_window) {
-            (
-                c.is_scratchpad(),
-                c.scratchpad_restore_tags,
-                c.monitor_id,
-                monitor_tags,
-            )
-        } else {
-            return;
-        }
+    let Some(client) = ctx.g_mut().clients.get(&selected_window) else {
+        return;
     };
-
-    if !is_scratchpad {
+    if !client.is_scratchpad() {
         return;
     }
+    let restore_tags = client.scratchpad_restore_tags;
+    let monitor_id = client.monitor_id;
 
-    {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) {
-            client.scratchpad_name.clear();
-            client.issticky = false;
-            client.tags = if restore_tags != 0 {
-                restore_tags
-            } else {
-                monitor_tags
-            };
-            client.scratchpad_restore_tags = 0;
-        }
+    if let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) {
+        client.scratchpad_name.clear();
+        client.issticky = false;
+        client.tags = if restore_tags != 0 {
+            restore_tags
+        } else {
+            monitor_tags
+        };
+        client.scratchpad_restore_tags = 0;
     }
 
     if let Some(mid) = monitor_id {
@@ -107,37 +96,29 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
 }
 
 pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
-    let found = match scratchpad_find(ctx, name) {
-        Some(w) => w,
-        None => return,
+    let Some(found) = scratchpad_find(ctx, name) else {
+        return;
     };
 
-    let (current_mon, target_mon) = {
-        let current_mon = ctx.g_mut().selected_monitor_id();
-        let target_mon = ctx
-            .g
-            .clients
-            .get(&found)
-            .and_then(|c| c.monitor_id)
-            .unwrap_or(current_mon);
-        (current_mon, target_mon)
-    };
+    let current_mon = ctx.g_mut().selected_monitor_id();
+    let target_mon = ctx
+        .g
+        .clients
+        .get(&found)
+        .and_then(|c| c.monitor_id)
+        .unwrap_or(current_mon);
 
-    {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
-            client.issticky = true;
-            client.isfloating = true;
-        }
+    if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
+        client.issticky = true;
+        client.isfloating = true;
     }
 
     if target_mon != current_mon {
         detach(ctx, found);
         detach_stack(ctx, found);
 
-        {
-            if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
-                client.monitor_id = Some(current_mon);
-            }
+        if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
+            client.monitor_id = Some(current_mon);
         }
 
         attach(ctx, found);
