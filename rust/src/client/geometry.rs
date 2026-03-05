@@ -73,7 +73,7 @@ pub fn resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect, 
 /// Wayland resize is not wired yet.
 pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
     match ctx {
-        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
             resize_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect, interact)
         }
         crate::contexts::WmCtx::Wayland(_) => {
@@ -120,7 +120,7 @@ pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: 
 
 pub fn resize_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect) {
     match ctx {
-        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
             resize_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect)
         }
         crate::contexts::WmCtx::Wayland(_) => {
@@ -326,7 +326,7 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 
 pub fn update_size_hints(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId) {
     match ctx {
-        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
             update_size_hints_x11(&mut x11_ctx.core, &x11_ctx.x11, win)
         }
         crate::contexts::WmCtx::Wayland(_) => {
@@ -395,7 +395,7 @@ pub fn scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, scale: 
 
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
     match ctx {
-        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
             scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, scale)
         }
         crate::contexts::WmCtx::Wayland(_) => {

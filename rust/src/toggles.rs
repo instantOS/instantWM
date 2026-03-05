@@ -1,5 +1,4 @@
 use crate::bar::draw_bar;
-use crate::client::resize;
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::keyboard::grab_keys_x11;
 use crate::tags::get_tag_width;
@@ -41,9 +40,7 @@ pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {
         return;
     };
 
-    if let Some(mid) = monitor_id {
-        crate::layouts::arrange(core, Some(mid));
-    }
+    let _ = monitor_id;
 }
 
 pub fn toggle_prefix(core: &mut CoreCtx, x11: &X11Ctx) {
@@ -88,7 +85,7 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
         }
     };
 
-    resize(core, win, &geo, false);
+    core.g.clients.update_geometry(win, geo);
 }
 
 pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {

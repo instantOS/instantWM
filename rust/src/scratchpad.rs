@@ -163,7 +163,9 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         arrange(ctx, Some(mid));
         restack(ctx, mid);
         if focusfollowsmouse {
-            warp_cursor_to_client_x11(ctx, &ctx.x11, found);
+            if let WmCtx::X11(x11) = ctx {
+                warp_cursor_to_client_x11(&x11.core, &x11.x11, found);
+            }
         }
     }
 }
@@ -234,7 +236,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
         return;
     }
-    let root = ctx.g_mut().x11.root;
+    let root = ctx.g().x11.root;
 
     let conn = match ctx {
         WmCtx::X11(x11) => x11.x11.conn,
@@ -245,7 +247,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
         let found = scratchpad_find(ctx, name);
         let visible = found
             .map(|w| {
-                ctx.g_mut()
+                ctx.g()
                     .clients
                     .get(&w)
                     .map(|c| c.issticky)
@@ -271,8 +273,8 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let mut status = String::from("ipc:scratchpads:");
     let mut first = true;
 
-    for mon in ctx.g_mut().monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(&*ctx.g_mut().clients) {
+    for mon in ctx.g().monitors_iter_all() {
+        for (_c_win, c) in mon.iter_clients(&ctx.g().clients) {
             if c.is_scratchpad() {
                 if !first {
                     status.push(',');
@@ -308,8 +310,8 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
         return None;
     }
 
-    for mon in ctx.g_mut().monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(&*ctx.g_mut().clients) {
+    for mon in ctx.g().monitors_iter_all() {
+        for (c_win, c) in mon.iter_clients(&ctx.g().clients) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);
             }

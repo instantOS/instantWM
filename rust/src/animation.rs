@@ -299,7 +299,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
 
 pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
-        WmCtx::X11(mut x11_ctx) => animate_client_x11(
+        WmCtx::X11(ref mut x11_ctx) => animate_client_x11(
             &mut x11_ctx.core,
             &x11_ctx.x11,
             win,
@@ -315,7 +315,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
 
 pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
-        WmCtx::X11(mut x11_ctx) => check_animate_x11(
+        WmCtx::X11(ref mut x11_ctx) => check_animate_x11(
             &mut x11_ctx.core,
             &x11_ctx.x11,
             win,
@@ -331,7 +331,7 @@ pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, r
 
 pub fn up_scale_client(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(mut x11_ctx) => up_scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win),
+        WmCtx::X11(ref mut x11_ctx) => up_scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win),
         WmCtx::Wayland(_) => {
             println!("Wayland up_scale_client not yet implemented");
         }
@@ -340,7 +340,7 @@ pub fn up_scale_client(ctx: &mut WmCtx, win: WindowId) {
 
 pub fn down_scale_client(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(mut x11_ctx) => down_scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win),
+        WmCtx::X11(ref mut x11_ctx) => down_scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win),
         WmCtx::Wayland(_) => {
             println!("Wayland down_scale_client not yet implemented");
         }

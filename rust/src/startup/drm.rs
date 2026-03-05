@@ -40,6 +40,7 @@ use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
+use crate::contexts::CoreCtx;
 use crate::monitor::update_geom;
 use crate::startup::common_wayland::{
     wayland_font_height_from_size, wayland_font_size_from_config,
@@ -428,9 +429,9 @@ fn render_drm_output(
     let mut custom_elements: Vec<DrmExtras> = Vec::new();
 
     if wm.g.cfg.showbar {
-        let mut ctx = wm.ctx();
+        let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
         let bar_buffers = crate::bar::wayland::render_bar_buffers(
-            &mut ctx.core,
+            &mut core,
             &mut wm.bar_painter,
             smithay::utils::Scale::from(1.0),
         );

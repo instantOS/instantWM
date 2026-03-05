@@ -12,9 +12,8 @@ use smithay::utils::{Point, Transform, SERIAL_COUNTER};
 use crate::backend::wayland::compositor::{
     KeyboardFocusTarget, PointerFocusTarget, WaylandState, WindowIdMarker,
 };
-use crate::client::resize_x11;
 use crate::monitor::update_geom;
-use crate::mouse::{set_cursor_default, set_cursor_move, set_cursor_resize};
+use crate::mouse::{set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland};
 use crate::startup::common_wayland::modifiers_to_x11_mask;
 use crate::types::*;
 use crate::wm::Wm;
@@ -80,8 +79,9 @@ pub(super) fn handle_keyboard(
                 let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
                     return FilterResult::Forward;
                 };
+                let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
                 if crate::keyboard::handle_keysym(
-                    &mut ctx.core,
+                    &mut wm_ctx,
                     u32::from(keysym.modified_sym()),
                     mod_mask,
                 ) {
@@ -121,7 +121,8 @@ pub(super) fn handle_pointer_motion(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
+        let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
+        crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false);
     }
 
     let root_x = pointer_location.x.round() as i32;
@@ -357,7 +358,8 @@ fn wayland_hover_resize_drag_begin(
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
-    let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&ctx.core, root_x, root_y)
+    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+    let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&wm_ctx, root_x, root_y)
     else {
         return false;
     };
@@ -390,9 +392,9 @@ fn wayland_hover_resize_drag_begin(
     ctx.core.g.altcursor = AltCursor::Resize;
     ctx.core.g.drag.resize_direction = Some(dir);
     if move_mode {
-        set_cursor_move(&mut ctx.core);
+        set_cursor_move_wayland(&mut ctx);
     } else {
-        set_cursor_resize(&mut ctx.core, Some(dir));
+        set_cursor_resize_wayland(&mut ctx, Some(dir));
     }
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
     true
@@ -412,9 +414,8 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     if drag.move_mode {
         let new_x = drag.win_start_geo.x + (root_x - drag.start_x);
         let new_y = drag.win_start_geo.y + (root_y - drag.start_y);
-        resize_x11(
-            &mut ctx.core,
-            &ctx.x11,
+        crate::client::resize(
+            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
             drag.win,
             &Rect {
                 x: new_x,
@@ -451,9 +452,8 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     } else {
         (orig_top, drag.win_start_geo.h.max(1))
     };
-    resize_x11(
-        &mut ctx.core,
-        &ctx.x11,
+    crate::client::resize(
+        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
         drag.win,
         &Rect {
             x: new_x,
@@ -478,18 +478,20 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState::default();
     ctx.core.g.altcursor = AltCursor::None;
     ctx.core.g.drag.resize_direction = None;
-    set_cursor_default(&mut ctx.core);
+    set_cursor_default_wayland(&mut ctx);
     if drag.move_mode {
         crate::mouse::drag::complete_move_drop(
-            &mut ctx.core,
-            &ctx.x11,
+            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
             drag.win,
             drag.win_start_geo,
             None,
             Some((drag.last_root_x, drag.last_root_y)),
         );
     } else {
-        crate::mouse::monitor::handle_client_monitor_switch(&mut ctx.core, &ctx.x11, drag.win);
+        crate::mouse::monitor::handle_client_monitor_switch(
+            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+            drag.win,
+        );
     }
     true
 }

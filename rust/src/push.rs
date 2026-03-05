@@ -10,13 +10,13 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> O
         return next_tiled(ctx, c_win);
     }
 
-    let mon = ctx.g_mut().selected_monitor();
+    let mon = ctx.g().selected_monitor();
     let selected = mon.selected_tags();
     if let Some(win) = c_win {
         let mut found = false;
         for &client_win in &mon.clients {
             if found {
-                if let Some(c) = ctx.g_mut().clients.get(&client_win) {
+                if let Some(c) = ctx.g().clients.get(&client_win) {
                     if c.is_visible_on_tags(selected) {
                         return Some(client_win);
                     }
@@ -31,11 +31,11 @@ pub fn next_c(ctx: &WmCtx, c_win: Option<WindowId>, include_floating: bool) -> O
 }
 
 pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<WindowId> {
-    if ctx.g_mut().monitors.is_empty() {
+    if ctx.g().monitors.is_empty() {
         return None;
     }
 
-    let mon = ctx.g_mut().selected_monitor();
+    let mon = ctx.g().selected_monitor();
     let selected = mon.selected_tags();
 
     let mut r: Option<WindowId> = None;
@@ -45,7 +45,7 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
             break;
         }
 
-        if let Some(c) = ctx.g_mut().clients.get(&win) {
+        if let Some(c) = ctx.g().clients.get(&win) {
             if (include_floating || !c.isfloating) && c.is_visible_on_tags(selected) {
                 r = Some(win);
             }
@@ -56,12 +56,16 @@ pub fn prev_c(ctx: &WmCtx, c_win: WindowId, include_floating: bool) -> Option<Wi
 }
 
 pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.g_mut().selected_monitor().tiled_client_count(&ctx.g_mut().clients) < 2 {
+    let tiled_count = {
+        let g = ctx.g_mut();
+        g.selected_monitor().tiled_client_count(&g.clients)
+    };
+    if tiled_count < 2 {
         return;
     }
 
     let is_floating = ctx
-        .g
+        .g()
         .clients
         .get(&win)
         .map(|c| c.isfloating)
@@ -91,12 +95,16 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.g_mut().selected_monitor().tiled_client_count(&ctx.g_mut().clients) < 2 {
+    let tiled_count = {
+        let g = ctx.g_mut();
+        g.selected_monitor().tiled_client_count(&g.clients)
+    };
+    if tiled_count < 2 {
         return;
     }
 
     let is_floating = ctx
-        .g
+        .g()
         .clients
         .get(&win)
         .map(|c| c.isfloating)

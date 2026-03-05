@@ -18,7 +18,6 @@
 //! * [`update_motif_hints`]   – parse Motif `_MOTIF_WM_HINTS` decoration hints.
 //! * [`get_atom_prop`]        – read a single-atom X11 property (internal helper).
 
-use crate::backend::BackendOps;
 use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,

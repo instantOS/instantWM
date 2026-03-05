@@ -18,6 +18,7 @@ use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::bar::color::rgba_from_hex;
+use crate::contexts::CoreCtx;
 use crate::types::WindowId;
 use crate::wm::Wm;
 
@@ -43,9 +44,9 @@ pub(super) fn render_frame(
         let mut custom_elements: Vec<WaylandExtras> = Vec::new();
 
         if wm.g.cfg.showbar {
-            let mut ctx = wm.ctx();
+            let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
             let bar_buffers = crate::bar::wayland::render_bar_buffers(
-                &mut ctx.core,
+                &mut core,
                 &mut wm.bar_painter,
                 Scale::from(1.0),
             );

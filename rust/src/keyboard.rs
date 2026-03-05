@@ -11,6 +11,18 @@ use crate::types::{Direction, StackDirection};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
+fn with_wm_ctx_x11<T>(core: &mut CoreCtx, x11: &X11Ctx, f: impl FnOnce(&mut WmCtx) -> T) -> T {
+    let mut ctx = WmCtx::X11(WmCtxX11 {
+        core: core.reborrow(),
+        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+        x11: X11Ctx {
+            conn: x11.conn,
+            screen_num: x11.screen_num,
+        },
+    });
+    f(&mut ctx)
+}
+
 pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> u32 {
     if let Ok(cookie) = conn.get_keyboard_mapping(keycode, 1) {
         if let Ok(reply) = cookie.reply() {
@@ -218,12 +230,12 @@ pub fn up_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 
     if selected_window == overlay_win {
-        set_overlay_mode(core, OverlayMode::Top);
+        with_wm_ctx_x11(core, x11, |ctx| set_overlay_mode(ctx, OverlayMode::Top));
         return;
     }
 
     if is_floating {
-        toggle_floating(core);
+        with_wm_ctx_x11(core, x11, |ctx| toggle_floating(ctx));
         return;
     }
 
@@ -233,7 +245,7 @@ pub fn up_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
 }
 
 pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
-    if unhide_one(core) {
+    if with_wm_ctx_x11(core, x11, |ctx| unhide_one(ctx)) {
         return;
     }
 
@@ -258,18 +270,26 @@ pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
 
     if snap_status != SnapPosition::None {
         if let Some(win) = selected_window {
-            reset_snap(core, win);
+            let mut ctx_x11 = WmCtxX11 {
+                core: core.reborrow(),
+                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: X11Ctx {
+                    conn: x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            };
+            reset_snap(&mut ctx_x11, win);
         }
         return;
     }
 
     if selected_window == overlay_win {
-        set_overlay_mode(core, OverlayMode::Bottom);
+        with_wm_ctx_x11(core, x11, |ctx| set_overlay_mode(ctx, OverlayMode::Bottom));
         return;
     }
 
     if !is_floating {
-        toggle_floating(core);
+        with_wm_ctx_x11(core, x11, |ctx| toggle_floating(ctx));
     }
 }
 
@@ -300,7 +320,7 @@ pub fn up_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
                 );
                 let _ = x11.conn.flush();
             }
-            change_snap(core, win, SnapDir::Up);
+            with_wm_ctx_x11(core, x11, |ctx| change_snap(ctx, win, SnapDir::Up));
         }
         return;
     }
@@ -320,7 +340,7 @@ pub fn down_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection)
 
     if !has_tiling {
         if let Some(win) = core.selected_client() {
-            change_snap(core, win, SnapDir::Down);
+            with_wm_ctx_x11(core, x11, |ctx| change_snap(ctx, win, SnapDir::Down));
         }
         return;
     }
@@ -345,7 +365,15 @@ pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         };
 
         if snap_status != SnapPosition::None {
-            reset_snap(core, win);
+            let mut ctx_x11 = WmCtxX11 {
+                core: core.reborrow(),
+                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: X11Ctx {
+                    conn: x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            };
+            reset_snap(&mut ctx_x11, win);
         } else {
             let border_pixel = core
                 .g
@@ -363,15 +391,16 @@ pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
                 let _ = x11.conn.flush();
             }
 
-            save_floating_win(core, win);
+            with_wm_ctx_x11(core, x11, |ctx| save_floating_win(ctx, win));
 
             if let Some(client) = core.g.clients.get_mut(&win) {
                 client.snap_status = SnapPosition::Maximized;
             }
 
-            arrange(core, Some(core.g.selected_monitor_id()));
+            let selmon_id = core.g.selected_monitor_id();
+            with_wm_ctx_x11(core, x11, |ctx| arrange(ctx, Some(selmon_id)));
         }
     } else {
-        toggle_floating(core);
+        with_wm_ctx_x11(core, x11, |ctx| toggle_floating(ctx));
     }
 }

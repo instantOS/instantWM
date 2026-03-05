@@ -35,7 +35,10 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 
     let wins_to_save = collect_floating_wins(ctx.g(), mid);
     for win in wins_to_save {
-        super::state::save_floating_win(ctx.core_mut(), win);
+        match ctx {
+            WmCtx::X11(x11) => super::state::save_floating_win_x11(&mut x11.core, win),
+            WmCtx::Wayland(_) => {}
+        }
     }
 }
 

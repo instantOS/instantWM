@@ -40,7 +40,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
                     arg.parse().unwrap_or(2)
                 };
                 if let Some(mask) = TagMask::single(tag_num) {
-                    view(&mut ctx.core, &ctx.x11, mask);
+                    view(ctx, mask);
                 }
             },
         },

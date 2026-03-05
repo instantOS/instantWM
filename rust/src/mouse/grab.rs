@@ -26,7 +26,8 @@
 //! ungrab_ctx(ctx);
 //! ```
 
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtxX11;
+use crate::contexts::WmCtx;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -44,16 +45,11 @@ use x11rb::CURRENT_TIME;
 ///
 /// After a successful grab, use [`wait_event`] to poll events inside the
 /// loop and [`ungrab_ctx`] to release the grab when done.
-pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
-    require_x11_ret!(ctx, false);
-    let ctx_x11 = match ctx {
-        WmCtx::X11(x) => x,
-        WmCtx::Wayland(_) => return false,
-    };
-    let conn = ctx_x11.x11.conn;
+pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
+    let conn = ctx.x11.conn;
 
-    let root = ctx_x11.core.g.x11.root;
-    let cursor = ctx_x11
+    let root = ctx.core.g.x11.root;
+    let cursor = ctx
         .core
         .g
         .cfg
@@ -121,13 +117,26 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     result
 }
 
+pub fn grab_pointer_with_keys_ctx(ctx: &WmCtx, cursor_index: usize) -> bool {
+    match ctx {
+        WmCtx::X11(x11) => grab_pointer_with_keys(x11, cursor_index),
+        WmCtx::Wayland(_) => false,
+    }
+}
+
 /// Wait for the next X11 event.
 ///
 /// Borrows the connection only for the duration of the call, so the caller
 /// can freely mutate `ctx` between events.
 pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
-    ctx.x11_conn()
-        .and_then(|x11| x11.conn.wait_for_event().ok())
+    ctx.x11.conn.wait_for_event().ok()
+}
+
+pub fn wait_event_ctx(ctx: &WmCtx) -> Option<x11rb::protocol::Event> {
+    match ctx {
+        WmCtx::X11(x11) => wait_event(x11),
+        WmCtx::Wayland(_) => None,
+    }
 }
 
 /// Release an active pointer grab and flush pending requests.
@@ -144,6 +153,12 @@ fn ungrab_inner(conn: &x11rb::rust_connection::RustConnection) {
 #[inline]
 pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
     ungrab_inner(ctx.x11.conn);
+}
+
+pub fn ungrab_ctx(ctx: &WmCtx) {
+    if let WmCtx::X11(x11) = ctx {
+        ungrab(x11);
+    }
 }
 
 // ── Passive button grabs ──────────────────────────────────────────────────────
@@ -165,7 +180,7 @@ pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: b
         return;
     }
 
-    let numlockmask = ctx.g.x11.numlockmask as u16;
+    let numlockmask = ctx.core.g.x11.numlockmask as u16;
 
     let modifier_variants: [u16; 4] = [
         0,

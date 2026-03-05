@@ -153,17 +153,17 @@ pub fn get_buttons() -> Vec<Button> {
         btn_x11!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
         btn_x11!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                set_client_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
+                set_client_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
         btn_x11!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                toggle_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
+                toggle_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
         btn_x11!(Tag(0), MOD1,   button:MouseButton::Left => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                follow_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
+                follow_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
         btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),

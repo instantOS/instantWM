@@ -50,8 +50,12 @@ pub mod warp;
 
 // ── warp ──────────────────────────────────────────────────────────────────────
 
-pub use cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
-pub use warp::reset_cursor;
+pub use cursor::{
+    set_cursor_default, set_cursor_default_wayland, set_cursor_default_x11, set_cursor_move,
+    set_cursor_move_wayland, set_cursor_move_x11, set_cursor_resize, set_cursor_resize_wayland,
+    set_cursor_resize_x11,
+};
+pub use warp::{reset_cursor, reset_cursor_x11};
 
 // ── grab ──────────────────────────────────────────────────────────────────────
 

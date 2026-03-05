@@ -158,7 +158,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     // Save geometry before entering snap for the first time.
     if snap_status == SnapPosition::None {
         if super::helpers::check_floating(ctx, win) {
-            super::state::save_floating_win(&mut ctx_x11.core, win);
+            super::state::save_floating_win_x11(&mut ctx_x11.core, win);
         }
     }
 
@@ -377,16 +377,14 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             // Raise the window if it is the focused one.
             let is_sel = ctx.selected_client() == Some(win);
             if is_sel {
-                if let WmCtx::X11(x11) = ctx {
-                    let conn = x11.x11.conn;
-                    let x11_win: Window = win.into();
-                    let _ = configure_window(
-                        conn,
-                        x11_win,
-                        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                    );
-                    let _ = conn.flush();
-                }
+                let conn = ctx.x11.conn;
+                let x11_win: Window = win.into();
+                let _ = configure_window(
+                    conn,
+                    x11_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                );
+                let _ = conn.flush();
             }
         }
     }
@@ -414,7 +412,7 @@ pub fn reset_snap(ctx: &mut WmCtxX11, win: WindowId) {
             client.snap_status = SnapPosition::None;
         }
         restore_border_width(&mut ctx.core, win);
-        super::state::restore_floating_win(ctx, win);
+        super::state::restore_floating_win_ctx_x11(ctx, win);
         super::helpers::apply_size(&mut ctx.core, &ctx.x11, win);
     }
 }

@@ -238,7 +238,9 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
     attach(ctx, win);
     attach_stack(ctx, win);
-    set_client_tag_prop(ctx.core_mut(), &ctx.x11, win);
+    if let WmCtx::X11(x11) = ctx {
+        set_client_tag_prop(&mut x11.core, &x11.x11, win);
+    }
 
     focus_soft(ctx, None);
 
@@ -304,7 +306,9 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         None => return,
     };
 
-    crate::tags::send_to_monitor(ctx.core_mut(), &ctx.x11, direction);
+    if let WmCtx::X11(x11) = ctx {
+        crate::tags::send_to_monitor(&mut x11.core, &x11.x11, direction);
+    }
 
     if let Some(monitor_id) = ctx.g_mut().clients.get(&c_win).and_then(|c| c.monitor_id) {
         ctx.g_mut().monitors.set_sel_idx(monitor_id);
@@ -423,7 +427,8 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
 }
 
 fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
-    let (conn, _screen_num) = ctx.x11_conn()?;
+    let x11 = ctx.x11_conn()?;
+    let conn = x11.conn;
     let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
     if is_active.state == 0 {
         return None;
@@ -508,7 +513,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     if dirty {
         ctx.g_mut().monitors.set_sel_idx(0);
         let x11_conn = match ctx {
-            WmCtx::X11(x11) => Some((x11.x11.conn, x11.x11.screen_num)),
+            WmCtx::X11(x11) => Some(crate::globals::X11Conn::new(x11.x11.conn, x11.x11.screen_num)),
             WmCtx::Wayland(_) => None,
         };
         if let Some(m) = ctx.g_mut().monitors.win_to_mon(

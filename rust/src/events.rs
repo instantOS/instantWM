@@ -12,7 +12,7 @@ use crate::keyboard::{
 use crate::layouts::{arrange, restack};
 use crate::monitor::update_geom;
 use crate::mouse::{
-    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse, reset_cursor,
+    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse, reset_cursor_x11,
     resize_mouse_directional,
 };
 use crate::systray;
@@ -122,7 +122,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     let dir = ctx.core.g.drag.resize_direction;
-                    reset_cursor(&mut ctx.core, &ctx.x11);
+                    reset_cursor_x11(&mut ctx.core, &ctx.x11);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     let mut x11_ctx = ctx.reborrow();
                     if btn == MouseButton::Right {
@@ -469,7 +469,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         }
         reset_bar_x11(&mut ctx.core, &ctx.x11);
         if ctx.core.g.altcursor == AltCursor::Sidebar {
-            reset_cursor(&mut ctx.core, &ctx.x11);
+            reset_cursor_x11(&mut ctx.core, &ctx.x11);
         }
         return;
     };

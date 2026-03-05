@@ -3,7 +3,8 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::bar::{draw_bars_wayland, draw_bars_x11};
+use crate::bar::draw_bars_x11;
+use crate::backend::BackendOps;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
@@ -11,6 +12,7 @@ use crate::tags::view;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
+use x11rb::wrapper::ConnectionExt as ConnectionExtWrapper;
 use x11rb::CURRENT_TIME;
 
 /// Set focus to a window, or to the root if None.
@@ -150,7 +152,7 @@ pub fn focus_wayland(
         wayland.backend.set_focus(w);
     }
 
-    draw_bars_wayland(core);
+    let _ = core;
     Ok(())
 }
 
@@ -311,7 +313,7 @@ pub fn hover_focus_target_wayland(
 
     core.set_selected_client(Some(hovered_win));
     wayland.backend.set_focus(hovered_win);
-    draw_bars_wayland(core);
+    let _ = core;
 }
 
 pub fn set_focus_win_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
@@ -515,7 +517,15 @@ pub fn focus_last_client_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     };
 
     if last_client.is_scratchpad() {
-        crate::scratchpad::scratchpad_show_name(core, &last_client.scratchpad_name);
+        let mut wm_ctx = WmCtx::X11(WmCtxX11 {
+            core: core.reborrow(),
+            backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+            x11: X11Ctx {
+                conn: x11.conn,
+                screen_num: x11.screen_num,
+            },
+        });
+        crate::scratchpad::scratchpad_show_name(&mut wm_ctx, &last_client.scratchpad_name);
         return;
     }
 
@@ -536,11 +546,27 @@ pub fn focus_last_client_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         core.focus.last_client = cur;
     }
 
-    view(core, x11, TagMask::from_bits(tags));
+    let mut x11_ctx = WmCtxX11 {
+        core: core.reborrow(),
+        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+        x11: X11Ctx {
+            conn: x11.conn,
+            screen_num: x11.screen_num,
+        },
+    };
+    view(&mut x11_ctx, TagMask::from_bits(tags));
     focus_soft_x11(core, x11, Some(last_win));
 
     let monitor_id = core.g.selected_monitor_id();
-    crate::layouts::arrange(core, Some(monitor_id));
+    let mut wm_ctx = WmCtx::X11(WmCtxX11 {
+        core: core.reborrow(),
+        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+        x11: X11Ctx {
+            conn: x11.conn,
+            screen_num: x11.screen_num,
+        },
+    });
+    crate::layouts::arrange(&mut wm_ctx, Some(monitor_id));
 }
 
 pub fn warp_cursor_to_client_x11(core: &CoreCtx, x11: &X11Ctx, c_win: WindowId) {

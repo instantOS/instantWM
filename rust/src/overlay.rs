@@ -1,4 +1,5 @@
 use crate::animation::animate_client;
+use crate::backend::BackendOps;
 use crate::client::save_border_width;
 use crate::client::{attach, attach_stack, detach, detach_stack, resize};
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
@@ -24,12 +25,12 @@ struct OverlayPositionInfo {
 
 /// Get the overlay window for the selected monitor, if it exists.
 fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
-    ctx.g_mut().selected_monitor().overlay
+    ctx.g().selected_monitor().overlay
 }
 
 /// Check if the overlay window exists in the clients map.
 pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    get_overlay_win(ctx).is_some_and(|win| ctx.g_mut().clients.contains(&win))
+    get_overlay_win(ctx).is_some_and(|win| ctx.g().clients.contains(&win))
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).
@@ -39,11 +40,11 @@ fn raise_window(ctx: &WmCtx, win: WindowId) {
 
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bar_height = ctx.g_mut().cfg.bar_height;
+    let bar_height = ctx.g().cfg.bar_height;
     let base_offset = if mon.showbar { bar_height } else { 0 };
 
     // Check if any visible client is fullscreen
-    for (_win, c) in mon.iter_clients(&*ctx.g_mut().clients) {
+    for (_win, c) in mon.iter_clients(&ctx.g().clients) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
             return 0;
         }

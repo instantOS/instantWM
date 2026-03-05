@@ -82,7 +82,7 @@ fn wm_init(wm: &mut Wm) {
         let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
             return;
         };
-        crate::xresources::verify_tags_config(&mut ctx.core);
+        crate::xresources::verify_tags_config(&mut crate::contexts::WmCtx::X11(ctx.reborrow()));
         crate::bar::x11::update_bars(&mut ctx.core, &ctx.x11);
         crate::bar::x11::update_status(&mut ctx.core, &ctx.x11);
         crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11);

@@ -4,13 +4,15 @@
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
 //! receives explicit `X11Ctx` / `WaylandCtx` instead of runtime checks.
 
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
+use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
+use crate::globals::X11Conn;
 use crate::types::{Client, Rect, WindowId};
 use x11rb::rust_connection::RustConnection;
 
@@ -101,6 +103,10 @@ impl<'a> WmCtxX11<'a> {
     pub fn selected_client(&self) -> Option<WindowId> {
         self.core.selected_client()
     }
+
+    pub fn x11_conn(&self) -> Option<X11Conn<'_>> {
+        Some(X11Conn::new(self.x11.conn, self.x11.screen_num))
+    }
 }
 
 pub struct WmCtxWayland<'a> {
@@ -108,6 +114,22 @@ pub struct WmCtxWayland<'a> {
     pub backend: BackendRef<'a>,
     pub wayland: WaylandCtx<'a>,
     pub xwayland: Option<XwaylandCtx<'a>>,
+}
+
+impl<'a> WmCtxWayland<'a> {
+    pub fn reborrow(&mut self) -> WmCtxWayland<'_> {
+        WmCtxWayland {
+            core: self.core.reborrow(),
+            backend: self.backend.reborrow(),
+            wayland: WaylandCtx {
+                backend: self.wayland.backend,
+            },
+            xwayland: self.xwayland.as_ref().map(|xw| XwaylandCtx {
+                xdisplay: xw.xdisplay,
+                xwm: xw.xwm,
+            }),
+        }
+    }
 }
 
 pub enum WmCtx<'a> {
@@ -202,6 +224,17 @@ impl<'a> WmCtx<'a> {
         self.backend().set_focus(win);
     }
 
+    pub fn x11_conn(&self) -> Option<X11Conn<'_>> {
+        match self {
+            WmCtx::X11(ctx) => ctx.x11_conn(),
+            WmCtx::Wayland(_) => None,
+        }
+    }
+
+    pub fn backend_kind_REMOVED(&self) -> BackendKind {
+        self.backend().kind()
+    }
+
     // For backend-specific operations, use match on the enum directly
     // instead of accessor methods that return Option.
 }
@@ -210,6 +243,18 @@ impl<'a> Deref for WmCtx<'a> {
     type Target = CoreCtx<'a>;
 
     fn deref(&self) -> &Self::Target {
-        self.core()
+        match self {
+            WmCtx::X11(ctx) => &ctx.core,
+            WmCtx::Wayland(ctx) => &ctx.core,
+        }
+    }
+}
+
+impl<'a> DerefMut for WmCtx<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            WmCtx::X11(ctx) => &mut ctx.core,
+            WmCtx::Wayland(ctx) => &mut ctx.core,
+        }
     }
 }

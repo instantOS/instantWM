@@ -14,7 +14,7 @@
 //! | [`warp_to_focus`]           | Keybinding handler – warp to the selected window        |
 //! | [`reset_cursor`]            | Restore the normal (arrow) X11 root cursor              |
 
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -33,6 +33,17 @@ pub(crate) fn get_root_ptr_x11(x11: &X11Ctx, root: Window) -> Option<(i32, i32)>
     let cookie = query_pointer(conn, root).ok()?;
     let reply = cookie.reply().ok()?;
     Some((reply.root_x as i32, reply.root_y as i32))
+}
+
+pub fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
+    match ctx {
+        WmCtx::X11(x11) => get_root_ptr_x11(&x11.x11, x11.core.g.x11.root),
+        WmCtx::Wayland(_) => None,
+    }
+}
+
+pub fn get_root_ptr_ctx_x11(ctx: &WmCtxX11<'_>) -> Option<(i32, i32)> {
+    get_root_ptr_x11(&ctx.x11, ctx.core.g.x11.root)
 }
 
 /// Core warp implementation.  Moves the pointer to the centre of `win`.
@@ -183,6 +194,16 @@ pub fn warp_into_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
         y as i16,
     );
     let _ = x11.conn.flush();
+}
+
+pub fn warp_into(ctx: &WmCtx, win: WindowId) {
+    if let WmCtx::X11(x11) = ctx {
+        warp_into_x11(&x11.core, &x11.x11, win);
+    }
+}
+
+pub fn warp_into_ctx_x11(ctx: &WmCtxX11<'_>, win: WindowId) {
+    warp_into_x11(&ctx.core, &ctx.x11, win);
 }
 
 /// Keybinding handler: warp the cursor to the currently focused window.

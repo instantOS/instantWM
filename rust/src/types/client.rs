@@ -160,7 +160,18 @@ impl Client {
 
         crate::client::set_client_tag_prop(core, x11, self.win);
         crate::focus::focus_soft_x11(core, x11, None);
-        crate::layouts::arrange(core, Some(core.g.selected_monitor_id()));
+        let selmon_id = core.g.selected_monitor_id();
+        crate::layouts::arrange(
+            &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+                core: core.reborrow(),
+                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: crate::contexts::X11Ctx {
+                    conn: x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            }),
+            Some(selmon_id),
+        );
     }
 }
 
