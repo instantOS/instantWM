@@ -1,6 +1,6 @@
 //! Moving clients between tags.
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 
 use crate::animation::animate_client_x11;
@@ -20,18 +20,20 @@ pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
 }
 
 fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    let (core, x11) = match ctx {
-        WmCtx::X11(ctx) => (&mut ctx.core, &ctx.x11),
-        WmCtx::Wayland(_) => return,
+    let (win, current_tag, overlay_win, tagset, tagmask, animated) = {
+        let mon = ctx.g().selected_monitor();
+        let Some(win) = mon.sel else {
+            return;
+        };
+        (
+            win,
+            mon.current_tag as u32,
+            mon.overlay,
+            mon.selected_tags(),
+            ctx.g().tags.mask(),
+            ctx.g().animated,
+        )
     };
-
-    let mon = core.g.selected_monitor();
-    let Some(win) = mon.sel else {
-        return;
-    };
-
-    let current_tag = mon.current_tag as u32;
-    let overlay_win = mon.overlay;
 
     if Some(win) == overlay_win {
         let mode = match dir {
@@ -51,19 +53,19 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let (tagset, tagmask) = (mon.selected_tags(), core.g.tags.mask());
-
     if (tagset & tagmask).count_ones() != 1 {
         return;
     }
 
-    clear_sticky(core, win);
+    clear_sticky(ctx.core_mut(), win);
 
-    if core.g.animated {
-        play_slide_animation(core, x11, win, dir);
+    if animated {
+        if let WmCtx::X11(x11_ctx) = ctx {
+            play_slide_animation(&mut x11_ctx.core, &x11_ctx.x11, win, dir);
+        }
     }
 
-    if let Some(client) = core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         match dir {
             Direction::Left if tagset > 1 => {
                 client.tags >>= offset;
@@ -75,8 +77,8 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         }
     }
 
-    let selected_monitor_id = core.g.selected_monitor_id();
-    crate::focus::focus_soft_x11(core, x11, None);
+    let selected_monitor_id = ctx.g().selected_monitor_id();
+    crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selected_monitor_id));
 }
 
