@@ -156,16 +156,16 @@ fn apply_default_border(g: &crate::globals::Globals, w: WindowId) -> i32 {
     borderpx
 }
 
-fn monitor_rects_for_client(ctx: &WmCtx, w: WindowId) -> (Rect, Rect) {
-    let monitor_id = ctx.g.clients.get(&w).and_then(|c| c.monitor_id);
+fn monitor_rects_for_client(g: &crate::globals::Globals, w: WindowId) -> (Rect, Rect) {
+    let monitor_id = g.clients.get(&w).and_then(|c| c.monitor_id);
     monitor_id
-        .and_then(|mid| ctx.g.monitor(mid))
+        .and_then(|mid| g.monitor(mid))
         .map(|m| (m.work_rect, m.monitor_rect))
         .unwrap_or((Rect::default(), Rect::default()))
 }
 
-fn clamp_client_to_work_area(ctx: &mut WmCtx, w: WindowId, mon_work_rect: Rect) {
-    if let Some(client) = ctx.g.clients.get_mut(&w) {
+fn clamp_client_to_work_area(g: &mut crate::globals::Globals, w: WindowId, mon_work_rect: Rect) {
+    if let Some(client) = g.clients.get_mut(&w) {
         if client.geo.x + client.total_width() > mon_work_rect.x + mon_work_rect.w {
             client.geo.x = mon_work_rect.x + mon_work_rect.w - client.total_width();
         }
