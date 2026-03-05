@@ -85,7 +85,7 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Window title ──────────────────────────────────────────────────
         // Left/right title clicks pass the event coordinates so the drag
         // handlers can use them as the anchor without a redundant round-trip.
-        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => |ctx, arg| {
+        btn_x11!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
             window_title_mouse_handler(ctx, win, arg.btn, arg.rx, arg.ry)
@@ -95,7 +95,7 @@ pub fn get_buttons() -> Vec<Button> {
                       else { return };
             close_win(ctx, win)
         }),
-        btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => |ctx, arg| {
+        btn_x11!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
             window_title_mouse_handler_right(ctx, win, arg.btn, arg.rx, arg.ry)
@@ -140,7 +140,7 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Tag bar ───────────────────────────────────────────────────────
         // Left-click: pass bar_pos + event coords so drag_tag needs no
         // get_root_ptr round-trip to identify the initial tag or anchor.
-        btn!(Tag(0), 0, button:MouseButton::Left => |ctx, arg| {
+        btn_x11!(Tag(0), 0, button:MouseButton::Left => |ctx, arg| {
             drag_tag(ctx, arg.pos, arg.btn, arg.rx)
         }),
         // Right-click: tag index arrives directly in pos — toggle it in/out
@@ -178,11 +178,11 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Root, MODKEY, button:MouseButton::Left        => |ctx, _| set_overlay(ctx)),
         btn!(Root, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::Notify)),
         // ── Client window ─────────────────────────────────────────────────
-        btn!(ClientWin, MODKEY, button:MouseButton::Left   => |ctx, arg| move_mouse(ctx, arg.btn)),
+        btn_x11!(ClientWin, MODKEY, button:MouseButton::Left   => |ctx, arg| move_mouse(ctx, arg.btn)),
         btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx, _| toggle_floating(ctx)),
-        btn!(ClientWin, MODKEY, button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
-        btn!(ClientWin, MA,     button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
-        btn!(ClientWin, MS,     button:MouseButton::Right  => |ctx, arg| {
+        btn_x11!(ClientWin, MODKEY, button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
+        btn_x11!(ClientWin, MA,     button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
+        btn_x11!(ClientWin, MS,     button:MouseButton::Right  => |ctx, arg| {
             if let Some(win) = ctx.selected_client() {
                 resize_aspect_mouse(ctx, win, arg.btn)
             }
@@ -195,7 +195,7 @@ pub fn get_buttons() -> Vec<Button> {
         }),
         btn_x11!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                toggle_locked(ctx, &ctx.x11, win)
+                toggle_locked(&mut ctx.core, &ctx.x11, win)
             }
         }),
         // ── Resize widget ─────────────────────────────────────────────────
@@ -205,9 +205,9 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(ShutDown, 0, button:MouseButton::Middle => |ctx, _| spawn(ctx, Cmd::OsLock)),
         btn!(ShutDown, 0, button:MouseButton::Right  => |ctx, _| spawn(ctx, Cmd::Slock)),
         // ── Sidebar / start menu ──────────────────────────────────────────
-        btn!(SideBar, 0,       button:MouseButton::Left  => |ctx, arg| gesture_mouse(ctx, arg.btn)),
+        btn_x11!(SideBar, 0,       button:MouseButton::Left  => |ctx, arg| gesture_mouse(ctx, arg.btn)),
         btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, Cmd::StartMenu)),
         btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::QuickMenu)),
-        btn_x11!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx, &ctx.x11)),
+        btn_x11!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(&mut ctx.core, &ctx.x11)),
     ]
 }

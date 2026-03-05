@@ -102,18 +102,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
             kill_client(ctx, win);
         }
     } else {
-        match ctx {
-            WmCtx::X11(c) => {
-                crate::util::spawn(&c.core, None, crate::config::commands::Cmd::InstantShutdown);
-            }
-            WmCtx::Wayland(c) => {
-                crate::util::spawn(
-                    &c.core,
-                    Some(&c.wayland),
-                    crate::config::commands::Cmd::InstantShutdown,
-                );
-            }
-        }
+        crate::util::spawn(ctx, crate::config::commands::Cmd::InstantShutdown);
     }
 }
 
@@ -164,7 +153,7 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
 fn force_close_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
     let sent = send_event_x11(
-        core.g,
+        core,
         x11,
         win,
         wmatom_delete,

@@ -90,7 +90,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
             if let Some(monitor_id) = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id) {
-                restack(&mut ctx.core, &ctx.backend, monitor_id);
+                restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
     } else if let Some(mon) = ctx.core.g.monitor(selmon_id) {
@@ -206,7 +206,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 
     update_geom(&mut WmCtx::X11(ctx.reborrow()));
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
-    arrange(&mut ctx.core, None);
+    arrange(&mut WmCtx::X11(ctx.reborrow()), None);
 }
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
@@ -289,13 +289,13 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         // floating window until the user commits (clicks) or moves away.
         // This avoids the "nothing happens" feel when hovering onto a tiled
         // window while a floating window is selected.
-        if crate::mouse::floating_to_tiled_hover(&mut ctx.core, &ctx.x11) {
+        if crate::mouse::floating_to_tiled_hover(&mut WmCtx::X11(ctx.reborrow())) {
             return;
         }
 
         // Case 1: Entering root with floating sel
         if entering_root {
-            if hover_resize_mouse(&mut ctx.core, &ctx.x11) {
+            if hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow())) {
                 return;
             }
             // Fall through to normal focus handling
@@ -303,7 +303,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         // Case 2: Entering a different client while sel is floating
         else if let Some(ew) = entering_client {
             if Some(ew) != selected_window {
-                let resized = hover_resize_mouse(&mut ctx.core, &ctx.x11);
+                let resized = hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow()));
                 if focusfollowsfloatmouse {
                     if resized {
                         return;
@@ -461,10 +461,10 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     };
 
     if root_y >= monitor_y + bar_height {
-        if handle_floating_resize_hover(&mut ctx.core, &ctx.x11, root_x, root_y, true) {
+        if handle_floating_resize_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y, true) {
             return;
         }
-        if handle_sidebar_hover(&mut ctx.core, &ctx.x11, root_x, root_y) {
+        if handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
             return;
         }
         reset_bar_x11(&mut ctx.core, &ctx.x11);
@@ -730,7 +730,7 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if let Some(c) = ctx.core.g.clients.get(&win) {
         if let Some(monitor_id) = c.monitor_id {
             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
-            restack(&mut ctx.core, &ctx.backend, monitor_id);
+            restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
         }
     };
 }

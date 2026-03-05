@@ -124,22 +124,22 @@ const MSCA: u32 = MODKEY | SHIFT | CONTROL | MOD1;
 
 pub fn get_keys() -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
-        key!(MA, XK_J => |ctx| {
+        key_x11!(MA, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Down)
             }
         }),
-        key!(MA, XK_K => |ctx| {
+        key_x11!(MA, XK_K => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Up)
             }
         }),
-        key!(MA, XK_L => |ctx| {
+        key_x11!(MA, XK_L => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Right)
             }
         }),
-        key!(MA, XK_H => |ctx| {
+        key_x11!(MA, XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Left)
             }
@@ -157,10 +157,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
-        key_x11!(MODKEY, XK_DOWN => |ctx| down_key_x11(ctx, &ctx.x11, StackDirection::Next)),
-        key_x11!(MODKEY, XK_UP   => |ctx| up_key_x11(ctx, &ctx.x11, StackDirection::Previous)),
-        key_x11!(MS,     XK_DOWN => |ctx| down_press_x11(ctx, &ctx.x11)),
-        key_x11!(MS,     XK_UP   => |ctx| up_press_x11(ctx, &ctx.x11)),
+        key_x11!(MODKEY, XK_DOWN => |ctx| down_key_x11(&mut ctx.core, &ctx.x11, StackDirection::Next)),
+        key_x11!(MODKEY, XK_UP   => |ctx| up_key_x11(&mut ctx.core, &ctx.x11, StackDirection::Previous)),
+        key_x11!(MS,     XK_DOWN => |ctx| down_press_x11(&mut ctx.core, &ctx.x11)),
+        key_x11!(MS,     XK_UP   => |ctx| up_press_x11(&mut ctx.core, &ctx.x11)),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 push_down(ctx, win)
@@ -176,14 +176,14 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
         key!(MC, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
         key_x11!(MODKEY,  XK_TAB     => |ctx| last_view(&mut ctx.core, &ctx.x11)),
-        key_x11!(MS,      XK_TAB     => |ctx| focus_last_client_x11(ctx, &ctx.x11)),
+        key_x11!(MS,      XK_TAB     => |ctx| focus_last_client_x11(&mut ctx.core, &ctx.x11)),
         key_x11!(MA,      XK_TAB     => |ctx| follow_view(&mut ctx.core, &ctx.x11)),
         key!(MODKEY,  XK_LEFT    => |ctx| animation::anim_scroll(ctx, Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),
-        key_x11!(MA,      XK_LEFT    => |ctx| move_client(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key_x11!(MA,      XK_RIGHT   => |ctx| move_client(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key_x11!(MS,      XK_LEFT    => |ctx| shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Left, 1)),
-        key_x11!(MS,      XK_RIGHT   => |ctx| shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Right, 1)),
+        key!(MA,      XK_LEFT    => |ctx| move_client(ctx, Direction::Left)),
+        key!(MA,      XK_RIGHT   => |ctx| move_client(ctx, Direction::Right)),
+        key!(MS,      XK_LEFT    => |ctx| shift_tag_by(ctx, Direction::Left, 1)),
+        key!(MS,      XK_RIGHT   => |ctx| shift_tag_by(ctx, Direction::Right, 1)),
         key_x11!(MSC,     XK_RIGHT   => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
         key_x11!(MSC,     XK_LEFT    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
         // View all tags (overview mode)
@@ -205,36 +205,36 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),
-        key!(MC,   XK_D      => distribute_clients),
+        key_x11!(MC,   XK_D      => |ctx| distribute_clients(ctx)),
         key!(MS,   XK_D      => draw_window),
-        key!(MA,   XK_W      => |ctx| {
+        key_x11!(MA,   XK_W      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 center_window(ctx, win)
             }
         }),
-        key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(ctx, &ctx.x11)),
-        key!(MS,   XK_J      => |ctx| {
+        key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(&ctx.core, &ctx.x11)),
+        key_x11!(MS,   XK_J      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
             }
         }),
-        key!(MS,   XK_K      => |ctx| {
+        key_x11!(MS,   XK_K      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Up)
             }
         }),
-        key!(MS,   XK_L      => |ctx| {
+        key_x11!(MS,   XK_L      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Right)
             }
         }),
-        key!(MS,   XK_H      => |ctx| {
+        key_x11!(MS,   XK_H      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Left)
             }
         }),
-        key!(MS,   XK_M      => |ctx| move_mouse(ctx, crate::types::MouseButton::Left)),
-        key!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
+        key_x11!(MS,   XK_M      => |ctx| move_mouse(ctx, crate::types::MouseButton::Left)),
+        key_x11!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
         key_x11!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_overview(&mut ctx.core, &ctx.x11, TagMask::ALL_BITS)
@@ -252,36 +252,36 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
-        key_x11!(MODKEY, XK_B  => |ctx| toggle_bar(ctx, &ctx.x11)),
-        key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(ctx, &ctx.x11)),
+        key_x11!(MODKEY, XK_B  => |ctx| toggle_bar(&mut ctx.core, &ctx.x11)),
+        key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(&mut ctx.core, &ctx.x11)),
         key!(MC,     XK_F  => temp_fullscreen),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
-                toggle_sticky(&mut ctx.core, win)
+                toggle_sticky(ctx.core_mut(), win)
             }
         }),
-        key_x11!(MA,     XK_S  => |ctx| toggle_alt_tag(ctx, &ctx.x11, ToggleAction::Toggle)),
-        key!(MSA,    XK_S  => |ctx| toggle_animated(ctx, ToggleAction::Toggle)),
-        key_x11!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, &ctx.x11, ToggleAction::Toggle)),
-        key!(MSA,    XK_D  => toggle_double_draw),
-        key_x11!(MS,     XK_SPACE => |ctx| space_toggle_x11(ctx, &ctx.x11)),
-        key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, &ctx.x11, ToggleAction::Toggle)),
-        key_x11!(MC,     XK_R     => |ctx| redraw_win(ctx, &ctx.x11)),
+        key_x11!(MA,     XK_S  => |ctx| toggle_alt_tag(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
+        key!(MSA,    XK_S  => |ctx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle)),
+        key_x11!(MSC,    XK_S  => |ctx| toggle_show_tags(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
+        key!(MSA,    XK_D  => |ctx| toggle_double_draw(ctx.core_mut())),
+        key_x11!(MS,     XK_SPACE => |ctx| space_toggle_x11(&mut ctx.core, &ctx.x11)),
+        key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
+        key_x11!(MC,     XK_R     => |ctx| redraw_win(&mut ctx.core, &ctx.x11)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 hide_window(ctx, win)
             }
         }),
         key!(MCA, XK_H => |ctx| unhide_all(ctx)),
-        key!(MODKEY, XK_Q   => shut_kill),
+        key!(MODKEY, XK_Q   => |ctx| shut_kill(ctx)),
         key!(MOD1,   XK_F4  => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 kill_client(ctx, win)
             }
         }),
-        key!(MSC,    XK_Q   => |_| quit()),
+        key!(MSC,    XK_Q   => |ctx| quit(ctx.core_mut())),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, Cmd::Help)),
-        key_x11!(MODKEY,  XK_F2 => |ctx| toggle_prefix(ctx, &ctx.x11)),
+        key_x11!(MODKEY,  XK_F2 => |ctx| toggle_prefix(&mut ctx.core, &ctx.x11)),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, Cmd::Term)),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, Cmd::Smart)),
         key!(MC,     XK_SPACE           => |ctx| spawn(ctx, Cmd::InstantMenu)),

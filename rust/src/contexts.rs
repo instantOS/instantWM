@@ -93,6 +93,10 @@ impl<'a> WmCtxX11<'a> {
             },
         }
     }
+
+    pub fn selected_client(&self) -> Option<WindowId> {
+        self.core.selected_client()
+    }
 }
 
 pub struct WmCtxWayland<'a> {
