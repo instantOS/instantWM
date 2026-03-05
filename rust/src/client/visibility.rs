@@ -14,7 +14,7 @@ use crate::animation::animate_client_x11;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
-use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 use crate::backend::BackendOps;
 use crate::layouts::arrange;
@@ -167,20 +167,81 @@ pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
     }
 }
 
-pub fn show(ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-    if let crate::contexts::WmCtx::X11(ctx_x11) = ctx {
-        show_x11(&mut ctx_x11.core, &ctx_x11.x11, win);
+pub fn show(ctx: &mut WmCtx, win: WindowId) {
+    match ctx {
+        WmCtx::X11(ctx_x11) => show_x11(&mut ctx_x11.core, &ctx_x11.x11, win),
+        WmCtx::Wayland(_) => show_wayland(ctx, win),
     }
 }
 
-pub fn hide(ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-    if let crate::contexts::WmCtx::X11(ctx_x11) = ctx {
-        hide_x11(&mut ctx_x11.core, &ctx_x11.x11, win);
+pub fn hide(ctx: &mut WmCtx, win: WindowId) {
+    match ctx {
+        WmCtx::X11(ctx_x11) => hide_x11(&mut ctx_x11.core, &ctx_x11.x11, win),
+        WmCtx::Wayland(_) => hide_wayland(ctx, win),
     }
 }
 
 // ---------------------------------------------------------------------------
-// Show (unminimize)
+// Show / hide (Wayland)
+// ---------------------------------------------------------------------------
+
+fn show_wayland(ctx: &mut WmCtx, win: WindowId) {
+    let is_hidden = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|c| c.is_hidden)
+        .unwrap_or(false);
+
+    if !is_hidden {
+        return;
+    }
+
+    if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
+        c.is_hidden = false;
+    }
+
+    ctx.backend().map_window(win);
+    ctx.backend().flush();
+
+    let monitor_id = ctx.g().clients.get(&win).and_then(|c| c.monitor_id);
+    crate::focus::focus_soft(ctx, Some(win));
+    if let Some(mid) = monitor_id {
+        arrange(ctx, Some(mid));
+    }
+}
+
+fn hide_wayland(ctx: &mut WmCtx, win: WindowId) {
+    let (is_hidden, monitor_id) = match ctx.g().clients.get(&win) {
+        Some(c) => (c.is_hidden, c.monitor_id),
+        None => return,
+    };
+
+    if is_hidden {
+        return;
+    }
+
+    ctx.backend().unmap_window(win);
+    ctx.backend().flush();
+
+    if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
+        c.is_hidden = true;
+    }
+
+    let snext = monitor_id.and_then(|mid| {
+        ctx.g()
+            .monitor(mid)
+            .and_then(|m| m.stack.iter().find(|&&w| w != win).copied())
+    });
+    crate::focus::focus_soft(ctx, snext);
+
+    if let Some(mid) = monitor_id {
+        arrange(ctx, Some(mid));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Show (unminimize, X11)
 // ---------------------------------------------------------------------------
 
 /// Unminimize `win`: map it, animate it sliding in from above, then arrange.
