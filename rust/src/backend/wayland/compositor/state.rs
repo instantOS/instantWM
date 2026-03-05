@@ -235,13 +235,21 @@ impl WaylandState {
             return;
         }
 
+        if self
+            .window_animations
+            .get(&window_id)
+            .is_some_and(|anim| anim.to == target)
+        {
+            return;
+        }
+
         self.window_animations.insert(
             window_id,
             WaylandWindowAnimation {
                 from: current,
                 to: target,
                 started_at: Instant::now(),
-                duration: Duration::from_millis(140),
+                duration: Duration::from_millis(90),
             },
         );
     }

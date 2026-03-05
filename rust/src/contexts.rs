@@ -208,7 +208,10 @@ impl<'a> WmCtx<'a> {
         self.backend().resize_window(win, rect);
     }
 
-    pub fn set_border(&self, win: WindowId, width: i32) {
+    pub fn set_border(&mut self, win: WindowId, width: i32) {
+        if let Some(client) = self.g_mut().clients.get_mut(&win) {
+            client.border_width = width.max(0);
+        }
         self.backend().set_border_width(win, width);
     }
 
