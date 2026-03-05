@@ -131,7 +131,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     {
         return;
     }
-    draw_bar(ctx, monitor_id);
+    draw_bar(&mut ctx.core, &ctx.x11, monitor_id);
 
     // Extract data from monitor first to avoid borrow conflicts
     let (selected_window, is_tiling, selected_tags, bar_win, is_floating) = {
@@ -231,7 +231,7 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     if ctx.g.selected_monitor().sel.is_some() {
         arrange(ctx, Some(selected_monitor_id));
     } else {
-        draw_bar(ctx, selected_monitor_id);
+        draw_bar(&mut ctx.core, &ctx.x11, selected_monitor_id);
     }
 }
 

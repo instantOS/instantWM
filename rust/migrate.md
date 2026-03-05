@@ -55,6 +55,11 @@ Key rule: modules should accept the smallest of `CoreCtx`, `X11Ctx`, `WaylandCtx
 - Delete `require_x11!` and `require_x11_ret!` macros in `src/macros.rs`.
 - Replace all runtime checks with compile-time context selection.
 
+Status update:
+- Bar rendering + hit-testing migrated to CoreCtx + backend-specific entry points.
+- Tag view paths now take CoreCtx + X11Ctx (view/toggle/scroll/overview); call sites updated.
+- `set_client_tag_prop` now requires CoreCtx + X11Ctx and most call sites updated.
+
 ---
 
 ## 3) Create small helper conversions at the boundary (done)

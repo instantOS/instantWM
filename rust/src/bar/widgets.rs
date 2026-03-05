@@ -1,4 +1,4 @@
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::types::*;
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
@@ -7,7 +7,7 @@ const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
 
 pub(crate) fn draw_startmenu_icon(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
@@ -48,7 +48,7 @@ pub(crate) fn draw_startmenu_icon(
     );
 }
 pub(crate) fn draw_tag_indicators(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     m: &Monitor,
     mut x: i32,
     occupied_tags: u32,
@@ -105,7 +105,7 @@ pub(crate) fn draw_tag_indicators(
 }
 
 pub(crate) fn draw_layout_indicator(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     m: &Monitor,
     mut x: i32,
     bar_height: i32,
@@ -132,7 +132,7 @@ pub(crate) fn draw_layout_indicator(
 /// filled rectangles so it is visible without a font glyph.  Returns the new
 /// x offset (i.e. `x + bar_height`).
 pub(crate) fn draw_shutdown_button(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     x: i32,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
@@ -191,7 +191,7 @@ pub(crate) fn draw_shutdown_button(
     x + bar_height
 }
 pub(crate) fn draw_close_button(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     c: &Client,
     x: i32,
     bar_height: i32,
@@ -246,7 +246,7 @@ pub(crate) fn draw_close_button(
 }
 
 fn draw_window_title(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     m: &Monitor,
     c: &Client,
     x: i32,
@@ -283,7 +283,7 @@ fn draw_window_title(
 }
 
 pub(crate) fn draw_window_titles(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     m: &Monitor,
     x: i32,
     w: i32,

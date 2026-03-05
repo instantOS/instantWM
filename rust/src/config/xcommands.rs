@@ -40,7 +40,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
                     arg.parse().unwrap_or(2)
                 };
                 if let Some(mask) = TagMask::single(tag_num) {
-                    view(ctx, mask);
+                    view(&mut ctx.core, &ctx.x11, mask);
                 }
             },
         },
@@ -69,21 +69,21 @@ pub fn get_xcommands() -> Vec<XCommand> {
             cmd: "alttab",
             action: |ctx, arg| {
                 let action = ToggleAction::from_arg(arg);
-                alt_tab_free(ctx, action);
+                alt_tab_free(ctx, &ctx.x11, action);
             },
         },
         XCommand {
             cmd: "alttag",
             action: |ctx, arg| {
                 let action = ToggleAction::from_arg(arg);
-                toggle_alt_tag(ctx, action);
+                toggle_alt_tag(ctx, &ctx.x11, action);
             },
         },
         XCommand {
             cmd: "hidetags",
             action: |ctx, arg| {
                 let action = ToggleAction::from_arg(arg);
-                toggle_show_tags(ctx, action);
+                toggle_show_tags(ctx, &ctx.x11, action);
             },
         },
         XCommand {
@@ -105,7 +105,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
                 } else {
                     arg.parse().unwrap_or(1)
                 };
-                command_prefix(ctx, val);
+                command_prefix(ctx, &ctx.x11, val);
             },
         },
         XCommand {
@@ -139,7 +139,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
                     .parse::<i32>()
                     .map(MonitorDirection::from)
                     .unwrap_or(MonitorDirection::NEXT);
-                send_to_monitor(ctx, direction);
+                send_to_monitor(&mut ctx.core, &ctx.x11, direction);
             },
         },
         XCommand {
@@ -175,11 +175,11 @@ pub fn get_xcommands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "nametag",
-            action: |ctx, arg| name_tag(ctx, arg),
+            action: |ctx, arg| name_tag(ctx, &ctx.x11, arg),
         },
         XCommand {
             cmd: "resetnametag",
-            action: |ctx, _arg| reset_name_tag(ctx),
+            action: |ctx, _arg| reset_name_tag(ctx, &ctx.x11),
         },
         XCommand {
             cmd: "scratchpad-make",

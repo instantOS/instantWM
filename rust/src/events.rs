@@ -1,5 +1,5 @@
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
-use crate::bar::{draw_bar, draw_bars, reset_bar};
+use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
     update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
@@ -89,7 +89,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if event_win == mon.bar_win {
             let position = bar_position_at_x(mon, &ctx.core, e.event_x as i32);
             if position == BarPosition::StartMenu {
-                reset_bar(&mut ctx.core, &ctx.x11);
+                reset_bar_x11(&mut ctx.core, &ctx.x11);
             }
             bar_pos = position;
         } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
@@ -350,7 +350,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
             .get(monitor_id)
             .is_some_and(|m| event_win == m.bar_win);
         if is_bar_win {
-            draw_bar(&mut ctx.core, monitor_id);
+            draw_bar(&mut ctx.core, &ctx.x11, monitor_id);
         }
     };
 }
@@ -399,7 +399,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             && root_y >= selmon.bar_y
             && root_y < selmon.bar_y + ctx.core.g.cfg.bar_height;
         if !in_bar && selmon.gesture != Gesture::None {
-            reset_bar(&mut ctx.core, &ctx.x11);
+            reset_bar_x11(&mut ctx.core, &ctx.x11);
         }
         return;
     }
@@ -446,7 +446,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         if handle_sidebar_hover(&mut ctx.core, &ctx.x11, root_x, root_y) {
             return;
         }
-        reset_bar(&mut ctx.core, &ctx.x11);
+        reset_bar_x11(&mut ctx.core, &ctx.x11);
         if ctx.core.g.altcursor == AltCursor::Sidebar {
             reset_cursor(&mut ctx.core, &ctx.x11);
         }
@@ -463,7 +463,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             // The status-text and root areas don't produce a hover gesture —
             // reset the bar and bail out so we don't light up anything.
             BarPosition::StatusText | BarPosition::Root => {
-                reset_bar(&mut ctx.core, &ctx.x11);
+                reset_bar_x11(&mut ctx.core, &ctx.x11);
                 return;
             }
             other => bar_position_to_gesture(other),
@@ -472,7 +472,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     if new_gesture != current_gesture {
         ctx.core.g.selected_monitor_mut().gesture = new_gesture;
-        draw_bar(&mut ctx.core, selmon_id);
+        draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
     };
 }
 
@@ -497,7 +497,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             }
             x if x == AtomEnum::WM_HINTS.into() => {
                 update_wm_hints(&mut ctx.core, &ctx.x11, win);
-                draw_bars(&mut ctx.core);
+                draw_bars_x11(&mut ctx.core, &ctx.x11);
             }
             _ => {}
         }
@@ -531,7 +531,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
-    reset_bar(&mut ctx.core, &ctx.x11);
+    reset_bar_x11(&mut ctx.core, &ctx.x11);
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {

@@ -29,19 +29,18 @@
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
 use crate::animation::animate_client;
-use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons, unfocus_win};
-use crate::client::geometry::resize_client;
+use crate::client::geometry::resize_client_x11;
 use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::state::set_client_state;
 use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
     update_wm_hints,
 };
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 use crate::globals::Globals;
 use crate::layouts::arrange;
@@ -61,86 +60,96 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `wa_*` arguments come directly from the `GetWindowAttributesReply` /
 /// `GetGeometryReply` of the window at the time the `MapRequest` arrives.
 ///
-pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
-    if !manage_preconditions_met(ctx) {
-        return;
-    }
+pub fn manage(
+    core: &mut CoreCtx,
+    x11: &X11Ctx,
+    backend: &impl BackendOps,
+    w: WindowId,
+    wa_geo: Rect,
+    wa_border_width: u32,
+) {
+    let trans = get_transient_for_hint_x11(x11, w);
+    let mut client = build_initial_client(x11, core.g, w, wa_geo, wa_border_width);
+    assign_initial_monitor_and_tags(core.g, &mut client, trans);
+    insert_client_and_apply_rules(core, w, client);
 
-    let trans = get_transient_for_hint_ctx(ctx, w);
-    let mut client = build_initial_client(ctx, w, wa_geo, wa_border_width);
-    assign_initial_monitor_and_tags(ctx, &mut client, trans);
-    insert_client_and_apply_rules(ctx, w, client);
-
-    let borderpx = apply_default_border(ctx, w);
-    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx, w);
-    clamp_client_to_work_area(ctx, w, mon_work_rect);
+    let borderpx = apply_default_border(core.g, w);
+    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(core.g, w);
+    clamp_client_to_work_area(core.g, w, mon_work_rect);
     configure_client_border(
-        ctx,
+        core.g,
+        x11,
         w,
         borderpx,
         mon_monitor_rect,
-        is_monocle_on_client_monitor(ctx, w),
+        is_monocle_on_client_monitor(core.g, w),
     );
 
-    apply_manage_hints(ctx, w);
-    snapshot_float_geo(ctx, w, mon_monitor_rect);
-    subscribe_manage_events(ctx, w);
-    grab_buttons(ctx, w, false);
+    apply_manage_hints(core.g, w);
+    snapshot_float_geo(core.g, w, mon_monitor_rect);
+    subscribe_manage_events(x11, w);
+    grab_buttons(core.g, x11, w, false);
 
-    if initialize_floating_state(ctx, w, trans.is_some()) {
-        ctx.backend.raise_window(w);
-        ctx.backend.flush();
+    if initialize_floating_state(core.g, w, trans.is_some()) {
+        backend.raise_window(w);
+        backend.flush();
     }
 
-    attach(ctx, w);
-    attach_stack(ctx, w);
-    register_client_root(ctx, w);
+    attach(core.g, w);
+    attach_stack(core.g, w);
+    register_client_root(x11, w);
 
-    move_client_offscreen_before_arrange(ctx, w);
-    let initially_hidden = prepare_visibility_and_unfocus(ctx, w);
-    let animated = ctx.g.animated;
-    let c = arrange_map_focus_and_snapshot(ctx, w, initially_hidden);
+    move_client_offscreen_before_arrange(core.g, w);
+    let initially_hidden = prepare_visibility_and_unfocus(core.g, w);
+    let animated = core.g.animated;
+    let c = arrange_map_focus_and_snapshot(core, x11, w, initially_hidden);
 
-    run_manage_animation(ctx, w, &c, mon_monitor_rect, animated);
+    run_manage_animation(core, w, &c, mon_monitor_rect, animated);
 }
 
-fn manage_preconditions_met(ctx: &WmCtx) -> bool {
-    ctx.backend_kind() != BackendKind::Wayland && ctx.x11_conn().is_some()
-}
-
-fn build_initial_client(ctx: &WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) -> Client {
+fn build_initial_client(
+    x11: &X11Ctx,
+    g: &crate::globals::Globals,
+    w: WindowId,
+    wa_geo: Rect,
+    wa_border_width: u32,
+) -> Client {
     let mut c = Client::default();
     c.win = w;
     c.geo = wa_geo;
     c.old_geo = c.geo;
     c.old_border_width = wa_border_width as i32;
-    c.name = read_title_from_x(ctx, w);
+    c.name = read_title_from_x(x11, g, w);
     c
 }
 
-fn assign_initial_monitor_and_tags(ctx: &WmCtx, c: &mut Client, trans: Option<WindowId>) {
-    let trans_client = trans.filter(|win| ctx.g.clients.contains(win));
+fn assign_initial_monitor_and_tags(
+    g: &mut crate::globals::Globals,
+    c: &mut Client,
+    trans: Option<WindowId>,
+) {
+    let trans_client = trans.filter(|win| g.clients.contains(win));
     if let Some(tc_win) = trans_client {
-        if let Some(tc) = ctx.g.clients.get(&tc_win) {
+        if let Some(tc) = g.clients.get(&tc_win) {
             c.monitor_id = tc.monitor_id;
             c.tags = tc.tags;
             return;
         }
     }
-    c.monitor_id = Some(ctx.g.selected_monitor_id());
-    c.tags = initial_tags_for_monitor(ctx.g, c.monitor_id);
+    c.monitor_id = Some(g.selected_monitor_id());
+    c.tags = initial_tags_for_monitor(g, c.monitor_id);
 }
 
-fn insert_client_and_apply_rules(ctx: &mut WmCtx, w: WindowId, mut c: Client) {
-    c.is_hidden =
-        crate::client::visibility::get_state(ctx, w) == crate::client::constants::WM_STATE_ICONIC;
-    ctx.g.clients.insert(w, c);
-    apply_rules(ctx, w);
+fn insert_client_and_apply_rules(core: &mut CoreCtx, w: WindowId, mut c: Client) {
+    c.is_hidden = crate::client::visibility::get_state(core.g, w)
+        == crate::client::constants::WM_STATE_ICONIC;
+    core.g.clients.insert(w, c);
+    apply_rules(core.g, w);
 }
 
-fn apply_default_border(ctx: &mut WmCtx, w: WindowId) -> i32 {
-    let borderpx = ctx.g.cfg.borderpx;
-    if let Some(client) = ctx.g.clients.get_mut(&w) {
+fn apply_default_border(g: &crate::globals::Globals, w: WindowId) -> i32 {
+    let borderpx = g.cfg.borderpx;
+    if let Some(client) = g.clients.get(&w) {
         client.border_width = borderpx;
         client.old_border_width = borderpx;
     }
@@ -226,7 +235,7 @@ fn apply_manage_hints(ctx: &mut WmCtx, w: WindowId) {
     crate::client::geometry::update_size_hints(ctx, w);
     update_wm_hints(ctx, w);
     read_client_info(ctx, w);
-    set_client_tag_prop(ctx, w);
+    set_client_tag_prop(&mut ctx.core, &ctx.x11, w);
     update_motif_hints(ctx, w);
 }
 

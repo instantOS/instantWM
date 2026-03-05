@@ -1,6 +1,6 @@
 //! Moving clients between tags.
 
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 
 use crate::layouts::arrange;
@@ -9,17 +9,17 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
 //TODO: this seems redundant
-pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    shift_tag(ctx, dir, offset.max(1));
+pub fn shift_tag_by(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction, offset: i32) {
+    shift_tag(core, x11, dir, offset.max(1));
 }
 
-pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
-    shift_tag_by(ctx, dir, 1);
-    crate::tags::view::scroll_view(ctx, dir);
+pub fn move_client(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction) {
+    shift_tag_by(core, x11, dir, 1);
+    crate::tags::view::scroll_view(core, x11, dir);
 }
 
-fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    let mon = ctx.g.selected_monitor();
+fn shift_tag(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction, offset: i32) {
+    let mon = core.g.selected_monitor();
     let Some(win) = mon.sel else {
         return;
     };
@@ -45,19 +45,19 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let (tagset, tagmask) = (mon.selected_tags(), ctx.g.tags.mask());
+    let (tagset, tagmask) = (mon.selected_tags(), core.g.tags.mask());
 
     if (tagset & tagmask).count_ones() != 1 {
         return;
     }
 
-    clear_sticky(ctx, win);
+    clear_sticky(core, win);
 
-    if ctx.g.animated {
-        play_slide_animation(ctx, win, dir);
+    if core.g.animated {
+        play_slide_animation(core, x11, win, dir);
     }
 
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = core.g.clients.get_mut(&win) {
         match dir {
             Direction::Left if tagset > 1 => {
                 client.tags >>= offset;
@@ -69,14 +69,14 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         }
     }
 
-    let selected_monitor_id = ctx.g.selected_monitor_id();
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
-    arrange(ctx, Some(selected_monitor_id));
+    let selected_monitor_id = core.g.selected_monitor_id();
+    crate::focus::focus_soft_x11(core, x11, None);
+    arrange(core, Some(selected_monitor_id));
 }
 
-fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {
+fn clear_sticky(core: &mut CoreCtx, win: WindowId) {
     let target_tags = {
-        let mon = ctx.g.selected_monitor();
+        let mon = core.g.selected_monitor();
         if mon.current_tag > 0 {
             Some(1u32 << (mon.current_tag - 1))
         } else {
@@ -84,7 +84,7 @@ fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {
         }
     };
 
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = core.g.clients.get_mut(&win) {
         if client.issticky {
             client.issticky = false;
             if let Some(tags) = target_tags {
@@ -94,18 +94,16 @@ fn clear_sticky(ctx: &mut WmCtx, win: WindowId) {
     }
 }
 
-fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let x11_win: Window = win.into();
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
-        let _ = conn.flush();
-    }
+fn play_slide_animation(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, dir: Direction) {
+    let x11_win: Window = win.into();
+    let _ = x11.conn.configure_window(
+        x11_win,
+        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+    );
+    let _ = x11.conn.flush();
 
-    let mon_w = ctx.g.selected_monitor().monitor_rect.w;
-    let (client_x, client_y) = ctx
+    let mon_w = core.g.selected_monitor().monitor_rect.w;
+    let (client_x, client_y) = core
         .g
         .clients
         .get(&win)
@@ -121,7 +119,7 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         };
 
     crate::animation::animate_client(
-        ctx,
+        core,
         win,
         &Rect {
             x: client_x + anim_dx,

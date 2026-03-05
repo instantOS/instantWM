@@ -220,15 +220,15 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => Direction::Down,
         };
         let mut target = None;
-        crate::focus::focus_direction(ctx, focus_dir, |win| target = win);
+        crate::focus::focus_direction(&ctx.core, focus_dir, |win| target = win);
         if let Some(win) = target {
-            crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
         }
         return;
     }
 
     if !has_tiling {
-        if let Some(selected_window) = ctx.selected_client() {
+        if let Some(selected_window) = ctx.core.selected_client() {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,
@@ -261,14 +261,14 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => 1,
         };
         let target = current_tag + modifier as u32;
-        check_client_on_target_tag(&ctx.g, sel_mon, target);
+        check_client_on_target_tag(&ctx.core.g, sel_mon, target);
     }
 
     match dir {
-        Direction::Right => scroll_view(ctx, Direction::Right),
-        Direction::Left => scroll_view(ctx, Direction::Left),
-        Direction::Up => scroll_view(ctx, Direction::Left),
-        Direction::Down => scroll_view(ctx, Direction::Right),
+        Direction::Right => scroll_view(&mut ctx.core, &ctx.x11, Direction::Right),
+        Direction::Left => scroll_view(&mut ctx.core, &ctx.x11, Direction::Left),
+        Direction::Up => scroll_view(&mut ctx.core, &ctx.x11, Direction::Left),
+        Direction::Down => scroll_view(&mut ctx.core, &ctx.x11, Direction::Right),
     }
 }
 

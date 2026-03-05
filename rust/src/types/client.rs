@@ -137,10 +137,15 @@ impl Client {
         self.border_width
     }
 
-    pub fn set_tags(&mut self, mask: crate::types::TagMask, ctx: &mut crate::contexts::WmCtx) {
+    pub fn set_tags(
+        &mut self,
+        mask: crate::types::TagMask,
+        core: &mut crate::contexts::CoreCtx,
+        x11: &crate::contexts::X11Ctx,
+    ) {
         use crate::types::TagMask;
 
-        let tag_mask = TagMask::from_bits(ctx.g.tags.mask());
+        let tag_mask = TagMask::from_bits(core.g.tags.mask());
         let effective_mask = mask & tag_mask;
 
         if effective_mask.is_empty() {
@@ -153,9 +158,9 @@ impl Client {
 
         self.tags = effective_mask.bits();
 
-        crate::client::set_client_tag_prop(ctx, self.win);
-        crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
-        crate::layouts::arrange(ctx, Some(ctx.g.selected_monitor_id()));
+        crate::client::set_client_tag_prop(core, x11, self.win);
+        crate::focus::focus_soft_x11(core, x11, None);
+        crate::layouts::arrange(core, Some(core.g.selected_monitor_id()));
     }
 }
 

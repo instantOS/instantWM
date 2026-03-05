@@ -132,7 +132,7 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
             }
         }
 
-        let selected_window = ctx.selected_client();
+        let selected_window = core.selected_client();
         if selected_window.is_none() {
             for key in desktop_keybinds {
                 let keysym = get_keysym(keycode);

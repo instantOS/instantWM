@@ -9,7 +9,7 @@
 //! All three share a single iteration through [`visible_tags_ctx`], which resolves
 //! tag-index remapping, skip logic, display names, and widths in one place.
 
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::globals::Globals;
 use crate::types::Monitor;
 
@@ -29,12 +29,12 @@ pub(crate) struct VisibleTag<'a> {
 }
 
 pub(crate) fn visible_tags_ctx<'a>(
-    ctx: &WmCtx,
+    core: &CoreCtx,
     monitor: &'a Monitor,
     occupied: u32,
 ) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = ctx.g.cfg.horizontal_padding;
-    let show_alt = ctx.g.tags.show_alt;
+    let horizontal_padding = core.g.cfg.horizontal_padding;
+    let show_alt = core.g.tags.show_alt;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
@@ -49,7 +49,7 @@ pub(crate) fn visible_tags_ctx<'a>(
 
         let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
-        let width = crate::bar::text_width(ctx, label) + horizontal_padding;
+        let width = crate::bar::text_width(core, label) + horizontal_padding;
 
         out.push(VisibleTag {
             slot,
@@ -68,34 +68,34 @@ pub(crate) fn visible_tags_ctx<'a>(
 
 /// Return the total pixel width of the tag strip (including the start-menu
 /// button at the left edge).
-pub fn get_tag_width(ctx: &WmCtx) -> i32 {
-    let occupied = occupied_tags_on_selmon(ctx.g);
+pub fn get_tag_width(core: &CoreCtx) -> i32 {
+    let occupied = occupied_tags_on_selmon(core.g);
 
-    let m = ctx.g.selected_monitor();
+    let m = core.g.selected_monitor();
     if m.tags.is_empty() {
-        return ctx.g.cfg.startmenusize;
+        return core.g.cfg.startmenusize;
     }
 
-    let tags_width: i32 = visible_tags_ctx(ctx, m, occupied)
+    let tags_width: i32 = visible_tags_ctx(core, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
-    ctx.g.cfg.startmenusize + tags_width
+    core.g.cfg.startmenusize + tags_width
 }
 
 /// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
 ///
 /// `click_x` is relative to the left edge of the bar window.
-pub fn get_tag_at_x(ctx: &WmCtx, click_x: i32) -> i32 {
-    let occupied = occupied_tags_on_selmon(ctx.g);
+pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
+    let occupied = occupied_tags_on_selmon(core.g);
 
-    let m = ctx.g.selected_monitor();
+    let m = core.g.selected_monitor();
     if m.tags.is_empty() {
         return -1;
     }
 
-    let mut acc = ctx.g.cfg.startmenusize;
-    for t in visible_tags_ctx(ctx, m, occupied) {
+    let mut acc = core.g.cfg.startmenusize;
+    for t in visible_tags_ctx(core, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;

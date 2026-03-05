@@ -1,6 +1,6 @@
 use crate::bar::draw_bar;
 use crate::client::resize;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::keyboard::grab_keys;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -9,32 +9,32 @@ pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
     action.apply(value);
 }
 
-pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
+pub fn toggle_alt_tag(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
     let new_value = {
-        let mut showalttag = ctx.g.tags.show_alt;
+        let mut showalttag = core.g.tags.show_alt;
         ctrl_toggle(&mut showalttag, action);
         showalttag
     };
 
-    ctx.g.tags.show_alt = new_value;
+    core.g.tags.show_alt = new_value;
 
-    let monitors: Vec<usize> = ctx.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
+    let monitors: Vec<usize> = core.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
 
     for i in monitors {
-        draw_bar(ctx, i);
+        draw_bar(core, x11, i);
     }
 
-    let tagwidth = get_tag_width(ctx);
-    ctx.g.tags.width = tagwidth;
+    let tagwidth = get_tag_width(core);
+    core.g.tags.width = tagwidth;
 }
 
-pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
-    ctrl_toggle(&mut ctx.g.tags.prefix, action);
-    grab_keys(ctx);
+pub fn alt_tab_free(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
+    ctrl_toggle(&mut core.g.tags.prefix, action);
+    grab_keys(core, x11);
 }
 
-pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(client) = ctx.g.clients.get_mut(&win) {
+pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {
+    let monitor_id = if let Some(client) = core.g.clients.get_mut(&win) {
         client.issticky = !client.issticky;
         client.monitor_id
     } else {
@@ -42,24 +42,24 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     };
 
     if let Some(mid) = monitor_id {
-        crate::layouts::arrange(ctx, Some(mid));
+        crate::layouts::arrange(core, Some(mid));
     }
 }
 
-pub fn toggle_prefix(ctx: &mut WmCtx) {
-    ctx.g.tags.prefix = !ctx.g.tags.prefix;
+pub fn toggle_prefix(core: &mut CoreCtx, x11: &X11Ctx) {
+    core.g.tags.prefix = !core.g.tags.prefix;
 
-    let selmon_id = ctx.g.selected_monitor_id();
-    draw_bar(ctx, selmon_id);
+    let selmon_id = core.g.selected_monitor_id();
+    draw_bar(core, x11, selmon_id);
 }
 
-pub fn toggle_animated(ctx: &mut WmCtx, action: ToggleAction) {
-    ctrl_toggle(&mut ctx.g.animated, action);
+pub fn toggle_animated(core: &mut CoreCtx, action: ToggleAction) {
+    ctrl_toggle(&mut core.g.animated, action);
 }
 
-pub fn set_border_width(ctx: &mut WmCtx, win: WindowId, width: i32) {
+pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
     let (old_bw, _mon_id) = {
-        if let Some(c) = ctx.g.clients.get(&win) {
+        if let Some(c) = core.g.clients.get(&win) {
             (c.border_width, c.monitor_id)
         } else {
             return;
@@ -70,13 +70,13 @@ pub fn set_border_width(ctx: &mut WmCtx, win: WindowId, width: i32) {
     let d = old_bw - new_bw;
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&win) {
+        if let Some(client) = core.g.clients.get_mut(&win) {
             client.border_width = new_bw;
         }
     }
 
     let geo = {
-        if let Some(c) = ctx.g.clients.get(&win) {
+        if let Some(c) = core.g.clients.get(&win) {
             Rect {
                 x: c.geo.x,
                 y: c.geo.y,
@@ -88,24 +88,24 @@ pub fn set_border_width(ctx: &mut WmCtx, win: WindowId, width: i32) {
         }
     };
 
-    resize(ctx, win, &geo, false);
+    resize(core, win, &geo, false);
 }
 
-pub fn toggle_focus_follows_mouse(ctx: &mut WmCtx, action: ToggleAction) {
-    ctrl_toggle(&mut ctx.g.focusfollowsmouse, action);
+pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
+    ctrl_toggle(&mut core.g.focusfollowsmouse, action);
 }
 
-pub fn toggle_focus_follows_float_mouse(ctx: &mut WmCtx, action: ToggleAction) {
-    ctrl_toggle(&mut ctx.g.focusfollowsfloatmouse, action);
+pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {
+    ctrl_toggle(&mut core.g.focusfollowsfloatmouse, action);
 }
 
-pub fn toggle_double_draw(ctx: &mut WmCtx) {
-    ctx.g.doubledraw = !ctx.g.doubledraw;
+pub fn toggle_double_draw(core: &mut CoreCtx) {
+    core.g.doubledraw = !core.g.doubledraw;
 }
 
-pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
+pub fn toggle_locked(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     let _mon_id = {
-        if let Some(client) = ctx.g.clients.get_mut(&win) {
+        if let Some(client) = core.g.clients.get_mut(&win) {
             client.islocked = !client.islocked;
             client.monitor_id
         } else {
@@ -113,15 +113,15 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
         }
     };
 
-    let selmon_id = ctx.g.selected_monitor_id();
-    draw_bar(ctx, selmon_id);
+    let selmon_id = core.g.selected_monitor_id();
+    draw_bar(core, x11, selmon_id);
 }
 
-pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
+pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
-        let selmon_id = ctx.g.selected_monitor_id();
+        let selmon_id = core.g.selected_monitor_id();
 
-        let showtags = ctx.g.selected_monitor().showtags;
+        let showtags = core.g.selected_monitor().showtags;
 
         let mut show_bool = showtags != 0;
         ctrl_toggle(&mut show_bool, action);
@@ -130,30 +130,30 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
         (selmon_id, new_showtags)
     };
 
-    ctx.g.selected_monitor_mut().showtags = new_showtags;
+    core.g.selected_monitor_mut().showtags = new_showtags;
 
-    let tagwidth = get_tag_width(ctx);
-    ctx.g.tags.width = tagwidth;
+    let tagwidth = get_tag_width(core);
+    core.g.tags.width = tagwidth;
 
-    draw_bar(ctx, selmon_id);
+    draw_bar(core, x11, selmon_id);
 }
 
-pub fn hide_window(ctx: &mut WmCtx, win: WindowId) {
-    crate::client::hide(ctx, win);
+pub fn hide_window(core: &mut CoreCtx, win: WindowId) {
+    crate::client::hide(core, win);
 }
 
-pub fn unhide_all(ctx: &mut WmCtx) {
-    let clients: Vec<WindowId> = ctx.g.clients.keys().copied().collect();
+pub fn unhide_all(core: &mut CoreCtx) {
+    let clients: Vec<WindowId> = core.g.clients.keys().copied().collect();
 
     for win in clients {
-        crate::client::show(ctx, win);
+        crate::client::show(core, win);
     }
 }
 
-pub fn redraw_win(ctx: &mut WmCtx) {
-    let monitors: Vec<usize> = ctx.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
+pub fn redraw_win(core: &mut CoreCtx, x11: &X11Ctx) {
+    let monitors: Vec<usize> = core.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
 
     for i in monitors {
-        draw_bar(ctx, i);
+        draw_bar(core, x11, i);
     }
 }

@@ -429,8 +429,10 @@ fn render_drm_output(
 
     if wm.g.cfg.showbar {
         let mut ctx = wm.ctx();
-        let bar_buffers =
-            crate::bar::wayland::render_bar_buffers(&mut ctx, smithay::utils::Scale::from(1.0));
+        let bar_buffers = crate::bar::wayland::render_bar_buffers(
+            &mut ctx.core,
+            smithay::utils::Scale::from(1.0),
+        );
         for (buffer, x, y) in bar_buffers {
             match MemoryRenderBufferRenderElement::from_buffer(
                 renderer,

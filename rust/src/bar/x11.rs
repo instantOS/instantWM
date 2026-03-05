@@ -24,7 +24,7 @@ pub fn update_status(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 
     let selmon_idx = core.g.selected_monitor_id();
-    super::draw_bar(core, selmon_idx);
+    super::draw_bar(core, x11, selmon_idx);
 
     crate::systray::update_systray(core, x11);
 }

@@ -8,7 +8,7 @@
 //! operates on an already-borrowed `&mut Client` without touching the global
 //! state machine, which is why it lives separately from [`super::shift`].
 
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::types::{Client, WindowId};
 
 // ---------------------------------------------------------------------------
@@ -23,14 +23,14 @@ use crate::types::{Client, WindowId};
 /// stops appearing on every tag on its new home monitor.
 ///
 /// If `c.issticky` is already `false` this is a no-op.
-pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
+pub fn reset_sticky(core: &mut CoreCtx, c: &mut Client) {
     if !c.issticky {
         return;
     }
 
     c.issticky = false;
 
-    let mon = ctx.g.selected_monitor();
+    let mon = core.g.selected_monitor();
     if mon.current_tag > 0 {
         c.tags = 1 << (mon.current_tag - 1);
     }
@@ -39,16 +39,16 @@ pub fn reset_sticky(ctx: &mut WmCtx, c: &mut Client) {
 /// Wrapper around `reset_sticky` that takes a window ID instead of a Client.
 /// This is useful when you need to reset sticky status but only have the window ID
 /// and need to avoid borrow checker issues.
-pub fn reset_sticky_win(ctx: &mut WmCtx, win: WindowId) {
+pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
     // Extract data first to avoid borrow issues
-    let mon = ctx.g.selected_monitor();
+    let mon = core.g.selected_monitor();
     let target_tags = if mon.current_tag > 0 {
         Some(1 << (mon.current_tag - 1))
     } else {
         None
     };
 
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = core.g.clients.get_mut(&win) {
         if client.issticky {
             client.issticky = false;
             if let Some(tags) = target_tags {

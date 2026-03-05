@@ -117,28 +117,28 @@ pub fn get_buttons() -> Vec<Button> {
         // of the current view, unless it is the only visible tag.
         btn!(Tag(0), 0, button:MouseButton::Right => |ctx, arg| {
             if let BarPosition::Tag(idx) = arg.pos {
-                toggle_view_tag(ctx, idx);
+                toggle_view_tag(&mut ctx.core, &ctx.x11, idx);
             }
         }),
-        btn!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Left)),
-        btn!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Right)),
+        btn!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        btn!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
         btn!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                set_client_tag(ctx, win, TagMask::ALL_BITS)
+                set_client_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
             }
         }),
         btn!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                toggle_tag(ctx, win, TagMask::ALL_BITS)
+                toggle_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
             }
         }),
         btn!(Tag(0), MOD1,   button:MouseButton::Left => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                follow_tag(ctx, win, TagMask::ALL_BITS)
+                follow_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
             }
         }),
-        btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(ctx, Direction::Left)),
-        btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(ctx, Direction::Right)),
+        btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
         // ── Root window ───────────────────────────────────────────────────
         btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::Panther)),
         btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, None, Cmd::InstantMenu)),
@@ -165,7 +165,7 @@ pub fn get_buttons() -> Vec<Button> {
         }),
         btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                toggle_locked(ctx, win)
+                toggle_locked(ctx, &ctx.x11, win)
             }
         }),
         // ── Resize widget ─────────────────────────────────────────────────
@@ -178,6 +178,6 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(SideBar, 0,       button:MouseButton::Left  => |ctx, arg| gesture_mouse(ctx, arg.btn)),
         btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, None, Cmd::StartMenu)),
         btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, None, Cmd::QuickMenu)),
-        btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx)),
+        btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx, &ctx.x11)),
     ]
 }

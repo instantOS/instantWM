@@ -1,4 +1,4 @@
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::globals::Globals;
 use crate::systray::get_systray_width;
 use crate::tags::{get_tag_at_x, get_tag_width};
@@ -53,12 +53,12 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
 
 /// Compute which logical bar region the cursor's **monitor-local** x coordinate
 /// falls in for the given monitor.
-pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPosition {
+pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
     use crate::bar::get_layout_symbol_width;
 
-    let start_menu_size = ctx.g.cfg.startmenusize;
-    let (tag_end, tag_idx) = (get_tag_width(ctx), get_tag_at_x(ctx, local_x));
-    let blw = get_layout_symbol_width(ctx, mon);
+    let start_menu_size = core.g.cfg.startmenusize;
+    let (tag_end, tag_idx) = (get_tag_width(core), get_tag_at_x(core, local_x));
+    let blw = get_layout_symbol_width(core, mon);
 
     // ── Start menu ────────────────────────────────────────────────────────
     if local_x < start_menu_size {
@@ -76,19 +76,19 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     }
 
     // ── Shutdown button (only when no client is selected) ─────────────────
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = core.g.cfg.bar_height;
     if mon.sel.is_none() && local_x < tag_end + blw + bar_height {
         return BarPosition::ShutDown;
     }
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
-        0
+    let systray_w = if core.g.cfg.showsystray {
+        get_systray_width(core) as i32
     } else {
-        get_systray_width(ctx) as i32
+        0
     };
     let status_hit_x =
-        mon.work_rect.w - systray_w - ctx.g.status_text_width + ctx.g.cfg.horizontal_padding - 2;
+        mon.work_rect.w - systray_w - core.g.status_text_width + core.g.cfg.horizontal_padding - 2;
     if local_x > status_hit_x {
         return BarPosition::StatusText;
     }
@@ -96,7 +96,7 @@ pub fn bar_position_at_x(mon: &Monitor, ctx: &WmCtx, local_x: i32) -> BarPositio
     // ── Window title cells ────────────────────────────────────────────────
     let mut visible_clients: Vec<WindowId> = Vec::new();
     let selected = mon.selected_tags();
-    for (c_win, c) in mon.iter_clients(ctx.g.clients.map()) {
+    for (c_win, c) in mon.iter_clients(core.g.clients.map()) {
         if c.is_visible_on_tags(selected) {
             visible_clients.push(c_win);
         }

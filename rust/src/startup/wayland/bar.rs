@@ -26,16 +26,16 @@ pub(super) fn update_wayland_bar_hit_state(
     if !in_bar {
         let had_hover = mon.gesture != crate::types::Gesture::None;
         if had_hover {
-            crate::bar::reset_bar(&mut ctx);
+            crate::bar::reset_bar_wayland(&mut ctx.core);
         }
         return None;
     }
 
     let mon = ctx.g.selected_monitor();
     let local_x = root_x - mon.work_rect.x;
-    let pos = bar_position_at_x(&mon, &ctx, local_x);
+    let pos = bar_position_at_x(&mon, &ctx.core, local_x);
     if reset_start_menu && pos == BarPosition::StartMenu {
-        crate::bar::reset_bar(&mut ctx);
+        crate::bar::reset_bar_wayland(&mut ctx.core);
     }
 
     let gesture = if pos == BarPosition::StatusText {

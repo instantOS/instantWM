@@ -438,30 +438,30 @@ impl BarPainter for WaylandBarPainter {
     }
 }
 
-pub fn draw_bar_wayland(ctx: &mut crate::contexts::WmCtx, mon_idx: usize) {
-    draw_bar_common_with_painter(ctx, mon_idx);
+pub fn draw_bar_wayland(core: &mut crate::contexts::CoreCtx, mon_idx: usize) {
+    draw_bar_common_with_painter(core, mon_idx);
 }
 
-pub fn draw_bars_wayland(ctx: &mut crate::contexts::WmCtx) {
-    ctx.g.status_text_width =
-        crate::bar::renderer::compute_status_hit_width(ctx.bar_painter, &ctx.g.status_text);
+pub fn draw_bars_wayland(core: &mut crate::contexts::CoreCtx) {
+    core.g.status_text_width =
+        crate::bar::renderer::compute_status_hit_width(core.bar_painter, &core.g.status_text);
 }
 
-pub fn reset_bar_wayland(ctx: &mut crate::contexts::WmCtx) {
-    crate::bar::renderer::reset_bar_common(ctx);
+pub fn reset_bar_wayland(core: &mut crate::contexts::CoreCtx) {
+    crate::bar::renderer::reset_bar_common(core);
 }
 
-pub fn should_draw_bar_wayland(ctx: &crate::contexts::WmCtx) -> bool {
-    ctx.g.cfg.showbar
+pub fn should_draw_bar_wayland(core: &crate::contexts::CoreCtx) -> bool {
+    core.g.cfg.showbar
 }
 
 pub fn render_bar_buffers(
-    ctx: &mut crate::contexts::WmCtx,
+    core: &mut crate::contexts::CoreCtx,
     scale: Scale<f64>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    let key = bar_render_key(ctx);
-    if ctx.bar_painter.has_cached_buffers && ctx.bar_painter.cached_key == key {
-        return ctx
+    let key = bar_render_key(core);
+    if core.bar_painter.has_cached_buffers && core.bar_painter.cached_key == key {
+        return core
             .bar_painter
             .cached_buffers
             .iter()
@@ -469,7 +469,7 @@ pub fn render_bar_buffers(
             .collect();
     }
 
-    let mon_indices: Vec<(usize, i32, i32, i32, i32)> = ctx
+    let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
         .g
         .monitors_iter()
         .filter_map(|(i, m)| {
@@ -481,20 +481,20 @@ pub fn render_bar_buffers(
                 m.work_rect.x,
                 m.bar_y,
                 m.work_rect.w,
-                ctx.g.cfg.bar_height,
+                core.g.cfg.bar_height,
             ))
         })
         .collect();
 
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
-        ctx.bar_painter
+        core.bar_painter
             .begin(scale, origin_x, origin_y, width, height);
-        draw_bar_common_with_painter(ctx, mon_idx);
-        ctx.bar_painter.finish();
+        draw_bar_common_with_painter(core, mon_idx);
+        core.bar_painter.finish();
     }
 
-    let rendered = ctx.bar_painter.take_buffers();
-    ctx.bar_painter.cached_buffers = rendered
+    let rendered = core.bar_painter.take_buffers();
+    core.bar_painter.cached_buffers = rendered
         .iter()
         .map(|(buffer, x, y)| BarBuffer {
             buffer: buffer.clone(),
@@ -502,17 +502,16 @@ pub fn render_bar_buffers(
             y: *y,
         })
         .collect();
-    ctx.bar_painter.cached_key = key;
-    ctx.bar_painter.has_cached_buffers = true;
+    core.bar_painter.cached_key = key;
+    core.bar_painter.has_cached_buffers = true;
 
     rendered
 }
 
-fn draw_bar_common_with_painter(ctx: &mut crate::contexts::WmCtx, mon_idx: usize) {
-    let painter_ptr = ctx.bar_painter as *mut WaylandBarPainter;
-    let ctx_ptr = ctx as *mut crate::contexts::WmCtx;
+fn draw_bar_common_with_painter(core: &mut crate::contexts::CoreCtx, mon_idx: usize) {
+    let painter_ptr = core.bar_painter as *mut WaylandBarPainter;
     unsafe {
-        draw_bar_common(&mut *ctx_ptr, mon_idx, &mut *painter_ptr);
+        draw_bar_common(core, None, mon_idx, &mut *painter_ptr);
     }
 }
 
@@ -534,17 +533,17 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
 }
 
 //TODO: document what this does
-fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
+fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
     let mut hasher = DefaultHasher::new();
-    ctx.g.cfg.showbar.hash(&mut hasher);
-    ctx.g.cfg.bar_height.hash(&mut hasher);
-    ctx.g.cfg.horizontal_padding.hash(&mut hasher);
-    ctx.g.cfg.startmenusize.hash(&mut hasher);
-    ctx.g.drag.bar_active.hash(&mut hasher);
-    ctx.g.status_text.hash(&mut hasher);
-    ctx.g.selected_monitor_id().hash(&mut hasher);
+    core.g.cfg.showbar.hash(&mut hasher);
+    core.g.cfg.bar_height.hash(&mut hasher);
+    core.g.cfg.horizontal_padding.hash(&mut hasher);
+    core.g.cfg.startmenusize.hash(&mut hasher);
+    core.g.drag.bar_active.hash(&mut hasher);
+    core.g.status_text.hash(&mut hasher);
+    core.g.selected_monitor_id().hash(&mut hasher);
 
-    for m in ctx.g.monitors_iter_all() {
+    for m in core.g.monitors_iter_all() {
         m.num.hash(&mut hasher);
         m.work_rect.x.hash(&mut hasher);
         m.work_rect.y.hash(&mut hasher);
@@ -563,7 +562,7 @@ fn bar_render_key(ctx: &crate::contexts::WmCtx) -> u64 {
         }
 
         let selected = m.selected_tags();
-        for (win, c) in m.iter_clients(ctx.g.clients.map()) {
+        for (win, c) in m.iter_clients(core.g.clients.map()) {
             if !c.is_visible_on_tags(selected) {
                 continue;
             }

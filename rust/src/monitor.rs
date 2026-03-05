@@ -233,12 +233,12 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 
     if !is_scratchpad {
-        crate::tags::reset_sticky_win(ctx, win);
+        crate::tags::reset_sticky_win(&mut ctx.core, win);
     }
 
     attach(ctx, win);
     attach_stack(ctx, win);
-    set_client_tag_prop(ctx, win);
+    set_client_tag_prop(&mut ctx.core, &ctx.x11, win);
 
     crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
 
@@ -304,7 +304,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         None => return,
     };
 
-    crate::tags::send_to_monitor(ctx, direction);
+    crate::tags::send_to_monitor(&mut ctx.core, &ctx.x11, direction);
 
     if let Some(monitor_id) = ctx.g.clients.get(&c_win).and_then(|c| c.monitor_id) {
         ctx.g.monitors.set_sel_idx(monitor_id);

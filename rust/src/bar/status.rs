@@ -1,4 +1,4 @@
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 
@@ -23,7 +23,7 @@ struct StatusLayout {
 }
 
 pub(crate) fn draw_status_bar(
-    ctx: &mut WmCtx,
+    ctx: &mut CoreCtx,
     m: &Monitor,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
@@ -145,7 +145,7 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
 }
 
 fn measure_layout(
-    ctx: &WmCtx,
+    ctx: &CoreCtx,
     m: &Monitor,
     items: &[StatusItem],
     painter: &mut dyn crate::bar::paint::BarPainter,
@@ -161,10 +161,10 @@ fn measure_layout(
     }
 
     let draw_width = (width + 2).max(0);
-    let systray_w = if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
-        0
-    } else {
+    let systray_w = if ctx.g.cfg.showsystray {
         get_systray_width(ctx) as i32
+    } else {
+        0
     };
     let draw_start_x = m.work_rect.w - draw_width - systray_w;
 

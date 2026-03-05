@@ -1,23 +1,21 @@
-use crate::backend::BackendKind;
 use crate::bar::model::ClientBarStats;
 use crate::bar::paint::BarPainter;
 use crate::bar::{status, widgets};
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::Gesture;
 
-pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
-    if ctx.backend_kind() != BackendKind::Wayland {
-        if ctx.x11_conn().is_none() {
-            return;
-        }
-    }
-
-    let bar = ctx.bar as *mut crate::bar::BarState;
+pub fn draw_bar_common(
+    core: &mut CoreCtx,
+    x11: Option<&X11Ctx>,
+    mon_idx: usize,
+    painter: &mut dyn BarPainter,
+) {
+    let bar = core.bar as *mut crate::bar::BarState;
     unsafe { (*bar).recursion_enter() };
 
-    let (monitor_num, work_rect_w) = match ctx.g.monitor(mon_idx) {
+    let (monitor_num, work_rect_w) = match core.g.monitor(mon_idx) {
         Some(m) => {
-            if !m.shows_bar() || ctx.bar.pausedraw() {
+            if !m.shows_bar() || core.bar.pausedraw() {
                 unsafe { (*bar).recursion_exit() };
                 return;
             }
@@ -29,38 +27,36 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         }
     };
 
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = core.g.cfg.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         unsafe { (*bar).recursion_exit() };
         return;
     }
 
-    let is_selmon = ctx.g.selected_monitor().num == monitor_num;
+    let is_selmon = core.g.selected_monitor().num == monitor_num;
 
-    let systray_width = if ctx.backend_kind() == BackendKind::Wayland {
-        0
-    } else if ctx.g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width(ctx) as i32
+    let systray_width = if core.g.cfg.showsystray && is_selmon && x11.is_some() {
+        crate::systray::get_systray_width(core) as i32
     } else {
         0
     };
 
     let (status_start_x, status_width) = if is_selmon {
-        let m = ctx.g.monitor(mon_idx).cloned().unwrap();
-        status::draw_status_bar(ctx, &m, bar_height, painter)
+        let m = core.g.monitor(mon_idx).cloned().unwrap();
+        status::draw_status_bar(core, &m, bar_height, painter)
     } else {
         (0, 0)
     };
 
     if is_selmon {
-        ctx.g.status_text_width = status_width;
+        core.g.status_text_width = status_width;
     }
 
-    widgets::draw_startmenu_icon(ctx, bar_height, painter);
+    widgets::draw_startmenu_icon(core, bar_height, painter);
 
     let (occupied_tags, urgent_tags, visible_clients) = {
-        let m = ctx.g.monitor(mon_idx).unwrap();
-        let stats = ClientBarStats::collect(m, ctx.g);
+        let m = core.g.monitor(mon_idx).unwrap();
+        let stats = ClientBarStats::collect(m, core.g);
         (
             stats.occupied_tags,
             stats.urgent_tags,
@@ -68,12 +64,12 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         )
     };
 
-    let mut x = ctx.g.cfg.startmenusize;
+    let mut x = core.g.cfg.startmenusize;
 
-    let mon_has_sel = ctx.g.monitor(mon_idx).is_some_and(|m| m.sel.is_some());
+    let mon_has_sel = core.g.monitor(mon_idx).is_some_and(|m| m.sel.is_some());
 
     {
-        let ctx_imm = &*ctx;
+        let ctx_imm = &*core;
         let m = ctx_imm.g.monitor(mon_idx).unwrap();
         x = widgets::draw_tag_indicators(
             ctx_imm,
@@ -88,7 +84,7 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
     }
 
     if !mon_has_sel {
-        x = widgets::draw_shutdown_button(ctx, x, bar_height, painter);
+        x = widgets::draw_shutdown_button(core, x, bar_height, painter);
     }
 
     let title_end_x = if is_selmon && status_width > 0 {
@@ -100,8 +96,8 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
 
     let mut new_activeoffset = None;
     if title_width > 0 {
-        let m = ctx.g.monitor(mon_idx).unwrap();
-        let ctx_imm = &*ctx;
+        let m = core.g.monitor(mon_idx).unwrap();
+        let ctx_imm = &*core;
         new_activeoffset = widgets::draw_window_titles(
             ctx_imm,
             m,
@@ -113,7 +109,7 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
         );
     }
 
-    if let Some(m) = ctx.g.monitor_mut(mon_idx) {
+    if let Some(m) = core.g.monitor_mut(mon_idx) {
         m.bar_clients_width = title_width;
         if let Some(offset) = new_activeoffset {
             m.activeoffset = offset;
@@ -123,20 +119,13 @@ pub fn draw_bar_common(ctx: &mut WmCtx, mon_idx: usize, painter: &mut dyn BarPai
     unsafe { (*bar).recursion_exit() };
 }
 
-pub fn reset_bar_common(ctx: &mut WmCtx) {
-    let selmon = ctx.g.selected_monitor();
+pub fn reset_bar_common(core: &mut CoreCtx) {
+    let selmon = core.g.selected_monitor();
     if selmon.gesture == Gesture::None {
         return;
     }
 
-    ctx.g.selected_monitor_mut().gesture = Gesture::None;
-}
-
-pub fn should_draw_bar_common(ctx: &WmCtx) -> bool {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return ctx.g.cfg.showbar;
-    }
-    ctx.x11_conn().is_some()
+    core.g.selected_monitor_mut().gesture = Gesture::None;
 }
 
 pub fn compute_status_hit_width(painter: &mut dyn BarPainter, text: &str) -> i32 {

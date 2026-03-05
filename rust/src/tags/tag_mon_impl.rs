@@ -11,8 +11,7 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
-use crate::backend::BackendKind;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
 use crate::types::{MonitorDirection, WindowId};
@@ -24,16 +23,13 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Wind
 // ---------------------------------------------------------------------------
 
 /// Send the selected client to the monitor in the given direction.
-pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+pub fn send_to_monitor(core: &mut CoreCtx, x11: &X11Ctx, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
     let (selected_window, has_multiple_mons) = {
-        let sel = ctx.g.selected_monitor().sel;
-        (sel, ctx.g.monitors.len() > 1)
+        let sel = core.g.selected_monitor().sel;
+        (sel, core.g.monitors.len() > 1)
     };
 
     let Some(win) = selected_window else { return };
@@ -42,8 +38,8 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     }
 
     let Some(target_id) = crate::types::monitor::find_monitor_by_direction(
-        ctx.g.monitors.monitors(),
-        ctx.g.selected_monitor_id(),
+        core.g.monitors.monitors(),
+        core.g.selected_monitor_id(),
         direction,
     ) else {
         return;
@@ -61,9 +57,9 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         .unwrap_or(false);
 
     if is_floating {
-        move_floating(ctx, win, target_id);
+        move_floating(core, x11, win, target_id);
     } else {
-        transfer_client(ctx, win, target_id);
+        transfer_client(core, x11, win, target_id);
     }
 }
 
@@ -72,10 +68,12 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 // ---------------------------------------------------------------------------
 
 /// Move a floating client to `target_id`, preserving its relative position.
-fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+fn move_floating(
+    core: &mut CoreCtx,
+    x11: &X11Ctx,
+    win: WindowId,
+    target_id: crate::types::MonitorId,
+) {
     // Snapshot source geometry before transfer_client() transfers ownership.
     let (
         client_x,
@@ -85,7 +83,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         src_work_area_width,
         src_work_area_height,
     ) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = core.g.selected_monitor();
         let (monitor_x, monitor_y, work_area_width, work_area_height) = (
             mon.monitor_rect.x,
             mon.monitor_rect.y,
@@ -93,7 +91,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
             mon.work_rect.h,
         );
 
-        let (win_x, win_y) = ctx
+        let (win_x, win_y) = core
             .g
             .clients
             .get(&win)
@@ -124,7 +122,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     };
 
     // Target monitor geometry.
-    let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = ctx
+    let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = core
         .g
         .monitors
         .get(target_id)
@@ -139,23 +137,21 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         .unwrap_or((0, 0, 0, 0));
 
     // Transfer the client to the target monitor.
-    transfer_client(ctx, win, target_id);
+    transfer_client(core, x11, win, target_id);
 
     // Apply proportional position on the new monitor.
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = core.g.clients.get_mut(&win) {
         client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
         client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }
 
-    arrange(ctx, Some(ctx.g.selected_monitor_id()));
+    arrange(core, Some(core.g.selected_monitor_id()));
 
     // Raise so the window is immediately visible on the new monitor.
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let x11_win: Window = win.into();
-        let _ = conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
-        let _ = conn.flush();
-    }
+    let x11_win: Window = win.into();
+    let _ = x11.conn.configure_window(
+        x11_win,
+        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+    );
+    let _ = x11.conn.flush();
 }

@@ -10,10 +10,10 @@ pub mod x11;
 mod x11_painter;
 
 pub use model::{bar_position_at_x, bar_position_to_gesture};
+pub use wayland::{draw_bar_wayland, draw_bars_wayland, reset_bar_wayland};
 pub use x11::resize_bar_win;
 
-use crate::backend::BackendKind;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::*;
 
 #[derive(Default)]
@@ -48,17 +48,8 @@ impl BarState {
     }
 }
 
-pub fn text_width(ctx: &crate::contexts::WmCtx, text: &str) -> i32 {
-    if let Some(mut drw) = ctx
-        .g
-        .x11
-        .drw
-        .as_ref()
-        .and_then(|drw| drw.has_display().then(|| drw.clone()))
-    {
-        return drw.fontset_getwidth(text) as i32;
-    }
-    ctx.bar_painter.measure_text_width(text)
+pub fn text_width(core: &CoreCtx, text: &str) -> i32 {
+    core.bar_painter.measure_text_width(text)
 }
 
 //TODO: remove, redundant
@@ -66,20 +57,12 @@ pub(crate) fn layout_symbol(m: &Monitor) -> String {
     m.layout_symbol()
 }
 
-pub fn get_layout_symbol_width(ctx: &WmCtx, m: &Monitor) -> i32 {
-    text_width(ctx, &layout_symbol(m)) + ctx.g.cfg.horizontal_padding
+pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
+    text_width(core, &layout_symbol(m)) + core.g.cfg.horizontal_padding
 }
 
-//TODO: wayland and X11 should be at the same level of hierarchy, not one inside the other
-pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        wayland::draw_bar_wayland(ctx, mon_idx);
-        return;
-    }
-    if ctx.x11_conn().is_none() {
-        return;
-    }
-    let bar_win = ctx
+pub fn draw_bar(core: &mut CoreCtx, x11: &X11Ctx, mon_idx: usize) {
+    let bar_win = core
         .g
         .monitor(mon_idx)
         .map(|m| m.bar_win)
@@ -87,17 +70,17 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
     if bar_win == WindowId::default() {
         return;
     }
-    let work_rect_w = match ctx.g.monitor(mon_idx) {
+    let work_rect_w = match core.g.monitor(mon_idx) {
         Some(m) => m.work_rect.w,
         None => return,
     };
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = core.g.cfg.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
 
     let drw = {
-        let Some(drw) = ctx.g.x11.drw.as_mut() else {
+        let Some(drw) = core.g.x11.drw.as_mut() else {
             return;
         };
         if !drw.has_display() {
@@ -109,34 +92,20 @@ pub fn draw_bar(ctx: &mut WmCtx, mon_idx: usize) {
 
     let mut painter = x11_painter::X11BarPainter::new(drw);
 
-    renderer::draw_bar_common(ctx, mon_idx, &mut painter);
+    renderer::draw_bar_common(core, Some(x11), mon_idx, &mut painter);
 
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
-pub fn draw_bars(ctx: &mut WmCtx) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        wayland::draw_bars_wayland(ctx);
-        return;
-    }
-    if ctx.x11_conn().is_none() {
-        return;
-    }
-    let indices: Vec<usize> = ctx.g.monitors_iter().map(|(i, _)| i).collect();
+pub fn draw_bars_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    let indices: Vec<usize> = core.g.monitors_iter().map(|(i, _)| i).collect();
     for i in indices {
-        draw_bar(ctx, i);
+        draw_bar(core, x11, i);
     }
 }
 
-pub fn reset_bar(ctx: &mut WmCtx) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        wayland::reset_bar_wayland(ctx);
-        return;
-    }
-    if ctx.x11_conn().is_none() {
-        return;
-    }
-    let selmon_idx = ctx.g.selected_monitor_id();
-    renderer::reset_bar_common(ctx);
-    draw_bar(ctx, selmon_idx);
+pub fn reset_bar_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    let selmon_idx = core.g.selected_monitor_id();
+    renderer::reset_bar_common(core);
+    draw_bar(core, x11, selmon_idx);
 }

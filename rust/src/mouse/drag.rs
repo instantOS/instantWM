@@ -208,7 +208,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
         let new_gesture = {
             let mon = ctx.g.selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
-            bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x))
+            bar_position_to_gesture(bar_position_at_x(mon, &ctx.core, local_x))
         };
 
         let gesture_changed = ctx.g.selected_monitor().gesture != new_gesture;
@@ -216,12 +216,12 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
         if !state.cursor_on_bar || gesture_changed {
             ctx.g.drag.bar_active = true;
             ctx.g.selected_monitor_mut().gesture = new_gesture;
-            draw_bar(ctx, selmon_id);
+            draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
         }
     } else if state.cursor_on_bar {
         ctx.g.drag.bar_active = false;
         ctx.g.selected_monitor_mut().gesture = Gesture::None;
-        draw_bar(ctx, selmon_id);
+        draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
     }
 
     on_bar
@@ -357,7 +357,7 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g.drag.bar_active = false;
     let selmon_id = ctx.g.selected_monitor_id();
     ctx.g.selected_monitor_mut().gesture = Gesture::None;
-    draw_bar(ctx, selmon_id);
+    draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
 }
 
 /// Handle a drop onto the bar: tile the window, optionally moving it to the
@@ -388,7 +388,7 @@ fn handle_bar_drop(
     let position = {
         let mon = ctx.g.selected_monitor();
         let local_x = ptr_x - mon.work_rect.x;
-        bar_position_at_x(mon, ctx, local_x)
+        bar_position_at_x(mon, &ctx.core, local_x)
     };
 
     // Remember whether the window was floating *before* any state change so
@@ -416,7 +416,8 @@ fn handle_bar_drop(
         // set_tiled does not touch focus.
         set_tiled(ctx, win, false);
         set_client_tag(
-            ctx,
+            &mut ctx.core,
+            &ctx.x11,
             win,
             TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
         );
@@ -479,14 +480,14 @@ fn apply_edge_drop(
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_client(ctx, Direction::Left);
+                move_client(&mut ctx.core, &ctx.x11, Direction::Left);
             } else {
-                move_client(ctx, Direction::Right);
+                move_client(&mut ctx.core, &ctx.x11, Direction::Right);
             }
         } else if at_left {
-            shift_tag_by(ctx, Direction::Left, 1);
+            shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Left, 1);
         } else {
-            shift_tag_by(ctx, Direction::Right, 1);
+            shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Right, 1);
         }
 
         if let Some(c) = ctx.g.clients.get_mut(&win) {
@@ -679,7 +680,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
                 .get(selmon_id)
                 .and_then(|mon| {
                     let local_x = ptr_x - mon.work_rect.x;
-                    match bar_position_at_x(mon, ctx, local_x) {
+                    match bar_position_at_x(mon, &ctx.core, local_x) {
                         BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
                         _ => None,
                     }
@@ -694,7 +695,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
-        view(ctx, TagMask::from_bits(initial_tag));
+        view(&mut ctx.core, &ctx.x11, TagMask::from_bits(initial_tag));
         return false;
     }
     // No selected window → nothing to drag.
@@ -715,7 +716,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     };
     set_cursor_move(ctx);
     ctx.g.drag.bar_active = true;
-    draw_bar(ctx, selmon_id);
+    draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
     true
 }
 
@@ -747,7 +748,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         .g
         .monitors
         .get(selmon_id)
-        .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, ctx, local_x)))
+        .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, &ctx.core, local_x)))
         .unwrap_or(Gesture::None);
     let gesture_key = match new_gesture {
         Gesture::Tag(idx) => idx as i32,
@@ -759,7 +760,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if let Some(mon) = ctx.g.monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
         }
-        draw_bar(ctx, selmon_id);
+        draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
     }
     true
 }
@@ -786,19 +787,19 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
             let position = {
                 let mon = ctx.g.selected_monitor();
                 let local_x = x - mon.work_rect.x;
-                bar_position_at_x(mon, ctx, local_x)
+                bar_position_at_x(mon, &ctx.core, local_x)
             };
 
             if let BarPosition::Tag(tag_idx) = position {
                 let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
                 if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
                     if let Some(win) = ctx.g.monitor(selmon_id).and_then(|m| m.sel) {
-                        set_client_tag(ctx, win, tag_mask);
+                        set_client_tag(&mut ctx.core, &ctx.x11, win, tag_mask);
                     }
                 } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
-                    tag_all(ctx, tag_mask);
+                    tag_all(&mut ctx.core, &ctx.x11, tag_mask);
                 } else if let Some(win) = ctx.g.monitor(selmon_id).and_then(|m| m.sel) {
-                    follow_tag(ctx, win, tag_mask);
+                    follow_tag(&mut ctx.core, &ctx.x11, win, tag_mask);
                 }
             }
         }
@@ -809,7 +810,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         mon.gesture = Gesture::None;
     }
     set_cursor_default(ctx);
-    draw_bar(ctx, selmon_id);
+    draw_bar(&mut ctx.core, &ctx.x11, selmon_id);
 }
 
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.
@@ -1187,7 +1188,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
             crate::client::show(ctx, win);
             crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
         }
-        crate::client::zoom(ctx);
+        crate::client::zoom(&mut ctx.core, &ctx.x11);
     } else if was_hidden {
         crate::client::show(ctx, win);
         crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));

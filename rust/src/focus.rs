@@ -3,7 +3,7 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::bar::draw_bars;
+use crate::bar::{draw_bars_wayland, draw_bars_x11};
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
 use crate::mouse::warp as mouse_warp;
@@ -75,7 +75,7 @@ pub fn focus_x11(core: &mut CoreCtx, x11: &X11Ctx, win: Option<WindowId>) -> any
         crate::keyboard::grab_keys_x11(core, x11);
     }
 
-    draw_bars(core);
+    draw_bars_x11(core, x11);
 
     if let Some(w) = target.take() {
         let is_urgent = core.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
@@ -147,7 +147,7 @@ pub fn focus_wayland(
         wayland.backend.set_focus(w);
     }
 
-    draw_bars(core);
+    draw_bars_wayland(core);
     Ok(())
 }
 
@@ -199,7 +199,7 @@ pub fn hover_focus_target_wayland(
 
     core.set_selected_client(Some(hovered_win));
     wayland.backend.set_focus(hovered_win);
-    draw_bars(core);
+    draw_bars_wayland(core);
 }
 
 pub fn set_focus_win_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
@@ -424,7 +424,7 @@ pub fn focus_last_client_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         core.focus.last_client = cur;
     }
 
-    view(core, TagMask::from_bits(tags));
+    view(core, x11, TagMask::from_bits(tags));
     focus_soft_x11(core, x11, Some(last_win));
 
     let monitor_id = core.g.selected_monitor_id();

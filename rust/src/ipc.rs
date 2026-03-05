@@ -151,38 +151,38 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Tag(tag_num) => {
             let tag = if tag_num == 0 { 2 } else { tag_num };
             if let Some(mask) = TagMask::single(tag as usize) {
-                view(&mut ctx, mask);
+                view(&mut ctx.core, &ctx.x11, mask);
             }
             IpcResponse::ok("")
         }
         IpcCommand::Animated(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_animated(&mut ctx, action);
+            toggle_animated(&mut ctx.core, action);
             IpcResponse::ok("")
         }
         IpcCommand::FocusFollowsMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_mouse(&mut ctx, action);
+            toggle_focus_follows_mouse(&mut ctx.core, action);
             IpcResponse::ok("")
         }
         IpcCommand::FocusFollowsFloatMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_float_mouse(&mut ctx, action);
+            toggle_focus_follows_float_mouse(&mut ctx.core, action);
             IpcResponse::ok("")
         }
         IpcCommand::AltTab(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            alt_tab_free(&mut ctx, action);
+            alt_tab_free(&mut ctx.core, &ctx.x11, action);
             IpcResponse::ok("")
         }
         IpcCommand::AltTag(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_alt_tag(&mut ctx, action);
+            toggle_alt_tag(&mut ctx.core, &ctx.x11, action);
             IpcResponse::ok("")
         }
         IpcCommand::HideTags(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_show_tags(&mut ctx, action);
+            toggle_show_tags(&mut ctx.core, &ctx.x11, action);
             IpcResponse::ok("")
         }
         IpcCommand::Layout(val) => {
@@ -191,24 +191,24 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::Prefix(arg) => {
             let val = arg.unwrap_or(1);
-            command_prefix(&mut ctx, val);
+            command_prefix(&mut ctx.core, &ctx.x11, val);
             IpcResponse::ok("")
         }
         IpcCommand::Border(arg) => {
             let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
             if let Some(win) = ctx.selected_client() {
-                set_border_width(&mut ctx, win, val as i32);
+                set_border_width(&mut ctx.core, win, val as i32);
             }
             IpcResponse::ok("")
         }
         IpcCommand::SpecialNext(arg) => {
             let val = arg.unwrap_or(0);
-            set_special_next(&mut ctx, val);
+            set_special_next(&mut ctx.core, val);
             IpcResponse::ok("")
         }
         IpcCommand::TagMon(dir) => {
             let direction = MonitorDirection::from(dir);
-            send_to_monitor(&mut ctx, direction);
+            send_to_monitor(&mut ctx.core, &ctx.x11, direction);
             IpcResponse::ok("")
         }
         IpcCommand::FollowMon(dir) => {
@@ -226,11 +226,11 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::NameTag(name) => {
-            name_tag(&mut ctx, &name);
+            name_tag(&mut ctx.core, &ctx.x11, &name);
             IpcResponse::ok("")
         }
         IpcCommand::ResetNameTag => {
-            reset_name_tag(&mut ctx);
+            reset_name_tag(&mut ctx.core, &ctx.x11);
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadMake(name) => {
