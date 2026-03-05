@@ -290,10 +290,10 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 
     match dir {
-        Direction::Right => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Right),
-        Direction::Left => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Left),
-        Direction::Up => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Left),
-        Direction::Down => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Right),
+        Direction::Right => scroll_view(ctx, Direction::Right),
+        Direction::Left => scroll_view(ctx, Direction::Left),
+        Direction::Up => scroll_view(ctx, Direction::Left),
+        Direction::Down => scroll_view(ctx, Direction::Right),
     }
 }
 

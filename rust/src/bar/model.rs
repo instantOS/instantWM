@@ -53,20 +53,12 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
 
 /// Compute which logical bar region the cursor's **monitor-local** x coordinate
 /// falls in for the given monitor.
-pub fn bar_position_at_x(
-    mon: &Monitor,
-    core: &CoreCtx,
-    local_x: i32,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) -> BarPosition {
+pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
     use crate::bar::get_layout_symbol_width;
 
     let start_menu_size = core.g.cfg.startmenusize;
-    let (tag_end, tag_idx) = (
-        get_tag_width(core, painter),
-        get_tag_at_x(core, local_x, painter),
-    );
-    let blw = get_layout_symbol_width(core, mon, painter);
+    let (tag_end, tag_idx) = (get_tag_width(core), get_tag_at_x(core, local_x));
+    let blw = get_layout_symbol_width(core, mon);
 
     // ── Start menu ────────────────────────────────────────────────────────
     if local_x < start_menu_size {

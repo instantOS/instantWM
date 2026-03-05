@@ -28,7 +28,6 @@ const MS: u32 = MODKEY | SHIFT;
 const MC: u32 = MODKEY | CONTROL;
 const MA: u32 = MODKEY | MOD1;
 
-
 macro_rules! btn_x11 {
     ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, $arg:ident| $action:expr) => {
         Button {
@@ -147,11 +146,11 @@ pub fn get_buttons() -> Vec<Button> {
         // of the current view, unless it is the only visible tag.
         btn_x11!(Tag(0), 0, button:MouseButton::Right => |ctx, arg| {
             if let BarPosition::Tag(idx) = arg.pos {
-                toggle_view_tag(&mut ctx.core, &ctx.x11, idx);
+                toggle_view_tag(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), idx);
             }
         }),
-        btn_x11!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        btn_x11!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        btn_x11!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
+        btn_x11!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
         btn_x11!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
                 set_client_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
@@ -167,8 +166,8 @@ pub fn get_buttons() -> Vec<Button> {
                 follow_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
             }
         }),
-        btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
+        btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
         // ── Root window ───────────────────────────────────────────────────
         btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Panther)),
         btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::InstantMenu)),

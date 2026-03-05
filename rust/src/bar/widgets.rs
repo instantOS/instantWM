@@ -60,7 +60,7 @@ pub(crate) fn draw_tag_indicators(
     let lpad = (horizontal_padding / 2) as u32;
     let bar_dragging = ctx.g.drag.bar_active;
 
-    let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags, painter);
+    let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 
     let selmon_gesture = ctx.g.selected_monitor().gesture;
 

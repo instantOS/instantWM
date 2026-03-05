@@ -1,6 +1,6 @@
 pub mod color;
 mod model;
-mod paint;
+pub mod paint;
 mod renderer;
 mod status;
 mod theme;
@@ -21,6 +21,12 @@ pub struct BarState {
     pausedraw: bool,
     draw_bar_recursion: usize,
     pub command_offsets: [i32; 20],
+    /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
+    pub tag_widths: Vec<i32>,
+    /// Total width of the tag strip (including start menu)
+    pub tag_strip_width: i32,
+    /// Layout symbol width
+    pub layout_symbol_width: i32,
 }
 
 impl BarState {
@@ -46,6 +52,26 @@ impl BarState {
     pub fn clear_command_offsets(&mut self) {
         self.command_offsets.fill(-1);
     }
+
+    /// Clear cached widths. Called at the start of each bar render.
+    pub fn clear_cached_widths(&mut self) {
+        self.tag_widths.clear();
+        self.tag_strip_width = 0;
+        self.layout_symbol_width = 0;
+    }
+
+    /// Cache a tag width at the given slot index.
+    pub fn cache_tag_width(&mut self, slot: usize, width: i32) {
+        if self.tag_widths.len() <= slot {
+            self.tag_widths.resize(slot + 1, 0);
+        }
+        self.tag_widths[slot] = width;
+    }
+
+    /// Get cached width for a tag slot.
+    pub fn get_tag_width(&self, slot: usize) -> i32 {
+        self.tag_widths.get(slot).copied().unwrap_or(0)
+    }
 }
 
 //TODO: remove, redundant
@@ -53,12 +79,16 @@ pub(crate) fn layout_symbol(m: &Monitor) -> String {
     m.layout_symbol()
 }
 
-pub fn get_layout_symbol_width(
-    core: &CoreCtx,
-    m: &Monitor,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) -> i32 {
-    painter.text_width(&layout_symbol(m)) + core.g.cfg.horizontal_padding
+pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
+    // Use cached width if available
+    let width = if core.bar.layout_symbol_width > 0 {
+        core.bar.layout_symbol_width
+    } else {
+        // Fallback: estimate based on typical character width
+        let symbol = layout_symbol(m);
+        symbol.len() as i32 * 8 // rough estimate: 8px per char
+    };
+    width + core.g.cfg.horizontal_padding
 }
 
 pub fn draw_bar(core: &mut CoreCtx, x11: &X11Ctx, mon_idx: usize) {

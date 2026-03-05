@@ -32,7 +32,6 @@ pub(crate) fn visible_tags_ctx<'a>(
     core: &CoreCtx,
     monitor: &'a Monitor,
     occupied: u32,
-    painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> Vec<VisibleTag<'a>> {
     let horizontal_padding = core.g.cfg.horizontal_padding;
     let show_alt = core.g.tags.show_alt;
@@ -50,7 +49,8 @@ pub(crate) fn visible_tags_ctx<'a>(
 
         let tag = &monitor.tags[tag_index];
         let label = display_name(tag, show_alt);
-        let width = painter.text_width(label) + horizontal_padding;
+        // Use cached width if available, otherwise estimate
+        let width = core.bar.get_tag_width(slot).max(horizontal_padding);
 
         out.push(VisibleTag {
             slot,
@@ -69,7 +69,7 @@ pub(crate) fn visible_tags_ctx<'a>(
 
 /// Return the total pixel width of the tag strip (including the start-menu
 /// button at the left edge).
-pub fn get_tag_width(core: &CoreCtx, painter: &mut dyn crate::bar::paint::BarPainter) -> i32 {
+pub fn get_tag_width(core: &CoreCtx) -> i32 {
     let occupied = occupied_tags_on_selmon(core.g);
 
     let m = core.g.selected_monitor();
@@ -77,7 +77,7 @@ pub fn get_tag_width(core: &CoreCtx, painter: &mut dyn crate::bar::paint::BarPai
         return core.g.cfg.startmenusize;
     }
 
-    let tags_width: i32 = visible_tags_ctx(core, m, occupied, painter)
+    let tags_width: i32 = visible_tags_ctx(core, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
@@ -87,11 +87,7 @@ pub fn get_tag_width(core: &CoreCtx, painter: &mut dyn crate::bar::paint::BarPai
 /// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
 ///
 /// `click_x` is relative to the left edge of the bar window.
-pub fn get_tag_at_x(
-    core: &CoreCtx,
-    click_x: i32,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) -> i32 {
+pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
     let occupied = occupied_tags_on_selmon(core.g);
 
     let m = core.g.selected_monitor();
@@ -100,7 +96,7 @@ pub fn get_tag_at_x(
     }
 
     let mut acc = core.g.cfg.startmenusize;
-    for t in visible_tags_ctx(core, m, occupied, painter) {
+    for t in visible_tags_ctx(core, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;
