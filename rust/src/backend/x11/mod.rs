@@ -13,6 +13,11 @@ use x11rb::CURRENT_TIME;
 use crate::backend::{BackendKind, BackendOps};
 use crate::types::{Rect, WindowId};
 
+pub mod bar;
+pub mod client;
+pub mod events;
+pub mod mouse;
+
 /// Log X11 errors instead of silently ignoring them.
 #[inline]
 pub fn log_x11_error<T>(result: Result<T, x11rb::errors::ConnectionError>, operation: &str) {

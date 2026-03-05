@@ -14,6 +14,8 @@ should be able to take only an X11 or Wayland specific context object. If that
 is not possible, meaning the function also does backend agnostic stuff then the
 function has too many responsibilities, and should be refactored. Same goes for
 its callers. 
+Highly X11 and wayland specific details should probably go into their respective
+backend modules. X11 should have a folder in that, just like wayland does. 
 
 
 What is reborrow() ? How is it used? Is it a code-smell
