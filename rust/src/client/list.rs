@@ -70,7 +70,7 @@ pub fn pop(ctx: &mut WmCtx, win: WindowId) {
     detach(ctx, win);
     attach(ctx, win);
     let monitor_id = ctx.g.clients.get(&win).and_then(|c| c.monitor_id);
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));

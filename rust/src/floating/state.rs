@@ -5,10 +5,7 @@ use crate::backend::BackendOps;
 use crate::client::{resize, restore_border_width};
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
-use crate::require_x11;
 use crate::types::*;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.g.clients.get_mut(&win) {
@@ -19,17 +16,20 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
     ctx.backend.set_border_width(win, restored_bw);
 
-    require_x11!(ctx);
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        let x11_win: Window = win.into();
-        if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-            let pixel = scheme.float_focus.bg.color.pixel;
-            let _ = change_window_attributes(
-                conn,
-                x11_win,
-                &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
-            );
-            let _ = conn.flush();
+    // Border color change is X11-specific for now
+    if matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+        if let Some(conn) = ctx.backend.x11_conn() {
+            let (conn, _screen_num) = conn;
+            let x11_win: x11rb::protocol::xproto::Window = win.into();
+            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                let pixel = scheme.float_focus.bg.color.pixel;
+                let _ = x11rb::protocol::xproto::change_window_attributes(
+                    conn,
+                    x11_win,
+                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+                );
+                let _ = conn.flush();
+            }
         }
     }
 }
@@ -64,17 +64,20 @@ pub fn apply_float_change(
             let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
             ctx.backend.set_border_width(win, restored_bw);
 
-            require_x11!(ctx);
-            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-                let x11_win: Window = win.into();
-                if let Some(ref scheme) = ctx.g.cfg.borderscheme {
-                    let pixel = scheme.float_focus.bg.color.pixel;
-                    let _ = change_window_attributes(
-                        conn,
-                        x11_win,
-                        &ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
-                    );
-                    let _ = conn.flush();
+            // Border color change is X11-specific for now
+            if matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+                if let Some(conn) = ctx.backend.x11_conn() {
+                    let (conn, _screen_num) = conn;
+                    let x11_win: x11rb::protocol::xproto::Window = win.into();
+                    if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                        let pixel = scheme.float_focus.bg.color.pixel;
+                        let _ = x11rb::protocol::xproto::change_window_attributes(
+                            conn,
+                            x11_win,
+                            &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+                        );
+                        let _ = conn.flush();
+                    }
                 }
             }
         }
@@ -237,16 +240,8 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
         arrange(ctx, Some(ctx.g.selected_monitor_id()));
     }
 
-    require_x11!(ctx);
+    // Raise window is backend-agnostic
     if let Some(win) = ctx.g.selected_monitor().fullscreen {
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let x11_win: Window = win.into();
-            let _ = configure_window(
-                conn,
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
-        }
+        ctx.backend.raise_window(win);
     }
 }

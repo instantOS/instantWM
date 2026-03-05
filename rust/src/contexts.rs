@@ -88,3 +88,26 @@ pub enum WmCtx<'a> {
     X11(WmCtxX11<'a>),
     Wayland(WmCtxWayland<'a>),
 }
+
+impl<'a> WmCtx<'a> {
+    pub fn selected_client(&self) -> Option<WindowId> {
+        match self {
+            WmCtx::X11(ctx) => ctx.core.selected_client(),
+            WmCtx::Wayland(ctx) => ctx.core.selected_client(),
+        }
+    }
+
+    pub fn g(&self) -> &Globals {
+        match self {
+            WmCtx::X11(ctx) => ctx.core.g,
+            WmCtx::Wayland(ctx) => ctx.core.g,
+        }
+    }
+
+    pub fn g_mut(&mut self) -> &mut Globals {
+        match self {
+            WmCtx::X11(ctx) => ctx.core.g,
+            WmCtx::Wayland(ctx) => ctx.core.g,
+        }
+    }
+}

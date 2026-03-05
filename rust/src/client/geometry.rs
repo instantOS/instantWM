@@ -14,7 +14,6 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::BackendOps;
 use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,
@@ -69,6 +68,20 @@ pub fn resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect, 
     }
 }
 
+/// Backend-agnostic resize entry point.
+///
+/// Wayland resize is not wired yet.
+pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
+    match ctx {
+        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+            resize_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect, interact)
+        }
+        crate::contexts::WmCtx::Wayland(_) => {
+            println!("Wayland resize not yet implemented");
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Low-level resize (direct X11 configure)
 // ---------------------------------------------------------------------------
@@ -103,6 +116,17 @@ pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: 
 
     // Send a synthetic ConfigureNotify so the client knows its geometry.
     crate::client::focus::configure_x11(core, x11, win);
+}
+
+pub fn resize_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect) {
+    match ctx {
+        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+            resize_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect)
+        }
+        crate::contexts::WmCtx::Wayland(_) => {
+            println!("Wayland resize_client not yet implemented");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -300,6 +324,17 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     c.hintsvalid = 1;
 }
 
+pub fn update_size_hints(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId) {
+    match ctx {
+        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+            update_size_hints_x11(&mut x11_ctx.core, &x11_ctx.x11, win)
+        }
+        crate::contexts::WmCtx::Wayland(_) => {
+            println!("Wayland update_size_hints not yet implemented");
+        }
+    }
+}
+
 fn fetch_wm_normal_hints(x11: &X11Ctx, win: WindowId) -> Option<Vec<u32>> {
     let conn = x11.conn;
     let reply = conn
@@ -356,4 +391,15 @@ pub fn scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, scale: 
         },
         false,
     );
+}
+
+pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
+    match ctx {
+        crate::contexts::WmCtx::X11(mut x11_ctx) => {
+            scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, scale)
+        }
+        crate::contexts::WmCtx::Wayland(_) => {
+            println!("Wayland scale_client not yet implemented");
+        }
+    }
 }

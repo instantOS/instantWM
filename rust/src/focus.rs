@@ -5,10 +5,12 @@
 
 use crate::bar::{draw_bars_wayland, draw_bars_x11};
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
-use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
 use crate::mouse::warp as mouse_warp;
 use crate::tags::view;
 use crate::types::*;
+use x11rb::protocol::xproto::{AtomEnum, InputFocus, PropMode, Window};
+use x11rb::CURRENT_TIME;
 
 /// Set focus to a window, or to the root if None.
 ///
@@ -160,6 +162,90 @@ pub fn focus_soft_x11(core: &mut CoreCtx, x11: &X11Ctx, win: Option<WindowId>) {
     if let Err(e) = focus_x11(core, x11, win) {
         log::warn!("focus({:?}) failed: {}", win, e);
     }
+}
+
+/// Backend-agnostic soft focus - does match internally.
+///
+/// For X11: calls focus_soft_x11 which logs but doesn't propagate errors.
+/// For Wayland: calls focus_wayland which logs but doesn't propagate errors.
+pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
+    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => {
+            focus_soft_x11(core, x11, win);
+        }
+        Wayland(WmCtxWayland { core, wayland, .. }) => {
+            if let Err(e) = focus_wayland(core, wayland, win) {
+                log::warn!("focus_wayland({:?}) failed: {}", win, e);
+            }
+        }
+    }
+}
+
+/// Backend-agnostic hover-focus entry point.
+pub fn hover_focus_target(
+    ctx: &mut crate::contexts::WmCtx,
+    hovered_win: Option<WindowId>,
+    entering_root: bool,
+) {
+    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11, X11Conn};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => {
+            hover_focus_target_x11(core, x11, hovered_win, entering_root);
+        }
+        Wayland(WmCtxWayland { core, wayland, .. }) => {
+            hover_focus_target_wayland(core, wayland, hovered_win, entering_root);
+        }
+    }
+}
+
+/// X11 hover-focus implementation matching the enter-notify focus path.
+pub fn hover_focus_target_x11(
+    core: &mut CoreCtx,
+    x11: &X11Ctx,
+    hovered_win: Option<WindowId>,
+    entering_root: bool,
+) {
+    if !core.g.focusfollowsmouse {
+        return;
+    }
+
+    if let Some(win) = hovered_win {
+        if let Some(mid) = core.g.clients.get(&win).and_then(|c| c.monitor_id) {
+            if mid != core.g.selected_monitor_id() {
+                core.g.set_selected_monitor(mid);
+                focus_soft_x11(core, x11, None);
+                return;
+            }
+        }
+
+        let hovered_is_floating = core
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.isfloating)
+            .unwrap_or(false);
+        let has_tiling = core.g.selected_monitor().is_tiling_layout();
+        if !core.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
+            return;
+        }
+    } else {
+        let event_win = WindowId::from(core.g.x11.root);
+        if let Some(new_mon_id) = core.g.monitors.win_to_mon(
+            event_win,
+            core.g.x11.root,
+            &*core.g.clients,
+            Some(X11Conn { conn: x11.conn }),
+        ) {
+            if new_mon_id != core.g.selected_monitor_id() {
+                core.g.set_selected_monitor(new_mon_id);
+                focus_soft_x11(core, x11, None);
+                return;
+            }
+        }
+    }
+
+    focus_soft_x11(core, x11, hovered_win);
 }
 
 /// Shared hover-focus behavior used by both X11 and Wayland pointer paths.
@@ -517,4 +603,89 @@ pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirecti
     };
 
     focus_soft_x11(core, x11, Some(stack[next_idx]));
+}
+
+pub fn direction_focus_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, direction: Direction) {
+    if core.g.monitors.is_empty() {
+        return;
+    }
+    let mon = core.g.selected_monitor();
+    let Some(source_win) = mon.sel else {
+        return;
+    };
+    let Some(source_client) = core.g.clients.get(&source_win) else {
+        return;
+    };
+    let (source_center_x, source_center_y) = source_client.geo.center();
+
+    let selected = mon.selected_tag_mask();
+
+    let candidates = get_directional_candidates(
+        &mon.clients,
+        &*core.g.clients,
+        selected,
+        source_win,
+        source_center_x,
+        source_center_y,
+        direction,
+    );
+
+    if let Some(target) = candidates {
+        if let Err(e) = focus_wayland(core, wayland, Some(target)) {
+            log::warn!("focus_wayland({:?}) failed: {}", target, e);
+        }
+    }
+}
+
+pub fn focus_stack_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, direction: StackDirection) {
+    let selected_window = core.selected_client();
+
+    let stack = {
+        if core.g.monitors.is_empty() {
+            return;
+        }
+        let mon = core.g.selected_monitor();
+        get_visible_stack(mon, &*core.g.clients)
+    };
+
+    if stack.is_empty() {
+        return;
+    }
+
+    let current_idx = match selected_window {
+        Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
+        None => 0,
+    };
+
+    let next_idx = if direction.is_forward() {
+        (current_idx + 1) % stack.len()
+    } else if current_idx == 0 {
+        stack.len() - 1
+    } else {
+        current_idx - 1
+    };
+
+    if let Err(e) = focus_wayland(core, wayland, Some(stack[next_idx])) {
+        log::warn!("focus_wayland({:?}) failed: {}", stack[next_idx], e);
+    }
+}
+
+pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
+    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => direction_focus_x11(core, x11, direction),
+        Wayland(WmCtxWayland { core, wayland, .. }) => {
+            direction_focus_wayland(core, wayland, direction)
+        }
+    }
+}
+
+pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
+    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => focus_stack_x11(core, x11, direction),
+        Wayland(WmCtxWayland { core, wayland, .. }) => {
+            focus_stack_wayland(core, wayland, direction)
+        }
+    }
 }

@@ -69,7 +69,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     }
 
     let selected_monitor_id = ctx.g.selected_monitor_id();
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
+    crate::focus::focus_soft(ctx, None);
     if !ctx.g.monitors.is_empty() {
         arrange(ctx, Some(selected_monitor_id));
     }
@@ -159,7 +159,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     let focusfollowsmouse = ctx.g.focusfollowsmouse;
     if !ctx.g.monitors.is_empty() {
         let mid = ctx.g.selected_monitor_id();
-        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(found));
+        crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
         restack(ctx, mid);
         if focusfollowsmouse {
@@ -193,7 +193,7 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         }
     }
 
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
+    crate::focus::focus_soft(ctx, None);
     if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
     }

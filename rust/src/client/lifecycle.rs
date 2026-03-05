@@ -28,7 +28,7 @@
 //! When the global `animated` flag is set, newly managed windows slide in from
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
-use crate::animation::animate_client;
+use crate::animation::animate_client_x11;
 use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
@@ -359,8 +359,9 @@ fn run_manage_animation(
         },
     );
     ctx.backend.flush();
-    animate_client(
-        ctx,
+    animate_client_x11(
+        &mut ctx.core,
+        &ctx.x11,
         w,
         &Rect {
             x: c.geo.x,

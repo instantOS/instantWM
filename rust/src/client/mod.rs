@@ -53,7 +53,8 @@ pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
-    apply_size_hints_x11, resize_client_x11, resize_x11, scale_client_x11, update_size_hints_x11,
+    apply_size_hints_x11, resize, resize_client, resize_client_x11, resize_x11, scale_client,
+    scale_client_x11, update_size_hints, update_size_hints_x11,
 };
 
 // -- Visibility --------------------------------------------------------------

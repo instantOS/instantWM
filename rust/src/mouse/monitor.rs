@@ -55,7 +55,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     transfer_client(ctx, c_win, target);
 
     ctx.g.set_selected_monitor(target);
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
+    crate::focus::focus_soft(ctx, None);
 }
 
 /// Convenience wrapper that reads the client's current geometry and delegates

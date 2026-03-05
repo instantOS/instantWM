@@ -5,7 +5,7 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use crate::contexts::CoreCtx;
+use crate::contexts::WmCtx;
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
@@ -88,9 +88,9 @@ pub struct Button {
     /// Action to execute when button is pressed.
     ///
     /// Arguments:
-    /// * `&mut CoreCtx` — the window manager core context
+    /// * `&mut WmCtx` — the window manager context (X11 or Wayland)
     /// * `ButtonArg` — The exact bar region that was clicked, the mouse button that was pressed, and the x/y coordinates.
-    pub action: Rc<dyn Fn(&mut CoreCtx, ButtonArg)>,
+    pub action: Rc<dyn Fn(&mut WmCtx, ButtonArg)>,
 }
 
 impl Button {

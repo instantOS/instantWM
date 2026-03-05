@@ -7,9 +7,7 @@ use crate::animation;
 use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::floating::{center_window, distribute_clients, key_resize, temp_fullscreen};
-use crate::focus::{
-    direction_focus_x11, focus_last_client_x11, focus_stack_x11, warp_to_focus_x11,
-};
+use crate::focus::{direction_focus, focus_last_client_x11, focus_stack, warp_to_focus_x11};
 use crate::keyboard::{down_key_x11, down_press_x11, space_toggle_x11, up_key_x11, up_press_x11};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
@@ -130,8 +128,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,    XK_P => toggle_layout),
         key!(MC,        XK_COMMA  => |ctx| cycle_layout_direction(ctx, false)),
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
-        key!(MODKEY, XK_J    => |ctx| focus_stack_x11(ctx, &ctx.x11, StackDirection::Next)),
-        key!(MODKEY, XK_K    => |ctx| focus_stack_x11(ctx, &ctx.x11, StackDirection::Previous)),
+        key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
+        key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
         key!(MODKEY, XK_DOWN => |ctx| down_key_x11(ctx, &ctx.x11, StackDirection::Next)),
         key!(MODKEY, XK_UP   => |ctx| up_key_x11(ctx, &ctx.x11, StackDirection::Previous)),
         key!(MS,     XK_DOWN => |ctx| down_press_x11(ctx, &ctx.x11)),
@@ -146,10 +144,10 @@ pub fn get_keys() -> Vec<Key> {
                 push_up(ctx, win)
             }
         }),
-        key!(MC, XK_LEFT  => |ctx| direction_focus_x11(ctx, &ctx.x11, Direction::Left)),
-        key!(MC, XK_RIGHT => |ctx| direction_focus_x11(ctx, &ctx.x11, Direction::Right)),
-        key!(MC, XK_UP    => |ctx| direction_focus_x11(ctx, &ctx.x11, Direction::Up)),
-        key!(MC, XK_DOWN  => |ctx| direction_focus_x11(ctx, &ctx.x11, Direction::Down)),
+        key!(MC, XK_LEFT  => |ctx| direction_focus(ctx, Direction::Left)),
+        key!(MC, XK_RIGHT => |ctx| direction_focus(ctx, Direction::Right)),
+        key!(MC, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
+        key!(MC, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
         key!(MODKEY,  XK_TAB     => |ctx| last_view(&mut ctx.core, &ctx.x11)),
         key!(MS,      XK_TAB     => |ctx| focus_last_client_x11(ctx, &ctx.x11)),
         key!(MA,      XK_TAB     => |ctx| follow_view(&mut ctx.core, &ctx.x11)),

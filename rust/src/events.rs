@@ -4,8 +4,9 @@ use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
     update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
-use crate::contexts::{CoreCtx, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 // focus() is used via focus_soft() in this module
+use crate::focus::focus_soft;
 use crate::ipc::IpcServer;
 use crate::keyboard::{
     grab_keys_x11, key_press_x11 as keyboard_key_press, key_release_x11 as keyboard_key_release,
@@ -42,7 +43,16 @@ fn win_to_client_ctx(core: &crate::contexts::CoreCtx, win: WindowId) -> Option<W
     }
 }
 
-pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
+pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
+    match ctx {
+        WmCtx::X11(ctx) => button_press_x11(ctx, e),
+        WmCtx::Wayland(_) => {
+            // Wayland button handling not yet implemented
+        }
+    }
+}
+
+fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
     let conn = ctx.x11.conn;
@@ -64,7 +74,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.core.g.set_selected_monitor(clicked_mon);
             selmon_id = clicked_mon;
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
+            focus_soft(&mut ctx, None);
         }
     };
 
@@ -80,7 +90,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
+            focus_soft(&mut ctx, Some(win));
             if let Some(monitor_id) = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id) {
                 restack(&mut ctx.core, &ctx.backend, monitor_id);
             }
@@ -146,7 +156,24 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             rx: e.root_x as i32,
             ry: e.root_y as i32,
         };
-        (button.action)(&mut ctx.core, arg);
+        // Convert WmCtxX11 to WmCtx for button action
+        (button.action)(
+            &mut WmCtx::X11(crate::contexts::WmCtxX11 {
+                core: CoreCtx::new(
+                    ctx.core.g,
+                    &mut false,
+                    ctx.core.bar,
+                    ctx.core.bar_painter,
+                    ctx.core.focus,
+                ),
+                backend: ctx.backend.reborrow(),
+                x11: X11Ctx {
+                    conn: ctx.x11.conn,
+                    screen_num: ctx.x11.screen_num,
+                },
+            }),
+            arg,
+        );
     }
 }
 
@@ -328,7 +355,12 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let topmost_win_under_cursor = get_cursor_client_win(&ctx.core, &ctx.x11);
 
     // 6. Handle focus switching based on configuration
-    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, topmost_win_under_cursor);
+    crate::focus::hover_focus_target_x11(
+        &mut ctx.core,
+        &ctx.x11,
+        topmost_win_under_cursor,
+        entering_root,
+    );
 }
 
 pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {

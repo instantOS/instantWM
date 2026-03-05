@@ -174,7 +174,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 
     apply_snap(ctx, win, monitor_id);
     warp_cursor_to_client_x11(ctx, &ctx.x11, win);
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the

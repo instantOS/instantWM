@@ -121,7 +121,7 @@ pub(super) fn handle_pointer_motion(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        crate::focus::hover_focus_target_wayland(&mut ctx.core, &ctx.wayland, hovered_win, false);
+        crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
     }
 
     let root_x = pointer_location.x.round() as i32;

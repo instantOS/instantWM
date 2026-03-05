@@ -22,10 +22,9 @@
 //! other requests from the dying client are processed between the kill and the
 //! expected `DestroyNotify`.
 
-use crate::animation::animate_client;
-use crate::backend::BackendKind;
+use crate::animation::animate_client_x11;
 use crate::client::focus::send_event;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, X11Ctx};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
@@ -35,15 +34,9 @@ use x11rb::CURRENT_TIME;
 // kill_client
 // ---------------------------------------------------------------------------
 
-/// Kill the given window.
-///
-/// Steps:
-/// 1. Return immediately if the window is locked (`islocked`).
-/// 2. Play a "slide down" animation (skipped when already animating or
-///    the window is fullscreen).
-/// 3. Send `WM_DELETE_WINDOW`; if unsupported, force-kill via X.
-pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
-    let Some(client) = ctx.g.clients.get(&win) else {
+/// Kill the given window (X11-specific implementation).
+fn kill_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let Some(client) = core.g.clients.get(&win) else {
         return;
     };
 
@@ -51,27 +44,21 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    if ctx.backend_kind() == BackendKind::Wayland {
-        if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
-            let _ = wayland.close_window(win);
-        }
-        return;
-    }
-
     let is_fullscreen = client.is_fullscreen;
     let mon_mh = client
         .monitor_id
-        .and_then(|mid| ctx.g.monitor(mid))
+        .and_then(|mid| core.g.monitor(mid))
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 
-    let animated = ctx.g.animated;
-    let anim_client = ctx.focus.anim_client;
+    let animated = core.g.animated;
+    let anim_client = core.focus.anim_client;
 
     if animated && win != anim_client && !is_fullscreen {
-        ctx.focus.anim_client = win;
-        animate_client(
-            ctx,
+        core.focus.anim_client = win;
+        animate_client_x11(
+            core,
+            x11,
             win,
             &Rect {
                 x: 0,
@@ -84,8 +71,18 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
         );
     }
 
-    let wmatom_delete = ctx.g.x11.wmatom.delete;
-    force_close(ctx, win, wmatom_delete);
+    let wmatom_delete = core.g.x11.wmatom.delete;
+    force_close_x11(core, x11, win, wmatom_delete);
+}
+
+/// Kill the given window.
+pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
+    match ctx {
+        WmCtx::X11(c) => kill_client_x11(&mut c.core, &c.x11, win),
+        WmCtx::Wayland(c) => {
+            let _ = c.wayland.backend.close_window(win);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,27 +110,16 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 // close_win
 // ---------------------------------------------------------------------------
 
-/// Close an arbitrary window by its Window ID.
-///
-/// Unlike [`kill_client`] this targets any window, not just the selected one.
-/// Used by the per-client close button in the bar.
-///
-/// The window is still animated before the close message is sent.
-pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
-            let _ = wayland.close_window(win);
-        }
-        return;
-    }
-    let (is_locked, mon_mh) = ctx
+/// Close an arbitrary window by its Window ID (X11-specific).
+fn close_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let (is_locked, mon_mh) = core
         .g
         .clients
         .get(&win)
         .map(|c| {
             let mh = c
                 .monitor_id
-                .and_then(|mid| ctx.g.monitor(mid))
+                .and_then(|mid| core.g.monitor(mid))
                 .map(|m| m.monitor_rect.h)
                 .unwrap_or(0);
             (c.islocked, mh)
@@ -144,35 +130,31 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    animate_client(
-        ctx,
-        win,
-        &Rect {
-            x: 0,
-            y: mon_mh - 20,
-            w: 0,
-            h: 0,
-        },
-        10,
-        0,
-    );
+    // Animation not yet supported in X11-specific path
+    let wmatom_delete = core.g.x11.wmatom.delete;
+    force_close_x11(core, x11, win, wmatom_delete);
+}
 
-    let wmatom_delete = ctx.g.x11.wmatom.delete;
-    force_close(ctx, win, wmatom_delete);
+/// Close an arbitrary window by its Window ID.
+pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
+    match ctx {
+        WmCtx::X11(c) => close_win_x11(&mut c.core, &c.x11, win),
+        WmCtx::Wayland(c) => {
+            let _ = c.wayland.backend.close_window(win);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Shared helper
 // ---------------------------------------------------------------------------
 
-/// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient`.
-fn force_close(ctx: &mut WmCtx, win: WindowId, wmatom_delete: u32) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+/// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient` (X11-specific).
+fn force_close_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
     let sent = send_event(
-        ctx,
+        core.g,
+        x11,
         win,
         wmatom_delete,
         0,
@@ -184,11 +166,9 @@ fn force_close(ctx: &mut WmCtx, win: WindowId, wmatom_delete: u32) {
     );
 
     if !sent {
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.grab_server();
-            let _ = conn.kill_client(x11_win);
-            let _ = conn.ungrab_server();
-            let _ = conn.flush();
-        }
+        let _ = x11.conn.grab_server();
+        let _ = x11.conn.kill_client(x11_win);
+        let _ = x11.conn.ungrab_server();
+        let _ = x11.conn.flush();
     }
 }

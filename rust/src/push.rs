@@ -86,7 +86,7 @@ pub fn push_up(ctx: &mut WmCtx, win: WindowId) {
         }
     }
 
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
     arrange(ctx, Some(selmon_id));
 }
 
@@ -119,6 +119,6 @@ pub fn push_down(ctx: &mut WmCtx, win: WindowId) {
         }
     }
 
-    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
+    crate::focus::focus_soft(ctx, Some(win));
     arrange(ctx, Some(selmon_id));
 }

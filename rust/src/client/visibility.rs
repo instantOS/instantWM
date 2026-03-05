@@ -10,7 +10,7 @@
 //! * [`show`]        – unmap → animate → arrange a previously hidden client.
 //! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
-use crate::animation::animate_client;
+use crate::animation::animate_client_x11;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
@@ -196,7 +196,7 @@ pub fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     let _ = x11.conn.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client(core, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client_x11(core, x11, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 
     let monitor_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
     if let Some(mid) = monitor_id {
@@ -228,8 +228,9 @@ pub fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
-        animate_client(
+        animate_client_x11(
             core,
+            x11,
             win,
             &Rect {
                 x,

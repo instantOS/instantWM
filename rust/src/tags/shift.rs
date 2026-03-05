@@ -3,6 +3,7 @@
 use crate::contexts::{CoreCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
 
+use crate::animation::animate_client_x11;
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect, WindowId};
 use x11rb::connection::Connection;
@@ -118,8 +119,9 @@ fn play_slide_animation(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, dir: Di
             Direction::Down => 1,
         };
 
-    crate::animation::animate_client(
+    crate::animation::animate_client_x11(
         core,
+        x11,
         win,
         &Rect {
             x: client_x + anim_dx,

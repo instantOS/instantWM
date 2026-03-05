@@ -6,7 +6,7 @@ use super::commands::Cmd;
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::animation::{down_scale_client, up_scale_client};
 use crate::client::{close_win, kill_client};
-use crate::focus::focus_stack_x11;
+use crate::focus::focus_stack;
 use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 
 use crate::floating::toggle_floating;
@@ -72,8 +72,8 @@ pub fn get_buttons() -> Vec<Button> {
         }),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, None, Cmd::Notify)),
-        btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack_x11(ctx, &ctx.x11, StackDirection::Previous)),
-        btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack_x11(ctx, &ctx.x11, StackDirection::Next)),
+        btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
+        btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
                 push_up(ctx, win)
