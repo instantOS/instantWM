@@ -217,7 +217,7 @@ fn configure_client_border(
 fn apply_manage_hints(core: &mut CoreCtx, x11: &X11Ctx, w: WindowId) {
     crate::client::focus::configure_x11(core, x11, w);
     update_window_type(core, x11, w);
-    crate::client::geometry::update_size_hints_x11(core, x11, w);
+    crate::backend::x11::update_size_hints_x11(core, x11, w);
     update_wm_hints(core, x11, w);
     read_client_info(core.g, x11, w);
     set_client_tag_prop(core, x11, w);

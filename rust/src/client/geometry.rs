@@ -19,8 +19,7 @@ use crate::backend::x11::apply_size_hints_x11;
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::{Rect, WindowId};
 
-use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::protocol::xproto::*;
+use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, Window};
 
 // ---------------------------------------------------------------------------
 // High-level resize (validates size hints)
@@ -107,23 +106,6 @@ pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: 
 
 // Re-export from X11 backend for backward compatibility.
 pub use crate::backend::x11::client::update_size_hints_x11;
-
-fn fetch_wm_normal_hints(x11: &X11Ctx, win: WindowId) -> Option<Vec<u32>> {
-    let conn = x11.conn;
-    let reply = conn
-        .get_property(
-            false,
-            win.into(),
-            AtomEnum::WM_NORMAL_HINTS,
-            AtomEnum::WM_SIZE_HINTS,
-            0,
-            24,
-        )
-        .ok()?
-        .reply()
-        .ok()?;
-    reply.value32().map(|v| v.collect())
-}
 
 // ---------------------------------------------------------------------------
 // Scale helper

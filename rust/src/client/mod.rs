@@ -52,7 +52,7 @@ pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
 
 // -- Geometry ----------------------------------------------------------------
 pub use crate::backend::x11::apply_size_hints_x11;
-pub use geometry::{resize, resize_client_x11, resize_x11, scale_client_x11};
+pub use geometry::{resize, resize_client_x11, resize_x11, scale_client_x11, update_size_hints_x11};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{
