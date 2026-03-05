@@ -10,7 +10,7 @@
 //!              already is master, promote the next tiled window instead).
 
 use crate::client::list::{next_tiled, pop};
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::WmCtx;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -32,7 +32,12 @@ use x11rb::protocol::xproto::*;
 /// * When the selected window **is already** the master, the *next* tiled
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
-pub fn zoom(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn zoom(ctx: &mut WmCtx) {
+    let WmCtx::X11(ctx_x11) = ctx else {
+        return;
+    };
+    let core = &mut ctx_x11.core;
+    let x11 = &ctx_x11.x11;
     let Some(win) = core.selected_client() else {
         return;
     };
@@ -71,11 +76,11 @@ pub fn zoom(core: &mut CoreCtx, x11: &X11Ctx) {
             mon.clients
                 .first()
                 .copied()
-                .and_then(|w| next_tiled(core, Some(w)))
+                .and_then(|w| next_tiled(ctx, Some(w)))
         });
 
     if first_tiled == Some(win) {
-        let next = next_tiled(core, first_tiled);
+        let next = next_tiled(ctx, first_tiled);
 
         // Nothing to promote if there is only one tiled window.
         if next.is_none() {
@@ -83,5 +88,5 @@ pub fn zoom(core: &mut CoreCtx, x11: &X11Ctx) {
         }
     }
 
-    pop(core, win);
+    pop(ctx, win);
 }

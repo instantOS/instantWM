@@ -16,6 +16,7 @@
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::WindowId;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;

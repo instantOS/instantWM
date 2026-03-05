@@ -27,11 +27,11 @@ use crate::bar::bar_position_to_gesture;
 use crate::bar::draw_bar;
 use crate::client::resize;
 use crate::config::commands::Cmd;
-use crate::contexts::WmCtx;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
-use crate::mouse::warp::warp_into;
+use crate::mouse::warp::warp_into_x11 as warp_into;
 use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
 use crate::types::geometry::Rect;
 use crate::types::SnapPosition;
@@ -45,7 +45,7 @@ use super::constants::{
 use super::cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
 use super::grab::{grab_pointer, ungrab, wait_event};
 use super::monitor::handle_client_monitor_switch;
-use super::warp::get_root_ptr;
+use super::warp::get_root_ptr_x11 as get_root_ptr;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -532,8 +532,7 @@ pub fn complete_move_drop(
 /// Interactively drag the focused window with the mouse.
 ///
 /// Grab → event loop → release handling. See helpers above for each phase.
-pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
-    require_x11!(ctx);
+pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
     let Some(win) = prepare_drag_target(ctx) else {
         return;
     };
@@ -547,6 +546,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
     };
 
     let grab_start_rect = ctx
+        .core
         .g
         .clients
         .get(&win)
@@ -610,8 +610,7 @@ pub fn move_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
-    require_x11!(ctx);
+pub fn gesture_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
     if !grab_pointer(ctx, 2) {
         return;
     }
@@ -824,13 +823,10 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
 /// On X11, runs a synchronous grab loop.  On Wayland, starts the drag and
 /// returns immediately — the calloop drives [`drag_tag_motion`] and
 /// [`drag_tag_finish`].
-pub fn drag_tag(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
+pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _click_root_x: i32) {
     if !drag_tag_begin(ctx, bar_pos, btn) {
         return;
     }
-
-    // On Wayland the calloop drives motion/finish asynchronously.
-    require_x11!(ctx);
 
     // ── X11 synchronous grab loop ─────────────────────────────────────────
     if !grab_pointer(ctx, 2) {
@@ -1188,7 +1184,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
             crate::client::show(ctx, win);
             crate::focus::focus_soft(ctx, Some(win));
         }
-        crate::client::zoom(&mut ctx.core, &ctx.x11);
+        crate::client::zoom(ctx);
     } else if was_hidden {
         crate::client::show(ctx, win);
         crate::focus::focus_soft(ctx, Some(win));
@@ -1211,7 +1207,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// On Wayland, starts the async state machine and returns immediately.
 /// On X11, runs a synchronous grab loop.
 pub fn window_title_mouse_handler(
-    ctx: &mut WmCtx,
+    ctx: &mut WmCtxX11,
     win: WindowId,
     btn: MouseButton,
     click_root_x: i32,
@@ -1220,9 +1216,6 @@ pub fn window_title_mouse_handler(
     if !title_drag_begin(ctx, win, btn, click_root_x, click_root_y, false) {
         return;
     }
-
-    // On Wayland the calloop drives motion/finish asynchronously.
-    require_x11!(ctx);
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
     if !grab_pointer(ctx, 0) {
@@ -1267,9 +1260,8 @@ pub fn window_title_mouse_handler(
 /// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, resize from bottom-right.
 /// No-op when the window is in true fullscreen.
 ///
-/// On Wayland and X11, this shares the same title-drag state machine.
 pub fn window_title_mouse_handler_right(
-    ctx: &mut WmCtx,
+    ctx: &mut WmCtxX11,
     win: WindowId,
     btn: MouseButton,
     click_root_x: i32,
@@ -1278,9 +1270,6 @@ pub fn window_title_mouse_handler_right(
     if !title_drag_begin(ctx, win, btn, click_root_x, click_root_y, false) {
         return;
     }
-
-    // On Wayland the calloop drives motion/finish asynchronously.
-    require_x11!(ctx);
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
     if !grab_pointer(ctx, 2) {

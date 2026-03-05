@@ -26,7 +26,7 @@
 //! ungrab_ctx(ctx);
 //! ```
 
-use crate::contexts::WmCtx;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -80,11 +80,8 @@ pub fn grab_pointer(ctx: &WmCtx, cursor_index: usize) -> bool {
 ///
 /// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
-pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
-    require_x11_ret!(ctx, false);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return false;
-    };
+pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
+    let conn = ctx.x11.conn;
 
     let root = ctx.g.x11.root;
     let cursor = ctx
@@ -124,8 +121,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtx, cursor_index: usize) -> bool {
 ///
 /// Borrows the connection only for the duration of the call, so the caller
 /// can freely mutate `ctx` between events.
-pub fn wait_event(ctx: &WmCtx) -> Option<x11rb::protocol::Event> {
-    require_x11_ret!(ctx, None);
+pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
     ctx.x11_conn()
         .and_then(|x11| x11.conn.wait_for_event().ok())
 }
@@ -142,11 +138,8 @@ fn ungrab_inner(conn: &x11rb::rust_connection::RustConnection) {
 /// Always call this when a drag/resize loop ends, even on early returns,
 /// to avoid leaving the pointer permanently grabbed.
 #[inline]
-pub fn ungrab(ctx: &WmCtx) {
-    require_x11!(ctx);
-    if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-        ungrab_inner(conn);
-    }
+pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
+    ungrab_inner(ctx.x11.conn);
 }
 
 // ── Passive button grabs ──────────────────────────────────────────────────────
@@ -156,11 +149,8 @@ pub fn ungrab(ctx: &WmCtx) {
 /// * When `focused` is **`true`**: all existing grabs are removed.
 /// * When `focused` is **`false`**: grabs are installed for buttons 1 and 3
 ///   with every combination of NumLock and CapsLock modifiers.
-pub fn grab_buttons(ctx: &WmCtx, c_win: WindowId, focused: bool) {
-    require_x11!(ctx);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: bool) {
+    let conn = ctx.x11.conn;
     let x11_win: Window = c_win.into();
 
     // Always start clean.

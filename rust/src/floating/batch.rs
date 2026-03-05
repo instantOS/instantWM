@@ -16,8 +16,7 @@
 //! and are correctly restored when the user switches back.
 
 use crate::client::resize;
-use crate::contexts::WmCtx;
-use crate::require_x11;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::*;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
@@ -32,12 +31,11 @@ use crate::types::*;
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
 pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
-    require_x11!(ctx);
     let Some(mid) = monitor_id else { return };
 
     let wins_to_save = collect_floating_wins(ctx.g, mid);
     for win in wins_to_save {
-        super::state::save_floating_win(ctx, win);
+        super::state::save_floating_win(&mut ctx.core, win);
     }
 }
 
@@ -46,7 +44,6 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 /// Counterpart to [`save_all_floating`]: resizes each window back to the rect
 /// that was captured by the most recent `save_all_floating` call.
 pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
-    require_x11!(ctx);
     let Some(mid) = monitor_id else { return };
 
     let wins_to_restore = collect_floating_wins(ctx.g, mid);
@@ -100,11 +97,10 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 /// that.  Each cell receives one window, sized to exactly fill its cell.
 ///
 /// Does nothing when there are no qualifying windows.
-pub fn distribute_clients(ctx: &mut WmCtx) {
-    require_x11!(ctx);
-    let sel_mon_id = ctx.g.selected_monitor_id();
+pub fn distribute_clients(ctx: &mut WmCtxX11) {
+    let sel_mon_id = ctx.core.g.selected_monitor_id();
 
-    let (floating_wins, work_rect) = collect_distribute_targets(ctx.g, sel_mon_id);
+    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core.g, sel_mon_id);
 
     if floating_wins.is_empty() {
         return;
@@ -119,12 +115,17 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
     let cell_w = work_rect.w / cols;
     let cell_h = work_rect.h / rows;
 
+    let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+        core: ctx.core,
+        backend: ctx.backend,
+        x11: ctx.x11,
+    });
     for (i, win) in floating_wins.into_iter().enumerate() {
         let col = (i as i32) % cols;
         let row = (i as i32) / cols;
 
         resize(
-            ctx,
+            &mut wm_ctx,
             win,
             &Rect {
                 x: work_rect.x + col * cell_w,

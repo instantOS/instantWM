@@ -6,7 +6,7 @@
 use crate::bar::{draw_bars_wayland, draw_bars_x11};
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
-use crate::mouse::warp as mouse_warp;
+use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
 use crate::tags::view;
 use crate::types::*;
 use x11rb::protocol::xproto::{AtomEnum, InputFocus, PropMode, Window};
@@ -182,13 +182,29 @@ pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     }
 }
 
+/// Backend-agnostic unfocus - does match internally.
+///
+/// For X11: calls unfocus_win_x11 (resets border, releases buttons, clears focus).
+/// For Wayland: currently just tracks last_client (border/focus handled differently).
+pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_root: bool) {
+    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => {
+            unfocus_win_x11(core, x11, win, redirect_to_root);
+        }
+        Wayland(WmCtxWayland { core, .. }) => {
+            core.focus.last_client = win;
+        }
+    }
+}
+
 /// Backend-agnostic hover-focus entry point.
 pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
-    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11, X11Conn};
+    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
     match ctx {
         X11(WmCtxX11 { core, x11, .. }) => {
             hover_focus_target_x11(core, x11, hovered_win, entering_root);
@@ -196,6 +212,15 @@ pub fn hover_focus_target(
         Wayland(WmCtxWayland { core, wayland, .. }) => {
             hover_focus_target_wayland(core, wayland, hovered_win, entering_root);
         }
+    }
+}
+
+/// Backend-agnostic cursor query for hover logic.
+pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
+    use crate::contexts::{WmCtx::*, WmCtxX11};
+    match ctx {
+        X11(WmCtxX11 { core, x11, .. }) => get_cursor_client_win_x11(core, x11),
+        Wayland(_) => None,
     }
 }
 
@@ -235,7 +260,7 @@ pub fn hover_focus_target_x11(
             event_win,
             core.g.x11.root,
             &*core.g.clients,
-            Some(X11Conn { conn: x11.conn }),
+            Some(crate::globals::X11Conn { conn: x11.conn }),
         ) {
             if new_mon_id != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(new_mon_id);

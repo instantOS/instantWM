@@ -13,9 +13,9 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
-use crate::mouse::warp::warp_into;
+use crate::mouse::warp::warp_into_x11 as warp_into;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -23,7 +23,7 @@ use x11rb::protocol::xproto::*;
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::{set_cursor_default, set_cursor_resize};
 use super::grab::{grab_pointer_with_keys, ungrab, wait_event};
-use super::warp::get_root_ptr;
+use super::warp::get_root_ptr_x11 as get_root_ptr;
 
 use super::resize::resize_mouse_directional;
 
@@ -42,12 +42,9 @@ pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 // ── Cursor helpers ───────────────────────────────────────────────────────────
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
-fn warp_pointer_resize(ctx: &WmCtx, win: WindowId, dir: ResizeDirection) {
-    require_x11!(ctx);
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
-    let Some(c) = ctx.g.clients.get(&win) else {
+fn warp_pointer_resize(ctx: &crate::contexts::WmCtxX11, win: WindowId, dir: ResizeDirection) {
+    let conn = ctx.x11.conn;
+    let Some(c) = ctx.core.g.clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -466,9 +463,21 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
     require_x11_ret!(ctx, None);
     let conn = ctx.x11_conn().map(|x11| x11.conn)?;
+    let root = ctx.g.x11.root;
+    get_cursor_client_win_with_conn(ctx, conn, root)
+}
 
+pub fn get_cursor_client_win_x11(core: &CoreCtx, x11: &X11Ctx) -> Option<WindowId> {
+    get_cursor_client_win_with_conn(core, x11.conn, core.g.x11.root)
+}
+
+fn get_cursor_client_win_with_conn(
+    core: &CoreCtx,
+    conn: &x11rb::rust_connection::RustConnection,
+    root: x11rb::protocol::xproto::Window,
+) -> Option<WindowId> {
     // Query pointer on root to get the actual child window under cursor
-    let reply = conn.query_pointer(ctx.g.x11.root).ok()?.reply().ok()?;
+    let reply = conn.query_pointer(root).ok()?.reply().ok()?;
 
     // child will be NONE if cursor is over root (no window)
     if reply.child == x11rb::NONE {
@@ -476,7 +485,7 @@ pub fn get_cursor_client_win(ctx: &WmCtx) -> Option<WindowId> {
     }
 
     let win = WindowId::from(reply.child);
-    if ctx.g.clients.contains(&win) {
+    if core.g.clients.contains(&win) {
         Some(win)
     } else {
         None

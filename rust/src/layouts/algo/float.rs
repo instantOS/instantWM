@@ -72,8 +72,8 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // Raise the selected window to the top of the Z-order so it is not
     // accidentally obscured by a tiled window placed above it by the compositor.
     if let Some(selected_window) = m.sel {
-        ctx.backend.raise_window(selected_window);
-        ctx.backend.flush();
+        ctx.backend().raise_window(selected_window);
+        ctx.backend().flush();
     }
 
     // Restore animation flag.

@@ -23,8 +23,8 @@
 //! expected `DestroyNotify`.
 
 use crate::animation::animate_client_x11;
-use crate::client::focus::send_event;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, X11Ctx};
+use crate::client::focus::send_event_x11;
+use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
@@ -95,14 +95,25 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
 /// an orderly system shutdown; pressing it when windows are open closes the
 /// focused window instead.
 pub fn shut_kill(ctx: &mut WmCtx) {
-    let has_clients = !ctx.g.selected_monitor().clients.is_empty();
+    let has_clients = !ctx.g().selected_monitor().clients.is_empty();
 
     if has_clients {
         if let Some(win) = ctx.selected_client() {
             kill_client(ctx, win);
         }
     } else {
-        crate::util::spawn(ctx, crate::config::commands::Cmd::InstantShutdown);
+        match ctx {
+            WmCtx::X11(c) => {
+                crate::util::spawn(&c.core, None, crate::config::commands::Cmd::InstantShutdown);
+            }
+            WmCtx::Wayland(c) => {
+                crate::util::spawn(
+                    &c.core,
+                    Some(&c.wayland),
+                    crate::config::commands::Cmd::InstantShutdown,
+                );
+            }
+        }
     }
 }
 
@@ -152,7 +163,7 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient` (X11-specific).
 fn force_close_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
-    let sent = send_event(
+    let sent = send_event_x11(
         core.g,
         x11,
         win,

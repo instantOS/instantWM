@@ -59,7 +59,8 @@ pub use geometry::{
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{
-    calculate_yoffset, get_state_x11, hide_x11, show_hide_wayland, show_hide_x11, show_x11,
+    calculate_yoffset, get_state_x11, hide, hide_x11, show, show_hide, show_hide_wayland,
+    show_hide_x11, show_x11,
 };
 
 // -- Focus / input -----------------------------------------------------------

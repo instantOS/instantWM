@@ -1,7 +1,7 @@
 use crate::bar::draw_bar;
 use crate::client::resize;
 use crate::contexts::{CoreCtx, X11Ctx};
-use crate::keyboard::grab_keys;
+use crate::keyboard::grab_keys_x11;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
@@ -30,7 +30,7 @@ pub fn toggle_alt_tag(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
 
 pub fn alt_tab_free(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
     ctrl_toggle(&mut core.g.tags.prefix, action);
-    grab_keys(core, x11);
+    grab_keys_x11(core, x11);
 }
 
 pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {
@@ -138,15 +138,15 @@ pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) 
     draw_bar(core, x11, selmon_id);
 }
 
-pub fn hide_window(core: &mut CoreCtx, win: WindowId) {
-    crate::client::hide(core, win);
+pub fn hide_window(ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+    crate::client::hide(ctx, win);
 }
 
-pub fn unhide_all(core: &mut CoreCtx) {
-    let clients: Vec<WindowId> = core.g.clients.keys().copied().collect();
+pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
+    let clients: Vec<WindowId> = ctx.g().clients.keys().copied().collect();
 
     for win in clients {
-        crate::client::show(core, win);
+        crate::client::show(ctx, win);
     }
 }
 

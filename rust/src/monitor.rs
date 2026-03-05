@@ -3,9 +3,10 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win};
-use crate::contexts::{WmCtx, X11Conn};
-use crate::focus::{focus_soft, warp_cursor_to_client_x11};
+use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
+use crate::contexts::WmCtx;
+use crate::focus::{focus_soft, unfocus_win, warp_cursor_to_client_x11};
+use crate::globals::X11Conn;
 use crate::types::*;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::Window;

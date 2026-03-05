@@ -18,7 +18,7 @@ use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push_down, push_up};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_client, send_to_monitor, shift_tag_by, shift_view,
+    follow_view, last_view, move_client, quit, send_to_monitor, shift_tag_by, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -177,7 +177,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,     XK_PERIOD => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, MonitorDirection::NEXT)),
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
-        key!(MS,   XK_RETURN => |ctx| zoom(&mut ctx.core, &ctx.x11)),
+        key!(MS,   XK_RETURN => zoom),
         key!(MC,   XK_D      => distribute_clients),
         key!(MS,   XK_D      => draw_window),
         key!(MA,   XK_W      => |ctx| {
@@ -242,10 +242,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,     XK_R     => |ctx| redraw_win(ctx, &ctx.x11)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
-                hide_window(&mut ctx.core, win)
+                hide_window(ctx, win)
             }
         }),
-        key!(MCA, XK_H => |ctx| unhide_all(&mut ctx.core)),
+        key!(MCA, XK_H => |ctx| unhide_all(ctx)),
         key!(MODKEY, XK_Q   => shut_kill),
         key!(MOD1,   XK_F4  => |ctx| {
             if let Some(win) = ctx.selected_client() {

@@ -49,7 +49,7 @@ pub fn send_to_monitor(core: &mut CoreCtx, x11: &X11Ctx, direction: MonitorDirec
     // 2. Dispatch: floating clients get proportional repositioning; tiled
     //    clients just move.
     // -----------------------------------------------------------------------
-    let is_floating = ctx
+    let is_floating = core
         .g
         .clients
         .get(&win)

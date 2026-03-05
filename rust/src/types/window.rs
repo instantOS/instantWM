@@ -5,7 +5,7 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 

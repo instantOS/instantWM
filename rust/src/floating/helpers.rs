@@ -2,8 +2,7 @@
 //!
 //! None of these functions mutate floating state – they only inspect it.
 
-use crate::client::resize;
-use crate::contexts::WmCtx;
+use crate::contexts::CoreCtx;
 use crate::types::WindowId;
 
 // ── Layout query ─────────────────────────────────────────────────────────────
@@ -13,8 +12,8 @@ use crate::types::WindowId;
 /// Used as a guard throughout the floating module: floating-only operations
 /// should be no-ops when a tiling layout is active and the window is not
 /// explicitly floating.
-pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
-    ctx.g.selected_monitor().is_tiling_layout()
+pub fn has_tiling_layout(core: &CoreCtx) -> bool {
+    core.g.selected_monitor().is_tiling_layout()
 }
 
 // ── Per-client queries ────────────────────────────────────────────────────────
@@ -25,12 +24,12 @@ pub fn has_tiling_layout(ctx: &WmCtx) -> bool {
 /// - its `isfloating` flag is set, or
 /// - no tiling layout is active on the selected monitor (all windows float in
 ///   floating-only layouts).
-pub fn check_floating(ctx: &WmCtx, win: WindowId) -> bool {
-    if let Some(client) = ctx.g.clients.get(&win) {
+pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
+    if let Some(client) = core.g.clients.get(&win) {
         if client.isfloating {
             return true;
         }
-        if !ctx.g.selected_monitor().is_tiling_layout() {
+        if !core.g.selected_monitor().is_tiling_layout() {
             return true;
         }
     }
@@ -44,9 +43,9 @@ pub fn check_floating(ctx: &WmCtx, win: WindowId) -> bool {
 ///
 /// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for
 /// call-sites that only hold a `Window` handle rather than a `&Client`.
-pub fn visible_client(ctx: &WmCtx, win: WindowId) -> bool {
-    let selected = ctx.g.selected_monitor().selected_tags();
-    ctx.g
+pub fn visible_client(core: &CoreCtx, win: WindowId) -> bool {
+    let selected = core.g.selected_monitor().selected_tags();
+    core.g
         .clients
         .get(&win)
         .map(|c| c.is_visible_on_tags(selected))
@@ -61,10 +60,10 @@ pub fn visible_client(ctx: &WmCtx, win: WindowId) -> bool {
 /// repaint the window frame without triggering a full `arrange()` pass.  It is
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
-pub fn apply_size(ctx: &mut WmCtx, win: WindowId) {
+pub fn apply_size(ctx: &mut CoreCtx, x11: &crate::contexts::X11Ctx, win: WindowId) {
     let geo = ctx.g.clients.get(&win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;
-        resize(ctx, win, &rect, false);
+        crate::client::resize_client_x11(ctx, x11, win, &rect);
     }
 }

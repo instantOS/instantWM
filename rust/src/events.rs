@@ -1,12 +1,10 @@
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
-    configure_x11, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
+    configure_x11, manage, set_client_state, set_fullscreen_x11, unmanage, update_title_x11,
     update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
-// focus() is used via focus_soft() in this module
-use crate::focus::focus_soft;
 use crate::ipc::IpcServer;
 use crate::keyboard::{
     grab_keys_x11, key_press_x11 as keyboard_key_press, key_release_x11 as keyboard_key_release,
@@ -14,8 +12,8 @@ use crate::keyboard::{
 use crate::layouts::{arrange, restack};
 use crate::monitor::update_geom;
 use crate::mouse::{
-    get_cursor_client_win, handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse,
-    reset_cursor, resize_mouse_directional,
+    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse, reset_cursor,
+    resize_mouse_directional,
 };
 use crate::systray;
 use crate::tags::get_tag_width;
@@ -74,7 +72,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.core.g.set_selected_monitor(clicked_mon);
             selmon_id = clicked_mon;
-            focus_soft(&mut ctx, None);
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
         }
     };
 
@@ -90,7 +88,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            focus_soft(&mut ctx, Some(win));
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
             if let Some(monitor_id) = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id) {
                 restack(&mut ctx.core, &ctx.backend, monitor_id);
             }
@@ -126,13 +124,14 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                     let dir = ctx.core.g.drag.resize_direction;
                     reset_cursor(&mut ctx.core, &ctx.x11);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
+                    let mut x11_ctx = ctx.reborrow();
                     if btn == MouseButton::Right {
-                        crate::mouse::move_mouse_x11(&mut ctx.core, &ctx.x11, btn);
+                        crate::mouse::move_mouse(&mut x11_ctx, btn);
                     } else if btn == MouseButton::Left {
                         if dir == Some(crate::types::ResizeDirection::Top) {
-                            crate::mouse::move_mouse_x11(&mut ctx.core, &ctx.x11, btn);
+                            crate::mouse::move_mouse(&mut x11_ctx, btn);
                         } else {
-                            resize_mouse_directional(&mut ctx.core, &ctx.x11, dir, btn);
+                            resize_mouse_directional(&mut x11_ctx, dir, btn);
                         }
                     }
                     return;
@@ -157,23 +156,8 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             ry: e.root_y as i32,
         };
         // Convert WmCtxX11 to WmCtx for button action
-        (button.action)(
-            &mut WmCtx::X11(crate::contexts::WmCtxX11 {
-                core: CoreCtx::new(
-                    ctx.core.g,
-                    &mut false,
-                    ctx.core.bar,
-                    ctx.core.bar_painter,
-                    ctx.core.focus,
-                ),
-                backend: ctx.backend.reborrow(),
-                x11: X11Ctx {
-                    conn: ctx.x11.conn,
-                    screen_num: ctx.x11.screen_num,
-                },
-            }),
-            arg,
-        );
+        let mut tmp = ctx.reborrow();
+        (button.action)(&mut WmCtx::X11(tmp), arg);
     }
 }
 
@@ -249,7 +233,8 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
-        unmanage(&mut ctx.core, &ctx.x11, win, true);
+        let mut tmp = ctx.reborrow();
+        unmanage(&mut WmCtx::X11(tmp), win, true);
     } else if let Some(icon) = systray::win_to_systray_icon(&mut ctx.core, event_win) {
         // Remove the icon from the systray list and client map, then resize
         // the bar and redraw the systray — matching the C code's sequence of
@@ -324,7 +309,8 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                         return;
                     }
                     // Use the actual topmost window under cursor for focus
-                    if let Some(newc) = get_cursor_client_win(&ctx.core, &ctx.x11) {
+                    if let Some(newc) = crate::mouse::get_cursor_client_win_x11(&ctx.core, &ctx.x11)
+                    {
                         if Some(newc) != selected_window {
                             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(newc));
                         }
@@ -352,7 +338,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 5. Determine what's actually under the cursor
-    let topmost_win_under_cursor = get_cursor_client_win(&ctx.core, &ctx.x11);
+    let topmost_win_under_cursor = crate::mouse::get_cursor_client_win_x11(&ctx.core, &ctx.x11);
 
     // 6. Handle focus switching based on configuration
     crate::focus::hover_focus_target_x11(
@@ -416,7 +402,8 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         && !is_override_redirect(&ctx.core, &ctx.x11, event_win)
     {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, event_win);
-        crate::client::manage(&mut ctx.core, &ctx.x11, event_win, geo, border_width);
+        let mut tmp = ctx.reborrow();
+        manage(&mut WmCtx::X11(tmp), event_win, geo, border_width);
     };
 }
 
@@ -554,7 +541,8 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
         if e.response_type & 0x80 != 0 {
             set_client_state(&ctx.core, &ctx.x11, win, WM_STATE_WITHDRAWN);
         } else {
-            unmanage(&mut ctx.core, &ctx.x11, win, false);
+            let mut tmp = ctx.reborrow();
+            unmanage(&mut WmCtx::X11(tmp), win, false);
         }
     } else if let Some(_icon) = systray::win_to_systray_icon(&mut ctx.core, event_win) {
         // Systray icons sometimes unmap without destroying; re-map them.
@@ -980,7 +968,8 @@ pub fn scan(wm: &mut Wm) {
 
     for win in managed.into_iter().chain(transients) {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, win);
-        crate::client::manage(&mut ctx.core, &ctx.x11, win, geo, border_width);
+        let mut tmp = ctx.reborrow();
+        manage(&mut WmCtx::X11(tmp), win, geo, border_width);
     }
 }
 

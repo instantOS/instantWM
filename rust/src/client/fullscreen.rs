@@ -153,7 +153,17 @@ pub fn set_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, fulls
             let _ = x11.conn.flush();
 
             if let Some(mid) = monitor_id {
-                arrange(core, Some(mid));
+                arrange(
+                    &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+                        core,
+                        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                        x11: crate::contexts::X11Ctx {
+                            conn: x11.conn,
+                            screen_num: x11.screen_num,
+                        },
+                    }),
+                    Some(mid),
+                );
             }
         }
     }

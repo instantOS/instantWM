@@ -17,8 +17,8 @@
 //! ```
 
 use crate::backend::BackendKind;
-use crate::client::unfocus_win;
 use crate::contexts::WmCtx;
+use crate::focus::unfocus_win;
 use crate::monitor::transfer_client;
 use crate::types::*;
 

@@ -5,6 +5,7 @@ use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::thread;
 use std::time::Duration;
+use x11rb::connection::Connection;
 
 const QUEUED_ALREADY: std::os::raw::c_int = 0;
 
@@ -215,17 +216,21 @@ pub fn down_scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 }
 
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
-    let sel_mon = ctx.g.selected_monitor_id();
+    let sel_mon = ctx.g().selected_monitor_id();
 
     let (_is_floating, has_tiling, current_tag) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = ctx.g().selected_monitor();
         let is_floating = mon
             .sel
-            .and_then(|w| ctx.g.clients.get(&w).map(|c| c.isfloating))
+            .and_then(|w| ctx.g().clients.get(&w).map(|c| c.isfloating))
             .unwrap_or(false);
         let has_tiling = mon.is_tiling_layout();
         let current_tag = mon.current_tag as u32;
         (is_floating, has_tiling, current_tag)
+    };
+
+    let WmCtx::X11(ctx_x11) = ctx else {
+        return;
     };
 
     if has_tiling {
@@ -236,22 +241,26 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => Direction::Down,
         };
         let mut target = None;
-        crate::focus::focus_direction(&ctx.core, focus_dir, |win| target = win);
+        crate::focus::focus_direction(&ctx_x11.core, focus_dir, |win| target = win);
         if let Some(win) = target {
-            crate::focus::focus_soft(ctx, Some(win));
+            crate::focus::focus_soft(&mut WmCtx::X11(ctx_x11.reborrow()), Some(win));
         }
         return;
     }
 
     if !has_tiling {
-        if let Some(selected_window) = ctx.core.selected_client() {
+        if let Some(selected_window) = ctx_x11.core.selected_client() {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,
                 Direction::Up => SnapDir::Up,
                 Direction::Down => SnapDir::Down,
             };
-            change_snap(ctx, selected_window, snap_dir);
+            change_snap(
+                &mut WmCtx::X11(ctx_x11.reborrow()),
+                selected_window,
+                snap_dir,
+            );
         }
         return;
     }
@@ -268,7 +277,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         return;
     }
 
-    let animated = ctx.g.animated;
+    let animated = ctx_x11.core.g.animated;
     if animated {
         let modifier: i32 = match dir {
             Direction::Right => 1,
@@ -277,14 +286,14 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => 1,
         };
         let target = current_tag + modifier as u32;
-        check_client_on_target_tag(&ctx.core.g, sel_mon, target);
+        check_client_on_target_tag(&ctx_x11.core.g, sel_mon, target);
     }
 
     match dir {
-        Direction::Right => scroll_view(&mut ctx.core, &ctx.x11, Direction::Right),
-        Direction::Left => scroll_view(&mut ctx.core, &ctx.x11, Direction::Left),
-        Direction::Up => scroll_view(&mut ctx.core, &ctx.x11, Direction::Left),
-        Direction::Down => scroll_view(&mut ctx.core, &ctx.x11, Direction::Right),
+        Direction::Right => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Right),
+        Direction::Left => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Left),
+        Direction::Up => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Left),
+        Direction::Down => scroll_view(&mut ctx_x11.core, &ctx_x11.x11, Direction::Right),
     }
 }
 

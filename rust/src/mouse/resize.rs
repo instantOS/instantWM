@@ -19,7 +19,7 @@
 //! resize support.
 
 use crate::client::resize;
-use crate::contexts::WmCtx;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
 use crate::types::*;
 use x11rb::protocol::xproto::*;
@@ -31,12 +31,12 @@ use crate::types::ResizeDirection;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
-    require_x11!(ctx);
-    let Some(win) = ctx.selected_client() else {
+pub fn resize_mouse_from_cursor(ctx: &mut WmCtxX11, btn: MouseButton) {
+    let Some(win) = ctx.core.selected_client() else {
         return;
     };
     let is_blocked = ctx
+        .core
         .g
         .clients
         .get(&win)
@@ -47,13 +47,11 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     };
 
     let dir = {
-        let Some(c) = ctx.g.clients.get(&win) else {
+        let Some(c) = ctx.core.g.clients.get(&win) else {
             return;
         };
 
-        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-            return;
-        };
+        let conn = ctx.x11.conn;
         let x11_win: Window = win.into();
         let Ok(cookie) = conn.query_pointer(x11_win) else {
             return;
@@ -90,12 +88,12 @@ fn refresh_rate(ctx: &WmCtx) -> u32 {
 /// The loop ends on `ButtonRelease`.  After the grab is released,
 /// [`handle_client_monitor_switch`] checks whether the window crossed a monitor
 /// boundary during the resize.
-pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
-    require_x11!(ctx);
-    let Some(win) = ctx.selected_client() else {
+pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
+    let Some(win) = ctx.core.selected_client() else {
         return;
     };
     let is_blocked = ctx
+        .core
         .g
         .clients
         .get(&win)
@@ -105,14 +103,14 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.g.selected_monitor_id());
+    crate::layouts::restack(ctx, ctx.core.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
     }
 
     let (orig_left, orig_top) = {
-        match ctx.g.clients.get(&win) {
+        match ctx.core.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
                 ungrab(ctx);
@@ -184,15 +182,15 @@ pub fn resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// When `direction` is `None`, behaves like [`resize_mouse`] (bottom-right corner).
 /// Otherwise, resizes from the specified edge or corner.
 pub fn resize_mouse_directional(
-    ctx: &mut WmCtx,
+    ctx: &mut WmCtxX11,
     direction: Option<ResizeDirection>,
     btn: MouseButton,
 ) {
-    require_x11!(ctx);
-    let Some(win) = ctx.selected_client() else {
+    let Some(win) = ctx.core.selected_client() else {
         return;
     };
     let is_blocked = ctx
+        .core
         .g
         .clients
         .get(&win)
@@ -202,14 +200,14 @@ pub fn resize_mouse_directional(
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.g.selected_monitor_id());
+    crate::layouts::restack(ctx, ctx.core.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
     }
 
     let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
-        match ctx.g.clients.get(&win) {
+        match ctx.core.g.clients.get(&win) {
             Some(c) => (
                 c.geo.x,
                 c.geo.y,
@@ -342,9 +340,9 @@ pub fn force_resize_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
-    require_x11!(ctx);
+pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
     let is_fullscreen = ctx
+        .core
         .g
         .clients
         .get(&win)
@@ -354,14 +352,14 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    crate::layouts::restack(ctx, ctx.g.selected_monitor_id());
+    crate::layouts::restack(ctx, ctx.core.g.selected_monitor_id());
 
     if !grab_pointer(ctx, 1) {
         return;
     }
 
     let (orig_left, orig_top) = {
-        match ctx.g.clients.get(&win) {
+        match ctx.core.g.clients.get(&win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => {
                 ungrab(ctx);

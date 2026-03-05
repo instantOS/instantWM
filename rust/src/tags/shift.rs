@@ -1,6 +1,6 @@
 //! Moving clients between tags.
 
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 // focus() is used via focus_soft() in this module
 
 use crate::animation::animate_client_x11;
@@ -10,16 +10,21 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
 //TODO: this seems redundant
-pub fn shift_tag_by(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction, offset: i32) {
-    shift_tag(core, x11, dir, offset.max(1));
+pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
+    shift_tag(ctx, dir, offset.max(1));
 }
 
-pub fn move_client(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction) {
-    shift_tag_by(core, x11, dir, 1);
-    crate::tags::view::scroll_view(core, x11, dir);
+pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
+    shift_tag_by(ctx, dir, 1);
+    crate::tags::view::scroll_view(ctx, dir);
 }
 
-fn shift_tag(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction, offset: i32) {
+fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
+    let (core, x11) = match ctx {
+        WmCtx::X11(ctx) => (&mut ctx.core, &ctx.x11),
+        WmCtx::Wayland(_) => return,
+    };
+
     let mon = core.g.selected_monitor();
     let Some(win) = mon.sel else {
         return;
@@ -72,7 +77,7 @@ fn shift_tag(core: &mut CoreCtx, x11: &X11Ctx, dir: Direction, offset: i32) {
 
     let selected_monitor_id = core.g.selected_monitor_id();
     crate::focus::focus_soft_x11(core, x11, None);
-    arrange(core, Some(selected_monitor_id));
+    arrange(ctx, Some(selected_monitor_id));
 }
 
 fn clear_sticky(core: &mut CoreCtx, win: WindowId) {

@@ -3,7 +3,7 @@
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
 use crate::client::{resize, restore_border_width};
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::layouts::arrange;
 use crate::types::*;
 
@@ -26,7 +26,8 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
                 let _ = x11rb::protocol::xproto::change_window_attributes(
                     conn,
                     x11_win,
-                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                        .border_pixel(Some(pixel as u32)),
                 );
                 let _ = conn.flush();
             }
@@ -34,8 +35,8 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     }
 }
 
-pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+pub fn save_floating_win(core: &mut CoreCtx, win: WindowId) {
+    if let Some(client) = core.g.clients.get_mut(&win) {
         client.float_geo = client.geo;
     }
 }
@@ -43,7 +44,7 @@ pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
 pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
     let float_geo = ctx.g.clients.get(&win).map(|c| c.float_geo);
     if let Some(rect) = float_geo {
-        resize(ctx, win, &rect, false);
+        crate::client::resize(ctx, win, &rect, false);
     }
 }
 
@@ -74,7 +75,8 @@ pub fn apply_float_change(
                         let _ = x11rb::protocol::xproto::change_window_attributes(
                             conn,
                             x11_win,
-                            &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
+                            &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                                .border_pixel(Some(pixel as u32)),
                         );
                         let _ = conn.flush();
                     }

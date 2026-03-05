@@ -16,8 +16,10 @@ use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
 use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
 // focus() is used via focus_soft() in this module
+use crate::backend::BackendOps;
 use crate::layouts::arrange;
 use crate::types::{Monitor, Rect, WindowId};
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 
@@ -156,6 +158,27 @@ pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
     }
 }
 
+pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
+    match ctx {
+        crate::contexts::WmCtx::X11(ctx_x11) => show_hide_x11(&mut ctx_x11.core, &ctx_x11.x11),
+        crate::contexts::WmCtx::Wayland(ctx_wayland) => {
+            show_hide_wayland(&mut ctx_wayland.core, &ctx_wayland.wayland)
+        }
+    }
+}
+
+pub fn show(ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+    if let crate::contexts::WmCtx::X11(ctx_x11) = ctx {
+        show_x11(&mut ctx_x11.core, &ctx_x11.x11, win);
+    }
+}
+
+pub fn hide(ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+    if let crate::contexts::WmCtx::X11(ctx_x11) = ctx {
+        hide_x11(&mut ctx_x11.core, &ctx_x11.x11, win);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Show (unminimize)
 // ---------------------------------------------------------------------------
@@ -200,7 +223,17 @@ pub fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 
     let monitor_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
     if let Some(mid) = monitor_id {
-        arrange(core, Some(mid));
+        arrange(
+            &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+                core: core.reborrow(),
+                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: crate::contexts::X11Ctx {
+                    conn: x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            }),
+            Some(mid),
+        );
     }
 }
 
@@ -276,7 +309,17 @@ pub fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     crate::focus::focus_soft_x11(core, x11, snext);
 
     if let Some(mid) = monitor_id {
-        arrange(core, Some(mid));
+        arrange(
+            &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+                core: core.reborrow(),
+                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: crate::contexts::X11Ctx {
+                    conn: x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            }),
+            Some(mid),
+        );
     }
 }
 

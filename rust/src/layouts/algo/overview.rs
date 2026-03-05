@@ -126,5 +126,5 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         }
     }
 
-    ctx.backend.flush();
+    ctx.backend().flush();
 }

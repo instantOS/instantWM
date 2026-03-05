@@ -51,7 +51,7 @@ pub mod warp;
 // ── warp ──────────────────────────────────────────────────────────────────────
 
 pub use cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
-pub use warp::reset_cursor;
+pub use warp::reset_cursor_x11 as reset_cursor;
 
 // ── grab ──────────────────────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ pub use crate::floating::moveresize;
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{
-    floating_to_tiled_hover, get_cursor_client_win, handle_floating_resize_hover,
+    floating_to_tiled_hover, get_cursor_client_win_x11, handle_floating_resize_hover,
     handle_sidebar_hover, hover_resize_mouse,
 };
 

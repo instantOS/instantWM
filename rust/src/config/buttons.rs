@@ -71,7 +71,7 @@ pub fn get_buttons() -> Vec<Button> {
             window_title_mouse_handler_right(ctx, win, arg.btn, arg.rx, arg.ry)
         }),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
-        btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, None, Cmd::Notify)),
+        btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(&ctx.core, None, Cmd::Notify)),
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
@@ -95,11 +95,11 @@ pub fn get_buttons() -> Vec<Button> {
             }
         }),
         // ── Status text ───────────────────────────────────────────────────
-        btn!(StatusText, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::Panther)),
-        btn!(StatusText, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, None, Cmd::Term)),
-        btn!(StatusText, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, None, Cmd::CaretInstantSwitch)),
-        btn!(StatusText, 0,      button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, None, Cmd::UpVol)),
-        btn!(StatusText, 0,      button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, None, Cmd::DownVol)),
+        btn!(StatusText, 0,      button:MouseButton::Left        => |ctx, _| spawn(&ctx.core, None, Cmd::Panther)),
+        btn!(StatusText, 0,      button:MouseButton::Middle      => |ctx, _| spawn(&ctx.core, None, Cmd::Term)),
+        btn!(StatusText, 0,      button:MouseButton::Right       => |ctx, _| spawn(&ctx.core, None, Cmd::CaretInstantSwitch)),
+        btn!(StatusText, 0,      button:MouseButton::ScrollUp    => |ctx, _| spawn(&ctx.core, None, Cmd::UpVol)),
+        btn!(StatusText, 0,      button:MouseButton::ScrollDown  => |ctx, _| spawn(&ctx.core, None, Cmd::DownVol)),
         btn!(StatusText, MODKEY, button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::InstantSettings)),
         btn!(StatusText, MODKEY, button:MouseButton::Middle      => |ctx, _| spawn(ctx, None, Cmd::MuteVol)),
         btn!(StatusText, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, None, Cmd::Spoticli)),

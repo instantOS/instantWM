@@ -15,7 +15,7 @@ mod tag_mon_impl;
 /// types, offering better type safety and clearer semantics than raw `u32` bitmasks.
 pub mod tag_ops;
 
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 
 pub use bar::{get_tag_at_x, get_tag_width};
 
@@ -46,10 +46,10 @@ pub fn compute_prefix(core: &mut CoreCtx, arg: u32) -> u32 {
     }
 }
 
-pub fn zoom(core: &mut CoreCtx, x11: &X11Ctx) {
-    let selected_window = core.g.selected_monitor().sel;
+pub fn zoom(ctx: &mut crate::contexts::WmCtx) {
+    let selected_window = ctx.g().selected_monitor().sel;
     if let Some(win) = selected_window {
-        crate::client::pop(core, x11, win);
+        crate::client::pop(ctx, win);
     }
 }
 

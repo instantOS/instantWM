@@ -20,6 +20,25 @@ impl Deref for ClientManager {
 }
 
 impl ClientManager {
+    pub fn attach_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+        let monitors = &mut ctx.g_mut().monitors;
+        self.attach(monitors, win);
+    }
+
+    pub fn detach_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+        let monitors = &mut ctx.g_mut().monitors;
+        self.detach(monitors, win);
+    }
+
+    pub fn attach_stack_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+        let monitors = &mut ctx.g_mut().monitors;
+        self.attach_stack(monitors, win);
+    }
+
+    pub fn detach_stack_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
+        let monitors = &mut ctx.g_mut().monitors;
+        self.detach_stack(monitors, win);
+    }
     pub fn new() -> Self {
         Self::default()
     }
