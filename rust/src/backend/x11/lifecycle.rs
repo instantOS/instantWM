@@ -66,7 +66,14 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.g, w);
     clamp_client_to_work_area(ctx.core.g, w, mon_work_rect);
     let is_monocle = is_monocle_on_client_monitor(ctx.core.g, w);
-    configure_client_border(ctx.core.g, &ctx.x11, w, borderpx, mon_monitor_rect, is_monocle);
+    configure_client_border(
+        ctx.core.g,
+        &ctx.x11,
+        w,
+        borderpx,
+        mon_monitor_rect,
+        is_monocle,
+    );
 
     apply_manage_hints(&mut ctx.core, &ctx.x11, w);
     snapshot_float_geo(ctx.core.g, w, mon_monitor_rect);
@@ -442,10 +449,10 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
 
     if !destroyed {
         let x11_win: Window = win.into();
-            let _old_bw = ctx
-                .core
-                .g
-                .clients
+        let _old_bw = ctx
+            .core
+            .g
+            .clients
             .get(&win)
             .map(|c| c.old_border_width)
             .unwrap_or(0);
@@ -463,10 +470,10 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
             // (Border width is set via BackendOps elsewhere)
 
             // Release button grabs.
-            let _ = ctx
-                .x11
-                .conn
-                .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+            let _ =
+                ctx.x11
+                    .conn
+                    .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
         }
 
         set_client_state(&mut ctx.core, &ctx.x11, win, WM_STATE_WITHDRAWN);

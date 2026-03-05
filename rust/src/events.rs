@@ -1,9 +1,9 @@
+use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
-use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::client::{
-    configure_x11, set_client_state, set_fullscreen_x11, update_title_x11,
-    update_wm_hints, WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
+    configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
+    WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 use crate::ipc::IpcServer;

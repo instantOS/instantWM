@@ -73,7 +73,8 @@ pub fn zoom(ctx: &mut WmCtx) {
     let first_on_monitor = monitor_id
         .and_then(|mid| core.g.monitor(mid))
         .and_then(|mon| mon.clients.first().copied());
-    let first_tiled = first_on_monitor.and_then(|w| next_tiled(&mut WmCtx::X11(ctx_x11.reborrow()), Some(w)));
+    let first_tiled =
+        first_on_monitor.and_then(|w| next_tiled(&mut WmCtx::X11(ctx_x11.reborrow()), Some(w)));
 
     if first_tiled == Some(win) {
         let next = next_tiled(ctx, first_tiled);

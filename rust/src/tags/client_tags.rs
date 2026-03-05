@@ -18,25 +18,8 @@ pub fn tag_all(ctx: &mut WmCtxX11, mask: TagMask) {
 
 /// Toggle tags on the selected client.
 pub fn toggle_tag(ctx: &mut WmCtxX11, win: WindowId, mask: TagMask) {
-    let tagmask = TagMask::from_bits(ctx.core.g.tags.mask());
-
-    let current_tags = ctx
-        .core
-        .client(win)
-        .map_or(TagMask::EMPTY, |c| TagMask::from_bits(c.tags));
-
-    if current_tags.bits() == SCRATCHPAD_MASK {
-        set_client_tag(ctx, win, mask);
-        return;
-    }
-
-    let new_tags = current_tags ^ (mask & tagmask);
-
-    if new_tags.is_empty() {
-        return;
-    }
-
-    set_client_tag(ctx, win, new_tags);
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    toggle_tag_ctx(&mut wm_ctx, win, mask);
 }
 
 /// Follow a tag (move client to tag and view it).
@@ -112,4 +95,22 @@ pub fn follow_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         ctx.g_mut().tags.prefix = true;
     }
     crate::tags::view::view_ctx(ctx, mask);
+}
+
+pub fn toggle_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
+    let tagmask = TagMask::from_bits(ctx.g().tags.mask());
+    let current_tags = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map_or(TagMask::EMPTY, |c| TagMask::from_bits(c.tags));
+    if current_tags.bits() == SCRATCHPAD_MASK {
+        set_client_tag_ctx(ctx, win, mask);
+        return;
+    }
+    let new_tags = current_tags ^ (mask & tagmask);
+    if new_tags.is_empty() {
+        return;
+    }
+    set_client_tag_ctx(ctx, win, new_tags);
 }

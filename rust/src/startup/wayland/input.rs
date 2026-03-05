@@ -13,7 +13,9 @@ use crate::backend::wayland::compositor::{
     KeyboardFocusTarget, PointerFocusTarget, WaylandState, WindowIdMarker,
 };
 use crate::monitor::update_geom;
-use crate::mouse::{set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland};
+use crate::mouse::{
+    set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland,
+};
 use crate::startup::common_wayland::modifiers_to_x11_mask;
 use crate::types::*;
 use crate::wm::Wm;

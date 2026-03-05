@@ -54,9 +54,7 @@ pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
 pub use geometry::{resize, resize_client_x11, resize_x11};
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{
-    hide, hide_x11, show, show_hide, show_x11,
-};
+pub use visibility::{hide, hide_x11, show, show_hide, show_x11};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{
@@ -65,9 +63,7 @@ pub use focus::{
 };
 
 // -- Fullscreen --------------------------------------------------------------
-pub use fullscreen::{
-    set_fullscreen_x11, toggle_fake_fullscreen_x11,
-};
+pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen_x11};
 
 pub fn save_border_width(core: &mut crate::contexts::CoreCtx, win: crate::types::WindowId) {
     core.g.clients.save_border_width(win);

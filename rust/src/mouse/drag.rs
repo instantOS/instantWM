@@ -157,7 +157,12 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         let overlay = mon.overlay;
         let fullscreen = mon.fullscreen;
         let c = g.clients.get(&sel)?;
-        (sel, c.is_true_fullscreen(), Some(sel) == overlay, Some(sel) == fullscreen)
+        (
+            sel,
+            c.is_true_fullscreen(),
+            Some(sel) == overlay,
+            Some(sel) == fullscreen,
+        )
     };
 
     if is_true_fs {

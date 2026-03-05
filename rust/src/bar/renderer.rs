@@ -71,7 +71,15 @@ pub fn draw_bar_common(
 
     {
         let m = core.g.monitor(mon_idx).cloned().unwrap();
-        x = widgets::draw_tag_indicators(core, &m, x, occupied_tags, urgent_tags, bar_height, painter);
+        x = widgets::draw_tag_indicators(
+            core,
+            &m,
+            x,
+            occupied_tags,
+            urgent_tags,
+            bar_height,
+            painter,
+        );
         x = widgets::draw_layout_indicator(core, &m, x, bar_height, painter);
     }
 

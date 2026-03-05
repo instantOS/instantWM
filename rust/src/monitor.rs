@@ -517,15 +517,18 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     if dirty {
         ctx.g_mut().monitors.set_sel_idx(0);
         let x11_conn = match ctx {
-            WmCtx::X11(x11) => Some(crate::globals::X11Conn::new(x11.x11.conn, x11.x11.screen_num)),
+            WmCtx::X11(x11) => Some(crate::globals::X11Conn::new(
+                x11.x11.conn,
+                x11.x11.screen_num,
+            )),
             WmCtx::Wayland(_) => None,
         };
         let root = ctx.g().x11.root;
         let clients = ctx.g().clients.clone();
-        if let Some(m) = ctx
-            .g_mut()
-            .monitors
-            .win_to_mon(WindowId::from(root), root, &clients, x11_conn)
+        if let Some(m) =
+            ctx.g_mut()
+                .monitors
+                .win_to_mon(WindowId::from(root), root, &clients, x11_conn)
         {
             ctx.g_mut().monitors.set_sel_idx(m);
         }

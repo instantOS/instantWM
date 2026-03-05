@@ -14,8 +14,8 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::BackendOps;
 use crate::backend::x11::apply_size_hints_x11;
+use crate::backend::BackendOps;
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::{Rect, WindowId};
 
@@ -137,34 +137,22 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
                 Some(c) => c,
                 None => return,
             };
-            calculate_scaled_geometry(
-                c.monitor_id,
-                c.geo,
-                c.border_width,
-                scale,
-                |mid| {
-                    mid.and_then(|m| x11_ctx.core.g.monitors.get(m))
-                        .map(|m| m.monitor_rect)
-                        .unwrap_or(c.geo)
-                },
-            )
+            calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
+                mid.and_then(|m| x11_ctx.core.g.monitors.get(m))
+                    .map(|m| m.monitor_rect)
+                    .unwrap_or(c.geo)
+            })
         }
         crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
             let c = match wl_ctx.core.g.clients.get(&win) {
                 Some(c) => c,
                 None => return,
             };
-            calculate_scaled_geometry(
-                c.monitor_id,
-                c.geo,
-                c.border_width,
-                scale,
-                |mid| {
-                    mid.and_then(|m| wl_ctx.core.g.monitors.get(m))
-                        .map(|m| m.monitor_rect)
-                        .unwrap_or(c.geo)
-                },
-            )
+            calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
+                mid.and_then(|m| wl_ctx.core.g.monitors.get(m))
+                    .map(|m| m.monitor_rect)
+                    .unwrap_or(c.geo)
+            })
         }
     };
 

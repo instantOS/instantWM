@@ -3,8 +3,8 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::bar::draw_bars_x11;
 use crate::backend::BackendOps;
+use crate::bar::draw_bars_x11;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
