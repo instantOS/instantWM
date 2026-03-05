@@ -3,7 +3,7 @@
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
 use crate::client::restore_border_width;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;

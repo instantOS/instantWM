@@ -17,6 +17,7 @@
 
 use crate::client::resize;
 use crate::contexts::WmCtx;
+use crate::floating::state::save_floating_win;
 use crate::types::*;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
@@ -35,10 +36,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 
     let wins_to_save = collect_floating_wins(ctx.g(), mid);
     for win in wins_to_save {
-        match ctx {
-            WmCtx::X11(x11) => super::state::save_floating_win_x11(&mut x11.core, win),
-            WmCtx::Wayland(_) => {}
-        }
+        save_floating_win(ctx, win);
     }
 }
 

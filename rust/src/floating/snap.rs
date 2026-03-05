@@ -165,7 +165,9 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
             .map(|c| c.isfloating)
             .unwrap_or(false)
         {
-            super::state::save_floating_win_x11(&mut ctx_x11.core, win);
+            if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
+                client.float_geo = client.geo;
+            }
         }
     }
 
