@@ -318,13 +318,17 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     if let WmCtx::X11(x11) = ctx {
         let x11_win: Window = c_win.into();
+        let x11_ctx = crate::contexts::X11Ctx {
+            conn: x11.x11.conn,
+            screen_num: x11.x11.screen_num,
+        };
         let _ = x11rb::protocol::xproto::configure_window(
             x11.x11.conn,
             x11_win,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
         );
-        warp_cursor_to_client_x11(ctx, &x11.x11, c_win);
+        warp_cursor_to_client_x11(&x11.core, &x11_ctx, c_win);
     }
 }
 
@@ -516,12 +520,13 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
             WmCtx::X11(x11) => Some(crate::globals::X11Conn::new(x11.x11.conn, x11.x11.screen_num)),
             WmCtx::Wayland(_) => None,
         };
-        if let Some(m) = ctx.g_mut().monitors.win_to_mon(
-            WindowId::from(ctx.g_mut().x11.root),
-            ctx.g_mut().x11.root,
-            &*ctx.g_mut().clients,
-            x11_conn,
-        ) {
+        let root = ctx.g().x11.root;
+        let clients = ctx.g().clients.clone();
+        if let Some(m) = ctx
+            .g_mut()
+            .monitors
+            .win_to_mon(WindowId::from(root), root, &clients, x11_conn)
+        {
             ctx.g_mut().monitors.set_sel_idx(m);
         }
     }

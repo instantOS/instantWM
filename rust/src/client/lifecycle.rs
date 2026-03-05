@@ -69,36 +69,34 @@ pub fn manage(ctx: &mut WmCtx, w: WindowId, wa_geo: Rect, wa_border_width: u32) 
 }
 
 pub fn manage_x11(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
-    let WmCtxX11 { core, x11, backend } = ctx;
+    let trans = get_transient_for_hint_x11(&ctx.x11, w);
+    let mut client = build_initial_client(&ctx.x11, ctx.core.g, w, wa_geo, wa_border_width);
+    assign_initial_monitor_and_tags(ctx.core.g, &mut client, trans);
+    insert_client_and_apply_rules(&mut ctx.core, &ctx.x11, w, client);
 
-    let trans = get_transient_for_hint_x11(x11, w);
-    let mut client = build_initial_client(x11, core.g, w, wa_geo, wa_border_width);
-    assign_initial_monitor_and_tags(core.g, &mut client, trans);
-    insert_client_and_apply_rules(core, x11, w, client);
+    let borderpx = apply_default_border(ctx.core.g, w);
+    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.g, w);
+    clamp_client_to_work_area(ctx.core.g, w, mon_work_rect);
+    let is_monocle = is_monocle_on_client_monitor(ctx.core.g, w);
+    configure_client_border(ctx.core.g, &ctx.x11, w, borderpx, mon_monitor_rect, is_monocle);
 
-    let borderpx = apply_default_border(core.g, w);
-    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(core.g, w);
-    clamp_client_to_work_area(core.g, w, mon_work_rect);
-    let is_monocle = is_monocle_on_client_monitor(core.g, w);
-    configure_client_border(core.g, x11, w, borderpx, mon_monitor_rect, is_monocle);
+    apply_manage_hints(&mut ctx.core, &ctx.x11, w);
+    snapshot_float_geo(ctx.core.g, w, mon_monitor_rect);
+    subscribe_manage_events(&ctx.x11, w);
+    grab_buttons_x11(&mut ctx.core, &ctx.x11, w, false);
 
-    apply_manage_hints(core, x11, w);
-    snapshot_float_geo(core.g, w, mon_monitor_rect);
-    subscribe_manage_events(x11, w);
-    grab_buttons_x11(core, x11, w, false);
-
-    if initialize_floating_state(core.g, w, trans.is_some()) {
-        backend.raise_window(w);
-        backend.flush();
+    if initialize_floating_state(ctx.core.g, w, trans.is_some()) {
+        ctx.backend.raise_window(w);
+        ctx.backend.flush();
     }
 
     attach(&mut WmCtx::X11(ctx.reborrow()), w);
     attach_stack(&mut WmCtx::X11(ctx.reborrow()), w);
-    register_client_root(core.g, x11, w);
+    register_client_root(ctx.core.g, &ctx.x11, w);
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
     let initially_hidden = prepare_visibility_and_unfocus(&mut WmCtx::X11(ctx.reborrow()), w);
-    let animated = core.g.animated;
+    let animated = ctx.core.g.animated;
     let c = arrange_map_focus_and_snapshot(&mut WmCtx::X11(ctx.reborrow()), w, initially_hidden);
 
     run_manage_animation(
@@ -357,11 +355,6 @@ fn run_manage_animation(
     mon_monitor_rect: Rect,
     animated: bool,
 ) {
-    let WmCtx::X11(ctx_x11) = ctx else {
-        return;
-    };
-    let core = &mut ctx_x11.core;
-    let x11 = &ctx_x11.x11;
     if !animated || c.is_fullscreen {
         return;
     }
@@ -378,19 +371,21 @@ fn run_manage_animation(
         true,
     );
     ctx.backend().flush();
-    animate_client_x11(
-        core,
-        x11,
-        w,
-        &Rect {
-            x: c.geo.x,
-            y: c.geo.y,
-            w: 0,
-            h: 0,
-        },
-        7,
-        0,
-    );
+    if let WmCtx::X11(ctx_x11) = ctx {
+        animate_client_x11(
+            &mut ctx_x11.core,
+            &ctx_x11.x11,
+            w,
+            &Rect {
+                x: c.geo.x,
+                y: c.geo.y,
+                w: 0,
+                h: 0,
+            },
+            7,
+            0,
+        );
+    }
 
     let is_tiling = c
         .monitor_id
@@ -440,13 +435,12 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
 }
 
 pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let WmCtxX11 { core, x11, .. } = ctx;
-    let monitor_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
+    let monitor_id = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id);
 
     // Clear overlay and fullscreen references so those code paths don't hold
     // dangling window IDs after the client is gone.
     {
-        for mon in core.g.monitors_iter_all_mut() {
+        for mon in ctx.core.g.monitors_iter_all_mut() {
             if mon.overlay == Some(win) {
                 mon.overlay = None;
             }
@@ -467,18 +461,19 @@ pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
 
     if !destroyed {
         let x11_win: Window = win.into();
-        let _old_bw = core
-            .g
-            .clients
+            let _old_bw = ctx
+                .core
+                .g
+                .clients
             .get(&win)
             .map(|c| c.old_border_width)
             .unwrap_or(0);
 
         {
-            let _ = x11.conn.grab_server();
+            let _ = ctx.x11.conn.grab_server();
 
             // Stop receiving events so we don't get confused during cleanup.
-            let _ = x11.conn.change_window_attributes(
+            let _ = ctx.x11.conn.change_window_attributes(
                 x11_win,
                 &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
             );
@@ -487,24 +482,25 @@ pub fn unmanage_x11(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
             // (Border width is set via BackendOps elsewhere)
 
             // Release button grabs.
-            let _ = x11
+            let _ = ctx
+                .x11
                 .conn
                 .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
         }
 
-        set_client_state(core, x11, win, WM_STATE_WITHDRAWN);
+        set_client_state(&mut ctx.core, &ctx.x11, win, WM_STATE_WITHDRAWN);
 
-        let _ = x11.conn.ungrab_server();
+        let _ = ctx.x11.conn.ungrab_server();
     }
 
     // Remove from the global map.
-    core.g.clients.remove(&win);
+    ctx.core.g.clients.remove(&win);
 
     {
         let mut tmp = ctx.reborrow();
         focus_soft(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(core, x11);
+    update_client_list(&mut ctx.core, &ctx.x11);
 
     if let Some(mid) = monitor_id {
         let mut tmp = ctx.reborrow();

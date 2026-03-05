@@ -409,8 +409,9 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         Some(w) => w,
         None => return false,
     };
-    let sel_geo = match ctx.g_mut().clients.get(&selected_window) {
-        Some(c) if c.isfloating || !ctx.g_mut().selected_monitor().is_tiling_layout() => c.geo,
+    let is_tiling_layout = ctx.g().selected_monitor().is_tiling_layout();
+    let sel_geo = match ctx.g().clients.get(&selected_window) {
+        Some(c) if c.isfloating || !is_tiling_layout => c.geo,
         _ => return false,
     };
 

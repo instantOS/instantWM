@@ -308,12 +308,12 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         log::warn!("show_overlay: overlay is X11-only for now");
         return;
     }
-    if !overlay_exists(ctx) || ctx.g_mut().monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.g().monitors.is_empty() {
         return;
     }
 
-    let selmon_id = ctx.g_mut().selected_monitor_id();
-    let mon = ctx.g_mut().selected_monitor();
+    let selmon_id = ctx.g().selected_monitor_id();
+    let mon = ctx.g().selected_monitor();
 
     if mon.overlaystatus != 0 {
         return;
@@ -336,8 +336,8 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data in one place
     let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
-        let mon = ctx.g_mut().monitor(selmon_id).unwrap();
-        let client = match ctx.g_mut().clients.get(&overlay_win) {
+        let mon = ctx.g().monitor(selmon_id).unwrap();
+        let client = match ctx.g().clients.get(&overlay_win) {
             Some(c) => c,
             None => return,
         };
@@ -419,12 +419,12 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
         log::warn!("hide_overlay: overlay is X11-only for now");
         return;
     }
-    if !overlay_exists(ctx) || ctx.g_mut().monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.g().monitors.is_empty() {
         return;
     }
 
-    let selmon_id = ctx.g_mut().selected_monitor_id();
-    let mon = ctx.g_mut().selected_monitor();
+    let selmon_id = ctx.g().selected_monitor_id();
+    let mon = ctx.g().selected_monitor();
 
     if mon.overlaystatus == 0 {
         return;
@@ -437,11 +437,11 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data
     let (is_locked, is_fullscreen, hide_info) = {
-        let client = match ctx.g_mut().clients.get(&overlay_win) {
+        let client = match ctx.g().clients.get(&overlay_win) {
             Some(c) => c,
             None => return,
         };
-        let mon = ctx.g_mut().selected_monitor();
+        let mon = ctx.g().selected_monitor();
 
         let hide_info = HideAnimationInfo {
             mode: mon.overlaymode,
@@ -490,13 +490,13 @@ pub fn set_overlay(ctx: &mut WmCtx) {
     }
 
     let (overlaystatus, overlay_visible, _mon_tags) = {
-        let mon = ctx.g_mut().selected_monitor();
+        let mon = ctx.g().selected_monitor();
         let overlay_win = match mon.overlay {
             Some(w) => w,
             None => return,
         };
 
-        let visible = if let Some(c) = ctx.g_mut().clients.get(&overlay_win) {
+        let visible = if let Some(c) = ctx.g().clients.get(&overlay_win) {
             let selected = mon.selected_tags();
             c.is_visible_on_tags(selected)
         } else {

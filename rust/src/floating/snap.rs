@@ -157,7 +157,14 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 
     // Save geometry before entering snap for the first time.
     if snap_status == SnapPosition::None {
-        if super::helpers::check_floating(ctx, win) {
+        if ctx_x11
+            .core
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.isfloating)
+            .unwrap_or(false)
+        {
             super::state::save_floating_win_x11(&mut ctx_x11.core, win);
         }
     }

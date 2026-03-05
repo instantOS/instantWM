@@ -150,22 +150,24 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
 
                 let snap = ctx.core.g.cfg.snap;
 
-                if let Some(client) = ctx.core.g.clients.get(&win) {
-                    let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();
+                let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();
+                if let Some((client_geo, is_floating)) =
+                    ctx.core.g.clients.get(&win).map(|c| (c.geo, c.isfloating))
+                {
 
-                    if !client.isfloating
+                    if !is_floating
                         && has_tiling
-                        && ((nw - client.geo.w).abs() > snap || (nh - client.geo.h).abs() > snap)
+                        && ((nw - client_geo.w).abs() > snap || (nh - client_geo.h).abs() > snap)
                     {
                         with_wm_ctx_x11(ctx, |ctx| toggle_floating(ctx));
-                    } else if !has_tiling || client.isfloating {
+                    } else if !has_tiling || is_floating {
                         with_wm_ctx_x11(ctx, |ctx| {
                             resize(
                                 ctx,
                                 win,
                                 &Rect {
-                                    x: client.geo.x,
-                                    y: client.geo.y,
+                                    x: client_geo.x,
+                                    y: client_geo.y,
                                     w: nw,
                                     h: nh,
                                 },
@@ -402,9 +404,11 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
                 let raw_nw = (m.event_x as i32 - orig_left + 1).max(1);
                 let raw_nh = (m.event_y as i32 - orig_top + 1).max(1);
 
-                if let Some(client) = ctx.core.g.clients.get(&win) {
-                    let sh = &client.size_hints;
-                    let (min_aspect, max_aspect) = (client.min_aspect, client.max_aspect);
+                if let Some((client_geo, sh, min_aspect, max_aspect)) =
+                    ctx.core.g.clients.get(&win).map(|c| {
+                        (c.geo, c.size_hints.clone(), c.min_aspect, c.max_aspect)
+                    })
+                {
 
                     let mut nw = raw_nw;
                     let mut nh = raw_nh;
@@ -436,12 +440,12 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
                         resize(
                             ctx,
                             win,
-                            &Rect {
-                                x: client.geo.x,
-                                y: client.geo.y,
-                                w: nw,
-                                h: nh,
-                            },
+                                &Rect {
+                                    x: client_geo.x,
+                                    y: client_geo.y,
+                                    w: nw,
+                                    h: nh,
+                                },
                             true,
                         );
                     });
