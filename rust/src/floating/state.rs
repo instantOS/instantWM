@@ -3,7 +3,7 @@
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
 use crate::client::restore_border_width;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -54,45 +54,17 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(x11) => {
-            if let Some(client) = x11.core.g.clients.get_mut(&win) {
-                client.float_geo = client.geo;
-            }
-        }
-        WmCtx::Wayland(_) => {}
-    }
-}
-
-pub fn save_floating_win_x11(core: &mut CoreCtx, win: WindowId) {
-    if let Some(client) = core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         client.float_geo = client.geo;
     }
 }
 
 pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(x11) => {
-            let float_geo = x11.core.g.clients.get(&win).map(|c| c.float_geo);
-            if let Some(rect) = float_geo {
-                crate::client::resize_x11(&mut x11.core, &x11.x11, win, &rect, false);
-            }
-        }
-        WmCtx::Wayland(_) => {}
-    }
-}
-
-pub fn restore_floating_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
-    let float_geo = core.g.clients.get(&win).map(|c| c.float_geo);
+    let float_geo = ctx.g().clients.get(&win).map(|c| c.float_geo);
     if let Some(rect) = float_geo {
-        crate::client::resize_x11(core, x11, win, &rect, false);
+        crate::client::resize(ctx, win, &rect, false);
     }
 }
-
-pub fn restore_floating_win_ctx_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    restore_floating_win_x11(&mut ctx.core, &ctx.x11, win);
-}
-
 pub fn apply_float_change(
     ctx: &mut WmCtx,
     win: WindowId,

@@ -180,11 +180,6 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 
 /// Create overlay with dependency injection.
 pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
-    // Overlay is X11-specific for now
-    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
-        log::warn!("create_overlay: overlay is X11-only for now");
-        return;
-    }
     let (sel_overlay, sel_fullscreen) = {
         let g = &*ctx.g;
         let mon = g.selected_monitor();
@@ -249,11 +244,6 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 }
 
 pub fn reset_overlay(ctx: &mut WmCtx) {
-    // Overlay is X11-specific for now
-    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
-        log::warn!("reset_overlay: overlay is X11-only for now");
-        return;
-    }
     if !overlay_exists(ctx) {
         return;
     }
@@ -303,11 +293,6 @@ fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: 
 }
 
 pub fn show_overlay(ctx: &mut WmCtx) {
-    // Overlay is X11-specific for now
-    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
-        log::warn!("show_overlay: overlay is X11-only for now");
-        return;
-    }
     if !overlay_exists(ctx) || ctx.g().monitors.is_empty() {
         return;
     }
@@ -414,11 +399,6 @@ fn reset_all_overlay_status(ctx: &mut WmCtx) {
 }
 
 pub fn hide_overlay(ctx: &mut WmCtx) {
-    // Overlay is X11-specific for now
-    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
-        log::warn!("hide_overlay: overlay is X11-only for now");
-        return;
-    }
     if !overlay_exists(ctx) || ctx.g().monitors.is_empty() {
         return;
     }
@@ -480,11 +460,6 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 }
 
 pub fn set_overlay(ctx: &mut WmCtx) {
-    // Overlay is X11-specific for now
-    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
-        log::warn!("set_overlay: overlay is X11-only for now");
-        return;
-    }
     if !overlay_exists(ctx) {
         return;
     }
@@ -516,11 +491,6 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 }
 
 pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
-    // Overlay is X11-specific for now
-    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
-        log::warn!("set_overlay_mode: overlay is X11-only for now");
-        return;
-    }
     for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
         mon.overlaymode = mode;
     }
