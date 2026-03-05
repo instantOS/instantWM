@@ -40,7 +40,6 @@ use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     state::{detach_client_from_monitor, WaylandClientState, WaylandState, WindowIdMarker},
 };
-use crate::types::WindowId;
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {

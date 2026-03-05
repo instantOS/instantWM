@@ -76,12 +76,3 @@ pub fn pop(ctx: &mut WmCtx, win: WindowId) {
         arrange(ctx, Some(mid));
     }
 }
-
-// ---------------------------------------------------------------------------
-// Lookup helpers
-// ---------------------------------------------------------------------------
-
-/// Returns `Some(win)` if `win` is a currently managed client, `None` otherwise.
-pub fn win_to_client(g: &Globals, win: WindowId) -> Option<WindowId> {
-    g.clients.win_to_client(win)
-}

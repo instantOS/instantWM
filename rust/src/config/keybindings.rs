@@ -15,7 +15,7 @@ use crate::layouts::{
 use crate::monitor::{focus_mon, follow_mon};
 use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
-use crate::push::{push_down, push_up};
+use crate::push::{push, Direction as PushDirection};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
     follow_view, last_view, move_client, quit, send_to_monitor, shift_tag_by, shift_view,
@@ -174,12 +174,12 @@ pub fn get_keys() -> Vec<Key> {
         key_x11!(MS,     XK_UP   => |ctx| up_press_x11(&mut ctx.core, &ctx.x11)),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
-                push_down(ctx, win)
+                push(ctx, win, PushDirection::Down)
             }
         }),
         key!(MC, XK_K => |ctx| {
             if let Some(win) = ctx.selected_client() {
-                push_up(ctx, win)
+                push(ctx, win, PushDirection::Up)
             }
         }),
         key!(MC, XK_LEFT  => |ctx| direction_focus(ctx, Direction::Left)),

@@ -438,14 +438,6 @@ impl BarPainter for WaylandBarPainter {
     }
 }
 
-pub fn draw_bar_wayland(
-    core: &mut crate::contexts::CoreCtx,
-    painter: &mut WaylandBarPainter,
-    mon_idx: usize,
-) {
-    draw_bar_common(core, None, mon_idx, painter);
-}
-
 pub fn draw_bars_wayland(core: &mut crate::contexts::CoreCtx, painter: &mut WaylandBarPainter) {
     core.g.status_text_width =
         crate::bar::renderer::compute_status_hit_width(painter, &core.g.status_text);

@@ -14,7 +14,7 @@ use crate::mouse::{
     resize_mouse_from_cursor, window_title_mouse_handler, window_title_mouse_handler_right,
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
-use crate::push::{push_down, push_up};
+use crate::push::{push, Direction as PushDirection};
 use crate::tags::view::toggle_view_tag;
 use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag};
 use crate::toggles::{toggle_locked, toggle_prefix};
@@ -118,12 +118,12 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                push_up(ctx, win)
+                push(ctx, win, PushDirection::Up)
             }
         }),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                push_down(ctx, win)
+                push(ctx, win, PushDirection::Down)
             }
         }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollUp   => |ctx, _| {
