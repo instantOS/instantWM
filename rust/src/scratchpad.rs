@@ -23,49 +23,37 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
 }
 
 pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
-    let name = match name {
-        Some(n) => n,
-        None => return,
-    };
-
+    let Some(name) = name else { return };
     if name.is_empty() {
         return;
     }
 
-    let selected_window = match ctx.g_mut().selected_monitor().sel {
-        Some(w) => w,
-        None => return,
+    let Some(selected_window) = ctx.g_mut().selected_monitor().sel else {
+        return;
     };
 
     if scratchpad_find(ctx, name).is_some() {
         return;
     }
 
-    let (was_scratchpad, old_tags) = {
-        if let Some(c) = ctx.g_mut().clients.get(&selected_window) {
-            let was_scratchpad = c.is_scratchpad();
-            let old_tags = if !was_scratchpad { c.tags } else { 0 };
-            (was_scratchpad, old_tags)
-        } else {
-            return;
-        }
+    let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) else {
+        return;
     };
 
-    {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) {
-            client.scratchpad_name = name.to_string();
+    let was_scratchpad = client.is_scratchpad();
+    let old_tags = if was_scratchpad { 0 } else { client.tags };
 
-            if !was_scratchpad {
-                client.scratchpad_restore_tags = old_tags;
-            }
+    client.scratchpad_name = name.to_string();
 
-            client.tags = SCRATCHPAD_MASK;
-            client.issticky = false;
+    if !was_scratchpad {
+        client.scratchpad_restore_tags = old_tags;
+    }
 
-            if !client.isfloating {
-                client.isfloating = true;
-            }
-        }
+    client.tags = SCRATCHPAD_MASK;
+    client.issticky = false;
+
+    if !client.isfloating {
+        client.isfloating = true;
     }
 
     let selected_monitor_id = ctx.g_mut().selected_monitor_id();
