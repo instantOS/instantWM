@@ -402,8 +402,8 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
 ///
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
-pub fn reset_snap(ctx: &mut WmCtxX11, win: WindowId) {
-    let (is_floating, snap_status) = match ctx.core.g.clients.get(&win) {
+pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
+    let (is_floating, snap_status) = match ctx.g().clients.get(&win) {
         Some(c) => (c.isfloating, c.snap_status),
         None => return,
     };
@@ -412,15 +412,19 @@ pub fn reset_snap(ctx: &mut WmCtxX11, win: WindowId) {
         return;
     }
 
-    let tiling = super::helpers::has_tiling_layout(&ctx.core);
+    let tiling = super::helpers::has_tiling_layout(ctx.g());
 
     if is_floating || !tiling {
-        if let Some(client) = ctx.core.g.clients.get_mut(&win) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
             client.snap_status = SnapPosition::None;
         }
-        restore_border_width(&mut ctx.core, win);
-        super::state::restore_floating_win_ctx_x11(ctx, win);
-        super::helpers::apply_size(&mut ctx.core, &ctx.x11, win);
+        restore_border_width(ctx.core_mut(), win);
+        super::state::restore_floating_win(ctx, win);
+
+        // apply_size is X11-specific
+        if let WmCtx::X11(x11) = ctx {
+            super::helpers::apply_size(&mut x11.core, &x11.x11, win);
+        }
     }
 }
 

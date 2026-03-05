@@ -2,7 +2,8 @@
 
 use crate::animation::animate_client;
 use crate::client::resize;
-use crate::contexts::WmCtx;
+use crate::contexts::{WmCtx, WmCtxX11};
+use crate::focus::warp_cursor_to_client_x11;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {

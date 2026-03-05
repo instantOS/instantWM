@@ -135,22 +135,22 @@ const MSCA: u32 = MODKEY | SHIFT | CONTROL | MOD1;
 
 pub fn get_keys() -> Vec<Key> {
     let mut keys: Vec<Key> = vec![
-        key_x11!(MA, XK_J => |ctx| {
+        key!(MA, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Down)
             }
         }),
-        key_x11!(MA, XK_K => |ctx| {
+        key!(MA, XK_K => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Up)
             }
         }),
-        key_x11!(MA, XK_L => |ctx| {
+        key!(MA, XK_L => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Right)
             }
         }),
-        key_x11!(MA, XK_H => |ctx| {
+        key!(MA, XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 key_resize(ctx, win, Direction::Left)
             }
@@ -218,7 +218,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,   XK_RETURN => zoom),
         key!(MC,   XK_D      => distribute_clients),
         key!(MS,   XK_D      => draw_window),
-        key_x11!(MA,   XK_W      => |ctx| {
+        key!(MA,   XK_W      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 center_window(ctx, win)
             }
