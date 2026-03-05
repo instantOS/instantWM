@@ -221,7 +221,7 @@ pub fn handle_floating_resize_hover(
             do_focus && ctx.selected_client() != Some(win) && !has_visible_tiled_client(ctx);
 
         if should_focus {
-            crate::focus::focus_soft(ctx, Some(win));
+            crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
         }
         return true;
     }
@@ -328,7 +328,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                             find_tiled_win_at_point(ctx, x, y, sel)
                         });
                     if let Some(win) = target {
-                        crate::focus::focus_soft(ctx, Some(win));
+                        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
                     }
                     break;
                 }
@@ -434,7 +434,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 
     // If cursor is already outside the resize border, just focus the tiled window
     if !is_point_in_resize_border(&sel_geo, x, y) {
-        crate::focus::focus_soft(ctx, Some(hovered_win));
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(hovered_win));
         return true;
     }
 

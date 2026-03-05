@@ -280,7 +280,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 
     arrange(ctx, Some(selected_monitor_id));
 
-    crate::focus::focus_soft(ctx, Some(overlay_win));
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(overlay_win));
 }
 
 /// Prepare the overlay window for display (detach, update state, reattach).
@@ -391,7 +391,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         }
     }
 
-    crate::focus::focus_soft(ctx, Some(overlay_win));
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(overlay_win));
     raise_window(ctx, overlay_win);
 }
 
@@ -473,7 +473,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
     reset_all_overlay_status(ctx);
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selmon_id));
 }
 

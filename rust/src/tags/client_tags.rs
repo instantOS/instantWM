@@ -24,7 +24,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         client.tags = effective_mask.bits();
 
         crate::client::set_client_tag_prop(ctx, win);
-        crate::focus::focus_soft(ctx, None);
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
         arrange(ctx, Some(selmon_id));
     }
 }
@@ -65,7 +65,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         }
     }
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selmon_id));
 }
 

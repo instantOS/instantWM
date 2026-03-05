@@ -154,7 +154,7 @@ impl Client {
         self.tags = effective_mask.bits();
 
         crate::client::set_client_tag_prop(ctx, self.win);
-        crate::focus::focus_soft(ctx, None);
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
         crate::layouts::arrange(ctx, Some(ctx.g.selected_monitor_id()));
     }
 }

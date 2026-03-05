@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::contexts::{CoreCtx, X11Ctx};
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
-use crate::focus::{direction_focus, focus_stack};
+use crate::focus::{direction_focus_x11, focus_stack_x11};
 use crate::layouts::arrange;
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::unhide_one;
@@ -156,11 +156,9 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
     let _ = conn.flush();
 }
 
-pub fn update_num_lock_mask(ctx: &mut WmCtx) {
+pub fn update_num_lock_mask_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     let new_numlockmask = {
-        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-            return;
-        };
+        let conn = x11.conn;
         let Ok(cookie) = conn.get_modifier_mapping() else {
             return;
         };
@@ -198,16 +196,16 @@ pub fn update_num_lock_mask(ctx: &mut WmCtx) {
         new_numlockmask
     };
 
-    ctx.g.x11.numlockmask = new_numlockmask;
+    core.g.x11.numlockmask = new_numlockmask;
 }
 
-pub fn up_press(ctx: &mut WmCtx) {
+pub fn up_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     let (selected_window, overlay_win, is_floating) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = core.g.selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let is_floating = sel
-            .and_then(|w| ctx.g.clients.get(&w).map(|c| c.isfloating))
+            .and_then(|w| core.g.clients.get(&w).map(|c| c.isfloating))
             .unwrap_or(false);
         (sel, overlay, is_floating)
     };
@@ -217,31 +215,36 @@ pub fn up_press(ctx: &mut WmCtx) {
     }
 
     if selected_window == overlay_win {
-        set_overlay_mode(ctx, OverlayMode::Top);
+        set_overlay_mode(core, OverlayMode::Top);
         return;
     }
 
     if is_floating {
-        toggle_floating(ctx);
+        toggle_floating(core);
         return;
     }
 
     if let Some(win) = selected_window {
-        crate::client::hide(ctx, win);
+        crate::client::hide_x11(core, x11, win);
     }
 }
 
-pub fn down_press(ctx: &mut WmCtx) {
-    if unhide_one(ctx) {
+pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    if unhide_one(core) {
         return;
     }
 
     let (selected_window, overlay_win, snap_status, is_floating) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = core.g.selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let (snap_status, is_floating) = sel
-            .and_then(|w| ctx.g.clients.get(&w).map(|c| (c.snap_status, c.isfloating)))
+            .and_then(|w| {
+                core.g
+                    .clients
+                    .get(&w)
+                    .map(|c| (c.snap_status, c.isfloating))
+            })
             .unwrap_or((SnapPosition::None, false));
         (sel, overlay, snap_status, is_floating)
     };
@@ -252,81 +255,86 @@ pub fn down_press(ctx: &mut WmCtx) {
 
     if snap_status != SnapPosition::None {
         if let Some(win) = selected_window {
-            reset_snap(ctx, win);
+            reset_snap(core, win);
         }
         return;
     }
 
     if selected_window == overlay_win {
-        set_overlay_mode(ctx, OverlayMode::Bottom);
+        set_overlay_mode(core, OverlayMode::Bottom);
         return;
     }
 
     if !is_floating {
-        toggle_floating(ctx);
+        toggle_floating(core);
     }
 }
 
-pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = !ctx.g.selected_monitor().is_tiling_layout();
+pub fn up_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
+    let is_overview = !core.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
-        direction_focus(ctx, Direction::Up);
+        direction_focus_x11(core, x11, Direction::Up);
         return;
     }
 
-    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
+    let has_tiling = core.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.selected_client() {
-            let border_pixel = ctx.g.cfg.borderscheme.as_ref().map(|s| s.normal.bg.pixel());
-            if let (Some(conn), Some(pixel)) = (ctx.x11_conn().map(|x11| x11.conn), border_pixel) {
+        if let Some(win) = core.selected_client() {
+            let border_pixel = core
+                .g
+                .cfg
+                .borderscheme
+                .as_ref()
+                .map(|s| s.normal.bg.pixel());
+            if let Some(pixel) = border_pixel {
                 let x11_win: Window = win.into();
                 let _ = change_window_attributes(
-                    conn,
+                    x11.conn,
                     x11_win,
                     &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
                 );
-                let _ = conn.flush();
+                let _ = x11.conn.flush();
             }
-            change_snap(ctx, win, SnapDir::Up);
+            change_snap(core, win, SnapDir::Up);
         }
         return;
     }
 
-    focus_stack(ctx, direction);
+    focus_stack_x11(core, x11, direction);
 }
 
-pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = ctx.g.selected_monitor().is_tiling_layout();
+pub fn down_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
+    let is_overview = core.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
-        direction_focus(ctx, Direction::Down);
+        direction_focus_x11(core, x11, Direction::Down);
         return;
     }
 
-    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
+    let has_tiling = core.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.selected_client() {
-            change_snap(ctx, win, SnapDir::Down);
+        if let Some(win) = core.selected_client() {
+            change_snap(core, win, SnapDir::Down);
         }
         return;
     }
 
-    focus_stack(ctx, direction);
+    focus_stack_x11(core, x11, direction);
 }
 
-pub fn space_toggle(ctx: &mut WmCtx) {
-    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
+pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    let has_tiling = core.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        let Some(win) = ctx.selected_client() else {
+        let Some(win) = core.selected_client() else {
             return;
         };
 
         let snap_status = {
-            ctx.g
+            core.g
                 .clients
                 .get(&win)
                 .map(|c| c.snap_status)
@@ -334,28 +342,33 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         };
 
         if snap_status != SnapPosition::None {
-            reset_snap(ctx, win);
+            reset_snap(core, win);
         } else {
-            let border_pixel = ctx.g.cfg.borderscheme.as_ref().map(|s| s.normal.bg.pixel());
-            if let (Some(conn), Some(pixel)) = (ctx.x11_conn().map(|x11| x11.conn), border_pixel) {
+            let border_pixel = core
+                .g
+                .cfg
+                .borderscheme
+                .as_ref()
+                .map(|s| s.normal.bg.pixel());
+            if let Some(pixel) = border_pixel {
                 let x11_win: Window = win.into();
                 let _ = change_window_attributes(
-                    conn,
+                    x11.conn,
                     x11_win,
                     &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
                 );
-                let _ = conn.flush();
+                let _ = x11.conn.flush();
             }
 
-            save_floating_win(ctx, win);
+            save_floating_win(core, win);
 
-            if let Some(client) = ctx.g.clients.get_mut(&win) {
+            if let Some(client) = core.g.clients.get_mut(&win) {
                 client.snap_status = SnapPosition::Maximized;
             }
 
-            arrange(ctx, Some(ctx.g.selected_monitor_id()));
+            arrange(core, Some(core.g.selected_monitor_id()));
         }
     } else {
-        toggle_floating(ctx);
+        toggle_floating(core);
     }
 }

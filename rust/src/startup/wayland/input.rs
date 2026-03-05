@@ -109,13 +109,19 @@ pub(super) fn handle_pointer_motion(
 
     if let Some(lock_win) = wayland_active_drag_window(wm) {
         let mut ctx = wm.ctx();
-        if ctx.selected_client() != Some(lock_win) {
-            crate::focus::focus_soft(&mut ctx, Some(lock_win));
+        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+            return;
+        };
+        if ctx.core.selected_client() != Some(lock_win) {
+            let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(lock_win));
         }
     } else {
         let hovered_win = find_hovered_window(wm, state, *pointer_location);
         let mut ctx = wm.ctx();
-        crate::focus::hover_focus_target(&mut ctx, hovered_win, false);
+        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+            return;
+        };
+        crate::focus::hover_focus_target_wayland(&mut ctx.core, &ctx.wayland, hovered_win, false);
     }
 
     let root_x = pointer_location.x.round() as i32;
@@ -348,14 +354,18 @@ fn wayland_hover_resize_drag_begin(
         return false;
     }
     let mut ctx = wm.ctx();
-    let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&ctx, root_x, root_y) else {
+    let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
-    let Some((geo, is_floating, has_tiling)) = ctx.g.clients.get(&win).map(|c| {
+    let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(&ctx.core, root_x, root_y)
+    else {
+        return false;
+    };
+    let Some((geo, is_floating, has_tiling)) = ctx.core.g.clients.get(&win).map(|c| {
         (
             c.geo,
             c.isfloating,
-            ctx.g.selected_monitor().is_tiling_layout(),
+            ctx.core.g.selected_monitor().is_tiling_layout(),
         )
     }) else {
         return false;
@@ -365,7 +375,7 @@ fn wayland_hover_resize_drag_begin(
     }
     let move_mode = btn == MouseButton::Right
         || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
-    ctx.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+    ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
         active: true,
         win,
         button: btn,
@@ -377,30 +387,34 @@ fn wayland_hover_resize_drag_begin(
         last_root_x: root_x,
         last_root_y: root_y,
     };
-    ctx.g.altcursor = AltCursor::Resize;
-    ctx.g.drag.resize_direction = Some(dir);
+    ctx.core.g.altcursor = AltCursor::Resize;
+    ctx.core.g.drag.resize_direction = Some(dir);
     if move_mode {
-        set_cursor_move(&mut ctx);
+        set_cursor_move(&mut ctx.core);
     } else {
-        set_cursor_resize(&mut ctx, Some(dir));
+        set_cursor_resize(&mut ctx.core, Some(dir));
     }
-    crate::focus::focus_soft(&mut ctx, Some(win));
+    let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
     true
 }
 
 fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bool {
     let mut ctx = wm.ctx();
-    if !ctx.g.drag.hover_resize.active {
+    let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        return false;
+    };
+    if !ctx.core.g.drag.hover_resize.active {
         return false;
     }
-    let drag = ctx.g.drag.hover_resize.clone();
-    ctx.g.drag.hover_resize.last_root_x = root_x;
-    ctx.g.drag.hover_resize.last_root_y = root_y;
+    let drag = ctx.core.g.drag.hover_resize.clone();
+    ctx.core.g.drag.hover_resize.last_root_x = root_x;
+    ctx.core.g.drag.hover_resize.last_root_y = root_y;
     if drag.move_mode {
         let new_x = drag.win_start_geo.x + (root_x - drag.start_x);
         let new_y = drag.win_start_geo.y + (root_y - drag.start_y);
-        resize(
-            &mut ctx,
+        resize_x11(
+            &mut ctx.core,
+            &ctx.x11,
             drag.win,
             &Rect {
                 x: new_x,
@@ -410,7 +424,7 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
             },
             true,
         );
-        if let Some(client) = ctx.g.clients.get_mut(&drag.win) {
+        if let Some(client) = ctx.core.g.clients.get_mut(&drag.win) {
             client.float_geo.x = new_x;
             client.float_geo.y = new_y;
         }
@@ -437,8 +451,9 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     } else {
         (orig_top, drag.win_start_geo.h.max(1))
     };
-    resize(
-        &mut ctx,
+    resize_x11(
+        &mut ctx.core,
+        &ctx.x11,
         drag.win,
         &Rect {
             x: new_x,
@@ -453,24 +468,28 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
 
 fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     let mut ctx = wm.ctx();
-    if !ctx.g.drag.hover_resize.active || ctx.g.drag.hover_resize.button != btn {
+    let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        return false;
+    };
+    if !ctx.core.g.drag.hover_resize.active || ctx.core.g.drag.hover_resize.button != btn {
         return false;
     }
-    let drag = ctx.g.drag.hover_resize.clone();
-    ctx.g.drag.hover_resize = crate::globals::HoverResizeDragState::default();
-    ctx.g.altcursor = AltCursor::None;
-    ctx.g.drag.resize_direction = None;
-    set_cursor_default(&mut ctx);
+    let drag = ctx.core.g.drag.hover_resize.clone();
+    ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState::default();
+    ctx.core.g.altcursor = AltCursor::None;
+    ctx.core.g.drag.resize_direction = None;
+    set_cursor_default(&mut ctx.core);
     if drag.move_mode {
         crate::mouse::drag::complete_move_drop(
-            &mut ctx,
+            &mut ctx.core,
+            &ctx.x11,
             drag.win,
             drag.win_start_geo,
             None,
             Some((drag.last_root_x, drag.last_root_y)),
         );
     } else {
-        crate::mouse::monitor::handle_client_monitor_switch(&mut ctx, drag.win);
+        crate::mouse::monitor::handle_client_monitor_switch(&mut ctx.core, &ctx.x11, drag.win);
     }
     true
 }

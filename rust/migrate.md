@@ -49,7 +49,7 @@ Key rule: modules should accept the smallest of `CoreCtx`, `X11Ctx`, `WaylandCtx
 
 ---
 
-## 2) Replace global `backend_kind()` and `x11_conn()` checks
+## 2) Replace global `backend_kind()` and `x11_conn()` checks (in progress)
 
 - Remove `WmCtx::backend_kind()` and `WmCtx::x11_conn()`.
 - Delete `require_x11!` and `require_x11_ret!` macros in `src/macros.rs`.

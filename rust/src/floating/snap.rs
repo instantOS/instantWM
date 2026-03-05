@@ -20,7 +20,7 @@
 use crate::animation::check_animate;
 use crate::client::{restore_border_width, save_border_width};
 use crate::contexts::WmCtx;
-use crate::focus::warp_cursor_to_client;
+use crate::focus::warp_cursor_to_client_x11;
 use crate::require_x11;
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -173,8 +173,8 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     };
 
     apply_snap(ctx, win, monitor_id);
-    warp_cursor_to_client(ctx, win);
-    crate::focus::focus_soft(ctx, Some(win));
+    warp_cursor_to_client_x11(ctx, &ctx.x11, win);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the

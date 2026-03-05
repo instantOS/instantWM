@@ -44,7 +44,7 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
 
     // Apply pertag settings and update
     apply_pertag_settings(ctx);
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selmon_id));
 }
 
@@ -76,7 +76,7 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
     }
 
     apply_pertag_settings(ctx);
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selmon_id));
 }
 
@@ -161,7 +161,7 @@ pub fn last_view(ctx: &mut WmCtx) {
     let (current_tag, prev_tag) = (mon.current_tag, mon.prev_tag);
 
     if current_tag == prev_tag {
-        crate::focus::focus_last_client(ctx);
+        crate::focus::focus_last_client_x11(ctx, &ctx.x11);
         return;
     }
 
@@ -204,7 +204,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         view(ctx, tag_mask);
     }
 
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
 }
 
 pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
@@ -255,7 +255,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     }
     mon.current_tag = target_idx;
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selmon_id));
 }
 
@@ -277,7 +277,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
     }
 
     view(ctx, target_mask);
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
     arrange(ctx, Some(selmon_id));
 }
 
@@ -396,7 +396,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     mon.prev_tag = mon.current_tag;
     mon.current_tag = new_mask.first_tag().unwrap_or(0);
     apply_pertag_settings(ctx);
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selmon_id));
 }
 

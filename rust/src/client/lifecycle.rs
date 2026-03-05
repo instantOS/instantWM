@@ -330,7 +330,7 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
         ctx.backend.map_window(w);
         ctx.backend.flush();
     }
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     c = ctx.g.clients.get(&w).cloned().unwrap_or_default();
     c
 }
@@ -435,7 +435,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
     if !destroyed {
         let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
             ctx.g.clients.remove(&win);
-            crate::focus::focus_soft(ctx, None);
+            crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
             update_client_list(ctx);
             if let Some(mid) = monitor_id {
                 arrange(ctx, Some(mid));
@@ -476,7 +476,7 @@ pub fn unmanage(ctx: &mut WmCtx, win: WindowId, destroyed: bool) {
     // Remove from the global map.
     ctx.g.clients.remove(&win);
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     update_client_list(ctx);
 
     if let Some(mid) = monitor_id {

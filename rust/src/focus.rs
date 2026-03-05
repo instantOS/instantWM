@@ -1,38 +1,31 @@
 //! Focus management using explicit WM context.
 //!
-//! This module provides window focus functionality via `WmCtx`, avoiding
+//! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::{BackendKind, BackendOps};
 use crate::bar::draw_bars;
-use crate::client::{set_focus, set_urgent, unfocus_win};
-use crate::contexts::WmCtx;
+use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
+use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
 use crate::mouse::warp as mouse_warp;
 use crate::tags::view;
 use crate::types::*;
-use crate::util::X11ConnExt;
-use x11rb::protocol::xproto::*;
-use x11rb::CURRENT_TIME;
 
 /// Set focus to a window, or to the root if None.
 ///
 /// # Errors
 /// Returns an error if X11 operations fail (e.g., connection lost).
-pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return focus_wayland(ctx, win);
-    }
+pub fn focus_x11(core: &mut CoreCtx, x11: &X11Ctx, win: Option<WindowId>) -> anyhow::Result<()> {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
-        if ctx.g.monitors.is_empty() {
+        if core.g.monitors.is_empty() {
             return Ok(());
         }
-        let sel_mon_id = ctx.g.selected_monitor_id();
-        let mon = ctx.g.selected_monitor();
+        let sel_mon_id = core.g.selected_monitor_id();
+        let mon = core.g.selected_monitor();
 
         let selected = mon.selected_tag_mask();
 
         let mut target = win.filter(|w| {
-            ctx.g
+            core.g
                 .clients
                 .get(w)
                 .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
@@ -41,7 +34,7 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
 
         if target.is_none() {
             for &c_win in &mon.stack {
-                let Some(c) = ctx.g.clients.get(&c_win) else {
+                let Some(c) = core.g.clients.get(&c_win) else {
                     continue;
                 };
                 if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
@@ -55,20 +48,20 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
             sel_mon_id,
             mon.sel,
             target,
-            ctx.g.x11.root,
-            ctx.g.x11.netatom.active_window,
+            core.g.x11.root,
+            core.g.x11.netatom.active_window,
         )
     };
 
     if current_sel != target {
         if let Some(cur_win) = current_sel {
-            unfocus_win(ctx, cur_win, false);
+            unfocus_win_x11(core, x11, cur_win, false);
         }
     }
 
     let selection_state_changed = current_sel.is_none() != target.is_none();
 
-    if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
+    if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
         if !matches!(
             mon.gesture,
@@ -79,45 +72,47 @@ pub fn focus(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
     }
 
     if selection_state_changed {
-        crate::keyboard::grab_keys(ctx);
+        crate::keyboard::grab_keys_x11(core, x11);
     }
 
-    draw_bars(ctx);
+    draw_bars(core);
 
     if let Some(w) = target.take() {
-        let is_urgent = ctx.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
+        let is_urgent = core.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
         if is_urgent {
-            set_urgent(ctx, w, false);
+            set_urgent(core, x11, w, false);
         }
-        set_focus(ctx, w);
+        set_focus_x11(core, x11, w);
         Ok(())
     } else {
-        let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-            return Ok(());
-        };
-        // Use the _ctx methods for operations that should report errors
-        conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, root, CURRENT_TIME)?;
-        conn.delete_property_ctx(root, net_active_window)?;
-        conn.flush_ctx()?;
+        let _ = x11
+            .conn
+            .set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
+        let _ = x11.conn.delete_property(root, net_active_window);
+        let _ = x11.conn.flush();
         Ok(())
     }
 }
 
 /// Wayland focus implementation: pick a target window, update mon.sel,
 /// tell the backend, and redraw bars.
-fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
-    if ctx.g.monitors.is_empty() {
+pub fn focus_wayland(
+    core: &mut CoreCtx,
+    wayland: &WaylandCtx,
+    win: Option<WindowId>,
+) -> anyhow::Result<()> {
+    if core.g.monitors.is_empty() {
         return Ok(());
     }
-    let sel_mon_id = ctx.g.selected_monitor_id();
-    let mon = ctx.g.selected_monitor();
+    let sel_mon_id = core.g.selected_monitor_id();
+    let mon = core.g.selected_monitor();
 
     let selected = mon.selected_tag_mask();
 
     // Resolve target: use the requested window if visible, otherwise walk the
     // stack to find the first visible non-hidden client.
     let mut target = win.filter(|w| {
-        ctx.g
+        core.g
             .clients
             .get(w)
             .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
@@ -126,7 +121,7 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
 
     if target.is_none() {
         for &c_win in &mon.stack {
-            let Some(c) = ctx.g.clients.get(&c_win) else {
+            let Some(c) = core.g.clients.get(&c_win) else {
                 continue;
             };
             if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
@@ -136,23 +131,23 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
         }
     }
 
-    let current_sel = ctx.g.selected_monitor().sel;
+    let current_sel = core.g.selected_monitor().sel;
     let selection_state_changed = current_sel.is_none() != target.is_none();
 
-    if let Some(mon) = ctx.g.monitor_mut(sel_mon_id) {
+    if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
     }
 
     if selection_state_changed {
         // Desktop keybinds change based on whether a window is selected.
-        crate::keyboard::grab_keys(ctx);
+        // TODO: wayland key grabs not applicable; keep desktop bindings in core
     }
 
     if let Some(w) = target {
-        ctx.backend.set_focus(w);
+        wayland.backend.set_focus(w);
     }
 
-    draw_bars(ctx);
+    draw_bars(core);
     Ok(())
 }
 
@@ -161,71 +156,68 @@ fn focus_wayland(ctx: &mut WmCtx, win: Option<WindowId>) -> anyhow::Result<()> {
 /// Focus failures typically mean the X11 connection is in a bad state; callers
 /// in event handlers usually can't recover, but we should not silently drop the
 /// error.
-pub fn focus_soft(ctx: &mut WmCtx, win: Option<WindowId>) {
-    if let Err(e) = focus(ctx, win) {
+pub fn focus_soft_x11(core: &mut CoreCtx, x11: &X11Ctx, win: Option<WindowId>) {
+    if let Err(e) = focus_x11(core, x11, win) {
         log::warn!("focus({:?}) failed: {}", win, e);
     }
 }
 
 /// Shared hover-focus behavior used by both X11 and Wayland pointer paths.
-pub fn hover_focus_target(ctx: &mut WmCtx, hovered_win: Option<WindowId>, entering_root: bool) {
+pub fn hover_focus_target_wayland(
+    core: &mut CoreCtx,
+    wayland: &WaylandCtx,
+    hovered_win: Option<WindowId>,
+    entering_root: bool,
+) {
     let Some(hovered_win) = hovered_win else {
         return;
     };
-    if !ctx.g.focusfollowsmouse {
+    if !core.g.focusfollowsmouse {
         return;
     }
 
-    if let Some(mid) = ctx.g.clients.get(&hovered_win).and_then(|c| c.monitor_id) {
-        if mid != ctx.g.selected_monitor_id() {
-            ctx.g.set_selected_monitor(mid);
+    if let Some(mid) = core.g.clients.get(&hovered_win).and_then(|c| c.monitor_id) {
+        if mid != core.g.selected_monitor_id() {
+            core.g.set_selected_monitor(mid);
         }
     }
 
-    let hovered_is_floating = ctx
+    let hovered_is_floating = core
         .g
         .clients
         .get(&hovered_win)
         .map(|c| c.isfloating)
         .unwrap_or(false);
-    let has_tiling = ctx.g.selected_monitor().is_tiling_layout();
-    if !ctx.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
+    let has_tiling = core.g.selected_monitor().is_tiling_layout();
+    if !core.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
         return;
     }
 
-    if ctx.selected_client() == Some(hovered_win) {
+    if core.selected_client() == Some(hovered_win) {
         return;
     }
 
-    if ctx.backend_kind() == BackendKind::Wayland {
-        ctx.set_selected_client(Some(hovered_win));
-        ctx.backend.set_focus(hovered_win);
-        draw_bars(ctx);
-    } else {
-        focus_soft(ctx, Some(hovered_win));
-    }
+    core.set_selected_client(Some(hovered_win));
+    wayland.backend.set_focus(hovered_win);
+    draw_bars(core);
 }
 
-pub fn set_focus_win(ctx: &WmCtx, win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
-        return;
-    };
+pub fn set_focus_win_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
     let x11_win: Window = win.into();
-    if let Some(c) = ctx.g.clients.get(&win) {
+    if let Some(c) = core.g.clients.get(&win) {
         if !c.neverfocus {
-            let _ = conn.set_input_focus_ctx(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
-            let _ = conn.change_property32_ctx(
+            let _ = x11
+                .conn
+                .set_input_focus(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
+            let _ = x11.conn.change_property32(
                 PropMode::REPLACE,
-                ctx.g.x11.root,
-                ctx.g.x11.netatom.active_window,
+                core.g.x11.root,
+                core.g.x11.netatom.active_window,
                 AtomEnum::WINDOW,
                 &[x11_win],
             );
         }
-        let _ = conn.flush_ctx();
+        let _ = x11.conn.flush();
     }
 }
 
@@ -240,11 +232,11 @@ pub fn set_focus_win(ctx: &WmCtx, win: WindowId) {
 /// * `clients` - Reference to all clients
 /// * `direction` - Direction to search for a client
 /// * `focus_fn` - Function to call with the target window
-pub fn focus_direction<F>(ctx: &WmCtx, direction: Direction, focus_fn: F)
+pub fn focus_direction<F>(core: &CoreCtx, direction: Direction, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let mon = ctx.g.selected_monitor();
+    let mon = core.g.selected_monitor();
 
     let selected = mon.selected_tag_mask();
 
@@ -253,7 +245,7 @@ where
         return;
     };
 
-    let Some(source_client) = ctx.g.clients.get(&source_win) else {
+    let Some(source_client) = core.g.clients.get(&source_win) else {
         focus_fn(None);
         return;
     };
@@ -262,7 +254,7 @@ where
 
     let candidates = get_directional_candidates(
         &mon.clients,
-        &*ctx.g.clients,
+        &*core.g.clients,
         selected,
         source_win,
         source_center_x,
@@ -366,16 +358,16 @@ fn calculate_direction_score(
     }
 }
 
-pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
+pub fn direction_focus_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: Direction) {
     let candidates = {
-        if ctx.g.monitors.is_empty() {
+        if core.g.monitors.is_empty() {
             return;
         }
-        let mon = ctx.g.selected_monitor();
+        let mon = core.g.selected_monitor();
         let Some(source_win) = mon.sel else {
             return;
         };
-        let Some(source_client) = ctx.g.clients.get(&source_win) else {
+        let Some(source_client) = core.g.clients.get(&source_win) else {
             return;
         };
         let (source_center_x, source_center_y) = source_client.geo.center();
@@ -384,7 +376,7 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
 
         get_directional_candidates(
             &mon.clients,
-            &*ctx.g.clients,
+            &*core.g.clients,
             selected,
             source_win,
             source_center_x,
@@ -394,24 +386,24 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
     };
 
     if let Some(target) = candidates {
-        focus_soft(ctx, Some(target));
+        focus_soft_x11(core, x11, Some(target));
     }
 }
 
-pub fn focus_last_client(ctx: &mut WmCtx) {
-    let last_client_win = ctx.focus.last_client;
+pub fn focus_last_client_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    let last_client_win = core.focus.last_client;
     if last_client_win == WindowId::default() {
         return;
     }
     let last_win = last_client_win;
 
-    let last_client = match ctx.g.clients.get(&last_win) {
+    let last_client = match core.g.clients.get(&last_win) {
         Some(c) => c.clone(),
         None => return,
     };
 
     if last_client.is_scratchpad() {
-        crate::scratchpad::scratchpad_show_name(ctx, &last_client.scratchpad_name);
+        crate::scratchpad::scratchpad_show_name(core, &last_client.scratchpad_name);
         return;
     }
 
@@ -419,45 +411,45 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_mon_id = last_client.monitor_id;
 
     if let Some(last_mid) = last_mon_id {
-        let sel_mon_id = ctx.g.selected_monitor_id();
-        if !ctx.g.monitors.is_empty() && sel_mon_id != last_mid {
-            if let Some(sel) = ctx.g.monitor(sel_mon_id).and_then(|m| m.sel) {
-                unfocus_win(ctx, sel, false);
-                ctx.g.set_selected_monitor(last_mid);
+        let sel_mon_id = core.g.selected_monitor_id();
+        if !core.g.monitors.is_empty() && sel_mon_id != last_mid {
+            if let Some(sel) = core.g.monitor(sel_mon_id).and_then(|m| m.sel) {
+                unfocus_win_x11(core, x11, sel, false);
+                core.g.set_selected_monitor(last_mid);
             }
         }
     }
 
-    if let Some(cur) = ctx.selected_client() {
-        ctx.focus.last_client = cur;
+    if let Some(cur) = core.selected_client() {
+        core.focus.last_client = cur;
     }
 
-    view(ctx, TagMask::from_bits(tags));
-    focus_soft(ctx, Some(last_win));
+    view(core, TagMask::from_bits(tags));
+    focus_soft_x11(core, x11, Some(last_win));
 
-    let monitor_id = ctx.g.selected_monitor_id();
-    crate::layouts::arrange(ctx, Some(monitor_id));
+    let monitor_id = core.g.selected_monitor_id();
+    crate::layouts::arrange(core, Some(monitor_id));
 }
 
-pub fn warp_cursor_to_client(ctx: &WmCtx, c_win: WindowId) {
-    mouse_warp::warp_impl(ctx, c_win);
+pub fn warp_cursor_to_client_x11(core: &CoreCtx, x11: &X11Ctx, c_win: WindowId) {
+    mouse_warp::warp_impl_x11(core, x11, c_win);
 }
 
-pub fn warp_to_focus(ctx: &WmCtx) {
-    if let Some(win) = ctx.selected_client() {
-        warp_cursor_to_client(ctx, win);
+pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11Ctx) {
+    if let Some(win) = core.selected_client() {
+        warp_cursor_to_client_x11(core, x11, win);
     }
 }
 
 /// Focus the next or previous client in the stack.
-pub fn focus_stack_direction<F>(ctx: &WmCtx, forward: bool, focus_fn: F)
+pub fn focus_stack_direction<F>(core: &CoreCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let mon = ctx.g.selected_monitor();
+    let mon = core.g.selected_monitor();
 
     let selected_window = mon.sel;
-    let stack = get_visible_stack(mon, &*ctx.g.clients);
+    let stack = get_visible_stack(mon, &*core.g.clients);
 
     if stack.is_empty() {
         focus_fn(None);
@@ -496,15 +488,15 @@ fn get_visible_stack(
     stack
 }
 
-pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    let selected_window = ctx.selected_client();
+pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
+    let selected_window = core.selected_client();
 
     let stack = {
-        if ctx.g.monitors.is_empty() {
+        if core.g.monitors.is_empty() {
             return;
         }
-        let mon = ctx.g.selected_monitor();
-        get_visible_stack(mon, &*ctx.g.clients)
+        let mon = core.g.selected_monitor();
+        get_visible_stack(mon, &*core.g.clients)
     };
 
     if stack.is_empty() {
@@ -524,5 +516,5 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
         current_idx - 1
     };
 
-    focus_soft(ctx, Some(stack[next_idx]));
+    focus_soft_x11(core, x11, Some(stack[next_idx]));
 }

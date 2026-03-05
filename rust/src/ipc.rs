@@ -2,7 +2,7 @@ use crate::backend::Backend;
 use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::commands::{command_prefix, set_special_next};
-use crate::focus::warp_to_focus;
+use crate::focus::warp_to_focus_x11;
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
@@ -145,7 +145,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::WarpFocus => {
-            warp_to_focus(&mut ctx);
+            warp_to_focus_x11(&mut ctx, &ctx.x11);
             IpcResponse::ok("")
         }
         IpcCommand::Tag(tag_num) => {

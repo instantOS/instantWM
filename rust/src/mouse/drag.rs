@@ -905,7 +905,7 @@ pub fn title_drag_begin(
         {
             return false;
         }
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
     }
 
     let sel = ctx.selected_client();
@@ -1039,7 +1039,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if was_hidden {
             crate::client::show(ctx, win);
         }
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
         if let Some((is_floating, geo, border_width, float_geo)) = ctx
             .g
             .clients
@@ -1119,7 +1119,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     if was_hidden {
         crate::client::show(ctx, win);
     }
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
 
     if btn == MouseButton::Right {
         if let Some(c) = ctx.g.clients.get(&win) {
@@ -1185,17 +1185,17 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     if is_right_click {
         if was_hidden {
             crate::client::show(ctx, win);
-            crate::focus::focus_soft(ctx, Some(win));
+            crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
         }
         crate::client::zoom(ctx);
     } else if was_hidden {
         crate::client::show(ctx, win);
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
         restack(ctx, ctx.g.selected_monitor_id());
     } else if was_focused {
         crate::client::hide(ctx, win);
     } else {
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(win));
         restack(ctx, ctx.g.selected_monitor_id());
     }
 }

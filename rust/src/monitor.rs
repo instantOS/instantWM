@@ -5,7 +5,7 @@
 
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop, unfocus_win};
 use crate::contexts::{WmCtx, X11Conn};
-use crate::focus::warp_cursor_to_client;
+use crate::focus::warp_cursor_to_client_x11;
 use crate::types::*;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::Window;
@@ -240,7 +240,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     attach_stack(ctx, win);
     set_client_tag_prop(ctx, win);
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
 
     let needs_arrange = ctx
         .g
@@ -278,7 +278,7 @@ pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     }
 
     ctx.g.monitors.set_sel_idx(target);
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
 }
 
 pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
@@ -295,7 +295,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
     }
 
     ctx.g.monitors.set_sel_idx(target);
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
 }
 
 pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
@@ -310,7 +310,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         ctx.g.monitors.set_sel_idx(monitor_id);
     }
 
-    crate::focus::focus_soft(ctx, Some(c_win));
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, Some(c_win));
 
     if let Some(x11) = ctx.x11_conn() {
         let x11_win: Window = c_win.into();
@@ -322,7 +322,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         );
     }
 
-    warp_cursor_to_client(ctx, c_win);
+    warp_cursor_to_client_x11(ctx, &ctx.x11, c_win);
 }
 
 pub fn update_geom(ctx: &mut WmCtx) -> bool {
@@ -370,7 +370,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     }
     ctx.g.monitors.set_sel_idx(current_mon);
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
 }
 
 fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {

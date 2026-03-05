@@ -70,7 +70,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     }
 
     let selected_monitor_id = ctx.g.selected_monitor_id();
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus_soft_x11(ctx, &ctx.x11, None);
     arrange(ctx, Some(selected_monitor_id));
 }
 

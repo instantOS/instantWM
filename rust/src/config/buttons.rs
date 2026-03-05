@@ -71,7 +71,7 @@ pub fn get_buttons() -> Vec<Button> {
             window_title_mouse_handler_right(ctx, win, arg.btn, arg.rx, arg.ry)
         }),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
-        btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::Notify)),
+        btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, None, Cmd::Notify)),
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollUp   => |ctx, _| focus_stack(ctx, StackDirection::Previous)),
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
@@ -95,18 +95,18 @@ pub fn get_buttons() -> Vec<Button> {
             }
         }),
         // ── Status text ───────────────────────────────────────────────────
-        btn!(StatusText, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Panther)),
-        btn!(StatusText, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::Term)),
-        btn!(StatusText, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::CaretInstantSwitch)),
-        btn!(StatusText, 0,      button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, Cmd::UpVol)),
-        btn!(StatusText, 0,      button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, Cmd::DownVol)),
-        btn!(StatusText, MODKEY, button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::InstantSettings)),
-        btn!(StatusText, MODKEY, button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::MuteVol)),
-        btn!(StatusText, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::Spoticli)),
-        btn!(StatusText, MODKEY, button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, Cmd::UpBright)),
-        btn!(StatusText, MODKEY, button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, Cmd::DownBright)),
-        btn!(StatusText, MS,     button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::PavuControl)),
-        btn!(StatusText, MC,     button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Notify)),
+        btn!(StatusText, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::Panther)),
+        btn!(StatusText, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, None, Cmd::Term)),
+        btn!(StatusText, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, None, Cmd::CaretInstantSwitch)),
+        btn!(StatusText, 0,      button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, None, Cmd::UpVol)),
+        btn!(StatusText, 0,      button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, None, Cmd::DownVol)),
+        btn!(StatusText, MODKEY, button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::InstantSettings)),
+        btn!(StatusText, MODKEY, button:MouseButton::Middle      => |ctx, _| spawn(ctx, None, Cmd::MuteVol)),
+        btn!(StatusText, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, None, Cmd::Spoticli)),
+        btn!(StatusText, MODKEY, button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, None, Cmd::UpBright)),
+        btn!(StatusText, MODKEY, button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, None, Cmd::DownBright)),
+        btn!(StatusText, MS,     button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::PavuControl)),
+        btn!(StatusText, MC,     button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::Notify)),
         // ── Tag bar ───────────────────────────────────────────────────────
         // Left-click: pass bar_pos + event coords so drag_tag needs no
         // get_root_ptr round-trip to identify the initial tag or anchor.
@@ -140,13 +140,13 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(ctx, Direction::Left)),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(ctx, Direction::Right)),
         // ── Root window ───────────────────────────────────────────────────
-        btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Panther)),
-        btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::InstantMenu)),
-        btn!(Root, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::Smart)),
+        btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, None, Cmd::Panther)),
+        btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, None, Cmd::InstantMenu)),
+        btn!(Root, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, None, Cmd::Smart)),
         btn!(Root, 0,      button:MouseButton::ScrollUp    => |ctx, _| hide_overlay(ctx)),
         btn!(Root, 0,      button:MouseButton::ScrollDown  => |ctx, _| show_overlay(ctx)),
         btn!(Root, MODKEY, button:MouseButton::Left        => |ctx, _| set_overlay(ctx)),
-        btn!(Root, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, Cmd::Notify)),
+        btn!(Root, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, None, Cmd::Notify)),
         // ── Client window ─────────────────────────────────────────────────
         btn!(ClientWin, MODKEY, button:MouseButton::Left   => |ctx, arg| move_mouse(ctx, arg.btn)),
         btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx, _| toggle_floating(ctx)),
@@ -171,13 +171,13 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Resize widget ─────────────────────────────────────────────────
         btn!(ResizeWidget(WindowId(0)), 0, button:MouseButton::Left => |ctx, _| draw_window(ctx)),
         // ── Shutdown button ───────────────────────────────────────────────
-        btn!(ShutDown, 0, button:MouseButton::Left   => |ctx, _| spawn(ctx, Cmd::InstantShutdown)),
-        btn!(ShutDown, 0, button:MouseButton::Middle => |ctx, _| spawn(ctx, Cmd::OsLock)),
-        btn!(ShutDown, 0, button:MouseButton::Right  => |ctx, _| spawn(ctx, Cmd::Slock)),
+        btn!(ShutDown, 0, button:MouseButton::Left   => |ctx, _| spawn(ctx, None, Cmd::InstantShutdown)),
+        btn!(ShutDown, 0, button:MouseButton::Middle => |ctx, _| spawn(ctx, None, Cmd::OsLock)),
+        btn!(ShutDown, 0, button:MouseButton::Right  => |ctx, _| spawn(ctx, None, Cmd::Slock)),
         // ── Sidebar / start menu ──────────────────────────────────────────
         btn!(SideBar, 0,       button:MouseButton::Left  => |ctx, arg| gesture_mouse(ctx, arg.btn)),
-        btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, Cmd::StartMenu)),
-        btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, Cmd::QuickMenu)),
+        btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, None, Cmd::StartMenu)),
+        btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, None, Cmd::QuickMenu)),
         btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx)),
     ]
 }

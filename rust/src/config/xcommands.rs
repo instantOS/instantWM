@@ -1,7 +1,7 @@
 //! IPC / socket command dispatch table (`instantwmctl` commands).
 
 use crate::commands::{command_prefix, set_special_next};
-use crate::focus::warp_to_focus;
+use crate::focus::warp_to_focus_x11;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
 use crate::overlay::set_overlay;
@@ -29,7 +29,7 @@ pub fn get_xcommands() -> Vec<XCommand> {
         },
         XCommand {
             cmd: "warpfocus",
-            action: |ctx, _arg| warp_to_focus(ctx),
+            action: |ctx, _arg| warp_to_focus_x11(ctx, &ctx.x11),
         },
         XCommand {
             cmd: "tag",

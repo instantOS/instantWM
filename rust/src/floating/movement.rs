@@ -3,7 +3,7 @@
 use crate::animation::animate_client;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::focus::warp_cursor_to_client;
+use crate::focus::warp_cursor_to_client_x11;
 use crate::require_x11;
 use crate::types::*;
 
@@ -46,7 +46,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         5,
         0,
     );
-    warp_cursor_to_client(ctx, win);
+    warp_cursor_to_client_x11(ctx, &ctx.x11, win);
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
@@ -67,7 +67,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let nw = geo.w + dw;
     let nh = geo.h + dh;
 
-    warp_cursor_to_client(ctx, win);
+    warp_cursor_to_client_x11(ctx, &ctx.x11, win);
     resize(
         ctx,
         win,
