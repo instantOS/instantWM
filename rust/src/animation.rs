@@ -1,5 +1,6 @@
 use crate::constants::animation::*;
-use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, X11Ctx};
+use crate::backend::BackendOps;
 use crate::floating::{change_snap, SnapDir};
 use crate::tags::view::scroll_view;
 use crate::types::*;
@@ -307,9 +308,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
             frames,
             reset_pos,
         ),
-        WmCtx::Wayland(_) => {
-            println!("Wayland animation not yet implemented");
-        }
+        WmCtx::Wayland(ref mut wl_ctx) => animate_client_wayland(wl_ctx, win, rect, frames, reset_pos),
     }
 }
 
@@ -323,9 +322,59 @@ pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, r
             frames,
             reset_pos,
         ),
-        WmCtx::Wayland(_) => {
-            println!("Wayland check_animate not yet implemented");
+        WmCtx::Wayland(ref mut wl_ctx) => {
+            let should_animate = wl_ctx
+                .core
+                .g
+                .clients
+                .get(&win)
+                .map(|c| c.geo != *rect)
+                .unwrap_or(false);
+            if should_animate {
+                animate_client_wayland(wl_ctx, win, rect, frames, reset_pos);
+            }
         }
+    }
+}
+
+fn animate_client_wayland(
+    ctx: &mut WmCtxWayland,
+    win: WindowId,
+    rect: &Rect,
+    frames: i32,
+    reset_pos: i32,
+) {
+    let start_rect = match ctx
+        .core
+        .g
+        .clients
+        .get(&win)
+        .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
+    {
+        Some(r) => r,
+        None => return,
+    };
+    let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
+    let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
+    let final_rect = Rect {
+        x: if reset_pos != 0 { start_rect.x } else { rect.x },
+        y: if reset_pos != 0 { start_rect.y } else { rect.y },
+        w: target_w.max(1),
+        h: target_h.max(1),
+    };
+
+    if let Some(c) = ctx.core.g.clients.get_mut(&win) {
+        c.old_geo = c.geo;
+        c.geo = final_rect;
+    }
+
+    if frames <= 0 || !ctx.core.g.animated {
+        let was_animated = ctx.core.g.animated;
+        ctx.core.g.animated = false;
+        ctx.backend.resize_window(win, final_rect);
+        ctx.core.g.animated = was_animated;
+    } else {
+        ctx.backend.resize_window(win, final_rect);
     }
 }
 

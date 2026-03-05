@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
+use std::time::{Duration, Instant};
 
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
@@ -113,8 +114,17 @@ pub struct WaylandState {
     hidden_windows: HashMap<WindowId, Window>,
     /// O(1) window lookup index; mirrors `space.elements()` by `WindowId`.
     pub(super) window_index: HashMap<WindowId, Window>,
+    window_animations: HashMap<WindowId, WaylandWindowAnimation>,
     /// Currently focused window for O(1) deactivate-old / activate-new.
     focused_window: Option<WindowId>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WaylandWindowAnimation {
+    from: Point<i32, Logical>,
+    to: Point<i32, Logical>,
+    started_at: Instant,
+    duration: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,7 +212,69 @@ impl WaylandState {
             last_configured_size: HashMap::new(),
             hidden_windows: HashMap::new(),
             window_index: HashMap::new(),
+            window_animations: HashMap::new(),
             focused_window: None,
+        }
+    }
+
+    fn animations_enabled(&self) -> bool {
+        self.globals().map(|g| g.animated).unwrap_or(false)
+    }
+
+    fn set_window_target_location(
+        &mut self,
+        window_id: WindowId,
+        element: Window,
+        target: Point<i32, Logical>,
+        remap: bool,
+    ) {
+        let current = self.space.element_location(&element).unwrap_or(target);
+        if !self.animations_enabled() || remap || current == target {
+            self.window_animations.remove(&window_id);
+            self.space.map_element(element, target, remap);
+            return;
+        }
+
+        self.window_animations.insert(
+            window_id,
+            WaylandWindowAnimation {
+                from: current,
+                to: target,
+                started_at: Instant::now(),
+                duration: Duration::from_millis(140),
+            },
+        );
+    }
+
+    pub fn tick_window_animations(&mut self) {
+        if self.window_animations.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let mut updates: Vec<(WindowId, Point<i32, Logical>, bool)> = Vec::new();
+        for (win, anim) in &self.window_animations {
+            let elapsed = now.saturating_duration_since(anim.started_at);
+            let raw_t = (elapsed.as_secs_f64() / anim.duration.as_secs_f64()).clamp(0.0, 1.0);
+            let t = crate::animation::ease_out_cubic(raw_t);
+            let x = anim.from.x + ((anim.to.x - anim.from.x) as f64 * t).round() as i32;
+            let y = anim.from.y + ((anim.to.y - anim.from.y) as f64 * t).round() as i32;
+            updates.push((*win, Point::from((x, y)), raw_t >= 1.0));
+        }
+
+        let mut finished: Vec<WindowId> = Vec::new();
+        for (win, loc, done) in updates {
+            if let Some(element) = self.find_window(win).cloned() {
+                self.space.map_element(element, loc, false);
+            } else {
+                finished.push(win);
+                continue;
+            }
+            if done {
+                finished.push(win);
+            }
+        }
+        for win in finished {
+            self.window_animations.remove(&win);
         }
     }
 
@@ -277,18 +349,22 @@ impl WaylandState {
         let Some(g) = self.globals() else {
             return;
         };
-        let updates: Vec<(Window, Rect, i32)> = self
+        let updates: Vec<(WindowId, Window, Rect, i32)> = self
             .space
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
                 let client = g.clients.get(&marker.id)?;
-                Some((window.clone(), client.geo, client.border_width))
+                Some((marker.id, window.clone(), client.geo, client.border_width))
             })
             .collect();
-        for (window, geo, bw) in updates {
-            self.space
-                .map_element(window.clone(), (geo.x + bw, geo.y + bw), false);
+        for (window_id, window, geo, bw) in updates {
+            self.set_window_target_location(
+                window_id,
+                window.clone(),
+                Point::from((geo.x + bw, geo.y + bw)),
+                false,
+            );
             if let Some(toplevel) = window.toplevel() {
                 let key = window
                     .user_data()
@@ -361,8 +437,12 @@ impl WaylandState {
                 .globals()
                 .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
                 .unwrap_or(0);
-            self.space
-                .map_element(element.clone(), (rect.x + bw, rect.y + bw), false);
+            self.set_window_target_location(
+                window,
+                element.clone(),
+                Point::from((rect.x + bw, rect.y + bw)),
+                false,
+            );
             if let Some(toplevel) = element.toplevel() {
                 let target = (rect.w.max(1), rect.h.max(1));
                 let size =
@@ -450,6 +530,7 @@ impl WaylandState {
                 .space
                 .element_location(&element)
                 .unwrap_or((0, 0).into());
+            self.window_animations.remove(&window);
             self.space.map_element(element, loc, false);
             return;
         }
@@ -460,6 +541,7 @@ impl WaylandState {
                 .and_then(|g| g.clients.get(&window))
                 .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
                 .unwrap_or(Point::from((0, 0)));
+            self.window_animations.remove(&window);
             self.space.map_element(element.clone(), loc, false);
             self.window_index.insert(window, element);
         }
@@ -471,6 +553,7 @@ impl WaylandState {
             self.hidden_windows.insert(window, element);
             self.window_index.remove(&window);
         }
+        self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
     }
 
@@ -480,6 +563,7 @@ impl WaylandState {
         }
         self.window_index.remove(&window);
         self.hidden_windows.remove(&window);
+        self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
         if self.focused_window == Some(window) {
             self.focused_window = None;

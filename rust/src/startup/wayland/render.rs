@@ -38,6 +38,7 @@ pub(super) fn render_frame(
     start_time: std::time::Instant,
 ) {
     apply_cursor_image_status(backend, state);
+    state.tick_window_animations();
     let damage = {
         let buffer_age = backend.buffer_age().unwrap_or(0);
         let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
