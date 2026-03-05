@@ -3,7 +3,7 @@
 //! This module is the public surface for everything related to managing X11
 //! client windows.  The implementation is split across focused sub-modules;
 //! this file re-exports the public API so that callers can write
-//! `crate::client::lifecycle::manage_x11(...)` for internal lifecycle details.
+//! `crate::backend::x11::lifecycle::manage(...)` for X11 lifecycle details.
 //!
 //! # Sub-module map
 //!
