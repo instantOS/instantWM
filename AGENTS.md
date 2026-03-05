@@ -7,5 +7,3 @@ more type safe and comprehensible systems.
 The Rust rewrite is located in ./rust
 The c source files are in ./
 
-Agents are not allowed to use git at all. No commits, no diffs, no checkouts. 
-When git is needed, ask the user to do it. 

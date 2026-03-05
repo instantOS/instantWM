@@ -22,11 +22,8 @@
 //! border intact.
 
 use crate::animation::animate_client;
-use crate::backend::BackendKind;
-use crate::backend::BackendOps;
-use crate::client::geometry::resize_client;
-use crate::contexts::WmCtx;
-
+use crate::client::geometry::resize_client_x11;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -39,13 +36,13 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 /// Copy `client.border_width` → `client.old_border_width`.
-pub fn save_border_width(ctx: &mut WmCtx, win: WindowId) {
-    ctx.g.clients.save_border_width(win);
+pub fn save_border_width(core: &mut CoreCtx, win: WindowId) {
+    core.g.clients.save_border_width(win);
 }
 
 /// Copy `client.old_border_width` → `client.border_width`.
-pub fn restore_border_width(ctx: &mut WmCtx, win: WindowId) {
-    ctx.g.clients.restore_border_width(win);
+pub fn restore_border_width(core: &mut CoreCtx, win: WindowId) {
+    core.g.clients.restore_border_width(win);
 }
 
 // ---------------------------------------------------------------------------
@@ -53,17 +50,14 @@ pub fn restore_border_width(ctx: &mut WmCtx, win: WindowId) {
 // ---------------------------------------------------------------------------
 
 /// Enter or exit fullscreen for `win`.
-pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
+pub fn set_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, fullscreen: bool) {
     let x11_win: Window = win.into();
 
-    let net_wm_fullscreen = ctx.g.x11.netatom.wm_fullscreen;
-    let net_wm_state = ctx.g.x11.netatom.wm_state;
+    let net_wm_fullscreen = core.g.x11.netatom.wm_fullscreen;
+    let net_wm_state = core.g.x11.netatom.wm_state;
 
     // Snapshot what we need before taking a mutable borrow.
-    let client_snapshot = ctx.g.clients.get(&win).map(|c| {
+    let client_snapshot = core.g.clients.get(&win).map(|c| {
         (
             c.is_fullscreen,
             c.isfloating,
@@ -83,89 +77,83 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
         // ---- Enter fullscreen -----------------------------------------------
 
         // Advertise the new state via EWMH.
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.change_property32(
-                PropMode::REPLACE,
-                x11_win,
-                net_wm_state,
-                AtomEnum::ATOM,
-                &[net_wm_fullscreen],
-            );
-        }
+        let _ = x11.conn.change_property32(
+            PropMode::REPLACE,
+            x11_win,
+            net_wm_state,
+            AtomEnum::ATOM,
+            &[net_wm_fullscreen],
+        );
 
-        if let Some(c) = ctx.g.clients.get_mut(&win) {
+        if let Some(c) = core.g.clients.get_mut(&win) {
             c.is_fullscreen = true;
             c.oldstate = c.isfloating as i32;
         }
 
-        ctx.g.clients.save_border_width(win);
+        core.g.clients.save_border_width(win);
 
         if !is_fake_fs {
             // Remove the border.
-            if let Some(c) = ctx.g.clients.get_mut(&win) {
+            if let Some(c) = core.g.clients.get_mut(&win) {
                 c.border_width = 0;
             }
 
             let mon_rect = monitor_id
-                .and_then(|mid| ctx.g.monitor(mid).map(|m| m.monitor_rect))
+                .and_then(|mid| core.g.monitor(mid).map(|m| m.monitor_rect))
                 .unwrap_or_default();
 
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
             if !is_floating {
-                animate_client(ctx, win, &mon_rect, 10, 0);
+                animate_client(core, win, &mon_rect, 10, 0);
             }
 
             // Position and raise the window.
-            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-                let _ = conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new()
-                        .x(mon_rect.x)
-                        .y(mon_rect.y)
-                        .width(mon_rect.w as u32)
-                        .height(mon_rect.h as u32),
-                );
-                let _ = conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                );
-                let _ = conn.flush();
-            }
+            let _ = x11.conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new()
+                    .x(mon_rect.x)
+                    .y(mon_rect.y)
+                    .width(mon_rect.w as u32)
+                    .height(mon_rect.h as u32),
+            );
+            let _ = x11.conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
+            let _ = x11.conn.flush();
         }
 
         // Mark as floating so the layout engine leaves it alone.
-        if let Some(c) = ctx.g.clients.get_mut(&win) {
+        if let Some(c) = core.g.clients.get_mut(&win) {
             c.isfloating = true;
         }
     } else if !fullscreen && is_fs {
         // ---- Exit fullscreen ------------------------------------------------
 
         // Clear the EWMH state property.
-        if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-            let _ = conn.change_property32(
-                PropMode::REPLACE,
-                x11_win,
-                net_wm_state,
-                AtomEnum::ATOM,
-                &[],
-            );
-        }
+        let _ = x11.conn.change_property32(
+            PropMode::REPLACE,
+            x11_win,
+            net_wm_state,
+            AtomEnum::ATOM,
+            &[],
+        );
 
-        if let Some(c) = ctx.g.clients.get_mut(&win) {
+        if let Some(c) = core.g.clients.get_mut(&win) {
             c.is_fullscreen = false;
             c.isfloating = c.oldstate != 0;
         }
 
-        ctx.g.clients.restore_border_width(win);
+        core.g.clients.restore_border_width(win);
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
-            resize_client(ctx, win, &old_geo);
-            ctx.backend.flush();
+            resize_client_x11(core, x11, win, &old_geo);
+            let _ = x11.conn.flush();
 
             if let Some(mid) = monitor_id {
-                arrange(ctx, Some(mid));
+                arrange(core, Some(mid));
             }
         }
     }
@@ -176,15 +164,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx, win: WindowId, fullscreen: bool) {
 // ---------------------------------------------------------------------------
 
 /// Toggle the "fake fullscreen" mode on the currently selected window.
-pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
-    if ctx.backend_kind() == BackendKind::Wayland {
-        return;
-    }
-    let Some(win) = ctx.selected_client() else {
+pub fn toggle_fake_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    let Some(win) = core.selected_client() else {
         return;
     };
 
-    let (is_fullscreen, isfakefullscreen, monitor_id, old_border_width) = ctx
+    let (is_fullscreen, isfakefullscreen, monitor_id, old_border_width) = core
         .g
         .clients
         .get(&win)
@@ -201,17 +186,18 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.
     if is_fullscreen && isfakefullscreen {
-        let borderpx = ctx.g.cfg.borderpx;
+        let borderpx = core.g.cfg.borderpx;
 
         if let Some(mid) = monitor_id {
-            let mon_rect = ctx
+            let mon_rect = core
                 .g
                 .monitor(mid)
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
 
-            resize_client(
-                ctx,
+            resize_client_x11(
+                core,
+                x11,
                 win,
                 &Rect {
                     x: mon_rect.x + borderpx,
@@ -221,21 +207,19 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
                 },
             );
 
-            if let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) {
-                let x11_win: Window = win.into();
-                let _ = conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-                );
-                let _ = conn.flush();
-            }
+            let x11_win: Window = win.into();
+            let _ = x11.conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+            );
+            let _ = x11.conn.flush();
         }
     }
 
     // Restore the border width when leaving fake-fullscreen while still in
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = core.g.clients.get_mut(&win) {
         if client.is_fullscreen && !client.isfakefullscreen {
             client.border_width = old_border_width;
         }

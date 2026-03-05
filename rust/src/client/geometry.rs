@@ -14,12 +14,12 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::{BackendKind, BackendOps};
+use crate::backend::BackendOps;
 use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,
 };
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, X11Ctx};
 use crate::types::{MonitorId, Rect, WindowId};
 
 use x11rb::protocol::xproto::ConnectionExt;
@@ -34,8 +34,8 @@ use x11rb::protocol::xproto::*;
 /// If the size-hint check determines that nothing changed *and* there is more
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
-pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
-    if !ctx.g.clients.contains(&win) {
+pub fn resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect, interact: bool) {
+    if !core.g.clients.contains(&win) {
         return;
     }
 
@@ -43,8 +43,9 @@ pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
     let mut new_y = rect.y;
     let mut new_width = rect.w;
     let mut new_height = rect.h;
-    let changed = apply_size_hints(
-        ctx,
+    let changed = apply_size_hints_x11(
+        core,
+        x11,
         win,
         &mut new_x,
         &mut new_y,
@@ -52,10 +53,11 @@ pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
         &mut new_height,
         interact,
     );
-    let client_count = ctx.g.clients.len();
+    let client_count = core.g.clients.len();
     if changed || client_count == 1 {
-        resize_client(
-            ctx,
+        resize_client_x11(
+            core,
+            x11,
             win,
             &Rect {
                 x: new_x,
@@ -77,25 +79,30 @@ pub fn resize(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
 /// level.  Always call [`resize`] from layout code so that size hints are
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
-pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
-    ctx.g.clients.update_geometry(win, *rect);
+pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect) {
+    core.g.clients.update_geometry(win, *rect);
 
-    ctx.backend.resize_window(win, *rect);
+    let x11_win: Window = win.into();
+    let width = rect.w.max(1) as u32;
+    let height = rect.h.max(1) as u32;
+    let _ = x11.conn.configure_window(
+        x11_win,
+        &ConfigureWindowAux::new()
+            .x(rect.x)
+            .y(rect.y)
+            .width(width)
+            .height(height),
+    );
 
-    if ctx.backend_kind() == BackendKind::X11 {
-        if let Some(x11) = ctx.x11_conn() {
-            let x11_win: Window = win.into();
-            if let Some(border_width) = ctx.g.clients.get(&win).map(|c| c.border_width) {
-                let _ = x11.conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new().border_width(border_width as u32),
-                );
-            }
-        }
+    if let Some(border_width) = core.g.clients.get(&win).map(|c| c.border_width) {
+        let _ = x11.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().border_width(border_width as u32),
+        );
     }
 
     // Send a synthetic ConfigureNotify so the client knows its geometry.
-    crate::client::focus::configure(ctx, win);
+    crate::client::focus::configure_x11(core, x11, win);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,8 +116,9 @@ pub fn resize_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect) {
 ///
 /// Returns `true` if the resulting geometry differs from the client's current
 /// stored geometry (i.e. an actual change would occur).
-pub fn apply_size_hints(
-    ctx: &mut WmCtx,
+pub fn apply_size_hints_x11(
+    core: &mut CoreCtx,
+    x11: &X11Ctx,
     win: WindowId,
     x: &mut i32,
     y: &mut i32,
@@ -118,7 +126,7 @@ pub fn apply_size_hints(
     h: &mut i32,
     interact: bool,
 ) -> bool {
-    let client = match ctx.g.clients.get(&win) {
+    let client = match core.g.clients.get(&win) {
         Some(c) => c,
         None => return false,
     };
@@ -128,7 +136,7 @@ pub fn apply_size_hints(
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
     let should_apply_hints =
-        ctx.g.cfg.resizehints != 0 || client.isfloating || is_floating_layout(ctx, monitor_id);
+        core.g.cfg.resizehints != 0 || client.isfloating || is_floating_layout(core, monitor_id);
 
     // Phase 1: Ensure positive dimensions.
     new_geo.w = new_geo.w.max(1);
@@ -136,7 +144,7 @@ pub fn apply_size_hints(
 
     // Phase 2: Clamp position to keep window visible.
     clamp_position_to_bounds(
-        ctx,
+        core,
         &mut new_geo,
         monitor_id,
         interact,
@@ -145,12 +153,12 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = core.g.cfg.bar_height;
     new_geo.enforce_minimum(bar_height, bar_height);
 
     // Phase 4: Apply ICCCM size hints (X11 only).
-    if ctx.backend_kind() == BackendKind::X11 && should_apply_hints {
-        apply_icccm_size_hints(ctx, win, &mut new_geo);
+    if should_apply_hints {
+        apply_icccm_size_hints_x11(core, x11, win, &mut new_geo);
     }
 
     // Write back results.
@@ -164,7 +172,7 @@ pub fn apply_size_hints(
 
 /// Clamp window position to keep it within usable screen area.
 fn clamp_position_to_bounds(
-    ctx: &WmCtx,
+    core: &CoreCtx,
     geo: &mut Rect,
     monitor_id: Option<MonitorId>,
     interact: bool,
@@ -172,10 +180,10 @@ fn clamp_position_to_bounds(
     total_h: i32,
 ) {
     if interact {
-        let screen = Rect::new(0, 0, ctx.g.cfg.screen_width, ctx.g.cfg.screen_height);
+        let screen = Rect::new(0, 0, core.g.cfg.screen_width, core.g.cfg.screen_height);
         geo.clamp_position(&screen, total_w, total_h);
     } else if let Some(wr) = monitor_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
+        .and_then(|mid| core.g.monitors.get(mid))
         .map(|m| m.work_rect)
     {
         geo.clamp_position(&wr, total_w, total_h);
@@ -183,16 +191,16 @@ fn clamp_position_to_bounds(
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(ctx: &WmCtx, monitor_id: Option<MonitorId>) -> bool {
+fn is_floating_layout(core: &CoreCtx, monitor_id: Option<MonitorId>) -> bool {
     monitor_id
-        .and_then(|mid| ctx.g.monitors.get(mid))
+        .and_then(|mid| core.g.monitors.get(mid))
         .map(|mon| !mon.is_tiling_layout())
         .unwrap_or(true)
 }
 
 /// Apply ICCCM WM_NORMAL_HINTS constraints to the geometry.
-fn apply_icccm_size_hints(ctx: &mut WmCtx, win: WindowId, geo: &mut Rect) {
-    let needs_update = ctx
+fn apply_icccm_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, geo: &mut Rect) {
+    let needs_update = core
         .g
         .clients
         .get(&win)
@@ -200,10 +208,10 @@ fn apply_icccm_size_hints(ctx: &mut WmCtx, win: WindowId, geo: &mut Rect) {
         .unwrap_or(false);
 
     if needs_update {
-        update_size_hints(ctx, win);
+        update_size_hints_x11(core, x11, win);
     }
 
-    let client = match ctx.g.clients.get(&win) {
+    let client = match core.g.clients.get(&win) {
         Some(c) => c,
         None => return,
     };
@@ -222,11 +230,11 @@ fn apply_icccm_size_hints(ctx: &mut WmCtx, win: WindowId, geo: &mut Rect) {
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
 /// `min_aspect`, `max_aspect`, and `isfixed`.
-pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
-    let Some(data) = fetch_wm_normal_hints(ctx, win) else {
+pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+    let Some(data) = fetch_wm_normal_hints(x11, win) else {
         return;
     };
-    let Some(c) = ctx.g.clients.get_mut(&win) else {
+    let Some(c) = core.g.clients.get_mut(&win) else {
         return;
     };
     let flags = *data.first().unwrap_or(&0);
@@ -292,8 +300,8 @@ pub fn update_size_hints(ctx: &mut WmCtx, win: WindowId) {
     c.hintsvalid = 1;
 }
 
-fn fetch_wm_normal_hints(ctx: &mut WmCtx, win: WindowId) -> Option<Vec<u32>> {
-    let conn = ctx.x11_conn().map(|x11| x11.conn)?;
+fn fetch_wm_normal_hints(x11: &X11Ctx, win: WindowId) -> Option<Vec<u32>> {
+    let conn = x11.conn;
     let reply = conn
         .get_property(
             false,
@@ -316,9 +324,9 @@ fn fetch_wm_normal_hints(ctx: &mut WmCtx, win: WindowId) -> Option<Vec<u32>> {
 /// Resize `win` to `scale` percent of its monitor dimensions, centred on screen.
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
-pub fn scale_client(ctx: &mut WmCtx, win: WindowId, scale: i32) {
+pub fn scale_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, scale: i32) {
     let (monitor_id, old_geo, border_width) = {
-        let c = match ctx.g.clients.get(&win) {
+        let c = match core.g.clients.get(&win) {
             Some(c) => c,
             None => return,
         };
@@ -328,7 +336,7 @@ pub fn scale_client(ctx: &mut WmCtx, win: WindowId, scale: i32) {
     // Determine the reference rectangle (monitor bounds, or fall back to the
     // client's own geometry when no monitor is assigned).
     let mon_rect = monitor_id
-        .and_then(|mid| ctx.g.monitors.get(mid).map(|m| m.monitor_rect))
+        .and_then(|mid| core.g.monitors.get(mid).map(|m| m.monitor_rect))
         .unwrap_or(old_geo);
 
     let new_w = old_geo.w * scale / 100;
@@ -336,8 +344,9 @@ pub fn scale_client(ctx: &mut WmCtx, win: WindowId, scale: i32) {
     let new_x = mon_rect.x + (mon_rect.w - new_w) / 2 - border_width;
     let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
 
-    resize(
-        ctx,
+    resize_x11(
+        core,
+        x11,
         win,
         &Rect {
             x: new_x,

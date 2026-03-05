@@ -6,7 +6,7 @@ This plan introduces a small `CoreCtx` plus backend-specific context types, then
 
 ---
 
-## 1) Introduce core + backend context types
+## 1) Introduce core + backend context types (done)
 
 Create new context types in `src/contexts.rs` (or `src/contexts/core.rs` if you prefer submodules):
 

@@ -10,7 +10,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 use crate::config::commands::Cmd;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WaylandCtx};
 use crate::types::*;
 
 pub fn die(fmt: &str) -> ! {
@@ -48,23 +48,14 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
 }
 
 /// Spawn a command identified by a [`Cmd`] variant.
-pub fn spawn(ctx: &WmCtx, cmd: Cmd) {
-    let argv = ctx.g.cfg.external_commands.get(cmd);
+pub fn spawn(core: &CoreCtx, wayland: Option<&WaylandCtx>, cmd: Cmd) {
+    let argv = core.g.cfg.external_commands.get(cmd);
     if !argv.is_empty() {
-        let wayland_display_env: Option<CString> =
-            if ctx.backend_kind() == crate::backend::BackendKind::Wayland {
-                let display = if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
-                    wayland
-                        .xdisplay()
-                        .map(|d| format!(":{}", d))
-                        .or_else(|| std::env::var("DISPLAY").ok())
-                } else {
-                    std::env::var("DISPLAY").ok()
-                };
-                display.and_then(|d| CString::new(d).ok())
-            } else {
-                None
-            };
+        let wayland_display_env: Option<CString> = wayland
+            .and_then(|wl| wl.backend.xdisplay())
+            .map(|d| format!(":{d}"))
+            .or_else(|| std::env::var("DISPLAY").ok())
+            .and_then(|d| CString::new(d).ok());
 
         let c_args: Vec<CString> = argv
             .iter()

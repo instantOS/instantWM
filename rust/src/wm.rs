@@ -4,7 +4,7 @@
 
 use crate::backend::x11::X11Backend;
 use crate::backend::{Backend, BackendRef};
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
 use crate::globals::Globals;
 
 pub struct Wm {
@@ -48,13 +48,28 @@ impl Wm {
 
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let backend = BackendRef::from_backend(&self.backend);
-        WmCtx::new(
+        let core = CoreCtx::new(
             &mut self.g,
-            backend,
             &mut self.running,
             &mut self.bar,
             &mut self.bar_painter,
             &mut self.focus,
-        )
+        );
+        match &self.backend {
+            Backend::X11(x11) => WmCtx::X11(WmCtxX11 {
+                core,
+                backend,
+                x11: X11Ctx {
+                    conn: &x11.conn,
+                    screen_num: x11.screen_num,
+                },
+            }),
+            Backend::Wayland(wayland) => WmCtx::Wayland(WmCtxWayland {
+                core,
+                backend,
+                wayland: WaylandCtx { backend: wayland },
+                xwayland: None,
+            }),
+        }
     }
 }
