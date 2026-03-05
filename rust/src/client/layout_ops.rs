@@ -11,9 +11,6 @@
 
 use crate::client::list::{next_tiled, pop};
 use crate::contexts::WmCtx;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
-use x11rb::protocol::xproto::*;
 
 // ---------------------------------------------------------------------------
 // zoom
@@ -33,35 +30,25 @@ use x11rb::protocol::xproto::*;
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    let WmCtx::X11(ctx_x11) = ctx else {
-        return;
-    };
-    let core = &mut ctx_x11.core;
-    let x11 = &ctx_x11.x11;
-    let Some(win) = core.selected_client() else {
+    let Some(win) = ctx.selected_client() else {
         return;
     };
 
     // Raise the window immediately so it appears on top while the layout
     // catches up on the next arrange pass.
-    let x11_win: Window = win.into();
-    let _ = x11.conn.configure_window(
-        x11_win,
-        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-    );
-    let _ = x11.conn.flush();
+    ctx.backend().raise_window(win);
+    ctx.backend().flush();
 
-    let (is_floating, monitor_id) = {
-        core.g
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.monitor_id))
-            .unwrap_or((true, None))
-    };
+    let (is_floating, monitor_id) = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|c| (c.isfloating, c.monitor_id))
+        .unwrap_or((true, None));
 
     // Only meaningful in a tiling layout with a non-floating window.
     let is_tiling = monitor_id
-        .and_then(|mid| core.g.monitor(mid))
+        .and_then(|mid| ctx.g().monitor(mid))
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -71,10 +58,9 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Find the current master (first tiled client on the monitor).
     let first_on_monitor = monitor_id
-        .and_then(|mid| core.g.monitor(mid))
+        .and_then(|mid| ctx.g().monitor(mid))
         .and_then(|mon| mon.clients.first().copied());
-    let first_tiled =
-        first_on_monitor.and_then(|w| next_tiled(&mut WmCtx::X11(ctx_x11.reborrow()), Some(w)));
+    let first_tiled = first_on_monitor.and_then(|w| next_tiled(ctx, Some(w)));
 
     if first_tiled == Some(win) {
         let next = next_tiled(ctx, first_tiled);

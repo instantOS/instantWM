@@ -184,8 +184,8 @@ pub fn get_buttons() -> Vec<Button> {
                 follow_tag(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Left)),
-        btn_x11!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), Direction::Right)),
+        btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(ctx, Direction::Left)),
+        btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(ctx, Direction::Right)),
         // ── Root window ───────────────────────────────────────────────────
         btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, Cmd::Panther)),
         btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, Cmd::InstantMenu)),
