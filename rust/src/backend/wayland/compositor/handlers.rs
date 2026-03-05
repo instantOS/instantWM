@@ -40,6 +40,7 @@ use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     state::{detach_client_from_monitor, WaylandClientState, WaylandState, WindowIdMarker},
 };
+use crate::types::WindowId;
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
@@ -273,6 +274,19 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
     ) {
         let window_id = window.window_id();
+        let was_focused = self
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|focus| {
+                if let KeyboardFocusTarget::Window(w) = focus {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                } else {
+                    false
+                }
+            });
+
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.unmap_window(win);
         } else {
@@ -291,6 +305,10 @@ impl XwmHandler for WaylandState {
         if !window.is_override_redirect() {
             let _ = window.set_mapped(false);
         }
+
+        if was_focused {
+            self.restore_focus_after_overlay();
+        }
     }
 
     fn destroyed_window(
@@ -299,7 +317,31 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
     ) {
         let window_id = window.window_id();
-        let Some(win) = self.window_id_for_x11_surface(&window) else {
+        let is_overlay = self.window_id_for_x11_surface(&window).is_none();
+        let was_focused = self
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|focus| {
+                if let KeyboardFocusTarget::Window(w) = focus {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                } else {
+                    false
+                }
+            });
+
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.remove_window_tracking(win);
+            let Some(g) = self.globals_mut() else {
+                return;
+            };
+            if g.clients.contains(&win) {
+                detach_client_from_monitor(g, win);
+                g.clients.remove(&win);
+                g.clients.list_retain(|id| *id != win.0 as usize);
+            }
+        } else if is_overlay {
             let element = self
                 .space
                 .elements()
@@ -311,16 +353,10 @@ impl XwmHandler for WaylandState {
             if let Some(element) = element {
                 self.space.unmap_elem(&element);
             }
-            return;
-        };
-        self.remove_window_tracking(win);
-        let Some(g) = self.globals_mut() else {
-            return;
-        };
-        if g.clients.contains(&win) {
-            detach_client_from_monitor(g, win);
-            g.clients.remove(&win);
-            g.clients.list_retain(|id| *id != win.0 as usize);
+        }
+
+        if was_focused && is_overlay {
+            self.restore_focus_after_overlay();
         }
     }
 

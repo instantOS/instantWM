@@ -587,6 +587,14 @@ impl WaylandState {
         }
     }
 
+    pub(super) fn restore_focus_after_overlay(&mut self) {
+        if let Some(g) = self.globals_mut() {
+            if let Some(win) = g.selected_win() {
+                self.set_focus(win);
+            }
+        }
+    }
+
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
