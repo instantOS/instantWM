@@ -19,6 +19,8 @@ pub mod events;
 pub mod lifecycle;
 pub mod mouse;
 
+pub use client::{apply_size_hints_x11, update_size_hints_x11};
+
 /// Log X11 errors instead of silently ignoring them.
 #[inline]
 pub fn log_x11_error<T>(result: Result<T, x11rb::errors::ConnectionError>, operation: &str) {

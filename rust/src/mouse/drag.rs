@@ -31,7 +31,7 @@ use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
-use crate::tags::{follow_tag, move_client, set_client_tag, shift_tag_by, tag_all, view};
+use crate::tags::{move_client, shift_tag_by};
 use crate::types::geometry::Rect;
 use crate::types::SnapPosition;
 use crate::types::*;
@@ -439,14 +439,11 @@ fn handle_bar_drop(
         // must still be the selected window at this point — which it is because
         // set_tiled does not touch focus.
         set_tiled(ctx, win, false);
-        match ctx {
-            WmCtx::X11(x11) => set_client_tag(
-                x11,
-                win,
-                TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
-            ),
-            WmCtx::Wayland(_) => {}
-        }
+        crate::tags::client_tags::set_client_tag_ctx(
+            ctx,
+            win,
+            TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
+        );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
         // Use set_tiled(win, …) directly instead of toggle_floating() which
@@ -736,10 +733,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
-        match ctx {
-            WmCtx::X11(x11) => view(x11, TagMask::from_bits(initial_tag)),
-            WmCtx::Wayland(_) => {}
-        }
+        crate::tags::view::view_ctx(ctx, TagMask::from_bits(initial_tag));
         return false;
     }
     // No selected window → nothing to drag.
@@ -847,23 +841,12 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                 let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
                 if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
                     if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
-                        match ctx {
-                            WmCtx::X11(x11) => {
-                                set_client_tag(x11, win, tag_mask)
-                            }
-                            WmCtx::Wayland(_) => {}
-                        }
+                        crate::tags::client_tags::set_client_tag_ctx(ctx, win, tag_mask);
                     }
                 } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
-                    match ctx {
-                        WmCtx::X11(x11) => tag_all(x11, tag_mask),
-                        WmCtx::Wayland(_) => {}
-                    }
+                    crate::tags::client_tags::tag_all_ctx(ctx, tag_mask);
                 } else if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
-                    match ctx {
-                        WmCtx::X11(x11) => follow_tag(x11, win, tag_mask),
-                        WmCtx::Wayland(_) => {}
-                    }
+                    crate::tags::client_tags::follow_tag_ctx(ctx, win, tag_mask);
                 }
             }
         }

@@ -8,27 +8,32 @@ use x11rb::protocol::xproto::ConnectionExt;
 
 /// View tags using type-safe mask.
 pub fn view(ctx: &mut WmCtxX11, mask: TagMask) {
-    let selmon_id = ctx.core.g.selected_monitor_id();
-    let tagmask = TagMask::from_bits(ctx.core.g.tags.mask());
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    view_ctx(&mut wm_ctx, mask);
+}
 
-    // Validate mask
+/// Toggle view of tags using type-safe mask.
+pub fn toggle_view(ctx: &mut WmCtxX11, mask: TagMask) {
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    toggle_view_ctx(&mut wm_ctx, mask);
+}
+
+pub fn view_ctx(ctx: &mut WmCtx, mask: TagMask) {
+    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let tagmask = TagMask::from_bits(ctx.g().tags.mask());
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
-    // Get all needed state in one globals access
-    let (_prev_tag, _current_tag) = {
-        let mon = ctx.core.g.selected_monitor_mut();
-
+    {
+        let mon = ctx.g_mut().selected_monitor_mut();
         mon.sel_tags ^= 1;
         mon.set_selected_tags(effective_mask.bits());
 
         let prev = mon.current_tag;
-
         if mask == TagMask::ALL_BITS {
             mon.current_tag = 0;
-            (prev, 0)
         } else {
             let new_tag = effective_mask.first_tag().unwrap_or(0);
             if new_tag == mon.current_tag {
@@ -37,46 +42,41 @@ pub fn view(ctx: &mut WmCtxX11, mask: TagMask) {
             }
             mon.prev_tag = prev;
             mon.current_tag = new_tag;
-            (prev, new_tag)
         }
-    };
+    }
 
-    // Apply pertag settings and update
-    apply_pertag_settings(&mut ctx.core);
-    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
-    arrange(&mut WmCtx::X11(ctx.reborrow()), Some(selmon_id));
+    apply_pertag_settings(ctx.core_mut());
+    crate::focus::focus_soft(ctx, None);
+    arrange(ctx, Some(selmon_id));
 }
 
-/// Toggle view of tags using type-safe mask.
-pub fn toggle_view(ctx: &mut WmCtxX11, mask: TagMask) {
-    let selmon_id = ctx.core.g.selected_monitor_id();
-    let tagmask = TagMask::from_bits(ctx.core.g.tags.mask());
-
-    let new_mask = TagMask::from_bits(ctx.core.g.selected_monitor().selected_tags()) ^ (mask & tagmask);
-
+pub fn toggle_view_ctx(ctx: &mut WmCtx, mask: TagMask) {
+    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let tagmask = TagMask::from_bits(ctx.g().tags.mask());
+    let new_mask = TagMask::from_bits(ctx.g().selected_monitor().selected_tags()) ^ (mask & tagmask);
     if new_mask.is_empty() {
         return;
     }
 
-    let mon = ctx.core.g.selected_monitor_mut();
-
-    mon.set_selected_tags(new_mask.bits());
-
-    if new_mask == TagMask::ALL_BITS {
-        mon.prev_tag = mon.current_tag;
-        mon.current_tag = 0;
-    } else {
-        let new_tag = new_mask.first_tag().unwrap_or(0);
-        let current_tag = mon.current_tag;
-        if current_tag == 0 || !new_mask.contains(current_tag) {
-            mon.prev_tag = current_tag;
-            mon.current_tag = new_tag;
+    {
+        let mon = ctx.g_mut().selected_monitor_mut();
+        mon.set_selected_tags(new_mask.bits());
+        if new_mask == TagMask::ALL_BITS {
+            mon.prev_tag = mon.current_tag;
+            mon.current_tag = 0;
+        } else {
+            let new_tag = new_mask.first_tag().unwrap_or(0);
+            let current_tag = mon.current_tag;
+            if current_tag == 0 || !new_mask.contains(current_tag) {
+                mon.prev_tag = current_tag;
+                mon.current_tag = new_tag;
+            }
         }
     }
 
-    apply_pertag_settings(&mut ctx.core);
-    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
-    arrange(&mut WmCtx::X11(ctx.reborrow()), Some(selmon_id));
+    apply_pertag_settings(ctx.core_mut());
+    crate::focus::focus_soft(ctx, None);
+    arrange(ctx, Some(selmon_id));
 }
 
 /// Toggle a single tag in or out of the current view by its 0-based index.
@@ -91,21 +91,19 @@ pub fn toggle_view(ctx: &mut WmCtxX11, mask: TagMask) {
 /// * If the tag is **already** in the current view, remove it (toggle off).
 /// * If the tag is **not** in the current view, add it (toggle on).
 pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
-    let WmCtx::X11(ctx_x11) = ctx else { return };
-
     // BarPosition uses 0-based indices; TagMask::single() takes 1-based.
     let clicked_mask = match TagMask::single(tag_idx + 1) {
         Some(m) => m,
         None => return,
     };
 
-    let valid_mask = TagMask::from_bits(ctx_x11.core.g.tags.mask());
+    let valid_mask = TagMask::from_bits(ctx.g().tags.mask());
     let clicked_mask = clicked_mask & valid_mask;
     if clicked_mask.is_empty() {
         return;
     }
 
-    let current = TagMask::from_bits(ctx_x11.core.g.selected_monitor().selected_tags());
+    let current = TagMask::from_bits(ctx.g().selected_monitor().selected_tags());
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -114,14 +112,12 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 
     // toggle_view XORs the mask in/out of the current tagset, which is
     // exactly add-if-absent / remove-if-present.
-    toggle_view(ctx_x11, clicked_mask);
+    toggle_view_ctx(ctx, clicked_mask);
 }
 
 pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
-    let WmCtx::X11(ctx_x11) = ctx else { return };
-
-    let mon = ctx_x11.core.g.selected_monitor();
-    let (tagset, numtags) = (TagMask::from_bits(mon.selected_tags()), ctx_x11.core.g.tags.count());
+    let mon = ctx.g().selected_monitor();
+    let (tagset, numtags) = (TagMask::from_bits(mon.selected_tags()), ctx.g().tags.count());
 
     let mut next_mask = tagset;
     let mut found = false;
@@ -132,10 +128,10 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
             Direction::Left | Direction::Up => tagset.rotate_right(step as usize, numtags),
         };
 
-        let clients = ctx_x11.core.g.selected_monitor().clients.clone();
+        let clients = ctx.g().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx_x11.core.g.clients.get(&win) {
+            if let Some(c) = ctx.g().clients.get(&win) {
                 if TagMask::from_bits(c.tags).intersects(next_mask) {
                     found = true;
                     break;
@@ -156,7 +152,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
     let next_mask = next_mask & !scratchpad;
 
-    view(ctx_x11, next_mask);
+    view_ctx(ctx, next_mask);
 }
 
 pub fn last_view(ctx: &mut WmCtxX11) {

@@ -36,7 +36,20 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
                 let _ = x11.x11.conn.flush();
             }
         }
-        WmCtx::Wayland(_) => {}
+        WmCtx::Wayland(wl) => {
+            if let Some(client) = wl.core.g.clients.get_mut(&win) {
+                client.isfloating = true;
+            }
+            restore_border_width(&mut wl.core, win);
+            let restored_bw = wl
+                .core
+                .g
+                .clients
+                .get(&win)
+                .map(|c| c.border_width)
+                .unwrap_or(0);
+            BackendOps::set_border_width(&wl.backend, win, restored_bw);
+        }
     }
 }
 

@@ -72,28 +72,16 @@ pub fn update_systray_icon_geom(
         (bar_height as f32 * (w as f32 / h as f32)) as i32
     };
 
-    let mut x = geo_x;
-    let mut y = geo_y;
-    let mut client_width = new_geo_w;
-    let mut client_height = new_geo_h;
+    let mut rect = Rect::new(geo_x, geo_y, new_geo_w, new_geo_h);
 
-    let _ = apply_size_hints_x11(
-        core,
-        x11,
-        icon_win,
-        &mut x,
-        &mut y,
-        &mut client_width,
-        &mut client_height,
-        false,
-    );
+    let _ = apply_size_hints_x11(core, x11, icon_win, &mut rect, false);
 
     // Now update the client with the computed values
     if let Some(client) = core.g.clients.get_mut(&icon_win) {
-        client.geo.x = x;
-        client.geo.y = y;
-        client.geo.w = client_width;
-        client.geo.h = client_height;
+        client.geo.x = rect.x;
+        client.geo.y = rect.y;
+        client.geo.w = rect.w;
+        client.geo.h = rect.h;
 
         if client.geo.h > bar_height {
             if client.geo.w == client.geo.h {
