@@ -54,7 +54,7 @@ pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
 pub use geometry::{resize, resize_client_x11, resize_x11};
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{hide, hide_x11, show, show_hide, show_x11};
+pub use visibility::{hide, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{
