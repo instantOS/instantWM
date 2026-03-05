@@ -81,7 +81,7 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
     [
         // View: MOD+num
         key!(MODKEY, keysym => move |ctx| {
-            crate::tags::view::view_ctx(ctx, TagMask::single(tag_idx + 1).unwrap())
+            crate::tags::view::view(ctx, TagMask::single(tag_idx + 1).unwrap())
         }),
         // Toggle view: MOD+Ctrl+num
         key!(MODKEY | CONTROL, keysym => move |ctx| {
@@ -199,7 +199,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSC,     XK_LEFT    => |ctx| shift_view(ctx, Direction::Left)),
         // View all tags (overview mode)
         key!(MODKEY,  XK_0       => |ctx| {
-            crate::tags::view::view_ctx(ctx, TagMask::ALL_BITS)
+            crate::tags::view::view(ctx, TagMask::ALL_BITS)
         }),
         // Move client to all tags
         key!(MS,      XK_0       => |ctx| {
@@ -367,15 +367,15 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
         key!(0, XK_UP    => |ctx| shift_view(ctx, Direction::Right)),
         key!(0, XK_DOWN  => |ctx| shift_view(ctx, Direction::Left)),
         // Type-safe tag views with clear semantics
-        key!(0, XK_1 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(1).unwrap())),
-        key!(0, XK_2 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(2).unwrap())),
-        key!(0, XK_3 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(3).unwrap())),
-        key!(0, XK_4 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(4).unwrap())),
-        key!(0, XK_5 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(5).unwrap())),
-        key!(0, XK_6 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(6).unwrap())),
-        key!(0, XK_7 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(7).unwrap())),
-        key!(0, XK_8 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(8).unwrap())),
-        key!(0, XK_9 => |ctx| crate::tags::view::view_ctx(ctx, TagMask::single(9).unwrap())),
+        key!(0, XK_1 => |ctx| crate::tags::view::view(ctx, TagMask::single(1).unwrap())),
+        key!(0, XK_2 => |ctx| crate::tags::view::view(ctx, TagMask::single(2).unwrap())),
+        key!(0, XK_3 => |ctx| crate::tags::view::view(ctx, TagMask::single(3).unwrap())),
+        key!(0, XK_4 => |ctx| crate::tags::view::view(ctx, TagMask::single(4).unwrap())),
+        key!(0, XK_5 => |ctx| crate::tags::view::view(ctx, TagMask::single(5).unwrap())),
+        key!(0, XK_6 => |ctx| crate::tags::view::view(ctx, TagMask::single(6).unwrap())),
+        key!(0, XK_7 => |ctx| crate::tags::view::view(ctx, TagMask::single(7).unwrap())),
+        key!(0, XK_8 => |ctx| crate::tags::view::view(ctx, TagMask::single(8).unwrap())),
+        key!(0, XK_9 => |ctx| crate::tags::view::view(ctx, TagMask::single(9).unwrap())),
     ]
 }
 macro_rules! btn_x11 {

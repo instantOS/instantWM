@@ -94,7 +94,7 @@ pub fn follow_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     if had_prefix {
         ctx.g_mut().tags.prefix = true;
     }
-    crate::tags::view::view_ctx(ctx, mask);
+    crate::tags::view::view(ctx, mask);
 }
 
 pub fn toggle_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {

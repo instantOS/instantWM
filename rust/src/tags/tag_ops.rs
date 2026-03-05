@@ -33,5 +33,6 @@ pub fn view_selection(ctx: &mut WmCtxX11, selection: TagSelection) {
     let prev_tag = ctx.core.g.selected_monitor().prev_tag;
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);
-    super::view(ctx, mask);
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    super::view::view(&mut wm_ctx, mask);
 }

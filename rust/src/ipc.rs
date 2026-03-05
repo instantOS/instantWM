@@ -10,7 +10,7 @@ use crate::scratchpad::{
     scratchpad_toggle, scratchpad_unmake,
 };
 use crate::tags::send_to_monitor;
-use crate::tags::{name_tag, reset_name_tag, view};
+use crate::tags::{name_tag, reset_name_tag};
 use crate::toggles::{
     alt_tab_free, set_border_width, toggle_alt_tag, toggle_animated,
     toggle_focus_follows_float_mouse, toggle_focus_follows_mouse, toggle_show_tags,
@@ -151,9 +151,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Tag(tag_num) => {
             let tag = if tag_num == 0 { 2 } else { tag_num };
             if let Some(mask) = TagMask::single(tag as usize) {
-                if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                    view(x11, mask);
-                }
+                crate::tags::view::view(&mut ctx, mask);
             }
             IpcResponse::ok("")
         }

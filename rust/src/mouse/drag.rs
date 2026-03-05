@@ -752,7 +752,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
-        crate::tags::view::view_ctx(ctx, TagMask::from_bits(initial_tag));
+        crate::tags::view::view(ctx, TagMask::from_bits(initial_tag));
         return false;
     }
     // No selected window → nothing to drag.

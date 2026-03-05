@@ -6,19 +6,14 @@ use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, WindowId, SCRATCHPAD_MASK};
 use x11rb::protocol::xproto::ConnectionExt;
 
-/// View tags using type-safe mask.
-pub fn view(ctx: &mut WmCtxX11, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    view_ctx(&mut wm_ctx, mask);
-}
-
 /// Toggle view of tags using type-safe mask.
 pub fn toggle_view(ctx: &mut WmCtxX11, mask: TagMask) {
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     toggle_view_ctx(&mut wm_ctx, mask);
 }
 
-pub fn view_ctx(ctx: &mut WmCtx, mask: TagMask) {
+/// View tags using type-safe mask.
+pub fn view(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.g_mut().selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.g().tags.mask());
     let effective_mask = mask & tagmask;
@@ -156,7 +151,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
     let next_mask = next_mask & !scratchpad;
 
-    view_ctx(ctx, next_mask);
+    view(ctx, next_mask);
 }
 
 pub fn last_view(ctx: &mut WmCtxX11) {
@@ -170,7 +165,8 @@ pub fn last_view(ctx: &mut WmCtxX11) {
     }
 
     if let Some(mask) = TagMask::single(prev_tag) {
-        view(ctx, mask);
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        view(&mut wm_ctx, mask);
     }
 }
 
@@ -197,10 +193,12 @@ pub fn win_view(ctx: &mut WmCtxX11) {
     if tag_mask == scratchpad {
         let current_tag = ctx.core.g.selected_monitor().current_tag;
         if let Some(mask) = TagMask::single(current_tag) {
-            view(ctx, mask);
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            view(&mut wm_ctx, mask);
         }
     } else {
-        view(ctx, tag_mask);
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        view(&mut wm_ctx, tag_mask);
     }
 
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
@@ -272,7 +270,8 @@ pub fn follow_view(ctx: &mut WmCtxX11) {
         client.tags = target_mask.bits();
     }
 
-    view(ctx, target_mask);
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    view(&mut wm_ctx, target_mask);
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
     arrange(&mut WmCtx::X11(ctx.reborrow()), Some(selmon_id));
 }
@@ -300,7 +299,8 @@ pub fn toggle_overview(ctx: &mut WmCtxX11, _mask: TagMask) {
         _ => {
             crate::floating::save_all_floating(&mut WmCtx::X11(ctx.reborrow()), Some(selmon_id));
             let all_tags = TagMask::all(num_tags);
-            view(ctx, all_tags);
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            view(&mut wm_ctx, all_tags);
         }
     }
 }
@@ -312,7 +312,8 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtxX11, _mask: TagMask) {
         0 => win_view(ctx),
         _ => {
             let num_tags = ctx.core.g.tags.count();
-            view(ctx, TagMask::all(num_tags))
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            view(&mut wm_ctx, TagMask::all(num_tags))
         }
     }
 }

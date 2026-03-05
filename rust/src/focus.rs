@@ -5,10 +5,9 @@
 
 use crate::backend::BackendOps;
 use crate::bar::draw_bars_x11;
-use crate::client::{set_focus_x11, set_urgent, unfocus_win, unfocus_win_x11};
+use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
-use crate::tags::view;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
@@ -538,7 +537,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
         ctx.core_mut().focus.last_client = cur;
     }
 
-    crate::tags::view::view_ctx(ctx, TagMask::from_bits(tags));
+    crate::tags::view::view(ctx, TagMask::from_bits(tags));
     focus_soft(ctx, Some(last_win));
 
     let monitor_id = ctx.g().selected_monitor_id();

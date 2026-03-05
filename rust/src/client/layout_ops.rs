@@ -9,6 +9,7 @@
 //! * [`zoom`] – promote the selected window to the master slot (or, if it
 //!              already is master, promote the next tiled window instead).
 
+use crate::backend::BackendOps;
 use crate::client::list::{next_tiled, pop};
 use crate::contexts::WmCtx;
 
