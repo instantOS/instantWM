@@ -1,13 +1,11 @@
 //! Moving clients between tags.
 
-use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx};
 // focus() is used via focus_soft() in this module
 
-use crate::animation::animate_client_x11;
+use crate::backend::BackendOps;
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect, WindowId};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
 //TODO: this seems redundant
 pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
@@ -60,9 +58,7 @@ fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     clear_sticky(ctx.core_mut(), win);
 
     if animated {
-        if let WmCtx::X11(x11_ctx) = ctx {
-            play_slide_animation(&mut x11_ctx.core, &x11_ctx.x11, win, dir);
-        }
+        play_slide_animation(ctx, win, dir);
     }
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
@@ -102,17 +98,11 @@ fn clear_sticky(core: &mut CoreCtx, win: WindowId) {
     }
 }
 
-fn play_slide_animation(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, dir: Direction) {
-    let x11_win: Window = win.into();
-    let _ = x11.conn.configure_window(
-        x11_win,
-        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-    );
-    let _ = x11.conn.flush();
-
-    let mon_w = core.g.selected_monitor().monitor_rect.w;
-    let (client_x, client_y) = core
-        .g
+fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+    ctx.backend().raise_window(win);
+    let mon_w = ctx.g().selected_monitor().monitor_rect.w;
+    let (client_x, client_y) = ctx
+        .g()
         .clients
         .get(&win)
         .map(|c| (c.geo.x, c.geo.y))
@@ -126,9 +116,8 @@ fn play_slide_animation(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, dir: Di
             Direction::Down => 1,
         };
 
-    crate::animation::animate_client_x11(
-        core,
-        x11,
+    crate::animation::animate_client(
+        ctx,
         win,
         &Rect {
             x: client_x + anim_dx,

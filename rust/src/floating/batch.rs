@@ -16,7 +16,7 @@
 //! and are correctly restored when the user switches back.
 
 use crate::client::resize;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::types::*;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
@@ -100,10 +100,10 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 /// that.  Each cell receives one window, sized to exactly fill its cell.
 ///
 /// Does nothing when there are no qualifying windows.
-pub fn distribute_clients(ctx: &mut WmCtxX11) {
-    let sel_mon_id = ctx.core.g.selected_monitor_id();
+pub fn distribute_clients(ctx: &mut WmCtx) {
+    let sel_mon_id = ctx.g().selected_monitor_id();
 
-    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core.g, sel_mon_id);
+    let (floating_wins, work_rect) = collect_distribute_targets(ctx.g(), sel_mon_id);
 
     if floating_wins.is_empty() {
         return;
@@ -118,13 +118,12 @@ pub fn distribute_clients(ctx: &mut WmCtxX11) {
     let cell_w = work_rect.w / cols;
     let cell_h = work_rect.h / rows;
 
-    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     for (i, win) in floating_wins.into_iter().enumerate() {
         let col = (i as i32) % cols;
         let row = (i as i32) / cols;
 
         resize(
-            &mut wm_ctx,
+            ctx,
             win,
             &Rect {
                 x: work_rect.x + col * cell_w,

@@ -205,7 +205,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),
-        key_x11!(MC,   XK_D      => |ctx| distribute_clients(ctx)),
+        key_x11!(MC,   XK_D      => |ctx| distribute_clients(&mut crate::contexts::WmCtx::X11(ctx.reborrow()))),
         key!(MS,   XK_D      => draw_window),
         key_x11!(MA,   XK_W      => |ctx| {
             if let Some(win) = ctx.selected_client() {
