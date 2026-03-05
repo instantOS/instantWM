@@ -78,8 +78,8 @@ pub(super) fn handle_keyboard(
         |_data, modifiers, keysym| {
             if wm_shortcuts_allowed && event.state() == smithay::backend::input::KeyState::Pressed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
-                let mut ctx = wm.ctx();
-                let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+                let ctx = wm.ctx();
+                let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
                 };
                 let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
@@ -130,7 +130,7 @@ pub(super) fn handle_pointer_motion(
     let focus_lock_window = active_drag_window.or(resize_offer_window);
 
     if let Some(lock_win) = focus_lock_window {
-        let mut ctx = wm.ctx();
+        let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
@@ -139,8 +139,8 @@ pub(super) fn handle_pointer_motion(
         }
     } else {
         let hovered_win = find_hovered_window(wm, state, *pointer_location);
-        let mut ctx = wm.ctx();
-        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        let ctx = wm.ctx();
+        let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
             return;
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
@@ -364,7 +364,7 @@ fn wayland_hover_resize_drag_begin(
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
@@ -426,7 +426,7 @@ fn wayland_selected_resize_target_at(
 }
 
 fn update_wayland_selected_resize_offer(wm: &mut Wm, root_x: i32, root_y: i32) -> Option<WindowId> {
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return None;
     };
@@ -463,7 +463,7 @@ fn is_point_in_resize_border(geo: Rect, x: i32, y: i32) -> bool {
 }
 
 fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bool {
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
@@ -540,7 +540,7 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
 }
 
 fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };

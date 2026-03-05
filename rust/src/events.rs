@@ -157,7 +157,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             ry: e.root_y as i32,
         };
         // Convert WmCtxX11 to WmCtx for button action
-        let mut tmp = ctx.reborrow();
+        let tmp = ctx.reborrow();
         (button.action)(&mut WmCtx::X11(tmp), arg);
     }
 }
@@ -831,7 +831,7 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
 /// Fetch the geometry and border width for `win`.
 ///
 /// Returns a fallback (`800×600`, border `1`) when the request fails.
-fn get_win_geometry(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> (Rect, u32) {
+fn get_win_geometry(_core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> (Rect, u32) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     conn.get_geometry(x11_win)
@@ -950,7 +950,7 @@ fn is_window_iconic(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> bool {
 
 /// Adopt all pre-existing X11 windows at WM startup.
 pub fn scan(wm: &mut Wm) {
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };
@@ -1003,7 +1003,7 @@ pub fn setup_root(wm: &mut Wm) {
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     let _ = conn.flush();
 
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };

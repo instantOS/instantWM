@@ -321,7 +321,7 @@ fn ungrab_button(
 ///
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
-pub fn clear_urgency_hint(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn clear_urgency_hint(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 

@@ -270,7 +270,7 @@ pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
 
     if snap_status != SnapPosition::None {
         if let Some(win) = selected_window {
-            let mut ctx_x11 = WmCtxX11 {
+            let ctx_x11 = WmCtxX11 {
                 core: core.reborrow(),
                 backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
                 x11: X11Ctx {
@@ -366,7 +366,7 @@ pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         };
 
         if snap_status != SnapPosition::None {
-            let mut ctx_x11 = WmCtxX11 {
+            let ctx_x11 = WmCtxX11 {
                 core: core.reborrow(),
                 backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
                 x11: X11Ctx {

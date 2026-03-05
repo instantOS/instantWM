@@ -439,11 +439,11 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     }
 
     {
-        let mut tmp = ctx.reborrow();
+        let tmp = ctx.reborrow();
         detach(&mut WmCtx::X11(tmp), win);
     }
     {
-        let mut tmp = ctx.reborrow();
+        let tmp = ctx.reborrow();
         detach_stack(&mut WmCtx::X11(tmp), win);
     }
 
@@ -485,13 +485,13 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     ctx.core.g.clients.remove(&win);
 
     {
-        let mut tmp = ctx.reborrow();
+        let tmp = ctx.reborrow();
         focus_soft(&mut WmCtx::X11(tmp), None);
     }
     update_client_list(&mut ctx.core, &ctx.x11);
 
     if let Some(mid) = monitor_id {
-        let mut tmp = ctx.reborrow();
+        let tmp = ctx.reborrow();
         arrange(&mut WmCtx::X11(tmp), Some(mid));
     }
 }

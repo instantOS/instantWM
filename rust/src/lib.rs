@@ -22,7 +22,7 @@ mod mouse;
 mod overlay;
 mod push;
 mod scratchpad;
-mod startup;
+pub mod startup;
 mod systray;
 mod tags;
 mod toggles;

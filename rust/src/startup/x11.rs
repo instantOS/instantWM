@@ -78,7 +78,7 @@ fn wm_init(wm: &mut Wm) {
 
     // After atoms + drw exist, we can verify tag naming and create bars.
     {
-        let mut ctx = wm.ctx();
+        let ctx = wm.ctx();
         let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
             return;
         };

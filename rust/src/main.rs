@@ -1,36 +1,3 @@
-mod animation;
-mod backend;
-mod bar;
-mod client;
-mod commands;
-mod config;
-mod constants;
-mod contexts;
-mod drw;
-mod events;
-mod floating;
-mod focus;
-mod globals;
-pub mod ipc;
-pub mod ipc_types;
-mod keyboard;
-mod layouts;
-#[macro_use]
-mod macros;
-mod monitor;
-mod mouse;
-mod overlay;
-mod push;
-mod scratchpad;
-mod startup;
-mod systray;
-mod tags;
-mod toggles;
-mod types;
-mod util;
-mod wm;
-mod xresources;
-
 fn main() {
-    startup::run();
+    instantwm::startup::run();
 }
