@@ -725,7 +725,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
 fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let is_hidden = ctx.core.g.clients.is_hidden(win);
     if is_hidden {
-        crate::client::show_x11(&mut ctx.core, &ctx.x11, win);
+        crate::client::show_x11(ctx, win);
     };
 
     if let Some(c) = ctx.core.g.clients.get(&win) {

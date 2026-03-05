@@ -14,7 +14,7 @@ use crate::animation::animate_client_x11;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxX11, X11Ctx};
 // focus() is used via focus_soft() in this module
 use crate::backend::BackendOps;
 use crate::layouts::arrange;
@@ -169,14 +169,14 @@ pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
 
 pub fn show(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(ctx_x11) => show_x11(&mut ctx_x11.core, &ctx_x11.x11, win),
+        WmCtx::X11(ctx_x11) => show_x11(ctx_x11, win),
         WmCtx::Wayland(_) => show_wayland(ctx, win),
     }
 }
 
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(ctx_x11) => hide_x11(&mut ctx_x11.core, &ctx_x11.x11, win),
+        WmCtx::X11(ctx_x11) => hide_x11(ctx_x11, win),
         WmCtx::Wayland(_) => hide_wayland(ctx, win),
     }
 }
@@ -247,8 +247,8 @@ fn hide_wayland(ctx: &mut WmCtx, win: WindowId) {
 /// Unminimize `win`: map it, animate it sliding in from above, then arrange.
 ///
 /// Does nothing if `win` is not currently in the iconic state.
-pub fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
-    let Some(client) = core.g.clients.get(&win) else {
+pub fn show_x11(ctx: &mut WmCtxX11, win: WindowId) {
+    let Some(client) = ctx.core.g.clients.get(&win) else {
         return;
     };
 
@@ -259,42 +259,45 @@ pub fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     let Rect { x, y, w, h } = client.geo;
 
     // Clear the cached flag before any redraws that might be triggered below.
-    if let Some(c) = core.g.clients.get_mut(&win) {
+    if let Some(c) = ctx.core.g.clients.get_mut(&win) {
         c.is_hidden = false;
     }
 
     let x11_win: Window = win.into();
-    let _ = x11.conn.map_window(x11_win);
-    let _ = x11.conn.flush();
+    let _ = ctx.x11.conn.map_window(x11_win);
+    let _ = ctx.x11.conn.flush();
 
-    set_client_state(core, x11, win, WM_STATE_NORMAL);
+    set_client_state(&ctx.core, &ctx.x11, win, WM_STATE_NORMAL);
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
-    resize_x11(core, x11, win, &Rect { x, y: -50, w, h }, false);
+    resize_x11(
+        &mut ctx.core,
+        &ctx.x11,
+        win,
+        &Rect { x, y: -50, w, h },
+        false,
+    );
 
-    let _ = x11.conn.configure_window(
+    let _ = ctx.x11.conn.configure_window(
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
-    let _ = x11.conn.flush();
+    let _ = ctx.x11.conn.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client_x11(core, x11, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client_x11(
+        &mut ctx.core,
+        &ctx.x11,
+        win,
+        &Rect { x, y, w: 0, h: 0 },
+        14,
+        0,
+    );
 
-    let monitor_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
+    let monitor_id = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id);
     if let Some(mid) = monitor_id {
-        arrange(
-            &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-                core: core.reborrow(),
-                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                x11: crate::contexts::X11Ctx {
-                    conn: x11.conn,
-                    screen_num: x11.screen_num,
-                },
-            }),
-            Some(mid),
-        );
+        arrange(&mut WmCtx::X11(ctx.reborrow()), Some(mid));
     }
 }
 
@@ -306,8 +309,8 @@ pub fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 /// the next client in the stack.
 ///
 /// Does nothing if `win` is already hidden.
-pub fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
-    let Some(client) = core.g.clients.get(&win) else {
+pub fn hide_x11(ctx: &mut WmCtxX11, win: WindowId) {
+    let Some(client) = ctx.core.g.clients.get(&win) else {
         return;
     };
 
@@ -317,14 +320,14 @@ pub fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 
     let Rect { x, y, w, h } = client.geo;
     let monitor_id = client.monitor_id;
-    let bar_height = core.g.cfg.bar_height;
-    let animated = core.g.animated;
+    let bar_height = ctx.core.g.cfg.bar_height;
+    let animated = ctx.core.g.animated;
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
         animate_client_x11(
-            core,
-            x11,
+            &mut ctx.core,
+            &ctx.x11,
             win,
             &Rect {
                 x,
@@ -337,50 +340,41 @@ pub fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
         );
     }
 
-    let root = core.g.x11.root;
+    let root = ctx.core.g.x11.root;
     let x11_win: Window = win.into();
 
     // Phase 1: grab server and suppress events
-    let _ = x11.conn.grab_server();
-    suppress_unmap_events(x11.conn, root, x11_win);
+    let _ = ctx.x11.conn.grab_server();
+    suppress_unmap_events(ctx.x11.conn, root, x11_win);
 
     // Phase 2: unmap and update state (no conn borrow needed)
-    let _ = x11.conn.unmap_window(x11_win);
-    let _ = x11.conn.flush();
-    set_client_state(core, x11, win, WM_STATE_ICONIC);
+    let _ = ctx.x11.conn.unmap_window(x11_win);
+    let _ = ctx.x11.conn.flush();
+    set_client_state(&ctx.core, &ctx.x11, win, WM_STATE_ICONIC);
 
-    if let Some(c) = core.g.clients.get_mut(&win) {
+    if let Some(c) = ctx.core.g.clients.get_mut(&win) {
         c.is_hidden = true;
     }
 
     // Phase 3: restore events and ungrab
-    restore_event_masks(x11.conn, root, x11_win);
-    let _ = x11.conn.ungrab_server();
-    let _ = x11.conn.flush();
+    restore_event_masks(ctx.x11.conn, root, x11_win);
+    let _ = ctx.x11.conn.ungrab_server();
+    let _ = ctx.x11.conn.flush();
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.
-    resize_x11(core, x11, win, &Rect { x, y, w, h }, false);
+    resize_x11(&mut ctx.core, &ctx.x11, win, &Rect { x, y, w, h }, false);
 
     let snext = monitor_id.and_then(|mid| {
-        core.g
+        ctx.core
+            .g
             .monitor(mid)
             .and_then(|m| m.stack.iter().find(|&&w| w != win).copied())
     });
-    crate::focus::focus_soft_x11(core, x11, snext);
+    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, snext);
 
     if let Some(mid) = monitor_id {
-        arrange(
-            &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-                core: core.reborrow(),
-                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                x11: crate::contexts::X11Ctx {
-                    conn: x11.conn,
-                    screen_num: x11.screen_num,
-                },
-            }),
-            Some(mid),
-        );
+        arrange(&mut WmCtx::X11(ctx.reborrow()), Some(mid));
     }
 }
 

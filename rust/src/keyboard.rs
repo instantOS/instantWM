@@ -240,7 +240,7 @@ pub fn up_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 
     if let Some(win) = selected_window {
-        crate::client::hide_x11(core, x11, win);
+        with_wm_ctx_x11(core, x11, |ctx| crate::client::hide(ctx, win));
     }
 }
 
