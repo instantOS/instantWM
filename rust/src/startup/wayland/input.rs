@@ -412,8 +412,16 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     ctx.core.g.drag.hover_resize.last_root_x = root_x;
     ctx.core.g.drag.hover_resize.last_root_y = root_y;
     if drag.move_mode {
-        let new_x = drag.win_start_geo.x + (root_x - drag.start_x);
-        let new_y = drag.win_start_geo.y + (root_y - drag.start_y);
+        let mut new_x = drag.win_start_geo.x + (root_x - drag.start_x);
+        let mut new_y = drag.win_start_geo.y + (root_y - drag.start_y);
+        apply_wayland_drag_snap(
+            &mut ctx,
+            drag.win,
+            drag.win_start_geo.w.max(1),
+            drag.win_start_geo.h.max(1),
+            &mut new_x,
+            &mut new_y,
+        );
         crate::client::resize(
             &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
             drag.win,
@@ -464,6 +472,39 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
         true,
     );
     true
+}
+
+fn apply_wayland_drag_snap(
+    ctx: &mut crate::contexts::WmCtxWayland<'_>,
+    win: WindowId,
+    w: i32,
+    h: i32,
+    new_x: &mut i32,
+    new_y: &mut i32,
+) {
+    let snap = ctx.core.g.cfg.snap;
+    let mon = ctx.core.g.selected_monitor();
+    let bw = ctx
+        .core
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.border_width.max(0))
+        .unwrap_or(0);
+    let width = w + bw * 2;
+    let height = h + bw * 2;
+
+    if (mon.work_rect.x - *new_x).abs() < snap {
+        *new_x = mon.work_rect.x;
+    } else if (mon.work_rect.x + mon.work_rect.w - (*new_x + width)).abs() < snap {
+        *new_x = mon.work_rect.x + mon.work_rect.w - width;
+    }
+
+    if (mon.work_rect.y - *new_y).abs() < snap {
+        *new_y = mon.work_rect.y;
+    } else if (mon.work_rect.y + mon.work_rect.h - (*new_y + height)).abs() < snap {
+        *new_y = mon.work_rect.y + mon.work_rect.h - height;
+    }
 }
 
 fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
