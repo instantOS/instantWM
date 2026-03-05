@@ -796,7 +796,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
 }
 
 fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
-    let mut ctx = wm.ctx();
+    let ctx = wm.ctx();
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };

@@ -85,7 +85,12 @@ pub(super) fn handle_keyboard(
                 let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
                 if crate::keyboard::handle_keysym(
                     &mut wm_ctx,
-                    u32::from(keysym.modified_sym()),
+                    keysym
+                        .raw_syms()
+                        .into_iter()
+                        .next()
+                        .map(u32::from)
+                        .unwrap_or(0),
                     mod_mask,
                 ) {
                     return FilterResult::Intercept(());
