@@ -412,7 +412,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let tiling = super::helpers::has_tiling_layout(ctx.g());
+    let tiling = super::helpers::has_tiling_layout(ctx.core());
 
     if is_floating || !tiling {
         if let Some(client) = ctx.g_mut().clients.get_mut(&win) {

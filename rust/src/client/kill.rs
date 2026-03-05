@@ -112,19 +112,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 
 /// Close an arbitrary window by its Window ID (X11-specific).
 fn close_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
-    let (is_locked, mon_mh) = core
-        .g
-        .clients
-        .get(&win)
-        .map(|c| {
-            let mh = c
-                .monitor_id
-                .and_then(|mid| core.g.monitor(mid))
-                .map(|m| m.monitor_rect.h)
-                .unwrap_or(0);
-            (c.islocked, mh)
-        })
-        .unwrap_or((true, 0));
+    let is_locked = core.g.clients.get(&win).map(|c| c.islocked).unwrap_or(true);
 
     if is_locked {
         return;

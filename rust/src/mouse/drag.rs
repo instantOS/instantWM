@@ -188,9 +188,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         .map(|c| c.snap_status != SnapPosition::None)
         .unwrap_or(false);
     if is_snapped {
-        if let WmCtx::X11(x11) = ctx {
-            reset_snap(x11, selected_window);
-        }
+        reset_snap(ctx, selected_window);
         return None;
     }
 

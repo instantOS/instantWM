@@ -278,7 +278,8 @@ pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
                     screen_num: x11.screen_num,
                 },
             };
-            reset_snap(&mut ctx_x11, win);
+            let mut ctx = WmCtx::X11(ctx_x11);
+            reset_snap(&mut ctx, win);
         }
         return;
     }
@@ -373,7 +374,8 @@ pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
                     screen_num: x11.screen_num,
                 },
             };
-            reset_snap(&mut ctx_x11, win);
+            let mut ctx = WmCtx::X11(ctx_x11);
+            reset_snap(&mut ctx, win);
         } else {
             let border_pixel = core
                 .g

@@ -172,36 +172,27 @@ pub fn apply_float_change(
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let selected_window = match ctx {
-        WmCtx::X11(x11) => {
-            let mon = x11.core.g.selected_monitor();
-            match mon.sel {
-                Some(sel) if Some(sel) != mon.overlay => {
-                    if let Some(c) = x11.core.g.clients.get(&sel) {
-                        if c.is_true_fullscreen() {
-                            return;
-                        }
-                    }
-                    Some(sel)
+    let mon = ctx.g().selected_monitor();
+    let selected_window = match mon.sel {
+        Some(sel) if Some(sel) != mon.overlay => {
+            if let Some(c) = ctx.g().clients.get(&sel) {
+                if c.is_true_fullscreen() {
+                    return;
                 }
-                _ => None,
             }
+            Some(sel)
         }
-        WmCtx::Wayland(_) => None,
+        _ => None,
     };
 
     let Some(win) = selected_window else { return };
 
-    let (is_floating, is_fixed) = match ctx {
-        WmCtx::X11(x11) => x11
-            .core
-            .g
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.isfixed))
-            .unwrap_or((false, false)),
-        WmCtx::Wayland(_) => (false, false),
-    };
+    let (is_floating, is_fixed) = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|c| (c.isfloating, c.isfixed))
+        .unwrap_or((false, false));
 
     let new_state = !is_floating || is_fixed;
     apply_float_change(ctx, win, new_state, true, true);
@@ -210,12 +201,10 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 }
 
 pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx {
-        WmCtx::X11(x11) => match x11.core.g.clients.get(&win) {
-            Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
-            None => return,
-        },
-        WmCtx::Wayland(_) => return,
+    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g().clients.get(&win)
+    {
+        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
+        None => return,
     };
 
     if is_fake_fullscreen {
@@ -229,12 +218,9 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating) = match ctx {
-        WmCtx::X11(x11) => match x11.core.g.clients.get(&win) {
-            Some(c) => (c.is_true_fullscreen(), c.isfloating),
-            None => return,
-        },
-        WmCtx::Wayland(_) => return,
+    let (is_true_fullscreen, is_floating) = match ctx.g().clients.get(&win) {
+        Some(c) => (c.is_true_fullscreen(), c.isfloating),
+        None => return,
     };
 
     if is_true_fullscreen {
