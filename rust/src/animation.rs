@@ -378,14 +378,6 @@ fn animate_client_wayland(
     }
 }
 
-pub fn up_scale_client(ctx: &mut WmCtx, win: WindowId) {
-    crate::client::geometry::scale_client(ctx, win, 110);
-}
-
-pub fn down_scale_client(ctx: &mut WmCtx, win: WindowId) {
-    crate::client::geometry::scale_client(ctx, win, 90);
-}
-
 fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
     if let Some(mon) = globals.monitor(sel_mon) {
         for (_c_win, c) in mon.iter_clients(&globals.clients) {

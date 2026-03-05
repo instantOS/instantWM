@@ -4,7 +4,6 @@ use std::rc::Rc;
 
 use super::commands::Cmd;
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
-use crate::animation::{down_scale_client, up_scale_client};
 use crate::client::{close_win, kill_client};
 use crate::focus::focus_stack;
 use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
@@ -115,12 +114,12 @@ pub fn get_buttons() -> Vec<Button> {
         }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollUp   => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                up_scale_client(ctx, win)
+                crate::client::geometry::scale_client(ctx, win, 110)
             }
         }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                down_scale_client(ctx, win)
+                crate::client::geometry::scale_client(ctx, win, 90)
             }
         }),
         // ── Status text ───────────────────────────────────────────────────
