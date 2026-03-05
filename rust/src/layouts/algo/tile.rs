@@ -40,7 +40,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         DEFAULT_FRAME_COUNT,
     );
 
-    let n = m.tiled_client_count(&ctx.g.clients) as u32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
 
     if n == 0 {
         return;
@@ -67,7 +67,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g.clients.get(&win)?;
+            let c = ctx.g_mut().clients.get(&win)?;
             if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
                 return None;
             }

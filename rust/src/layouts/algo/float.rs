@@ -50,16 +50,16 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let selected = m.selected_tags();
     // Disable animation for the duration of this arrange pass — floating
     // windows should snap into their positions instantly.
-    let animation_was_on = ctx.g.animated;
+    let animation_was_on = ctx.g_mut().animated;
     if animation_was_on {
-        ctx.g.animated = false;
+        ctx.g_mut().animated = false;
     }
 
     // ── apply pending snap positions ──────────────────────────────────────
     // Collect targets first to avoid borrowing ctx/m/clients immutably while
     // we mutate state during resize.
     let snap_targets: Vec<WindowId> = m
-        .iter_clients(&*ctx.g.clients)
+        .iter_clients(&*ctx.g_mut().clients)
         .filter_map(|(win, c)| {
             (c.is_visible_on_tags(selected) && c.snap_status != SnapPosition::None).then_some(win)
         })
@@ -78,7 +78,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // Restore animation flag.
     if animation_was_on {
-        ctx.g.animated = true;
+        ctx.g_mut().animated = true;
     }
 }
 
@@ -93,7 +93,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
 /// client window is not found.
 pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
-    let c = match ctx.g.clients.get(&win) {
+    let c = match ctx.g_mut().clients.get(&win) {
         Some(c) => c,
         None => return,
     };
@@ -139,7 +139,7 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
 /// overview layout), so the original position can be restored afterwards via
 /// `restore_floating_win`.
 pub fn save_floating(ctx: &mut WmCtx<'_>, win: WindowId) {
-    if let Some(c) = ctx.g.clients.get_mut(&win) {
+    if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
         c.float_geo = c.geo;
     }
 }

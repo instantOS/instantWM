@@ -151,38 +151,38 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Tag(tag_num) => {
             let tag = if tag_num == 0 { 2 } else { tag_num };
             if let Some(mask) = TagMask::single(tag as usize) {
-                view(&mut ctx.core, &ctx.x11, mask);
+                view(ctx.core_mut(), &ctx.x11, mask);
             }
             IpcResponse::ok("")
         }
         IpcCommand::Animated(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_animated(&mut ctx.core, action);
+            toggle_animated(ctx.core_mut(), action);
             IpcResponse::ok("")
         }
         IpcCommand::FocusFollowsMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_mouse(&mut ctx.core, action);
+            toggle_focus_follows_mouse(ctx.core_mut(), action);
             IpcResponse::ok("")
         }
         IpcCommand::FocusFollowsFloatMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_float_mouse(&mut ctx.core, action);
+            toggle_focus_follows_float_mouse(ctx.core_mut(), action);
             IpcResponse::ok("")
         }
         IpcCommand::AltTab(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            alt_tab_free(&mut ctx.core, &ctx.x11, action);
+            alt_tab_free(ctx.core_mut(), &ctx.x11, action);
             IpcResponse::ok("")
         }
         IpcCommand::AltTag(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_alt_tag(&mut ctx.core, &ctx.x11, action);
+            toggle_alt_tag(ctx.core_mut(), &ctx.x11, action);
             IpcResponse::ok("")
         }
         IpcCommand::HideTags(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_show_tags(&mut ctx.core, &ctx.x11, action);
+            toggle_show_tags(ctx.core_mut(), &ctx.x11, action);
             IpcResponse::ok("")
         }
         IpcCommand::Layout(val) => {
@@ -191,24 +191,24 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::Prefix(arg) => {
             let val = arg.unwrap_or(1);
-            command_prefix(&mut ctx.core, &ctx.x11, val);
+            command_prefix(ctx.core_mut(), &ctx.x11, val);
             IpcResponse::ok("")
         }
         IpcCommand::Border(arg) => {
             let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
             if let Some(win) = ctx.selected_client() {
-                set_border_width(&mut ctx.core, win, val as i32);
+                set_border_width(ctx.core_mut(), win, val as i32);
             }
             IpcResponse::ok("")
         }
         IpcCommand::SpecialNext(arg) => {
             let val = arg.unwrap_or(0);
-            set_special_next(&mut ctx.core, val);
+            set_special_next(ctx.core_mut(), val);
             IpcResponse::ok("")
         }
         IpcCommand::TagMon(dir) => {
             let direction = MonitorDirection::from(dir);
-            send_to_monitor(&mut ctx.core, &ctx.x11, direction);
+            send_to_monitor(ctx.core_mut(), &ctx.x11, direction);
             IpcResponse::ok("")
         }
         IpcCommand::FollowMon(dir) => {
@@ -226,11 +226,11 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::NameTag(name) => {
-            name_tag(&mut ctx.core, &ctx.x11, &name);
+            name_tag(ctx.core_mut(), &ctx.x11, &name);
             IpcResponse::ok("")
         }
         IpcCommand::ResetNameTag => {
-            reset_name_tag(&mut ctx.core, &ctx.x11);
+            reset_name_tag(ctx.core_mut(), &ctx.x11);
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadMake(name) => {
@@ -279,7 +279,7 @@ fn list_windows(wm: &Wm) -> IpcResponse {
 }
 
 fn close_window(ctx: &mut crate::contexts::WmCtx, parsed_id: Option<WindowId>) -> IpcResponse {
-    let target = parsed_id.or_else(|| ctx.g.selected_win());
+    let target = parsed_id.or_else(|| ctx.g_mut().selected_win());
     let Some(win) = target else {
         return IpcResponse::err("no target window");
     };
@@ -307,8 +307,8 @@ fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcRespon
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if ctx.backend_kind() == BackendKind::Wayland {
-        if let crate::backend::BackendRef::Wayland(wayland) = &ctx.backend {
+    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
+        if let crate::backend::BackendRef::Wayland(wayland) = ctx.backend() {
             if let Some(display) = wayland.xdisplay() {
                 cmd.env("DISPLAY", format!(":{display}"));
             }

@@ -24,26 +24,26 @@ struct OverlayPositionInfo {
 
 /// Get the overlay window for the selected monitor, if it exists.
 fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
-    ctx.g.selected_monitor().overlay
+    ctx.g_mut().selected_monitor().overlay
 }
 
 /// Check if the overlay window exists in the clients map.
 pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    get_overlay_win(ctx).is_some_and(|win| ctx.g.clients.contains(&win))
+    get_overlay_win(ctx).is_some_and(|win| ctx.g_mut().clients.contains(&win))
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).
 fn raise_window(ctx: &WmCtx, win: WindowId) {
-    ctx.backend.raise_window(win);
+    ctx.backend().raise_window(win);
 }
 
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g_mut().cfg.bar_height;
     let base_offset = if mon.showbar { bar_height } else { 0 };
 
     // Check if any visible client is fullscreen
-    for (_win, c) in mon.iter_clients(&*ctx.g.clients) {
+    for (_win, c) in mon.iter_clients(&*ctx.g_mut().clients) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
             return 0;
         }
@@ -180,7 +180,7 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 /// Create overlay with dependency injection.
 pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     // Overlay is X11-specific for now
-    if !matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
         log::warn!("create_overlay: overlay is X11-only for now");
         return;
     }
@@ -202,7 +202,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
     if Some(selected_window) == sel_overlay {
         reset_overlay(ctx);
-        for mon in ctx.g.monitors_iter_all_mut() {
+        for mon in ctx.g_mut().monitors_iter_all_mut() {
             mon.overlay = None;
         }
         return;
@@ -212,14 +212,14 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
     reset_overlay(ctx);
 
-    for (_i, mon) in ctx.g.monitors_iter_mut() {
+    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
         mon.overlay = Some(temp_client);
         mon.overlaystatus = 0;
     }
 
     save_border_width(ctx, temp_client);
 
-    if let Some(client) = ctx.g.clients.get_mut(&temp_client) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&temp_client) {
         client.border_width = 0;
         client.islocked = true;
 
@@ -229,11 +229,11 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     }
 
     let (overlay_mode, mon_ww, mon_wh) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = ctx.g_mut().selected_monitor();
         (mon.overlaymode, mon.work_rect.w, mon.work_rect.h)
     };
 
-    if let Some(client) = ctx.g.clients.get_mut(&temp_client) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&temp_client) {
         if overlay_mode.is_vertical() {
             client.geo.h = mon_wh / 3;
         } else {
@@ -249,7 +249,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
 pub fn reset_overlay(ctx: &mut WmCtx) {
     // Overlay is X11-specific for now
-    if !matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
         log::warn!("reset_overlay: overlay is X11-only for now");
         return;
     }
@@ -257,14 +257,14 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         return;
     }
 
-    let overlay_win = match ctx.g.selected_monitor().overlay {
+    let overlay_win = match ctx.g_mut().selected_monitor().overlay {
         Some(w) => w,
         None => return,
     };
 
-    let selected_monitor_id = ctx.g.selected_monitor_id();
+    let selected_monitor_id = ctx.g_mut().selected_monitor_id();
 
-    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
         client.border_width = client.old_border_width;
         client.issticky = false;
         client.islocked = false;
@@ -281,7 +281,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
     detach(ctx, overlay_win);
     detach_stack(ctx, overlay_win);
 
-    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
         client.monitor_id = Some(selmon_id);
         client.isfloating = true;
     }
@@ -292,7 +292,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
 
 /// Update overlay client properties for showing.
 fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: u32) {
-    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
         if !client.isfloating {
             client.isfloating = true;
         }
@@ -303,16 +303,16 @@ fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: 
 
 pub fn show_overlay(ctx: &mut WmCtx) {
     // Overlay is X11-specific for now
-    if !matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
         log::warn!("show_overlay: overlay is X11-only for now");
         return;
     }
-    if !overlay_exists(ctx) || ctx.g.monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.g_mut().monitors.is_empty() {
         return;
     }
 
-    let selmon_id = ctx.g.selected_monitor_id();
-    let mon = ctx.g.selected_monitor();
+    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let mon = ctx.g_mut().selected_monitor();
 
     if mon.overlaystatus != 0 {
         return;
@@ -327,7 +327,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     let yoffset = calculate_yoffset(ctx, mon, current_tag);
 
     // Mark overlay as shown on all monitors
-    for (_i, mon) in ctx.g.monitors_iter_mut() {
+    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
         mon.overlaystatus = 1;
     }
 
@@ -335,8 +335,8 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data in one place
     let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
-        let mon = ctx.g.monitor(selmon_id).unwrap();
-        let client = match ctx.g.clients.get(&overlay_win) {
+        let mon = ctx.g_mut().monitor(selmon_id).unwrap();
+        let client = match ctx.g_mut().clients.get(&overlay_win) {
             Some(c) => c,
             None => return,
         };
@@ -368,7 +368,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         resize(ctx, overlay_win, &initial_rect, true);
     }
 
-    let tags = ctx.g.selected_monitor().selected_tags();
+    let tags = ctx.g_mut().selected_monitor().selected_tags();
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
@@ -383,7 +383,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             0,
         );
 
-        if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
             client.issticky = true;
         }
     }
@@ -399,7 +399,7 @@ fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: WindowId, mon: &Monitor) -> 
 
 /// Clear overlay tags and sticky state.
 fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
-    if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
         client.issticky = false;
         client.tags = 0;
     }
@@ -407,23 +407,23 @@ fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
 
 /// Reset overlay status on all monitors.
 fn reset_all_overlay_status(ctx: &mut WmCtx) {
-    for (_i, mon) in ctx.g.monitors_iter_mut() {
+    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
         mon.overlaystatus = 0;
     }
 }
 
 pub fn hide_overlay(ctx: &mut WmCtx) {
     // Overlay is X11-specific for now
-    if !matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
         log::warn!("hide_overlay: overlay is X11-only for now");
         return;
     }
-    if !overlay_exists(ctx) || ctx.g.monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.g_mut().monitors.is_empty() {
         return;
     }
 
-    let selmon_id = ctx.g.selected_monitor_id();
-    let mon = ctx.g.selected_monitor();
+    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let mon = ctx.g_mut().selected_monitor();
 
     if mon.overlaystatus == 0 {
         return;
@@ -436,11 +436,11 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data
     let (is_locked, is_fullscreen, hide_info) = {
-        let client = match ctx.g.clients.get(&overlay_win) {
+        let client = match ctx.g_mut().clients.get(&overlay_win) {
             Some(c) => c,
             None => return,
         };
-        let mon = ctx.g.selected_monitor();
+        let mon = ctx.g_mut().selected_monitor();
 
         let hide_info = HideAnimationInfo {
             mode: mon.overlaymode,
@@ -480,7 +480,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
 pub fn set_overlay(ctx: &mut WmCtx) {
     // Overlay is X11-specific for now
-    if !matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
         log::warn!("set_overlay: overlay is X11-only for now");
         return;
     }
@@ -489,13 +489,13 @@ pub fn set_overlay(ctx: &mut WmCtx) {
     }
 
     let (overlaystatus, overlay_visible, _mon_tags) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = ctx.g_mut().selected_monitor();
         let overlay_win = match mon.overlay {
             Some(w) => w,
             None => return,
         };
 
-        let visible = if let Some(c) = ctx.g.clients.get(&overlay_win) {
+        let visible = if let Some(c) = ctx.g_mut().clients.get(&overlay_win) {
             let selected = mon.selected_tags();
             c.is_visible_on_tags(selected)
         } else {
@@ -516,16 +516,16 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 
 pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
     // Overlay is X11-specific for now
-    if !matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
+    if !matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
         log::warn!("set_overlay_mode: overlay is X11-only for now");
         return;
     }
-    for (_i, mon) in ctx.g.monitors_iter_mut() {
+    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
         mon.overlaymode = mode;
     }
 
     let (has_overlay, mon_wh, mon_ww, overlaystatus) = {
-        let mon = ctx.g.selected_monitor();
+        let mon = ctx.g_mut().selected_monitor();
         (
             mon.overlay.is_some(),
             mon.work_rect.h,
@@ -538,9 +538,9 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
         return;
     }
 
-    let mon = ctx.g.selected_monitor();
+    let mon = ctx.g_mut().selected_monitor();
     if let Some(overlay_win) = mon.overlay {
-        if let Some(client) = ctx.g.clients.get_mut(&overlay_win) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
             if mode.is_vertical() {
                 client.geo.h = mon_wh / 3;
             } else {

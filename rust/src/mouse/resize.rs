@@ -69,7 +69,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtxX11, btn: MouseButton) {
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.
 fn refresh_rate(ctx: &WmCtx) -> u32 {
-    if ctx.g.doubledraw {
+    if ctx.g_mut().doubledraw {
         REFRESH_RATE_HI
     } else {
         REFRESH_RATE_LO

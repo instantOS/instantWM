@@ -79,7 +79,7 @@ pub fn animate_client_x11(
     frames: i32,
     reset_pos: i32,
 ) {
-    // Handled below by !ctx.g.animated or frames <= 0 check.
+    // Handled below by !ctx.g_mut().animated or frames <= 0 check.
 
     let start_rect = match get_start_rect(core, win, reset_pos) {
         Some(r) => r,

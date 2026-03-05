@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::{direction_focus_x11, focus_stack_x11};
 use crate::layouts::arrange;
@@ -34,19 +34,19 @@ fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
             | ModMask::M5.bits())
 }
 
-pub fn handle_keysym(core: &mut CoreCtx, keysym: u32, mod_mask: u32) -> bool {
-    let numlockmask = core.g.x11.numlockmask;
+pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
+    let numlockmask = ctx.g().x11.numlockmask;
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
-    let action = core
-        .g
+    let action = ctx
+        .g()
         .cfg
         .keys
         .iter()
         .find(|key| keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned)
         .or_else(|| {
-            if core.selected_client().is_none() {
-                core.g.cfg.desktop_keybinds.iter().find(|key| {
+            if ctx.selected_client().is_none() {
+                ctx.g().cfg.desktop_keybinds.iter().find(|key| {
                     keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                 })
             } else {
@@ -56,23 +56,26 @@ pub fn handle_keysym(core: &mut CoreCtx, keysym: u32, mod_mask: u32) -> bool {
         .map(|key| Rc::clone(&key.action));
 
     if let Some(action) = action {
-        action(core);
+        action(ctx);
         true
     } else {
         false
     }
 }
 
-pub fn key_press_x11(core: &mut CoreCtx, x11: &X11Ctx, e: &KeyPressEvent) {
+pub fn key_press_x11(ctx: &mut WmCtx, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
 
-    let keysym = { keycode_to_keysym(x11.conn, keycode, 0) };
+    let keysym = match ctx {
+        WmCtx::X11(ref x11_ctx) => keycode_to_keysym(x11_ctx.x11.conn, keycode, 0),
+        _ => return,
+    };
 
-    let _ = handle_keysym(core, keysym, state.bits() as u32);
+    let _ = handle_keysym(ctx, keysym, state.bits() as u32);
 }
 
-pub fn key_release_x11(_core: &mut CoreCtx, _x11: &X11Ctx, _e: &KeyReleaseEvent) {}
+pub fn key_release_x11(_ctx: &mut WmCtx, _e: &KeyReleaseEvent) {}
 
 pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
     let conn = x11.conn;

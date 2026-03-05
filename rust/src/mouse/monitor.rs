@@ -34,13 +34,13 @@ use crate::types::*;
 /// * `c_win` - The client window to potentially move
 /// * `rect` - The window's geometry to check against monitor boundaries
 pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    if ctx.backend_kind() == BackendKind::Wayland {
+    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
         return;
     }
-    let new_mon = crate::types::find_monitor_by_rect(ctx.g.monitors.monitors(), rect)
-        .or(Some(ctx.g.selected_monitor_id()));
+    let new_mon = crate::types::find_monitor_by_rect(ctx.g_mut().monitors.monitors(), rect)
+        .or(Some(ctx.g_mut().selected_monitor_id()));
 
-    let current_mon = ctx.g.selected_monitor_id();
+    let current_mon = ctx.g_mut().selected_monitor_id();
 
     let Some(target) = new_mon else { return };
     if target == current_mon {
@@ -48,13 +48,13 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     }
 
     // Unfocus the window on the old monitor before moving it.
-    if let Some(cur_sel) = ctx.g.monitor(current_mon).and_then(|m| m.sel) {
+    if let Some(cur_sel) = ctx.g_mut().monitor(current_mon).and_then(|m| m.sel) {
         unfocus_win(ctx, cur_sel, false);
     }
 
     transfer_client(ctx, c_win, target);
 
-    ctx.g.set_selected_monitor(target);
+    ctx.g_mut().set_selected_monitor(target);
     crate::focus::focus_soft(ctx, None);
 }
 
@@ -69,10 +69,10 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 /// * `ctx` - The mouse context containing client and monitor state
 /// * `c_win` - The client window to check and potentially move
 pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
-    if ctx.backend_kind() == BackendKind::Wayland {
+    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
         return;
     }
-    let Some(c) = ctx.g.clients.get(&c_win) else {
+    let Some(c) = ctx.g_mut().clients.get(&c_win) else {
         return;
     };
     let rect = c.geo;

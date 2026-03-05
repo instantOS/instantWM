@@ -116,7 +116,7 @@ pub fn distribute_clients(ctx: &mut WmCtxX11) {
     let cell_h = work_rect.h / rows;
 
     let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: ctx.core,
+        core: &mut ctx.core,
         backend: ctx.backend,
         x11: ctx.x11,
     });

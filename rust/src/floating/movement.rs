@@ -33,7 +33,7 @@ pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
     }
 
     let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: ctx.core,
+        core: &mut ctx.core,
         backend: ctx.backend,
         x11: ctx.x11,
     });
@@ -71,7 +71,7 @@ pub fn key_resize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
 
     warp_cursor_to_client_x11(&ctx.core, &ctx.x11, win);
     let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: ctx.core,
+        core: &mut ctx.core,
         backend: ctx.backend,
         x11: ctx.x11,
     });
@@ -115,7 +115,7 @@ pub fn center_window(ctx: &mut WmCtxX11, win: WindowId) {
     let y_offset = if showbar { bar_height } else { -bar_height };
 
     let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: ctx.core,
+        core: &mut ctx.core,
         backend: ctx.backend,
         x11: ctx.x11,
     });

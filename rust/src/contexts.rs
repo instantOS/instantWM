@@ -108,43 +108,58 @@ pub enum WmCtx<'a> {
 }
 
 impl<'a> WmCtx<'a> {
-    pub fn selected_client(&self) -> Option<WindowId> {
+    // ── Backend-agnostic core accessors ──────────────────────────────────
+
+    /// Access the shared core context immutably.
+    pub fn core(&self) -> &CoreCtx<'_> {
         match self {
-            WmCtx::X11(ctx) => ctx.core.selected_client(),
-            WmCtx::Wayland(ctx) => ctx.core.selected_client(),
+            WmCtx::X11(ctx) => &ctx.core,
+            WmCtx::Wayland(ctx) => &ctx.core,
         }
+    }
+
+    /// Access the shared core context mutably.
+    pub fn core_mut(&mut self) -> &mut CoreCtx<'a> {
+        match self {
+            WmCtx::X11(ctx) => &mut ctx.core,
+            WmCtx::Wayland(ctx) => &mut ctx.core,
+        }
+    }
+
+    pub fn selected_client(&self) -> Option<WindowId> {
+        self.core().selected_client()
+    }
+
+    pub fn client(&self, win: WindowId) -> Option<&Client> {
+        self.core().client(win)
     }
 
     pub fn g(&self) -> &Globals {
-        match self {
-            WmCtx::X11(ctx) => ctx.core.g,
-            WmCtx::Wayland(ctx) => ctx.core.g,
-        }
+        self.core().g
     }
 
     pub fn g_mut(&mut self) -> &mut Globals {
-        match self {
-            WmCtx::X11(ctx) => ctx.core.g,
-            WmCtx::Wayland(ctx) => ctx.core.g,
-        }
+        self.core_mut().g
     }
 
-    pub fn backend(&self) -> &crate::backend::BackendRef<'_> {
+    pub fn quit(&mut self) {
+        self.core_mut().quit();
+    }
+
+    // ── Backend-agnostic operations (delegate through BackendOps) ───────
+
+    pub fn backend(&self) -> &BackendRef<'_> {
         match self {
             WmCtx::X11(ctx) => &ctx.backend,
             WmCtx::Wayland(ctx) => &ctx.backend,
         }
     }
 
-    pub fn backend_mut(&mut self) -> &mut crate::backend::BackendRef<'a> {
+    pub fn backend_mut(&mut self) -> &mut BackendRef<'a> {
         match self {
             WmCtx::X11(ctx) => &mut ctx.backend,
             WmCtx::Wayland(ctx) => &mut ctx.backend,
         }
-    }
-
-    pub fn backend_kind(&self) -> crate::backend::BackendKind {
-        self.backend().kind()
     }
 
     pub fn flush(&self) {
@@ -159,17 +174,23 @@ impl<'a> WmCtx<'a> {
         self.backend().restack(wins);
     }
 
-    pub fn x11_conn(&self) -> Option<crate::globals::X11Conn<'_>> {
-        self.backend()
-            .x11_conn()
-            .map(|(conn, screen_num)| crate::globals::X11Conn::new(conn, screen_num))
-    }
-
     pub fn resize_client(&self, win: WindowId, rect: Rect) {
         self.backend().resize_window(win, rect);
     }
 
     pub fn set_border(&self, win: WindowId, width: i32) {
         self.backend().set_border_width(win, width);
+    }
+
+    pub fn map_window(&self, win: WindowId) {
+        self.backend().map_window(win);
+    }
+
+    pub fn unmap_window(&self, win: WindowId) {
+        self.backend().unmap_window(win);
+    }
+
+    pub fn set_focus(&self, win: WindowId) {
+        self.backend().set_focus(win);
     }
 }

@@ -38,7 +38,7 @@ use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(&ctx.g.clients) as u32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
 
     if n == 0 {
         return;
@@ -50,7 +50,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g.clients.get(&win)?;
+            let c = ctx.g_mut().clients.get(&win)?;
             if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
                 return None;
             }
@@ -111,7 +111,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let right_n = stack_n.div_ceil(2);
     let left_n = stack_n / 2;
 
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g_mut().cfg.bar_height;
 
     // Right column (even indices in stack: 0, 2, 4...)
     if right_n > 0 {
@@ -160,7 +160,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if cell_h != m.work_rect.h {
-                if let Some(c) = ctx.g.clients.get(&win) {
+                if let Some(c) = ctx.g_mut().clients.get(&win) {
                     y = c.geo.y + c.total_height();
                 }
             }
@@ -214,7 +214,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if cell_h != m.work_rect.h {
-                if let Some(c) = ctx.g.clients.get(&win) {
+                if let Some(c) = ctx.g_mut().clients.get(&win) {
                     y = c.geo.y + c.total_height();
                 }
             }

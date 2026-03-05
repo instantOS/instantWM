@@ -43,7 +43,7 @@ fn win_to_client_ctx(core: &crate::contexts::CoreCtx, win: WindowId) -> Option<W
 
 pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
     match ctx {
-        WmCtx::X11(ctx) => button_press_x11(ctx, e),
+        WmCtx::X11(x11_ctx) => button_press_x11(x11_ctx, e),
         WmCtx::Wayland(_) => {
             // Wayland button handling not yet implemented
         }
@@ -204,7 +204,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.g.cfg.screen_width = e.width as i32;
     ctx.core.g.cfg.screen_height = e.height as i32;
 
-    update_geom(&mut ctx.core);
+    update_geom(&mut WmCtx::X11(ctx.reborrow()));
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
     arrange(&mut ctx.core, None);
 }
@@ -380,11 +380,13 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn key_press(ctx: &mut WmCtxX11<'_>, e: &KeyPressEvent) {
-    keyboard_key_press(&mut ctx.core, &ctx.x11, e);
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    keyboard_key_press(&mut wm_ctx, e);
 }
 
 pub fn key_release(ctx: &mut WmCtxX11<'_>, e: &KeyReleaseEvent) {
-    keyboard_key_release(&mut ctx.core, &ctx.x11, e);
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    keyboard_key_release(&mut wm_ctx, e);
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {

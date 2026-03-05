@@ -55,7 +55,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, FAST_ANIM_THRESHOLD, 3, 6);
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(&ctx.g.clients) as i32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as i32;
 
     if n == 0 {
         return;
@@ -85,7 +85,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut i: i32 = 0;
 
     for &win in &m.clients {
-        let Some(c) = ctx.g.clients.get(&win) else {
+        let Some(c) = ctx.g_mut().clients.get(&win) else {
             continue;
         };
 
@@ -138,7 +138,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// so there are never empty cells.
 pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(&ctx.g.clients) as u32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
 
     if n == 0 {
         return;
@@ -160,7 +160,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g.clients.get(&win)?;
+            let c = ctx.g_mut().clients.get(&win)?;
             if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
                 return None;
             }

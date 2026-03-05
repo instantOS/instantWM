@@ -10,7 +10,7 @@ use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 use crate::config::commands::Cmd;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::types::*;
 
 pub fn die(fmt: &str) -> ! {
@@ -48,14 +48,19 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
 }
 
 /// Spawn a command identified by a [`Cmd`] variant.
-pub fn spawn(core: &CoreCtx, wayland: Option<&WaylandCtx>, cmd: Cmd) {
-    let argv = core.g.cfg.external_commands.get(cmd);
+pub fn spawn(ctx: &WmCtx, cmd: Cmd) {
+    let argv = ctx.g().cfg.external_commands.get(cmd);
     if !argv.is_empty() {
-        let wayland_display_env: Option<CString> = wayland
-            .and_then(|wl| wl.backend.xdisplay())
-            .map(|d| format!(":{d}"))
-            .or_else(|| std::env::var("DISPLAY").ok())
-            .and_then(|d| CString::new(d).ok());
+        let wayland_display_env: Option<CString> = match ctx {
+            WmCtx::Wayland(wl) => wl
+                .wayland
+                .backend
+                .xdisplay()
+                .map(|d| format!(":{d}"))
+                .or_else(|| std::env::var("DISPLAY").ok())
+                .and_then(|d| CString::new(d).ok()),
+            WmCtx::X11(_) => None,
+        };
 
         let c_args: Vec<CString> = argv
             .iter()
@@ -117,10 +122,10 @@ pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
 /// Returns `None` if no monitor is selected (monitors list is empty).
 #[inline]
 pub fn get_sel_mon(ctx: &WmCtx) -> Option<MonitorId> {
-    if ctx.g.monitors.is_empty() {
+    if ctx.g().monitors.is_empty() {
         None
     } else {
-        Some(ctx.g.selected_monitor_id())
+        Some(ctx.g().selected_monitor_id())
     }
 }
 

@@ -34,13 +34,13 @@ use crate::types::{Monitor, Rect, WindowId};
 /// Called before repositioning a floating client so that its position can be
 /// restored when leaving overview mode.
 fn save_floating(ctx: &mut WmCtx<'_>, win: WindowId) {
-    if let Some(c) = ctx.g.clients.get_mut(&win) {
+    if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
         c.float_geo = c.geo;
     }
 }
 
 pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = ctx.g.clients.len();
+    let n = ctx.g_mut().clients.len();
     if n == 0 {
         return;
     }
@@ -53,10 +53,10 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     // ── snapshot monitor geometry ─────────────────────────────────────────
-    if ctx.g.monitors.is_empty() {
+    if ctx.g_mut().monitors.is_empty() {
         return;
     }
-    let mon = ctx.g.selected_monitor();
+    let mon = ctx.g_mut().selected_monitor();
     let (mon_x, mon_y, work_h, work_w, showbar) = (
         mon.monitor_rect.x,
         mon.monitor_rect.y,
@@ -65,7 +65,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         mon.showbar,
     );
 
-    let bar_height = ctx.g.cfg.bar_height;
+    let bar_height = ctx.g_mut().cfg.bar_height;
 
     // ── cell dimensions ───────────────────────────────────────────────────
     let cell_w = work_w / gridwidth;
@@ -80,7 +80,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place every client ────────────────────────────────────────────────
     for &win in &m.clients {
-        let c = match ctx.g.clients.get(&win) {
+        let c = match ctx.g_mut().clients.get(&win) {
             Some(c) => c,
             None => continue,
         };
@@ -115,7 +115,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         // Raise each client above the bar so nothing is obscured.
-        ctx.backend.raise_window(win);
+        ctx.backend().raise_window(win);
 
         // Advance to the next cell, wrapping to the next row.
         if cur_x + cell_w < mon_x + work_w {

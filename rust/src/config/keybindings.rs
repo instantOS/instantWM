@@ -45,6 +45,33 @@ macro_rules! key {
     };
 }
 
+macro_rules! key_x11 {
+    ($mods:expr, $sym:expr => move |$ctx:ident| $action:expr) => {
+        Key {
+            mod_mask: $mods,
+            keysym: $sym,
+            action: Rc::new(move |$ctx| {
+                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
+                    let $ctx = ctx_x11;
+                    $action
+                }
+            }),
+        }
+    };
+    ($mods:expr, $sym:expr => |$ctx:ident| $action:expr) => {
+        Key {
+            mod_mask: $mods,
+            keysym: $sym,
+            action: Rc::new(|$ctx| {
+                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
+                    let $ctx = ctx_x11;
+                    $action
+                }
+            }),
+        }
+    };
+}
+
 use crate::tags::tag_ops;
 use crate::types::{MonitorDirection, TagMask, TagSelection};
 
@@ -54,34 +81,34 @@ fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
 
     [
         // View: MOD+num
-        key!(MODKEY, keysym => move |ctx| {
+        key_x11!(MODKEY, keysym => move |ctx| {
             tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(tag_idx + 1))
         }),
         // Toggle view: MOD+Ctrl+num
-        key!(MODKEY | CONTROL, keysym => move |ctx| {
+        key_x11!(MODKEY | CONTROL, keysym => move |ctx| {
             let mask = TagMask::single(tag_idx + 1).unwrap();
             tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Toggle(mask))
         }),
         // Set client tag: MOD+Shift+num
-        key!(MODKEY | SHIFT, keysym => move |ctx| {
+        key_x11!(MODKEY | SHIFT, keysym => move |ctx| {
             if let Some(win) = ctx.selected_client() {
                 crate::tags::set_client_tag(&mut ctx.core, &ctx.x11, win, TagMask::single(tag_idx + 1).unwrap())
             }
         }),
         // Follow tag: MOD+Alt+num
-        key!(MODKEY | MOD1, keysym => move |ctx| {
+        key_x11!(MODKEY | MOD1, keysym => move |ctx| {
             if let Some(win) = ctx.selected_client() {
                 crate::tags::follow_tag(&mut ctx.core, &ctx.x11, win, TagMask::single(tag_idx + 1).unwrap())
             }
         }),
         // Toggle tag: MOD+Ctrl+Shift+num
-        key!(MODKEY | CONTROL | SHIFT, keysym => move |ctx| {
+        key_x11!(MODKEY | CONTROL | SHIFT, keysym => move |ctx| {
             if let Some(win) = ctx.selected_client() {
                 crate::tags::toggle_tag(&mut ctx.core, &ctx.x11, win, TagMask::single(tag_idx + 1).unwrap())
             }
         }),
         // Swap tags: MOD+Alt+Shift+num
-        key!(MODKEY | MOD1 | SHIFT, keysym => move |ctx| {
+        key_x11!(MODKEY | MOD1 | SHIFT, keysym => move |ctx| {
             crate::tags::swap_tags(&mut ctx.core, &ctx.x11, TagMask::single(tag_idx + 1).unwrap())
         }),
     ]
@@ -130,10 +157,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
-        key!(MODKEY, XK_DOWN => |ctx| down_key_x11(ctx, &ctx.x11, StackDirection::Next)),
-        key!(MODKEY, XK_UP   => |ctx| up_key_x11(ctx, &ctx.x11, StackDirection::Previous)),
-        key!(MS,     XK_DOWN => |ctx| down_press_x11(ctx, &ctx.x11)),
-        key!(MS,     XK_UP   => |ctx| up_press_x11(ctx, &ctx.x11)),
+        key_x11!(MODKEY, XK_DOWN => |ctx| down_key_x11(ctx, &ctx.x11, StackDirection::Next)),
+        key_x11!(MODKEY, XK_UP   => |ctx| up_key_x11(ctx, &ctx.x11, StackDirection::Previous)),
+        key_x11!(MS,     XK_DOWN => |ctx| down_press_x11(ctx, &ctx.x11)),
+        key_x11!(MS,     XK_UP   => |ctx| up_press_x11(ctx, &ctx.x11)),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 push_down(ctx, win)
@@ -148,33 +175,33 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC, XK_RIGHT => |ctx| direction_focus(ctx, Direction::Right)),
         key!(MC, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
         key!(MC, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
-        key!(MODKEY,  XK_TAB     => |ctx| last_view(&mut ctx.core, &ctx.x11)),
-        key!(MS,      XK_TAB     => |ctx| focus_last_client_x11(ctx, &ctx.x11)),
-        key!(MA,      XK_TAB     => |ctx| follow_view(&mut ctx.core, &ctx.x11)),
+        key_x11!(MODKEY,  XK_TAB     => |ctx| last_view(&mut ctx.core, &ctx.x11)),
+        key_x11!(MS,      XK_TAB     => |ctx| focus_last_client_x11(ctx, &ctx.x11)),
+        key_x11!(MA,      XK_TAB     => |ctx| follow_view(&mut ctx.core, &ctx.x11)),
         key!(MODKEY,  XK_LEFT    => |ctx| animation::anim_scroll(ctx, Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),
-        key!(MA,      XK_LEFT    => |ctx| move_client(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key!(MA,      XK_RIGHT   => |ctx| move_client(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key!(MS,      XK_LEFT    => |ctx| shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Left, 1)),
-        key!(MS,      XK_RIGHT   => |ctx| shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Right, 1)),
-        key!(MSC,     XK_RIGHT   => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key!(MSC,     XK_LEFT    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(MA,      XK_LEFT    => |ctx| move_client(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(MA,      XK_RIGHT   => |ctx| move_client(&mut ctx.core, &ctx.x11, Direction::Right)),
+        key_x11!(MS,      XK_LEFT    => |ctx| shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Left, 1)),
+        key_x11!(MS,      XK_RIGHT   => |ctx| shift_tag_by(&mut ctx.core, &ctx.x11, Direction::Right, 1)),
+        key_x11!(MSC,     XK_RIGHT   => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        key_x11!(MSC,     XK_LEFT    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
         // View all tags (overview mode)
-        key!(MODKEY,  XK_0       => |ctx| {
+        key_x11!(MODKEY,  XK_0       => |ctx| {
             tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::All)
         }),
         // Move client to all tags
-        key!(MS,      XK_0       => |ctx| {
+        key_x11!(MS,      XK_0       => |ctx| {
             use crate::types::TagMask;
             if let Some(win) = ctx.selected_client() {
                 crate::tags::set_client_tag(&mut ctx.core, &ctx.x11, win, TagMask::ALL_BITS)
             }
         }),
-        key!(MODKEY,  XK_O       => |ctx| win_view(&mut ctx.core, &ctx.x11)),
+        key_x11!(MODKEY,  XK_O       => |ctx| win_view(&mut ctx.core, &ctx.x11)),
         key!(MODKEY, XK_COMMA  => |ctx| focus_mon(ctx, MonitorDirection::PREV)),
         key!(MODKEY, XK_PERIOD => |ctx| focus_mon(ctx, MonitorDirection::NEXT)),
-        key!(MS,     XK_COMMA  => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, MonitorDirection::PREV)),
-        key!(MS,     XK_PERIOD => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, MonitorDirection::NEXT)),
+        key_x11!(MS,     XK_COMMA  => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, MonitorDirection::PREV)),
+        key_x11!(MS,     XK_PERIOD => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, MonitorDirection::NEXT)),
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),
@@ -185,7 +212,7 @@ pub fn get_keys() -> Vec<Key> {
                 center_window(ctx, win)
             }
         }),
-        key!(MS,   XK_W      => |ctx| warp_to_focus_x11(ctx, &ctx.x11)),
+        key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(ctx, &ctx.x11)),
         key!(MS,   XK_J      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
@@ -208,15 +235,15 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MS,   XK_M      => |ctx| move_mouse(ctx, crate::types::MouseButton::Left)),
         key!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
-        key!(MODKEY, XK_E  => |ctx| {
+        key_x11!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_overview(&mut ctx.core, &ctx.x11, TagMask::ALL_BITS)
         }),
-        key!(MS,     XK_E  => |ctx| {
+        key_x11!(MS,     XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_fullscreen_overview(&mut ctx.core, &ctx.x11, TagMask::ALL_BITS)
         }),
-        key!(MC,     XK_E  => |ctx| spawn(ctx, None, Cmd::InstantSkippy)),
+        key!(MC,     XK_E  => |ctx| spawn(ctx, Cmd::InstantSkippy)),
         key!(MODKEY, XK_W  => set_overlay),
         key!(MC,     XK_W  => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -225,21 +252,21 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
-        key!(MODKEY, XK_B  => |ctx| toggle_bar(ctx, &ctx.x11)),
-        key!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(ctx, &ctx.x11)),
+        key_x11!(MODKEY, XK_B  => |ctx| toggle_bar(ctx, &ctx.x11)),
+        key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(ctx, &ctx.x11)),
         key!(MC,     XK_F  => temp_fullscreen),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 toggle_sticky(&mut ctx.core, win)
             }
         }),
-        key!(MA,     XK_S  => |ctx| toggle_alt_tag(ctx, &ctx.x11, ToggleAction::Toggle)),
+        key_x11!(MA,     XK_S  => |ctx| toggle_alt_tag(ctx, &ctx.x11, ToggleAction::Toggle)),
         key!(MSA,    XK_S  => |ctx| toggle_animated(ctx, ToggleAction::Toggle)),
-        key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, &ctx.x11, ToggleAction::Toggle)),
+        key_x11!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, &ctx.x11, ToggleAction::Toggle)),
         key!(MSA,    XK_D  => toggle_double_draw),
-        key!(MS,     XK_SPACE => |ctx| space_toggle_x11(ctx, &ctx.x11)),
-        key!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, &ctx.x11, ToggleAction::Toggle)),
-        key!(MC,     XK_R     => |ctx| redraw_win(ctx, &ctx.x11)),
+        key_x11!(MS,     XK_SPACE => |ctx| space_toggle_x11(ctx, &ctx.x11)),
+        key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, &ctx.x11, ToggleAction::Toggle)),
+        key_x11!(MC,     XK_R     => |ctx| redraw_win(ctx, &ctx.x11)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 hide_window(ctx, win)
@@ -253,47 +280,47 @@ pub fn get_keys() -> Vec<Key> {
             }
         }),
         key!(MSC,    XK_Q   => |_| quit()),
-        key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, None, Cmd::Help)),
-        key!(MODKEY,  XK_F2 => |ctx| toggle_prefix(ctx, &ctx.x11)),
-        key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, None, Cmd::Term)),
-        key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, None, Cmd::Smart)),
-        key!(MC,     XK_SPACE           => |ctx| spawn(ctx, None, Cmd::InstantMenu)),
-        key!(MS,     XK_V               => |ctx| spawn(ctx, None, Cmd::ClipMenu)),
-        key!(MODKEY, XK_MINUS           => |ctx| spawn(ctx, None, Cmd::InstantMenuSt)),
-        key!(MODKEY, XK_V               => |ctx| spawn(ctx, None, Cmd::QuickMenu)),
-        key!(MODKEY, XK_A               => |ctx| spawn(ctx, None, Cmd::InstantAssist)),
-        key!(MS,     XK_A               => |ctx| spawn(ctx, None, Cmd::InstantRepeat)),
-        key!(MC,     XK_I               => |ctx| spawn(ctx, None, Cmd::InstantPacman)),
-        key!(MS,     XK_I               => |ctx| spawn(ctx, None, Cmd::InstantShare)),
-        key!(MODKEY, XK_N               => |ctx| spawn(ctx, None, Cmd::Nautilus)),
-        key!(MODKEY, XK_R               => |ctx| spawn(ctx, None, Cmd::Yazi)),
-        key!(MODKEY, XK_Y               => |ctx| spawn(ctx, None, Cmd::Panther)),
-        key!(MODKEY, XK_G               => |ctx| spawn(ctx, None, Cmd::Notify)),
-        key!(MODKEY, XK_X               => |ctx| spawn(ctx, None, Cmd::InstantSwitch)),
-        key!(MOD1,   XK_TAB             => |ctx| spawn(ctx, None, Cmd::ISwitch)),
-        key!(MODKEY, XK_DEAD_CIRCUMFLEX => |ctx| spawn(ctx, None, Cmd::CaretInstantSwitch)),
-        key!(MA,     XK_F               => |ctx| spawn(ctx, None, Cmd::Search)),
-        key!(MA,     XK_SPACE           => |ctx| spawn(ctx, None, Cmd::KeyLayoutSwitch)),
-        key!(MCA,    XK_L               => |ctx| spawn(ctx, None, Cmd::LangSwitch)),
-        key!(MC,     XK_L               => |ctx| spawn(ctx, None, Cmd::Slock)),
-        key!(MSC,    XK_L               => |ctx| spawn(ctx, None, Cmd::OneKeyLock)),
-        key!(MC,     XK_Q               => |ctx| spawn(ctx, None, Cmd::InstantShutdown)),
-        key!(MS,     XK_ESCAPE          => |ctx| spawn(ctx, None, Cmd::SystemMonitor)),
-        key!(MC,     XK_C               => |ctx| spawn(ctx, None, Cmd::ControlCenter)),
-        key!(MS,     XK_P               => |ctx| spawn(ctx, None, Cmd::Display)),
-        key!(MODKEY, XK_PRINT => |ctx| spawn(ctx, None, Cmd::Scrot)),
-        key!(MS,     XK_PRINT => |ctx| spawn(ctx, None, Cmd::FScrot)),
-        key!(MC,     XK_PRINT => |ctx| spawn(ctx, None, Cmd::ClipScrot)),
-        key!(MA,     XK_PRINT => |ctx| spawn(ctx, None, Cmd::FClipScrot)),
-        key!(0, XF86XK_MON_BRIGHTNESS_UP   => |ctx| spawn(ctx, None, Cmd::UpBright)),
-        key!(0, XF86XK_MON_BRIGHTNESS_DOWN => |ctx| spawn(ctx, None, Cmd::DownBright)),
-        key!(0, XF86XK_AUDIO_LOWER_VOLUME  => |ctx| spawn(ctx, None, Cmd::DownVol)),
-        key!(0, XF86XK_AUDIO_MUTE          => |ctx| spawn(ctx, None, Cmd::MuteVol)),
-        key!(0, XF86XK_AUDIO_RAISE_VOLUME  => |ctx| spawn(ctx, None, Cmd::UpVol)),
-        key!(0, XF86XK_AUDIO_PLAY          => |ctx| spawn(ctx, None, Cmd::PlayerPause)),
-        key!(0, XF86XK_AUDIO_PAUSE         => |ctx| spawn(ctx, None, Cmd::PlayerPause)),
-        key!(0, XF86XK_AUDIO_NEXT          => |ctx| spawn(ctx, None, Cmd::PlayerNext)),
-        key!(0, XF86XK_AUDIO_PREV          => |ctx| spawn(ctx, None, Cmd::PlayerPrevious)),
+        key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, Cmd::Help)),
+        key_x11!(MODKEY,  XK_F2 => |ctx| toggle_prefix(ctx, &ctx.x11)),
+        key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, Cmd::Term)),
+        key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, Cmd::Smart)),
+        key!(MC,     XK_SPACE           => |ctx| spawn(ctx, Cmd::InstantMenu)),
+        key!(MS,     XK_V               => |ctx| spawn(ctx, Cmd::ClipMenu)),
+        key!(MODKEY, XK_MINUS           => |ctx| spawn(ctx, Cmd::InstantMenuSt)),
+        key!(MODKEY, XK_V               => |ctx| spawn(ctx, Cmd::QuickMenu)),
+        key!(MODKEY, XK_A               => |ctx| spawn(ctx, Cmd::InstantAssist)),
+        key!(MS,     XK_A               => |ctx| spawn(ctx, Cmd::InstantRepeat)),
+        key!(MC,     XK_I               => |ctx| spawn(ctx, Cmd::InstantPacman)),
+        key!(MS,     XK_I               => |ctx| spawn(ctx, Cmd::InstantShare)),
+        key!(MODKEY, XK_N               => |ctx| spawn(ctx, Cmd::Nautilus)),
+        key!(MODKEY, XK_R               => |ctx| spawn(ctx, Cmd::Yazi)),
+        key!(MODKEY, XK_Y               => |ctx| spawn(ctx, Cmd::Panther)),
+        key!(MODKEY, XK_G               => |ctx| spawn(ctx, Cmd::Notify)),
+        key!(MODKEY, XK_X               => |ctx| spawn(ctx, Cmd::InstantSwitch)),
+        key!(MOD1,   XK_TAB             => |ctx| spawn(ctx, Cmd::ISwitch)),
+        key!(MODKEY, XK_DEAD_CIRCUMFLEX => |ctx| spawn(ctx, Cmd::CaretInstantSwitch)),
+        key!(MA,     XK_F               => |ctx| spawn(ctx, Cmd::Search)),
+        key!(MA,     XK_SPACE           => |ctx| spawn(ctx, Cmd::KeyLayoutSwitch)),
+        key!(MCA,    XK_L               => |ctx| spawn(ctx, Cmd::LangSwitch)),
+        key!(MC,     XK_L               => |ctx| spawn(ctx, Cmd::Slock)),
+        key!(MSC,    XK_L               => |ctx| spawn(ctx, Cmd::OneKeyLock)),
+        key!(MC,     XK_Q               => |ctx| spawn(ctx, Cmd::InstantShutdown)),
+        key!(MS,     XK_ESCAPE          => |ctx| spawn(ctx, Cmd::SystemMonitor)),
+        key!(MC,     XK_C               => |ctx| spawn(ctx, Cmd::ControlCenter)),
+        key!(MS,     XK_P               => |ctx| spawn(ctx, Cmd::Display)),
+        key!(MODKEY, XK_PRINT => |ctx| spawn(ctx, Cmd::Scrot)),
+        key!(MS,     XK_PRINT => |ctx| spawn(ctx, Cmd::FScrot)),
+        key!(MC,     XK_PRINT => |ctx| spawn(ctx, Cmd::ClipScrot)),
+        key!(MA,     XK_PRINT => |ctx| spawn(ctx, Cmd::FClipScrot)),
+        key!(0, XF86XK_MON_BRIGHTNESS_UP   => |ctx| spawn(ctx, Cmd::UpBright)),
+        key!(0, XF86XK_MON_BRIGHTNESS_DOWN => |ctx| spawn(ctx, Cmd::DownBright)),
+        key!(0, XF86XK_AUDIO_LOWER_VOLUME  => |ctx| spawn(ctx, Cmd::DownVol)),
+        key!(0, XF86XK_AUDIO_MUTE          => |ctx| spawn(ctx, Cmd::MuteVol)),
+        key!(0, XF86XK_AUDIO_RAISE_VOLUME  => |ctx| spawn(ctx, Cmd::UpVol)),
+        key!(0, XF86XK_AUDIO_PLAY          => |ctx| spawn(ctx, Cmd::PlayerPause)),
+        key!(0, XF86XK_AUDIO_PAUSE         => |ctx| spawn(ctx, Cmd::PlayerPause)),
+        key!(0, XF86XK_AUDIO_NEXT          => |ctx| spawn(ctx, Cmd::PlayerNext)),
+        key!(0, XF86XK_AUDIO_PREV          => |ctx| spawn(ctx, Cmd::PlayerPrevious)),
     ];
 
     for tag_idx in 0..9 {
@@ -305,38 +332,68 @@ pub fn get_keys() -> Vec<Key> {
 
 pub fn get_desktop_keybinds() -> Vec<Key> {
     vec![
-        key!(0, XK_RETURN => |ctx| spawn(ctx, None, Cmd::Term)),
-        key!(0, XK_R      => |ctx| spawn(ctx, None, Cmd::Yazi)),
-        key!(0, XK_E      => |ctx| spawn(ctx, None, Cmd::Editor)),
-        key!(0, XK_N      => |ctx| spawn(ctx, None, Cmd::Nautilus)),
-        key!(0, XK_SPACE  => |ctx| spawn(ctx, None, Cmd::Panther)),
-        key!(0, XK_F      => |ctx| spawn(ctx, None, Cmd::Firefox)),
-        key!(0, XK_A      => |ctx| spawn(ctx, None, Cmd::InstantAssist)),
-        key!(0, XK_F1     => |ctx| spawn(ctx, None, Cmd::Help)),
-        key!(0, XK_M      => |ctx| spawn(ctx, None, Cmd::Spoticli)),
-        key!(0, XK_C      => |ctx| spawn(ctx, None, Cmd::Code)),
-        key!(0, XK_Y      => |ctx| spawn(ctx, None, Cmd::Smart)),
-        key!(0, XK_V      => |ctx| spawn(ctx, None, Cmd::QuickMenu)),
-        key!(0, XK_TAB    => |ctx| spawn(ctx, None, Cmd::CaretInstantSwitch)),
-        key!(0, XK_PLUS   => |ctx| spawn(ctx, None, Cmd::UpVol)),
-        key!(0, XK_MINUS  => |ctx| spawn(ctx, None, Cmd::DownVol)),
-        key!(0, XK_H     => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key!(0, XK_L     => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key!(0, XK_LEFT  => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key!(0, XK_RIGHT => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key!(0, XK_K     => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key!(0, XK_J     => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
-        key!(0, XK_UP    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
-        key!(0, XK_DOWN  => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key!(0, XK_RETURN => |ctx| spawn(ctx, Cmd::Term)),
+        key!(0, XK_R      => |ctx| spawn(ctx, Cmd::Yazi)),
+        key!(0, XK_E      => |ctx| spawn(ctx, Cmd::Editor)),
+        key!(0, XK_N      => |ctx| spawn(ctx, Cmd::Nautilus)),
+        key!(0, XK_SPACE  => |ctx| spawn(ctx, Cmd::Panther)),
+        key!(0, XK_F      => |ctx| spawn(ctx, Cmd::Firefox)),
+        key!(0, XK_A      => |ctx| spawn(ctx, Cmd::InstantAssist)),
+        key!(0, XK_F1     => |ctx| spawn(ctx, Cmd::Help)),
+        key!(0, XK_M      => |ctx| spawn(ctx, Cmd::Spoticli)),
+        key!(0, XK_C      => |ctx| spawn(ctx, Cmd::Code)),
+        key!(0, XK_Y      => |ctx| spawn(ctx, Cmd::Smart)),
+        key!(0, XK_V      => |ctx| spawn(ctx, Cmd::QuickMenu)),
+        key!(0, XK_TAB    => |ctx| spawn(ctx, Cmd::CaretInstantSwitch)),
+        key!(0, XK_PLUS   => |ctx| spawn(ctx, Cmd::UpVol)),
+        key!(0, XK_MINUS  => |ctx| spawn(ctx, Cmd::DownVol)),
+        key_x11!(0, XK_H     => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(0, XK_L     => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        key_x11!(0, XK_LEFT  => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(0, XK_RIGHT => |ctx| crate::tags::view::scroll_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        key_x11!(0, XK_K     => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        key_x11!(0, XK_J     => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
+        key_x11!(0, XK_UP    => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Right)),
+        key_x11!(0, XK_DOWN  => |ctx| shift_view(&mut ctx.core, &ctx.x11, Direction::Left)),
         // Type-safe tag views with clear semantics
-        key!(0, XK_1 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(1))),
-        key!(0, XK_2 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(2))),
-        key!(0, XK_3 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(3))),
-        key!(0, XK_4 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(4))),
-        key!(0, XK_5 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(5))),
-        key!(0, XK_6 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(6))),
-        key!(0, XK_7 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(7))),
-        key!(0, XK_8 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(8))),
-        key!(0, XK_9 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(9))),
+        key_x11!(0, XK_1 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(1))),
+        key_x11!(0, XK_2 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(2))),
+        key_x11!(0, XK_3 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(3))),
+        key_x11!(0, XK_4 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(4))),
+        key_x11!(0, XK_5 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(5))),
+        key_x11!(0, XK_6 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(6))),
+        key_x11!(0, XK_7 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(7))),
+        key_x11!(0, XK_8 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(8))),
+        key_x11!(0, XK_9 => |ctx| tag_ops::view_selection(&mut ctx.core, &ctx.x11, TagSelection::Single(9))),
     ]
 }
+macro_rules! btn_x11 {
+    ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, $arg:ident| $action:expr) => {
+        Button {
+            target: $target,
+            mask: $mods,
+            button: $button,
+            action: Rc::new(|$ctx, $arg| {
+                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
+                    let $ctx = ctx_x11;
+                    $action
+                }
+            }),
+        }
+    };
+    ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, _| $action:expr) => {
+        Button {
+            target: $target,
+            mask: $mods,
+            button: $button,
+            action: Rc::new(|$ctx, _| {
+                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
+                    let $ctx = ctx_x11;
+                    $action
+                }
+            }),
+        }
+    };
+}
+
+

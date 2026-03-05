@@ -19,7 +19,7 @@ struct TiledClient {
 // ── deck ─────────────────────────────────────────────────────────────────────
 
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(&ctx.g.clients) as u32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
 
     if n == 0 {
         return;
@@ -41,7 +41,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g.clients.get(&win)?;
+            let c = ctx.g_mut().clients.get(&win)?;
             if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
                 return None;
             }
@@ -92,7 +92,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = m.tiled_client_count(&ctx.g.clients) as u32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
 
     if n == 0 {
         return;
@@ -116,7 +116,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g.clients.get(&win)?;
+            let c = ctx.g_mut().clients.get(&win)?;
             if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
                 return None;
             }
@@ -176,7 +176,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = m.tiled_client_count(&ctx.g.clients) as u32;
+    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
 
     if n == 0 {
         return;
@@ -200,7 +200,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g.clients.get(&win)?;
+            let c = ctx.g_mut().clients.get(&win)?;
             if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
                 return None;
             }

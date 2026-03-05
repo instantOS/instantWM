@@ -5,13 +5,13 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{change_window_attributes, ChangeWindowAttributesAux};
 
 fn set_x11_root_cursor(ctx: &WmCtx, cursor_index: usize) {
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+    let Some(conn) = ctx.x11_conn_REMOVED().map(|x11| x11.conn) else {
         return;
     };
-    if let Some(ref cursor) = ctx.g.cfg.cursors[cursor_index] {
+    if let Some(ref cursor) = ctx.g_mut().cfg.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
-            ctx.g.x11.root,
+            ctx.g_mut().x11.root,
             &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
         );
         let _ = conn.flush();
@@ -19,14 +19,14 @@ fn set_x11_root_cursor(ctx: &WmCtx, cursor_index: usize) {
 }
 
 pub fn set_cursor_default(ctx: &mut WmCtx) {
-    match &ctx.backend {
+    match ctx.backend() {
         BackendRef::X11(_) => set_x11_root_cursor(ctx, 0),
         BackendRef::Wayland(wayland) => wayland.set_cursor_icon_override(None),
     }
 }
 
 pub fn set_cursor_move(ctx: &mut WmCtx) {
-    match &ctx.backend {
+    match ctx.backend() {
         BackendRef::X11(_) => set_x11_root_cursor(ctx, 2),
         BackendRef::Wayland(wayland) => {
             wayland.set_cursor_icon_override(Some(smithay::input::pointer::CursorIcon::Grabbing));
@@ -35,7 +35,7 @@ pub fn set_cursor_move(ctx: &mut WmCtx) {
 }
 
 pub fn set_cursor_resize(ctx: &mut WmCtx, dir: Option<ResizeDirection>) {
-    match &ctx.backend {
+    match ctx.backend() {
         BackendRef::X11(_) => {
             let idx = dir.map(ResizeDirection::cursor_index).unwrap_or(1);
             set_x11_root_cursor(ctx, idx);

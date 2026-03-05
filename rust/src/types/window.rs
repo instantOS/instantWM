@@ -5,7 +5,7 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
@@ -48,7 +48,7 @@ pub struct Key {
     /// Keysym value.
     pub keysym: u32,
     /// Action to execute when key is pressed.
-    pub action: Rc<dyn Fn(&mut CoreCtx)>,
+    pub action: Rc<dyn Fn(&mut WmCtx)>,
 }
 
 impl Debug for Key {

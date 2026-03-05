@@ -11,10 +11,10 @@ const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
 
 pub fn unhide_one(ctx: &mut WmCtx) -> bool {
-    let clients: Vec<WindowId> = ctx.g.clients.keys().copied().collect();
+    let clients: Vec<WindowId> = ctx.g_mut().clients.keys().copied().collect();
 
     for win in clients {
-        if ctx.g.clients.is_hidden(win) {
+        if ctx.g_mut().clients.is_hidden(win) {
             crate::client::show(ctx, win);
             return true;
         }
@@ -32,7 +32,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let selected_window = match ctx.g.selected_monitor().sel {
+    let selected_window = match ctx.g_mut().selected_monitor().sel {
         Some(w) => w,
         None => return,
     };
@@ -42,7 +42,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     }
 
     let (was_scratchpad, old_tags) = {
-        if let Some(c) = ctx.g.clients.get(&selected_window) {
+        if let Some(c) = ctx.g_mut().clients.get(&selected_window) {
             let was_scratchpad = c.is_scratchpad();
             let old_tags = if !was_scratchpad { c.tags } else { 0 };
             (was_scratchpad, old_tags)
@@ -52,7 +52,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     };
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&selected_window) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) {
             client.scratchpad_name = name.to_string();
 
             if !was_scratchpad {
@@ -68,23 +68,23 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         }
     }
 
-    let selected_monitor_id = ctx.g.selected_monitor_id();
+    let selected_monitor_id = ctx.g_mut().selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
-    if !ctx.g.monitors.is_empty() {
+    if !ctx.g_mut().monitors.is_empty() {
         arrange(ctx, Some(selected_monitor_id));
     }
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let selected_window = match ctx.g.selected_monitor().sel {
+    let selected_window = match ctx.g_mut().selected_monitor().sel {
         Some(w) => w,
         None => return,
     };
 
     let (is_scratchpad, restore_tags, monitor_id, monitor_tags) = {
-        let monitor_tags = ctx.g.selected_monitor().selected_tags();
+        let monitor_tags = ctx.g_mut().selected_monitor().selected_tags();
 
-        if let Some(c) = ctx.g.clients.get(&selected_window) {
+        if let Some(c) = ctx.g_mut().clients.get(&selected_window) {
             (
                 c.is_scratchpad(),
                 c.scratchpad_restore_tags,
@@ -101,7 +101,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     }
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&selected_window) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) {
             client.scratchpad_name.clear();
             client.issticky = false;
             client.tags = if restore_tags != 0 {
@@ -125,7 +125,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     };
 
     let (current_mon, target_mon) = {
-        let current_mon = ctx.g.selected_monitor_id();
+        let current_mon = ctx.g_mut().selected_monitor_id();
         let target_mon = ctx
             .g
             .clients
@@ -136,7 +136,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     };
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&found) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
             client.issticky = true;
             client.isfloating = true;
         }
@@ -147,7 +147,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         detach_stack(ctx, found);
 
         {
-            if let Some(client) = ctx.g.clients.get_mut(&found) {
+            if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
                 client.monitor_id = Some(current_mon);
             }
         }
@@ -156,9 +156,9 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         attach_stack(ctx, found);
     }
 
-    let focusfollowsmouse = ctx.g.focusfollowsmouse;
-    if !ctx.g.monitors.is_empty() {
-        let mid = ctx.g.selected_monitor_id();
+    let focusfollowsmouse = ctx.g_mut().focusfollowsmouse;
+    if !ctx.g_mut().monitors.is_empty() {
+        let mid = ctx.g_mut().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
         restack(ctx, mid);
@@ -175,7 +175,7 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     };
 
     let (is_sticky, monitor_id) = {
-        if let Some(c) = ctx.g.clients.get(&found) {
+        if let Some(c) = ctx.g_mut().clients.get(&found) {
             (c.issticky, c.monitor_id)
         } else {
             return;
@@ -187,7 +187,7 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     }
 
     {
-        if let Some(client) = ctx.g.clients.get_mut(&found) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
             client.issticky = false;
             client.tags = SCRATCHPAD_MASK;
         }
@@ -205,7 +205,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_overview = !ctx.g.selected_monitor().is_tiling_layout();
+    let is_overview = !ctx.g_mut().selected_monitor().is_tiling_layout();
 
     if is_overview {
         return;
@@ -231,19 +231,19 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
-    if ctx.backend_kind() == BackendKind::Wayland {
+    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
         return;
     }
-    let root = ctx.g.x11.root;
+    let root = ctx.g_mut().x11.root;
 
-    let Some(conn) = ctx.x11_conn().map(|x11| x11.conn) else {
+    let Some(conn) = ctx.x11_conn_REMOVED().map(|x11| x11.conn) else {
         return;
     };
 
     if !name.is_empty() && name != "all" {
         let found = scratchpad_find(ctx, name);
         let visible = found
-            .map(|w| ctx.g.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
+            .map(|w| ctx.g_mut().clients.get(&w).map(|c| c.issticky).unwrap_or(false))
             .unwrap_or(false);
 
         let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
@@ -264,8 +264,8 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
     let mut status = String::from("ipc:scratchpads:");
     let mut first = true;
 
-    for mon in ctx.g.monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(&*ctx.g.clients) {
+    for mon in ctx.g_mut().monitors_iter_all() {
+        for (_c_win, c) in mon.iter_clients(&*ctx.g_mut().clients) {
             if c.is_scratchpad() {
                 if !first {
                     status.push(',');
@@ -301,8 +301,8 @@ fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
         return None;
     }
 
-    for mon in ctx.g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(&*ctx.g.clients) {
+    for mon in ctx.g_mut().monitors_iter_all() {
+        for (c_win, c) in mon.iter_clients(&*ctx.g_mut().clients) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);
             }

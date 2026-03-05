@@ -72,7 +72,7 @@ pub fn is_valid_window_size(
     height: i32,
     c_win: WindowId,
 ) -> bool {
-    let Some(c) = ctx.g.clients.get(&c_win) else {
+    let Some(c) = ctx.g_mut().clients.get(&c_win) else {
         return false;
     };
 
@@ -145,7 +145,7 @@ pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 ///   geometry, the function also returns early (see [`is_valid_window_size`]).
 /// * If the window is tiled it is promoted to floating before being resized.
 pub fn draw_window(ctx: &mut WmCtx) {
-    if ctx.backend_kind() == BackendKind::Wayland {
+    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
         return;
     }
     let Some(win) = ctx.selected_client() else {
@@ -169,7 +169,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     }
 
     // Check the rect is meaningfully different from the current geometry.
-    let is_different = ctx.g.clients.get(&win).is_some_and(|c| {
+    let is_different = ctx.g_mut().clients.get(&win).is_some_and(|c| {
         (c.geo.w - rect.w).abs() > 20
             || (c.geo.h - rect.h).abs() > 20
             || (c.geo.x - rect.x).abs() > 20

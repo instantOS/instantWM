@@ -8,20 +8,20 @@ use crate::layouts::arrange;
 use crate::types::*;
 
 pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         client.isfloating = true;
     }
 
     restore_border_width(ctx, win);
-    let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
-    ctx.backend.set_border_width(win, restored_bw);
+    let restored_bw = ctx.g_mut().clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+    ctx.backend().set_border_width(win, restored_bw);
 
     // Border color change is X11-specific for now
-    if matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
-        if let Some(conn) = ctx.backend.x11_conn() {
+    if matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
+        if let Some(conn) = ctx.backend().x11_conn() {
             let (conn, _screen_num) = conn;
             let x11_win: x11rb::protocol::xproto::Window = win.into();
-            if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+            if let Some(ref scheme) = ctx.g_mut().cfg.borderscheme {
                 let pixel = scheme.float_focus.bg.color.pixel;
                 let _ = x11rb::protocol::xproto::change_window_attributes(
                     conn,
@@ -42,7 +42,7 @@ pub fn save_floating_win(core: &mut CoreCtx, win: WindowId) {
 }
 
 pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let float_geo = ctx.g.clients.get(&win).map(|c| c.float_geo);
+    let float_geo = ctx.g_mut().clients.get(&win).map(|c| c.float_geo);
     if let Some(rect) = float_geo {
         crate::client::resize(ctx, win, &rect, false);
     }
@@ -56,21 +56,21 @@ pub fn apply_float_change(
     update_borders: bool,
 ) {
     if floating {
-        if let Some(client) = ctx.g.clients.get_mut(&win) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
             client.isfloating = true;
         }
 
         if update_borders {
             restore_border_width(ctx, win);
-            let restored_bw = ctx.g.clients.get(&win).map(|c| c.border_width).unwrap_or(0);
-            ctx.backend.set_border_width(win, restored_bw);
+            let restored_bw = ctx.g_mut().clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+            ctx.backend().set_border_width(win, restored_bw);
 
             // Border color change is X11-specific for now
-            if matches!(ctx.backend.kind(), crate::backend::BackendKind::X11) {
-                if let Some(conn) = ctx.backend.x11_conn() {
+            if matches!(ctx.backend().kind(), crate::backend::BackendKind::X11) {
+                if let Some(conn) = ctx.backend().x11_conn() {
                     let (conn, _screen_num) = conn;
                     let x11_win: x11rb::protocol::xproto::Window = win.into();
-                    if let Some(ref scheme) = ctx.g.cfg.borderscheme {
+                    if let Some(ref scheme) = ctx.g_mut().cfg.borderscheme {
                         let pixel = scheme.float_focus.bg.color.pixel;
                         let _ = x11rb::protocol::xproto::change_window_attributes(
                             conn,
@@ -84,7 +84,7 @@ pub fn apply_float_change(
             }
         }
 
-        let saved_geo = ctx.g.clients.get(&win).map(|c| c.float_geo);
+        let saved_geo = ctx.g_mut().clients.get(&win).map(|c| c.float_geo);
         let Some(saved_geo) = saved_geo else { return };
 
         if animate {
@@ -104,8 +104,8 @@ pub fn apply_float_change(
             resize(ctx, win, &saved_geo, false);
         }
     } else {
-        let client_count = ctx.g.clients.len();
-        if let Some(client) = ctx.g.clients.get_mut(&win) {
+        let client_count = ctx.g_mut().clients.len();
+        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
             client.isfloating = false;
             client.float_geo = client.geo;
 
@@ -121,10 +121,10 @@ pub fn apply_float_change(
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
     let selected_window = {
-        let mon = ctx.g.selected_monitor();
+        let mon = ctx.g_mut().selected_monitor();
         match mon.sel {
             Some(sel) if Some(sel) != mon.overlay => {
-                if let Some(c) = ctx.g.clients.get(&sel) {
+                if let Some(c) = ctx.g_mut().clients.get(&sel) {
                     if c.is_true_fullscreen() {
                         return;
                     }
@@ -146,11 +146,11 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let new_state = !is_floating || is_fixed;
     apply_float_change(ctx, win, new_state, true, true);
-    arrange(ctx, Some(ctx.g.selected_monitor_id()));
+    arrange(ctx, Some(ctx.g_mut().selected_monitor_id()));
 }
 
 pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
+    let (is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g_mut().clients.get(&win) {
         Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
         None => return,
     };
@@ -161,11 +161,11 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
 
     let new_state = !is_floating || is_fixed;
     apply_float_change(ctx, win, new_state, false, false);
-    arrange(ctx, Some(ctx.g.selected_monitor_id()));
+    arrange(ctx, Some(ctx.g_mut().selected_monitor_id()));
 }
 
 pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating) = match ctx.g.clients.get(&win) {
+    let (is_true_fullscreen, is_floating) = match ctx.g_mut().clients.get(&win) {
         Some(c) => (c.is_true_fullscreen(), c.isfloating),
         None => return,
     };
@@ -180,12 +180,12 @@ pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
     apply_float_change(ctx, win, true, false, false);
 
     if should_arrange {
-        arrange(ctx, Some(ctx.g.selected_monitor_id()));
+        arrange(ctx, Some(ctx.g_mut().selected_monitor_id()));
     }
 }
 
 pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating, is_fixed) = match ctx.g.clients.get(&win) {
+    let (is_true_fullscreen, is_floating, is_fixed) = match ctx.g_mut().clients.get(&win) {
         Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
         None => return,
     };
@@ -200,14 +200,14 @@ pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
     apply_float_change(ctx, win, false, false, false);
 
     if should_arrange {
-        arrange(ctx, Some(ctx.g.selected_monitor_id()));
+        arrange(ctx, Some(ctx.g_mut().selected_monitor_id()));
     }
 }
 
 pub fn temp_fullscreen(ctx: &mut WmCtx) {
     let (fullscreen_win, selected_window, animated) = {
-        let mon = ctx.g.selected_monitor();
-        (mon.fullscreen, mon.sel, ctx.g.animated)
+        let mon = ctx.g_mut().selected_monitor();
+        (mon.fullscreen, mon.sel, ctx.g_mut().animated)
     };
 
     if let Some(win) = fullscreen_win {
@@ -223,11 +223,11 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
             super::helpers::apply_size(ctx, win);
         }
 
-        ctx.g.selected_monitor_mut().fullscreen = None;
+        ctx.g_mut().selected_monitor_mut().fullscreen = None;
     } else {
         let Some(win) = selected_window else { return };
 
-        ctx.g.selected_monitor_mut().fullscreen = Some(win);
+        ctx.g_mut().selected_monitor_mut().fullscreen = Some(win);
 
         if super::helpers::check_floating(ctx, win) {
             save_floating_win(ctx, win);
@@ -235,15 +235,15 @@ pub fn temp_fullscreen(ctx: &mut WmCtx) {
     }
 
     if animated {
-        ctx.g.animated = false;
-        arrange(ctx, Some(ctx.g.selected_monitor_id()));
-        ctx.g.animated = true;
+        ctx.g_mut().animated = false;
+        arrange(ctx, Some(ctx.g_mut().selected_monitor_id()));
+        ctx.g_mut().animated = true;
     } else {
-        arrange(ctx, Some(ctx.g.selected_monitor_id()));
+        arrange(ctx, Some(ctx.g_mut().selected_monitor_id()));
     }
 
     // Raise window is backend-agnostic
-    if let Some(win) = ctx.g.selected_monitor().fullscreen {
-        ctx.backend.raise_window(win);
+    if let Some(win) = ctx.g_mut().selected_monitor().fullscreen {
+        ctx.backend().raise_window(win);
     }
 }
