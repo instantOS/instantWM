@@ -386,8 +386,35 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
         crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
             scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win, scale)
         }
-        crate::contexts::WmCtx::Wayland(_) => {
-            println!("Wayland scale_client not yet implemented");
+        crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
+            let (monitor_id, old_geo, border_width) = {
+                let c = match wl_ctx.core.g.clients.get(&win) {
+                    Some(c) => c,
+                    None => return,
+                };
+                (c.monitor_id, c.geo, c.border_width)
+            };
+            let mon_rect = monitor_id
+                .and_then(|mid| wl_ctx.core.g.monitors.get(mid).map(|m| m.monitor_rect))
+                .unwrap_or(old_geo);
+            let new_w = old_geo.w * scale / 100;
+            let new_h = old_geo.h * scale / 100;
+            let new_x = mon_rect.x + (mon_rect.w - new_w) / 2 - border_width;
+            let new_y = mon_rect.y + (mon_rect.h - new_h) / 2 - border_width;
+            let target = Rect {
+                x: new_x,
+                y: new_y,
+                w: new_w,
+                h: new_h,
+            };
+            if let Some(c) = wl_ctx.core.g.clients.get_mut(&win) {
+                c.old_geo = c.geo;
+                c.geo = target;
+                if c.isfloating {
+                    c.float_geo = target;
+                }
+            }
+            wl_ctx.backend.resize_window(win, target);
         }
     }
 }

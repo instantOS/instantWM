@@ -379,21 +379,11 @@ fn animate_client_wayland(
 }
 
 pub fn up_scale_client(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(ref mut x11_ctx) => up_scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win),
-        WmCtx::Wayland(_) => {
-            println!("Wayland up_scale_client not yet implemented");
-        }
-    }
+    crate::client::geometry::scale_client(ctx, win, 110);
 }
 
 pub fn down_scale_client(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(ref mut x11_ctx) => down_scale_client_x11(&mut x11_ctx.core, &x11_ctx.x11, win),
-        WmCtx::Wayland(_) => {
-            println!("Wayland down_scale_client not yet implemented");
-        }
-    }
+    crate::client::geometry::scale_client(ctx, win, 90);
 }
 
 fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
