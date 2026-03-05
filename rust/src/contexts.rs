@@ -12,16 +12,47 @@ use crate::globals::Globals;
 use crate::types::{Client, Rect, WindowId};
 use x11rb::rust_connection::RustConnection;
 
+/// Backend-specific bar painter enum.
+pub enum BarPainter<'a> {
+    Wayland(&'a mut crate::bar::wayland::WaylandBarPainter),
+    None,
+}
+
+impl<'a> BarPainter<'a> {
+    pub fn wayland(&mut self) -> Option<&mut crate::bar::wayland::WaylandBarPainter> {
+        match self {
+            BarPainter::Wayland(p) => Some(p),
+            _ => None,
+        }
+    }
+}
+
 pub struct CoreCtx<'a> {
     pub g: &'a mut Globals,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
-    pub bar_painter: &'a mut crate::bar::wayland::WaylandBarPainter,
+    pub bar_painter: BarPainter<'a>,
     pub focus: &'a mut FocusState,
 }
 
 impl<'a> CoreCtx<'a> {
     pub fn new(
+        g: &'a mut Globals,
+        running: &'a mut bool,
+        bar: &'a mut BarState,
+        bar_painter: BarPainter<'a>,
+        focus: &'a mut FocusState,
+    ) -> Self {
+        Self {
+            g,
+            running,
+            bar,
+            bar_painter,
+            focus,
+        }
+    }
+
+    pub fn new_with_wayland_painter(
         g: &'a mut Globals,
         running: &'a mut bool,
         bar: &'a mut BarState,
@@ -32,7 +63,22 @@ impl<'a> CoreCtx<'a> {
             g,
             running,
             bar,
-            bar_painter,
+            bar_painter: BarPainter::Wayland(bar_painter),
+            focus,
+        }
+    }
+
+    pub fn new_without_painter(
+        g: &'a mut Globals,
+        running: &'a mut bool,
+        bar: &'a mut BarState,
+        focus: &'a mut FocusState,
+    ) -> Self {
+        Self {
+            g,
+            running,
+            bar,
+            bar_painter: BarPainter::None,
             focus,
         }
     }
@@ -58,7 +104,16 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn reborrow(&mut self) -> CoreCtx<'_> {
-        CoreCtx::new(self.g, self.running, self.bar, self.bar_painter, self.focus)
+        CoreCtx {
+            g: self.g,
+            running: self.running,
+            bar: self.bar,
+            bar_painter: match &mut self.bar_painter {
+                BarPainter::Wayland(p) => BarPainter::Wayland(p),
+                BarPainter::None => BarPainter::None,
+            },
+            focus: self.focus,
+        }
     }
 }
 
@@ -112,7 +167,7 @@ pub enum WmCtx<'a> {
 }
 
 impl<'a> WmCtx<'a> {
-    // ── Backend-agnostic core accessors ──────────────────────────────────
+    // Backend-agnostic core accessors - use these for common operations
 
     /// Access the shared core context immutably.
     pub fn core(&self) -> &CoreCtx<'_> {
@@ -150,7 +205,7 @@ impl<'a> WmCtx<'a> {
         self.core_mut().quit();
     }
 
-    // ── Backend-agnostic operations (delegate through BackendOps) ───────
+    // Backend-agnostic operations (delegate through BackendOps)
 
     pub fn backend(&self) -> &BackendRef<'_> {
         match self {
@@ -197,4 +252,7 @@ impl<'a> WmCtx<'a> {
     pub fn set_focus(&self, win: WindowId) {
         self.backend().set_focus(win);
     }
+
+    // For backend-specific operations, use match on the enum directly
+    // instead of accessor methods that return Option.
 }

@@ -32,11 +32,7 @@ pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
         new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
-    let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: &mut ctx.core,
-        backend: ctx.backend,
-        x11: ctx.x11,
-    });
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     animate_client(
         &mut wm_ctx,
         win,
@@ -70,11 +66,7 @@ pub fn key_resize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
     let nh = geo.h + dh;
 
     warp_cursor_to_client_x11(&ctx.core, &ctx.x11, win);
-    let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: &mut ctx.core,
-        backend: ctx.backend,
-        x11: ctx.x11,
-    });
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     resize(
         &mut wm_ctx,
         win,
@@ -114,11 +106,7 @@ pub fn center_window(ctx: &mut WmCtxX11, win: WindowId) {
 
     let y_offset = if showbar { bar_height } else { -bar_height };
 
-    let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: &mut ctx.core,
-        backend: ctx.backend,
-        x11: ctx.x11,
-    });
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     resize(
         &mut wm_ctx,
         win,

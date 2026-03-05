@@ -11,7 +11,6 @@ use crate::types::*;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::Window;
 
-#[cfg(feature = "xinerama")]
 use x11rb::protocol::xinerama;
 
 /// Manages the collection of monitors and the current selection.
@@ -327,11 +326,8 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 }
 
 pub fn update_geom(ctx: &mut WmCtx) -> bool {
-    #[cfg(feature = "xinerama")]
-    {
-        if let Some(result) = update_from_xinerama(ctx) {
-            return result;
-        }
+    if let Some(result) = update_from_xinerama(ctx) {
+        return result;
     }
 
     let sw = ctx.g_mut().cfg.screen_width.max(1);
@@ -427,10 +423,8 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     true
 }
 
-#[cfg(feature = "xinerama")]
 fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
-    let x11 = ctx.x11_conn_REMOVED()?;
-    let conn = x11.conn;
+    let (conn, _screen_num) = ctx.x11_conn()?;
     let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
     if is_active.state == 0 {
         return None;

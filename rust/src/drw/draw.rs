@@ -39,7 +39,6 @@ use super::ffi::{
 };
 use super::font::Fnt;
 use super::utf8::utf8decode;
-use super::x11_supported;
 use crate::types::ColorScheme;
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
@@ -140,9 +139,6 @@ impl Drw {
     ///
     /// `display_name` overrides `$DISPLAY` when `Some`.
     pub fn new(display_name: Option<&str>) -> Result<Self, String> {
-        if !x11_supported() {
-            return Err("X11 backend disabled".to_string());
-        }
         unsafe {
             FcInit();
             XftInit();

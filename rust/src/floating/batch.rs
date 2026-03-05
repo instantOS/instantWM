@@ -33,9 +33,9 @@ use crate::types::*;
 pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
     let Some(mid) = monitor_id else { return };
 
-    let wins_to_save = collect_floating_wins(ctx.g, mid);
+    let wins_to_save = collect_floating_wins(ctx.g(), mid);
     for win in wins_to_save {
-        super::state::save_floating_win(&mut ctx.core, win);
+        super::state::save_floating_win(ctx.core_mut(), win);
     }
 }
 
@@ -46,7 +46,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
     let Some(mid) = monitor_id else { return };
 
-    let wins_to_restore = collect_floating_wins(ctx.g, mid);
+    let wins_to_restore = collect_floating_wins(ctx.g(), mid);
     for win in wins_to_restore {
         super::state::restore_floating_win(ctx, win);
     }
@@ -115,11 +115,7 @@ pub fn distribute_clients(ctx: &mut WmCtxX11) {
     let cell_w = work_rect.w / cols;
     let cell_h = work_rect.h / rows;
 
-    let mut wm_ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: &mut ctx.core,
-        backend: ctx.backend,
-        x11: ctx.x11,
-    });
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     for (i, win) in floating_wins.into_iter().enumerate() {
         let col = (i as i32) % cols;
         let row = (i as i32) / cols;

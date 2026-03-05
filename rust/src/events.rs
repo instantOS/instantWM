@@ -801,7 +801,7 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
     };
 
     match event {
-        x11rb::protocol::Event::ButtonPress(e) => button_press(&mut ctx, &e),
+        x11rb::protocol::Event::ButtonPress(e) => button_press_x11(&mut ctx, &e),
         x11rb::protocol::Event::ClientMessage(e) => client_message(&mut ctx, &e),
         x11rb::protocol::Event::ConfigureNotify(e) => configure_notify(&mut ctx, &e),
         x11rb::protocol::Event::ConfigureRequest(e) => configure_request(&mut ctx, &e),
@@ -1006,7 +1006,7 @@ pub fn setup_root(wm: &mut Wm) {
     let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
         return;
     };
-    update_geom(&mut ctx.core);
+    update_geom(&mut WmCtx::X11(ctx.reborrow()));
 }
 
 pub fn cleanup(wm: &mut Wm) {

@@ -279,7 +279,7 @@ pub fn get_keys() -> Vec<Key> {
                 kill_client(ctx, win)
             }
         }),
-        key!(MSC,    XK_Q   => |ctx| quit(ctx.core_mut())),
+        key!(MSC,    XK_Q   => |_| quit()),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, Cmd::Help)),
         key_x11!(MODKEY,  XK_F2 => |ctx| toggle_prefix(&mut ctx.core, &ctx.x11)),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, Cmd::Term)),
