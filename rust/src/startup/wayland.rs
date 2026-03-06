@@ -26,14 +26,14 @@ mod bar;
 pub mod cursor;
 mod init;
 pub mod input;
-mod render;
+pub mod render;
 
 use self::init::{sanitize_wayland_size, spawn_wayland_smoke_window};
 use self::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     handle_resize,
 };
-use self::render::{render_frame, wayland_border_elements_shared as border_elements_shared_impl};
+use self::render::render_frame;
 use super::autostart::run_autostart;
 use crate::startup::common_wayland::{init_wayland_globals, setup_wayland_socket, spawn_xwayland};
 
@@ -162,11 +162,4 @@ pub fn run() -> ! {
         })
         .expect("wayland event loop run");
     exit(0);
-}
-
-pub(crate) fn wayland_border_elements_shared(
-    g: &crate::globals::Globals,
-    state: &WaylandState,
-) -> Vec<SolidColorRenderElement> {
-    border_elements_shared_impl(g, state)
 }

@@ -707,7 +707,7 @@ fn render_drm_output(
     }
 
     // Window borders
-    for elem in crate::startup::wayland::wayland_border_elements_shared(&wm.g, state) {
+    for elem in crate::startup::wayland::render::wayland_border_elements_shared(&wm.g, state) {
         custom_elements.push(DrmExtras::Solid(elem));
     }
 

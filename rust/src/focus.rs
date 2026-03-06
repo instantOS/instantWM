@@ -238,7 +238,7 @@ pub fn focus_wayland(
 }
 
 /// Best-effort X11 focus helper for legacy call sites.
-pub fn focus_soft_x11(
+pub(crate) fn focus_soft_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut crate::globals::X11RuntimeConfig,
@@ -608,7 +608,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
     )
 }
 
-pub fn direction_focus_x11(
+pub(crate) fn direction_focus_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut crate::globals::X11RuntimeConfig,
@@ -753,7 +753,7 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
 
 //TODO: this seems redundant, there is a backend agnostic focus method, and
 //get_stack_focus_target is already agnostic
-pub fn focus_stack_x11(
+pub(crate) fn focus_stack_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut crate::globals::X11RuntimeConfig,

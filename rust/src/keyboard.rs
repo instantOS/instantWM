@@ -4,7 +4,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
-use crate::focus::{direction_focus_x11, focus_stack_x11};
+use crate::focus::{direction_focus, focus_stack};
 use crate::globals::X11RuntimeConfig;
 
 use crate::layouts::arrange;
@@ -292,12 +292,8 @@ pub fn up_key_x11(ctx_x11: &mut WmCtxX11<'_>, direction: StackDirection) {
     let is_overview = !ctx_x11.core.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
-        direction_focus_x11(
-            &mut ctx_x11.core,
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
-            Direction::Up,
-        );
+        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
+        direction_focus(&mut ctx, Direction::Up);
         return;
     }
 
@@ -327,24 +323,16 @@ pub fn up_key_x11(ctx_x11: &mut WmCtxX11<'_>, direction: StackDirection) {
         return;
     }
 
-    focus_stack_x11(
-        &mut ctx_x11.core,
-        &ctx_x11.x11,
-        ctx_x11.x11_runtime,
-        direction,
-    );
+    let mut ctx = WmCtx::X11(ctx_x11.reborrow());
+    focus_stack(&mut ctx, direction);
 }
 
 pub fn down_key_x11(ctx_x11: &mut WmCtxX11<'_>, direction: StackDirection) {
     let is_overview = ctx_x11.core.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
-        direction_focus_x11(
-            &mut ctx_x11.core,
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
-            Direction::Down,
-        );
+        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
+        direction_focus(&mut ctx, Direction::Down);
         return;
     }
 
@@ -358,12 +346,8 @@ pub fn down_key_x11(ctx_x11: &mut WmCtxX11<'_>, direction: StackDirection) {
         return;
     }
 
-    focus_stack_x11(
-        &mut ctx_x11.core,
-        &ctx_x11.x11,
-        ctx_x11.x11_runtime,
-        direction,
-    );
+    let mut ctx = WmCtx::X11(ctx_x11.reborrow());
+    focus_stack(&mut ctx, direction);
 }
 
 pub fn space_toggle_x11(ctx_x11: &mut WmCtxX11<'_>) {

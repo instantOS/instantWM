@@ -97,7 +97,7 @@ fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state
     }
 }
 
-pub(super) fn wayland_border_elements_shared(
+pub(crate) fn wayland_border_elements_shared(
     g: &crate::globals::Globals,
     state: &WaylandState,
 ) -> Vec<SolidColorRenderElement> {
