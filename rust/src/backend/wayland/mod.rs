@@ -157,4 +157,25 @@ impl BackendOps for WaylandBackend {
     fn window_title(&self, window: WindowId) -> Option<String> {
         self.window_title(window)
     }
+
+    fn set_keyboard_layout(
+        &self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) {
+        let layout_str = layout.to_owned();
+        let variant_str = variant.to_owned();
+        let options_str = options.map(|s| s.to_owned());
+        let model_str = model.map(|s| s.to_owned());
+        let _ = self.with_state(move |state: &mut WaylandState| {
+            state.set_keyboard_layout(
+                &layout_str,
+                &variant_str,
+                options_str.as_deref(),
+                model_str.as_deref(),
+            );
+        });
+    }
 }

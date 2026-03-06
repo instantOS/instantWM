@@ -31,6 +31,16 @@ pub trait BackendOps {
     fn window_title(&self, _window: WindowId) -> Option<String> {
         None
     }
+
+    /// Switch keyboard layout
+    fn set_keyboard_layout(
+        &self,
+        _layout: &str,
+        _variant: &str,
+        _options: Option<&str>,
+        _model: Option<&str>,
+    ) {
+    }
 }
 
 /// Owned backend implementation.
@@ -99,6 +109,17 @@ impl BackendOps for Backend {
 
     fn window_title(&self, window: WindowId) -> Option<String> {
         self.as_ref().window_title(window)
+    }
+
+    fn set_keyboard_layout(
+        &self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) {
+        self.as_ref()
+            .set_keyboard_layout(layout, variant, options, model)
     }
 }
 
@@ -203,6 +224,21 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.window_title(window),
             BackendRef::Wayland(wayland) => wayland.window_title(window),
+        }
+    }
+
+    fn set_keyboard_layout(
+        &self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) {
+        match self {
+            BackendRef::X11(x11) => x11.set_keyboard_layout(layout, variant, options, model),
+            BackendRef::Wayland(wayland) => {
+                wayland.set_keyboard_layout(layout, variant, options, model)
+            }
         }
     }
 }

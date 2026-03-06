@@ -13,39 +13,91 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum CommandKind {
     List,
-    Geom { window_id: Option<u32> },
-    Spawn { command: Vec<String> },
-    Close { window_id: Option<u32> },
+    Geom {
+        window_id: Option<u32>,
+    },
+    Spawn {
+        command: Vec<String>,
+    },
+    Close {
+        window_id: Option<u32>,
+    },
     Quit,
     Overlay,
     WarpFocus,
-    Tag { number: Option<u32> },
-    Animated { action: Option<String> },
-    FocusFollowsMouse { action: Option<String> },
-    FocusFollowsFloatMouse { action: Option<String> },
-    AltTab { action: Option<String> },
-    AltTag { action: Option<String> },
-    HideTags { action: Option<String> },
-    Layout { number: Option<u32> },
-    Prefix { value: Option<u32> },
-    Border { width: Option<u32> },
-    SpecialNext { value: Option<u32> },
-    TagMon { direction: Option<i32> },
-    FollowMon { direction: Option<i32> },
-    FocusMon { direction: Option<i32> },
-    FocusNMon { index: Option<i32> },
-    NameTag { name: String },
+    Tag {
+        number: Option<u32>,
+    },
+    Animated {
+        action: Option<String>,
+    },
+    FocusFollowsMouse {
+        action: Option<String>,
+    },
+    FocusFollowsFloatMouse {
+        action: Option<String>,
+    },
+    AltTab {
+        action: Option<String>,
+    },
+    AltTag {
+        action: Option<String>,
+    },
+    HideTags {
+        action: Option<String>,
+    },
+    Layout {
+        number: Option<u32>,
+    },
+    Prefix {
+        value: Option<u32>,
+    },
+    Border {
+        width: Option<u32>,
+    },
+    SpecialNext {
+        value: Option<u32>,
+    },
+    TagMon {
+        direction: Option<i32>,
+    },
+    FollowMon {
+        direction: Option<i32>,
+    },
+    FocusMon {
+        direction: Option<i32>,
+    },
+    FocusNMon {
+        index: Option<i32>,
+    },
+    NameTag {
+        name: String,
+    },
     ResetNameTag,
-    ScratchpadMake { name: Option<String> },
+    ScratchpadMake {
+        name: Option<String>,
+    },
     ScratchpadUnmake,
-    ScratchpadToggle { name: Option<String> },
-    ScratchpadShow { name: Option<String> },
-    ScratchpadHide { name: Option<String> },
-    ScratchpadStatus { name: Option<String> },
+    ScratchpadToggle {
+        name: Option<String>,
+    },
+    ScratchpadShow {
+        name: Option<String>,
+    },
+    ScratchpadHide {
+        name: Option<String>,
+    },
+    ScratchpadStatus {
+        name: Option<String>,
+    },
     /// Set keyboard layout by index (0-based).
-    KeyboardLayout { index: u32 },
+    KeyboardLayout {
+        index: u32,
+    },
     /// Set keyboard layout by name (e.g. "us", "de").
-    KeyboardLayoutName { name: String },
+    KeyboardLayoutName {
+        name: String,
+    },
     /// Cycle to the next keyboard layout.
     NextKeyboardLayout,
     /// Cycle to the previous keyboard layout.

@@ -5,6 +5,7 @@
 //! TOML config under `[keyboard]` and can be switched at runtime via
 //! keybindings or IPC.
 
+use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use std::process::Command;
 
@@ -18,11 +19,7 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
         .layouts
         .get(index)
         .ok_or_else(|| format!("layout index {index} out of range"))?;
-    let variant = state
-        .variants
-        .get(index)
-        .map(|s| s.as_str())
-        .unwrap_or("");
+    let variant = state.variants.get(index).map(|s| s.as_str()).unwrap_or("");
     let options = state.options.clone();
     let model = state.model.clone();
 
@@ -44,6 +41,10 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
 
     cmd.spawn()
         .map_err(|e| format!("failed to run setxkbmap: {e}"))?;
+
+    // Also apply via the backend abstraction (for Smithay wayland native layout)
+    ctx.backend()
+        .set_keyboard_layout(layout, variant, options.as_deref(), model.as_deref());
 
     ctx.g_mut().keyboard_layout.current = index;
     Ok(())

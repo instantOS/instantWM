@@ -600,6 +600,27 @@ impl WaylandState {
         }
     }
 
+    pub fn set_keyboard_layout(
+        &mut self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) {
+        let config = XkbConfig {
+            layout,
+            variant,
+            options: options.map(|s| s.to_string()),
+            model: model.unwrap_or(""),
+            rules: "",
+        };
+
+        let keyboard = self.keyboard.clone();
+        if let Err(e) = keyboard.set_xkb_config(self, config) {
+            log::error!("failed to apply wayland keyboard layout: {}", e);
+        }
+    }
+
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
