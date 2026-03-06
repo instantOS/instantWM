@@ -193,7 +193,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     };
 
     if sel_fullscreen {
-        crate::floating::temp_fullscreen(ctx);
+        crate::floating::toggle_maximized(ctx);
     }
 
     if Some(selected_window) == sel_overlay {
@@ -443,7 +443,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
     };
 
     if is_fullscreen {
-        crate::floating::temp_fullscreen(ctx);
+        crate::floating::toggle_maximized(ctx);
     }
 
     clear_overlay_state(ctx, overlay_win);

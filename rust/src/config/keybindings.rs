@@ -6,7 +6,7 @@ use super::commands::Cmd;
 use crate::animation;
 use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
-use crate::floating::{center_window, distribute_clients, key_resize, temp_fullscreen};
+use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus_x11};
 use crate::keyboard::{down_key_x11, down_press_x11, space_toggle_x11, up_key_x11, up_press_x11};
 use crate::layouts::{
@@ -265,7 +265,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
         key_x11!(MODKEY, XK_B  => |ctx| toggle_bar(&mut ctx.core, &ctx.x11)),
         key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(&mut ctx.core, &ctx.x11)),
-        key!(MC,     XK_F  => temp_fullscreen),
+        key!(MC,     XK_F  => toggle_maximized),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 toggle_sticky(ctx.core_mut(), win)

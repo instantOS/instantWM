@@ -245,83 +245,73 @@ pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
     }
 }
 
-pub fn temp_fullscreen(ctx: &mut WmCtx) {
-    let (fullscreen_win, selected_window, animated) = match ctx {
-        WmCtx::X11(x11) => {
-            let mon = x11.core.g.selected_monitor();
-            (mon.fullscreen, mon.sel, x11.core.g.animated)
-        }
-        WmCtx::Wayland(_) => (None, None, false),
-    };
+/// Toggle the "maximized" state of the selected window.
+///
+/// This is a WM-level zoom: the window expands to fill the work area without
+/// removing its border or setting `_NET_WM_STATE_FULLSCREEN`.  It is distinct
+/// from both real fullscreen (`is_fullscreen`) and fake fullscreen.
+///
+/// `mon.fullscreen` tracks which window (if any) is currently maximized this
+/// way.  Toggling on saves the window's floating geometry so it can be
+/// restored on toggle-off.
+///
+/// Works on both X11 and Wayland.  The X11-specific `apply_size` nudge is
+/// only applied on X11, since Wayland geometry is driven by the compositor
+/// render loop and needs no such hint.
+pub fn toggle_maximized(ctx: &mut WmCtx) {
+    // Read all the state we need through the backend-agnostic core.
+    let maximized_win = ctx.g().selected_monitor().fullscreen;
+    let selected_window = ctx.g().selected_monitor().sel;
+    let animated = ctx.g().animated;
 
-    if let Some(win) = fullscreen_win {
-        let is_floating = match ctx {
-            WmCtx::X11(x11) => x11
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.isfloating)
-                .unwrap_or(false),
-            WmCtx::Wayland(_) => false,
-        };
+    if let Some(win) = maximized_win {
+        // --- Exit maximized state ---
 
-        if is_floating
-            || !super::helpers::has_tiling_layout(match ctx {
-                WmCtx::X11(x11) => &x11.core,
-                WmCtx::Wayland(_) => panic!("Wayland not supported"),
-            })
-        {
+        let is_floating = ctx
+            .g()
+            .clients
+            .get(&win)
+            .map(|c| c.isfloating)
+            .unwrap_or(false);
+
+        // For floating windows (or monitors with no tiling layout), restore
+        // the saved pre-maximized geometry.
+        if is_floating || !super::helpers::has_tiling_layout(ctx.core()) {
             restore_floating_win(ctx, win);
-            match ctx {
-                WmCtx::X11(x11) => super::helpers::apply_size(&mut x11.core, &x11.x11, win),
-                WmCtx::Wayland(_) => {}
+            // On X11, nudge the window by 1 px so the server re-evaluates
+            // size hints and repaints the frame correctly.
+            if let WmCtx::X11(x11) = ctx {
+                super::helpers::apply_size(&mut x11.core, &x11.x11, win);
             }
         }
 
-        match ctx {
-            WmCtx::X11(x11) => x11.core.g.selected_monitor_mut().fullscreen = None,
-            WmCtx::Wayland(_) => {}
-        }
+        ctx.g_mut().selected_monitor_mut().fullscreen = None;
     } else {
+        // --- Enter maximized state ---
+
         let Some(win) = selected_window else { return };
 
-        match ctx {
-            WmCtx::X11(x11) => x11.core.g.selected_monitor_mut().fullscreen = Some(win),
-            WmCtx::Wayland(_) => {}
-        }
+        ctx.g_mut().selected_monitor_mut().fullscreen = Some(win);
 
-        if super::helpers::check_floating(
-            match ctx {
-                WmCtx::X11(x11) => &x11.core,
-                WmCtx::Wayland(_) => panic!("Wayland not supported"),
-            },
-            win,
-        ) {
+        // Save floating geometry so we can restore it on toggle-off.
+        if super::helpers::check_floating(ctx.core(), win) {
             save_floating_win(ctx, win);
         }
     }
 
+    // Run the layout pass.  Disable animations temporarily so the
+    // maximize/restore is instantaneous rather than sliding.
+    let selmon_id = ctx.g().selected_monitor_id();
     if animated {
-        match ctx {
-            WmCtx::X11(x11) => x11.core.g.animated = false,
-            WmCtx::Wayland(_) => {}
-        }
-        let selmon_id = ctx.g().selected_monitor_id();
+        ctx.g_mut().animated = false;
         arrange(ctx, Some(selmon_id));
-        match ctx {
-            WmCtx::X11(x11) => x11.core.g.animated = true,
-            WmCtx::Wayland(_) => {}
-        }
+        ctx.g_mut().animated = true;
     } else {
-        let selmon_id = ctx.g().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     }
 
-    if let Some(win) = match ctx {
-        WmCtx::X11(x11) => x11.core.g.selected_monitor().fullscreen,
-        WmCtx::Wayland(_) => None,
-    } {
+    // Raise the newly maximized window above everything else.
+    if let Some(win) = ctx.g().selected_monitor().fullscreen {
         ctx.backend().raise_window(win);
     }
 }

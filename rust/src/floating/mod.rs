@@ -4,7 +4,7 @@
 //!
 //! - [`snap`]      — snap positions, the navigation matrix, apply/change/reset snap
 //! - [`state`]     — save/restore float geometry & border width; apply_float_change;
-//!                   toggle/set/change floating state; temp_fullscreen
+//!                   toggle/set/change floating state; toggle_maximized
 //! - [`movement`]  — keyboard move, resize, center window, scale client
 //! - [`batch`]     — save/restore all floating positions, distribute clients
 //! - [`helpers`]   — check_floating, visible_client, has_tiling_layout, apply_size
@@ -33,5 +33,5 @@ pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 // ── state ────────────────────────────────────────────────────────────────────
 
 pub use state::{
-    save_floating_win, set_floating_in_place, set_tiled, temp_fullscreen, toggle_floating,
+    save_floating_win, set_floating_in_place, set_tiled, toggle_floating, toggle_maximized,
 };
