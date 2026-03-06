@@ -145,18 +145,13 @@ impl BarState {
     }
 }
 
-//TODO: remove, redundant
-pub(crate) fn layout_symbol(m: &Monitor) -> String {
-    m.layout_symbol()
-}
-
 pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
     // Use cached width if available
     let width = if core.bar.layout_symbol_width > 0 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = layout_symbol(m);
+        let symbol = m.layout_symbol();
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
     width + core.g.cfg.horizontal_padding

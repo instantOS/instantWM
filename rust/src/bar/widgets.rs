@@ -126,7 +126,7 @@ pub(crate) fn draw_layout_indicator(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
     let horizontal_padding = ctx.g.cfg.horizontal_padding;
-    let ltsymbol = super::layout_symbol(m);
+    let ltsymbol = m.layout_symbol();
     let text_w = painter.text_width(&ltsymbol);
     ctx.bar.layout_symbol_width = text_w;
     let w = (text_w + horizontal_padding).max(horizontal_padding);
