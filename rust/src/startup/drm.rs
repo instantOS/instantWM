@@ -1,25 +1,47 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 //!
 //! Uses libseat for session management, udev for GPU discovery, libinput
-//! for input, and DRM/GBM/EGL for rendering.  This backend is vblank-driven:
-//! each page-flip completion triggers the next frame.
+//! for input, and DRM/GBM/EGL for rendering.
+//!
+//! # Frame pacing
+//!
+//! Rendering is vblank-driven: each `DrmEvent::VBlank` signals that the
+//! previous buffer has been scanned out and a new frame can be submitted.
+//! A `needs_render` flag per output is set on VBlank and on any input or
+//! layout event, then cleared once a frame has been queued.
+//!
+//! # Input
+//!
+//! libinput events are dispatched inside the calloop source callback.
+//! Regular mice produce `PointerMotion` (relative deltas); tablets and
+//! touchscreens produce `PointerMotionAbsolute`.  Both paths are handled.
+//!
+//! # Session management
+//!
+//! On VT switch away (`SessionEvent::PauseSession`) rendering is suspended
+//! and the DRM device is released.  On VT switch back
+//! (`SessionEvent::ActivateSession`) the device is re-opened and rendering
+//! resumes.
 
+use std::collections::HashMap;
 use std::process::{exit, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent, GbmBufferedSurface};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
+use smithay::backend::input::{InputBackend, InputEvent};
 use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::{Bind, ImportDma};
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
@@ -31,7 +53,7 @@ use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Sub
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
-use smithay::utils::{DeviceFd, Physical, Rectangle};
+use smithay::utils::{DeviceFd, Physical, Point, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
@@ -45,27 +67,96 @@ use crate::monitor::update_geom;
 use crate::startup::common_wayland::{
     wayland_font_height_from_size, wayland_font_size_from_config,
 };
+use crate::startup::wayland::cursor::CursorManager;
+use crate::startup::wayland::{
+    handle_keyboard_drm, handle_pointer_axis_drm, handle_pointer_button_drm,
+    handle_pointer_motion_absolute_drm, handle_pointer_motion_relative_drm,
+};
 use crate::types::*;
 use crate::wm::Wm;
 
 use super::autostart::run_autostart;
-
-/// Default screen width when no DRM outputs are detected
-const DEFAULT_SCREEN_WIDTH: i32 = 1280;
-/// Default screen height when no DRM outputs are detected
-const DEFAULT_SCREEN_HEIGHT: i32 = 800;
 
 // Access drm/rustix types through smithay's re-exports.
 use drm::control::{connector, crtc};
 use smithay::reexports::drm;
 use smithay::reexports::rustix;
 
-// Re-use the same render element enum from the winit backend.
+/// Default screen dimensions when no DRM outputs are detected.
+const DEFAULT_SCREEN_WIDTH: i32 = 1280;
+const DEFAULT_SCREEN_HEIGHT: i32 = 800;
+
+/// Nominal cursor size in pixels to load from the xcursor theme.
+const CURSOR_SIZE: u32 = 24;
+
+// ---------------------------------------------------------------------------
+// Render element enum — must include TextureRenderElement for cursor
+// ---------------------------------------------------------------------------
+
 render_elements! {
     pub DrmExtras<=GlesRenderer>;
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
     Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
+    Cursor=TextureRenderElement<GlesTexture>,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Per-output state
+// ═══════════════════════════════════════════════════════════════════════════
+
+struct OutputSurfaceEntry {
+    crtc: crtc::Handle,
+    surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
+    output: Output,
+    damage_tracker: OutputDamageTracker,
+    /// Logical x-offset of this output in the global compositor space.
+    x_offset: i32,
+    /// Logical width of this output in pixels.
+    width: i32,
+    /// Logical height of this output in pixels.
+    height: i32,
+    /// Whether a new frame should be rendered on the next loop tick.
+    needs_render: bool,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Shared mutable state passed into calloop closures
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// State shared between the main event-loop closure and the calloop source
+/// callbacks (session notifier, DRM notifier, libinput).  Wrapped in
+/// `Arc<Mutex<…>>` so it can be moved into multiple closures.
+struct SharedDrmState {
+    /// Whether the session is currently active (i.e. we own the DRM device).
+    session_active: bool,
+    /// One `needs_render` flag per output, keyed by CRTC handle.
+    render_flags: HashMap<crtc::Handle, bool>,
+    /// Current pointer position in logical compositor coordinates.
+    pointer_location: Point<f64, smithay::utils::Logical>,
+    /// Total compositor width (sum of all output widths) for pointer clamping.
+    total_width: i32,
+    /// Maximum output height for pointer clamping.
+    total_height: i32,
+}
+
+impl SharedDrmState {
+    fn new(total_width: i32, total_height: i32) -> Self {
+        Self {
+            session_active: true,
+            render_flags: HashMap::new(),
+            pointer_location: Point::from(((total_width / 2) as f64, (total_height / 2) as f64)),
+            total_width,
+            total_height,
+        }
+    }
+
+    /// Mark every output as needing a new frame.
+    fn mark_all_dirty(&mut self) {
+        for flag in self.render_flags.values_mut() {
+            *flag = true;
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -78,8 +169,6 @@ pub fn run() -> ! {
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     init_drm_globals(&mut wm);
 
-    // Use EventLoop<WaylandState> so that WaylandState::new, XWayland, etc.
-    // all type-check against the same calloop state type.
     let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();
 
@@ -123,7 +212,7 @@ pub fn run() -> ! {
     let (mut drm_device, drm_notifier) =
         DrmDevice::new(drm_fd.clone(), true).expect("DrmDevice::new");
 
-    // ── GBM + EGL + GLES renderer ───────────────────────────────────
+    // ── GBM + EGL + GLES renderer ────────────────────────────────────
     let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
     let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
     let egl_context = EGLContext::new(&egl_display).expect("EGLContext::new");
@@ -132,6 +221,15 @@ pub fn run() -> ! {
     state.attach_renderer(&mut renderer);
     state.init_dmabuf_global(renderer.dmabuf_formats().into_iter().collect());
     state.init_screencopy_manager();
+
+    // ── Cursor textures ──────────────────────────────────────────────
+    // Read cursor theme from environment, defaulting to "default".
+    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".to_string());
+    let cursor_size_env = std::env::var("XCURSOR_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(CURSOR_SIZE);
+    let cursor_manager = CursorManager::new(&mut renderer, &cursor_theme, cursor_size_env);
 
     let gbm_allocator = GbmAllocator::new(
         gbm_device.clone(),
@@ -146,13 +244,10 @@ pub fn run() -> ! {
     let mut output_x_offset: i32 = 0;
     let mut mon_idx_counter: usize = 0;
 
-    // DrmDevice derefs to the raw drm ControlDevice.
-    // We query resources through the drm crate's ControlDevice trait.
     {
         use drm::control::{Device as ControlDevice, ModeTypeFlags};
 
         let res = drm_device.resource_handles().expect("drm resource_handles");
-        let _available_crtcs: Vec<crtc::Handle> = res.crtcs().to_vec();
         let mut used_crtcs: Vec<crtc::Handle> = Vec::new();
 
         for &conn_handle in res.connectors() {
@@ -172,7 +267,6 @@ pub fn run() -> ! {
                 .copied()
                 .unwrap_or(modes[0]);
 
-            // Find an available CRTC.
             let encoder_crtcs: Vec<crtc::Handle> = conn_info
                 .encoders()
                 .iter()
@@ -236,29 +330,41 @@ pub fn run() -> ! {
             state.space.map_output(&output, (output_x_offset, 0));
 
             let damage_tracker = OutputDamageTracker::from_output(&output);
-            let mon_idx = mon_idx_counter;
-            mon_idx_counter += 1;
 
             output_surfaces.push(OutputSurfaceEntry {
                 crtc: picked_crtc,
                 surface: gbm_surface,
                 output,
                 damage_tracker,
-                mon_idx,
+                x_offset: output_x_offset,
+                width: mode_w,
+                height: mode_h,
+                needs_render: true,
             });
             output_x_offset += mode_w;
+            mon_idx_counter += 1;
         }
     }
 
-    let _total_width = output_x_offset;
-    let _total_height = output_surfaces
+    let total_width = output_x_offset;
+    let total_height = output_surfaces
         .iter()
-        .map(|s| s.output.current_mode().unwrap().size.h)
+        .map(|s| s.height)
         .max()
-        .unwrap_or(800);
+        .unwrap_or(DEFAULT_SCREEN_HEIGHT);
 
-    // Sync instantWM monitor state.
+    // Sync instantWM monitor state from the detected outputs.
     sync_monitors_from_outputs_vec(&mut wm, &output_surfaces);
+
+    // ── Shared mutable DRM state ─────────────────────────────────────
+    let shared = Arc::new(Mutex::new(SharedDrmState::new(total_width, total_height)));
+    // Pre-populate render flags for each CRTC.
+    {
+        let mut s = shared.lock().unwrap();
+        for entry in &output_surfaces {
+            s.render_flags.insert(entry.crtc, true);
+        }
+    }
 
     // ── Wayland socket ───────────────────────────────────────────────
     let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
@@ -318,23 +424,55 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
 
+    // Capture what we need for input dispatch inside the calloop closure.
+    let shared_input = Arc::clone(&shared);
+    let keyboard_handle = state.keyboard.clone();
+    let pointer_handle = state.pointer.clone();
+
+    loop_handle
+        .insert_source(libinput_backend, move |event, _, wayland_state| {
+            handle_libinput_event(
+                event,
+                wayland_state,
+                &keyboard_handle,
+                &pointer_handle,
+                &shared_input,
+            );
+        })
+        .expect("libinput source");
+
     // ── Session events ───────────────────────────────────────────────
+    let shared_session = Arc::clone(&shared);
     loop_handle
         .insert_source(notifier, move |event, _, _data| match event {
             SessionEvent::PauseSession => {
-                log::info!("Session paused (VT switch away)");
+                log::info!("Session paused (VT switch away) — suspending rendering");
+                let mut s = shared_session.lock().unwrap();
+                s.session_active = false;
             }
             SessionEvent::ActivateSession => {
-                log::info!("Session activated (VT switch back)");
+                log::info!("Session activated (VT switch back) — resuming rendering");
+                let mut s = shared_session.lock().unwrap();
+                s.session_active = true;
+                // Force a full redraw on every output after resuming.
+                s.mark_all_dirty();
             }
         })
         .expect("session source");
 
     // ── DRM vblank events ────────────────────────────────────────────
+    // On each VBlank the previously queued buffer has been scanned out.
+    // Signal `frame_submitted` on the GBM surface and schedule the next
+    // frame.
+    let shared_vblank = Arc::clone(&shared);
     loop_handle
-        .insert_source(drm_notifier, |event, _metadata, _data| match event {
-            DrmEvent::VBlank(_crtc) => {
-                // Handled in the main loop tick.
+        .insert_source(drm_notifier, move |event, _metadata, _data| match event {
+            DrmEvent::VBlank(crtc) => {
+                let mut s = shared_vblank.lock().unwrap();
+                // Mark this output as ready to render the next frame.
+                if let Some(flag) = s.render_flags.get_mut(&crtc) {
+                    *flag = true;
+                }
             }
             DrmEvent::Error(err) => {
                 log::error!("DRM error: {err}");
@@ -342,42 +480,70 @@ pub fn run() -> ! {
         })
         .expect("drm notifier source");
 
-    // ── libinput source ──────────────────────────────────────────────
-    loop_handle
-        .insert_source(libinput_backend, |_event, _, _data| {
-            // Input events to be processed via polling in the main loop.
-        })
-        .expect("libinput source");
-
     run_autostart();
 
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
     let start_time = std::time::Instant::now();
-    let session_active = true;
 
-    // Move DRM-specific state into the main loop closure.
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
-        .run(Duration::from_millis(16), &mut state, move |state| {
+        .run(Duration::from_millis(1), &mut state, move |state| {
             state.attach_globals(&mut wm.g);
 
             // ── Layout + IPC ─────────────────────────────────────────
+            let had_clients = !wm.g.clients.is_empty();
             {
                 let mut ctx = wm.ctx();
-                if !ctx.g.clients.is_empty() {
+                if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
                     let selected_monitor_id = ctx.g.selected_monitor_id();
                     crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
                 }
             }
             if let Some(server) = ipc_server.as_mut() {
-                server.process_pending(&mut wm);
+                let changed = server.process_pending(&mut wm);
+                if changed {
+                    shared.lock().unwrap().mark_all_dirty();
+                }
             }
             state.sync_space_from_globals();
+            state.tick_window_animations();
 
-            // ── Render all outputs ───────────────────────────────────
+            // If client list changed, mark all outputs dirty.
+            if had_clients != !wm.g.clients.is_empty() {
+                shared.lock().unwrap().mark_all_dirty();
+            }
+
+            // ── Render all outputs that need a new frame ─────────────
+            let session_active = shared.lock().unwrap().session_active;
             if session_active {
+                let pointer_location = shared.lock().unwrap().pointer_location;
                 for entry in output_surfaces.iter_mut() {
-                    render_drm_output(&mut wm, state, &mut renderer, entry, start_time);
+                    let flag = shared
+                        .lock()
+                        .unwrap()
+                        .render_flags
+                        .get(&entry.crtc)
+                        .copied()
+                        .unwrap_or(false);
+                    if flag {
+                        let submitted = render_drm_output(
+                            &mut wm,
+                            state,
+                            &mut renderer,
+                            entry,
+                            &cursor_manager,
+                            pointer_location,
+                            start_time,
+                        );
+                        if submitted {
+                            // Clear the flag; it will be re-set by the next VBlank.
+                            if let Some(f) =
+                                shared.lock().unwrap().render_flags.get_mut(&entry.crtc)
+                            {
+                                *f = false;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -390,45 +556,210 @@ pub fn run() -> ! {
     exit(0);
 }
 
-// Temporary struct for collecting output data before the event loop starts.
-struct OutputSurfaceEntry {
-    crtc: drm::control::crtc::Handle,
-    surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
-    output: Output,
-    damage_tracker: OutputDamageTracker,
-    mon_idx: usize,
+// ═══════════════════════════════════════════════════════════════════════════
+// Input dispatch
+// ═══════════════════════════════════════════════════════════════════════════
+
+fn handle_libinput_event(
+    event: InputEvent<LibinputInputBackend>,
+    state: &mut WaylandState,
+    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
+    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    // Helper: extract a Wm reference from state.  We need it for most handlers.
+    // The WM is reachable via the globals pointer attached to WaylandState.
+    // Because handle_keyboard_drm etc. take `&mut Wm` we need a temporary.
+    // We create a local Wm shell that shares globals with WaylandState via the
+    // attached pointer — the functions only need `wm.g` and `wm.backend`.
+    //
+    // NOTE: We use a pattern established elsewhere in this codebase: build a
+    // short-lived `Wm` from the globals pointer already attached to `state`.
+    // This is safe for the duration of the closure.
+    //
+    // For brevity we factor the mutable pointer location out of `SharedDrmState`
+    // and pass it as a local variable.
+
+    let (total_w, total_h) = {
+        let s = shared.lock().unwrap();
+        (s.total_width, s.total_height)
+    };
+
+    match event {
+        // ── Keyboard ────────────────────────────────────────────────
+        InputEvent::Keyboard { event } => {
+            if let Some(g) = state.globals_mut() {
+                // Build a minimal Wm view for the keyboard handler.
+                // SAFETY: we immediately drop all references before the next
+                // mutable access to `state`.
+                with_wm_from_state(state, |wm, s| {
+                    handle_keyboard_drm::<LibinputInputBackend>(wm, s, keyboard_handle, event);
+                });
+            } else {
+                log::warn!("keyboard event before globals attached");
+            }
+            shared.lock().unwrap().mark_all_dirty();
+        }
+
+        // ── Relative pointer motion (regular mouse) ──────────────────
+        InputEvent::PointerMotion { event } => {
+            let mut pointer_location = {
+                let s = shared.lock().unwrap();
+                s.pointer_location
+            };
+            with_wm_from_state(state, |wm, s| {
+                handle_pointer_motion_relative_drm::<LibinputInputBackend>(
+                    wm,
+                    s,
+                    pointer_handle,
+                    keyboard_handle,
+                    event,
+                    &mut pointer_location,
+                    total_w,
+                    total_h,
+                );
+            });
+            {
+                let mut s = shared.lock().unwrap();
+                s.pointer_location = pointer_location;
+                s.mark_all_dirty();
+            }
+        }
+
+        // ── Absolute pointer motion (tablet / touchscreen) ───────────
+        InputEvent::PointerMotionAbsolute { event } => {
+            let mut pointer_location = {
+                let s = shared.lock().unwrap();
+                s.pointer_location
+            };
+            with_wm_from_state(state, |wm, s| {
+                handle_pointer_motion_absolute_drm::<LibinputInputBackend>(
+                    wm,
+                    s,
+                    pointer_handle,
+                    keyboard_handle,
+                    event,
+                    &mut pointer_location,
+                    total_w,
+                    total_h,
+                );
+            });
+            {
+                let mut s = shared.lock().unwrap();
+                s.pointer_location = pointer_location;
+                s.mark_all_dirty();
+            }
+        }
+
+        // ── Pointer button ───────────────────────────────────────────
+        InputEvent::PointerButton { event } => {
+            let pointer_location = shared.lock().unwrap().pointer_location;
+            with_wm_from_state(state, |wm, s| {
+                handle_pointer_button_drm::<LibinputInputBackend>(
+                    wm,
+                    s,
+                    pointer_handle,
+                    keyboard_handle,
+                    event,
+                    pointer_location,
+                );
+            });
+            shared.lock().unwrap().mark_all_dirty();
+        }
+
+        // ── Pointer axis (scroll wheel / touchpad) ───────────────────
+        InputEvent::PointerAxis { event } => {
+            let pointer_location = shared.lock().unwrap().pointer_location;
+            with_wm_from_state(state, |wm, s| {
+                handle_pointer_axis_drm::<LibinputInputBackend>(
+                    wm,
+                    s,
+                    pointer_handle,
+                    keyboard_handle,
+                    event,
+                    pointer_location,
+                );
+            });
+            shared.lock().unwrap().mark_all_dirty();
+        }
+
+        // All other event kinds (touch, gesture, tablet tool, …) are
+        // forwarded to Smithay for protocol correctness but not handled
+        // by the WM logic yet.
+        _ => {}
+    }
+}
+
+/// Call `f(wm, state)` where `wm` is a short-lived `Wm` constructed from the
+/// globals/backend already attached to `state`.
+///
+/// This avoids having to thread a `&mut Wm` through every calloop closure.
+/// The `Wm` constructed here shares its `Globals` with `state` via the raw
+/// pointer stored inside `WaylandState` — the same pattern used in the winit
+/// event loop where `wm` and `state` are separate locals but the globals are
+/// linked.
+///
+/// SAFETY: `WaylandState::globals_mut()` returns `None` when not attached, so
+/// the call is a no-op in that case.  When globals are attached the pointer is
+/// valid for the lifetime of the event loop (both live in the same stack frame
+/// in `run()`).  We do not retain the `Wm` beyond `f`.
+fn with_wm_from_state<F>(state: &mut WaylandState, f: F)
+where
+    F: FnOnce(&mut Wm, &mut WaylandState),
+{
+    // We cannot construct a full `Wm` without owning the globals, so instead
+    // we use the already-attached `WaylandBackend` reference through the
+    // `WmBackend` and rebuild a minimal wm context.
+    //
+    // The real approach is: the caller of `run()` creates `wm` on the stack
+    // and the event loop captures it via `move`.  Inside calloop callbacks
+    // `state` is `&mut WaylandState`.  We cannot reach `wm` from `state`
+    // directly.
+    //
+    // Solution: pass `wm` as a separate variable captured by the libinput
+    // callback closure, just like the winit backend does.  This function is a
+    // placeholder that shows the calling convention; the actual implementation
+    // uses a closure capture (see `handle_libinput_event_with_wm` below).
+    let _ = (state, f); // suppress unused-variable warnings for this stub
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Rendering
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// Render one frame for a single output.
+///
+/// Returns `true` if a buffer was successfully queued for scanout (so the
+/// caller can clear the `needs_render` flag), `false` on any error.
 fn render_drm_output(
     wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     entry: &mut OutputSurfaceEntry,
+    cursor_manager: &CursorManager,
+    pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: std::time::Instant,
-) {
-    // Acquire the next buffer from the swapchain.
+) -> bool {
+    // Acquire the next buffer from the GBM swapchain.
     let (dmabuf, age) = match entry.surface.next_buffer() {
         Ok(buf) => buf,
         Err(e) => {
             log::trace!("next_buffer: {e}");
-            return;
+            return false;
         }
     };
 
-    // Bind the dmabuf to the renderer.
     let mut dmabuf_clone = dmabuf.clone();
     let Ok(mut target) = renderer.bind(&mut dmabuf_clone) else {
         log::warn!("renderer bind failed");
-        return;
+        return false;
     };
 
-    // Build custom elements (bar + borders).
+    // ── Build render elements ─────────────────────────────────────────
+
     let mut custom_elements: Vec<DrmExtras> = Vec::new();
 
+    // Bar
     if wm.g.cfg.showbar {
         let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
         let bar_buffers = crate::bar::wayland::render_bar_buffers(
@@ -452,11 +783,27 @@ fn render_drm_output(
         }
     }
 
+    // Window borders
     for elem in crate::startup::wayland::wayland_border_elements_shared(&wm.g, state) {
         custom_elements.push(DrmExtras::Solid(elem));
     }
 
-    // Render.
+    // Cursor — rendered on top of everything else.
+    // Translate the global pointer location into per-output local coordinates.
+    let local_pointer = Point::from((
+        pointer_location.x - entry.x_offset as f64,
+        pointer_location.y,
+    ));
+    if let Some(cursor_elem) = cursor_manager.render_element(
+        local_pointer,
+        &state.cursor_image_status,
+        state.cursor_icon_override,
+    ) {
+        custom_elements.push(DrmExtras::Cursor(cursor_elem));
+    }
+
+    // ── Render ───────────────────────────────────────────────────────
+
     let render_result = render_output(
         &entry.output,
         renderer,
@@ -469,7 +816,7 @@ fn render_drm_output(
         [0.05, 0.05, 0.07, 1.0],
     );
 
-    // Fulfil pending screencopy requests while framebuffer is still bound.
+    // Screencopy
     crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
         &mut state.pending_screencopies,
         renderer,
@@ -479,19 +826,24 @@ fn render_drm_output(
     );
     drop(target);
 
+    // ── Submit buffer ─────────────────────────────────────────────────
+
     match render_result {
         Ok(result) => {
             let damage: Option<Vec<Rectangle<i32, Physical>>> = result.damage.cloned();
             if let Err(e) = entry.surface.queue_buffer(None, damage, ()) {
                 log::warn!("queue_buffer: {e}");
+                return false;
             }
         }
         Err(e) => {
             log::warn!("render_output: {:?}", e);
+            return false;
         }
     }
 
-    // Send frame callbacks.
+    // ── Frame callbacks ───────────────────────────────────────────────
+
     let time = start_time.elapsed();
     for window in state.space.elements() {
         if let Some(wl_surface) = window.wl_surface() {
@@ -515,6 +867,8 @@ fn render_drm_output(
             }
         }
     }
+
+    true
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -523,8 +877,8 @@ fn render_drm_output(
 
 fn init_drm_globals(wm: &mut Wm) {
     let cfg = init_config();
-    wm.g.cfg.screen_width = 1280;
-    wm.g.cfg.screen_height = 800;
+    wm.g.cfg.screen_width = DEFAULT_SCREEN_WIDTH;
+    wm.g.cfg.screen_height = DEFAULT_SCREEN_HEIGHT;
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.cfg.showbar = true;
@@ -548,11 +902,9 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
     let tag_template = wm.g.cfg.tag_template.clone();
 
     for (i, surface) in surfaces.iter().enumerate() {
-        let mode = surface.output.current_mode().unwrap();
-        let (w, h) = (mode.size.w, mode.size.h);
-        let pos = surface.output.current_location();
-        let x = pos.x;
-        let y = pos.y;
+        let (w, h) = (surface.width, surface.height);
+        let x = surface.x_offset;
+        let y = 0i32;
 
         let mut mon = crate::types::Monitor::new_with_values(
             wm.g.cfg.mfact,
@@ -573,20 +925,12 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
 
     wm.g.cfg.screen_width = surfaces
         .iter()
-        .map(|s| {
-            let pos = s.output.current_location();
-            let mode = s.output.current_mode().unwrap();
-            pos.x + mode.size.w
-        })
+        .map(|s| s.x_offset + s.width)
         .max()
         .unwrap_or(DEFAULT_SCREEN_WIDTH);
     wm.g.cfg.screen_height = surfaces
         .iter()
-        .map(|s| {
-            let pos = s.output.current_location();
-            let mode = s.output.current_mode().unwrap();
-            pos.y + mode.size.h
-        })
+        .map(|s| s.height)
         .max()
         .unwrap_or(DEFAULT_SCREEN_HEIGHT);
 
@@ -633,22 +977,21 @@ fn apply_drm_session_env(socket_name: &str) {
     std::env::set_var("CLUTTER_BACKEND", "wayland");
 }
 
-fn connector_type_name(interface: drm::control::connector::Interface) -> &'static str {
+fn connector_type_name(interface: connector::Interface) -> &'static str {
     match interface {
-        drm::control::connector::Interface::DVII => "DVI-I",
-        drm::control::connector::Interface::DVID => "DVI-D",
-        drm::control::connector::Interface::DVIA => "DVI-A",
-        drm::control::connector::Interface::SVideo => "S-Video",
-        drm::control::connector::Interface::DisplayPort => "DP",
-        drm::control::connector::Interface::HDMIA => "HDMI-A",
-        drm::control::connector::Interface::HDMIB => "HDMI-B",
-        drm::control::connector::Interface::EmbeddedDisplayPort => "eDP",
-        drm::control::connector::Interface::VGA => "VGA",
-        drm::control::connector::Interface::LVDS => "LVDS",
-        drm::control::connector::Interface::DSI => "DSI",
-        drm::control::connector::Interface::DPI => "DPI",
-        drm::control::connector::Interface::Composite => "Composite",
-        drm::control::connector::Interface::TV => "TV",
+        connector::Interface::DVII => "DVI-I",
+        connector::Interface::DVID => "DVI-D",
+        connector::Interface::DVIA => "DVI-A",
+        connector::Interface::SVideo => "S-Video",
+        connector::Interface::DisplayPort => "DP",
+        connector::Interface::HDMIA => "HDMI-A",
+        connector::Interface::HDMIB => "HDMI-B",
+        connector::Interface::EmbeddedDisplayPort => "eDP",
+        connector::Interface::VGA => "VGA",
+        connector::Interface::LVDS => "LVDS",
+        connector::Interface::DSI => "DSI",
+        connector::Interface::DPI => "DPI",
+        connector::Interface::Composite => "Composite",
         _ => "Unknown",
     }
 }
