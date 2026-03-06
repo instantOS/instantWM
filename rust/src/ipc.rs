@@ -1,4 +1,3 @@
-use crate::backend::BackendKind;
 use crate::commands::{command_prefix, set_special_next};
 use crate::focus::warp_to_focus_x11;
 use crate::ipc_types::{IpcCommand, IpcResponse};
@@ -311,7 +310,7 @@ fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcRespon
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
+    if ctx.is_wayland() {
         if let crate::backend::BackendRef::Wayland(wayland) = ctx.backend() {
             if let Some(display) = wayland.xdisplay() {
                 cmd.env("DISPLAY", format!(":{display}"));

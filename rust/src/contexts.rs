@@ -7,7 +7,6 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::backend::x11::X11BackendRef;
-use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
@@ -284,8 +283,14 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn backend_kind_REMOVED(&self) -> BackendKind {
-        self.backend().kind()
+    /// Returns true when running under Wayland.
+    pub fn is_wayland(&self) -> bool {
+        matches!(self, WmCtx::Wayland(_))
+    }
+
+    /// Returns true when running under X11.
+    pub fn is_x11(&self) -> bool {
+        matches!(self, WmCtx::X11(_))
     }
 
     /// Backend-agnostic bar refresh request.

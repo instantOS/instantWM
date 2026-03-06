@@ -16,7 +16,6 @@
 //!                             └─► focus(None)       → re-focus on new monitor
 //! ```
 
-use crate::backend::BackendKind;
 use crate::contexts::WmCtx;
 use crate::focus::unfocus_win;
 use crate::monitor::transfer_client;
@@ -34,7 +33,7 @@ use crate::types::*;
 /// * `c_win` - The client window to potentially move
 /// * `rect` - The window's geometry to check against monitor boundaries
 pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
+    if ctx.is_wayland() {
         return;
     }
     let new_mon = crate::types::find_monitor_by_rect(ctx.g_mut().monitors.monitors(), rect)
@@ -69,7 +68,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 /// * `ctx` - The mouse context containing client and monitor state
 /// * `c_win` - The client window to check and potentially move
 pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
-    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
+    if ctx.is_wayland() {
         return;
     }
     let Some(c) = ctx.g_mut().clients.get(&c_win) else {

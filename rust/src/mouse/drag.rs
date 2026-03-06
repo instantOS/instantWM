@@ -22,7 +22,6 @@
 //! post-loop cleanup (bar drop, monitor switch, bar redraw, …)
 //! ```
 
-use crate::backend::BackendKind;
 use crate::bar::bar_position_at_x;
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
@@ -1090,7 +1089,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.g_mut().drag.title.last_root_y = root_y;
 
     if ctx.g_mut().drag.title.dragging {
-        if ctx.backend_kind_REMOVED() != BackendKind::Wayland {
+        if ctx.is_x11() {
             return false;
         }
         let td = &ctx.g_mut().drag.title;
@@ -1174,7 +1173,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let btn = ctx.g_mut().drag.title.button;
     let was_hidden = ctx.g_mut().drag.title.was_hidden;
     let is_right_click = btn == MouseButton::Right;
-    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
+    if ctx.is_wayland() {
         // Keep the title drag active so Wayland motion/release can keep driving it.
         if was_hidden {
             crate::client::show(ctx, win);

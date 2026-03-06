@@ -1,4 +1,5 @@
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
+use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
 
@@ -102,7 +103,10 @@ pub(super) fn dispatch_wayland_bar_click(
     }
 
     let mut ctx = wm.ctx();
-    dispatch_wayland_bar_button(&mut ctx, pos, button, root_x, root_y, clean_state);
+    let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
+        return;
+    };
+    dispatch_wayland_bar_button(wayland_ctx, pos, button, root_x, root_y, clean_state);
 }
 
 pub(super) fn dispatch_wayland_bar_scroll(
@@ -119,31 +123,34 @@ pub(super) fn dispatch_wayland_bar_scroll(
         MouseButton::ScrollDown
     };
     let mut ctx = wm.ctx();
-    dispatch_wayland_bar_button(&mut ctx, pos, button, root_x, root_y, clean_state);
+    let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
+        return;
+    };
+    dispatch_wayland_bar_button(wayland_ctx, pos, button, root_x, root_y, clean_state);
 }
 
 fn dispatch_wayland_bar_button(
-    ctx: &mut crate::contexts::WmCtx<'_>,
+    ctx: &mut WmCtxWayland<'_>,
     pos: BarPosition,
     btn: MouseButton,
     root_x: i32,
     root_y: i32,
     clean_state: u32,
 ) {
-    let numlockmask = match ctx {
-        crate::contexts::WmCtx::X11(x11) => x11.x11_runtime().numlockmask,
-        crate::contexts::WmCtx::Wayland(_) => 0, // Wayland-only mode, numlockmask not used
-    };
-    let buttons = ctx.g.cfg.buttons.clone();
+    // numlockmask is X11-specific; on Wayland modifier state comes pre-cleaned
+    // by the compositor, so we treat it as 0.
+    const NUMLOCKMASK: u32 = 0;
+    let buttons = ctx.core.g.cfg.buttons.clone();
     for b in &buttons {
         if !b.matches(pos) || b.button != btn {
             continue;
         }
-        if crate::util::clean_mask(b.mask, numlockmask) != clean_state {
+        if crate::util::clean_mask(b.mask, NUMLOCKMASK) != clean_state {
             continue;
         }
+        let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
         (b.action)(
-            ctx,
+            &mut wm_ctx,
             ButtonArg {
                 pos,
                 btn: b.button,
