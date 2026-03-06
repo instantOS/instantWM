@@ -2,9 +2,29 @@
 //!
 //! This enables screenshot tools like `grim` and screen-recording tools like
 //! `wf-recorder` to capture output contents.
+//!
+//! # Protocol flow
+//!
+//! 1. Client binds `zwlr_screencopy_manager_v1`.
+//! 2. Client calls `capture_output` or `capture_output_region` → compositor
+//!    creates a `ZwlrScreencopyFrameV1` object and sends one or more `buffer`
+//!    events advertising supported buffer formats, then (v3+) `buffer_done`.
+//! 3. Client allocates a matching `wl_shm` buffer and calls `copy` (or
+//!    `copy_with_damage`).
+//! 4. Compositor queues a `PendingScreencopy`.  On the **next rendered frame**
+//!    for that output, `submit_pending_screencopies` copies the framebuffer
+//!    contents into the client's SHM buffer and sends `flags` + `ready`.
+//!
+//! # Y-inversion
+//!
+//! OpenGL's `glReadPixels` (used by `GlesRenderer::copy_framebuffer`) always
+//! returns rows in bottom-to-top order.  Screencopy clients such as `grim` and
+//! `wf-recorder` interpret this as Y-inverted content when the `Y_INVERT` flag
+//! is set, and flip the image accordingly.  We therefore always set this flag.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -14,20 +34,32 @@ use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
-use smithay::utils::{Physical, Rectangle};
+use smithay::utils::{Physical, Rectangle, Size};
 
 use super::WaylandState;
 
-/// Protocol version we advertise. v3 adds linux_dmabuf + buffer_done events.
+/// Protocol version we advertise.
+///
+/// v3 adds `linux_dmabuf` and `buffer_done` events.
 const SCREENCOPY_VERSION: u32 = 3;
+
+// ---------------------------------------------------------------------------
+// Per-object state
+// ---------------------------------------------------------------------------
 
 /// Per-frame state attached to each `ZwlrScreencopyFrameV1` resource.
 pub enum ScreencopyFrameState {
+    /// The frame was rejected at creation time (unknown output, zero-size
+    /// region, etc.).  Any subsequent `copy` request immediately gets
+    /// `failed`.
     Failed,
     Pending {
         output: Output,
         physical_region: Rectangle<i32, Physical>,
         overlay_cursor: bool,
+        /// Set to `true` once a `copy` or `copy_with_damage` request has been
+        /// received, so that duplicate requests are rejected with
+        /// `already_used`.
         copied: Arc<AtomicBool>,
     },
 }
@@ -36,14 +68,23 @@ pub enum ScreencopyFrameState {
 pub struct PendingScreencopy {
     pub output: Output,
     pub physical_region: Rectangle<i32, Physical>,
+    /// Whether the client requested cursor overlay (not yet implemented;
+    /// stored for completeness).
     pub overlay_cursor: bool,
     pub frame: ZwlrScreencopyFrameV1,
     pub buffer: smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
+    /// `true` when the client sent `copy_with_damage` instead of `copy`.
+    /// In that case we send a full-region `damage` event before `ready`.
     pub with_damage: bool,
 }
 
+// ---------------------------------------------------------------------------
+// `init_screencopy_manager` — register the global
+// ---------------------------------------------------------------------------
+
 impl WaylandState {
-    /// Register the `zwlr_screencopy_manager_v1` global.
+    /// Register the `zwlr_screencopy_manager_v1` global so that clients can
+    /// bind it.
     pub fn init_screencopy_manager(&self) {
         self.display_handle
             .create_global::<WaylandState, ZwlrScreencopyManagerV1, ()>(SCREENCOPY_VERSION, ());
@@ -98,7 +139,7 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
                     return;
                 };
                 let physical_region =
-                    Rectangle::from_loc_and_size((0, 0), (mode.size.w, mode.size.h));
+                    Rectangle::new((0, 0).into(), (mode.size.w, mode.size.h).into());
                 init_frame(
                     data_init,
                     manager,
@@ -133,9 +174,8 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
                     frame.failed();
                     return;
                 };
-                let output_rect =
-                    Rectangle::from_loc_and_size((0, 0), (mode.size.w, mode.size.h));
-                let request_rect = Rectangle::from_loc_and_size((x, y), (width, height));
+                let output_rect = Rectangle::new((0, 0).into(), (mode.size.w, mode.size.h).into());
+                let request_rect = Rectangle::new((x, y).into(), (width, height).into());
                 let Some(clamped) = request_rect.intersection(output_rect) else {
                     let frame = data_init.init(frame, ScreencopyFrameState::Failed);
                     frame.failed();
@@ -157,6 +197,10 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Frame initialisation helper
+// ---------------------------------------------------------------------------
+
 fn init_frame(
     data_init: &mut DataInit<'_, WaylandState>,
     manager: &ZwlrScreencopyManagerV1,
@@ -165,7 +209,8 @@ fn init_frame(
     physical_region: Rectangle<i32, Physical>,
     overlay_cursor: bool,
 ) {
-    let size = physical_region.size;
+    let size: Size<i32, Physical> = physical_region.size;
+
     let frame = data_init.init(
         frame,
         ScreencopyFrameState::Pending {
@@ -176,7 +221,7 @@ fn init_frame(
         },
     );
 
-    // Advertise SHM buffer format.
+    // Advertise the SHM (wl_shm) buffer format.
     frame.buffer(
         wl_shm::Format::Xrgb8888,
         size.w as u32,
@@ -184,6 +229,8 @@ fn init_frame(
         size.w as u32 * 4,
     );
 
+    // v3+: additionally advertise linux-dmabuf format and signal that all
+    // buffer types have been enumerated.
     if manager.version() >= 3 {
         frame.linux_dmabuf(
             smithay::backend::allocator::Fourcc::Xrgb8888 as u32,
@@ -228,28 +275,28 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             } => (output, physical_region, overlay_cursor, copied),
         };
 
+        // Guard against duplicate copy requests on the same frame object.
         if copied.swap(true, Ordering::SeqCst) {
             frame.post_error(
                 zwlr_screencopy_frame_v1::Error::AlreadyUsed,
-                "copy was already requested",
+                "copy was already requested on this frame",
             );
             return;
         }
 
-        // Validate buffer dimensions via SHM metadata.
-        let buffer_ok =
-            smithay::wayland::shm::with_buffer_contents(&buffer, |_ptr, _len, bd| {
-                bd.format == wl_shm::Format::Xrgb8888
-                    && bd.width == physical_region.size.w
-                    && bd.height == physical_region.size.h
-                    && bd.stride == physical_region.size.w * 4
-            })
-            .unwrap_or(false);
+        // Validate that the supplied buffer matches the advertised parameters.
+        let buffer_ok = smithay::wayland::shm::with_buffer_contents(&buffer, |_ptr, _len, bd| {
+            bd.format == wl_shm::Format::Xrgb8888
+                && bd.width == physical_region.size.w
+                && bd.height == physical_region.size.h
+                && bd.stride == physical_region.size.w * 4
+        })
+        .unwrap_or(false);
 
         if !buffer_ok {
             frame.post_error(
                 zwlr_screencopy_frame_v1::Error::InvalidBuffer,
-                "buffer does not match advertised parameters",
+                "buffer dimensions or format do not match the advertised parameters",
             );
             return;
         }
@@ -270,8 +317,18 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
 // ---------------------------------------------------------------------------
 
 /// After rendering an output, call this to fulfil any pending screencopy
-/// requests for that output.  The renderer must still be bound to the
-/// output's framebuffer so `copy_framebuffer` can read back pixels.
+/// requests for that output.
+///
+/// The renderer **must** still be bound to the output's framebuffer at the
+/// point this function is called so that `copy_framebuffer` can read pixels
+/// via `glReadPixels`.
+///
+/// # Y-inversion
+///
+/// `glReadPixels` returns rows in bottom-to-top order (OpenGL convention),
+/// which is the inverse of what on-screen content looks like.  We therefore
+/// always set the `Y_INVERT` flag in the screencopy `flags` event so that
+/// clients know to flip the image vertically.
 pub fn submit_pending_screencopies(
     pending: &mut Vec<PendingScreencopy>,
     renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
@@ -283,6 +340,8 @@ pub fn submit_pending_screencopies(
     use smithay::backend::renderer::ExportMem;
     use smithay::utils::Buffer as BufferCoord;
 
+    // Drain all pending frames that belong to this output, leaving the others
+    // intact for the next render cycle.
     let drained: Vec<PendingScreencopy> = {
         let mut remaining = Vec::new();
         let mut matched = Vec::new();
@@ -303,15 +362,17 @@ pub fn submit_pending_screencopies(
 
     for screencopy in drained {
         let region = screencopy.physical_region;
-        let buf_region: Rectangle<i32, BufferCoord> = Rectangle::from_loc_and_size(
-            (region.loc.x, region.loc.y),
-            (region.size.w, region.size.h),
+
+        // `copy_framebuffer` uses a Buffer-space rectangle.
+        let buf_region: Rectangle<i32, BufferCoord> = Rectangle::new(
+            (region.loc.x, region.loc.y).into(),
+            (region.size.w, region.size.h).into(),
         );
 
         let mapping = match renderer.copy_framebuffer(framebuffer, buf_region, Fourcc::Xrgb8888) {
             Ok(m) => m,
             Err(e) => {
-                log::warn!("screencopy copy_framebuffer failed: {:?}", e);
+                log::warn!("screencopy: copy_framebuffer failed: {:?}", e);
                 screencopy.frame.failed();
                 continue;
             }
@@ -320,12 +381,14 @@ pub fn submit_pending_screencopies(
         let pixels = match renderer.map_texture(&mapping) {
             Ok(p) => p,
             Err(e) => {
-                log::warn!("screencopy map_texture failed: {:?}", e);
+                log::warn!("screencopy: map_texture failed: {:?}", e);
                 screencopy.frame.failed();
                 continue;
             }
         };
 
+        // Copy pixel data into the client's SHM buffer row-by-row, respecting
+        // the client's stride which may be wider than the minimal stride.
         let copy_ok = smithay::wayland::shm::with_buffer_contents_mut(
             &screencopy.buffer,
             |dst_ptr, dst_len, bd| {
@@ -356,9 +419,22 @@ pub fn submit_pending_screencopies(
             continue;
         }
 
+        // For copy_with_damage, report the entire captured region as damaged.
+        // We don't have per-frame damage tracking exposed here, so reporting
+        // the full region is always correct (if conservative).
+        if screencopy.with_damage {
+            screencopy
+                .frame
+                .damage(0, 0, region.size.w as u32, region.size.h as u32);
+        }
+
+        // glReadPixels returns rows bottom-to-top, so the buffer is Y-inverted
+        // relative to the on-screen image.  Inform the client via the Y_INVERT
+        // flag so it can flip the image when saving/displaying.
         screencopy
             .frame
-            .flags(zwlr_screencopy_frame_v1::Flags::empty());
+            .flags(zwlr_screencopy_frame_v1::Flags::YInvert);
+
         let elapsed = start_time.elapsed();
         let tv_sec_hi = (elapsed.as_secs() >> 32) as u32;
         let tv_sec_lo = (elapsed.as_secs() & 0xFFFF_FFFF) as u32;
