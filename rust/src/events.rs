@@ -1100,6 +1100,10 @@ pub fn setup_root(wm: &mut Wm) {
 
     let mut ctx = wm.ctx();
     update_geom(&mut ctx);
+
+    if let WmCtx::X11(mut x11_ctx) = ctx {
+        crate::mouse::set_cursor_default_x11(&mut x11_ctx);
+    }
 }
 
 pub fn cleanup(wm: &mut Wm) {
