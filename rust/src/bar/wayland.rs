@@ -533,6 +533,11 @@ pub fn render_bar_buffers(
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
         painter.begin(scale, origin_x, origin_y, width, height);
         draw_bar_common(core, None, mon_idx, painter);
+        if core.g.cfg.showsystray {
+            if let Some(mon) = core.g.monitor(mon_idx).cloned() {
+                crate::wayland_systray::draw_wayland_systray(core, &mon, painter);
+            }
+        }
         painter.finish();
     }
 
@@ -611,6 +616,16 @@ fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
             c.islocked.hash(&mut hasher);
             c.is_fullscreen.hash(&mut hasher);
             c.is_hidden.hash(&mut hasher);
+        }
+    }
+
+    if core.g.cfg.showsystray {
+        for item in &core.g.wayland_systray.items {
+            item.service.hash(&mut hasher);
+            item.path.hash(&mut hasher);
+            item.icon_w.hash(&mut hasher);
+            item.icon_h.hash(&mut hasher);
+            item.icon_rgba.len().hash(&mut hasher);
         }
     }
 
