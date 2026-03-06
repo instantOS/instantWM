@@ -926,6 +926,7 @@ dependencies = [
  "thiserror 1.0.69",
  "toml",
  "x11rb",
+ "xcursor",
 ]
 
 [[package]]

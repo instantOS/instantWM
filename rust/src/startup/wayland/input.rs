@@ -1,5 +1,18 @@
+//! Input event handlers for the Wayland compositor backends.
+//!
+//! The keyboard, pointer-button, and pointer-axis handlers are generic over
+//! the Smithay `InputBackend` type so that they can be shared between the
+//! nested (winit) backend and the standalone DRM/libinput backend.
+//!
+//! The pointer-motion handler comes in two flavours:
+//! - `handle_pointer_motion_absolute` — for winit / tablets / touch screens
+//!   that report absolute coordinates.
+//! - `handle_pointer_motion_relative` — for real mice under libinput that
+//!   report relative (delta) motion.
+
 use smithay::backend::input::{
-    AbsolutePositionEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+    AbsolutePositionEvent, InputBackend, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+    PointerMotionEvent,
 };
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::WinitGraphicsBackend;
@@ -27,6 +40,10 @@ use super::bar::{
 };
 use super::init::sanitize_wayland_size;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Resize helper (winit-only — output size comes from the backend window)
+// ─────────────────────────────────────────────────────────────────────────────
+
 pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     let (safe_w, safe_h) = sanitize_wayland_size(w, h);
     let mode = OutputMode {
@@ -46,11 +63,15 @@ pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     layer_map_for_output(output).arrange();
 }
 
-pub(super) fn handle_keyboard(
+// ─────────────────────────────────────────────────────────────────────────────
+// Keyboard — generic over InputBackend B
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub fn handle_keyboard<B: InputBackend>(
     wm: &mut Wm,
     state: &mut WaylandState,
     keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl KeyboardKeyEvent<smithay::backend::winit::WinitInput>,
+    event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
     if matches!(
@@ -74,7 +95,7 @@ pub(super) fn handle_keyboard(
         event.key_code(),
         event.state(),
         serial,
-        event.time() as u32,
+        event.time_msec(),
         |_data, modifiers, keysym| {
             if wm_shortcuts_allowed && event.state() == smithay::backend::input::KeyState::Pressed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
@@ -101,6 +122,10 @@ pub(super) fn handle_keyboard(
     );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Pointer motion — absolute (winit / tablets)
+// ─────────────────────────────────────────────────────────────────────────────
+
 pub(super) fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
@@ -114,10 +139,103 @@ pub(super) fn handle_pointer_motion(
     let x = event.x_transformed(size.w);
     let y = event.y_transformed(size.h);
     *pointer_location = Point::from((x, y));
+    let time_msec = event.time_msec();
+    dispatch_pointer_motion(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        pointer_location,
+        time_msec,
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pointer motion — relative (real mouse via libinput)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Handle a relative pointer-motion event as produced by libinput for a
+/// standard mouse.  The caller must pass the output bounding box so that the
+/// accumulated pointer location can be clamped to the visible area.
+pub fn handle_pointer_motion_relative<B: InputBackend>(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    event: impl PointerMotionEvent<B>,
+    pointer_location: &mut Point<f64, smithay::utils::Logical>,
+    output_width: i32,
+    output_height: i32,
+) {
+    let dx = event.delta_x();
+    let dy = event.delta_y();
+    pointer_location.x = (pointer_location.x + dx).clamp(0.0, output_width as f64);
+    pointer_location.y = (pointer_location.y + dy).clamp(0.0, output_height as f64);
+    let time_msec = event.time_msec();
+    dispatch_pointer_motion(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        pointer_location,
+        time_msec,
+    );
+}
+
+/// Handle an absolute pointer-motion event coming from libinput (tablet /
+/// touch screen).  The caller provides the output dimensions so that the
+/// normalised [0,1] absolute position can be converted to logical pixels.
+pub fn handle_pointer_motion_absolute<B: InputBackend>(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    event: impl AbsolutePositionEvent<B>,
+    pointer_location: &mut Point<f64, smithay::utils::Logical>,
+    output_width: i32,
+    output_height: i32,
+) {
+    let x = event.x_transformed(output_width);
+    let y = event.y_transformed(output_height);
+    *pointer_location = Point::from((x, y));
+    let time_msec = event.time_msec();
+    dispatch_pointer_motion(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        pointer_location,
+        time_msec,
+    );
+}
+
+/// Shared body for both absolute and relative motion: update WM hover focus,
+/// propagate the motion event to clients, handle drag states.
+fn dispatch_pointer_motion(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    pointer_location: &mut Point<f64, smithay::utils::Logical>,
+    time_msec: u32,
+) {
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
 
     if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
+        // During an active resize drag, still forward motion to Smithay so
+        // the pointer protocol stays in sync, but skip focus updates.
+        let serial = SERIAL_COUNTER.next_serial();
+        let motion = smithay::input::pointer::MotionEvent {
+            location: *pointer_location,
+            serial,
+            time: time_msec,
+        };
+        let focus = state
+            .surface_under_pointer(*pointer_location)
+            .map(|(s, l)| (PointerFocusTarget::WlSurface(s), l.to_f64()));
+        pointer_handle.motion(state, focus, &motion);
+        pointer_handle.frame(state);
         return;
     }
 
@@ -171,18 +289,22 @@ pub(super) fn handle_pointer_motion(
     let motion = smithay::input::pointer::MotionEvent {
         location: *pointer_location,
         serial,
-        time: event.time() as u32,
+        time: time_msec,
     };
     pointer_handle.motion(state, focus, &motion);
     pointer_handle.frame(state);
 }
 
-pub(super) fn handle_pointer_button(
+// ─────────────────────────────────────────────────────────────────────────────
+// Pointer button — generic over InputBackend B
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub fn handle_pointer_button<B: InputBackend>(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl PointerButtonEvent<smithay::backend::winit::WinitInput>,
+    event: impl PointerButtonEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
@@ -199,7 +321,7 @@ pub(super) fn handle_pointer_button(
 
         let button = smithay::input::pointer::ButtonEvent {
             serial,
-            time: event.time() as u32,
+            time: event.time_msec(),
             button: event.button_code(),
             state: event.state(),
         };
@@ -235,7 +357,7 @@ pub(super) fn handle_pointer_button(
 
         let button = smithay::input::pointer::ButtonEvent {
             serial,
-            time: event.time() as u32,
+            time: event.time_msec(),
             button: event.button_code(),
             state: event.state(),
         };
@@ -257,15 +379,19 @@ pub(super) fn handle_pointer_button(
     pointer_handle.frame(state);
 }
 
-pub(super) fn handle_pointer_axis(
+// ─────────────────────────────────────────────────────────────────────────────
+// Pointer axis (scroll) — generic over InputBackend B
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub fn handle_pointer_axis<B: InputBackend>(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl PointerAxisEvent<smithay::backend::winit::WinitInput>,
+    event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    let mut frame = smithay::input::pointer::AxisFrame::new(event.time() as u32);
+    let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());
 
     if let Some(amount) = event.amount(smithay::backend::input::Axis::Vertical) {
@@ -303,6 +429,10 @@ pub(super) fn handle_pointer_axis(
     pointer_handle.axis(state, frame);
     pointer_handle.frame(state);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal helpers (unchanged from original)
+// ─────────────────────────────────────────────────────────────────────────────
 
 fn find_hovered_window(
     wm: &Wm,
@@ -520,7 +650,7 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     };
     let (new_y, new_h) = if affects_top {
         (root_y, (orig_bottom - root_y).max(1))
-    } else if affects_bottom {
+    } else if affects_top == false && affects_bottom {
         (orig_top, (root_y - orig_top + 1).max(1))
     } else {
         (orig_top, drag.win_start_geo.h.max(1))

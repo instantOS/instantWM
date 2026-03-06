@@ -23,6 +23,7 @@ serde = { version = "1.0", features = ["derive"] }
 bincode = "2.0"
 toml = "0.8"
 dirs = "5.0"
+xcursor = "0.3"
 
 # Wayland compositor support via Smithay
 smithay = { version = "0.7", default-features = false, features = [
