@@ -67,7 +67,7 @@ use crate::backend::Backend as WmBackend;
 
 use crate::startup::common_wayland::{
     build_bar_elements, init_wayland_globals, send_frame_callbacks, setup_wayland_socket,
-    spawn_xwayland,
+    spawn_wayland_smoke_window, spawn_xwayland,
 };
 use crate::startup::wayland::cursor::CursorManager;
 use crate::startup::wayland::input::{
@@ -80,9 +80,6 @@ use crate::wm::Wm;
 use super::autostart::run_autostart;
 
 use smithay::reexports::drm::control::{connector, crtc, Device as ControlDevice};
-use smithay::reexports::drm::control::ModeTypeFlags;
-use smithay::reexports::drm::control::ResourceHandles;
-use smithay::reexports::drm::control::connector::Info as ConnectorInfo;
 
 /// Default screen dimensions when no DRM outputs are detected.
 const DEFAULT_SCREEN_WIDTH: i32 = 1280;
@@ -143,6 +140,8 @@ struct SharedDrmState {
     total_width: i32,
     /// Maximum output height for pointer clamping.
     total_height: i32,
+    /// CRTCs that emitted a vblank and need `frame_submitted()` processing.
+    completed_crtcs: Vec<crtc::Handle>,
 }
 
 impl SharedDrmState {
@@ -153,6 +152,7 @@ impl SharedDrmState {
             pointer_location: Point::from(((total_width / 2) as f64, (total_height / 2) as f64)),
             total_width,
             total_height,
+            completed_crtcs: Vec::new(),
         }
     }
 
@@ -436,14 +436,24 @@ pub fn run() -> ! {
 
     // ── Session events ───────────────────────────────────────────────
     let shared_session = Arc::clone(&shared);
+    let mut session_drm_device = drm_device;
+    let mut session_libinput = libinput_context.clone();
     loop_handle
         .insert_source(notifier, move |event, _, _data| match event {
             SessionEvent::PauseSession => {
                 log::info!("Session paused (VT switch away) — suspending rendering");
+                session_libinput.suspend();
+                session_drm_device.pause();
                 shared_session.lock().unwrap().session_active = false;
             }
             SessionEvent::ActivateSession => {
                 log::info!("Session activated (VT switch back) — resuming rendering");
+                if let Err(err) = session_libinput.resume() {
+                    log::error!("failed to resume libinput context: {:?}", err);
+                }
+                if let Err(err) = session_drm_device.activate(false) {
+                    log::error!("failed to reactivate DRM device: {err}");
+                }
                 let mut s = shared_session.lock().unwrap();
                 s.session_active = true;
                 s.mark_all_dirty();
@@ -463,6 +473,7 @@ pub fn run() -> ! {
                 if let Some(flag) = s.render_flags.get_mut(&crtc) {
                     *flag = true;
                 }
+                s.completed_crtcs.push(crtc);
             }
             DrmEvent::Error(err) => {
                 log::error!("DRM error: {err}");
@@ -471,6 +482,7 @@ pub fn run() -> ! {
         .expect("drm notifier source");
 
     run_autostart();
+    spawn_wayland_smoke_window();
 
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
     let start_time = std::time::Instant::now();
@@ -482,6 +494,22 @@ pub fn run() -> ! {
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {
             state.attach_globals(&mut wm.g);
+
+            // ── Retire completed page-flips ───────────────────────────
+            // Smithay's GBM surface requires `frame_submitted()` on vblank;
+            // otherwise the swapchain keeps old buffers pending and eventually
+            // stalls page-flips.
+            let completed_crtcs = {
+                let mut s = shared.lock().unwrap();
+                std::mem::take(&mut s.completed_crtcs)
+            };
+            for crtc in completed_crtcs {
+                if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
+                    if let Err(err) = entry.surface.frame_submitted() {
+                        log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+                    }
+                }
+            }
 
             // ── Poll libinput ─────────────────────────────────────────
             // Dispatch all pending input events before running layout/render.
@@ -634,9 +662,11 @@ fn dispatch_libinput_event(
     match event {
         // ── Keyboard ─────────────────────────────────────────────────
         InputEvent::Keyboard { event } => {
-            log::debug!("DRM keyboard event: keycode={:?} state={:?}",
-                       smithay::backend::input::KeyboardKeyEvent::key_code(&event),
-                       smithay::backend::input::KeyboardKeyEvent::state(&event));
+            log::debug!(
+                "DRM keyboard event: keycode={:?} state={:?}",
+                smithay::backend::input::KeyboardKeyEvent::key_code(&event),
+                smithay::backend::input::KeyboardKeyEvent::state(&event)
+            );
             handle_keyboard::<LibinputInputBackend>(wm, state, keyboard_handle, event);
             true
         }

@@ -10,7 +10,7 @@
 //! - Bar render-element building (`build_bar_elements`)
 //! - Frame callback dispatch (`send_frame_callbacks`)
 
-use std::process::Stdio;
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -227,6 +227,24 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
             log::warn!("failed to spawn XWayland: {err}");
         }
     }
+}
+
+/// Spawn a lightweight test window a short time after startup.
+///
+/// This gives the compositor something visible to display immediately after
+/// launch during development / smoke-testing. Set
+/// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
+pub fn spawn_wayland_smoke_window() {
+    if std::env::var("INSTANTWM_WL_AUTOSPAWN").ok().as_deref() == Some("0") {
+        return;
+    }
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(800));
+        let _ = Command::new("sh")
+            .arg("-lc")
+            .arg("for app in gtk3-demo thunar xmessage; do command -v \"$app\" >/dev/null 2>&1 && exec \"$app\"; done; exit 0")
+            .spawn();
+    });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
