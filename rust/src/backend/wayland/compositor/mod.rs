@@ -28,6 +28,7 @@
 
 mod focus;
 mod handlers;
+pub mod screencopy;
 mod state;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};

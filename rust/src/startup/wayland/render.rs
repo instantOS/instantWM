@@ -86,6 +86,15 @@ pub(super) fn render_frame(
         )
         .expect("render output");
 
+        // Fulfil pending screencopy requests while framebuffer is still bound.
+        crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+            &mut state.pending_screencopies,
+            renderer,
+            &framebuffer,
+            output,
+            start_time,
+        );
+
         render_result.damage.cloned()
     };
     let _ = backend.submit(damage.as_deref());

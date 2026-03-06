@@ -58,6 +58,7 @@ pub fn run() -> ! {
     let mut backend = Box::new(backend_init);
     state.attach_renderer(backend.renderer());
     state.init_dmabuf_global(backend.renderer().dmabuf_formats().into_iter().collect());
+    state.init_screencopy_manager();
     let output_size = backend.window_size();
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;

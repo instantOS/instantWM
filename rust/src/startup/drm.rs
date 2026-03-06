@@ -131,6 +131,7 @@ pub fn run() -> ! {
 
     state.attach_renderer(&mut renderer);
     state.init_dmabuf_global(renderer.dmabuf_formats().into_iter().collect());
+    state.init_screencopy_manager();
 
     let gbm_allocator = GbmAllocator::new(
         gbm_device.clone(),
@@ -466,6 +467,15 @@ fn render_drm_output(
         &custom_elements,
         &mut entry.damage_tracker,
         [0.05, 0.05, 0.07, 1.0],
+    );
+
+    // Fulfil pending screencopy requests while framebuffer is still bound.
+    crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+        &mut state.pending_screencopies,
+        renderer,
+        &target,
+        &entry.output,
+        start_time,
     );
     drop(target);
 

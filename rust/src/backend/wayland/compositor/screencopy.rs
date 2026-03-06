@@ -5,8 +5,6 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
-
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
@@ -16,7 +14,7 @@ use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
 };
-use smithay::utils::{Physical, Rectangle, Size};
+use smithay::utils::{Physical, Rectangle};
 
 use super::WaylandState;
 
@@ -272,15 +270,18 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
 // ---------------------------------------------------------------------------
 
 /// After rendering an output, call this to fulfil any pending screencopy
-/// requests for that output.  `renderer` must still be bound to the
-/// output's framebuffer.
+/// requests for that output.  The renderer must still be bound to the
+/// output's framebuffer so `copy_framebuffer` can read back pixels.
 pub fn submit_pending_screencopies(
     pending: &mut Vec<PendingScreencopy>,
     renderer: &mut smithay::backend::renderer::gles::GlesRenderer,
+    framebuffer: &smithay::backend::renderer::gles::GlesTarget<'_>,
     output: &Output,
     start_time: std::time::Instant,
 ) {
+    use smithay::backend::allocator::Fourcc;
     use smithay::backend::renderer::ExportMem;
+    use smithay::utils::Buffer as BufferCoord;
 
     let drained: Vec<PendingScreencopy> = {
         let mut remaining = Vec::new();
@@ -296,17 +297,18 @@ pub fn submit_pending_screencopies(
         matched
     };
 
+    if drained.is_empty() {
+        return;
+    }
+
     for screencopy in drained {
         let region = screencopy.physical_region;
-        let buf_region = Rectangle::from_loc_and_size(
+        let buf_region: Rectangle<i32, BufferCoord> = Rectangle::from_loc_and_size(
             (region.loc.x, region.loc.y),
             (region.size.w, region.size.h),
         );
 
-        let mapping = match renderer.copy_framebuffer(
-            buf_region,
-            smithay::backend::allocator::Fourcc::Xrgb8888,
-        ) {
+        let mapping = match renderer.copy_framebuffer(framebuffer, buf_region, Fourcc::Xrgb8888) {
             Ok(m) => m,
             Err(e) => {
                 log::warn!("screencopy copy_framebuffer failed: {:?}", e);
@@ -354,7 +356,6 @@ pub fn submit_pending_screencopies(
             continue;
         }
 
-        // Send flags (no Y-invert for standard rendering) then ready.
         screencopy
             .frame
             .flags(zwlr_screencopy_frame_v1::Flags::empty());

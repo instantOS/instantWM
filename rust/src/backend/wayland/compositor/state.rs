@@ -37,6 +37,7 @@ use smithay::{
 use crate::globals::Globals;
 use crate::types::{Client as WmClient, Rect, WindowId};
 
+use super::screencopy::PendingScreencopy;
 use super::KeyboardFocusTarget;
 
 // ---------------------------------------------------------------------------
@@ -115,6 +116,9 @@ pub struct WaylandState {
     window_animations: HashMap<WindowId, WaylandWindowAnimation>,
     /// Currently focused window for O(1) deactivate-old / activate-new.
     focused_window: Option<WindowId>,
+
+    /// Pending screencopy frames waiting to be fulfilled during the next render.
+    pub pending_screencopies: Vec<PendingScreencopy>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -212,6 +216,7 @@ impl WaylandState {
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             focused_window: None,
+            pending_screencopies: Vec::new(),
         }
     }
 
