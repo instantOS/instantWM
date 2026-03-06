@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::client::{close_win, kill_client};
+use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::focus::focus_stack;
 use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 
@@ -136,16 +137,16 @@ pub fn get_buttons() -> Vec<Button> {
             }
         }),
         // ── Status text ───────────────────────────────────────────────────
-        btn!(StatusText, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, &[".config/instantos/default/appmenu"])),
+        btn!(StatusText, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, defaults::APPMENU)),
         btn!(StatusText, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, &["kitty"])),
-        btn!(StatusText, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, &["rofi", "-show", "window", "-kb-row-down", "Alt+Tab,Down", "-kb-row-up", "Alt+Ctrl+Tab,Up", "-kb-accept-entry", "!Alt_L,!Alt+Tab,Return", "-me-select-entry", "", "-me-accept-entry", "MousePrimary", "-theme", "/usr/share/instantdotfiles/rootconfig/rofi/appmenu.rasi"])),
-        btn!(StatusText, 0,      button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, &["/usr/share/instantassist/utils/p.sh", "+"])),
-        btn!(StatusText, 0,      button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, &["/usr/share/instantassist/utils/p.sh", "-"])),
+        btn!(StatusText, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, ROFI_WINDOW_SWITCH)),
+        btn!(StatusText, 0,      button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, media::up_vol())),
+        btn!(StatusText, 0,      button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, media::down_vol())),
         btn!(StatusText, MODKEY, button:MouseButton::Left        => |ctx, _| spawn(ctx, &["ins", "settings", "--gui"])),
-        btn!(StatusText, MODKEY, button:MouseButton::Middle      => |ctx, _| spawn(ctx, &["/usr/share/instantassist/utils/p.sh", "m"])),
+        btn!(StatusText, MODKEY, button:MouseButton::Middle      => |ctx, _| spawn(ctx, media::mute_vol())),
         btn!(StatusText, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, &["spoticli", "m"])),
-        btn!(StatusText, MODKEY, button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, &["/usr/share/instantassist/utils/b.sh", "+"])),
-        btn!(StatusText, MODKEY, button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, &["/usr/share/instantassist/utils/b.sh", "-"])),
+        btn!(StatusText, MODKEY, button:MouseButton::ScrollUp    => |ctx, _| spawn(ctx, media::up_bright())),
+        btn!(StatusText, MODKEY, button:MouseButton::ScrollDown  => |ctx, _| spawn(ctx, media::down_bright())),
         btn!(StatusText, MS,     button:MouseButton::Left        => |ctx, _| spawn(ctx, &["pavucontrol"])),
         btn!(StatusText, MC,     button:MouseButton::Left        => |ctx, _| spawn(ctx, &["instantnotify"])),
         // ── Tag bar ───────────────────────────────────────────────────────
@@ -186,9 +187,9 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(ctx, Direction::Left)),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => |ctx, _| shift_view(ctx, Direction::Right)),
         // ── Root window ───────────────────────────────────────────────────
-        btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, &[".config/instantos/default/appmenu"])),
-        btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, &["instantmenu_run"])),
-        btn!(Root, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, &["instantmenu_smartrun"])),
+        btn!(Root, 0,      button:MouseButton::Left        => |ctx, _| spawn(ctx, defaults::APPMENU)),
+        btn!(Root, 0,      button:MouseButton::Middle      => |ctx, _| spawn(ctx, menu::RUN)),
+        btn!(Root, 0,      button:MouseButton::Right       => |ctx, _| spawn(ctx, menu::SMART)),
         btn!(Root, 0,      button:MouseButton::ScrollUp    => |ctx, _| hide_overlay(ctx)),
         btn!(Root, 0,      button:MouseButton::ScrollDown  => |ctx, _| show_overlay(ctx)),
         btn!(Root, MODKEY, button:MouseButton::Left        => |ctx, _| set_overlay(ctx)),
