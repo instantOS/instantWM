@@ -54,6 +54,9 @@ pub fn draw_bar_common(
     }
     core.bar.clear_cached_widths();
     core.bar.begin_monitor_hit_cache(monitor_id);
+    if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
+        hit.x11_bar = x11.is_some();
+    }
 
     widgets::draw_startmenu_icon(core, bar_height, painter);
 

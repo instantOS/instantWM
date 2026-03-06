@@ -164,8 +164,8 @@ fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
 
     // ── Status text ───────────────────────────────────────────────────────
     let systray_w = if core.g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width_x11_for_bar(core)
-            .max(crate::systray::get_systray_width_wayland_for_bar(core))
+        crate::systray::get_systray_width_for_bar(core, true)
+            .max(crate::systray::get_systray_width_for_bar(core, false))
     } else {
         0
     };

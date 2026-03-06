@@ -58,6 +58,9 @@ pub struct MonitorHitCache {
     pub layout_end: i32,
     pub shutdown_end: i32,
     pub status_hit_x: i32,
+    /// True when this cache was built for an X11 bar (as opposed to a Wayland bar).
+    /// Used to skip Wayland-systray hit-testing on X11 bars.
+    pub x11_bar: bool,
 }
 
 impl BarState {
