@@ -9,7 +9,6 @@ use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
-use crate::config::commands::Cmd;
 use crate::contexts::WmCtx;
 use crate::types::*;
 
@@ -47,9 +46,8 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
     exit(1);
 }
 
-/// Spawn a command identified by a [`Cmd`] variant.
-pub fn spawn(ctx: &WmCtx, cmd: Cmd) {
-    let argv = ctx.g().cfg.external_commands.get(cmd);
+/// Spawn a command directly.
+pub fn spawn(ctx: &WmCtx, argv: &[&str]) {
     if !argv.is_empty() {
         let wayland_display_env: Option<CString> = match ctx {
             WmCtx::Wayland(wl) => wl

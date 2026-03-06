@@ -103,7 +103,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
             kill_client(ctx, win);
         }
     } else {
-        crate::util::spawn(ctx, crate::config::commands::Cmd::InstantShutdown);
+        crate::util::spawn(ctx, &["instantshutdown"]);
     }
 }
 

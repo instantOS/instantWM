@@ -27,7 +27,6 @@ use crate::bar::bar_position_at_x;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::draw_bar;
 use crate::client::resize;
-use crate::config::commands::Cmd;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 // focus() is used via focus_soft() in this module
@@ -779,9 +778,9 @@ pub fn gesture_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
                 if (last_y - m.event_y as i32).abs() > threshold {
                     let event_y = m.event_y as i32;
                     let cmd = if event_y < last_y {
-                        Cmd::UpVol
+                        &["/usr/share/instantassist/utils/p.sh", "+"]
                     } else {
-                        Cmd::DownVol
+                        &["/usr/share/instantassist/utils/p.sh", "-"]
                     };
                     let wm_ctx = WmCtx::X11(ctx.reborrow());
                     crate::util::spawn(&wm_ctx, cmd);
