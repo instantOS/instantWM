@@ -92,6 +92,16 @@ impl WaylandBackend {
             .flatten()
     }
 
+    /// Return the current pointer position in root (logical) coordinates,
+    /// rounded to the nearest integer pixel.  Returns `None` if the Wayland
+    /// state has not been attached yet.
+    pub fn pointer_location(&self) -> Option<(i32, i32)> {
+        self.with_state(|state: &mut WaylandState| {
+            let loc = state.pointer.current_location();
+            (loc.x.round() as i32, loc.y.round() as i32)
+        })
+    }
+
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
             state.cursor_icon_override = icon;

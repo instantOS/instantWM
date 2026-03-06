@@ -13,7 +13,7 @@ use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_mon, follow_mon};
-use crate::mouse::{draw_window, move_mouse, moveresize, resize_mouse_from_cursor};
+use crate::mouse::{begin_keyboard_move, draw_window, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
@@ -244,7 +244,7 @@ pub fn get_keys() -> Vec<Key> {
                 moveresize(ctx, win, Direction::Left)
             }
         }),
-        key_x11!(MS,   XK_M      => |ctx| move_mouse(ctx, crate::types::MouseButton::Left)),
+        key!(MS,       XK_M      => begin_keyboard_move),
         key_x11!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
         key_x11!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;

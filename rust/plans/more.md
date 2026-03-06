@@ -27,3 +27,9 @@ parts of the enum variants which not both backends have.
 
 
 
+Investigate the DRM wayland backend. 
+The wayland compositor works somewhat well as a nested compositor, is the
+standalone mode missing something to get it to work as well? Is there anything
+unfinished?
+
+
