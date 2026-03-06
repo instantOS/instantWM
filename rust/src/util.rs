@@ -47,7 +47,7 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
 }
 
 /// Spawn a command directly.
-pub fn spawn(ctx: &WmCtx, argv: &[&str]) {
+pub fn spawn<S: AsRef<str>>(ctx: &WmCtx, argv: &[S]) {
     if !argv.is_empty() {
         let wayland_display_env: Option<CString> = match ctx {
             WmCtx::Wayland(wl) => wl
@@ -62,7 +62,7 @@ pub fn spawn(ctx: &WmCtx, argv: &[&str]) {
 
         let c_args: Vec<CString> = argv
             .iter()
-            .map(|s| CString::new(*s).unwrap_or_else(|_| CString::new("").unwrap()))
+            .map(|s| CString::new(s.as_ref()).unwrap_or_else(|_| CString::new("").unwrap()))
             .collect();
 
         let args: Vec<*const libc::c_char> = c_args
@@ -70,6 +70,8 @@ pub fn spawn(ctx: &WmCtx, argv: &[&str]) {
             .map(|s| s.as_ptr())
             .chain(std::iter::once(ptr::null()))
             .collect();
+
+        let argv0_display = argv[0].as_ref().to_owned();
 
         unsafe {
             match libc::fork() {
@@ -96,7 +98,7 @@ pub fn spawn(ctx: &WmCtx, argv: &[&str]) {
 
                     libc::execvp(c_args[0].as_ptr(), args.as_ptr());
 
-                    die_args_with_errno(&["instantwm: execvp '", argv[0], "' failed"]);
+                    die_args_with_errno(&["instantwm: execvp '", &argv0_display, "' failed"]);
                 }
                 _ => {}
             }

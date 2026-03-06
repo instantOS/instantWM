@@ -27,6 +27,7 @@ pub mod commands;
 pub mod commands_common;
 pub mod config_doc;
 pub mod config_toml;
+pub mod keybind_config;
 pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
@@ -195,6 +196,18 @@ pub struct Config {
 pub fn init_config() -> Config {
     let theme = config_toml::load_config_file();
 
+    // Merge TOML keybinds over compiled defaults
+    let keys = if theme.keybinds.is_empty() {
+        get_keys()
+    } else {
+        keybind_config::merge_keybinds(get_keys(), &theme.keybinds)
+    };
+    let desktop_keybinds = if theme.desktop_keybinds.is_empty() {
+        get_desktop_keybinds()
+    } else {
+        keybind_config::merge_keybinds(get_desktop_keybinds(), &theme.desktop_keybinds)
+    };
+
     Config {
         // --- Window geometry ---
         borderpx: BORDERPX,
@@ -229,9 +242,9 @@ pub fn init_config() -> Config {
         bordercolors: theme.colors.border,
         statusbarcolors: theme.colors.status,
 
-        // --- Bindings ---
-        keys: get_keys(),
-        desktop_keybinds: get_desktop_keybinds(),
+        // --- Bindings (merged with TOML overrides) ---
+        keys,
+        desktop_keybinds,
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
 

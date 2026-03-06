@@ -8,12 +8,12 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
-use crate::mouse::warp::warp_to_focus_x11;
 use crate::keyboard::{down_key, down_press_x11, space_toggle_x11, up_key, up_press_x11};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_mon, follow_mon};
+use crate::mouse::warp::warp_to_focus_x11;
 use crate::mouse::{begin_keyboard_move, draw_window, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};

@@ -1,7 +1,7 @@
 use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::contexts::WmCtx;
-use crate::mouse::warp::warp_to_client_win;
 use crate::layouts::{arrange, restack};
+use crate::mouse::warp::warp_to_client_win;
 use crate::types::*;
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";

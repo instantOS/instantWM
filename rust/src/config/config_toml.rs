@@ -2,6 +2,7 @@ use crate::config::appearance::{
     get_border_colors, get_close_button_colors, get_fonts, get_status_bar_colors, get_tag_colors,
     get_window_colors,
 };
+use crate::config::keybind_config::KeybindSpec;
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
@@ -14,6 +15,10 @@ use std::fs;
 pub struct ThemeConfig {
     pub fonts: Vec<String>,
     pub colors: ColorConfig,
+    /// User-defined keybinds (override/extend defaults).
+    pub keybinds: Vec<KeybindSpec>,
+    /// User-defined desktop keybinds (override/extend defaults).
+    pub desktop_keybinds: Vec<KeybindSpec>,
 }
 
 impl Default for ThemeConfig {
@@ -21,6 +26,8 @@ impl Default for ThemeConfig {
         Self {
             fonts: get_fonts(),
             colors: ColorConfig::default(),
+            keybinds: Vec::new(),
+            desktop_keybinds: Vec::new(),
         }
     }
 }

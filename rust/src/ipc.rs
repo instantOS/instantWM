@@ -1,8 +1,8 @@
 use crate::commands::{command_prefix, set_special_next};
-use crate::mouse::warp::warp_to_focus_x11;
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
+use crate::mouse::warp::warp_to_focus_x11;
 use crate::overlay::set_overlay;
 use crate::scratchpad::{
     scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_status,
