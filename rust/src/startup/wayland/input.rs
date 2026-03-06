@@ -336,6 +336,23 @@ pub fn handle_pointer_button<B: InputBackend>(
                 )
             };
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
+        } else {
+            let maybe_close = {
+                let ctx = wm.ctx();
+                let mon = ctx.g.selected_monitor();
+                let local_x = root_x - mon.work_rect.x;
+                ctx.g.wayland_systray_menu.is_some()
+                    && !crate::wayland_systray::hit_test_wayland_systray_menu_item(
+                        ctx.core(),
+                        &mon,
+                        local_x,
+                    )
+                    .is_some()
+            };
+            if maybe_close {
+                wm.g.wayland_systray_menu = None;
+                wm.bar.mark_dirty();
+            }
         }
 
         let keyboard_focus = state

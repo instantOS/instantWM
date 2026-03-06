@@ -61,24 +61,17 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
     let is_selmon = core.g.selected_monitor().num == mon.num;
     let x11_present = core.g.systray.is_some();
 
-    if core.g.cfg.showsystray && is_selmon && !x11_present {
-        if let Some(menu) = core.g.wayland_systray_menu.as_ref() {
-            let item_h = menu.item_h.max(1);
-            let row = (mon.bar_y - menu.y) / item_h;
-            if local_x >= menu.x
-                && local_x < menu.x + menu.w
-                && mon.bar_y >= menu.y
-                && row >= 0
-                && (row as usize) < menu.items.len()
-            {
-                return BarPosition::SystrayMenuItem(row as usize);
-            }
-        }
-    }
-
     if let Some(hit) = core.bar.monitor_hit_cache(mon.id()) {
         if local_x < start_menu_size {
             return BarPosition::StartMenu;
+        }
+
+        if core.g.cfg.showsystray && is_selmon && !x11_present {
+            if let Some(menu_idx) =
+                crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
+            {
+                return BarPosition::SystrayMenuItem(menu_idx);
+            }
         }
 
         if core.g.cfg.showsystray && is_selmon && !x11_present {
@@ -149,6 +142,11 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
     }
 
     if core.g.cfg.showsystray && is_selmon && !x11_present {
+        if let Some(menu_idx) =
+            crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
+        {
+            return BarPosition::SystrayMenuItem(menu_idx);
+        }
         if let Some(idx) = crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x)
         {
             return BarPosition::SystrayItem(idx);

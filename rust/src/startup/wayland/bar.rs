@@ -81,6 +81,26 @@ pub(super) fn dispatch_wayland_bar_click(
         return;
     }
 
+    if matches!(pos, BarPosition::SystrayMenuItem(_)) {
+        if let Some(runtime) = wm.wayland_systray.as_ref() {
+            let BarPosition::SystrayMenuItem(idx) = pos else {
+                return;
+            };
+            let target = wm.g.wayland_systray_menu.as_ref().and_then(|menu| {
+                menu.items
+                    .get(idx)
+                    .map(|it| (menu.service.clone(), menu.path.clone(), it.id, it.enabled))
+            });
+            if let Some((service, path, id, enabled)) = target {
+                if enabled {
+                    runtime.dispatch_menu_click_item(service, path, id);
+                }
+            }
+        }
+        wm.g.wayland_systray_menu = None;
+        return;
+    }
+
     let mut ctx = wm.ctx();
     dispatch_wayland_bar_button(&mut ctx, pos, button, root_x, root_y, clean_state);
 }

@@ -154,6 +154,7 @@ pub struct WaylandSystray {
 pub struct WaylandSystrayMenuItem {
     pub id: i32,
     pub label: String,
+    pub width: i32,
     pub enabled: bool,
     pub separator: bool,
 }
@@ -162,9 +163,6 @@ pub struct WaylandSystrayMenuItem {
 pub struct WaylandSystrayMenu {
     pub service: String,
     pub path: String,
-    pub x: i32,
-    pub y: i32,
-    pub w: i32,
     pub item_h: i32,
     pub items: Vec<WaylandSystrayMenuItem>,
 }

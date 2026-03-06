@@ -3,16 +3,20 @@ use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 
 use zbus::blocking::{Connection, Proxy};
+use zbus::zvariant::OwnedValue;
 
 use crate::bar::paint::BarPainter;
 use crate::contexts::CoreCtx;
-use crate::types::{MouseButton, WaylandSystrayItem};
+use crate::types::{
+    Monitor, MouseButton, WaylandSystrayItem, WaylandSystrayMenu, WaylandSystrayMenuItem,
+};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
 const WATCHER_IFACE: &str = "org.kde.StatusNotifierWatcher";
 
 const ITEM_IFACE: &str = "org.kde.StatusNotifierItem";
+const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 
 #[derive(Debug)]
 enum SystrayCmd {
@@ -160,29 +164,26 @@ pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
     width
 }
 
-pub fn hit_test_wayland_systray_item(
+pub fn hit_test_wayland_systray_item(core: &CoreCtx, mon: &Monitor, local_x: i32) -> Option<usize> {
+    let layout = systray_layout(core, mon);
+    for slot in &layout.tray_slots {
+        if local_x >= slot.start && local_x < slot.end {
+            return Some(slot.idx);
+        }
+    }
+    None
+}
+
+pub fn hit_test_wayland_systray_menu_item(
     core: &CoreCtx,
-    mon: &crate::types::Monitor,
+    mon: &Monitor,
     local_x: i32,
 ) -> Option<usize> {
-    let total_w = get_wayland_systray_width(core);
-    if total_w <= 0 {
-        return None;
-    }
-    let start_x = mon.work_rect.w - total_w;
-    if local_x < start_x {
-        return None;
-    }
-
-    let icon_h = core.g.cfg.bar_height.max(1);
-    let spacing = core.g.cfg.systrayspacing.max(0);
-    let mut x = start_x + spacing;
-    for (idx, item) in core.g.wayland_systray.items.iter().enumerate() {
-        let iw = scale_icon_width(item.icon_w, item.icon_h, icon_h);
-        if local_x >= x && local_x < x + iw {
-            return Some(idx);
+    let layout = systray_layout(core, mon);
+    for slot in &layout.menu_slots {
+        if local_x >= slot.start && local_x < slot.end {
+            return Some(slot.idx);
         }
-        x += iw + spacing;
     }
     None
 }
@@ -192,11 +193,7 @@ pub fn draw_wayland_systray(
     mon: &crate::types::Monitor,
     painter: &mut crate::bar::wayland::WaylandBarPainter,
 ) {
-    let total_w = get_wayland_systray_width(core);
-    if total_w <= 0 {
-        return;
-    }
-
+    let layout = systray_layout(core, mon);
     if let Some(bg) = crate::bar::theme::status_scheme(core.g).map(|s| s.bg) {
         let bg_scheme = crate::bar::paint::BarScheme {
             fg: bg,
@@ -204,38 +201,47 @@ pub fn draw_wayland_systray(
             detail: bg,
         };
         painter.set_scheme(bg_scheme);
-        painter.rect(
-            mon.work_rect.w - total_w,
-            0,
-            total_w,
-            core.g.cfg.bar_height,
-            true,
-            true,
-        );
+        if layout.tray_total_w > 0 {
+            painter.rect(
+                layout.tray_start_x,
+                0,
+                layout.tray_total_w,
+                core.g.cfg.bar_height,
+                true,
+                true,
+            );
+        }
+        if layout.menu_total_w > 0 {
+            painter.rect(
+                layout.menu_start_x,
+                0,
+                layout.menu_total_w,
+                core.g.cfg.bar_height,
+                true,
+                true,
+            );
+        }
     }
 
     let icon_h = core.g.cfg.bar_height.max(1);
-    let spacing = core.g.cfg.systrayspacing.max(0);
-    let mut x = mon.work_rect.w - total_w + spacing;
-    for item in &core.g.wayland_systray.items {
-        if item.icon_w <= 0 || item.icon_h <= 0 {
+    for slot in &layout.tray_slots {
+        let Some(item) = core.g.wayland_systray.items.get(slot.idx) else {
             continue;
-        }
-        let draw_w = scale_icon_width(item.icon_w, item.icon_h, icon_h);
-        let y = ((icon_h - icon_h.min(item.icon_h)) / 2).max(0);
+        };
         painter.blit_rgba_bgra(
-            x,
-            y,
-            draw_w,
+            slot.start,
+            0,
+            slot.end - slot.start,
             icon_h,
             item.icon_w,
             item.icon_h,
             &item.icon_rgba,
         );
-        x += draw_w + spacing;
     }
 
-    let _ = &core.g.wayland_systray_menu;
+    if let Some(menu) = core.g.wayland_systray_menu.as_ref() {
+        draw_menu_overlay(core, painter, menu, &layout);
+    }
 }
 
 fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
@@ -266,7 +272,7 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
 
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
-            dispatch_cmd(&conn, cmd);
+            dispatch_cmd(&conn, cmd, &evt_tx);
         }
 
         ticks = ticks.wrapping_add(1);
@@ -312,7 +318,7 @@ fn reconcile_items(
     Ok(())
 }
 
-fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd) {
+fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd, evt_tx: &Sender<SystrayEvt>) {
     match cmd {
         SystrayCmd::Activate {
             service,
@@ -336,10 +342,12 @@ fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd) {
             x,
             y,
         } => {
+            let _ = open_menu_from_item(conn, &service, &path, x, y, evt_tx);
             let _ = call_item_method(conn, &service, &path, "ContextMenu", &(x, y));
         }
         SystrayCmd::MenuClick { service, path, id } => {
-            let _ = (service, path, id);
+            let _ = call_menu_event(conn, &service, &path, id);
+            let _ = evt_tx.send(SystrayEvt::MenuClose);
         }
     }
 }
@@ -374,6 +382,202 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
         return None;
     }
     Some((id.to_string(), "/StatusNotifierItem".to_string()))
+}
+
+fn systray_layout(core: &CoreCtx, mon: &Monitor) -> SystrayLayout {
+    let icon_h = core.g.cfg.bar_height.max(1);
+    let spacing = core.g.cfg.systrayspacing.max(0);
+    let mut tray_total_w = 0;
+    if !core.g.wayland_systray.items.is_empty() {
+        tray_total_w = spacing;
+        for item in &core.g.wayland_systray.items {
+            tray_total_w += scale_icon_width(item.icon_w, item.icon_h, icon_h) + spacing;
+        }
+    }
+    let tray_start_x = mon.work_rect.w - tray_total_w;
+
+    let mut tray_slots = Vec::new();
+    let mut x = tray_start_x + spacing;
+    for (idx, item) in core.g.wayland_systray.items.iter().enumerate() {
+        let w = scale_icon_width(item.icon_w, item.icon_h, icon_h);
+        if w > 0 && item.icon_w > 0 && item.icon_h > 0 {
+            tray_slots.push(HitSlot {
+                idx,
+                start: x,
+                end: x + w,
+            });
+        }
+        x += w + spacing;
+    }
+
+    let mut menu_total_w = 0;
+    let mut menu_slots = Vec::new();
+    let mut menu_start_x = 0;
+    if let Some(menu) = core.g.wayland_systray_menu.as_ref() {
+        for item in &menu.items {
+            menu_total_w += item.width.max(24);
+        }
+        menu_start_x = (tray_start_x - menu_total_w).max(0);
+        let mut mx = menu_start_x;
+        for (idx, item) in menu.items.iter().enumerate() {
+            let w = item.width.max(24);
+            menu_slots.push(HitSlot {
+                idx,
+                start: mx,
+                end: mx + w,
+            });
+            mx += w;
+        }
+    }
+
+    SystrayLayout {
+        tray_total_w,
+        tray_start_x,
+        tray_slots,
+        menu_total_w,
+        menu_start_x,
+        menu_slots,
+    }
+}
+
+fn draw_menu_overlay(
+    core: &CoreCtx,
+    painter: &mut crate::bar::wayland::WaylandBarPainter,
+    menu: &WaylandSystrayMenu,
+    layout: &SystrayLayout,
+) {
+    if layout.menu_slots.is_empty() {
+        return;
+    }
+    let Some(mut scheme) = crate::bar::theme::status_scheme(core.g) else {
+        return;
+    };
+    painter.set_scheme(scheme.clone());
+    let item_h = core.g.cfg.bar_height.max(1);
+    for (row, item) in menu.items.iter().enumerate() {
+        let Some(slot) = layout.menu_slots.get(row) else {
+            continue;
+        };
+        let x = slot.start;
+        let w = slot.end - slot.start;
+        let y = 0;
+        if item.separator {
+            painter.rect(x + 3, y + item_h / 2, w - 6, 1, true, false);
+            continue;
+        }
+        if !item.enabled {
+            scheme.fg[3] = 0.6;
+            painter.set_scheme(scheme.clone());
+        }
+        painter.text(x, y, w, item_h, 8, &item.label, false, 0);
+        if !item.enabled {
+            scheme.fg[3] = 1.0;
+            painter.set_scheme(scheme.clone());
+        }
+    }
+}
+
+struct HitSlot {
+    idx: usize,
+    start: i32,
+    end: i32,
+}
+
+struct SystrayLayout {
+    tray_total_w: i32,
+    tray_start_x: i32,
+    tray_slots: Vec<HitSlot>,
+    menu_total_w: i32,
+    menu_start_x: i32,
+    menu_slots: Vec<HitSlot>,
+}
+
+fn open_menu_from_item(
+    conn: &Connection,
+    service: &str,
+    path: &str,
+    _x: i32,
+    _y: i32,
+    evt_tx: &Sender<SystrayEvt>,
+) -> zbus::Result<()> {
+    let menu_path: String = Proxy::new(conn, service, path, ITEM_IFACE)?
+        .get_property("Menu")
+        .unwrap_or_else(|_| "/".to_string());
+    if menu_path == "/" {
+        return Ok(());
+    }
+
+    let menu_items = fetch_menu_items(conn, service, &menu_path)?;
+    let menu = WaylandSystrayMenu {
+        service: service.to_string(),
+        path: menu_path,
+        item_h: 0,
+        items: menu_items,
+    };
+    let _ = evt_tx.send(SystrayEvt::MenuOpen(menu));
+    Ok(())
+}
+
+fn fetch_menu_items(
+    conn: &Connection,
+    service: &str,
+    menu_path: &str,
+) -> zbus::Result<Vec<WaylandSystrayMenuItem>> {
+    let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
+    let (layout,): (OwnedValue,) = proxy.call("GetLayout", &(0i32, -1i32, Vec::<String>::new()))?;
+    let mut out = Vec::new();
+    parse_menu_layout_value(&layout, &mut out);
+    if !out.is_empty() && out[0].id == 0 {
+        out.remove(0);
+    }
+    Ok(out)
+}
+
+fn parse_menu_layout_value(value: &OwnedValue, out: &mut Vec<WaylandSystrayMenuItem>) {
+    let text = format!("{:?}", value);
+    for line in text.split("id:") {
+        let id = line
+            .chars()
+            .skip_while(|c| c.is_whitespace())
+            .take_while(|c| c.is_ascii_digit() || *c == '-')
+            .collect::<String>()
+            .parse::<i32>()
+            .ok();
+        let Some(id) = id else { continue };
+        let label = extract_between(line, "label", "\"").unwrap_or_default();
+        let enabled = !line.contains("enabled: false");
+        let separator = line.contains("type: \"separator\"");
+        if label.is_empty() && !separator {
+            continue;
+        }
+        out.push(WaylandSystrayMenuItem {
+            id,
+            label: {
+                let mut s = label.replace('_', "");
+                if s.is_empty() && separator {
+                    s = "-".to_string();
+                }
+                s
+            },
+            width: ((label.replace('_', "").chars().count() as i32) * 8 + 20).max(24),
+            enabled,
+            separator,
+        });
+    }
+}
+
+fn extract_between(hay: &str, key: &str, quote: &str) -> Option<String> {
+    let key_pos = hay.find(key)?;
+    let start = hay[key_pos..].find(quote)? + key_pos + 1;
+    let end_rel = hay[start..].find(quote)?;
+    Some(hay[start..start + end_rel].to_string())
+}
+
+fn call_menu_event(conn: &Connection, service: &str, menu_path: &str, id: i32) -> zbus::Result<()> {
+    let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
+    let _: () = proxy.call("Event", &(id, "clicked", String::new(), 0u32))?;
+    let _: () = proxy.call("AboutToShow", &(id,))?;
+    Ok(())
 }
 
 fn upsert_item(core: &mut CoreCtx, item: WaylandSystrayItem) -> bool {
@@ -433,11 +637,10 @@ fn argb32_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
     let mut out = vec![0u8; need];
     for i in 0..px_count {
         let si = i * 4;
-        let argb = u32::from_ne_bytes([bytes[si], bytes[si + 1], bytes[si + 2], bytes[si + 3]]);
-        let a = ((argb >> 24) & 0xFF) as u8;
-        let r = ((argb >> 16) & 0xFF) as u8;
-        let g = ((argb >> 8) & 0xFF) as u8;
-        let b = (argb & 0xFF) as u8;
+        let a = bytes[si];
+        let r = bytes[si + 1];
+        let g = bytes[si + 2];
+        let b = bytes[si + 3];
         out[si] = r;
         out[si + 1] = g;
         out[si + 2] = b;
