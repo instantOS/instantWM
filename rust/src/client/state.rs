@@ -212,14 +212,14 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    // --- Read WM_CLASS -------------------------------------------------------
-    let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
-
-    // --- Initialise fields we are about to set -------------------------------
     if !core.g.clients.contains(&win) {
         return;
     }
 
+    // --- Read WM_CLASS -------------------------------------------------------
+    let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
+
+    // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = core.g.clients.get_mut(&win) {
         c.isfloating = false;
         c.tags = 0;
@@ -230,7 +230,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     let tag_mask = core.g.tags.mask();
     let bar_height = core.g.cfg.bar_height;
 
-    // --- Handle SpecialNext shortcut ------------------------------------------
+    // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next {
             if let Some(c) = core.g.clients.get_mut(&win) {
@@ -239,7 +239,6 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
         }
         core.g.specialnext = SpecialNext::None;
     } else {
-        // --- Normal rule matching ---------------------------------------------
         let client_name = core
             .g
             .clients
@@ -248,32 +247,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
             .unwrap_or_default();
 
         for rule in &rules {
-            // Each criterion is optional; an absent criterion always matches.
-            let title_match = rule
-                .title
-                .map(|t| {
-                    let tb = t.as_bytes();
-                    client_name.as_bytes().windows(tb.len()).any(|w| w == tb)
-                })
-                .unwrap_or(true);
-
-            let class_match = rule
-                .class
-                .map(|c| {
-                    let cb = c.as_bytes();
-                    class_bytes.windows(cb.len()).any(|w| w == cb)
-                })
-                .unwrap_or(true);
-
-            let instance_match = rule
-                .instance
-                .map(|i| {
-                    let ib = i.as_bytes();
-                    instance_bytes.windows(ib.len()).any(|w| w == ib)
-                })
-                .unwrap_or(true);
-
-            if !title_match || !class_match || !instance_match {
+            if !rule_matches(rule, &client_name, &class_bytes, &instance_bytes) {
                 continue;
             }
 
@@ -285,72 +259,127 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
-            let cur_mon_id = core.g.clients.get(&win).and_then(|c| c.monitor_id);
-            let (monitor_width, monitor_work_height, monitor_shows_bar, monitor_y, monitor_x) =
-                cur_mon_id
-                    .and_then(|mid| core.g.monitor(mid))
-                    .map(|m| {
-                        (
-                            m.monitor_rect.w,
-                            m.work_rect.h,
-                            m.showbar,
-                            m.monitor_rect.y,
-                            m.monitor_rect.x,
-                        )
-                    })
-                    .unwrap_or((0, 0, false, 0, 0));
+            let mon_geo = core
+                .g
+                .clients
+                .get(&win)
+                .and_then(|c| c.monitor_id)
+                .and_then(|mid| core.g.monitor(mid))
+                .map(|m| (m.monitor_rect, m.work_rect, m.showbar));
 
             if let Some(c) = core.g.clients.get_mut(&win) {
-                match rule.isfloating {
-                    RuleFloat::FloatCenter => {
-                        c.isfloating = true;
-                    }
-                    RuleFloat::FloatFullscreen => {
-                        c.isfloating = true;
-                        c.geo.w = monitor_width;
-                        c.geo.h = monitor_work_height;
-                        if monitor_shows_bar {
-                            c.geo.y = monitor_y + bar_height;
-                        }
-                        c.geo.x = monitor_x;
-                    }
-                    RuleFloat::Scratchpad => {
-                        c.isfloating = true;
-                    }
-                    RuleFloat::Float => {
-                        c.isfloating = true;
-                        if monitor_shows_bar {
-                            c.geo.y = monitor_y + bar_height;
-                        }
-                    }
-                    RuleFloat::Tiled => {
-                        c.isfloating = false;
-                    }
-                }
-
+                apply_float_rule(c, &rule.isfloating, mon_geo, bar_height);
                 c.tags |= rule.tags;
             }
 
-            // Optionally move the client to a specific monitor.
-            if let MonitorRule::Index(target_num) = rule.monitor {
-                // Resolve the monitor id first so that the borrow on
-                // `ctx.g.monitors` (via `monitors_iter`) is fully dropped
-                // before we take a mutable borrow on `ctx.g.clients`.
-                let target_mid: Option<usize> = core
-                    .g
-                    .monitors_iter()
-                    .find(|(_i, m)| m.num == target_num as i32)
-                    .map(|(i, _)| i);
-                if let Some(target_mid) = target_mid {
-                    if let Some(c) = core.g.clients.get_mut(&win) {
-                        c.monitor_id = Some(target_mid);
-                    }
-                }
-            }
+            apply_monitor_rule(core, win, rule);
         }
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
+    clamp_client_tags(core, win, tag_mask);
+}
+
+/// Return `true` when `rule` matches all provided window identifiers.
+///
+/// Each criterion is optional; an absent criterion always matches.
+/// Title is matched against a UTF-8 `String`; class and instance are matched
+/// against raw X11 `WM_CLASS` bytes.
+fn rule_matches(
+    rule: &crate::types::Rule,
+    client_name: &str,
+    class_bytes: &[u8],
+    instance_bytes: &[u8],
+) -> bool {
+    let title_match = rule
+        .title
+        .map(|t| bytes_contains(client_name.as_bytes(), t))
+        .unwrap_or(true);
+    let class_match = rule
+        .class
+        .map(|c| bytes_contains(class_bytes, c))
+        .unwrap_or(true);
+    let instance_match = rule
+        .instance
+        .map(|i| bytes_contains(instance_bytes, i))
+        .unwrap_or(true);
+
+    title_match && class_match && instance_match
+}
+
+/// Return `true` when `needle` appears as a contiguous subsequence of `haystack`.
+#[inline]
+fn bytes_contains(haystack: &[u8], needle: &str) -> bool {
+    let nb = needle.as_bytes();
+    haystack.windows(nb.len()).any(|w| w == nb)
+}
+
+/// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
+/// using the monitor information supplied via `mon_geo`.
+///
+/// `mon_geo` is `(monitor_rect, work_rect, showbar)` and may be `None` when the
+/// client is not yet placed on any monitor (geometry adjustments are skipped).
+fn apply_float_rule(
+    client: &mut crate::types::client::Client,
+    float_rule: &RuleFloat,
+    mon_geo: Option<(Rect, Rect, bool)>,
+    bar_height: i32,
+) {
+    let (monitor_rect, work_rect, showbar) = mon_geo.unwrap_or_default();
+
+    match float_rule {
+        RuleFloat::FloatCenter => {
+            client.isfloating = true;
+        }
+        RuleFloat::FloatFullscreen => {
+            client.isfloating = true;
+            client.geo.w = monitor_rect.w;
+            client.geo.h = work_rect.h;
+            client.geo.x = monitor_rect.x;
+            if showbar {
+                client.geo.y = monitor_rect.y + bar_height;
+            }
+        }
+        RuleFloat::Scratchpad => {
+            client.isfloating = true;
+        }
+        RuleFloat::Float => {
+            client.isfloating = true;
+            if showbar {
+                client.geo.y = monitor_rect.y + bar_height;
+            }
+        }
+        RuleFloat::Tiled => {
+            client.isfloating = false;
+        }
+    }
+}
+
+/// Move `win` to the monitor named in `rule.monitor`, if any.
+///
+/// The monitor index lookup borrow is fully released before the client map
+/// is mutated, satisfying Rust's aliasing rules.
+fn apply_monitor_rule(core: &mut CoreCtx, win: WindowId, rule: &crate::types::Rule) {
+    let MonitorRule::Index(target_num) = rule.monitor else {
+        return;
+    };
+
+    let target_mid = core
+        .g
+        .monitors_iter()
+        .find(|(_i, m)| m.num == target_num as i32)
+        .map(|(i, _)| i);
+
+    if let Some(mid) = target_mid {
+        if let Some(c) = core.g.clients.get_mut(&win) {
+            c.monitor_id = Some(mid);
+        }
+    }
+}
+
+/// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
+/// tags when no rule-assigned tag is currently visible.
+fn clamp_client_tags(core: &mut CoreCtx, win: WindowId, tag_mask: u32) {
     let (client_mon_id, client_tags) = core
         .g
         .clients
@@ -358,17 +387,20 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
         .map(|c| (c.monitor_id, c.tags))
         .unwrap_or((None, 0));
 
-    if let Some(mid) = client_mon_id {
-        if let Some(mon) = core.g.monitor(mid) {
-            let active_tags = mon.selected_tags();
-            if let Some(c) = core.g.clients.get_mut(&win) {
-                c.tags = if client_tags & tag_mask != 0 {
-                    client_tags & tag_mask
-                } else {
-                    active_tags
-                };
-            }
-        }
+    let Some(mid) = client_mon_id else { return };
+    let Some(mon) = core.g.monitor(mid) else {
+        return;
+    };
+
+    let active_tags = mon.selected_tags();
+    let new_tags = if client_tags & tag_mask != 0 {
+        client_tags & tag_mask
+    } else {
+        active_tags
+    };
+
+    if let Some(c) = core.g.clients.get_mut(&win) {
+        c.tags = new_tags;
     }
 }
 
