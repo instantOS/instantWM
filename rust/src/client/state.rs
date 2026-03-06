@@ -26,7 +26,7 @@ use crate::client::constants::{
 use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize_x11;
-use crate::contexts::{CoreCtx, WaylandCtx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtxX11};
 use crate::globals::X11RuntimeConfig;
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
 use x11rb::connection::Connection;
@@ -461,26 +461,21 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 ///   [`set_fullscreen`] to enter fullscreen immediately.
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
-pub fn update_window_type(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
-    win: WindowId,
-) {
-    let conn = x11.conn;
+pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
+    let conn = ctx_x11.x11.conn;
     let x11_win: Window = win.into();
-    let state = get_atom_prop(conn, x11_win, x11_runtime.netatom.wm_state);
-    let wtype = get_atom_prop(conn, x11_win, x11_runtime.netatom.wm_window_type);
+    let state = get_atom_prop(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_state);
+    let wtype = get_atom_prop(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_window_type);
 
-    let atom_fullscreen = x11_runtime.netatom.wm_fullscreen;
-    let atom_dialog = x11_runtime.netatom.wm_window_type_dialog;
+    let atom_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
+    let atom_dialog = ctx_x11.x11_runtime.netatom.wm_window_type_dialog;
 
     if state == Some(atom_fullscreen) {
-        set_fullscreen_x11(core, x11, x11_runtime, win, true);
+        set_fullscreen_x11(ctx_x11, win, true);
     }
 
     if wtype == Some(atom_dialog) {
-        if let Some(client) = core.g.clients.get_mut(&win) {
+        if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
             client.isfloating = true;
         }
     }

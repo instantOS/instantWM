@@ -227,11 +227,7 @@ pub fn warp_into_ctx_x11(ctx: &WmCtxX11<'_>, win: WindowId) {
 ///
 /// Reads `selmon → sel` and delegates to [`warp_impl`].  Does nothing when no
 /// window is selected.
-pub fn warp_to_focus_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-) {
+pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     if let Some(win) = core.selected_client() {
         warp_impl_x11(core, x11, x11_runtime, win);
     }
@@ -241,11 +237,7 @@ pub fn warp_to_focus_x11(
 ///
 /// Call this after a modal grab ends so that the cursor reverts to normal even
 /// if the pointer is not over any client window.
-pub fn reset_cursor_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-) {
+pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     if core.g.altcursor == AltCursor::None {
         return;
     }

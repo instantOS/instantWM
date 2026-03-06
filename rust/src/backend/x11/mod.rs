@@ -10,7 +10,7 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, Sta
 use x11rb::rust_connection::RustConnection;
 use x11rb::CURRENT_TIME;
 
-use crate::backend::{BackendKind, BackendOps};
+use crate::backend::BackendOps;
 use crate::types::{Rect, WindowId};
 
 pub mod bar;
@@ -66,10 +66,6 @@ impl<'a> X11BackendRef<'a> {
 }
 
 impl BackendOps for X11Backend {
-    fn kind(&self) -> BackendKind {
-        self.as_ref().kind()
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         self.as_ref().resize_window(window, rect)
     }
@@ -108,10 +104,6 @@ impl BackendOps for X11Backend {
 }
 
 impl BackendOps for X11BackendRef<'_> {
-    fn kind(&self) -> BackendKind {
-        BackendKind::X11
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;

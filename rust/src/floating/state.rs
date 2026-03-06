@@ -157,11 +157,11 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 }
 
 pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let (_is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.g().clients.get(&win)
-    {
-        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
-        None => return,
-    };
+    let (_is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) =
+        match ctx.g().clients.get(&win) {
+            Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
+            None => return,
+        };
 
     if is_fake_fullscreen {
         return;

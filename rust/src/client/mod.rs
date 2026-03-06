@@ -57,10 +57,7 @@ pub use geometry::{resize, resize_client_x11, resize_x11};
 pub use visibility::{hide, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{
-    configure_x11, send_event_x11, set_focus_x11,
-    unfocus_win_x11,
-};
+pub use focus::{configure_x11, send_event_x11, set_focus_x11, unfocus_win_x11};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen_x11};
@@ -75,8 +72,7 @@ pub fn restore_border_width(core: &mut crate::contexts::CoreCtx, win: crate::typ
 
 // -- X11 state / properties --------------------------------------------------
 pub use state::{
-    set_client_state, set_client_tag_prop, set_urgent, update_title_x11,
-    update_wm_hints,
+    set_client_state, set_client_tag_prop, set_urgent, update_title_x11, update_wm_hints,
 };
 
 // -- Kill --------------------------------------------------------------------

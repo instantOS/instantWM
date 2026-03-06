@@ -12,16 +12,8 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11Backend, X11BackendRef};
 use crate::types::{Rect, WindowId};
 
-/// Backend kind indicator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackendKind {
-    X11,
-    Wayland,
-}
-
 /// Core backend operations required by the WM.
 pub trait BackendOps {
-    fn kind(&self) -> BackendKind;
     fn resize_window(&self, window: WindowId, rect: Rect);
     fn raise_window(&self, window: WindowId);
     fn restack(&self, windows: &[WindowId]);
@@ -69,10 +61,6 @@ impl Backend {
 }
 
 impl BackendOps for Backend {
-    fn kind(&self) -> BackendKind {
-        self.as_ref().kind()
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         self.as_ref().resize_window(window, rect)
     }
@@ -148,13 +136,6 @@ impl<'a> BackendRef<'a> {
 }
 
 impl BackendOps for BackendRef<'_> {
-    fn kind(&self) -> BackendKind {
-        match self {
-            BackendRef::X11(x11) => x11.kind(),
-            BackendRef::Wayland(wayland) => wayland.kind(),
-        }
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         match self {
             BackendRef::X11(x11) => x11.resize_window(window, rect),

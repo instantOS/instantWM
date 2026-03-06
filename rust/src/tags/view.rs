@@ -387,7 +387,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     }
     apply_pertag_settings(core);
     // Release core borrow before calling ctx methods
-    drop(core);
+    let _ = core;
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }

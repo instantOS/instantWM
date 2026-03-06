@@ -169,20 +169,16 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
         key_x11!(MODKEY, XK_DOWN => |ctx| {
-            let systray = ctx.systray.as_deref_mut();
-            down_key_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, systray, StackDirection::Next)
+            down_key_x11(ctx, StackDirection::Next)
         }),
         key_x11!(MODKEY, XK_UP   => |ctx| {
-            let systray = ctx.systray.as_deref_mut();
-            up_key_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, systray, StackDirection::Previous)
+            up_key_x11(ctx, StackDirection::Previous)
         }),
         key_x11!(MS,     XK_DOWN => |ctx| {
-            let systray = ctx.systray.as_deref_mut();
-            down_press_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, systray)
+            down_press_x11(ctx)
         }),
         key_x11!(MS,     XK_UP   => |ctx| {
-            let systray = ctx.systray.as_deref_mut();
-            up_press_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, systray)
+            up_press_x11(ctx)
         }),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -223,8 +219,8 @@ pub fn get_keys() -> Vec<Key> {
         key_x11!(MODKEY,  XK_O       => |ctx| win_view(ctx)),
         key!(MODKEY, XK_COMMA  => |ctx| focus_mon(ctx, MonitorDirection::PREV)),
         key!(MODKEY, XK_PERIOD => |ctx| focus_mon(ctx, MonitorDirection::NEXT)),
-        key_x11!(MS,     XK_COMMA  => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray.as_deref_mut(), MonitorDirection::PREV)),
-        key_x11!(MS,     XK_PERIOD => |ctx| send_to_monitor(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray.as_deref_mut(), MonitorDirection::NEXT)),
+        key_x11!(MS,     XK_COMMA  => |ctx| send_to_monitor(ctx, MonitorDirection::PREV)),
+        key_x11!(MS,     XK_PERIOD => |ctx| send_to_monitor(ctx, MonitorDirection::NEXT)),
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),
@@ -276,7 +272,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
         key_x11!(MODKEY, XK_B  => |ctx| toggle_bar(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray.as_deref())),
-        key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(&mut ctx.core, &ctx.x11)),
+        key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(ctx)),
         key!(MC,     XK_F  => toggle_maximized),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -288,8 +284,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
         key!(MSA,    XK_D  => |ctx| toggle_double_draw(ctx.core_mut())),
         key_x11!(MS,     XK_SPACE => |ctx| {
-            let systray = ctx.systray.as_deref_mut();
-            space_toggle_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, systray)
+            space_toggle_x11(ctx)
         }),
         key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ToggleAction::Toggle)),
         key!(MC,     XK_R     => |ctx| redraw_win(ctx)),

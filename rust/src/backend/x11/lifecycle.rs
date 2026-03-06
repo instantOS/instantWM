@@ -77,7 +77,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         is_monocle,
     );
 
-    apply_manage_hints(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w);
+    apply_manage_hints(ctx, w);
     snapshot_float_geo(ctx.core.g, w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
     grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
@@ -229,19 +229,14 @@ fn configure_client_border(
     let _ = x11.conn.flush();
 }
 
-fn apply_manage_hints(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_cfg: &mut X11RuntimeConfig,
-    w: WindowId,
-) {
-    crate::client::focus::configure_x11(core, x11, w);
-    update_window_type(core, x11, x11_cfg, w);
-    crate::backend::x11::update_size_hints_x11(core, x11, w);
-    update_wm_hints(core, x11, w);
-    read_client_info(core.g, x11, x11_cfg, w);
-    set_client_tag_prop(core, x11, x11_cfg, w);
-    update_motif_hints(core, x11, x11_cfg, w);
+fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
+    crate::client::focus::configure_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    update_window_type(ctx_x11, w);
+    crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    update_wm_hints(&mut ctx_x11.core, &ctx_x11.x11, w);
+    read_client_info(ctx_x11.core.g, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    set_client_tag_prop(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    update_motif_hints(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
 }
 
 fn snapshot_float_geo(g: &mut Globals, w: WindowId, mon_monitor_rect: Rect) {

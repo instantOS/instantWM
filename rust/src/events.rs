@@ -805,9 +805,9 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
     let fullscreen_action = data[0];
 
     if fullscreen_action == 1 {
-        set_fullscreen_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win, true);
+        set_fullscreen_x11(ctx, win, true);
     } else if fullscreen_action == 0 {
-        set_fullscreen_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win, false);
+        set_fullscreen_x11(ctx, win, false);
     };
 }
 

@@ -52,7 +52,7 @@
 
 pub mod compositor;
 
-use crate::backend::{BackendKind, BackendOps};
+use crate::backend::BackendOps;
 use crate::types::{Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
@@ -119,10 +119,6 @@ impl WaylandBackend {
 }
 
 impl BackendOps for WaylandBackend {
-    fn kind(&self) -> BackendKind {
-        BackendKind::Wayland
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }
