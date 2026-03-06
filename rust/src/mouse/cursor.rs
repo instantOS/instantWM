@@ -13,7 +13,7 @@ fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
         let _ = change_window_attributes(
             conn,
             root,
-            &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
+            &ChangeWindowAttributesAux::new().cursor(cursor.cursor as u32),
         );
         let _ = conn.flush();
         ctx.core.g.drag.last_x11_cursor_index = Some(cursor_index);

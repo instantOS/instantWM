@@ -612,7 +612,7 @@ impl WaylandState {
             variant,
             options: options.map(|s| s.to_string()),
             model: model.unwrap_or(""),
-            rules: "",
+            rules: "evdev",
         };
 
         let keyboard = self.keyboard.clone();

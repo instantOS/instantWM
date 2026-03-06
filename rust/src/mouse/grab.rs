@@ -56,7 +56,7 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
-        .map(|c| c.cursor)
+        .map(|c| c.cursor as u32)
         .unwrap_or(x11rb::NONE);
 
     conn.grab_pointer(
@@ -90,7 +90,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
-        .map(|c| c.cursor)
+        .map(|c| c.cursor as u32)
         .unwrap_or(x11rb::NONE);
 
     // KEY_PRESS is NOT valid for grab_pointer.

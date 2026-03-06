@@ -268,8 +268,8 @@ extern "C" {
         join_style: c_int,
     );
 
-    pub fn XCreateFontCursor(display: *mut libc::c_void, shape: u32) -> u32;
-    pub fn XFreeCursor(display: *mut libc::c_void, cursor: u32);
+    pub fn XCreateFontCursor(display: *mut libc::c_void, shape: u32) -> c_ulong;
+    pub fn XFreeCursor(display: *mut libc::c_void, cursor: c_ulong);
 
     pub fn XGetXCBConnection(display: *mut libc::c_void) -> *mut libc::c_void;
 

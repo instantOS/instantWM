@@ -247,7 +247,7 @@ pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X
         let _ = change_window_attributes(
             x11.conn,
             x11_runtime.root,
-            &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
+            &ChangeWindowAttributesAux::new().cursor(cursor.cursor as u32),
         );
         let _ = x11.conn.flush();
     }

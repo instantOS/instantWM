@@ -1,5 +1,6 @@
 use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::x11::X11BackendRef;
+use crate::backend::BackendOps;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
@@ -863,6 +864,8 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         // Skip the wait when we just handled events — there may be more
         // events that arrived while we were dispatching.
         if !handled {
+            wm.backend.flush();
+
             let mut fds = [
                 libc::pollfd {
                     fd: x11_fd,
@@ -1073,7 +1076,12 @@ pub fn scan(wm: &mut Wm) {
 
 pub fn check_other_wm(conn: &x11rb::rust_connection::RustConnection, root: Window) {
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-    let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
+    let result =
+        conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
+
+    if result.is_err() || conn.flush().is_err() {
+        crate::util::die("instantwm: another window manager is already running");
+    }
 }
 
 pub fn setup(_wm: &mut Wm) {}

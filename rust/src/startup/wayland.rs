@@ -52,6 +52,12 @@ pub fn run() -> ! {
         wayland.attach_state(&mut state);
     }
 
+    // Apply the initial keyboard layout if configured.
+    {
+        let mut ctx = wm.ctx();
+        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
+    }
+
     let (backend_init, mut winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);

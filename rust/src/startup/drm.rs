@@ -190,6 +190,12 @@ pub fn run() -> ! {
         wayland.attach_state(&mut state);
     }
 
+    // Apply the initial keyboard layout if configured.
+    {
+        let mut ctx = wm.ctx();
+        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
+    }
+
     // ── GPU discovery ────────────────────────────────────────────────
     let primary_gpu_path = udev::primary_gpu(&seat_name)
         .ok()
@@ -266,11 +272,22 @@ pub fn run() -> ! {
             if modes.is_empty() {
                 continue;
             }
+
+            // Sort modes to find the best one: highest resolution (area), then highest refresh rate.
+            let mut sorted_modes = modes.to_vec();
+            sorted_modes.sort_by(|a, b| {
+                let (aw, ah) = a.size();
+                let (bw, bh) = b.size();
+                (bw as u64 * bh as u64)
+                    .cmp(&(aw as u64 * ah as u64))
+                    .then_with(|| b.vrefresh().cmp(&a.vrefresh()))
+            });
+
             let mode = modes
                 .iter()
                 .find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED))
                 .copied()
-                .unwrap_or(modes[0]);
+                .unwrap_or(sorted_modes[0]);
 
             let encoder_crtcs: Vec<crtc::Handle> = conn_info
                 .encoders()
@@ -326,7 +343,7 @@ pub fn run() -> ! {
             };
             output.change_current_state(
                 Some(out_mode),
-                Some(smithay::utils::Transform::Normal),
+                Some(smithay::utils::Transform::Flipped180),
                 Some(Scale::Integer(1)),
                 Some((output_x_offset, 0).into()),
             );

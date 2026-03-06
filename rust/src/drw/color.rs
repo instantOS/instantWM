@@ -3,6 +3,7 @@
 //! [`Color`] wraps an `XftColor` (a pixel value + 16-bit RGBA components).
 //! [`Cursor`] wraps an X11 cursor id created via `XCreateFontCursor`.
 
+use std::os::raw::c_ulong;
 use super::ffi::{XRenderColor, XftColor};
 
 // ── Color indices into a color scheme ────────────────────────────────────────
@@ -65,7 +66,7 @@ impl Color {
 /// A loaded X11 cursor (created via `XCreateFontCursor`).
 #[derive(Debug, Clone)]
 pub struct Cursor {
-    pub cursor: u32,
+    pub cursor: c_ulong,
 }
 
 // SAFETY: cursor ids are just integers; instantWM is single-threaded.
@@ -73,7 +74,7 @@ unsafe impl Send for Cursor {}
 unsafe impl Sync for Cursor {}
 
 impl Cursor {
-    pub fn new(cursor: u32) -> Self {
+    pub fn new(cursor: c_ulong) -> Self {
         Self { cursor }
     }
 }
