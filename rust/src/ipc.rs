@@ -1,5 +1,6 @@
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{IpcCommand, IpcResponse};
+use crate::keyboard_layout;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
 use crate::mouse::warp::warp_to_focus_x11;
@@ -259,6 +260,33 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::ScratchpadStatus(name) => {
             let status = scratchpad_status(&ctx, name.as_deref().unwrap_or(""));
             IpcResponse::ok(status)
+        }
+        IpcCommand::KeyboardLayout(index) => {
+            keyboard_layout::set_keyboard_layout(&mut ctx, index as usize);
+            IpcResponse::ok("")
+        }
+        IpcCommand::KeyboardLayoutName(name) => {
+            if keyboard_layout::set_keyboard_layout_by_name(&mut ctx, &name) {
+                IpcResponse::ok("")
+            } else {
+                IpcResponse::err(format!("unknown keyboard layout '{name}'"))
+            }
+        }
+        IpcCommand::CycleKeyboardLayout(forward) => {
+            keyboard_layout::cycle_keyboard_layout(&mut ctx, forward);
+            IpcResponse::ok("")
+        }
+        IpcCommand::GetKeyboardLayout => {
+            let status = keyboard_layout::keyboard_layout_status(&ctx);
+            IpcResponse::ok(status)
+        }
+        IpcCommand::ListKeyboardLayouts => {
+            let list = keyboard_layout::keyboard_layout_list(&ctx);
+            IpcResponse::ok(list)
+        }
+        IpcCommand::SetKeyboardLayouts(layouts, variants) => {
+            keyboard_layout::set_keyboard_layouts(&mut ctx, layouts, variants);
+            IpcResponse::ok("")
         }
     }
 }

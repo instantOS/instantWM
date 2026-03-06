@@ -183,6 +183,16 @@ pub struct Config {
 
     // --- External commands ---
     pub external_commands: ExternalCommands,
+
+    // --- Keyboard layouts ---
+    /// XKB layout names, e.g. `["us", "de"]`.
+    pub keyboard_layouts: Vec<String>,
+    /// Per-layout XKB variants (parallel to `keyboard_layouts`).
+    pub keyboard_variants: Vec<String>,
+    /// XKB options string.
+    pub keyboard_options: Option<String>,
+    /// XKB model string.
+    pub keyboard_model: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -250,5 +260,11 @@ pub fn init_config() -> Config {
 
         // --- External commands ---
         external_commands: default_commands(),
+
+        // --- Keyboard layouts ---
+        keyboard_layouts: theme.keyboard.layouts,
+        keyboard_variants: theme.keyboard.variant,
+        keyboard_options: theme.keyboard.options,
+        keyboard_model: theme.keyboard.model,
     }
 }

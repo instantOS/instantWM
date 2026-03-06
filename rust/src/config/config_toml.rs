@@ -19,6 +19,8 @@ pub struct ThemeConfig {
     pub keybinds: Vec<KeybindSpec>,
     /// User-defined desktop keybinds (override/extend defaults).
     pub desktop_keybinds: Vec<KeybindSpec>,
+    /// Keyboard layout configuration.
+    pub keyboard: KeyboardConfig,
 }
 
 impl Default for ThemeConfig {
@@ -28,6 +30,39 @@ impl Default for ThemeConfig {
             colors: ColorConfig::default(),
             keybinds: Vec::new(),
             desktop_keybinds: Vec::new(),
+            keyboard: KeyboardConfig::default(),
+        }
+    }
+}
+
+/// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
+///
+/// ```toml
+/// [keyboard]
+/// layouts = ["us", "de", "fr"]
+/// variant = ["", "nodeadkeys", ""]
+/// options = "grp:alt_shift_toggle"
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct KeyboardConfig {
+    /// XKB layout names, e.g. `["us", "de", "fr"]`.
+    pub layouts: Vec<String>,
+    /// Per-layout variants (same length as `layouts`), e.g. `["", "nodeadkeys"]`.
+    pub variant: Vec<String>,
+    /// XKB options string, e.g. `"grp:alt_shift_toggle,compose:ralt"`.
+    pub options: Option<String>,
+    /// XKB model, e.g. `"pc105"`. Defaults to system default if unset.
+    pub model: Option<String>,
+}
+
+impl Default for KeyboardConfig {
+    fn default() -> Self {
+        Self {
+            layouts: Vec::new(),
+            variant: Vec::new(),
+            options: None,
+            model: None,
         }
     }
 }

@@ -433,6 +433,14 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         "draw_window" => Rc::new(draw_window),
         "begin_keyboard_move" => Rc::new(begin_keyboard_move),
 
+        // Keyboard layout switching
+        "next_keyboard_layout" => {
+            Rc::new(|ctx| crate::keyboard_layout::cycle_keyboard_layout(ctx, true))
+        }
+        "prev_keyboard_layout" => {
+            Rc::new(|ctx| crate::keyboard_layout::cycle_keyboard_layout(ctx, false))
+        }
+
         _ => {
             eprintln!("instantwm: unknown action '{name}' in keybind config");
             return None;

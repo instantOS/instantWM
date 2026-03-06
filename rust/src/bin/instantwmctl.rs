@@ -42,6 +42,27 @@ enum CommandKind {
     ScratchpadShow { name: Option<String> },
     ScratchpadHide { name: Option<String> },
     ScratchpadStatus { name: Option<String> },
+    /// Set keyboard layout by index (0-based).
+    KeyboardLayout { index: u32 },
+    /// Set keyboard layout by name (e.g. "us", "de").
+    KeyboardLayoutName { name: String },
+    /// Cycle to the next keyboard layout.
+    NextKeyboardLayout,
+    /// Cycle to the previous keyboard layout.
+    PrevKeyboardLayout,
+    /// Show the current keyboard layout.
+    GetKeyboardLayout,
+    /// List all configured keyboard layouts.
+    ListKeyboardLayouts,
+    /// Replace configured keyboard layouts at runtime.
+    /// Layouts are positional args, variants follow `--variant`.
+    SetKeyboardLayouts {
+        /// Layout names, e.g. "us" "de" "fr"
+        layouts: Vec<String>,
+        /// Per-layout variants (optional, e.g. "" "nodeadkeys")
+        #[arg(long, num_args = 1..)]
+        variant: Vec<String>,
+    },
 }
 
 fn main() {
@@ -85,6 +106,15 @@ fn main() {
         CommandKind::ScratchpadShow { name } => IpcCommand::ScratchpadShow(name),
         CommandKind::ScratchpadHide { name } => IpcCommand::ScratchpadHide(name),
         CommandKind::ScratchpadStatus { name } => IpcCommand::ScratchpadStatus(name),
+        CommandKind::KeyboardLayout { index } => IpcCommand::KeyboardLayout(index),
+        CommandKind::KeyboardLayoutName { name } => IpcCommand::KeyboardLayoutName(name),
+        CommandKind::NextKeyboardLayout => IpcCommand::CycleKeyboardLayout(true),
+        CommandKind::PrevKeyboardLayout => IpcCommand::CycleKeyboardLayout(false),
+        CommandKind::GetKeyboardLayout => IpcCommand::GetKeyboardLayout,
+        CommandKind::ListKeyboardLayouts => IpcCommand::ListKeyboardLayouts,
+        CommandKind::SetKeyboardLayouts { layouts, variant } => {
+            IpcCommand::SetKeyboardLayouts(layouts, variant)
+        }
     };
 
     let socket = std::env::var("INSTANTWM_SOCKET")

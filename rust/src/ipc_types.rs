@@ -32,6 +32,19 @@ pub enum IpcCommand {
     ScratchpadShow(Option<String>),
     ScratchpadHide(Option<String>),
     ScratchpadStatus(Option<String>),
+    /// Set keyboard layout by index (0-based).
+    KeyboardLayout(u32),
+    /// Set keyboard layout by name.
+    KeyboardLayoutName(String),
+    /// Cycle keyboard layout forward (true) or backward (false).
+    CycleKeyboardLayout(bool),
+    /// Get current keyboard layout info.
+    GetKeyboardLayout,
+    /// List all configured keyboard layouts.
+    ListKeyboardLayouts,
+    /// Replace the configured keyboard layouts at runtime.
+    /// (layouts, variants)
+    SetKeyboardLayouts(Vec<String>, Vec<String>),
 }
 
 #[derive(Debug, Clone, Decode, Encode)]

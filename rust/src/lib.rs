@@ -14,6 +14,7 @@ mod globals;
 pub mod ipc;
 pub mod ipc_types;
 mod keyboard;
+mod keyboard_layout;
 mod layouts;
 #[macro_use]
 mod macros;

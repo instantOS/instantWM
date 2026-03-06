@@ -247,6 +247,36 @@ pub struct DragState {
     pub last_x11_cursor_index: Option<usize>,
 }
 
+/// Keyboard (XKB) layout runtime state.
+#[derive(Debug, Clone, Default)]
+pub struct KeyboardLayoutState {
+    /// Configured XKB layout names, e.g. `["us", "de", "fr"]`.
+    pub layouts: Vec<String>,
+    /// Per-layout XKB variants (parallel to `layouts`).
+    pub variants: Vec<String>,
+    /// XKB options string.
+    pub options: Option<String>,
+    /// XKB model string.
+    pub model: Option<String>,
+    /// Index of the currently active layout in `layouts`.
+    pub current: usize,
+}
+
+impl KeyboardLayoutState {
+    /// The currently active layout name, or `None` if no layouts are configured.
+    pub fn current_layout(&self) -> Option<&str> {
+        self.layouts.get(self.current).map(|s| s.as_str())
+    }
+
+    /// The variant for the currently active layout, or empty string.
+    pub fn current_variant(&self) -> &str {
+        self.variants
+            .get(self.current)
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    }
+}
+
 pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
@@ -266,6 +296,9 @@ pub struct Globals {
     pub drag: DragState,
     pub status_text_width: i32,
     pub status_text: String,
+
+    /// XKB keyboard layout state.
+    pub keyboard_layout: KeyboardLayoutState,
 }
 
 impl Globals {
@@ -356,6 +389,7 @@ impl Default for Globals {
             drag: DragState::default(),
             status_text_width: 0,
             status_text: String::new(),
+            keyboard_layout: KeyboardLayoutState::default(),
         }
     }
 }
@@ -422,6 +456,18 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.rules = cfg.rules.clone();
     g.cfg.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();
+
+    // Initialize keyboard layout state from config
+    if !cfg.keyboard_layouts.is_empty() {
+        g.keyboard_layout = KeyboardLayoutState {
+            layouts: cfg.keyboard_layouts.clone(),
+            variants: cfg.keyboard_variants.clone(),
+            options: cfg.keyboard_options.clone(),
+            model: cfg.keyboard_model.clone(),
+            current: 0,
+        };
+    }
+
     // Rebuild tag template so monitor creation picks up any config changes.
     g.cfg.tag_template = build_tag_template(cfg);
 }
