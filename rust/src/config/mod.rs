@@ -191,9 +191,11 @@ pub struct Config {
 /// Build the default [`Config`].
 ///
 /// Called once from `init_globals` in `startup::x11`.  All values here are the
-/// compile-time defaults; some are later overridden by config files.
+/// compile-time defaults; TOML config overrides the appearance fields when present.
 pub fn init_config() -> Config {
-    let mut cfg = Config {
+    let theme = config_toml::load_config_file();
+
+    Config {
         // --- Window geometry ---
         borderpx: BORDERPX,
         snap: 32,
@@ -217,30 +219,23 @@ pub fn init_config() -> Config {
         // --- Tags ---
         tag_names: get_tags(),
         tag_alt_names: get_tags_alt(),
-        tag_colors: get_tag_colors(),
         num_tags: MAX_TAGS,
 
-        // --- Color tables ---
-        windowcolors: get_window_colors(),
-        closebuttoncolors: get_close_button_colors(),
-        bordercolors: get_border_colors(),
-        statusbarcolors: get_status_bar_colors(),
+        // --- Appearance (from TOML if present, else palette defaults) ---
+        fonts: theme.fonts,
+        tag_colors: theme.colors.tag,
+        windowcolors: theme.colors.window,
+        closebuttoncolors: theme.colors.close_button,
+        bordercolors: theme.colors.border,
+        statusbarcolors: theme.colors.status,
 
         // --- Bindings ---
         keys: get_keys(),
         desktop_keybinds: get_desktop_keybinds(),
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
-        fonts: appearance::get_fonts(),
 
         // --- External commands ---
         external_commands: default_commands(),
-    };
-
-    // Load config from TOML file - this merges with defaults set above
-    if let Err(err) = config_toml::apply_config_overrides(&mut cfg) {
-        eprintln!("instantwm: config load failed, using defaults: {}", err);
     }
-
-    cfg
 }

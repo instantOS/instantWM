@@ -1,22 +1,33 @@
-use crate::config::Config;
+use crate::config::appearance::{
+    get_border_colors, get_close_button_colors, get_fonts, get_status_bar_colors, get_tag_colors,
+    get_window_colors,
+};
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
 };
 use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct ConfigFile {
-    pub fonts: Option<Vec<String>>,
-    pub colors: ColorsFile,
+pub struct ThemeConfig {
+    pub fonts: Vec<String>,
+    pub colors: ColorConfig,
 }
 
-#[derive(Debug, Deserialize, Default)]
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        Self {
+            fonts: get_fonts(),
+            colors: ColorConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(default)]
-pub struct ColorsFile {
+pub struct ColorConfig {
     pub tag: TagColorConfigs,
     pub window: WindowColorConfigs,
     pub close_button: CloseButtonColorConfigs,
@@ -24,42 +35,41 @@ pub struct ColorsFile {
     pub status: StatusColorConfig,
 }
 
-pub fn default_config_path() -> Option<PathBuf> {
-    let config_dir = dirs::config_dir()?;
-    Some(config_dir.join("instantwm").join("config.toml"))
-}
-
-pub fn load_config_toml(path: &Path) -> Result<ConfigFile, String> {
-    let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    toml::from_str(&contents).map_err(|err| err.to_string())
-}
-
-impl Config {
-    pub fn apply_overrides(&mut self, file: ConfigFile) {
-        if let Some(fonts) = file.fonts {
-            if !fonts.is_empty() {
-                self.fonts = fonts;
-            }
+impl Default for ColorConfig {
+    fn default() -> Self {
+        Self {
+            tag: get_tag_colors(),
+            window: get_window_colors(),
+            close_button: get_close_button_colors(),
+            border: get_border_colors(),
+            status: get_status_bar_colors(),
         }
-
-        self.tag_colors = file.colors.tag;
-        self.windowcolors = file.colors.window;
-        self.closebuttoncolors = file.colors.close_button;
-        self.bordercolors = file.colors.border;
-        self.statusbarcolors = file.colors.status;
     }
 }
 
-pub fn apply_config_overrides(cfg: &mut Config) -> Result<(), String> {
-    let Some(path) = default_config_path() else {
-        return Ok(());
+pub fn load_config_file() -> ThemeConfig {
+    let path = match dirs::config_dir() {
+        Some(dir) => dir.join("instantwm").join("config.toml"),
+        None => return ThemeConfig::default(),
     };
 
     if !path.exists() {
-        return Ok(());
+        return ThemeConfig::default();
     }
 
-    let parsed = load_config_toml(&path)?;
-    cfg.apply_overrides(parsed);
-    Ok(())
+    let contents = match fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("instantwm: could not read config: {e}");
+            return ThemeConfig::default();
+        }
+    };
+
+    match toml::from_str(&contents) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("instantwm: config parse error, using defaults: {e}");
+            ThemeConfig::default()
+        }
+    }
 }
