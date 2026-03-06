@@ -14,113 +14,28 @@ use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Win
 use x11rb::wrapper::ConnectionExt as ConnectionExtWrapper;
 use x11rb::CURRENT_TIME;
 
-/// Set focus to a window, or to the root if None.
-///
-/// # Errors
-/// Returns an error if X11 operations fail (e.g., connection lost).
-pub fn focus_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    win: Option<WindowId>,
-) -> anyhow::Result<()> {
-    let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
-        if core.g.monitors.is_empty() {
-            return Ok(());
-        }
-        let sel_mon_id = core.g.selected_monitor_id();
-        let mon = core.g.selected_monitor();
-
-        let selected = mon.selected_tag_mask();
-
-        let mut target = win.filter(|w| {
-            core.g
-                .clients
-                .get(w)
-                .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
-                .unwrap_or(false)
-        });
-
-        if target.is_none() {
-            for &c_win in &mon.stack {
-                let Some(c) = core.g.clients.get(&c_win) else {
-                    continue;
-                };
-                if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
-                    target = Some(c_win);
-                    break;
-                }
-            }
-        }
-
-        (
-            sel_mon_id,
-            mon.sel,
-            target,
-            core.g.x11.root,
-            core.g.x11.netatom.active_window,
-        )
-    };
-
-    if current_sel != target {
-        if let Some(cur_win) = current_sel {
-            unfocus_win_x11(core, x11, cur_win, false);
-        }
-    }
-
-    let selection_state_changed = current_sel.is_none() != target.is_none();
-
-    if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
-        mon.sel = target;
-        if !matches!(
-            mon.gesture,
-            Gesture::None | Gesture::Overlay | Gesture::WinTitle(_)
-        ) {
-            mon.gesture = Gesture::None;
-        }
-    }
-
-    if selection_state_changed {
-        crate::keyboard::grab_keys_x11(core, x11);
-    }
-
-    // Any focus/selection transition can affect bar styling; invalidate bars.
-    core.bar.mark_dirty();
-    crate::bar::draw_bars_x11(core, x11);
-
-    if let Some(w) = target.take() {
-        let is_urgent = core.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
-        if is_urgent {
-            set_urgent(core, x11, w, false);
-        }
-        set_focus_x11(core, x11, w);
-        Ok(())
-    } else {
-        let _ = x11
-            .conn
-            .set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-        let _ = x11.conn.delete_property(root, net_active_window);
-        let _ = x11.conn.flush();
-        Ok(())
-    }
+/// Result of resolving a focus target, containing both the target window
+/// and information needed for state updates.
+struct FocusTargetResult {
+    target: Option<WindowId>,
+    sel_mon_id: MonitorId,
+    current_sel: Option<WindowId>,
 }
 
-/// Wayland focus implementation: pick a target window, update mon.sel,
-/// tell the backend, and redraw bars.
-pub fn focus_wayland(
-    core: &mut CoreCtx,
-    wayland: &WaylandCtx,
-    win: Option<WindowId>,
-) -> anyhow::Result<()> {
+/// Resolve the focus target based on the requested window and current state.
+/// Returns `None` if there are no monitors (early exit case).
+fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTargetResult> {
     if core.g.monitors.is_empty() {
-        return Ok(());
+        return None;
     }
+
     let sel_mon_id = core.g.selected_monitor_id();
     let mon = core.g.selected_monitor();
-
     let selected = mon.selected_tag_mask();
+    let current_sel = mon.sel;
 
-    // Resolve target: use the requested window if visible, otherwise walk the
-    // stack to find the first visible non-hidden client.
+    // Use the requested window if it's visible, otherwise walk the stack
+    // to find the first visible non-hidden client.
     let mut target = win.filter(|w| {
         core.g
             .clients
@@ -141,27 +56,183 @@ pub fn focus_wayland(
         }
     }
 
-    let current_sel = core.g.selected_monitor().sel;
+    Some(FocusTargetResult {
+        target,
+        sel_mon_id,
+        current_sel,
+    })
+}
+
+/// Update monitor state after focus target resolution.
+/// Returns true if the selection state changed (focused <-> unfocused).
+fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<WindowId>, bool) {
+    let FocusTargetResult {
+        target,
+        sel_mon_id,
+        current_sel,
+    } = result;
+
     let selection_state_changed = current_sel.is_none() != target.is_none();
 
     if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
+        // Only update gesture on X11 (Wayland doesn't use this gesture state)
+        #[cfg(feature = "x11")]
+        if !matches!(
+            mon.gesture,
+            Gesture::None | Gesture::Overlay | Gesture::WinTitle(_)
+        ) {
+            mon.gesture = Gesture::None;
+        }
     }
 
-    // Selection/focus state influences bar visuals on Wayland as well.
-    core.bar.mark_dirty();
+    (target, selection_state_changed)
+}
+
+/// Backend-specific focus operations trait.
+/// This allows the common focus logic to call backend-specific operations
+/// without duplicating the surrounding logic.
+trait FocusBackendOps {
+    /// Unfocus the current window (if any) without focusing a new one.
+    fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId);
+    /// Focus a specific window.
+    fn focus_window(&self, core: &mut CoreCtx, win: WindowId);
+    /// Handle the case where no window should be focused (focus root/nothing).
+    fn focus_none(&self, core: &mut CoreCtx);
+    /// Called when selection state changes (focused <-> unfocused).
+    fn on_selection_changed(&self, core: &mut CoreCtx);
+    /// Called after focus state is updated, before focusing a window.
+    fn post_state_update(&self, core: &mut CoreCtx);
+}
+
+struct X11FocusBackend<'a> {
+    x11: &'a X11BackendRef<'a>,
+}
+
+impl<'a> FocusBackendOps for X11FocusBackend<'a> {
+    fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId) {
+        unfocus_win_x11(core, self.x11, current, false);
+    }
+
+    fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
+        let is_urgent = core
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.isurgent)
+            .unwrap_or(false);
+        if is_urgent {
+            set_urgent(core, self.x11, win, false);
+        }
+        set_focus_x11(core, self.x11, win);
+    }
+
+    fn focus_none(&self, _core: &mut CoreCtx) {
+        let _ =
+            self.x11
+                .conn
+                .set_input_focus(InputFocus::POINTER_ROOT, _core.g.x11.root, CURRENT_TIME);
+        let _ = self
+            .x11
+            .conn
+            .delete_property(_core.g.x11.root, _core.g.x11.netatom.active_window);
+        let _ = self.x11.conn.flush();
+    }
+
+    fn on_selection_changed(&self, core: &mut CoreCtx) {
+        crate::keyboard::grab_keys_x11(core, self.x11);
+    }
+
+    fn post_state_update(&self, core: &mut CoreCtx) {
+        core.bar.mark_dirty();
+        crate::bar::draw_bars_x11(core, self.x11);
+    }
+}
+
+struct WaylandFocusBackend<'a> {
+    wayland: &'a WaylandCtx<'a>,
+}
+
+impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
+    fn unfocus_current(&self, _core: &mut CoreCtx, _current: WindowId) {
+        // Wayland doesn't need explicit unfocus - focus is managed by the backend
+    }
+
+    fn focus_window(&self, _core: &mut CoreCtx, win: WindowId) {
+        self.wayland.backend.set_focus(win);
+    }
+
+    fn focus_none(&self, _core: &mut CoreCtx) {
+        // Wayland: no explicit root focus needed
+    }
+
+    fn on_selection_changed(&self, _core: &mut CoreCtx) {
+        // Wayland: key grabs not applicable; desktop bindings kept in core
+    }
+
+    fn post_state_update(&self, core: &mut CoreCtx) {
+        core.bar.mark_dirty();
+    }
+}
+
+/// Generic focus implementation shared between X11 and Wayland.
+fn focus_generic(
+    core: &mut CoreCtx,
+    win: Option<WindowId>,
+    backend: &dyn FocusBackendOps,
+) -> anyhow::Result<()> {
+    let result = match resolve_focus_target(core, win) {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+
+    let current_sel = result.current_sel;
+    let (target, selection_state_changed) = update_focus_state(core, result);
+
+    // Unfocus the previous window if target changed
+    if current_sel != target {
+        if let Some(cur_win) = current_sel {
+            backend.unfocus_current(core, cur_win);
+        }
+    }
 
     if selection_state_changed {
-        // Desktop keybinds change based on whether a window is selected.
-        // TODO: wayland key grabs not applicable; keep desktop bindings in core
+        backend.on_selection_changed(core);
     }
+
+    backend.post_state_update(core);
 
     if let Some(w) = target {
-        wayland.backend.set_focus(w);
+        backend.focus_window(core, w);
+    } else {
+        backend.focus_none(core);
     }
 
-    let _ = core;
     Ok(())
+}
+
+/// Set focus to a window, or to the root if None.
+///
+/// # Errors
+/// Returns an error if X11 operations fail (e.g., connection lost).
+pub fn focus_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: Option<WindowId>,
+) -> anyhow::Result<()> {
+    let backend = X11FocusBackend { x11 };
+    focus_generic(core, win, &backend)
+}
+
+/// Wayland focus implementation: pick a target window, update mon.sel,
+/// tell the backend, and redraw bars.
+pub fn focus_wayland(
+    core: &mut CoreCtx,
+    wayland: &WaylandCtx,
+    win: Option<WindowId>,
+) -> anyhow::Result<()> {
+    let backend = WaylandFocusBackend { wayland };
+    focus_generic(core, win, &backend)
 }
 
 /// Best-effort focus.
@@ -480,34 +551,31 @@ fn calculate_direction_score(
     }
 }
 
+/// Shared logic for directional focus - finds the candidate window.
+fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option<WindowId> {
+    if core.g.monitors.is_empty() {
+        return None;
+    }
+    let mon = core.g.selected_monitor();
+    let source_win = mon.sel?;
+    let source_client = core.g.clients.get(&source_win)?;
+    let (source_center_x, source_center_y) = source_client.geo.center();
+
+    let selected = mon.selected_tag_mask();
+
+    get_directional_candidates(
+        &mon.clients,
+        &*core.g.clients,
+        selected,
+        source_win,
+        source_center_x,
+        source_center_y,
+        direction,
+    )
+}
+
 pub fn direction_focus_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: Direction) {
-    let candidates = {
-        if core.g.monitors.is_empty() {
-            return;
-        }
-        let mon = core.g.selected_monitor();
-        let Some(source_win) = mon.sel else {
-            return;
-        };
-        let Some(source_client) = core.g.clients.get(&source_win) else {
-            return;
-        };
-        let (source_center_x, source_center_y) = source_client.geo.center();
-
-        let selected = mon.selected_tag_mask();
-
-        get_directional_candidates(
-            &mon.clients,
-            &*core.g.clients,
-            selected,
-            source_win,
-            source_center_x,
-            source_center_y,
-            direction,
-        )
-    };
-
-    if let Some(target) = candidates {
+    if let Some(target) = get_direction_focus_candidate(core, direction) {
         focus_soft_x11(core, x11, Some(target));
     }
 }
@@ -610,21 +678,19 @@ fn get_visible_stack(
     stack
 }
 
-pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: StackDirection) {
-    let selected_window = core.selected_client();
-
-    let stack = {
-        if core.g.monitors.is_empty() {
-            return;
-        }
-        let mon = core.g.selected_monitor();
-        get_visible_stack(mon, &*core.g.clients)
-    };
+/// Shared logic to compute the next stack index for focus.
+fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<WindowId> {
+    if core.g.monitors.is_empty() {
+        return None;
+    }
+    let mon = core.g.selected_monitor();
+    let stack = get_visible_stack(mon, &*core.g.clients);
 
     if stack.is_empty() {
-        return;
+        return None;
     }
 
+    let selected_window = core.selected_client();
     let current_idx = match selected_window {
         Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
         None => 0,
@@ -638,35 +704,17 @@ pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: Stack
         current_idx - 1
     };
 
-    focus_soft_x11(core, x11, Some(stack[next_idx]));
+    Some(stack[next_idx])
+}
+
+pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: StackDirection) {
+    if let Some(target) = get_stack_focus_target(core, direction) {
+        focus_soft_x11(core, x11, Some(target));
+    }
 }
 
 pub fn direction_focus_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, direction: Direction) {
-    if core.g.monitors.is_empty() {
-        return;
-    }
-    let mon = core.g.selected_monitor();
-    let Some(source_win) = mon.sel else {
-        return;
-    };
-    let Some(source_client) = core.g.clients.get(&source_win) else {
-        return;
-    };
-    let (source_center_x, source_center_y) = source_client.geo.center();
-
-    let selected = mon.selected_tag_mask();
-
-    let candidates = get_directional_candidates(
-        &mon.clients,
-        &*core.g.clients,
-        selected,
-        source_win,
-        source_center_x,
-        source_center_y,
-        direction,
-    );
-
-    if let Some(target) = candidates {
+    if let Some(target) = get_direction_focus_candidate(core, direction) {
         if let Err(e) = focus_wayland(core, wayland, Some(target)) {
             log::warn!("focus_wayland({:?}) failed: {}", target, e);
         }
@@ -674,35 +722,10 @@ pub fn direction_focus_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, directi
 }
 
 pub fn focus_stack_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, direction: StackDirection) {
-    let selected_window = core.selected_client();
-
-    let stack = {
-        if core.g.monitors.is_empty() {
-            return;
+    if let Some(target) = get_stack_focus_target(core, direction) {
+        if let Err(e) = focus_wayland(core, wayland, Some(target)) {
+            log::warn!("focus_wayland({:?}) failed: {}", target, e);
         }
-        let mon = core.g.selected_monitor();
-        get_visible_stack(mon, &*core.g.clients)
-    };
-
-    if stack.is_empty() {
-        return;
-    }
-
-    let current_idx = match selected_window {
-        Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
-        None => 0,
-    };
-
-    let next_idx = if direction.is_forward() {
-        (current_idx + 1) % stack.len()
-    } else if current_idx == 0 {
-        stack.len() - 1
-    } else {
-        current_idx - 1
-    };
-
-    if let Err(e) = focus_wayland(core, wayland, Some(stack[next_idx])) {
-        log::warn!("focus_wayland({:?}) failed: {}", stack[next_idx], e);
     }
 }
 
