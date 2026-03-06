@@ -126,7 +126,7 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         }
     };
 
-    let rate = refresh_rate(ctx);
+    let _rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -237,7 +237,7 @@ pub fn resize_mouse_directional(
     let dir = direction.unwrap_or(ResizeDirection::BottomRight);
     let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
 
-    let rate = refresh_rate(ctx);
+    let _rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {
@@ -385,7 +385,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) 
         }
     };
 
-    let rate = refresh_rate(ctx);
+    let _rate = refresh_rate(ctx);
     let mut last_time: u32 = 0;
 
     loop {

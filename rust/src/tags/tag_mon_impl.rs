@@ -17,7 +17,7 @@ use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::globals::X11RuntimeConfig;
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
-use crate::types::{MonitorDirection, WindowId};
+use crate::types::{MonitorDirection, Systray, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
 
@@ -30,6 +30,7 @@ pub fn send_to_monitor(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&mut Systray>,
     direction: MonitorDirection,
 ) {
     // -----------------------------------------------------------------------
@@ -65,7 +66,7 @@ pub fn send_to_monitor(
         .unwrap_or(false);
 
     if is_floating {
-        move_floating(core, x11, x11_runtime, win, target_id);
+        move_floating(core, x11, x11_runtime, systray, win, target_id);
     } else {
         transfer_client(
             &mut WmCtx::X11(WmCtxX11 {
@@ -73,7 +74,7 @@ pub fn send_to_monitor(
                 backend: BackendRef::from_x11(x11.conn, x11.screen_num),
                 x11: X11BackendRef::new(x11.conn, x11.screen_num),
                 x11_runtime,
-                systray: None,
+                systray,
             }),
             win,
             target_id,
@@ -90,6 +91,7 @@ fn move_floating(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
+    mut systray: Option<&mut Systray>,
     win: WindowId,
     target_id: crate::types::MonitorId,
 ) {
@@ -162,7 +164,7 @@ fn move_floating(
             backend: BackendRef::from_x11(x11.conn, x11.screen_num),
             x11: X11BackendRef::new(x11.conn, x11.screen_num),
             x11_runtime,
-            systray: None,
+            systray: systray.as_deref_mut(),
         }),
         win,
         target_id,
@@ -181,7 +183,7 @@ fn move_floating(
             backend: BackendRef::from_x11(x11.conn, x11.screen_num),
             x11: X11BackendRef::new(x11.conn, x11.screen_num),
             x11_runtime,
-            systray: None,
+            systray: systray.as_deref_mut(),
         }),
         Some(selmon_id),
     );

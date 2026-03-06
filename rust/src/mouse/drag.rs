@@ -1268,7 +1268,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
             if let WmCtx::X11(x11) = ctx {
                 let conn = x11.x11.conn;
-                let x11_win: Window = win.into();
+                let _x11_win: Window = win.into();
                 let x11_win: Window = win.into();
                 let _ = conn.warp_pointer(
                     x11rb::NONE,

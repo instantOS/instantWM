@@ -43,7 +43,7 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 /// `state` should be one of the `WM_STATE_*` constants from
 /// [`crate::client::constants`].
 pub fn set_client_state(
-    core: &CoreCtx,
+    _core: &CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -176,7 +176,7 @@ pub fn update_title_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, win: Windo
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
 /// or [`BROKEN`] if both are absent / unreadable.
 fn read_window_title(
-    core: &CoreCtx,
+    _core: &CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,

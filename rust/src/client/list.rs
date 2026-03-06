@@ -4,7 +4,6 @@
 //! invariants in one place.
 
 use crate::contexts::WmCtx;
-use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::WindowId;
 

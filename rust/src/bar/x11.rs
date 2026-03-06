@@ -43,7 +43,7 @@ pub fn update_status(
 pub fn resize_bar_win(
     core: &CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
+    _x11_runtime: &X11RuntimeConfig,
     systray: Option<&Systray>,
     m: &Monitor,
 ) {

@@ -31,7 +31,6 @@
 use crate::animation::animate_client_x11;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
-use crate::backend::BackendRef;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};

@@ -177,7 +177,7 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
 }
 
 pub fn update_num_lock_mask_x11(
-    core: &mut CoreCtx,
+    _core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
 ) {
@@ -266,7 +266,7 @@ pub fn down_press_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&mut Systray>,
+    mut systray: Option<&mut Systray>,
 ) {
     if with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
         unhide_one(ctx)
@@ -327,7 +327,7 @@ pub fn up_key_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&mut Systray>,
+    mut systray: Option<&mut Systray>,
     direction: StackDirection,
 ) {
     let is_overview = !core.g.selected_monitor().is_tiling_layout();
@@ -370,7 +370,7 @@ pub fn down_key_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&mut Systray>,
+    mut systray: Option<&mut Systray>,
     direction: StackDirection,
 ) {
     let is_overview = core.g.selected_monitor().is_tiling_layout();
@@ -398,7 +398,7 @@ pub fn space_toggle_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&mut Systray>,
+    mut systray: Option<&mut Systray>,
 ) {
     let has_tiling = core.g.selected_monitor().is_tiling_layout();
 

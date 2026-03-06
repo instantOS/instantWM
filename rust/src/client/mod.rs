@@ -48,7 +48,7 @@ pub mod visibility;
 pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
 
 // -- Linked-list management --------------------------------------------------
-pub use list::{attach, attach_stack, detach, detach_stack, next_tiled, pop};
+pub use list::{attach, attach_stack, detach, detach_stack};
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{resize, resize_client_x11, resize_x11};
@@ -58,7 +58,7 @@ pub use visibility::{hide, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{
-    clear_urgency_hint, configure_x11, grab_buttons_x11, send_event_x11, set_focus_x11,
+    configure_x11, send_event_x11, set_focus_x11,
     unfocus_win_x11,
 };
 
@@ -75,8 +75,7 @@ pub fn restore_border_width(core: &mut crate::contexts::CoreCtx, win: crate::typ
 
 // -- X11 state / properties --------------------------------------------------
 pub use state::{
-    apply_rules, set_client_state, set_client_tag_prop, set_urgent, update_client_list,
-    update_motif_hints, update_title_wayland, update_title_x11, update_window_type,
+    set_client_state, set_client_tag_prop, set_urgent, update_title_x11,
     update_wm_hints,
 };
 

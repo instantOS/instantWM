@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::client::{close_win, kill_client};
-use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
+use crate::config::commands_common::{defaults, media, menu, ROFI_WINDOW_SWITCH};
 use crate::focus::focus_stack;
 use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 

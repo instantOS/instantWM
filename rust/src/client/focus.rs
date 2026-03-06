@@ -81,7 +81,7 @@ pub fn configure_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 /// For any other `proto` value the message is sent unconditionally and `true`
 /// is returned.
 pub fn send_event_x11(
-    core: &mut CoreCtx,
+    _core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -251,7 +251,7 @@ pub fn unfocus_win_x11(
 /// When `focused` is `true`, all button grabs are released so the client
 /// receives button events directly.
 pub fn grab_buttons_x11(
-    core: &mut CoreCtx,
+    _core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -342,7 +342,7 @@ fn ungrab_button(
 ///
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
-pub fn clear_urgency_hint(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
+pub fn clear_urgency_hint(_core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
