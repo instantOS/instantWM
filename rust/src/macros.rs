@@ -17,6 +17,3 @@ macro_rules! require_x11_ret {
         }
     };
 }
-
-pub(crate) use require_x11;
-pub(crate) use require_x11_ret;

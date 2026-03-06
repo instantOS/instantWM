@@ -34,6 +34,7 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).
+/// TODO: redundant, remove
 fn raise_window(ctx: &WmCtx, win: WindowId) {
     ctx.backend().raise_window(win);
 }

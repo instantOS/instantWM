@@ -3,10 +3,46 @@
 use crate::animation::animate_client;
 use crate::backend::BackendOps;
 use crate::client::restore_border_width;
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
 use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;
+
+/// Common helper for restoring border width when transitioning to floating.
+/// Returns the restored border width value.
+fn restore_client_border(
+    core: &mut CoreCtx,
+    backend: &impl BackendOps,
+    win: WindowId,
+) -> i32 {
+    restore_border_width(core, win);
+    let restored_bw = core
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.border_width)
+        .unwrap_or(0);
+    BackendOps::set_border_width(backend, win, restored_bw);
+    restored_bw
+}
+
+/// Apply borderscheme for X11 floating windows (X11 only).
+fn apply_floating_borderscheme(
+    core: &CoreCtx,
+    x11: &X11Ctx,
+    win: WindowId,
+) {
+    if let Some(ref scheme) = core.g.cfg.borderscheme {
+        let pixel = scheme.float_focus.bg.color.pixel;
+        let _ = x11rb::protocol::xproto::change_window_attributes(
+            x11.conn,
+            win.into(),
+            &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                .border_pixel(Some(pixel as u32)),
+        );
+        let _ = x11.conn.flush();
+    }
+}
 
 pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
@@ -14,41 +50,14 @@ pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
             if let Some(client) = x11.core.g.clients.get_mut(&win) {
                 client.isfloating = true;
             }
-
-            restore_border_width(&mut x11.core, win);
-            let restored_bw = x11
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.border_width)
-                .unwrap_or(0);
-            BackendOps::set_border_width(&x11.backend, win, restored_bw);
-
-            if let Some(ref scheme) = x11.core.g.cfg.borderscheme {
-                let pixel = scheme.float_focus.bg.color.pixel;
-                let _ = x11rb::protocol::xproto::change_window_attributes(
-                    x11.x11.conn,
-                    win.into(),
-                    &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
-                        .border_pixel(Some(pixel as u32)),
-                );
-                let _ = x11.x11.conn.flush();
-            }
+            restore_client_border(&mut x11.core, &x11.backend, win);
+            apply_floating_borderscheme(&x11.core, &x11.x11, win);
         }
         WmCtx::Wayland(wl) => {
             if let Some(client) = wl.core.g.clients.get_mut(&win) {
                 client.isfloating = true;
             }
-            restore_border_width(&mut wl.core, win);
-            let restored_bw = wl
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.border_width)
-                .unwrap_or(0);
-            BackendOps::set_border_width(&wl.backend, win, restored_bw);
+            restore_client_border(&mut wl.core, &wl.backend, win);
         }
     }
 }
@@ -80,26 +89,8 @@ pub fn apply_float_change(
                 }
 
                 if update_borders {
-                    restore_border_width(&mut x11.core, win);
-                    let restored_bw = x11
-                        .core
-                        .g
-                        .clients
-                        .get(&win)
-                        .map(|c| c.border_width)
-                        .unwrap_or(0);
-                    BackendOps::set_border_width(&x11.backend, win, restored_bw);
-
-                    if let Some(ref scheme) = x11.core.g.cfg.borderscheme {
-                        let pixel = scheme.float_focus.bg.color.pixel;
-                        let _ = x11rb::protocol::xproto::change_window_attributes(
-                            x11.x11.conn,
-                            win.into(),
-                            &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
-                                .border_pixel(Some(pixel as u32)),
-                        );
-                        let _ = x11.x11.conn.flush();
-                    }
+                    restore_client_border(&mut x11.core, &x11.backend, win);
+                    apply_floating_borderscheme(&x11.core, &x11.x11, win);
                 }
 
                 let saved_geo = x11.core.g.clients.get(&win).map(|c| c.float_geo);
