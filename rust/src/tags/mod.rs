@@ -29,7 +29,7 @@ pub use view::{
 
 // Re-export TagMask for convenience
 
-pub use shift::{move_client, shift_tag_by};
+pub use shift::{move_client, shift_tag};
 
 pub use sticky::reset_sticky_win;
 

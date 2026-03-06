@@ -275,7 +275,7 @@ impl<'a> WmCtx<'a> {
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
         match self {
             WmCtx::X11(x11) => {
-                crate::focus::warp_cursor_to_client_x11(&x11.core, &x11.x11, x11.x11_runtime, win);
+                crate::mouse::warp::warp_to_client_win(&x11.core, &x11.x11, x11.x11_runtime, win);
             }
             WmCtx::Wayland(_) => {
                 // Wayland doesn't allow compositor cursor warping - no-op

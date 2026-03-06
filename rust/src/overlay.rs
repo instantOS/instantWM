@@ -34,10 +34,6 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).
-/// TODO: redundant, remove
-fn raise_window(ctx: &WmCtx, win: WindowId) {
-    ctx.backend().raise_window(win);
-}
 
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
@@ -239,7 +235,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     }
 
     // Raise the window using backend-agnostic method
-    raise_window(ctx, temp_client);
+    ctx.backend().raise_window(temp_client);
 
     show_overlay(ctx);
 }
@@ -359,7 +355,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
-        raise_window(ctx, overlay_win);
+        ctx.backend().raise_window(overlay_win);
 
         let target_rect = get_target_overlay_rect(&pos_info);
         animate_client(
@@ -376,7 +372,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     }
 
     crate::focus::focus_soft(ctx, Some(overlay_win));
-    raise_window(ctx, overlay_win);
+    ctx.backend().raise_window(overlay_win);
 }
 
 /// Check if overlay is fullscreen on the given monitor.

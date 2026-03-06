@@ -1,5 +1,5 @@
 use crate::commands::{command_prefix, set_special_next};
-use crate::focus::warp_to_focus_x11;
+use crate::mouse::warp::warp_to_focus_x11;
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, focus_n_mon, follow_mon};

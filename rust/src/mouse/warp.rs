@@ -54,7 +54,7 @@ pub fn get_root_ptr_ctx_x11(ctx: &WmCtxX11<'_>) -> Option<(i32, i32)> {
 /// work area instead.  The warp is skipped when the pointer is already inside
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
-pub(crate) fn warp_impl_x11(
+pub(crate) fn warp_to_client_win(
     core: &CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
@@ -131,7 +131,7 @@ pub(crate) fn warp_impl_x11(
 /// pointer jumps when the user deliberately placed the cursor somewhere else.
 #[inline]
 pub fn warp_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, c: &Client) {
-    warp_impl_x11(core, x11, x11_runtime, c.win);
+    warp_to_client_win(core, x11, x11_runtime, c.win);
 }
 
 /// Same as [`warp`] but accepts a `&Client` directly – kept for call-sites
@@ -143,7 +143,7 @@ pub fn warp_cursor_to_client_win_x11(
     x11_runtime: &X11RuntimeConfig,
     c: &Client,
 ) {
-    warp_impl_x11(core, x11, x11_runtime, c.win);
+    warp_to_client_win(core, x11, x11_runtime, c.win);
 }
 
 /// Unconditionally move the pointer to the top-centre of `c`.
@@ -229,7 +229,7 @@ pub fn warp_into_ctx_x11(ctx: &WmCtxX11<'_>, win: WindowId) {
 /// window is selected.
 pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     if let Some(win) = core.selected_client() {
-        warp_impl_x11(core, x11, x11_runtime, win);
+        warp_to_client_win(core, x11, x11_runtime, win);
     }
 }
 

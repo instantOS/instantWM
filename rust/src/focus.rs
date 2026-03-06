@@ -8,7 +8,7 @@ use crate::backend::BackendOps;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::globals::X11RuntimeConfig;
-use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
+use crate::mouse::get_cursor_client_win_x11;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
@@ -649,21 +649,6 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     crate::layouts::arrange(ctx, Some(monitor_id));
 }
 
-pub fn warp_cursor_to_client_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    c_win: WindowId,
-) {
-    mouse_warp::warp_impl_x11(core, x11, x11_runtime, c_win);
-}
-
-pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
-    if let Some(win) = core.selected_client() {
-        warp_cursor_to_client_x11(core, x11, x11_runtime, win);
-    }
-}
-
 /// Focus the next or previous client in the stack.
 pub fn focus_stack_direction<F>(core: &CoreCtx, forward: bool, focus_fn: F)
 where
@@ -738,19 +723,6 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
     };
 
     Some(stack[next_idx])
-}
-
-//TODO: this seems redundant, there is a backend agnostic focus method, and
-//get_stack_focus_target is already agnostic
-pub(crate) fn focus_stack_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut crate::globals::X11RuntimeConfig,
-    direction: StackDirection,
-) {
-    if let Some(target) = get_stack_focus_target(core, direction) {
-        let _ = focus_x11(core, x11, x11_runtime, None, Some(target));
-    }
 }
 
 pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {

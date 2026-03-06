@@ -7,17 +7,12 @@ use crate::backend::BackendOps;
 use crate::layouts::arrange;
 use crate::types::{Direction, OverlayMode, Rect, WindowId};
 
-//TODO: this seems redundant
-pub fn shift_tag_by(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    shift_tag(ctx, dir, offset.max(1));
-}
-
 pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
-    shift_tag_by(ctx, dir, 1);
+    shift_tag(ctx, dir, 1);
     crate::tags::view::scroll_view(ctx, dir);
 }
 
-fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
+pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let (win, current_tag, overlay_win, tagset, tagmask, animated) = {
         let mon = ctx.g().selected_monitor();
         let Some(win) = mon.sel else {

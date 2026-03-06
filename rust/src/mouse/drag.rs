@@ -29,7 +29,7 @@ use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
-use crate::tags::{move_client, shift_tag_by};
+use crate::tags::{move_client, shift_tag};
 use crate::types::geometry::Rect;
 use crate::types::SnapPosition;
 use crate::types::*;
@@ -516,9 +516,9 @@ fn apply_edge_drop(
                 move_client(ctx, Direction::Right);
             }
         } else if at_left {
-            shift_tag_by(ctx, Direction::Left, 1);
+            shift_tag(ctx, Direction::Left, 1);
         } else {
-            shift_tag_by(ctx, Direction::Right, 1);
+            shift_tag(ctx, Direction::Right, 1);
         }
 
         if let Some(c) = ctx.g_mut().clients.get_mut(&win) {

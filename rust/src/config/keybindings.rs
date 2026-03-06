@@ -7,7 +7,8 @@ use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
-use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus_x11};
+use crate::focus::{direction_focus, focus_last_client, focus_stack};
+use crate::mouse::warp::warp_to_focus_x11;
 use crate::keyboard::{down_key, down_press_x11, space_toggle_x11, up_key, up_press_x11};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
@@ -18,7 +19,7 @@ use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};
 use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
-    follow_view, last_view, move_client, quit, send_to_monitor, shift_tag_by, shift_view,
+    follow_view, last_view, move_client, quit, send_to_monitor, shift_tag, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -201,8 +202,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),
         key!(MA,      XK_LEFT    => |ctx| move_client(ctx, Direction::Left)),
         key!(MA,      XK_RIGHT   => |ctx| move_client(ctx, Direction::Right)),
-        key!(MS,      XK_LEFT    => |ctx| shift_tag_by(ctx, Direction::Left, 1)),
-        key!(MS,      XK_RIGHT   => |ctx| shift_tag_by(ctx, Direction::Right, 1)),
+        key!(MS,      XK_LEFT    => |ctx| shift_tag(ctx, Direction::Left, 1)),
+        key!(MS,      XK_RIGHT   => |ctx| shift_tag(ctx, Direction::Right, 1)),
         key!(MSC,     XK_RIGHT   => |ctx| shift_view(ctx, Direction::Right)),
         key!(MSC,     XK_LEFT    => |ctx| shift_view(ctx, Direction::Left)),
         // View all tags (overview mode)
