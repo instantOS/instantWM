@@ -21,9 +21,9 @@
 //! 1. `CursorImageStatus::Hidden`    → no element returned (cursor hidden).
 //! 2. `CursorImageStatus::Named(icon)` → use the preloaded system texture
 //!    that best matches the `CursorIcon` name.
-//! 3. `CursorImageStatus::Surface(_)` → we currently do not render client
-//!    cursor surfaces directly on DRM, so we fall back to the default cursor
-//!    texture instead of hiding it.
+//! 3. `CursorImageStatus::Surface(_)` → handled by the DRM render path via
+//!    `render_elements_from_surface_tree`; this helper returns `None` for that
+//!    case so callers can compose the surface cursor with the proper hotspot.
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
@@ -154,9 +154,9 @@ impl CursorManager {
             match status {
                 CursorImageStatus::Hidden => return None,
                 CursorImageStatus::Named(icon) => self.frame_for_icon(*icon),
-                // Client-provided cursor surfaces are not rendered explicitly
-                // on DRM yet; keep the pointer visible with a default arrow.
-                CursorImageStatus::Surface(_) => &self.default,
+                // Client-provided cursor surfaces are rendered by the DRM
+                // backend directly from the wl_surface tree.
+                CursorImageStatus::Surface(_) => return None,
             }
         };
 
@@ -318,8 +318,6 @@ fn frame_to_element(
         None, // alpha = 1.0
         None, // src crop (None = whole texture)
         None, // override size (None = texture's own size)
-        // Keep cursor in normal composition so z-order matches element order
-        // (cursor should remain above borders and all window content).
-        Kind::Unspecified,
+        Kind::Cursor,
     )
 }

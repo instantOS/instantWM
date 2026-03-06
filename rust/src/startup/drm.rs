@@ -55,6 +55,7 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev;
 use smithay::desktop::space::render_output;
+use smithay::input::pointer::{CursorImageAttributes, CursorImageStatus};
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent, Libinput};
@@ -794,6 +795,31 @@ fn render_drm_output(
         pointer_location.x - entry.x_offset as f64,
         pointer_location.y,
     ));
+    if let CursorImageStatus::Surface(surface) = &state.cursor_image_status {
+        let hotspot = smithay::wayland::compositor::with_states(surface, |states| {
+            states
+                .data_map
+                .get::<Mutex<CursorImageAttributes>>()
+                .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
+                .unwrap_or((0, 0).into())
+        });
+        let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
+            (local_pointer.x - hotspot.x as f64).round() as i32,
+            (local_pointer.y - hotspot.y as f64).round() as i32,
+        ));
+        let cursor_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                renderer,
+                surface,
+                cursor_loc,
+                smithay::utils::Scale::from(1.0),
+                1.0,
+                smithay::backend::renderer::element::Kind::Cursor,
+            );
+        for elem in cursor_elements {
+            custom_elements.push(DrmExtras::Surface(elem));
+        }
+    }
     if let Some(cursor_elem) = cursor_manager.render_element(
         local_pointer,
         &state.cursor_image_status,
