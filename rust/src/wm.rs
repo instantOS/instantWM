@@ -2,9 +2,9 @@
 //!
 //! `Wm` owns all runtime state and the active backend.
 
-use crate::backend::x11::X11Backend;
+use crate::backend::x11::{X11Backend, X11BackendRef};
 use crate::backend::{Backend, BackendRef};
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::globals::Globals;
 
 pub struct Wm {
@@ -58,10 +58,7 @@ impl Wm {
             Backend::X11(x11) => WmCtx::X11(WmCtxX11 {
                 core,
                 backend,
-                x11: X11Ctx {
-                    conn: &x11.conn,
-                    screen_num: x11.screen_num,
-                },
+                x11: X11BackendRef::new(&x11.conn, x11.screen_num),
             }),
             Backend::Wayland(wayland) => WmCtx::Wayland(WmCtxWayland {
                 core,

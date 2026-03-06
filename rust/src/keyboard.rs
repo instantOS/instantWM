@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::backend::x11::X11BackendRef;
+use crate::backend::BackendRef;
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::{direction_focus_x11, focus_stack_x11};
 
@@ -12,14 +14,15 @@ use crate::types::{Direction, StackDirection};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-fn with_wm_ctx_x11<T>(core: &mut CoreCtx, x11: &X11Ctx, f: impl FnOnce(&mut WmCtx) -> T) -> T {
+fn with_wm_ctx_x11<T>(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    f: impl FnOnce(&mut WmCtx) -> T,
+) -> T {
     let mut ctx = WmCtx::X11(WmCtxX11 {
         core: core.reborrow(),
-        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-        x11: X11Ctx {
-            conn: x11.conn,
-            screen_num: x11.screen_num,
-        },
+        backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+        x11: X11BackendRef::new(x11.conn, x11.screen_num),
     });
     f(&mut ctx)
 }
@@ -86,7 +89,7 @@ pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
 
 pub fn key_release_x11(_ctx: &mut WmCtxX11, _e: &KeyReleaseEvent) {}
 
-pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
+pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef) {
     let conn = x11.conn;
     let root = core.g.x11.root;
     let numlockmask = core.g.x11.numlockmask;
@@ -168,7 +171,7 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
     let _ = conn.flush();
 }
 
-pub fn update_num_lock_mask_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn update_num_lock_mask_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     let new_numlockmask = {
         let conn = x11.conn;
         let Ok(cookie) = conn.get_modifier_mapping() else {
@@ -211,7 +214,7 @@ pub fn update_num_lock_mask_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     core.g.x11.numlockmask = new_numlockmask;
 }
 
-pub fn up_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn up_press_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     let (selected_window, overlay_win, is_floating) = {
         let mon = core.g.selected_monitor();
         let sel = mon.sel;
@@ -241,7 +244,7 @@ pub fn up_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 }
 
-pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn down_press_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     if with_wm_ctx_x11(core, x11, |ctx| unhide_one(ctx)) {
         return;
     }
@@ -269,11 +272,8 @@ pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         if let Some(win) = selected_window {
             let ctx_x11 = WmCtxX11 {
                 core: core.reborrow(),
-                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                x11: X11Ctx {
-                    conn: x11.conn,
-                    screen_num: x11.screen_num,
-                },
+                backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: X11BackendRef::new(x11.conn, x11.screen_num),
             };
             let mut ctx = WmCtx::X11(ctx_x11);
             reset_snap(&mut ctx, win);
@@ -291,7 +291,7 @@ pub fn down_press_x11(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 }
 
-pub fn up_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
+pub fn up_key_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: StackDirection) {
     let is_overview = !core.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
@@ -326,7 +326,7 @@ pub fn up_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
     focus_stack_x11(core, x11, direction);
 }
 
-pub fn down_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
+pub fn down_key_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: StackDirection) {
     let is_overview = core.g.selected_monitor().is_tiling_layout();
 
     if is_overview {
@@ -346,7 +346,7 @@ pub fn down_key_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection)
     focus_stack_x11(core, x11, direction);
 }
 
-pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     let has_tiling = core.g.selected_monitor().is_tiling_layout();
 
     if !has_tiling {
@@ -365,11 +365,8 @@ pub fn space_toggle_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         if snap_status != SnapPosition::None {
             let ctx_x11 = WmCtxX11 {
                 core: core.reborrow(),
-                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                x11: X11Ctx {
-                    conn: x11.conn,
-                    screen_num: x11.screen_num,
-                },
+                backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: X11BackendRef::new(x11.conn, x11.screen_num),
             };
             let mut ctx = WmCtx::X11(ctx_x11);
             reset_snap(&mut ctx, win);

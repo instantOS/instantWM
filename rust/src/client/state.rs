@@ -18,6 +18,7 @@
 //! * [`update_motif_hints`]   – parse Motif `_MOTIF_WM_HINTS` decoration hints.
 //! * [`get_atom_prop`]        – read a single-atom X11 property (internal helper).
 
+use crate::backend::x11::X11BackendRef;
 use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,
@@ -25,7 +26,7 @@ use crate::client::constants::{
 use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize_x11;
-use crate::contexts::{CoreCtx, WaylandCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx};
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -40,7 +41,7 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 ///
 /// `state` should be one of the `WM_STATE_*` constants from
 /// [`crate::client::constants`].
-pub fn set_client_state(core: &CoreCtx, x11: &X11Ctx, win: WindowId, state: i32) {
+pub fn set_client_state(core: &CoreCtx, x11: &X11BackendRef, win: WindowId, state: i32) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -68,7 +69,7 @@ pub fn set_client_state(core: &CoreCtx, x11: &X11Ctx, win: WindowId, state: i32)
 /// This is a two-element `CARDINAL` array: `[tags_mask, monitor_num]`.
 /// External tools (e.g. `instantmenu`) can read this to know which tags and
 /// monitor a window belongs to without querying the WM over IPC.
-pub fn set_client_tag_prop(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn set_client_tag_prop(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let Some(c) = core.g.clients.get(&win) else {
@@ -105,7 +106,7 @@ pub fn set_client_tag_prop(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
 /// The list is rebuilt by iterating over every monitor's client list in
 /// focus order.  Clients are appended in the order they appear in the list,
 /// which matches the order used by most EWMH-aware taskbars.
-pub fn update_client_list(core: &CoreCtx, x11: &X11Ctx) {
+pub fn update_client_list(core: &CoreCtx, x11: &X11BackendRef) {
     let conn = x11.conn;
 
     // Delete the existing property first so we start with a clean slate.
@@ -136,7 +137,7 @@ pub fn update_client_list(core: &CoreCtx, x11: &X11Ctx) {
 /// On X11, prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
 /// On Wayland, reads the title from the XDG toplevel surface data.
 /// Falls back to [`BROKEN`] when the title is not available.
-pub fn update_title_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn update_title_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let name = read_window_title(core, x11, win);
     if let Some(client) = core.g.clients.get_mut(&win) {
         client.name = name;
@@ -157,7 +158,7 @@ pub fn update_title_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, win: Windo
 ///
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
 /// or [`BROKEN`] if both are absent / unreadable.
-fn read_window_title(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> String {
+fn read_window_title(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> String {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let net_wm_name = core.g.x11.netatom.wm_name;
@@ -208,7 +209,7 @@ fn read_window_title(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> String {
 /// After rule matching, the final tag mask is clamped to the current tag set.
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
-pub fn apply_rules(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -438,7 +439,7 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 ///   [`set_fullscreen`] to enter fullscreen immediately.
 /// * If `_NET_WM_WINDOW_TYPE` is `_NET_WM_WINDOW_TYPE_DIALOG`, marks the
 ///   client as floating.
-pub fn update_window_type(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn update_window_type(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let state = get_atom_prop(conn, x11_win, core.g.x11.netatom.wm_state);
@@ -467,7 +468,7 @@ pub fn update_window_type(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 /// * If the urgency hint is set on the *currently selected* window, the hint is
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
-pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -513,7 +514,7 @@ pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 ///
 /// This function is currently reserved for future EWMH compliance use but is
 /// kept here so the property plumbing is in one place.
-pub fn set_urgent(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, urg: bool) {
+pub fn set_urgent(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: bool) {
     let conn = x11.conn;
 
     // Update the internal flag first.
@@ -575,7 +576,7 @@ pub fn set_urgent(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, urg: bool) {
 /// global `borderpx` value is used.
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
-pub fn update_motif_hints(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn update_motif_hints(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     if core.g.cfg.decorhints == 0 {
         return;
     }

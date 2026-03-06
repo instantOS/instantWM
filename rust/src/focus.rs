@@ -3,10 +3,11 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
+use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::bar::draw_bars_x11;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -18,7 +19,11 @@ use x11rb::CURRENT_TIME;
 ///
 /// # Errors
 /// Returns an error if X11 operations fail (e.g., connection lost).
-pub fn focus_x11(core: &mut CoreCtx, x11: &X11Ctx, win: Option<WindowId>) -> anyhow::Result<()> {
+pub fn focus_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: Option<WindowId>,
+) -> anyhow::Result<()> {
     let (sel_mon_id, current_sel, mut target, root, net_active_window) = {
         if core.g.monitors.is_empty() {
             return Ok(());
@@ -160,7 +165,7 @@ pub fn focus_wayland(
 /// Focus failures typically mean the X11 connection is in a bad state; callers
 /// in event handlers usually can't recover, but we should not silently drop the
 /// error.
-pub fn focus_soft_x11(core: &mut CoreCtx, x11: &X11Ctx, win: Option<WindowId>) {
+pub fn focus_soft_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Option<WindowId>) {
     if let Err(e) = focus_x11(core, x11, win) {
         log::warn!("focus({:?}) failed: {}", win, e);
     }
@@ -229,7 +234,7 @@ pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
 /// X11 hover-focus implementation matching the enter-notify focus path.
 pub fn hover_focus_target_x11(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
@@ -262,7 +267,7 @@ pub fn hover_focus_target_x11(
             event_win,
             core.g.x11.root,
             &*core.g.clients,
-            Some(crate::globals::X11Conn::new(x11.conn, x11.screen_num)),
+            Some(X11BackendRef::new(x11.conn, x11.screen_num)),
         ) {
             if new_mon_id != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(new_mon_id);
@@ -315,7 +320,7 @@ pub fn hover_focus_target_wayland(
     let _ = core;
 }
 
-pub fn set_focus_win_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn set_focus_win_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let x11_win: Window = win.into();
     if let Some(c) = core.g.clients.get(&win) {
         if !c.neverfocus {
@@ -471,7 +476,7 @@ fn calculate_direction_score(
     }
 }
 
-pub fn direction_focus_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: Direction) {
+pub fn direction_focus_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: Direction) {
     let candidates = {
         if core.g.monitors.is_empty() {
             return;
@@ -544,11 +549,11 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     crate::layouts::arrange(ctx, Some(monitor_id));
 }
 
-pub fn warp_cursor_to_client_x11(core: &CoreCtx, x11: &X11Ctx, c_win: WindowId) {
+pub fn warp_cursor_to_client_x11(core: &CoreCtx, x11: &X11BackendRef, c_win: WindowId) {
     mouse_warp::warp_impl_x11(core, x11, c_win);
 }
 
-pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11Ctx) {
+pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef) {
     if let Some(win) = core.selected_client() {
         warp_cursor_to_client_x11(core, x11, win);
     }
@@ -601,7 +606,7 @@ fn get_visible_stack(
     stack
 }
 
-pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11Ctx, direction: StackDirection) {
+pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: StackDirection) {
     let selected_window = core.selected_client();
 
     let stack = {

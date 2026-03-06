@@ -60,7 +60,7 @@ pub fn visible_client(core: &CoreCtx, win: WindowId) -> bool {
 /// repaint the window frame without triggering a full `arrange()` pass.  It is
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
-pub fn apply_size(ctx: &mut CoreCtx, x11: &crate::contexts::X11Ctx, win: WindowId) {
+pub fn apply_size(ctx: &mut CoreCtx, x11: &crate::backend::x11::X11BackendRef, win: WindowId) {
     let geo = ctx.g.clients.get(&win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;

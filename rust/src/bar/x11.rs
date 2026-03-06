@@ -1,5 +1,6 @@
+use crate::backend::x11::X11BackendRef;
 use crate::bar::color::hex_to_u32;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::types::{Monitor, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -7,7 +8,7 @@ use x11rb::protocol::xproto::Window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn update_status(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn update_status(core: &mut CoreCtx, x11: &X11BackendRef) {
     let root = core.g.x11.root;
 
     let text = get_text_prop(x11, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
@@ -30,7 +31,7 @@ pub fn update_status(core: &mut CoreCtx, x11: &X11Ctx) {
 }
 
 /// Resize bar window with dependency injection.
-pub fn resize_bar_win(core: &CoreCtx, x11: &X11Ctx, m: &Monitor) {
+pub fn resize_bar_win(core: &CoreCtx, x11: &X11BackendRef, m: &Monitor) {
     let bar_height = core.g.cfg.bar_height;
     let showsystray = core.g.cfg.showsystray;
     let is_selmon = core.g.selected_monitor().num == m.num;
@@ -52,7 +53,7 @@ pub fn resize_bar_win(core: &CoreCtx, x11: &X11Ctx, m: &Monitor) {
     );
 }
 
-pub fn update_bars(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn update_bars(core: &mut CoreCtx, x11: &X11BackendRef) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bar_height = core.g.cfg.bar_height;
         let showsystray = core.g.cfg.showsystray;
@@ -131,7 +132,7 @@ pub fn update_bars(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 }
 
-pub fn toggle_bar(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn toggle_bar(core: &mut CoreCtx, x11: &X11BackendRef) {
     let animated = core.g.animated;
     let client_count = core.g.clients.len() as i32;
     let mut tmp_no_anim = false;
@@ -161,7 +162,7 @@ pub fn toggle_bar(core: &mut CoreCtx, x11: &X11Ctx) {
     }
 }
 
-fn get_text_prop(x11: &X11Ctx, win: Window, atom: u32) -> Option<String> {
+fn get_text_prop(x11: &X11BackendRef, win: Window, atom: u32) -> Option<String> {
     let conn = x11.conn;
     let reply = conn
         .get_property(

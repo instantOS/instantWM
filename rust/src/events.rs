@@ -1,11 +1,12 @@
 use crate::backend::x11::lifecycle::{manage, unmanage};
+use crate::backend::x11::X11BackendRef;
 use crate::bar::{bar_position_at_x, bar_position_to_gesture};
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
     WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
 };
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::ipc::IpcServer;
 use crate::keyboard::{grab_keys_x11, key_press_x11, key_release_x11};
 use crate::layouts::{arrange, restack};
@@ -810,7 +811,7 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
 /// Fetch the geometry and border width for `win`.
 ///
 /// Returns a fallback (`800×600`, border `1`) when the request fails.
-fn get_win_geometry(_core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> (Rect, u32) {
+fn get_win_geometry(_core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> (Rect, u32) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     conn.get_geometry(x11_win)
@@ -839,7 +840,7 @@ fn get_win_geometry(_core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> (Rect, u32)
 }
 
 /// Returns `true` when the `override_redirect` attribute is set on `win`.
-fn is_override_redirect(_core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> bool {
+fn is_override_redirect(_core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> bool {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     conn.get_window_attributes(x11_win)
@@ -852,7 +853,7 @@ fn is_override_redirect(_core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> bool {
 /// Partition `children` into `(managed, transients)`.
 fn classify_windows(
     core: &CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     children: Vec<Window>,
 ) -> (Vec<WindowId>, Vec<WindowId>) {
     let mut managed = Vec::new();
@@ -908,7 +909,7 @@ fn classify_windows(
     (managed, transients)
 }
 
-fn is_window_iconic(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> bool {
+fn is_window_iconic(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> bool {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 

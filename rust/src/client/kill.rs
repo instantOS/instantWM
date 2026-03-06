@@ -23,8 +23,9 @@
 //! expected `DestroyNotify`.
 
 use crate::animation::animate_client_x11;
+use crate::backend::x11::X11BackendRef;
 use crate::client::focus::send_event_x11;
-use crate::contexts::{CoreCtx, WmCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
@@ -35,7 +36,7 @@ use x11rb::CURRENT_TIME;
 // ---------------------------------------------------------------------------
 
 /// Kill the given window (X11-specific implementation).
-fn kill_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+fn kill_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let Some(client) = core.g.clients.get(&win) else {
         return;
     };
@@ -111,7 +112,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 // ---------------------------------------------------------------------------
 
 /// Close an arbitrary window by its Window ID (X11-specific).
-fn close_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+fn close_win_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let is_locked = core.g.clients.get(&win).map(|c| c.islocked).unwrap_or(true);
 
     if is_locked {
@@ -138,7 +139,7 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
 // ---------------------------------------------------------------------------
 
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient` (X11-specific).
-fn force_close_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, wmatom_delete: u32) {
+fn force_close_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
     let sent = send_event_x11(
         core,

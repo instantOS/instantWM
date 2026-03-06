@@ -1,10 +1,11 @@
 //! X11 client backend helpers.
 
+use crate::backend::x11::X11BackendRef;
 use crate::client::constants::{
     SIZE_HINTS_P_ASPECT, SIZE_HINTS_P_BASE_SIZE, SIZE_HINTS_P_MAX_SIZE, SIZE_HINTS_P_MIN_SIZE,
     SIZE_HINTS_P_RESIZE_INC,
 };
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::types::{MonitorId, Rect, WindowId};
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -15,7 +16,7 @@ use x11rb::protocol::xproto::ConnectionExt;
 /// stored geometry (i.e. an actual change would occur).
 pub fn apply_size_hints_x11(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     win: WindowId,
     rect: &mut Rect,
     interact: bool,
@@ -86,7 +87,12 @@ fn is_floating_layout(core: &CoreCtx, monitor_id: Option<MonitorId>) -> bool {
 }
 
 /// Apply ICCCM WM_NORMAL_HINTS constraints to the geometry.
-fn apply_icccm_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, geo: &mut Rect) {
+fn apply_icccm_size_hints_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: WindowId,
+    geo: &mut Rect,
+) {
     let needs_update = core
         .g
         .clients
@@ -113,7 +119,7 @@ fn apply_icccm_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, g
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
 /// `min_aspect`, `max_aspect`, and `isfixed`.
-pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let Some(data) = fetch_wm_normal_hints(x11, win) else {
         return;
     };
@@ -183,7 +189,7 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     c.hintsvalid = 1;
 }
 
-fn fetch_wm_normal_hints(x11: &X11Ctx, win: WindowId) -> Option<Vec<u32>> {
+fn fetch_wm_normal_hints(x11: &X11BackendRef, win: WindowId) -> Option<Vec<u32>> {
     let conn = x11.conn;
     let reply = conn
         .get_property(

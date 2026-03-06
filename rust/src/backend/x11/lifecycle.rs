@@ -29,7 +29,9 @@
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
 use crate::animation::animate_client_x11;
+use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
+use crate::backend::BackendRef;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
@@ -40,7 +42,7 @@ use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
     update_wm_hints,
 };
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
 use crate::focus::focus_soft;
 use crate::globals::Globals;
@@ -104,7 +106,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
 }
 
 fn build_initial_client(
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     g: &crate::globals::Globals,
     w: WindowId,
     wa_geo: Rect,
@@ -136,7 +138,12 @@ fn assign_initial_monitor_and_tags(
     c.tags = initial_tags_for_monitor(g, c.monitor_id);
 }
 
-fn insert_client_and_apply_rules(core: &mut CoreCtx, x11: &X11Ctx, w: WindowId, mut c: Client) {
+fn insert_client_and_apply_rules(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    w: WindowId,
+    mut c: Client,
+) {
     c.is_hidden = crate::client::visibility::get_state_x11(core, x11, w)
         == crate::client::constants::WM_STATE_ICONIC;
     core.g.clients.insert(w, c);
@@ -183,7 +190,7 @@ fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
 
 fn configure_client_border(
     g: &mut Globals,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     w: WindowId,
     borderpx: i32,
     mon_monitor_rect: Rect,
@@ -221,7 +228,7 @@ fn configure_client_border(
     let _ = x11.conn.flush();
 }
 
-fn apply_manage_hints(core: &mut CoreCtx, x11: &X11Ctx, w: WindowId) {
+fn apply_manage_hints(core: &mut CoreCtx, x11: &X11BackendRef, w: WindowId) {
     crate::client::focus::configure_x11(core, x11, w);
     update_window_type(core, x11, w);
     crate::backend::x11::update_size_hints_x11(core, x11, w);
@@ -244,7 +251,7 @@ fn snapshot_float_geo(g: &mut Globals, w: WindowId, mon_monitor_rect: Rect) {
     }
 }
 
-fn subscribe_manage_events(x11: &X11Ctx, w: WindowId) {
+fn subscribe_manage_events(x11: &X11BackendRef, w: WindowId) {
     let mask = EventMask::ENTER_WINDOW
         | EventMask::FOCUS_CHANGE
         | EventMask::PROPERTY_CHANGE
@@ -268,7 +275,7 @@ fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent:
     should_raise
 }
 
-fn register_client_root(g: &Globals, x11: &X11Ctx, w: WindowId) {
+fn register_client_root(g: &Globals, x11: &X11BackendRef, w: WindowId) {
     let x11_win: Window = w.into();
     let _ = x11.conn.change_property32(
         PropMode::APPEND,
@@ -505,7 +512,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
 /// [`Client`] has been inserted.
 ///
 /// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
-fn read_title_from_x(x11: &X11Ctx, g: &Globals, win: WindowId) -> String {
+fn read_title_from_x(x11: &X11BackendRef, g: &Globals, win: WindowId) -> String {
     let x11_win: Window = win.into();
     let net_wm_name = g.x11.netatom.wm_name;
 
@@ -552,7 +559,7 @@ fn read_title_from_x(x11: &X11Ctx, g: &Globals, win: WindowId) -> String {
 /// This is used to persist client state across WM restarts: when the WM starts
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
-fn read_client_info(g: &mut Globals, x11: &X11Ctx, w: WindowId) {
+fn read_client_info(g: &mut Globals, x11: &X11BackendRef, w: WindowId) {
     let x11_win: Window = w.into();
     let client_info_atom = g.x11.netatom.client_info;
 
@@ -583,7 +590,7 @@ fn read_client_info(g: &mut Globals, x11: &X11Ctx, w: WindowId) {
     }
 }
 
-fn get_transient_for_hint_x11(x11: &X11Ctx, w: WindowId) -> Option<WindowId> {
+fn get_transient_for_hint_x11(x11: &X11BackendRef, w: WindowId) -> Option<WindowId> {
     let x11_win: Window = w.into();
 
     x11.conn

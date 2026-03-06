@@ -1,5 +1,6 @@
+use crate::backend::x11::X11BackendRef;
 use crate::bar::draw_bar;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::keyboard::grab_keys_x11;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -8,7 +9,7 @@ pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
     action.apply(value);
 }
 
-pub fn toggle_alt_tag(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
+pub fn toggle_alt_tag(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
     let new_value = {
         let mut showalttag = core.g.tags.show_alt;
         ctrl_toggle(&mut showalttag, action);
@@ -27,7 +28,7 @@ pub fn toggle_alt_tag(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
     core.g.tags.width = tagwidth;
 }
 
-pub fn alt_tab_free(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
+pub fn alt_tab_free(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
     ctrl_toggle(&mut core.g.tags.prefix, action);
     grab_keys_x11(core, x11);
 }
@@ -43,7 +44,7 @@ pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {
     let _ = monitor_id;
 }
 
-pub fn toggle_prefix(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn toggle_prefix(core: &mut CoreCtx, x11: &X11BackendRef) {
     core.g.tags.prefix = !core.g.tags.prefix;
 
     let selmon_id = core.g.selected_monitor_id();
@@ -100,7 +101,7 @@ pub fn toggle_double_draw(core: &mut CoreCtx) {
     core.g.doubledraw = !core.g.doubledraw;
 }
 
-pub fn toggle_locked(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn toggle_locked(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let _mon_id = {
         if let Some(client) = core.g.clients.get_mut(&win) {
             client.islocked = !client.islocked;
@@ -114,7 +115,7 @@ pub fn toggle_locked(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
     draw_bar(core, x11, selmon_id);
 }
 
-pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11Ctx, action: ToggleAction) {
+pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
         let selmon_id = core.g.selected_monitor_id();
 
@@ -143,7 +144,7 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     }
 }
 
-pub fn redraw_win(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn redraw_win(core: &mut CoreCtx, x11: &X11BackendRef) {
     let monitors: Vec<usize> = core.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
 
     for i in monitors {

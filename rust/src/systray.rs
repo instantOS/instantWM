@@ -1,6 +1,6 @@
-use crate::backend::x11::apply_size_hints_x11;
+use crate::backend::x11::{apply_size_hints_x11, X11BackendRef};
 use crate::client::set_client_state;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -50,7 +50,7 @@ pub fn remove_systray_icon(core: &mut CoreCtx, icon_win: WindowId) {
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     icon_win: WindowId,
     w: i32,
     h: i32,
@@ -99,7 +99,7 @@ pub fn update_systray_icon_geom(
 /// Update systray icon state using dependency injection.
 pub fn update_systray_icon_state(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     icon_win: WindowId,
     ev: &PropertyNotifyEvent,
 ) {
@@ -176,7 +176,7 @@ pub fn update_systray_icon_state(
 }
 
 /// Update systray using dependency injection.
-pub fn update_systray(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn update_systray(core: &mut CoreCtx, x11: &X11BackendRef) {
     if !core.g.cfg.showsystray {
         return;
     }
@@ -434,7 +434,7 @@ pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
 }
 
 /// Get atom property using dependency injection.
-fn get_atom_prop(x11: &X11Ctx, win: WindowId, atom: u32) -> u32 {
+fn get_atom_prop(x11: &X11BackendRef, win: WindowId, atom: u32) -> u32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     if let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 2) {

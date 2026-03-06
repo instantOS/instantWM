@@ -11,10 +11,11 @@
 //! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
 use crate::animation::animate_client_x11;
+use crate::backend::x11::X11BackendRef;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 // focus() is used via focus_soft() in this module
 use crate::backend::BackendOps;
 use crate::layouts::arrange;
@@ -31,7 +32,7 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> i32 {
+pub fn get_state_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> i32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -63,7 +64,7 @@ pub fn get_state_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> i32 {
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     // First pass: collect visibility data to avoid borrow issues
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
@@ -241,7 +242,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// Called by [`show`] after it has cleared `is_hidden`. Responsible only for
 /// the X11-specific work: mapping the window, WM_STATE, slide-in animation.
 /// Guards, focus, and arrange are handled by the caller.
-fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let Rect { x, y, w, h } = match core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,
@@ -277,7 +278,7 @@ fn show_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 /// X11-specific work: slide-down animation, server grab, unmap, WM_STATE,
 /// and geometry preservation. Guards, focus, and arrange are handled by the
 /// caller.
-fn hide_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let Rect { x, y, w, h } = match core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,

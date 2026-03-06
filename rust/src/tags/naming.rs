@@ -1,7 +1,8 @@
 //! Tag name management.
 
+use crate::backend::x11::X11BackendRef;
 use crate::bar::draw_bars_x11;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::tags::bar::get_tag_width;
 use crate::types::MAX_TAGS;
 
@@ -15,7 +16,7 @@ const MAX_TAGLEN: usize = 16;
 ///
 /// All tags included in the monitor's current tagset are renamed, so the
 /// function works correctly even when multiple tags are visible at once.
-pub fn name_tag(core: &mut CoreCtx, x11: &X11Ctx, arg: &str) {
+pub fn name_tag(core: &mut CoreCtx, x11: &X11BackendRef, arg: &str) {
     if arg.len() >= MAX_TAGLEN {
         return;
     }
@@ -49,7 +50,7 @@ pub fn name_tag(core: &mut CoreCtx, x11: &X11Ctx, arg: &str) {
 }
 
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.) on all monitors.
-pub fn reset_name_tag(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn reset_name_tag(core: &mut CoreCtx, x11: &X11BackendRef) {
     let num_tags = core.g.tags.num_tags.min(MAX_TAGS);
     for mon in core.g.monitors.iter_all_mut() {
         for i in 0..num_tags {

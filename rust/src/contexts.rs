@@ -2,19 +2,18 @@
 //!
 //! Core state (`Globals`, tags/layouts/monitors/clients/config) remains
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
-//! receives explicit `X11Ctx` / `WaylandCtx` instead of runtime checks.
+//! receives explicit `X11BackendRef` / `WaylandCtx` instead of runtime checks.
 
 use std::ops::{Deref, DerefMut};
 
+use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
-use crate::globals::X11Conn;
 use crate::types::{Client, Rect, WindowId};
-use x11rb::rust_connection::RustConnection;
 
 pub struct CoreCtx<'a> {
     pub g: &'a mut Globals,
@@ -68,11 +67,6 @@ impl<'a> CoreCtx<'a> {
     }
 }
 
-pub struct X11Ctx<'a> {
-    pub conn: &'a RustConnection,
-    pub screen_num: usize,
-}
-
 pub struct WaylandCtx<'a> {
     pub backend: &'a crate::backend::wayland::WaylandBackend,
 }
@@ -85,7 +79,7 @@ pub struct XwaylandCtx<'a> {
 pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub backend: BackendRef<'a>,
-    pub x11: X11Ctx<'a>,
+    pub x11: X11BackendRef<'a>,
 }
 
 impl<'a> WmCtxX11<'a> {
@@ -93,19 +87,12 @@ impl<'a> WmCtxX11<'a> {
         WmCtxX11 {
             core: self.core.reborrow(),
             backend: self.backend.reborrow(),
-            x11: X11Ctx {
-                conn: self.x11.conn,
-                screen_num: self.x11.screen_num,
-            },
+            x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
         }
     }
 
     pub fn selected_client(&self) -> Option<WindowId> {
         self.core.selected_client()
-    }
-
-    pub fn x11_conn(&self) -> Option<X11Conn<'_>> {
-        Some(X11Conn::new(self.x11.conn, self.x11.screen_num))
     }
 }
 
@@ -225,13 +212,6 @@ impl<'a> WmCtx<'a> {
 
     pub fn set_focus(&self, win: WindowId) {
         self.backend().set_focus(win);
-    }
-
-    pub fn x11_conn(&self) -> Option<X11Conn<'_>> {
-        match self {
-            WmCtx::X11(ctx) => ctx.x11_conn(),
-            WmCtx::Wayland(_) => None,
-        }
     }
 
     /// Warp cursor to client (X11 only, no-op on Wayland).

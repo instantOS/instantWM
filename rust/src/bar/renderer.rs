@@ -1,12 +1,13 @@
+use crate::backend::x11::X11BackendRef;
 use crate::bar::model::ClientBarStats;
 use crate::bar::paint::BarPainter;
 use crate::bar::{status, widgets};
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::types::Gesture;
 
 pub fn draw_bar_common(
     core: &mut CoreCtx,
-    x11: Option<&X11Ctx>,
+    x11: Option<&X11BackendRef>,
     mon_idx: usize,
     painter: &mut dyn BarPainter,
 ) {

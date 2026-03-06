@@ -22,8 +22,10 @@
 //! border intact.
 
 use crate::animation::animate_client_x11;
+use crate::backend::x11::X11BackendRef;
+use crate::backend::BackendRef;
 use crate::client::geometry::resize_client_x11;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -36,7 +38,12 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 /// Enter or exit fullscreen for `win`.
-pub fn set_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, fullscreen: bool) {
+pub fn set_fullscreen_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: WindowId,
+    fullscreen: bool,
+) {
     let x11_win: Window = win.into();
 
     let net_wm_fullscreen = core.g.x11.netatom.wm_fullscreen;
@@ -139,13 +146,10 @@ pub fn set_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, fulls
             let _ = x11.conn.flush();
 
             if let Some(mid) = monitor_id {
-                let mut tmp = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+                let mut tmp = crate::contexts::WmCtx::X11(WmCtxX11 {
                     core: core.reborrow(),
-                    backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                    x11: crate::contexts::X11Ctx {
-                        conn: x11.conn,
-                        screen_num: x11.screen_num,
-                    },
+                    backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+                    x11: X11BackendRef::new(x11.conn, x11.screen_num),
                 });
                 arrange(&mut tmp, Some(mid));
             }
@@ -158,7 +162,7 @@ pub fn set_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, fulls
 // ---------------------------------------------------------------------------
 
 /// Toggle the "fake fullscreen" mode on the currently selected window.
-pub fn toggle_fake_fullscreen_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn toggle_fake_fullscreen_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     let Some(win) = core.selected_client() else {
         return;
     };

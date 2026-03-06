@@ -13,8 +13,9 @@
 //! * [`grab_buttons_x11`]- (un)grab mouse buttons on a client depending on
 //!                       whether it is currently focused.
 
+use crate::backend::x11::X11BackendRef;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -40,7 +41,7 @@ pub struct FocusState {
 /// learn about position/size changes that did not originate from their own
 /// `ConfigureRequest`.  We send it after every [`super::geometry::resize_client`]
 /// call.
-pub fn configure_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn configure_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -80,7 +81,7 @@ pub fn configure_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 /// is returned.
 pub fn send_event_x11(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     win: WindowId,
     proto: u32,
     mask: u32,
@@ -132,7 +133,7 @@ pub fn send_event_x11(
 /// Sets the X input focus (unless the client has `neverfocus` set) and updates
 /// `_NET_ACTIVE_WINDOW` on the root.  Also sends `WM_TAKE_FOCUS` so that
 /// clients using the "locally active" input model receive focus correctly.
-pub fn set_focus_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn set_focus_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let Some(c) = core.g.clients.get(&win) else {
         return;
     };
@@ -193,7 +194,12 @@ pub fn set_focus_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId) {
 /// If `redirect_to_root` is `true`, focus is explicitly returned to the root
 /// window and `_NET_ACTIVE_WINDOW` is deleted – this is used when no other
 /// client is taking focus.
-pub fn unfocus_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, redirect_to_root: bool) {
+pub fn unfocus_win_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: WindowId,
+    redirect_to_root: bool,
+) {
     if win == WindowId::default() {
         return;
     }
@@ -235,7 +241,7 @@ pub fn unfocus_win_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, redirect
 ///
 /// When `focused` is `true`, all button grabs are released so the client
 /// receives button events directly.
-pub fn grab_buttons_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, focused: bool) {
+pub fn grab_buttons_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, focused: bool) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -321,7 +327,7 @@ fn ungrab_button(
 ///
 /// Called after the WM processes an urgency notification on the currently
 /// selected window – at that point the urgency is considered "seen".
-pub fn clear_urgency_hint(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
+pub fn clear_urgency_hint(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 

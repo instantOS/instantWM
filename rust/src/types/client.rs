@@ -152,7 +152,7 @@ impl Client {
         &mut self,
         mask: crate::types::TagMask,
         core: &mut crate::contexts::CoreCtx,
-        x11: &crate::contexts::X11Ctx,
+        x11: &crate::backend::x11::X11BackendRef,
     ) {
         use crate::types::TagMask;
 
@@ -176,10 +176,7 @@ impl Client {
             &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
                 core: core.reborrow(),
                 backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                x11: crate::contexts::X11Ctx {
-                    conn: x11.conn,
-                    screen_num: x11.screen_num,
-                },
+                x11: crate::backend::x11::X11BackendRef::new(x11.conn, x11.screen_num),
             }),
             Some(selmon_id),
         );

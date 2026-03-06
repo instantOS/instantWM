@@ -372,27 +372,12 @@ impl Default for Globals {
 pub static RUNNING: AtomicBool = AtomicBool::new(true);
 
 /// Storage for the X11 connection during initialization and shutdown.
-/// After initialization, use [`X11Conn`] which guarantees the connection exists.
+/// After initialization, use [`crate::backend::x11::X11BackendRef`] which guarantees
+/// the connection exists.
 #[derive(Default)]
 pub struct X11Connection {
     pub conn: Option<x11rb::rust_connection::RustConnection>,
     pub screen_num: usize,
-}
-
-/// A guaranteed X11 connection reference for use after initialization.
-///
-/// This type ensures at compile time that the X11 connection is available.
-/// If X11 is not reachable, the window manager cannot function and should crash.
-pub struct X11Conn<'a> {
-    pub conn: &'a x11rb::rust_connection::RustConnection,
-    pub screen_num: usize,
-}
-
-impl<'a> X11Conn<'a> {
-    /// Create a new X11Conn from a reference to the connection and screen number.
-    pub fn new(conn: &'a x11rb::rust_connection::RustConnection, screen_num: usize) -> Self {
-        Self { conn, screen_num }
-    }
 }
 
 impl X11Connection {
@@ -409,16 +394,13 @@ impl X11Connection {
             .expect("X11 connection not available - this is a fatal error for a window manager")
     }
 
-    /// Create an X11Conn from this connection.
+    /// Create a borrowed X11 handle from this connection.
     ///
     /// # Panics
     ///
     /// Panics if the connection is not available.
-    pub fn as_conn(&self) -> X11Conn<'_> {
-        X11Conn {
-            conn: self.conn(),
-            screen_num: self.screen_num,
-        }
+    pub fn as_ref(&self) -> crate::backend::x11::X11BackendRef<'_> {
+        crate::backend::x11::X11BackendRef::new(self.conn(), self.screen_num)
     }
 }
 

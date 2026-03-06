@@ -13,7 +13,8 @@ pub use model::{bar_position_at_x, bar_position_to_gesture};
 pub use wayland::{draw_bars_wayland, reset_bar_wayland};
 pub use x11::resize_bar_win;
 
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::backend::x11::X11BackendRef;
+use crate::contexts::CoreCtx;
 use crate::types::*;
 
 #[derive(Default)]
@@ -91,7 +92,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
     width + core.g.cfg.horizontal_padding
 }
 
-pub fn draw_bar(core: &mut CoreCtx, x11: &X11Ctx, mon_idx: usize) {
+pub fn draw_bar(core: &mut CoreCtx, x11: &X11BackendRef, mon_idx: usize) {
     let bar_win = core
         .g
         .monitor(mon_idx)
@@ -127,14 +128,14 @@ pub fn draw_bar(core: &mut CoreCtx, x11: &X11Ctx, mon_idx: usize) {
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
-pub fn draw_bars_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn draw_bars_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     let indices: Vec<usize> = core.g.monitors_iter().map(|(i, _)| i).collect();
     for i in indices {
         draw_bar(core, x11, i);
     }
 }
 
-pub fn reset_bar_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+pub fn reset_bar_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     let selmon_idx = core.g.selected_monitor_id();
     renderer::reset_bar_common(core);
     draw_bar(core, x11, selmon_idx);

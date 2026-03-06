@@ -1,6 +1,7 @@
+use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::constants::animation::*;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, X11Ctx};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland};
 use crate::floating::{change_snap, SnapDir};
 use crate::tags::view::scroll_view;
 use crate::types::*;
@@ -66,7 +67,7 @@ fn final_rect(
     }
 }
 
-fn try_resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect) {
+fn try_resize_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, rect: &Rect) {
     if rect.is_valid() {
         crate::client::resize_client_x11(core, x11, win, rect);
     }
@@ -74,7 +75,7 @@ fn try_resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect) 
 
 pub fn animate_client_x11(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     win: WindowId,
     rect: &Rect,
     frames: i32,
@@ -191,7 +192,7 @@ pub fn animate_client_x11(
 
 pub fn check_animate_x11(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     win: WindowId,
     rect: &Rect,
     frames: i32,

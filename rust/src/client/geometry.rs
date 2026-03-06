@@ -14,9 +14,9 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::x11::apply_size_hints_x11;
+use crate::backend::x11::{apply_size_hints_x11, X11BackendRef};
 use crate::backend::BackendOps;
-use crate::contexts::{CoreCtx, X11Ctx};
+use crate::contexts::CoreCtx;
 use crate::types::{Rect, WindowId};
 
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, Window};
@@ -30,7 +30,13 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, Window};
 /// If the size-hint check determines that nothing changed *and* there is more
 /// than one client on screen, the X11 configure call is skipped.  With a
 /// single client we always apply the resize so the window fills its space.
-pub fn resize_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect, interact: bool) {
+pub fn resize_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: WindowId,
+    rect: &Rect,
+    interact: bool,
+) {
     if !core.g.clients.contains(&win) {
         return;
     }
@@ -74,7 +80,7 @@ pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, 
 /// level.  Always call [`resize`] from layout code so that size hints are
 /// respected; call this directly only when you have already validated the
 /// geometry (e.g. during fullscreen transitions).
-pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11Ctx, win: WindowId, rect: &Rect) {
+pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, rect: &Rect) {
     core.g.clients.update_geometry(win, *rect);
 
     let x11_win: Window = win.into();

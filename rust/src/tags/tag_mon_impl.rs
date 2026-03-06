@@ -11,7 +11,9 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
+use crate::backend::x11::X11BackendRef;
+use crate::backend::BackendRef;
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
 use crate::types::{MonitorDirection, WindowId};
@@ -23,7 +25,7 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Wind
 // ---------------------------------------------------------------------------
 
 /// Send the selected client to the monitor in the given direction.
-pub fn send_to_monitor(core: &mut CoreCtx, x11: &X11Ctx, direction: MonitorDirection) {
+pub fn send_to_monitor(core: &mut CoreCtx, x11: &X11BackendRef, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
@@ -62,11 +64,8 @@ pub fn send_to_monitor(core: &mut CoreCtx, x11: &X11Ctx, direction: MonitorDirec
         transfer_client(
             &mut WmCtx::X11(WmCtxX11 {
                 core: core.reborrow(),
-                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-                x11: X11Ctx {
-                    conn: x11.conn,
-                    screen_num: x11.screen_num,
-                },
+                backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: X11BackendRef::new(x11.conn, x11.screen_num),
             }),
             win,
             target_id,
@@ -81,7 +80,7 @@ pub fn send_to_monitor(core: &mut CoreCtx, x11: &X11Ctx, direction: MonitorDirec
 /// Move a floating client to `target_id`, preserving its relative position.
 fn move_floating(
     core: &mut CoreCtx,
-    x11: &X11Ctx,
+    x11: &X11BackendRef,
     win: WindowId,
     target_id: crate::types::MonitorId,
 ) {
@@ -151,11 +150,8 @@ fn move_floating(
     transfer_client(
         &mut WmCtx::X11(WmCtxX11 {
             core: core.reborrow(),
-            backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-            x11: X11Ctx {
-                conn: x11.conn,
-                screen_num: x11.screen_num,
-            },
+            backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+            x11: X11BackendRef::new(x11.conn, x11.screen_num),
         }),
         win,
         target_id,
@@ -171,11 +167,8 @@ fn move_floating(
     arrange(
         &mut WmCtx::X11(WmCtxX11 {
             core: core.reborrow(),
-            backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-            x11: X11Ctx {
-                conn: x11.conn,
-                screen_num: x11.screen_num,
-            },
+            backend: BackendRef::from_x11(x11.conn, x11.screen_num),
+            x11: X11BackendRef::new(x11.conn, x11.screen_num),
         }),
         Some(selmon_id),
     );

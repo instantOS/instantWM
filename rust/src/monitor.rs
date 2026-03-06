@@ -3,10 +3,10 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
+use crate::backend::x11::X11BackendRef;
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
 use crate::contexts::WmCtx;
 use crate::focus::{focus_soft, unfocus_win, warp_cursor_to_client_x11};
-use crate::globals::X11Conn;
 use crate::types::*;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::Window;
@@ -122,7 +122,7 @@ impl MonitorManager {
         w: WindowId,
         root: Window,
         clients: &HashMap<WindowId, Client>,
-        x11: Option<X11Conn<'_>>,
+        x11: Option<X11BackendRef<'_>>,
     ) -> Option<usize> {
         if w == WindowId::from(root) {
             if let Some(conn) = x11 {
@@ -318,17 +318,13 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     if let WmCtx::X11(x11) = ctx {
         let x11_win: Window = c_win.into();
-        let x11_ctx = crate::contexts::X11Ctx {
-            conn: x11.x11.conn,
-            screen_num: x11.x11.screen_num,
-        };
         let _ = x11rb::protocol::xproto::configure_window(
             x11.x11.conn,
             x11_win,
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
         );
-        warp_cursor_to_client_x11(&x11.core, &x11_ctx, c_win);
+        warp_cursor_to_client_x11(&x11.core, &x11.x11, c_win);
     }
 }
 
@@ -431,14 +427,17 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
 }
 
 fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
-    let x11 = ctx.x11_conn()?;
-    let conn = x11.conn;
+    let conn = match ctx {
+        WmCtx::X11(x11) => x11.x11.conn,
+        WmCtx::Wayland(_) => return None,
+    };
     let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
     if is_active.state == 0 {
         return None;
     }
 
     let screens = xinerama::query_screens(conn).ok()?.reply().ok()?;
+    // conn borrow ends here; the rest only needs ctx
     let mut unique = Vec::new();
     for s in &screens.screen_info {
         let info = Rect {
@@ -517,10 +516,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     if dirty {
         ctx.g_mut().monitors.set_sel_idx(0);
         let x11_conn = match ctx {
-            WmCtx::X11(x11) => Some(crate::globals::X11Conn::new(
-                x11.x11.conn,
-                x11.x11.screen_num,
-            )),
+            WmCtx::X11(x11) => Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num)),
             WmCtx::Wayland(_) => None,
         };
         let root = ctx.g().x11.root;
