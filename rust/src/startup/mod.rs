@@ -9,7 +9,8 @@ mod x11;
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum CliBackend {
     X11,
-    Wayland,
+    /// Run as a nested Wayland compositor inside an existing Wayland or X11 session.
+    Nested,
     /// Run as a standalone Wayland compositor directly on DRM/KMS hardware.
     Drm,
 }
@@ -38,7 +39,7 @@ pub fn run() {
 
     match cli.backend {
         CliBackend::X11 => x11::run(),
-        CliBackend::Wayland => wayland::run(),
+        CliBackend::Nested => wayland::run(),
         CliBackend::Drm => drm::run(),
     }
 }
