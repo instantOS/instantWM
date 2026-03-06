@@ -23,6 +23,7 @@ use crate::monitor::update_geom;
 use crate::wm::Wm;
 
 mod bar;
+pub mod cursor;
 mod init;
 mod input;
 mod render;
@@ -34,6 +35,12 @@ use self::init::{
 use self::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     handle_resize,
+};
+pub use self::input::{
+    handle_keyboard as handle_keyboard_drm, handle_pointer_axis as handle_pointer_axis_drm,
+    handle_pointer_button as handle_pointer_button_drm,
+    handle_pointer_motion_absolute as handle_pointer_motion_absolute_drm,
+    handle_pointer_motion_relative as handle_pointer_motion_relative_drm,
 };
 use self::render::{render_frame, wayland_border_elements_shared as border_elements_shared_impl};
 use super::autostart::run_autostart;
