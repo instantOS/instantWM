@@ -416,6 +416,14 @@ pub fn run() -> ! {
     // Sync instantWM monitor state from the detected outputs.
     sync_monitors_from_outputs_vec(&mut wm, &output_surfaces);
 
+    // Ensure the generic monitor bookkeeping (bar position, work rects,
+    // screen dimensions) is consistent, matching what the winit backend
+    // does via `update_geom`.
+    {
+        use crate::monitor::update_geom;
+        update_geom(&mut wm.ctx());
+    }
+
     // ── Shared mutable DRM state ─────────────────────────────────────
     let shared = Arc::new(Mutex::new(SharedDrmState::new(total_width, total_height)));
     {
@@ -501,9 +509,12 @@ pub fn run() -> ! {
             // smithay InputEvent<LibinputInputBackend> variant manually,
             // mirroring what LibinputInputBackend::process_events does
             // internally.
-            libinput_context.dispatch().ok();
+            if let Err(e) = libinput_context.dispatch() {
+                log::error!("libinput dispatch error: {e}");
+            }
             let mut any_input = false;
             for raw_event in libinput_context.by_ref() {
+                log::trace!("libinput raw event: {:?}", raw_event);
                 if let Some(event) = raw_event_to_input_event(raw_event) {
                     if dispatch_libinput_event(
                         event,
@@ -649,6 +660,9 @@ fn dispatch_libinput_event(
     match event {
         // ── Keyboard ─────────────────────────────────────────────────
         InputEvent::Keyboard { event } => {
+            log::debug!("DRM keyboard event: keycode={:?} state={:?}",
+                       smithay::backend::input::KeyboardKeyEvent::key_code(&event),
+                       smithay::backend::input::KeyboardKeyEvent::state(&event));
             handle_keyboard::<LibinputInputBackend>(wm, state, keyboard_handle, event);
             true
         }
