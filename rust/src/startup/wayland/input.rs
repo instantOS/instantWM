@@ -55,7 +55,7 @@ pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     update_geom(&mut wm.ctx());
     output.change_current_state(
         Some(mode),
-        Some(Transform::Normal),
+        Some(Transform::Flipped180),
         None,
         Some((0, 0).into()),
     );
