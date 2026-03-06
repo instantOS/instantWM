@@ -55,6 +55,8 @@ pub enum StructuredAction {
     SetMfact(f64),
     /// Increment nmaster: `{ inc_nmaster = 1 }`.
     IncNmaster(i32),
+    /// Set keyboard layout by name: `{ keyboard_layout = "de" }`.
+    KeyboardLayout(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +246,13 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         ActionSpec::Structured(StructuredAction::IncNmaster(n)) => {
             let n = *n;
             Some(Rc::new(move |ctx| inc_nmaster_by(ctx, n)))
+        }
+
+        ActionSpec::Structured(StructuredAction::KeyboardLayout(name)) => {
+            let name = name.clone();
+            Some(Rc::new(move |ctx| {
+                crate::keyboard_layout::set_keyboard_layout_by_name(ctx, &name);
+            }))
         }
 
         ActionSpec::Named(name) => compile_named_action(name),

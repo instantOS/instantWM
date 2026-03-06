@@ -97,6 +97,12 @@ fn wm_init(wm: &mut Wm) {
         crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
         crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
     }
+
+    // Apply the initial keyboard layout if configured.
+    {
+        let mut ctx = wm.ctx();
+        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
+    }
 }
 
 fn init_globals(

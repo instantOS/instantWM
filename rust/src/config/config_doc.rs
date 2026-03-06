@@ -49,7 +49,18 @@ Keybinds section:
     set_overlay, create_overlay, scratchpad_toggle, scratchpad_make,
     toggle_bar, toggle_sticky, toggle_alt_tag, toggle_animated,
     toggle_show_tags, toggle_prefix, toggle_fake_fullscreen,
-    redraw_win, unhide_all, hide, draw_window, begin_keyboard_move
+    redraw_win, unhide_all, hide, draw_window, begin_keyboard_move,
+    next_keyboard_layout, prev_keyboard_layout
+
+  Structured keyboard layout action:
+    action = { keyboard_layout = "de" }
+
+Keyboard layout section:
+  [keyboard]
+  layouts = ["us", "de", "fr"]     — XKB layout names
+  variant = ["", "nodeadkeys", ""] — per-layout variants (optional)
+  options = "compose:ralt"         — XKB options string (optional)
+  model = "pc105"                  — XKB model (optional)
 
 Example (truncated):
 [colors.tag.normal]
@@ -71,4 +82,13 @@ action = { spawn = ["alacritty"] }
 modifiers = ["Super", "Shift"]
 key = "q"
 action = { unbind = true }
+
+[[keybinds]]
+modifiers = ["Super"]
+key = "F3"
+action = "next_keyboard_layout"
+
+[keyboard]
+layouts = ["us", "de"]
+variant = ["", "nodeadkeys"]
 "##;
