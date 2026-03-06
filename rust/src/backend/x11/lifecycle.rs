@@ -60,9 +60,10 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
     let trans = get_transient_for_hint_x11(&ctx.x11, w);
-    let mut client = build_initial_client(&ctx.x11, ctx.x11_runtime(), w, wa_geo, wa_border_width);
+    let x11_runtime = &*ctx.x11_runtime;
+    let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
     assign_initial_monitor_and_tags(ctx.core.g, &mut client, trans);
-    insert_client_and_apply_rules(&mut ctx.core, &ctx.x11, ctx.x11_runtime(), w, client);
+    insert_client_and_apply_rules(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, client);
 
     let borderpx = apply_default_border(ctx.core.g, w);
     let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.g, w);
@@ -77,10 +78,10 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         is_monocle,
     );
 
-    apply_manage_hints(&mut ctx.core, &ctx.x11, ctx.x11_runtime_mut(), w);
+    apply_manage_hints(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w);
     snapshot_float_geo(ctx.core.g, w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
-    grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime(), w, false);
+    grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.g, w, trans.is_some()) {
         ctx.backend.raise_window(w);
@@ -89,7 +90,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
 
     attach(&mut WmCtx::X11(ctx.reborrow()), w);
     attach_stack(&mut WmCtx::X11(ctx.reborrow()), w);
-    register_client_root(&ctx.x11, ctx.x11_runtime(), w);
+    register_client_root(&ctx.x11, ctx.x11_runtime, w);
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
     let initially_hidden = prepare_visibility_and_unfocus(&mut WmCtx::X11(ctx.reborrow()), w);
@@ -505,7 +506,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         set_client_state(
             &mut ctx.core,
             &ctx.x11,
-            ctx.x11_runtime(),
+            ctx.x11_runtime,
             win,
             WM_STATE_WITHDRAWN,
         );
@@ -520,7 +521,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         let tmp = ctx.reborrow();
         focus_soft(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(&mut ctx.core, &ctx.x11, ctx.x11_runtime());
+    update_client_list(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
 
     if let Some(mid) = monitor_id {
         let tmp = ctx.reborrow();

@@ -9,7 +9,8 @@ use zbus::zvariant::{OwnedValue, Value};
 use crate::bar::paint::BarPainter;
 use crate::contexts::CoreCtx;
 use crate::types::{
-    Monitor, MouseButton, WaylandSystrayItem, WaylandSystrayMenu, WaylandSystrayMenuItem,
+    Monitor, MouseButton, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
+    WaylandSystrayMenuItem,
 };
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
@@ -76,27 +77,31 @@ impl WaylandSystrayRuntime {
         Some(Self { cmd_tx, evt_rx })
     }
 
-    pub fn poll_events(&self, core: &mut CoreCtx) -> bool {
+    pub fn poll_events(
+        &self,
+        core: &mut CoreCtx,
+        wayland_systray: &mut WaylandSystray,
+        wayland_systray_menu: &mut Option<WaylandSystrayMenu>,
+    ) -> bool {
         let mut changed = false;
         loop {
             match self.evt_rx.try_recv() {
                 Ok(SystrayEvt::ItemUpsert(item)) => {
-                    changed |= upsert_item(core, item);
+                    changed |= upsert_item(core, wayland_systray, item);
                 }
                 Ok(SystrayEvt::ItemRemoved(service, path)) => {
-                    let before = core.g.wayland_systray.items.len();
-                    core.g
-                        .wayland_systray
+                    let before = wayland_systray.items.len();
+                    wayland_systray
                         .items
                         .retain(|it| !(it.service == service && it.path == path));
-                    changed |= core.g.wayland_systray.items.len() != before;
+                    changed |= wayland_systray.items.len() != before;
                 }
                 Ok(SystrayEvt::MenuOpen(menu)) => {
-                    core.g.wayland_systray_menu = Some(menu);
+                    *wayland_systray_menu = Some(menu);
                     changed = true;
                 }
                 Ok(SystrayEvt::MenuClose) => {
-                    if core.g.wayland_systray_menu.take().is_some() {
+                    if wayland_systray_menu.take().is_some() {
                         changed = true;
                     }
                 }
@@ -151,7 +156,19 @@ pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
     if !core.g.cfg.showsystray {
         return 0;
     }
-    let items = &core.g.wayland_systray.items;
+    // wayland_systray is not available from CoreCtx; caller must pass it if needed.
+    // This function is a fallback that returns 0 when systray state is unavailable.
+    0
+}
+
+pub fn get_wayland_systray_width_with_state(
+    core: &CoreCtx,
+    wayland_systray: &WaylandSystray,
+) -> i32 {
+    if !core.g.cfg.showsystray {
+        return 0;
+    }
+    let items = &wayland_systray.items;
     if items.is_empty() {
         return 0;
     }
@@ -166,7 +183,20 @@ pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
 }
 
 pub fn hit_test_wayland_systray_item(core: &CoreCtx, mon: &Monitor, local_x: i32) -> Option<usize> {
-    let layout = systray_layout(core, mon);
+    // Without wayland_systray state this hit test cannot succeed.
+    // Use hit_test_wayland_systray_item_with_state for real hit testing.
+    let _ = (core, mon, local_x);
+    None
+}
+
+pub fn hit_test_wayland_systray_item_with_state(
+    core: &CoreCtx,
+    wayland_systray: &WaylandSystray,
+    wayland_systray_menu: Option<&WaylandSystrayMenu>,
+    mon: &Monitor,
+    local_x: i32,
+) -> Option<usize> {
+    let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
     for slot in &layout.tray_slots {
         if local_x >= slot.start && local_x < slot.end {
             return Some(slot.idx);
@@ -180,7 +210,20 @@ pub fn hit_test_wayland_systray_menu_item(
     mon: &Monitor,
     local_x: i32,
 ) -> Option<usize> {
-    let layout = systray_layout(core, mon);
+    // Without wayland_systray state this hit test cannot succeed.
+    // Use hit_test_wayland_systray_menu_item_with_state for real hit testing.
+    let _ = (core, mon, local_x);
+    None
+}
+
+pub fn hit_test_wayland_systray_menu_item_with_state(
+    core: &CoreCtx,
+    wayland_systray: &WaylandSystray,
+    wayland_systray_menu: Option<&WaylandSystrayMenu>,
+    mon: &Monitor,
+    local_x: i32,
+) -> Option<usize> {
+    let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
     for slot in &layout.menu_slots {
         if local_x >= slot.start && local_x < slot.end {
             return Some(slot.idx);
@@ -194,7 +237,18 @@ pub fn draw_wayland_systray(
     mon: &crate::types::Monitor,
     painter: &mut crate::bar::wayland::WaylandBarPainter,
 ) {
-    let layout = systray_layout(core, mon);
+    // No-op stub: use draw_wayland_systray_with_state for actual rendering.
+    let _ = (core, mon, painter);
+}
+
+pub fn draw_wayland_systray_with_state(
+    core: &CoreCtx,
+    wayland_systray: &WaylandSystray,
+    wayland_systray_menu: Option<&WaylandSystrayMenu>,
+    mon: &crate::types::Monitor,
+    painter: &mut crate::bar::wayland::WaylandBarPainter,
+) {
+    let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
     if let Some(bg) = crate::bar::theme::status_scheme(core.g).map(|s| s.bg) {
         let bg_scheme = crate::bar::paint::BarScheme {
             fg: bg,
@@ -226,7 +280,7 @@ pub fn draw_wayland_systray(
 
     let icon_h = core.g.cfg.bar_height.max(1);
     for slot in &layout.tray_slots {
-        let Some(item) = core.g.wayland_systray.items.get(slot.idx) else {
+        let Some(item) = wayland_systray.items.get(slot.idx) else {
             continue;
         };
         painter.blit_rgba_bgra(
@@ -240,7 +294,7 @@ pub fn draw_wayland_systray(
         );
     }
 
-    if let Some(menu) = core.g.wayland_systray_menu.as_ref() {
+    if let Some(menu) = wayland_systray_menu {
         draw_menu_overlay(core, painter, menu, &layout);
     }
 }
@@ -385,13 +439,18 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
     Some((id.to_string(), "/StatusNotifierItem".to_string()))
 }
 
-fn systray_layout(core: &CoreCtx, mon: &Monitor) -> SystrayLayout {
+fn systray_layout(
+    core: &CoreCtx,
+    wayland_systray: &WaylandSystray,
+    wayland_systray_menu: Option<&WaylandSystrayMenu>,
+    mon: &Monitor,
+) -> SystrayLayout {
     let icon_h = core.g.cfg.bar_height.max(1);
     let spacing = core.g.cfg.systrayspacing.max(0);
     let mut tray_total_w = 0;
-    if !core.g.wayland_systray.items.is_empty() {
+    if !wayland_systray.items.is_empty() {
         tray_total_w = spacing;
-        for item in &core.g.wayland_systray.items {
+        for item in &wayland_systray.items {
             tray_total_w += scale_icon_width(item.icon_w, item.icon_h, icon_h) + spacing;
         }
     }
@@ -399,7 +458,7 @@ fn systray_layout(core: &CoreCtx, mon: &Monitor) -> SystrayLayout {
 
     let mut tray_slots = Vec::new();
     let mut x = tray_start_x + spacing;
-    for (idx, item) in core.g.wayland_systray.items.iter().enumerate() {
+    for (idx, item) in wayland_systray.items.iter().enumerate() {
         let w = scale_icon_width(item.icon_w, item.icon_h, icon_h);
         if w > 0 && item.icon_w > 0 && item.icon_h > 0 {
             tray_slots.push(HitSlot {
@@ -414,7 +473,7 @@ fn systray_layout(core: &CoreCtx, mon: &Monitor) -> SystrayLayout {
     let mut menu_total_w = 0;
     let mut menu_slots = Vec::new();
     let mut menu_start_x = 0;
-    if let Some(menu) = core.g.wayland_systray_menu.as_ref() {
+    if let Some(menu) = wayland_systray_menu {
         for item in &menu.items {
             menu_total_w += item.width.max(24);
         }
@@ -601,10 +660,12 @@ fn call_menu_event(conn: &Connection, service: &str, menu_path: &str, id: i32) -
     Ok(())
 }
 
-fn upsert_item(core: &mut CoreCtx, item: WaylandSystrayItem) -> bool {
-    if let Some(existing) = core
-        .g
-        .wayland_systray
+fn upsert_item(
+    _core: &mut CoreCtx,
+    wayland_systray: &mut WaylandSystray,
+    item: WaylandSystrayItem,
+) -> bool {
+    if let Some(existing) = wayland_systray
         .items
         .iter_mut()
         .find(|it| it.service == item.service && it.path == item.path)
@@ -616,7 +677,7 @@ fn upsert_item(core: &mut CoreCtx, item: WaylandSystrayItem) -> bool {
         return was_changed;
     }
 
-    core.g.wayland_systray.items.push(item);
+    wayland_systray.items.push(item);
     true
 }
 

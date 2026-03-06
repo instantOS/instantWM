@@ -337,15 +337,23 @@ pub fn handle_pointer_button<B: InputBackend>(
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
         } else {
             let maybe_close = {
-                let mon = wm.g.selected_monitor();
+                let core = crate::contexts::CoreCtx::new(
+                    &mut wm.g,
+                    &mut wm.running,
+                    &mut wm.bar,
+                    &mut wm.focus,
+                );
+                let mon = core.g.selected_monitor().clone();
                 let local_x = root_x - mon.work_rect.x;
                 wm.wayland_systray_menu.is_some()
-                    && !crate::wayland_systray::hit_test_wayland_systray_menu_item(
-                        &mut wm.ctx(),
+                    && crate::wayland_systray::hit_test_wayland_systray_menu_item_with_state(
+                        &core,
+                        &wm.wayland_systray,
+                        wm.wayland_systray_menu.as_ref(),
                         &mon,
                         local_x,
                     )
-                    .is_some()
+                    .is_none()
             };
             if maybe_close {
                 wm.wayland_systray_menu = None;

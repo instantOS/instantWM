@@ -503,8 +503,10 @@ pub fn render_bar_buffers(
     core: &mut crate::contexts::CoreCtx,
     painter: &mut WaylandBarPainter,
     scale: Scale<f64>,
+    wayland_systray: &crate::types::WaylandSystray,
+    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    let key = bar_render_key(core);
+    let key = bar_render_key(core, wayland_systray);
     if painter.has_cached_buffers && painter.cached_key == key {
         return painter
             .cached_buffers
@@ -532,10 +534,16 @@ pub fn render_bar_buffers(
 
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
         painter.begin(scale, origin_x, origin_y, width, height);
-        draw_bar_common(core, None, None, mon_idx, painter);
+        draw_bar_common(core, None, None, None, mon_idx, painter);
         if core.g.cfg.showsystray {
             if let Some(mon) = core.g.monitor(mon_idx).cloned() {
-                crate::wayland_systray::draw_wayland_systray(core, &mon, painter);
+                crate::wayland_systray::draw_wayland_systray_with_state(
+                    core,
+                    wayland_systray,
+                    wayland_systray_menu,
+                    &mon,
+                    painter,
+                );
             }
         }
         painter.finish();
@@ -574,7 +582,10 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
 }
 
 //TODO: document what this does
-fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
+fn bar_render_key(
+    core: &crate::contexts::CoreCtx,
+    wayland_systray: &crate::types::WaylandSystray,
+) -> u64 {
     let mut hasher = DefaultHasher::new();
     core.bar.update_seq().hash(&mut hasher);
     core.g.cfg.showbar.hash(&mut hasher);
@@ -620,7 +631,7 @@ fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
     }
 
     if core.g.cfg.showsystray {
-        for item in &core.g.wayland_systray.items {
+        for item in &wayland_systray.items {
             item.service.hash(&mut hasher);
             item.path.hash(&mut hasher);
             item.icon_w.hash(&mut hasher);

@@ -82,10 +82,20 @@ fn wm_init(wm: &mut Wm) {
         let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
             return;
         };
-        crate::bar::x11::update_bars(&mut ctx.core, &ctx.x11);
-        crate::bar::x11::update_status(&mut ctx.core, &ctx.x11);
+        crate::bar::x11::update_bars(
+            &mut ctx.core,
+            &ctx.x11,
+            ctx.x11_runtime,
+            ctx.systray.as_deref(),
+        );
+        crate::bar::x11::update_status(
+            &mut ctx.core,
+            &ctx.x11,
+            ctx.x11_runtime,
+            ctx.systray.as_deref_mut(),
+        );
         crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
-        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
+        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
     }
 }
 

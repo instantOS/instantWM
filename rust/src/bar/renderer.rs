@@ -4,12 +4,13 @@ use crate::bar::paint::BarPainter;
 use crate::bar::{status, widgets};
 use crate::contexts::CoreCtx;
 use crate::globals::X11RuntimeConfig;
-use crate::types::Gesture;
+use crate::types::{Gesture, Systray};
 
 pub fn draw_bar_common(
     core: &mut CoreCtx,
     x11: Option<&X11BackendRef>,
     x11_runtime: Option<&X11RuntimeConfig>,
+    systray: Option<&Systray>,
     mon_idx: usize,
     painter: &mut dyn BarPainter,
 ) {
@@ -39,14 +40,14 @@ pub fn draw_bar_common(
     let is_selmon = core.g.selected_monitor().num == monitor_num;
 
     let systray_width = if core.g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width_for_bar(core, x11.is_some())
+        crate::systray::get_systray_width_for_bar(core, x11.is_some(), systray)
     } else {
         0
     };
 
     let (status_start_x, status_width) = if is_selmon {
         let m = core.g.monitor(mon_idx).cloned().unwrap();
-        status::draw_status_bar(core, x11_runtime, &m, bar_height, painter)
+        status::draw_status_bar(core, x11_runtime, systray, &m, bar_height, painter)
     } else {
         (0, 0)
     };

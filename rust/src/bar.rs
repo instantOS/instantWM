@@ -16,6 +16,7 @@ pub use x11::resize_bar_win;
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
 use crate::globals::X11RuntimeConfig;
+use crate::types::Systray;
 use crate::types::*;
 
 #[derive(Default)]
@@ -164,7 +165,8 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
 pub fn draw_bar(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
+    x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&Systray>,
     mon_idx: usize,
 ) {
     let bar_win = core
@@ -197,20 +199,37 @@ pub fn draw_bar(
 
     let mut painter = x11_painter::X11BarPainter::new(drw);
 
-    renderer::draw_bar_common(core, Some(x11), Some(x11_runtime), mon_idx, &mut painter);
+    renderer::draw_bar_common(
+        core,
+        Some(x11),
+        Some(x11_runtime),
+        systray,
+        mon_idx,
+        &mut painter,
+    );
 
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
-pub fn draw_bars_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
+pub fn draw_bars_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&Systray>,
+) {
     let indices: Vec<usize> = core.g.monitors_iter().map(|(i, _)| i).collect();
     for i in indices {
-        draw_bar(core, x11, x11_runtime, i);
+        draw_bar(core, x11, x11_runtime, systray, i);
     }
 }
 
-pub fn reset_bar_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
+pub fn reset_bar_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&Systray>,
+) {
     let selmon_idx = core.g.selected_monitor_id();
     renderer::reset_bar_common(core);
-    draw_bar(core, x11, x11_runtime, selmon_idx);
+    draw_bar(core, x11, x11_runtime, systray, selmon_idx);
 }

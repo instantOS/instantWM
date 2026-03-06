@@ -249,7 +249,11 @@ pub fn build_bar_elements(
     }
     if let Some(runtime) = wm.wayland_systray_runtime.as_ref() {
         let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
-        if runtime.poll_events(&mut core) {
+        if runtime.poll_events(
+            &mut core,
+            &mut wm.wayland_systray,
+            &mut wm.wayland_systray_menu,
+        ) {
             core.bar.mark_dirty();
         }
     }
@@ -259,6 +263,8 @@ pub fn build_bar_elements(
         &mut core,
         &mut wm.bar_painter,
         smithay::utils::Scale::from(1.0),
+        &wm.wayland_systray,
+        wm.wayland_systray_menu.as_ref(),
     );
     let mut elements = Vec::new();
     for (buffer, x, y) in bar_buffers {

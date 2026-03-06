@@ -6,7 +6,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
+use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::globals::X11RuntimeConfig;
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
 use crate::types::*;
@@ -100,12 +100,13 @@ trait FocusBackendOps {
 
 struct X11FocusBackend<'a> {
     x11: &'a X11BackendRef<'a>,
-    x11_runtime: &'a crate::globals::X11RuntimeConfig,
+    x11_runtime: &'a mut crate::globals::X11RuntimeConfig,
+    systray: Option<&'a crate::types::Systray>,
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId) {
-        unfocus_win_x11(core, self.x11, self.x11_runtime, current, false);
+        unfocus_win_x11(core, self.x11, &*self.x11_runtime, current, false);
     }
 
     fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
@@ -118,7 +119,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         if is_urgent {
             set_urgent(core, self.x11, win, false);
         }
-        set_focus_x11(core, self.x11, self.x11_runtime, win);
+        set_focus_x11(core, self.x11, &*self.x11_runtime, win);
     }
 
     fn focus_none(&self, _core: &mut CoreCtx) {
@@ -135,12 +136,12 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_selection_changed(&self, core: &mut CoreCtx) {
-        crate::keyboard::grab_keys_x11(core, self.x11, self.x11_runtime);
+        crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 
     fn post_state_update(&self, core: &mut CoreCtx) {
         core.bar.mark_dirty();
-        crate::bar::draw_bars_x11(core, self.x11, self.x11_runtime);
+        crate::bar::draw_bars_x11(core, self.x11, self.x11_runtime, self.systray);
     }
 }
 
@@ -213,10 +214,15 @@ fn focus_generic(
 pub fn focus_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::globals::X11RuntimeConfig,
+    systray: Option<&crate::types::Systray>,
     win: Option<WindowId>,
 ) -> anyhow::Result<()> {
-    let backend = X11FocusBackend { x11, x11_runtime };
+    let backend = X11FocusBackend {
+        x11,
+        x11_runtime,
+        systray,
+    };
     focus_generic(core, win, &backend)
 }
 
@@ -235,10 +241,10 @@ pub fn focus_wayland(
 pub fn focus_soft_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::globals::X11RuntimeConfig,
     win: Option<WindowId>,
 ) {
-    if let Err(e) = focus_x11(core, x11, x11_runtime, win) {
+    if let Err(e) = focus_x11(core, x11, x11_runtime, None, win) {
         log::warn!("focus_x11({:?}) failed: {}", win, e);
     }
 }
@@ -249,21 +255,23 @@ pub fn focus_soft_x11(
 /// but does not propagate them. This is suitable for use in event
 /// handlers where focus failures should not abort the operation.
 pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
-    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    use crate::contexts::WmCtx::*;
     match ctx {
-        X11(WmCtxX11 {
-            core,
-            x11,
-            x11_runtime,
-            ..
-        }) => {
-            if let Err(e) = focus_x11(core, x11, x11_runtime, win) {
-                log::warn!("focus({:?}) failed: {}", win, e);
+        X11(x11_ctx) => {
+            let systray = x11_ctx.systray.as_deref();
+            if let Err(e) = focus_x11(
+                &mut x11_ctx.core,
+                &x11_ctx.x11,
+                x11_ctx.x11_runtime,
+                systray,
+                win,
+            ) {
+                log::warn!("focus_soft X11({:?}) failed: {}", win, e);
             }
         }
-        Wayland(WmCtxWayland { core, wayland, .. }) => {
-            if let Err(e) = focus_wayland(core, wayland, win) {
-                log::warn!("focus_wayland({:?}) failed: {}", win, e);
+        Wayland(wayland_ctx) => {
+            if let Err(e) = focus_wayland(&mut wayland_ctx.core, &wayland_ctx.wayland, win) {
+                log::warn!("focus_soft Wayland({:?}) failed: {}", win, e);
             }
         }
     }
@@ -330,7 +338,7 @@ pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
 pub fn hover_focus_target_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::globals::X11RuntimeConfig,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
@@ -342,7 +350,7 @@ pub fn hover_focus_target_x11(
         if let Some(mid) = core.g.clients.get(&win).and_then(|c| c.monitor_id) {
             if mid != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(mid);
-                let _ = focus_x11(core, x11, x11_runtime, None);
+                let _ = focus_x11(core, x11, x11_runtime, None, None);
                 return;
             }
         }
@@ -367,13 +375,13 @@ pub fn hover_focus_target_x11(
         ) {
             if new_mon_id != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(new_mon_id);
-                let _ = focus_x11(core, x11, x11_runtime, None);
+                let _ = focus_x11(core, x11, x11_runtime, None, None);
                 return;
             }
         }
     }
 
-    let _ = focus_x11(core, x11, x11_runtime, hovered_win);
+    let _ = focus_x11(core, x11, x11_runtime, None, hovered_win);
 }
 
 /// Shared hover-focus behavior used by both X11 and Wayland pointer paths.
@@ -603,11 +611,11 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
 pub fn direction_focus_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::globals::X11RuntimeConfig,
     direction: Direction,
 ) {
     if let Some(target) = get_direction_focus_candidate(core, direction) {
-        let _ = focus_x11(core, x11, x11_runtime, Some(target));
+        let _ = focus_x11(core, x11, x11_runtime, None, Some(target));
     }
 }
 
@@ -655,17 +663,13 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
 pub fn warp_cursor_to_client_x11(
     core: &CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
+    x11_runtime: &mut X11RuntimeConfig,
     c_win: WindowId,
 ) {
     mouse_warp::warp_impl_x11(core, x11, x11_runtime, c_win);
 }
 
-pub fn warp_to_focus_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-) {
+pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     if let Some(win) = core.selected_client() {
         warp_cursor_to_client_x11(core, x11, x11_runtime, win);
     }
@@ -747,14 +751,16 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
     Some(stack[next_idx])
 }
 
+//TODO: this seems redundant, there is a backend agnostic focus method, and
+//get_stack_focus_target is already agnostic
 pub fn focus_stack_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::globals::X11RuntimeConfig,
     direction: StackDirection,
 ) {
     if let Some(target) = get_stack_focus_target(core, direction) {
-        let _ = focus_x11(core, x11, x11_runtime, Some(target));
+        let _ = focus_x11(core, x11, x11_runtime, None, Some(target));
     }
 }
 

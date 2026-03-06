@@ -105,6 +105,10 @@ impl<'a> WmCtxX11<'a> {
         &self.x11_runtime
     }
 
+    pub fn x11_runtime_mut(&mut self) -> &mut X11RuntimeConfig {
+        &mut self.x11_runtime
+    }
+
     pub fn systray(&self) -> Option<&Systray> {
         self.systray.as_deref()
     }
@@ -272,7 +276,7 @@ impl<'a> WmCtx<'a> {
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
         match self {
             WmCtx::X11(x11) => {
-                crate::focus::warp_cursor_to_client_x11(&x11.core, &x11.x11, win);
+                crate::focus::warp_cursor_to_client_x11(&x11.core, &x11.x11, x11.x11_runtime, win);
             }
             WmCtx::Wayland(_) => {
                 // Wayland doesn't allow compositor cursor warping - no-op
@@ -293,9 +297,20 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(ctx_x11) => {
                 ctx_x11.core.bar.mark_dirty();
                 if let Some(id) = monitor_id {
-                    draw_bar(&mut ctx_x11.core, &ctx_x11.x11, id);
+                    draw_bar(
+                        &mut ctx_x11.core,
+                        &ctx_x11.x11,
+                        ctx_x11.x11_runtime,
+                        ctx_x11.systray.as_deref(),
+                        id,
+                    );
                 } else {
-                    draw_bars_x11(&mut ctx_x11.core, &ctx_x11.x11);
+                    draw_bars_x11(
+                        &mut ctx_x11.core,
+                        &ctx_x11.x11,
+                        ctx_x11.x11_runtime,
+                        ctx_x11.systray.as_deref(),
+                    );
                 }
             }
             WmCtx::Wayland(ctx_wayland) => {

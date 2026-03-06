@@ -36,7 +36,12 @@ use x11rb::CURRENT_TIME;
 // ---------------------------------------------------------------------------
 
 /// Kill the given window (X11-specific implementation).
-fn kill_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+fn kill_client_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &crate::globals::X11RuntimeConfig,
+    win: WindowId,
+) {
     let Some(client) = core.g.clients.get(&win) else {
         return;
     };
@@ -60,6 +65,7 @@ fn kill_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         animate_client_x11(
             core,
             x11,
+            x11_runtime,
             win,
             &Rect {
                 x: 0,
@@ -72,14 +78,14 @@ fn kill_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         );
     }
 
-    let wmatom_delete = core.x11_runtime().wmatom.delete;
-    force_close_x11(core, x11, win, wmatom_delete);
+    let wmatom_delete = x11_runtime.wmatom.delete;
+    force_close_x11(core, x11, x11_runtime, win, wmatom_delete);
 }
 
 /// Kill the given window.
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(c) => kill_client_x11(&mut c.core, &c.x11, win),
+        WmCtx::X11(c) => kill_client_x11(&mut c.core, &c.x11, c.x11_runtime, win),
         WmCtx::Wayland(c) => {
             let _ = c.wayland.backend.close_window(win);
         }
@@ -112,7 +118,12 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 // ---------------------------------------------------------------------------
 
 /// Close an arbitrary window by its Window ID (X11-specific).
-fn close_win_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+fn close_win_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &crate::globals::X11RuntimeConfig,
+    win: WindowId,
+) {
     let is_locked = core.g.clients.get(&win).map(|c| c.islocked).unwrap_or(true);
 
     if is_locked {
@@ -120,14 +131,14 @@ fn close_win_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     }
 
     // Animation not yet supported in X11-specific path
-    let wmatom_delete = core.x11_runtime().wmatom.delete;
-    force_close_x11(core, x11, win, wmatom_delete);
+    let wmatom_delete = x11_runtime.wmatom.delete;
+    force_close_x11(core, x11, x11_runtime, win, wmatom_delete);
 }
 
 /// Close an arbitrary window by its Window ID.
 pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(c) => close_win_x11(&mut c.core, &c.x11, win),
+        WmCtx::X11(c) => close_win_x11(&mut c.core, &c.x11, c.x11_runtime, win),
         WmCtx::Wayland(c) => {
             let _ = c.wayland.backend.close_window(win);
         }
@@ -139,9 +150,14 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
 // ---------------------------------------------------------------------------
 
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient` (X11-specific).
-fn force_close_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, wmatom_delete: u32) {
+fn force_close_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &crate::globals::X11RuntimeConfig,
+    win: WindowId,
+    wmatom_delete: u32,
+) {
     let x11_win: Window = win.into();
-    let x11_runtime = core.x11_runtime();
     let sent = send_event_x11(
         core,
         x11,
