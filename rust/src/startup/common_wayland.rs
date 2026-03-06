@@ -12,6 +12,7 @@
 
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
@@ -20,8 +21,12 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::desktop::PopupManager;
 use smithay::input::keyboard::ModifiersState;
+use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus};
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::utils::{Logical, Point};
+use smithay::wayland::compositor::with_states;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
@@ -84,6 +89,46 @@ pub fn modifiers_to_x11_mask(mods: &ModifiersState) -> u32 {
         mask |= crate::config::MODKEY;
     }
     mask
+}
+
+/// Backend-agnostic cursor state after applying WM override policy.
+pub enum CursorPresentation {
+    Hidden,
+    Named(CursorIcon),
+    Surface {
+        surface: WlSurface,
+        hotspot: Point<i32, Logical>,
+    },
+}
+
+/// Resolve effective cursor state shared by nested and DRM backends.
+///
+/// WM icon overrides have priority over client-provided cursor images.
+pub fn resolve_cursor_presentation(
+    status: &CursorImageStatus,
+    icon_override: Option<CursorIcon>,
+) -> CursorPresentation {
+    if let Some(icon) = icon_override {
+        return CursorPresentation::Named(icon);
+    }
+
+    match status {
+        CursorImageStatus::Hidden => CursorPresentation::Hidden,
+        CursorImageStatus::Named(icon) => CursorPresentation::Named(*icon),
+        CursorImageStatus::Surface(surface) => {
+            let hotspot = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<Mutex<CursorImageAttributes>>()
+                    .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
+                    .unwrap_or((0, 0).into())
+            });
+            CursorPresentation::Surface {
+                surface: surface.clone(),
+                hotspot,
+            }
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

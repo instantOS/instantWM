@@ -29,11 +29,13 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::input::pointer::{CursorIcon, CursorImageStatus};
+use smithay::input::pointer::CursorIcon;
 use smithay::utils::{Physical, Point, Transform};
 
 use xcursor::parser::{parse_xcursor, Image};
 use xcursor::CursorTheme;
+
+use crate::startup::common_wayland::CursorPresentation;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -144,20 +146,11 @@ impl CursorManager {
     pub fn render_element(
         &self,
         pointer_location: Point<f64, smithay::utils::Logical>,
-        status: &CursorImageStatus,
-        icon_override: Option<CursorIcon>,
+        presentation: &CursorPresentation,
     ) -> Option<TextureRenderElement<GlesTexture>> {
-        // WM-set icon override wins over everything except Hidden.
-        let frame = if let Some(icon) = icon_override {
-            self.frame_for_icon(icon)
-        } else {
-            match status {
-                CursorImageStatus::Hidden => return None,
-                CursorImageStatus::Named(icon) => self.frame_for_icon(*icon),
-                // Client-provided cursor surfaces are rendered by the DRM
-                // backend directly from the wl_surface tree.
-                CursorImageStatus::Surface(_) => return None,
-            }
+        let frame = match presentation {
+            CursorPresentation::Hidden | CursorPresentation::Surface { .. } => return None,
+            CursorPresentation::Named(icon) => self.frame_for_icon(*icon),
         };
 
         Some(frame_to_element(frame, pointer_location))

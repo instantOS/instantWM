@@ -55,7 +55,6 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev;
 use smithay::desktop::space::render_output;
-use smithay::input::pointer::{CursorImageAttributes, CursorImageStatus};
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent, Libinput};
@@ -67,8 +66,8 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 
 use crate::startup::common_wayland::{
-    build_bar_elements, init_wayland_globals, send_frame_callbacks, setup_wayland_socket,
-    spawn_wayland_smoke_window, spawn_xwayland,
+    build_bar_elements, init_wayland_globals, resolve_cursor_presentation, send_frame_callbacks,
+    setup_wayland_socket, spawn_wayland_smoke_window, spawn_xwayland, CursorPresentation,
 };
 use crate::startup::wayland::cursor::CursorManager;
 use crate::startup::wayland::input::{
@@ -795,14 +794,9 @@ fn render_drm_output(
         pointer_location.x - entry.x_offset as f64,
         pointer_location.y,
     ));
-    if let CursorImageStatus::Surface(surface) = &state.cursor_image_status {
-        let hotspot = smithay::wayland::compositor::with_states(surface, |states| {
-            states
-                .data_map
-                .get::<Mutex<CursorImageAttributes>>()
-                .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
-                .unwrap_or((0, 0).into())
-        });
+    let cursor_presentation =
+        resolve_cursor_presentation(&state.cursor_image_status, state.cursor_icon_override);
+    if let CursorPresentation::Surface { surface, hotspot } = &cursor_presentation {
         let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
             (local_pointer.x - hotspot.x as f64).round() as i32,
             (local_pointer.y - hotspot.y as f64).round() as i32,
@@ -820,11 +814,7 @@ fn render_drm_output(
             custom_elements.push(DrmExtras::Surface(elem));
         }
     }
-    if let Some(cursor_elem) = cursor_manager.render_element(
-        local_pointer,
-        &state.cursor_image_status,
-        state.cursor_icon_override,
-    ) {
+    if let Some(cursor_elem) = cursor_manager.render_element(local_pointer, &cursor_presentation) {
         custom_elements.push(DrmExtras::Cursor(cursor_elem));
     }
 

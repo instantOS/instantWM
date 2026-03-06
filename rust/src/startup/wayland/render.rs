@@ -14,7 +14,9 @@ use smithay::utils::Scale;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::bar::color::rgba_from_hex;
-use crate::startup::common_wayland::{build_bar_elements, send_frame_callbacks};
+use crate::startup::common_wayland::{
+    build_bar_elements, resolve_cursor_presentation, send_frame_callbacks, CursorPresentation,
+};
 use crate::types::WindowId;
 use crate::wm::Wm;
 
@@ -78,20 +80,15 @@ pub(super) fn render_frame(
 }
 
 fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
-    if let Some(icon) = state.cursor_icon_override {
-        backend.window().set_cursor_visible(true);
-        backend.window().set_cursor(icon);
-        return;
-    }
-    match &state.cursor_image_status {
-        smithay::input::pointer::CursorImageStatus::Hidden => {
+    match resolve_cursor_presentation(&state.cursor_image_status, state.cursor_icon_override) {
+        CursorPresentation::Hidden => {
             backend.window().set_cursor_visible(false);
         }
-        smithay::input::pointer::CursorImageStatus::Named(icon) => {
+        CursorPresentation::Named(icon) => {
             backend.window().set_cursor_visible(true);
-            backend.window().set_cursor(*icon);
+            backend.window().set_cursor(icon);
         }
-        smithay::input::pointer::CursorImageStatus::Surface(_) => {
+        CursorPresentation::Surface { .. } => {
             backend.window().set_cursor_visible(true);
         }
     }
