@@ -195,7 +195,7 @@ pub fn win_view(ctx: &mut WmCtxX11) {
         view(&mut wm_ctx, tag_mask);
     }
 
-    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
+    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
 }
 
 pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
@@ -261,7 +261,7 @@ pub fn follow_view(ctx: &mut WmCtxX11) {
 
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     view(&mut wm_ctx, target_mask);
-    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
+    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
     arrange(&mut WmCtx::X11(ctx.reborrow()), Some(selmon_id));
 }
 

@@ -95,7 +95,7 @@ trait FocusBackendOps {
     /// Called when selection state changes (focused <-> unfocused).
     fn on_selection_changed(&self, core: &mut CoreCtx);
     /// Called after focus state is updated, before focusing a window.
-    fn post_state_update(&self, core: &mut CoreCtx);
+    fn post_state_update(&mut self, core: &mut CoreCtx);
 }
 
 struct X11FocusBackend<'a> {
@@ -139,7 +139,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 
-    fn post_state_update(&self, core: &mut CoreCtx) {
+    fn post_state_update(&mut self, core: &mut CoreCtx) {
         core.bar.mark_dirty();
         crate::bar::draw_bars_x11(core, self.x11, self.x11_runtime, self.systray);
     }
@@ -166,7 +166,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         // Wayland: key grabs not applicable; desktop bindings kept in core
     }
 
-    fn post_state_update(&self, core: &mut CoreCtx) {
+    fn post_state_update(&mut self, core: &mut CoreCtx) {
         core.bar.mark_dirty();
     }
 }
@@ -175,7 +175,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 fn focus_generic(
     core: &mut CoreCtx,
     win: Option<WindowId>,
-    backend: &dyn FocusBackendOps,
+    backend: &mut dyn FocusBackendOps,
 ) -> anyhow::Result<()> {
     let result = match resolve_focus_target(core, win) {
         Some(r) => r,
@@ -218,12 +218,12 @@ pub fn focus_x11(
     systray: Option<&crate::types::Systray>,
     win: Option<WindowId>,
 ) -> anyhow::Result<()> {
-    let backend = X11FocusBackend {
+    let mut backend = X11FocusBackend {
         x11,
         x11_runtime,
         systray,
     };
-    focus_generic(core, win, &backend)
+    focus_generic(core, win, &mut backend)
 }
 
 /// Wayland focus implementation: pick a target window, update mon.sel,
@@ -233,8 +233,8 @@ pub fn focus_wayland(
     wayland: &WaylandCtx,
     win: Option<WindowId>,
 ) -> anyhow::Result<()> {
-    let backend = WaylandFocusBackend { wayland };
-    focus_generic(core, win, &backend)
+    let mut backend = WaylandFocusBackend { wayland };
+    focus_generic(core, win, &mut backend)
 }
 
 /// Best-effort X11 focus helper for legacy call sites.
@@ -663,13 +663,13 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
 pub fn warp_cursor_to_client_x11(
     core: &CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
+    x11_runtime: &X11RuntimeConfig,
     c_win: WindowId,
 ) {
     mouse_warp::warp_impl_x11(core, x11, x11_runtime, c_win);
 }
 
-pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
+pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     if let Some(win) = core.selected_client() {
         warp_cursor_to_client_x11(core, x11, x11_runtime, win);
     }

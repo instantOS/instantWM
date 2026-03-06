@@ -268,7 +268,9 @@ pub fn down_press_x11(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&mut Systray>,
 ) {
-    if with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| unhide_one(ctx)) {
+    if with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
+        unhide_one(ctx)
+    }) {
         return;
     }
 
@@ -308,14 +310,16 @@ pub fn down_press_x11(
     }
 
     if selected_window == overlay_win {
-        with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| {
+        with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
             set_overlay_mode(ctx, OverlayMode::Bottom)
         });
         return;
     }
 
     if !is_floating {
-        with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| toggle_floating(ctx));
+        with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
+            toggle_floating(ctx)
+        });
     }
 }
 
@@ -352,7 +356,7 @@ pub fn up_key_x11(
                 );
                 let _ = x11.conn.flush();
             }
-            with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| {
+            with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
                 change_snap(ctx, win, SnapDir::Up)
             });
         }
@@ -380,7 +384,7 @@ pub fn down_key_x11(
 
     if !has_tiling {
         if let Some(win) = core.selected_client() {
-            with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| {
+            with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
                 change_snap(ctx, win, SnapDir::Down)
             });
         }
@@ -439,7 +443,7 @@ pub fn space_toggle_x11(
                 let _ = x11.conn.flush();
             }
 
-            with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| {
+            with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
                 save_floating_win(ctx, win)
             });
 
@@ -448,11 +452,13 @@ pub fn space_toggle_x11(
             }
 
             let selmon_id = core.g.selected_monitor_id();
-            with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| {
+            with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
                 arrange(ctx, Some(selmon_id))
             });
         }
     } else {
-        with_wm_ctx_x11(core, x11, x11_runtime, systray, |ctx| toggle_floating(ctx));
+        with_wm_ctx_x11(core, x11, x11_runtime, systray.as_deref_mut(), |ctx| {
+            toggle_floating(ctx)
+        });
     }
 }

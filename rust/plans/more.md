@@ -21,17 +21,10 @@ backend modules. X11 should have a folder in that, just like wayland does.
 What is reborrow() ? How is it used? Is it a code-smell
 
 
-
-X11/Wayland implementation details should be kept out of corectx and only in the
-parts of the enum variants which not both backends have. 
-
-
-
 Investigate the DRM wayland backend. 
 The wayland compositor works somewhat well as a nested compositor, is the
 standalone mode missing something to get it to work as well? Is there anything
 unfinished?
-
 
 
 Investigate what numlockmask is, why it is all over the place, including
@@ -43,3 +36,22 @@ cleaner than passing around huge objects all the time.
 
 
 
+
+
+creating new contexts on the fly is a code smell, investigate some of these
+cases and do what is necessary to get the data flow to be clean and readable. 
+No lazy fixes, things like these are indicative of a deeper issue.
+
+
+```
+        let selmon_id = core.g.selected_monitor_id();
+        crate::layouts::arrange(
+            &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+                core: core.reborrow(),
+                backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+                x11: crate::backend::x11::X11BackendRef::new(x11.conn, x11.screen_num),
+                x11_runtime,
+                systray: None,
+            }),
+ 
+```

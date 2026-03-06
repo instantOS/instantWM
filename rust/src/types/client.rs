@@ -153,6 +153,7 @@ impl Client {
         mask: crate::types::TagMask,
         core: &mut crate::contexts::CoreCtx,
         x11: &crate::backend::x11::X11BackendRef,
+        x11_runtime: &mut crate::globals::X11RuntimeConfig,
     ) {
         use crate::types::TagMask;
 
@@ -169,14 +170,16 @@ impl Client {
 
         self.tags = effective_mask.bits();
 
-        crate::client::set_client_tag_prop(core, x11, self.win);
-        crate::focus::focus_soft_x11(core, x11, None);
+        crate::client::set_client_tag_prop(core, x11, x11_runtime, self.win);
+        crate::focus::focus_soft_x11(core, x11, x11_runtime, None);
         let selmon_id = core.g.selected_monitor_id();
         crate::layouts::arrange(
             &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
                 core: core.reborrow(),
                 backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
                 x11: crate::backend::x11::X11BackendRef::new(x11.conn, x11.screen_num),
+                x11_runtime,
+                systray: None,
             }),
             Some(selmon_id),
         );

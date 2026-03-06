@@ -60,7 +60,6 @@ impl Wm {
     }
 
     pub fn ctx(&mut self) -> WmCtx<'_> {
-        let backend = BackendRef::from_backend(&self.backend);
         let core = CoreCtx::new(
             &mut self.g,
             &mut self.running,
@@ -68,21 +67,27 @@ impl Wm {
             &mut self.focus,
         );
         match &mut self.backend {
-            Backend::X11(x11) => WmCtx::X11(WmCtxX11 {
-                core,
-                backend,
-                x11: X11BackendRef::new(&x11.conn, x11.screen_num),
-                x11_runtime: &mut self.x11_runtime,
-                systray: self.systray.as_mut(),
-            }),
-            Backend::Wayland(wayland) => WmCtx::Wayland(WmCtxWayland {
-                core,
-                backend,
-                wayland: WaylandCtx { backend: wayland },
-                xwayland: None,
-                wayland_systray: &mut self.wayland_systray,
-                wayland_systray_menu: self.wayland_systray_menu.as_mut(),
-            }),
+            Backend::X11(x11) => {
+                let backend = BackendRef::from_x11(&x11.conn, x11.screen_num);
+                WmCtx::X11(WmCtxX11 {
+                    core,
+                    backend,
+                    x11: X11BackendRef::new(&x11.conn, x11.screen_num),
+                    x11_runtime: &mut self.x11_runtime,
+                    systray: self.systray.as_mut(),
+                })
+            }
+            Backend::Wayland(wayland) => {
+                let backend = BackendRef::Wayland(wayland);
+                WmCtx::Wayland(WmCtxWayland {
+                    core,
+                    backend,
+                    wayland: WaylandCtx { backend: wayland },
+                    xwayland: None,
+                    wayland_systray: &mut self.wayland_systray,
+                    wayland_systray_menu: self.wayland_systray_menu.as_mut(),
+                })
+            }
         }
     }
 }

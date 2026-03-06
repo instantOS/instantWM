@@ -45,7 +45,7 @@ pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
         5,
         0,
     );
-    warp_cursor_to_client_x11(&ctx.core, &ctx.x11, win);
+    warp_cursor_to_client_x11(&ctx.core, &ctx.x11, ctx.x11_runtime, win);
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {

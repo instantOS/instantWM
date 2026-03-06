@@ -211,7 +211,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::TagMon(dir) => {
             let direction = MonitorDirection::from(dir);
             if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                send_to_monitor(&mut x11.core, &x11.x11, direction);
+                send_to_monitor(&mut x11.core, &x11.x11, x11.x11_runtime, direction);
             }
             IpcResponse::ok("")
         }

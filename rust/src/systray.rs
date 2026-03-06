@@ -199,7 +199,7 @@ pub fn update_systray(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
-    systray: Option<&mut Systray>,
+    mut systray: Option<&mut Systray>,
 ) {
     if !core.g.cfg.showsystray {
         return;

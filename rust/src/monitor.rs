@@ -239,7 +239,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     attach(ctx, win);
     attach_stack(ctx, win);
     if let WmCtx::X11(x11) = ctx {
-        set_client_tag_prop(&mut x11.core, &x11.x11, win);
+        set_client_tag_prop(&mut x11.core, &x11.x11, x11.x11_runtime, win);
     }
 
     focus_soft(ctx, None);
@@ -307,7 +307,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
     };
 
     if let WmCtx::X11(x11) = ctx {
-        crate::tags::send_to_monitor(&mut x11.core, &x11.x11, direction);
+        crate::tags::send_to_monitor(&mut x11.core, &x11.x11, x11.x11_runtime, direction);
     }
 
     if let Some(monitor_id) = ctx.g_mut().clients.get(&c_win).and_then(|c| c.monitor_id) {
@@ -324,7 +324,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
         );
-        warp_cursor_to_client_x11(&x11.core, &x11.x11, c_win);
+        warp_cursor_to_client_x11(&x11.core, &x11.x11, x11.x11_runtime, c_win);
     }
 }
 
@@ -515,16 +515,19 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
 
     if dirty {
         ctx.g_mut().monitors.set_sel_idx(0);
-        let x11_conn = match ctx {
-            WmCtx::X11(x11) => Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num)),
-            WmCtx::Wayland(_) => None,
+        let (x11_conn, root) = match ctx {
+            WmCtx::X11(x11) => (
+                Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num)),
+                WindowId::from(x11.x11_runtime.root),
+            ),
+            WmCtx::Wayland(_) => (None, WindowId::default()),
         };
-        let root = ctx.g().x11.root;
         let clients = ctx.g().clients.clone();
-        if let Some(m) =
-            ctx.g_mut()
-                .monitors
-                .win_to_mon(WindowId::from(root), root, &clients, x11_conn)
+        let root_u32: u32 = root.into();
+        if let Some(m) = ctx
+            .g_mut()
+            .monitors
+            .win_to_mon(root, root_u32, &clients, x11_conn)
         {
             ctx.g_mut().monitors.set_sel_idx(m);
         }

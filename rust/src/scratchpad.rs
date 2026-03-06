@@ -130,7 +130,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         restack(ctx, mid);
         if focusfollowsmouse {
             if let WmCtx::X11(x11) = ctx {
-                warp_cursor_to_client_x11(&x11.core, &x11.x11, found);
+                warp_cursor_to_client_x11(&x11.core, &x11.x11, x11.x11_runtime, found);
             }
         }
     }
