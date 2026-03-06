@@ -77,7 +77,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         is_monocle,
     );
 
-    apply_manage_hints(&mut ctx.core, &ctx.x11, ctx.x11_runtime(), w);
+    apply_manage_hints(&mut ctx.core, &ctx.x11, ctx.x11_runtime_mut(), w);
     snapshot_float_geo(ctx.core.g, w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
     grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime(), w, false);
@@ -232,7 +232,7 @@ fn configure_client_border(
 fn apply_manage_hints(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_cfg: &X11RuntimeConfig,
+    x11_cfg: &mut X11RuntimeConfig,
     w: WindowId,
 ) {
     crate::client::focus::configure_x11(core, x11, w);
@@ -333,7 +333,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
             set_client_state(
                 &ctx_x11.core,
                 &ctx_x11.x11,
-                ctx_x11.x11_cfg,
+                ctx_x11.x11_runtime,
                 w,
                 WM_STATE_NORMAL,
             );
@@ -395,7 +395,7 @@ fn run_manage_animation(
         animate_client_x11(
             &mut ctx_x11.core,
             &ctx_x11.x11,
-            ctx_x11.x11_cfg,
+            ctx_x11.x11_runtime,
             w,
             &Rect {
                 x: c.geo.x,
@@ -520,7 +520,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         let tmp = ctx.reborrow();
         focus_soft(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(&mut ctx.core, &ctx.x11);
+    update_client_list(&mut ctx.core, &ctx.x11, ctx.x11_runtime());
 
     if let Some(mid) = monitor_id {
         let tmp = ctx.reborrow();

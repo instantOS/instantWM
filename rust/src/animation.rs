@@ -297,15 +297,19 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
 
 pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
-        WmCtx::X11(ref mut x11_ctx) => animate_client_x11(
-            &mut x11_ctx.core,
-            &x11_ctx.x11,
-            x11_ctx.x11_runtime(),
-            win,
-            rect,
-            frames,
-            reset_pos,
-        ),
+        WmCtx::X11(ref mut x11_ctx) => {
+            let x11 = &x11_ctx.x11;
+            let x11_runtime = x11_ctx.x11_runtime();
+            animate_client_x11(
+                &mut x11_ctx.core,
+                x11,
+                x11_runtime,
+                win,
+                rect,
+                frames,
+                reset_pos,
+            )
+        }
         WmCtx::Wayland(ref mut wl_ctx) => {
             animate_client_wayland(wl_ctx, win, rect, frames, reset_pos)
         }
@@ -314,15 +318,19 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
 
 pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
-        WmCtx::X11(ref mut x11_ctx) => check_animate_x11(
-            &mut x11_ctx.core,
-            &x11_ctx.x11,
-            x11_ctx.x11_runtime(),
-            win,
-            rect,
-            frames,
-            reset_pos,
-        ),
+        WmCtx::X11(ref mut x11_ctx) => {
+            let x11 = &x11_ctx.x11;
+            let x11_runtime = x11_ctx.x11_runtime();
+            check_animate_x11(
+                &mut x11_ctx.core,
+                x11,
+                x11_runtime,
+                win,
+                rect,
+                frames,
+                reset_pos,
+            )
+        }
         WmCtx::Wayland(ref mut wl_ctx) => {
             let should_animate = wl_ctx
                 .core

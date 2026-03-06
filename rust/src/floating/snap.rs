@@ -17,7 +17,7 @@
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::animation::{check_animate, check_animate_x11};
+use crate::animation::check_animate_x11;
 use crate::client::{restore_border_width, save_border_width};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::warp_cursor_to_client_x11;
@@ -185,8 +185,8 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     };
 
     apply_snap(ctx_x11, win, monitor_id);
-    warp_cursor_to_client_x11(&ctx_x11.core, &ctx_x11.x11, win);
-    crate::focus::focus_soft_x11(&mut ctx_x11.core, &ctx_x11.x11, Some(win));
+    warp_cursor_to_client_x11(&ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, win);
+    crate::focus::focus_soft_x11(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, Some(win));
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the
@@ -233,6 +233,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: saved_geo.x,
@@ -248,6 +249,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx,
@@ -263,6 +265,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -278,6 +281,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -293,6 +297,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx + m_mw / 2,
@@ -308,6 +313,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx,
@@ -323,6 +329,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx,
@@ -338,6 +345,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx,
@@ -353,6 +361,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx,
@@ -372,6 +381,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) 
             check_animate_x11(
                 &mut ctx.core,
                 &ctx.x11,
+                ctx.x11_runtime,
                 win,
                 &Rect {
                     x: m_mx,
