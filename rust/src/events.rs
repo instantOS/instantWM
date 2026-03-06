@@ -7,9 +7,7 @@ use crate::client::{
 };
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 use crate::ipc::IpcServer;
-use crate::keyboard::{
-    grab_keys_x11, key_press_x11 as keyboard_key_press, key_release_x11 as keyboard_key_release,
-};
+use crate::keyboard::{grab_keys_x11, key_press_x11, key_release_x11};
 use crate::layouts::{arrange, restack};
 use crate::monitor::update_geom;
 use crate::mouse::{
@@ -39,15 +37,6 @@ fn win_to_client_ctx(core: &crate::contexts::CoreCtx, win: WindowId) -> Option<W
         Some(win)
     } else {
         None
-    }
-}
-
-pub fn button_press(ctx: &mut WmCtx, e: &ButtonPressEvent) {
-    match ctx {
-        WmCtx::X11(x11_ctx) => button_press_x11(x11_ctx, e),
-        WmCtx::Wayland(_) => {
-            // Wayland button handling not yet implemented
-        }
     }
 }
 
@@ -378,16 +367,6 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
     if let Some(selected_window) = ctx.core.selected_client() {
         crate::client::set_focus_x11(&mut ctx.core, &ctx.x11, selected_window);
     };
-}
-
-pub fn key_press(ctx: &mut WmCtxX11<'_>, e: &KeyPressEvent) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    keyboard_key_press(&mut wm_ctx, e);
-}
-
-pub fn key_release(ctx: &mut WmCtxX11<'_>, e: &KeyReleaseEvent) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    keyboard_key_release(&mut wm_ctx, e);
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
@@ -811,8 +790,8 @@ fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::EnterNotify(e) => enter_notify(&mut ctx, &e),
         x11rb::protocol::Event::Expose(e) => expose(&mut ctx, &e),
         x11rb::protocol::Event::FocusIn(e) => focus_in(&mut ctx, &e),
-        x11rb::protocol::Event::KeyPress(e) => key_press(&mut ctx, &e),
-        x11rb::protocol::Event::KeyRelease(e) => key_release(&mut ctx, &e),
+        x11rb::protocol::Event::KeyPress(e) => key_press_x11(&mut ctx, &e),
+        x11rb::protocol::Event::KeyRelease(e) => key_release_x11(&mut ctx, &e),
         x11rb::protocol::Event::MappingNotify(e) => mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => motion_notify(&mut ctx, &e),

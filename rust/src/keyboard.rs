@@ -3,6 +3,7 @@ use std::rc::Rc;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11, X11Ctx};
 use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
 use crate::focus::{direction_focus_x11, focus_stack_x11};
+
 use crate::layouts::arrange;
 use crate::overlay::set_overlay_mode;
 use crate::scratchpad::unhide_one;
@@ -75,19 +76,15 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     }
 }
 
-pub fn key_press_x11(ctx: &mut WmCtx, e: &KeyPressEvent) {
+pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
-
-    let keysym = match ctx {
-        WmCtx::X11(ref x11_ctx) => keycode_to_keysym(x11_ctx.x11.conn, keycode, 0),
-        _ => return,
-    };
-
-    let _ = handle_keysym(ctx, keysym, state.bits() as u32);
+    let keysym = keycode_to_keysym(ctx.x11.conn, keycode, 0);
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    let _ = handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
 }
 
-pub fn key_release_x11(_ctx: &mut WmCtx, _e: &KeyReleaseEvent) {}
+pub fn key_release_x11(_ctx: &mut WmCtxX11, _e: &KeyReleaseEvent) {}
 
 pub fn grab_keys_x11(core: &CoreCtx, x11: &X11Ctx) {
     let conn = x11.conn;
