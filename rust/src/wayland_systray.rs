@@ -1,9 +1,10 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 
 use zbus::blocking::{Connection, Proxy};
-use zbus::zvariant::OwnedValue;
+use zbus::zvariant::{OwnedValue, Value};
 
 use crate::bar::paint::BarPainter;
 use crate::contexts::CoreCtx;
@@ -524,58 +525,78 @@ fn fetch_menu_items(
     menu_path: &str,
 ) -> zbus::Result<Vec<WaylandSystrayMenuItem>> {
     let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
-    let (layout,): (OwnedValue,) = proxy.call("GetLayout", &(0i32, -1i32, Vec::<String>::new()))?;
+    let root = match proxy
+        .call::<_, _, (u32, OwnedValue)>("GetLayout", &(0i32, -1i32, Vec::<String>::new()))
+    {
+        Ok((_, layout)) => layout,
+        Err(_) => {
+            let (layout,): (OwnedValue,) =
+                proxy.call("GetLayout", &(0i32, -1i32, Vec::<String>::new()))?;
+            layout
+        }
+    };
+
     let mut out = Vec::new();
-    parse_menu_layout_value(&layout, &mut out);
-    if !out.is_empty() && out[0].id == 0 {
-        out.remove(0);
-    }
+    parse_menu_layout_node(root, &mut out)?;
+    out.retain(|it| it.id > 0);
     Ok(out)
 }
 
-fn parse_menu_layout_value(value: &OwnedValue, out: &mut Vec<WaylandSystrayMenuItem>) {
-    let text = format!("{:?}", value);
-    for line in text.split("id:") {
-        let id = line
-            .chars()
-            .skip_while(|c| c.is_whitespace())
-            .take_while(|c| c.is_ascii_digit() || *c == '-')
-            .collect::<String>()
-            .parse::<i32>()
-            .ok();
-        let Some(id) = id else { continue };
-        let label = extract_between(line, "label", "\"").unwrap_or_default();
-        let enabled = !line.contains("enabled: false");
-        let separator = line.contains("type: \"separator\"");
-        if label.is_empty() && !separator {
-            continue;
-        }
+fn parse_menu_layout_node(
+    value: OwnedValue,
+    out: &mut Vec<WaylandSystrayMenuItem>,
+) -> zbus::Result<()> {
+    let (id, props, children): (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) =
+        value.try_into().map_err(zbus::Error::Variant)?;
+
+    let visible = dbusmenu_prop_bool(&props, "visible").unwrap_or(true);
+    let enabled = dbusmenu_prop_bool(&props, "enabled").unwrap_or(true);
+    let raw_label = dbusmenu_prop_string(&props, "label").unwrap_or_default();
+    let separator = dbusmenu_prop_string(&props, "type")
+        .map(|t| t == "separator")
+        .unwrap_or(false);
+
+    if visible && (separator || !raw_label.trim().is_empty()) {
+        let label = raw_label.replace('_', "").trim().to_string();
+        let display = if label.is_empty() && separator {
+            "-".to_string()
+        } else {
+            label
+        };
         out.push(WaylandSystrayMenuItem {
             id,
-            label: {
-                let mut s = label.replace('_', "");
-                if s.is_empty() && separator {
-                    s = "-".to_string();
-                }
-                s
-            },
-            width: ((label.replace('_', "").chars().count() as i32) * 8 + 20).max(24),
+            label: display.clone(),
+            width: ((display.chars().count() as i32) * 8 + 20).max(24),
             enabled,
             separator,
         });
     }
+
+    for child in children {
+        let _ = parse_menu_layout_node(child, out);
+    }
+
+    Ok(())
 }
 
-fn extract_between(hay: &str, key: &str, quote: &str) -> Option<String> {
-    let key_pos = hay.find(key)?;
-    let start = hay[key_pos..].find(quote)? + key_pos + 1;
-    let end_rel = hay[start..].find(quote)?;
-    Some(hay[start..start + end_rel].to_string())
+fn dbusmenu_prop_string(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+    let val = props.get(key)?;
+    if let Ok(s) = String::try_from(val.clone()) {
+        return Some(s);
+    }
+    if let Ok(s) = <&str>::try_from(val) {
+        return Some(s.to_string());
+    }
+    None
+}
+
+fn dbusmenu_prop_bool(props: &HashMap<String, OwnedValue>, key: &str) -> Option<bool> {
+    props.get(key).and_then(|v| bool::try_from(v).ok())
 }
 
 fn call_menu_event(conn: &Connection, service: &str, menu_path: &str, id: i32) -> zbus::Result<()> {
     let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
-    let _: () = proxy.call("Event", &(id, "clicked", String::new(), 0u32))?;
+    let _: () = proxy.call("Event", &(id, "clicked", Value::new(""), 0u32))?;
     let _: () = proxy.call("AboutToShow", &(id,))?;
     Ok(())
 }
