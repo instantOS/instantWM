@@ -45,7 +45,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         };
 
         // Skip non-tiled, hidden, or invisible clients
-        if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+        if !c.is_tiled(selected_tags) {
             continue;
         }
 

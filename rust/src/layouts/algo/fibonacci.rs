@@ -107,7 +107,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         };
 
         // Skip non-tiled, hidden, or invisible clients
-        if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+        if !c.is_tiled(selected_tags) {
             continue;
         }
 

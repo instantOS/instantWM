@@ -46,6 +46,11 @@ impl X11Backend {
     pub fn new(conn: RustConnection, screen_num: usize) -> Self {
         Self { conn, screen_num }
     }
+
+    /// Create a borrowed reference to delegate operations to.
+    fn as_ref(&self) -> X11BackendRef<'_> {
+        X11BackendRef::new(&self.conn, self.screen_num)
+    }
 }
 
 /// Borrowed view of the X11 backend.
@@ -62,69 +67,43 @@ impl<'a> X11BackendRef<'a> {
 
 impl BackendOps for X11Backend {
     fn kind(&self) -> BackendKind {
-        BackendKind::X11
+        self.as_ref().kind()
     }
 
     fn resize_window(&self, window: WindowId, rect: Rect) {
-        let x11_win: Window = window.into();
-        let width = rect.w.max(1) as u32;
-        let height = rect.h.max(1) as u32;
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new()
-                .x(rect.x)
-                .y(rect.y)
-                .width(width)
-                .height(height),
-        );
+        self.as_ref().resize_window(window, rect)
     }
 
     fn raise_window(&self, window: WindowId) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-        );
+        self.as_ref().raise_window(window)
     }
 
     fn restack(&self, windows: &[WindowId]) {
-        for window in windows {
-            self.raise_window(*window);
-        }
+        self.as_ref().restack(windows)
     }
 
     fn set_focus(&self, window: WindowId) {
-        let x11_win: Window = window.into();
-        let _ = self
-            .conn
-            .set_input_focus(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
+        self.as_ref().set_focus(window)
     }
 
     fn map_window(&self, window: WindowId) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.map_window(x11_win);
+        self.as_ref().map_window(window)
     }
 
     fn unmap_window(&self, window: WindowId) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.unmap_window(x11_win);
+        self.as_ref().unmap_window(window)
     }
 
     fn set_border_width(&self, window: WindowId, width: i32) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().border_width(width.max(0) as u32),
-        );
+        self.as_ref().set_border_width(window, width)
     }
 
     fn window_exists(&self, window: WindowId) -> bool {
-        let x11_win: Window = window.into();
-        self.conn.get_window_attributes(x11_win).is_ok()
+        self.as_ref().window_exists(window)
     }
 
     fn flush(&self) {
-        let _ = self.conn.flush();
+        self.as_ref().flush()
     }
 }
 

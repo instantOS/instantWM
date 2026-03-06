@@ -90,7 +90,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         };
 
         // Skip non-tiled, hidden, or invisible clients
-        if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+        if !c.is_tiled(selected_tags) {
             continue;
         }
 
@@ -161,7 +161,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .iter()
         .filter_map(|&win| {
             let c = ctx.g_mut().clients.get(&win)?;
-            if c.isfloating || !c.is_visible_on_tags(selected_tags) || c.is_hidden {
+            if !c.is_tiled(selected_tags) {
                 return None;
             }
             Some(win)

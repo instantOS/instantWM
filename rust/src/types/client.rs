@@ -125,6 +125,17 @@ impl Client {
         self.issticky || (self.tags & selected_tags) != 0
     }
 
+    /// Check if this client should be included in tiling calculations.
+    ///
+    /// Returns true if the client is:
+    /// - Not floating
+    /// - Visible on the selected tags
+    /// - Not hidden
+    #[inline]
+    pub fn is_tiled(&self, selected_tags: u32) -> bool {
+        !self.isfloating && self.is_visible_on_tags(selected_tags) && !self.is_hidden
+    }
+
     /// Check if the client is in true fullscreen mode (not fake fullscreen).
     #[inline]
     pub fn is_true_fullscreen(&self) -> bool {

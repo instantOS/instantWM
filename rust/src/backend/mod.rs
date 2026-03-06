@@ -61,84 +61,56 @@ impl Backend {
             Self::Wayland(_) => None,
         }
     }
+
+    /// Create a borrowed reference to delegate operations to.
+    fn as_ref(&self) -> BackendRef<'_> {
+        BackendRef::from_backend(self)
+    }
 }
 
 impl BackendOps for Backend {
     fn kind(&self) -> BackendKind {
-        match self {
-            Self::X11(_) => BackendKind::X11,
-            Self::Wayland(_) => BackendKind::Wayland,
-        }
+        self.as_ref().kind()
     }
 
     fn resize_window(&self, window: WindowId, rect: Rect) {
-        match self {
-            Self::X11(x11) => x11.resize_window(window, rect),
-            Self::Wayland(wayland) => wayland.resize_window(window, rect),
-        }
+        self.as_ref().resize_window(window, rect)
     }
 
     fn raise_window(&self, window: WindowId) {
-        match self {
-            Self::X11(x11) => x11.raise_window(window),
-            Self::Wayland(wayland) => wayland.raise_window(window),
-        }
+        self.as_ref().raise_window(window)
     }
 
     fn restack(&self, windows: &[WindowId]) {
-        match self {
-            Self::X11(x11) => x11.restack(windows),
-            Self::Wayland(wayland) => wayland.restack(windows),
-        }
+        self.as_ref().restack(windows)
     }
 
     fn set_focus(&self, window: WindowId) {
-        match self {
-            Self::X11(x11) => x11.set_focus(window),
-            Self::Wayland(wayland) => wayland.set_focus(window),
-        }
+        self.as_ref().set_focus(window)
     }
 
     fn map_window(&self, window: WindowId) {
-        match self {
-            Self::X11(x11) => x11.map_window(window),
-            Self::Wayland(wayland) => wayland.map_window(window),
-        }
+        self.as_ref().map_window(window)
     }
 
     fn unmap_window(&self, window: WindowId) {
-        match self {
-            Self::X11(x11) => x11.unmap_window(window),
-            Self::Wayland(wayland) => wayland.unmap_window(window),
-        }
+        self.as_ref().unmap_window(window)
     }
 
     fn set_border_width(&self, window: WindowId, width: i32) {
-        match self {
-            Self::X11(x11) => x11.set_border_width(window, width),
-            Self::Wayland(wayland) => wayland.set_border_width(window, width),
-        }
+        self.as_ref().set_border_width(window, width)
     }
 
     fn window_exists(&self, window: WindowId) -> bool {
-        match self {
-            Self::X11(x11) => x11.window_exists(window),
-            Self::Wayland(wayland) => wayland.window_exists(window),
-        }
+        self.as_ref().window_exists(window)
     }
 
     fn flush(&self) {
-        match self {
-            Self::X11(x11) => x11.flush(),
-            Self::Wayland(wayland) => wayland.flush(),
-        }
+        self.as_ref().flush()
     }
 
     fn window_title(&self, window: WindowId) -> Option<String> {
-        match self {
-            Self::X11(x11) => x11.window_title(window),
-            Self::Wayland(wayland) => wayland.window_title(window),
-        }
+        self.as_ref().window_title(window)
     }
 }
 
