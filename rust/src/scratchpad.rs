@@ -1,11 +1,8 @@
-use crate::backend::BackendKind;
 use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::contexts::WmCtx;
 use crate::focus::warp_cursor_to_client_x11;
 use crate::layouts::{arrange, restack};
 use crate::types::*;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
 const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
@@ -194,36 +191,14 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     }
 }
 
-pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
-    if ctx.backend_kind_REMOVED() == BackendKind::Wayland {
-        return;
-    }
-    let root = ctx.g().x11.root;
-
-    let conn = match ctx {
-        WmCtx::X11(x11) => x11.x11.conn,
-        WmCtx::Wayland(_) => return,
-    };
-
+pub fn scratchpad_status(ctx: &WmCtx, name: &str) -> String {
     if !name.is_empty() && name != "all" {
         let found = scratchpad_find(ctx, name);
         let visible = found
             .map(|w| ctx.g().clients.get(&w).map(|c| c.issticky).unwrap_or(false))
             .unwrap_or(false);
 
-        let status = format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
-
-        let _ = conn.change_property(
-            x11rb::protocol::xproto::PropMode::REPLACE,
-            root,
-            AtomEnum::WM_NAME,
-            AtomEnum::STRING,
-            8u8,
-            status.len() as u32,
-            status.as_bytes(),
-        );
-        let _ = conn.flush();
-        return;
+        return format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
     }
 
     let mut status = String::from("ipc:scratchpads:");
@@ -249,16 +224,7 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) {
         status.push_str("none");
     }
 
-    let _ = conn.change_property(
-        x11rb::protocol::xproto::PropMode::REPLACE,
-        root,
-        AtomEnum::WM_NAME,
-        AtomEnum::STRING,
-        8u8,
-        status.len() as u32,
-        status.as_bytes(),
-    );
-    let _ = conn.flush();
+    status
 }
 
 fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {

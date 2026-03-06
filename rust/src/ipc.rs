@@ -258,8 +258,8 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadStatus(name) => {
-            scratchpad_status(&mut ctx, name.as_deref().unwrap_or(""));
-            IpcResponse::ok("")
+            let status = scratchpad_status(&ctx, name.as_deref().unwrap_or(""));
+            IpcResponse::ok(status)
         }
     }
 }
