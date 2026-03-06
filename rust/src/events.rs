@@ -48,7 +48,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
     let _ = conn.flush();
 
-    let numlockmask = ctx.core.g.numlockmask();
+    let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.g.cfg.buttons.clone();
     let altcursor = ctx.core.g.altcursor;
     let mut selmon_id = ctx.core.g.selected_monitor_id();
@@ -58,7 +58,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         ctx.core
             .g
             .monitors
-            .win_to_mon(event_win, ctx.core.g.x11.root, &*ctx.core.g.clients, None)
+            .win_to_mon(event_win, ctx.x11_runtime().root, &*ctx.core.g.clients, None)
     {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.core.g.set_selected_monitor(clicked_mon);

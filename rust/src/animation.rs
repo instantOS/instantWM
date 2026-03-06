@@ -3,6 +3,7 @@ use crate::backend::BackendOps;
 use crate::constants::animation::*;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland};
 use crate::floating::{change_snap, SnapDir};
+use crate::globals::X11RuntimeConfig;
 use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::thread;
@@ -76,6 +77,7 @@ fn try_resize_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, rect: 
 pub fn animate_client_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
+    x11_cfg: &X11RuntimeConfig,
     win: WindowId,
     rect: &Rect,
     frames: i32,
@@ -109,10 +111,10 @@ pub fn animate_client_x11(
         return;
     }
 
-    let effective_frames = if !core.g.x11.xlibdisplay.0.is_null() {
+    let effective_frames = if !x11_cfg.xlibdisplay.0.is_null() {
         let queued_events = unsafe {
             crate::drw::XEventsQueued(
-                core.g.x11.xlibdisplay.0 as *mut std::os::raw::c_void,
+                x11_cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
                 QUEUED_ALREADY,
             )
         };
@@ -153,6 +155,7 @@ pub fn animate_client_x11(
                 animate_client_x11(
                     core,
                     x11,
+                    x11_cfg,
                     win,
                     &Rect {
                         x: start_rect.x + delta_w,
@@ -193,6 +196,7 @@ pub fn animate_client_x11(
 pub fn check_animate_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
+    x11_cfg: &X11RuntimeConfig,
     win: WindowId,
     rect: &Rect,
     frames: i32,
@@ -204,7 +208,7 @@ pub fn check_animate_x11(
             || client.geo.w != rect.w
             || client.geo.h != rect.h;
         if should_animate {
-            animate_client_x11(core, x11, win, rect, frames, reset_pos);
+            animate_client_x11(core, x11, x11_cfg, win, rect, frames, reset_pos);
         }
     }
 }
@@ -296,6 +300,7 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
         WmCtx::X11(ref mut x11_ctx) => animate_client_x11(
             &mut x11_ctx.core,
             &x11_ctx.x11,
+            x11_ctx.x11_runtime(),
             win,
             rect,
             frames,
@@ -312,6 +317,7 @@ pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, r
         WmCtx::X11(ref mut x11_ctx) => check_animate_x11(
             &mut x11_ctx.core,
             &x11_ctx.x11,
+            x11_ctx.x11_runtime(),
             win,
             rect,
             frames,

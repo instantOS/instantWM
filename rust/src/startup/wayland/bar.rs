@@ -64,29 +64,29 @@ pub(super) fn dispatch_wayland_bar_click(
     };
 
     if matches!(pos, BarPosition::SystrayItem(_)) {
-        if let Some(runtime) = wm.wayland_systray.as_ref() {
+        if let Some(runtime) = wm.wayland_systray_runtime.as_ref() {
             let BarPosition::SystrayItem(idx) = pos else {
                 return;
             };
-            let target =
-                wm.g.wayland_systray
-                    .items
-                    .get(idx)
-                    .map(|it| (it.service.clone(), it.path.clone()));
+            let target = wm
+                .wayland_systray
+                .items
+                .get(idx)
+                .map(|it| (it.service.clone(), it.path.clone()));
             if let Some((service, path)) = target {
                 runtime.dispatch_click_item(service, path, button, root_x, root_y);
             }
         }
-        wm.g.wayland_systray_menu = None;
+        wm.wayland_systray_menu = None;
         return;
     }
 
     if matches!(pos, BarPosition::SystrayMenuItem(_)) {
-        if let Some(runtime) = wm.wayland_systray.as_ref() {
+        if let Some(runtime) = wm.wayland_systray_runtime.as_ref() {
             let BarPosition::SystrayMenuItem(idx) = pos else {
                 return;
             };
-            let target = wm.g.wayland_systray_menu.as_ref().and_then(|menu| {
+            let target = wm.wayland_systray_menu.as_ref().and_then(|menu| {
                 menu.items
                     .get(idx)
                     .map(|it| (menu.service.clone(), menu.path.clone(), it.id, it.enabled))
@@ -97,7 +97,7 @@ pub(super) fn dispatch_wayland_bar_click(
                 }
             }
         }
-        wm.g.wayland_systray_menu = None;
+        wm.wayland_systray_menu = None;
         return;
     }
 

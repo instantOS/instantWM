@@ -137,7 +137,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
 
     fn post_state_update(&self, core: &mut CoreCtx) {
         core.bar.mark_dirty();
-        crate::bar::draw_bars_x11(core, self.x11);
+        crate::bar::draw_bars_x11(core, self.x11, self.x11_cfg);
     }
 }
 

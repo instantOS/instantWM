@@ -14,7 +14,8 @@ use crate::bar::BarState;
 use crate::bar::{draw_bar, draw_bars_x11};
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
-use crate::types::{Client, Rect, WindowId};
+use crate::types::{Client, Rect, WindowId, Systray, WaylandSystray, WaylandSystrayMenu};
+use crate::globals::X11RuntimeConfig;
 
 pub struct CoreCtx<'a> {
     pub g: &'a mut Globals,
@@ -81,6 +82,8 @@ pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub backend: BackendRef<'a>,
     pub x11: X11BackendRef<'a>,
+    pub x11_runtime: &'a mut X11RuntimeConfig,
+    pub systray: Option<&'a mut Systray>,
 }
 
 impl<'a> WmCtxX11<'a> {
@@ -89,11 +92,25 @@ impl<'a> WmCtxX11<'a> {
             core: self.core.reborrow(),
             backend: self.backend.reborrow(),
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
+            x11_runtime: self.x11_runtime,
+            systray: self.systray.as_deref_mut(),
         }
     }
 
     pub fn selected_client(&self) -> Option<WindowId> {
         self.core.selected_client()
+    }
+
+    pub fn x11_runtime(&self) -> &X11RuntimeConfig {
+        &self.x11_runtime
+    }
+
+    pub fn systray(&self) -> Option<&Systray> {
+        self.systray.as_deref()
+    }
+
+    pub fn systray_mut(&mut self) -> Option<&mut Systray> {
+        self.systray.as_deref_mut()
     }
 }
 
@@ -102,6 +119,8 @@ pub struct WmCtxWayland<'a> {
     pub backend: BackendRef<'a>,
     pub wayland: WaylandCtx<'a>,
     pub xwayland: Option<XwaylandCtx<'a>>,
+    pub wayland_systray: &'a mut WaylandSystray,
+    pub wayland_systray_menu: Option<&'a mut WaylandSystrayMenu>,
 }
 
 impl<'a> WmCtxWayland<'a> {
@@ -116,7 +135,25 @@ impl<'a> WmCtxWayland<'a> {
                 xdisplay: xw.xdisplay,
                 xwm: xw.xwm,
             }),
+            wayland_systray: self.wayland_systray,
+            wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
+    }
+
+    pub fn wayland_systray(&self) -> &WaylandSystray {
+        &self.wayland_systray
+    }
+
+    pub fn wayland_systray_mut(&mut self) -> &mut WaylandSystray {
+        &mut self.wayland_systray
+    }
+
+    pub fn wayland_systray_menu(&self) -> Option<&WaylandSystrayMenu> {
+        self.wayland_systray_menu.as_deref()
+    }
+
+    pub fn wayland_systray_menu_mut(&mut self) -> Option<&mut WaylandSystrayMenu> {
+        self.wayland_systray_menu.as_deref_mut()
     }
 }
 

@@ -97,8 +97,8 @@ fn init_globals(
 ) {
     let cfg = init_config();
 
-    wm.g.x11.screen = screen_num as i32;
-    wm.g.x11.root = root;
+    wm.x11_runtime.screen = screen_num as i32;
+    wm.x11_runtime.root = root;
     wm.g.cfg.screen_width = screen.width_in_pixels as i32;
     wm.g.cfg.screen_height = screen.height_in_pixels as i32;
 

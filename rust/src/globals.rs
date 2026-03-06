@@ -251,16 +251,10 @@ pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
 
-    // X11-specific runtime configuration
-    pub x11: X11RuntimeConfig,
-
     // Runtime state (changes during WM operation)
     pub monitors: MonitorManager,
     pub clients: ClientManager,
     pub tags: TagSet,
-    pub systray: Option<Systray>,
-    pub wayland_systray: WaylandSystray,
-    pub wayland_systray_menu: Option<WaylandSystrayMenu>,
 
     // Runtime flags
     pub animated: bool,
@@ -283,11 +277,6 @@ impl Globals {
     #[inline]
     pub fn selected_win(&self) -> Option<WindowId> {
         self.monitors.sel().and_then(|m| m.sel)
-    }
-
-    /// Return the numlock mask from config.
-    pub fn numlockmask(&self) -> u32 {
-        self.x11.numlockmask
     }
 
     /// Return the ID of the currently selected monitor.
@@ -355,13 +344,9 @@ impl Default for Globals {
     fn default() -> Self {
         Self {
             cfg: RuntimeConfig::default(),
-            x11: X11RuntimeConfig::default(),
             monitors: MonitorManager::new(),
             clients: ClientManager::new(),
             tags: TagSet::default(),
-            systray: None,
-            wayland_systray: WaylandSystray::default(),
-            wayland_systray_menu: None,
             animated: true,
             focusfollowsmouse: true,
             focusfollowsfloatmouse: true,

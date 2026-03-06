@@ -74,7 +74,7 @@ pub fn run() -> ! {
 
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
-    wm.wayland_systray = crate::wayland_systray::WaylandSystrayRuntime::start();
+    wm.wayland_systray_runtime = crate::wayland_systray::WaylandSystrayRuntime::start();
 
     run_autostart();
     spawn_wayland_smoke_window();
