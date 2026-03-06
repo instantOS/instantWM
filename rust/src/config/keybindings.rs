@@ -8,7 +8,7 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
 use crate::focus::{direction_focus, focus_last_client, focus_stack, warp_to_focus_x11};
-use crate::keyboard::{down_key_x11, down_press_x11, space_toggle_x11, up_key_x11, up_press_x11};
+use crate::keyboard::{down_key, down_press_x11, space_toggle_x11, up_key, up_press_x11};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
@@ -168,11 +168,11 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
-        key_x11!(MODKEY, XK_DOWN => |ctx| {
-            down_key_x11(ctx, StackDirection::Next)
+        key!(MODKEY, XK_DOWN => |ctx| {
+            down_key(ctx, StackDirection::Next)
         }),
-        key_x11!(MODKEY, XK_UP   => |ctx| {
-            up_key_x11(ctx, StackDirection::Previous)
+        key!(MODKEY, XK_UP   => |ctx| {
+            up_key(ctx, StackDirection::Previous)
         }),
         key_x11!(MS,     XK_DOWN => |ctx| {
             down_press_x11(ctx)

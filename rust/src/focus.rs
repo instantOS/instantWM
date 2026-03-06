@@ -608,17 +608,6 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
     )
 }
 
-pub(crate) fn direction_focus_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut crate::globals::X11RuntimeConfig,
-    direction: Direction,
-) {
-    if let Some(target) = get_direction_focus_candidate(core, direction) {
-        let _ = focus_x11(core, x11, x11_runtime, None, Some(target));
-    }
-}
-
 pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_client_win = ctx.core().focus.last_client;
     if last_client_win == WindowId::default() {
@@ -764,48 +753,14 @@ pub(crate) fn focus_stack_x11(
     }
 }
 
-pub fn direction_focus_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, direction: Direction) {
-    if let Some(target) = get_direction_focus_candidate(core, direction) {
-        if let Err(e) = focus_wayland(core, wayland, Some(target)) {
-            log::warn!("focus_wayland({:?}) failed: {}", target, e);
-        }
-    }
-}
-
-pub fn focus_stack_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, direction: StackDirection) {
-    if let Some(target) = get_stack_focus_target(core, direction) {
-        if let Err(e) = focus_wayland(core, wayland, Some(target)) {
-            log::warn!("focus_wayland({:?}) failed: {}", target, e);
-        }
-    }
-}
-
 pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
-    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
-    match ctx {
-        X11(WmCtxX11 {
-            core,
-            x11,
-            x11_runtime,
-            ..
-        }) => direction_focus_x11(core, x11, x11_runtime, direction),
-        Wayland(WmCtxWayland { core, wayland, .. }) => {
-            direction_focus_wayland(core, wayland, direction)
-        }
+    if let Some(target) = get_direction_focus_candidate(ctx.core(), direction) {
+        focus_soft(ctx, Some(target));
     }
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
-    match ctx {
-        X11(WmCtxX11 {
-            core,
-            x11,
-            x11_runtime,
-            ..
-        }) => focus_stack_x11(core, x11, x11_runtime, direction),
-        Wayland(WmCtxWayland { core, wayland, .. }) => {
-            focus_stack_wayland(core, wayland, direction)
-        }
+    if let Some(target) = get_stack_focus_target(ctx.core(), direction) {
+        focus_soft(ctx, Some(target));
     }
 }

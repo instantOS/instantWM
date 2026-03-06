@@ -288,66 +288,63 @@ pub fn down_press_x11(ctx_x11: &mut WmCtxX11<'_>) {
     }
 }
 
-pub fn up_key_x11(ctx_x11: &mut WmCtxX11<'_>, direction: StackDirection) {
-    let is_overview = !ctx_x11.core.g.selected_monitor().is_tiling_layout();
+pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
+    let is_overview = !ctx.g().selected_monitor().is_tiling_layout();
 
     if is_overview {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        direction_focus(&mut ctx, Direction::Up);
+        direction_focus(ctx, Direction::Up);
         return;
     }
 
-    let has_tiling = ctx_x11.core.g.selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx_x11.core.selected_client() {
-            let border_pixel = ctx_x11
-                .core
-                .g
-                .cfg
-                .borderscheme
-                .as_ref()
-                .map(|s| s.normal.bg.pixel());
-            if let Some(pixel) = border_pixel {
-                let x11_win: Window = win.into();
-                let _ = change_window_attributes(
-                    ctx_x11.x11.conn,
-                    x11_win,
-                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
-                );
-                let _ = ctx_x11.x11.conn.flush();
+        if let Some(win) = ctx.selected_client() {
+            if let WmCtx::X11(ref x11_ctx) = ctx {
+                let border_pixel = x11_ctx
+                    .core
+                    .g
+                    .cfg
+                    .borderscheme
+                    .as_ref()
+                    .map(|s| s.normal.bg.pixel());
+                if let Some(pixel) = border_pixel {
+                    let x11_win: x11rb::protocol::xproto::Window = win.into();
+                    let _ = x11rb::protocol::xproto::change_window_attributes(
+                        x11_ctx.x11.conn,
+                        x11_win,
+                        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
+                            .border_pixel(Some(pixel)),
+                    );
+                    let _ = x11_ctx.x11.conn.flush();
+                }
             }
-            let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-            change_snap(&mut ctx, win, SnapDir::Up);
+            change_snap(ctx, win, SnapDir::Up);
         }
         return;
     }
 
-    let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-    focus_stack(&mut ctx, direction);
+    focus_stack(ctx, direction);
 }
 
-pub fn down_key_x11(ctx_x11: &mut WmCtxX11<'_>, direction: StackDirection) {
-    let is_overview = ctx_x11.core.g.selected_monitor().is_tiling_layout();
+pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
+    let is_overview = ctx.g().selected_monitor().is_tiling_layout();
 
     if is_overview {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        direction_focus(&mut ctx, Direction::Down);
+        direction_focus(ctx, Direction::Down);
         return;
     }
 
-    let has_tiling = ctx_x11.core.g.selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx_x11.core.selected_client() {
-            let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-            change_snap(&mut ctx, win, SnapDir::Down);
+        if let Some(win) = ctx.selected_client() {
+            change_snap(ctx, win, SnapDir::Down);
         }
         return;
     }
 
-    let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-    focus_stack(&mut ctx, direction);
+    focus_stack(ctx, direction);
 }
 
 pub fn space_toggle_x11(ctx_x11: &mut WmCtxX11<'_>) {
