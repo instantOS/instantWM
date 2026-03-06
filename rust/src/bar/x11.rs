@@ -1,6 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::bar::color::hex_to_u32;
 use crate::contexts::CoreCtx;
+use crate::globals::X11RuntimeConfig;
 use crate::types::{Monitor, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -8,8 +9,8 @@ use x11rb::protocol::xproto::Window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub fn update_status(core: &mut CoreCtx, x11: &X11BackendRef) {
-    let root = core.g.x11.root;
+pub fn update_status(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
+    let root = x11_runtime.root;
 
     let text = get_text_prop(x11, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
     match text {
@@ -25,20 +26,25 @@ pub fn update_status(core: &mut CoreCtx, x11: &X11BackendRef) {
     }
 
     let selmon_idx = core.g.selected_monitor_id();
-    super::draw_bar(core, x11, selmon_idx);
+    super::draw_bar(core, x11, x11_runtime, selmon_idx);
 
-    crate::systray::update_systray(core, x11);
+    crate::systray::update_systray(core, x11, x11_runtime);
 }
 
 /// Resize bar window with dependency injection.
-pub fn resize_bar_win(core: &CoreCtx, x11: &X11BackendRef, m: &Monitor) {
+pub fn resize_bar_win(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    m: &Monitor,
+) {
     let bar_height = core.g.cfg.bar_height;
     let showsystray = core.g.cfg.showsystray;
     let is_selmon = core.g.selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
-        w = w.saturating_sub(crate::systray::get_systray_width(core));
+        w = w.saturating_sub(crate::systray::get_systray_width(core, x11_runtime));
     }
 
     let conn = x11.conn;
@@ -53,20 +59,23 @@ pub fn resize_bar_win(core: &CoreCtx, x11: &X11BackendRef, m: &Monitor) {
     );
 }
 
-pub fn update_bars(core: &mut CoreCtx, x11: &X11BackendRef) {
+pub fn update_bars(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bar_height = core.g.cfg.bar_height;
         let showsystray = core.g.cfg.showsystray;
         let status_bg = hex_to_u32(core.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
-        let xlibdisplay = core.g.x11.xlibdisplay.0;
-        let root = core.g.x11.root;
+        let xlibdisplay = x11_runtime.xlibdisplay.0;
+        let root = x11_runtime.root;
         let selected_monitor_id = core.g.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<usize, u32> =
             std::collections::HashMap::new();
         if showsystray {
-            systray_widths.insert(selected_monitor_id, crate::systray::get_systray_width(core));
+            systray_widths.insert(
+                selected_monitor_id,
+                crate::systray::get_systray_width(core, x11_runtime),
+            );
         }
 
         let mut bar_configs = Vec::new();
@@ -132,7 +141,11 @@ pub fn update_bars(core: &mut CoreCtx, x11: &X11BackendRef) {
     }
 }
 
-pub fn toggle_bar(core: &mut CoreCtx, x11: &X11BackendRef) {
+pub fn toggle_bar(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
     let animated = core.g.animated;
     let client_count = core.g.clients.len() as i32;
     let mut tmp_no_anim = false;
@@ -154,7 +167,7 @@ pub fn toggle_bar(core: &mut CoreCtx, x11: &X11BackendRef) {
 
     let selmon_idx = core.g.selected_monitor_id();
     if let Some(m) = core.g.monitor(selmon_idx) {
-        resize_bar_win(core, x11, m);
+        resize_bar_win(core, x11, x11_runtime, m);
     }
 
     if tmp_no_anim {

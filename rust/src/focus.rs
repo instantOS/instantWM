@@ -7,6 +7,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
+use crate::globals::X11RuntimeConfig;
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -134,7 +135,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_selection_changed(&self, core: &mut CoreCtx) {
-        crate::keyboard::grab_keys_x11(core, self.x11);
+        crate::keyboard::grab_keys_x11(core, self.x11, self.x11_runtime);
     }
 
     fn post_state_update(&self, core: &mut CoreCtx) {
@@ -315,7 +316,12 @@ pub fn hover_focus_target(
 pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
     use crate::contexts::{WmCtx::*, WmCtxX11};
     match ctx {
-        X11(WmCtxX11 { core, x11, .. }) => get_cursor_client_win_x11(core, x11),
+        X11(WmCtxX11 {
+            core,
+            x11,
+            x11_runtime,
+            ..
+        }) => get_cursor_client_win_x11(core, x11, x11_runtime),
         Wayland(_) => None,
     }
 }
@@ -646,13 +652,22 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     crate::layouts::arrange(ctx, Some(monitor_id));
 }
 
-pub fn warp_cursor_to_client_x11(core: &CoreCtx, x11: &X11BackendRef, c_win: WindowId) {
-    mouse_warp::warp_impl_x11(core, x11, c_win);
+pub fn warp_cursor_to_client_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    c_win: WindowId,
+) {
+    mouse_warp::warp_impl_x11(core, x11, x11_runtime, c_win);
 }
 
-pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef) {
+pub fn warp_to_focus_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
     if let Some(win) = core.selected_client() {
-        warp_cursor_to_client_x11(core, x11, win);
+        warp_cursor_to_client_x11(core, x11, x11_runtime, win);
     }
 }
 

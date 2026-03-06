@@ -16,6 +16,7 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::globals::X11RuntimeConfig;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -38,13 +39,13 @@ pub(crate) fn get_root_ptr_x11(x11: &X11BackendRef, root: Window) -> Option<(i32
 
 pub fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
     match ctx {
-        WmCtx::X11(x11) => get_root_ptr_x11(&x11.x11, x11.core.g.x11.root),
+        WmCtx::X11(x11) => get_root_ptr_x11(&x11.x11, x11.x11_runtime.root),
         WmCtx::Wayland(_) => None,
     }
 }
 
 pub fn get_root_ptr_ctx_x11(ctx: &WmCtxX11<'_>) -> Option<(i32, i32)> {
-    get_root_ptr_x11(&ctx.x11, ctx.core.g.x11.root)
+    get_root_ptr_x11(&ctx.x11, ctx.x11_runtime.root)
 }
 
 /// Core warp implementation.  Moves the pointer to the centre of `win`.
@@ -53,10 +54,15 @@ pub fn get_root_ptr_ctx_x11(ctx: &WmCtxX11<'_>) -> Option<(i32, i32)> {
 /// work area instead.  The warp is skipped when the pointer is already inside
 /// the client's window (including its border) or on the bar belonging to that
 /// client's monitor.
-pub(crate) fn warp_impl_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
+pub(crate) fn warp_impl_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) {
     let conn = x11.conn;
 
-    let root = core.g.x11.root;
+    let root = x11_runtime.root;
     let bar_height = core.g.cfg.bar_height;
 
     // No target window – centre on the selected monitor's work area.
@@ -124,15 +130,20 @@ pub(crate) fn warp_impl_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) 
 /// This is the preferred warp function for focus changes: it avoids jarring
 /// pointer jumps when the user deliberately placed the cursor somewhere else.
 #[inline]
-pub fn warp_x11(core: &CoreCtx, x11: &X11BackendRef, c: &Client) {
-    warp_impl_x11(core, x11, c.win);
+pub fn warp_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, c: &Client) {
+    warp_impl_x11(core, x11, x11_runtime, c.win);
 }
 
 /// Same as [`warp`] but accepts a `&Client` directly – kept for call-sites
 /// that already hold a reference to the full struct.
 #[inline]
-pub fn warp_cursor_to_client_win_x11(core: &CoreCtx, x11: &X11BackendRef, c: &Client) {
-    warp_impl_x11(core, x11, c.win);
+pub fn warp_cursor_to_client_win_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    c: &Client,
+) {
+    warp_impl_x11(core, x11, x11_runtime, c.win);
 }
 
 /// Unconditionally move the pointer to the top-centre of `c`.
@@ -159,7 +170,12 @@ pub fn force_warp_x11(x11: &X11BackendRef, c: &Client) {
 ///
 /// This clamps the pointer into the window rect with a small padding so
 /// subsequent drags/resizes start from inside the client.
-pub fn warp_into_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
+pub fn warp_into_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) {
     if win == WindowId::default() {
         return;
     }
@@ -168,7 +184,7 @@ pub fn warp_into_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
         return;
     };
 
-    let Some((mut x, mut y)) = get_root_ptr_x11(x11, core.g.x11.root) else {
+    let Some((mut x, mut y)) = get_root_ptr_x11(x11, x11_runtime.root) else {
         return;
     };
 
@@ -186,7 +202,7 @@ pub fn warp_into_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
     let _ = x11.conn.warp_pointer(
         CURRENT_TIME,
-        core.g.x11.root,
+        x11_runtime.root,
         0,
         0,
         0,
@@ -199,21 +215,25 @@ pub fn warp_into_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
 pub fn warp_into(ctx: &WmCtx, win: WindowId) {
     if let WmCtx::X11(x11) = ctx {
-        warp_into_x11(&x11.core, &x11.x11, win);
+        warp_into_x11(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
 }
 
 pub fn warp_into_ctx_x11(ctx: &WmCtxX11<'_>, win: WindowId) {
-    warp_into_x11(&ctx.core, &ctx.x11, win);
+    warp_into_x11(&ctx.core, &ctx.x11, ctx.x11_runtime, win);
 }
 
 /// Keybinding handler: warp the cursor to the currently focused window.
 ///
 /// Reads `selmon → sel` and delegates to [`warp_impl`].  Does nothing when no
 /// window is selected.
-pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef) {
+pub fn warp_to_focus_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
     if let Some(win) = core.selected_client() {
-        warp_impl_x11(core, x11, win);
+        warp_impl_x11(core, x11, x11_runtime, win);
     }
 }
 
@@ -221,7 +241,11 @@ pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef) {
 ///
 /// Call this after a modal grab ends so that the cursor reverts to normal even
 /// if the pointer is not over any client window.
-pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
+pub fn reset_cursor_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
     if core.g.altcursor == AltCursor::None {
         return;
     }
@@ -230,7 +254,7 @@ pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     if let Some(ref cursor) = core.g.cfg.cursors[0] {
         let _ = change_window_attributes(
             x11.conn,
-            core.g.x11.root,
+            x11_runtime.root,
             &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
         );
         let _ = x11.conn.flush();
@@ -241,7 +265,12 @@ pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
 pub fn reset_cursor(ctx: &mut crate::contexts::WmCtx) {
     use crate::contexts::{WmCtx::*, WmCtxX11};
     match ctx {
-        X11(WmCtxX11 { core, x11, .. }) => reset_cursor_x11(core, x11),
+        X11(WmCtxX11 {
+            core,
+            x11,
+            x11_runtime,
+            ..
+        }) => reset_cursor_x11(core, x11, x11_runtime),
         Wayland(_) => {
             // Wayland handles cursor reset differently - no-op for now
         }

@@ -236,7 +236,7 @@ fn apply_manage_hints(
     w: WindowId,
 ) {
     crate::client::focus::configure_x11(core, x11, w);
-    update_window_type(core, x11, w);
+    update_window_type(core, x11, x11_cfg, w);
     crate::backend::x11::update_size_hints_x11(core, x11, w);
     update_wm_hints(core, x11, w);
     read_client_info(core.g, x11, x11_cfg, w);

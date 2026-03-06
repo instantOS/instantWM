@@ -168,10 +168,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC,        XK_PERIOD => |ctx| cycle_layout_direction(ctx, true)),
         key!(MODKEY, XK_J    => |ctx| focus_stack(ctx, StackDirection::Next)),
         key!(MODKEY, XK_K    => |ctx| focus_stack(ctx, StackDirection::Previous)),
-        key_x11!(MODKEY, XK_DOWN => |ctx| down_key_x11(&mut ctx.core, &ctx.x11, StackDirection::Next)),
-        key_x11!(MODKEY, XK_UP   => |ctx| up_key_x11(&mut ctx.core, &ctx.x11, StackDirection::Previous)),
-        key_x11!(MS,     XK_DOWN => |ctx| down_press_x11(&mut ctx.core, &ctx.x11)),
-        key_x11!(MS,     XK_UP   => |ctx| up_press_x11(&mut ctx.core, &ctx.x11)),
+        key_x11!(MODKEY, XK_DOWN => |ctx| down_key_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray_mut(), StackDirection::Next)),
+        key_x11!(MODKEY, XK_UP   => |ctx| up_key_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray_mut(), StackDirection::Previous)),
+        key_x11!(MS,     XK_DOWN => |ctx| down_press_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray_mut())),
+        key_x11!(MS,     XK_UP   => |ctx| up_press_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray_mut())),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 push(ctx, win, PushDirection::Down)
@@ -223,7 +223,7 @@ pub fn get_keys() -> Vec<Key> {
                 center_window(ctx, win)
             }
         }),
-        key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(&ctx.core, &ctx.x11)),
+        key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(&ctx.core, &ctx.x11, ctx.x11_runtime)),
         key_x11!(MS,   XK_J      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
@@ -275,8 +275,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSA,    XK_S  => |ctx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle)),
         key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
         key!(MSA,    XK_D  => |ctx| toggle_double_draw(ctx.core_mut())),
-        key_x11!(MS,     XK_SPACE => |ctx| space_toggle_x11(&mut ctx.core, &ctx.x11)),
-        key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
+        key_x11!(MS,     XK_SPACE => |ctx| space_toggle_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray_mut())),
+        key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ToggleAction::Toggle)),
         key!(MC,     XK_R     => |ctx| redraw_win(ctx)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {

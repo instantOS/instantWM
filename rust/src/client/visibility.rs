@@ -193,12 +193,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     if let WmCtx::X11(ref mut ctx_x11) = ctx {
         // Clone x11_runtime to avoid borrow conflict
         let x11_cfg = ctx_x11.x11_runtime().clone();
-        show_x11(
-            &mut ctx_x11.core,
-            &ctx_x11.x11,
-            &x11_cfg,
-            win,
-        );
+        show_x11(&mut ctx_x11.core, &ctx_x11.x11, &x11_cfg, win);
     }
     // On Wayland, map_window is not called here directly. show_hide_wayland
     // (called inside arrange below) checks !is_hidden and calls map_window
@@ -256,12 +251,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// Called by [`show`] after it has cleared `is_hidden`. Responsible only for
 /// the X11-specific work: mapping the window, WM_STATE, slide-in animation.
 /// Guards, focus, and arrange are handled by the caller.
-fn show_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_cfg: &X11RuntimeConfig,
-    win: WindowId,
-) {
+fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, win: WindowId) {
     let Rect { x, y, w, h } = match core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,

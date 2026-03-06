@@ -84,7 +84,7 @@ fn wm_init(wm: &mut Wm) {
         };
         crate::bar::x11::update_bars(&mut ctx.core, &ctx.x11);
         crate::bar::x11::update_status(&mut ctx.core, &ctx.x11);
-        crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11);
+        crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
         crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, None);
     }
 }

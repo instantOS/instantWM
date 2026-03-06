@@ -217,6 +217,22 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Access X11 runtime config (X11 only, panics on Wayland).
+    pub fn x11_runtime(&self) -> &X11RuntimeConfig {
+        match self {
+            WmCtx::X11(ctx) => ctx.x11_runtime(),
+            WmCtx::Wayland(_) => panic!("x11_runtime called on Wayland context"),
+        }
+    }
+
+    /// Access X11 runtime config mutably (X11 only, panics on Wayland).
+    pub fn x11_runtime_mut(&mut self) -> &mut X11RuntimeConfig {
+        match self {
+            WmCtx::X11(ctx) => &mut ctx.x11_runtime,
+            WmCtx::Wayland(_) => panic!("x11_runtime_mut called on Wayland context"),
+        }
+    }
+
     pub fn flush(&self) {
         self.backend().flush();
     }

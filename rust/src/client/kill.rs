@@ -72,7 +72,7 @@ fn kill_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         );
     }
 
-    let wmatom_delete = core.g.x11.wmatom.delete;
+    let wmatom_delete = core.x11_runtime().wmatom.delete;
     force_close_x11(core, x11, win, wmatom_delete);
 }
 
@@ -120,7 +120,7 @@ fn close_win_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     }
 
     // Animation not yet supported in X11-specific path
-    let wmatom_delete = core.g.x11.wmatom.delete;
+    let wmatom_delete = core.x11_runtime().wmatom.delete;
     force_close_x11(core, x11, win, wmatom_delete);
 }
 
@@ -141,9 +141,11 @@ pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient` (X11-specific).
 fn force_close_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
+    let x11_runtime = core.x11_runtime();
     let sent = send_event_x11(
         core,
         x11,
+        x11_runtime,
         win,
         wmatom_delete,
         0,

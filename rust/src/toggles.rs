@@ -1,5 +1,6 @@
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx};
+use crate::globals::X11RuntimeConfig;
 use crate::keyboard::grab_keys_x11;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -22,9 +23,14 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     ctx.request_bar_update(None);
 }
 
-pub fn alt_tab_free(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
+pub fn alt_tab_free(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    action: ToggleAction,
+) {
     ctrl_toggle(&mut core.g.tags.prefix, action);
-    grab_keys_x11(core, x11);
+    grab_keys_x11(core, x11, x11_runtime);
 }
 
 pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {

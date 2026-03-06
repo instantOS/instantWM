@@ -532,7 +532,7 @@ pub fn render_bar_buffers(
 
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
         painter.begin(scale, origin_x, origin_y, width, height);
-        draw_bar_common(core, None, mon_idx, painter);
+        draw_bar_common(core, None, None, mon_idx, painter);
         if core.g.cfg.showsystray {
             if let Some(mon) = core.g.monitor(mon_idx).cloned() {
                 crate::wayland_systray::draw_wayland_systray(core, &mon, painter);

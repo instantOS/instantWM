@@ -144,7 +144,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::WarpFocus => {
             if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                warp_to_focus_x11(&x11.core, &x11.x11);
+                warp_to_focus_x11(&x11.core, &x11.x11, x11.x11_runtime);
             }
             IpcResponse::ok("")
         }
@@ -173,7 +173,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::AltTab(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
             if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                alt_tab_free(&mut x11.core, &x11.x11, action);
+                alt_tab_free(&mut x11.core, &x11.x11, x11.x11_runtime, action);
             }
             IpcResponse::ok("")
         }

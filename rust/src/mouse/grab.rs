@@ -48,7 +48,7 @@ use x11rb::CURRENT_TIME;
 pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     let conn = ctx.x11.conn;
 
-    let root = ctx.core.g.x11.root;
+    let root = ctx.x11_runtime.root;
     let cursor = ctx
         .core
         .g
@@ -82,7 +82,7 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
 pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     let conn = ctx.x11.conn;
 
-    let root = ctx.core.g.x11.root;
+    let root = ctx.x11_runtime.root;
     let cursor = ctx
         .core
         .g
@@ -180,7 +180,7 @@ pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: b
         return;
     }
 
-    let numlockmask = ctx.core.g.x11.numlockmask as u16;
+    let numlockmask = ctx.x11_runtime.numlockmask as u16;
 
     let modifier_variants: [u16; 4] = [
         0,

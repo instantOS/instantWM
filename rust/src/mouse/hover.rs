@@ -15,6 +15,7 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx};
+use crate::globals::X11RuntimeConfig;
 // focus() is used via focus_soft() in this module
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -472,14 +473,18 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
 /// geometry contains the cursor.
 pub fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
     let (conn, root, core) = match ctx {
-        WmCtx::X11(x11) => (x11.x11.conn, x11.core.g.x11.root, &mut x11.core),
+        WmCtx::X11(x11) => (x11.x11.conn, x11.x11_runtime.root, &mut x11.core),
         WmCtx::Wayland(_) => return None,
     };
     get_cursor_client_win_with_conn(core, conn, root)
 }
 
-pub fn get_cursor_client_win_x11(core: &CoreCtx, x11: &X11BackendRef) -> Option<WindowId> {
-    get_cursor_client_win_with_conn(core, x11.conn, core.g.x11.root)
+pub fn get_cursor_client_win_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) -> Option<WindowId> {
+    get_cursor_client_win_with_conn(core, x11.conn, x11_runtime.root)
 }
 
 fn get_cursor_client_win_with_conn(

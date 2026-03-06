@@ -113,7 +113,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     let dir = ctx.core.g.drag.resize_direction;
-                    reset_cursor_x11(&mut ctx.core, &ctx.x11);
+                    reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     let mut x11_ctx = ctx.reborrow();
                     if btn == MouseButton::Right {
@@ -300,8 +300,11 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                         return;
                     }
                     // Use the actual topmost window under cursor for focus
-                    if let Some(newc) = crate::mouse::get_cursor_client_win_x11(&ctx.core, &ctx.x11)
-                    {
+                    if let Some(newc) = crate::mouse::get_cursor_client_win_x11(
+                        &ctx.core,
+                        &ctx.x11,
+                        ctx.x11_runtime,
+                    ) {
                         if Some(newc) != selected_window {
                             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(newc));
                         }
@@ -329,7 +332,8 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 5. Determine what's actually under the cursor
-    let topmost_win_under_cursor = crate::mouse::get_cursor_client_win_x11(&ctx.core, &ctx.x11);
+    let topmost_win_under_cursor =
+        crate::mouse::get_cursor_client_win_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
 
     // 6. Handle focus switching based on configuration
     crate::focus::hover_focus_target_x11(
@@ -371,7 +375,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    grab_keys_x11(&ctx.core, &ctx.x11);
+    grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
@@ -446,7 +450,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         }
         reset_bar_x11(&mut ctx.core, &ctx.x11);
         if ctx.core.g.altcursor == AltCursor::Sidebar {
-            reset_cursor_x11(&mut ctx.core, &ctx.x11);
+            reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
         }
         return;
     };
