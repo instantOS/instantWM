@@ -9,9 +9,7 @@ use std::time::Duration;
 
 // Re-export the shared helpers so that `wayland.rs` can still import them
 // from `self::init` without changing its import paths.
-pub(super) use crate::startup::common_wayland::{
-    apply_wayland_session_env, init_wayland_globals, sanitize_wayland_size,
-};
+pub(super) use crate::startup::common_wayland::sanitize_wayland_size;
 
 /// Spawn a lightweight test window a short time after startup.
 ///

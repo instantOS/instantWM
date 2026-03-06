@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::Duration;
 
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
@@ -10,15 +9,12 @@ use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::desktop::space::render_output;
-use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
-use smithay::desktop::PopupManager;
 use smithay::output::Output;
 use smithay::utils::Scale;
-use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::bar::color::rgba_from_hex;
-use crate::contexts::CoreCtx;
+use crate::startup::common_wayland::{build_bar_elements, send_frame_callbacks};
 use crate::types::WindowId;
 use crate::wm::Wm;
 
@@ -44,29 +40,8 @@ pub(super) fn render_frame(
         let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
         let mut custom_elements: Vec<WaylandExtras> = Vec::new();
 
-        if wm.g.cfg.showbar {
-            let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
-            let bar_buffers = crate::bar::wayland::render_bar_buffers(
-                &mut core,
-                &mut wm.bar_painter,
-                Scale::from(1.0),
-            );
-            for (buffer, x, y) in bar_buffers {
-                match MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    (x as f64, y as f64),
-                    &buffer,
-                    None,
-                    None,
-                    None,
-                    Kind::Unspecified,
-                ) {
-                    Ok(elem) => custom_elements.push(WaylandExtras::Memory(elem)),
-                    Err(e) => {
-                        log::warn!("bar buffer upload failed: {:?}", e);
-                    }
-                }
-            }
+        for elem in build_bar_elements(wm, renderer) {
+            custom_elements.push(WaylandExtras::Memory(elem));
         }
 
         for elem in wayland_border_elements_shared(&wm.g, state) {
@@ -99,29 +74,7 @@ pub(super) fn render_frame(
     };
     let _ = backend.submit(damage.as_deref());
 
-    let time = start_time.elapsed();
-    for window in state.space.elements() {
-        if let Some(surface) = window.wl_surface() {
-            send_frames_surface_tree(
-                &surface,
-                output,
-                time,
-                Some(Duration::from_millis(16)),
-                surface_primary_scanout_output,
-            );
-            if let Some(toplevel) = window.toplevel() {
-                for (popup, _) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-                    send_frames_surface_tree(
-                        popup.wl_surface(),
-                        output,
-                        time,
-                        Some(Duration::from_millis(16)),
-                        surface_primary_scanout_output,
-                    );
-                }
-            }
-        }
-    }
+    send_frame_callbacks(state, output, start_time.elapsed());
 }
 
 fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
