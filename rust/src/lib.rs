@@ -28,4 +28,5 @@ mod tags;
 mod toggles;
 mod types;
 mod util;
+mod wayland_systray;
 mod wm;

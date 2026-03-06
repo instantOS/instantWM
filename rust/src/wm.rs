@@ -14,6 +14,7 @@ pub struct Wm {
     pub bar: crate::bar::BarState,
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
     pub focus: crate::client::focus::FocusState,
+    pub wayland_systray: Option<crate::wayland_systray::WaylandSystrayRuntime>,
 }
 
 impl Wm {
@@ -25,6 +26,7 @@ impl Wm {
             bar: crate::bar::BarState::default(),
             bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
             focus: crate::client::focus::FocusState::default(),
+            wayland_systray: None,
         }
     }
 

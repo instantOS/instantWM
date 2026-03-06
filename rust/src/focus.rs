@@ -76,14 +76,6 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<
 
     if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
-        // Only update gesture on X11 (Wayland doesn't use this gesture state)
-        #[cfg(feature = "x11")]
-        if !matches!(
-            mon.gesture,
-            Gesture::None | Gesture::Overlay | Gesture::WinTitle(_)
-        ) {
-            mon.gesture = Gesture::None;
-        }
     }
 
     (target, selection_state_changed)

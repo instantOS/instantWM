@@ -372,6 +372,7 @@ pub fn run() -> ! {
     // ── Wayland socket + XWayland ────────────────────────────────────
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
+    wm.wayland_systray = crate::wayland_systray::WaylandSystrayRuntime::start();
 
     // ── libinput ─────────────────────────────────────────────────────
     // Keep the raw Libinput context and poll it manually in the main loop

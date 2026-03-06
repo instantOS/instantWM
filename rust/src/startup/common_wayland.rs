@@ -247,6 +247,13 @@ pub fn build_bar_elements(
     if !wm.g.cfg.showbar {
         return Vec::new();
     }
+    if let Some(runtime) = wm.wayland_systray.as_ref() {
+        let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+        if runtime.poll_events(&mut core) {
+            core.bar.mark_dirty();
+        }
+    }
+
     let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
     let bar_buffers = crate::bar::wayland::render_bar_buffers(
         &mut core,

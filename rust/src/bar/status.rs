@@ -1,5 +1,4 @@
 use crate::contexts::CoreCtx;
-use crate::systray::get_systray_width;
 use crate::types::{Monitor, Rect};
 
 pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
@@ -33,20 +32,14 @@ pub(crate) fn draw_status_bar(
         return (0, 0);
     }
 
-    if ctx.bar.status_cache_text.as_str() != stext {
-        ctx.bar.status_cache_text.clear();
-        ctx.bar.status_cache_text.push_str(stext);
-        ctx.bar.status_cache_items = parse_status_items(stext.as_bytes());
-    }
-
-    let items = ctx.bar.status_cache_items.as_slice();
-    let layout = measure_layout(ctx, m, &items, painter);
+    let items = ctx.bar.status_items_for_text(stext).to_vec();
+    let layout = measure_layout(ctx, m, items.as_slice(), painter);
 
     draw_items(
         painter,
         m,
         bar_height,
-        items,
+        items.as_slice(),
         layout,
         ctx.g,
         &mut ctx.bar.command_offsets,
@@ -55,7 +48,7 @@ pub(crate) fn draw_status_bar(
     (layout.draw_start_x, layout.total_width)
 }
 
-fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
+pub(crate) fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
     let mut items = Vec::new();
     let mut i = 0usize;
     let mut text_start = 0usize;
@@ -175,8 +168,10 @@ fn measure_layout(
     }
 
     let draw_width = (width + 2).max(0);
-    let systray_w = if ctx.g.cfg.showsystray {
-        get_systray_width(ctx) as i32
+    let is_selmon = ctx.g.selected_monitor().num == m.num;
+    let x11_present = !ctx.g.x11.xlibdisplay.0.is_null();
+    let systray_w = if ctx.g.cfg.showsystray && is_selmon {
+        crate::systray::get_systray_width_for_bar(ctx, x11_present)
     } else {
         0
     };

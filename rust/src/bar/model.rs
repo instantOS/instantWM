@@ -1,6 +1,5 @@
 use crate::contexts::CoreCtx;
 use crate::globals::Globals;
-use crate::systray::get_systray_width;
 use crate::tags::{get_tag_at_x, get_tag_width};
 use crate::types::*;
 
@@ -123,8 +122,8 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
     }
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.g.cfg.showsystray {
-        get_systray_width(core) as i32
+    let systray_w = if core.g.cfg.showsystray && is_selmon {
+        crate::systray::get_systray_width_for_bar(core, x11_present)
     } else {
         0
     };
@@ -182,3 +181,11 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
 
     BarPosition::Root
 }
+    let is_selmon = core.g.selected_monitor().num == mon.num;
+    let x11_present = !core.g.x11.xlibdisplay.0.is_null();
+
+    if core.g.cfg.showsystray && is_selmon && !x11_present {
+        if let Some(idx) = crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x) {
+            return BarPosition::SystrayItem(idx);
+        }
+    }

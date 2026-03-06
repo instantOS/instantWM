@@ -259,6 +259,7 @@ pub struct Globals {
     pub clients: ClientManager,
     pub tags: TagSet,
     pub systray: Option<Systray>,
+    pub wayland_systray: WaylandSystray,
 
     // Runtime flags
     pub animated: bool,
@@ -358,6 +359,7 @@ impl Default for Globals {
             clients: ClientManager::new(),
             tags: TagSet::default(),
             systray: None,
+            wayland_systray: WaylandSystray::default(),
             animated: true,
             focusfollowsmouse: true,
             focusfollowsfloatmouse: true,

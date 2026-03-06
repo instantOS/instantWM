@@ -34,6 +34,17 @@ pub fn get_systray_width(core: &CoreCtx) -> u32 {
     }
 }
 
+pub fn get_systray_width_for_bar(core: &CoreCtx, x11_present: bool) -> i32 {
+    if !core.g.cfg.showsystray {
+        return 0;
+    }
+    if x11_present {
+        get_systray_width(core) as i32
+    } else {
+        crate::wayland_systray::get_wayland_systray_width(core)
+    }
+}
+
 /// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(core: &mut CoreCtx, icon_win: WindowId) {
     if !core.g.cfg.showsystray {

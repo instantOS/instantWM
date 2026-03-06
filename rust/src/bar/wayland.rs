@@ -340,6 +340,54 @@ impl WaylandBarPainter {
             .map(|b| (b.buffer, b.x, b.y))
             .collect()
     }
+
+    pub fn blit_rgba_bgra(
+        &mut self,
+        dst_x: i32,
+        dst_y: i32,
+        dst_w: i32,
+        dst_h: i32,
+        src_w: i32,
+        src_h: i32,
+        src_rgba: &[u8],
+    ) {
+        if dst_w <= 0 || dst_h <= 0 || src_w <= 0 || src_h <= 0 {
+            return;
+        }
+        let needed = (src_w as usize)
+            .checked_mul(src_h as usize)
+            .and_then(|v| v.checked_mul(4))
+            .unwrap_or(0);
+        if src_rgba.len() < needed {
+            return;
+        }
+
+        for y in 0..dst_h {
+            let sy = (y as i64 * src_h as i64 / dst_h as i64) as i32;
+            for x in 0..dst_w {
+                let sx = (x as i64 * src_w as i64 / dst_w as i64) as i32;
+                let si = ((sy * src_w + sx) * 4) as usize;
+                if si + 3 >= src_rgba.len() {
+                    continue;
+                }
+                let r = src_rgba[si];
+                let g = src_rgba[si + 1];
+                let b = src_rgba[si + 2];
+                let a = src_rgba[si + 3];
+                pixel_fill(
+                    &mut self.pixels,
+                    self.canvas_w,
+                    self.canvas_h,
+                    dst_x + x,
+                    dst_y + y,
+                    r,
+                    g,
+                    b,
+                    a,
+                );
+            }
+        }
+    }
 }
 
 impl BarPainter for WaylandBarPainter {

@@ -3,7 +3,7 @@ mod model;
 pub mod paint;
 mod renderer;
 mod status;
-mod theme;
+pub(crate) mod theme;
 pub mod wayland;
 mod widgets;
 pub mod x11;
@@ -30,10 +30,10 @@ pub struct BarState {
     /// Layout symbol width
     pub layout_symbol_width: i32,
     /// Per-monitor hit-test geometry built during bar rendering.
-    pub hit_cache: Vec<MonitorHitCache>,
+    hit_cache: Vec<MonitorHitCache>,
     /// Cached parsed status commands for unchanged status text.
-    pub status_cache_text: String,
-    pub status_cache_items: Vec<status::StatusItem>,
+    status_cache_text: String,
+    status_cache_items: Vec<status::StatusItem>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -128,6 +128,15 @@ impl BarState {
 
     pub fn monitor_hit_cache(&self, monitor_id: usize) -> Option<&MonitorHitCache> {
         self.hit_cache.get(monitor_id)
+    }
+
+    pub fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
+        if self.status_cache_text.as_str() != text {
+            self.status_cache_text.clear();
+            self.status_cache_text.push_str(text);
+            self.status_cache_items = status::parse_status_items(text.as_bytes());
+        }
+        self.status_cache_items.as_slice()
     }
 }
 

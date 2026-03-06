@@ -36,8 +36,8 @@ pub fn draw_bar_common(
 
     let is_selmon = core.g.selected_monitor().num == monitor_num;
 
-    let systray_width = if core.g.cfg.showsystray && is_selmon && x11.is_some() {
-        crate::systray::get_systray_width(core) as i32
+    let systray_width = if core.g.cfg.showsystray && is_selmon {
+        crate::systray::get_systray_width_for_bar(core, x11.is_some())
     } else {
         0
     };
