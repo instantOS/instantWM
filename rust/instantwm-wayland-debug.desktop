@@ -1,0 +1,8 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=instantWM (Wayland Debug)
+Comment=instantOS window manager (Wayland) with verbose logging to ~/.instantwm.log
+Exec=/bin/sh -c 'RUST_LOG=debug exec instantwm-rs --backend wayland 2>>"$HOME/.instantwm.log"'
+DesktopNames=instantwm-rs
+Icon=instantwm
+Type=Application
