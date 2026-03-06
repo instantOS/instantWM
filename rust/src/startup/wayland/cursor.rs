@@ -12,9 +12,7 @@
 //!    uploads them to the GPU as `TextureBuffer<GlesTexture>` objects.
 //! 2. Each frame, `CursorManager::render_element()` returns a
 //!    `TextureRenderElement` positioned at the current pointer location
-//!    and offset by the cursor hotspot.  The element is tagged
-//!    `Kind::Cursor` so that Smithay's DRM compositor will attempt to
-//!    scanout via the hardware cursor plane if one is available.
+//!    and offset by the cursor hotspot.
 //! 3. The caller is responsible for prepending the element to the custom
 //!    element list that is passed to `render_output`.
 //!
@@ -23,10 +21,9 @@
 //! 1. `CursorImageStatus::Hidden`    → no element returned (cursor hidden).
 //! 2. `CursorImageStatus::Named(icon)` → use the preloaded system texture
 //!    that best matches the `CursorIcon` name.
-//! 3. `CursorImageStatus::Surface(_)` → a Wayland client has set a custom
-//!    cursor surface; that surface is already in `state.space` and will be
-//!    composited as a regular surface, so we return no extra element here.
-//!    The client-side surface rendering is handled by `render_output`.
+//! 3. `CursorImageStatus::Surface(_)` → we currently do not render client
+//!    cursor surfaces directly on DRM, so we fall back to the default cursor
+//!    texture instead of hiding it.
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
@@ -157,10 +154,9 @@ impl CursorManager {
             match status {
                 CursorImageStatus::Hidden => return None,
                 CursorImageStatus::Named(icon) => self.frame_for_icon(*icon),
-                // The client is providing a wl_surface as its cursor; that
-                // surface is rendered via the normal surface pipeline. We do
-                // not render a separate element here.
-                CursorImageStatus::Surface(_) => return None,
+                // Client-provided cursor surfaces are not rendered explicitly
+                // on DRM yet; keep the pointer visible with a default arrow.
+                CursorImageStatus::Surface(_) => &self.default,
             }
         };
 
@@ -319,9 +315,11 @@ fn frame_to_element(
     TextureRenderElement::from_texture_buffer(
         pos,
         &frame.buffer,
-        None,         // alpha = 1.0
-        None,         // src crop (None = whole texture)
-        None,         // override size (None = texture's own size)
-        Kind::Cursor, // tag as cursor so DRM compositor can use HW cursor plane
+        None, // alpha = 1.0
+        None, // src crop (None = whole texture)
+        None, // override size (None = texture's own size)
+        // Keep cursor in normal composition so z-order matches element order
+        // (cursor should remain above borders and all window content).
+        Kind::Unspecified,
     )
 }
