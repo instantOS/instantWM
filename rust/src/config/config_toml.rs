@@ -34,6 +34,18 @@ struct TagColorSetToml {
     pub empty: Option<ColorTriplet>,
 }
 
+impl TagColorSetToml {
+    fn triplet(&self, scheme: SchemeTag) -> Option<&ColorTriplet> {
+        match scheme {
+            SchemeTag::Inactive => self.inactive.as_ref(),
+            SchemeTag::Filled => self.filled.as_ref(),
+            SchemeTag::Focus => self.focus.as_ref(),
+            SchemeTag::NoFocus => self.nofocus.as_ref(),
+            SchemeTag::Empty => self.empty.as_ref(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct WindowColorToml {
     pub normal: Option<WindowColorSetToml>,
@@ -51,6 +63,20 @@ struct WindowColorSetToml {
     pub overlay_focus: Option<ColorTriplet>,
 }
 
+impl WindowColorSetToml {
+    fn triplet(&self, scheme: SchemeWin) -> Option<&ColorTriplet> {
+        match scheme {
+            SchemeWin::Focus => self.focus.as_ref(),
+            SchemeWin::Normal => self.normal.as_ref(),
+            SchemeWin::Minimized => self.minimized.as_ref(),
+            SchemeWin::Sticky => self.sticky.as_ref(),
+            SchemeWin::StickyFocus => self.sticky_focus.as_ref(),
+            SchemeWin::Overlay => self.overlay.as_ref(),
+            SchemeWin::OverlayFocus => self.overlay_focus.as_ref(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default)]
 struct CloseButtonColorToml {
     pub normal: Option<CloseButtonColorSetToml>,
@@ -62,6 +88,16 @@ struct CloseButtonColorSetToml {
     pub normal: Option<ColorTriplet>,
     pub locked: Option<ColorTriplet>,
     pub fullscreen: Option<ColorTriplet>,
+}
+
+impl CloseButtonColorSetToml {
+    fn triplet(&self, scheme: SchemeClose) -> Option<&ColorTriplet> {
+        match scheme {
+            SchemeClose::Normal => self.normal.as_ref(),
+            SchemeClose::Locked => self.locked.as_ref(),
+            SchemeClose::Fullscreen => self.fullscreen.as_ref(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -99,44 +135,36 @@ fn apply_triplet(target: &mut crate::types::ColorSchemeStrings, src: &ColorTripl
 }
 
 fn apply_tag_set(target: &mut crate::types::TagColorSet, src: &TagColorSetToml) {
-    if let Some(triplet) = &src.inactive {
-        apply_triplet(target.scheme_mut(SchemeTag::Inactive), triplet);
-    }
-    if let Some(triplet) = &src.filled {
-        apply_triplet(target.scheme_mut(SchemeTag::Filled), triplet);
-    }
-    if let Some(triplet) = &src.focus {
-        apply_triplet(target.scheme_mut(SchemeTag::Focus), triplet);
-    }
-    if let Some(triplet) = &src.nofocus {
-        apply_triplet(target.scheme_mut(SchemeTag::NoFocus), triplet);
-    }
-    if let Some(triplet) = &src.empty {
-        apply_triplet(target.scheme_mut(SchemeTag::Empty), triplet);
+    const TAG_SCHEMES: [SchemeTag; 5] = [
+        SchemeTag::Inactive,
+        SchemeTag::Filled,
+        SchemeTag::Focus,
+        SchemeTag::NoFocus,
+        SchemeTag::Empty,
+    ];
+
+    for scheme in TAG_SCHEMES {
+        if let Some(triplet) = src.triplet(scheme) {
+            apply_triplet(target.scheme_mut(scheme), triplet);
+        }
     }
 }
 
 fn apply_window_set(target: &mut crate::types::WindowColorSet, src: &WindowColorSetToml) {
-    if let Some(triplet) = &src.focus {
-        apply_triplet(target.scheme_mut(SchemeWin::Focus), triplet);
-    }
-    if let Some(triplet) = &src.normal {
-        apply_triplet(target.scheme_mut(SchemeWin::Normal), triplet);
-    }
-    if let Some(triplet) = &src.minimized {
-        apply_triplet(target.scheme_mut(SchemeWin::Minimized), triplet);
-    }
-    if let Some(triplet) = &src.sticky {
-        apply_triplet(target.scheme_mut(SchemeWin::Sticky), triplet);
-    }
-    if let Some(triplet) = &src.sticky_focus {
-        apply_triplet(target.scheme_mut(SchemeWin::StickyFocus), triplet);
-    }
-    if let Some(triplet) = &src.overlay {
-        apply_triplet(target.scheme_mut(SchemeWin::Overlay), triplet);
-    }
-    if let Some(triplet) = &src.overlay_focus {
-        apply_triplet(target.scheme_mut(SchemeWin::OverlayFocus), triplet);
+    const WINDOW_SCHEMES: [SchemeWin; 7] = [
+        SchemeWin::Focus,
+        SchemeWin::Normal,
+        SchemeWin::Minimized,
+        SchemeWin::Sticky,
+        SchemeWin::StickyFocus,
+        SchemeWin::Overlay,
+        SchemeWin::OverlayFocus,
+    ];
+
+    for scheme in WINDOW_SCHEMES {
+        if let Some(triplet) = src.triplet(scheme) {
+            apply_triplet(target.scheme_mut(scheme), triplet);
+        }
     }
 }
 
@@ -144,14 +172,16 @@ fn apply_close_button_set(
     target: &mut crate::types::CloseButtonColorSet,
     src: &CloseButtonColorSetToml,
 ) {
-    if let Some(triplet) = &src.normal {
-        apply_triplet(target.scheme_mut(SchemeClose::Normal), triplet);
-    }
-    if let Some(triplet) = &src.locked {
-        apply_triplet(target.scheme_mut(SchemeClose::Locked), triplet);
-    }
-    if let Some(triplet) = &src.fullscreen {
-        apply_triplet(target.scheme_mut(SchemeClose::Fullscreen), triplet);
+    const CLOSE_SCHEMES: [SchemeClose; 3] = [
+        SchemeClose::Normal,
+        SchemeClose::Locked,
+        SchemeClose::Fullscreen,
+    ];
+
+    for scheme in CLOSE_SCHEMES {
+        if let Some(triplet) = src.triplet(scheme) {
+            apply_triplet(target.scheme_mut(scheme), triplet);
+        }
     }
 }
 
