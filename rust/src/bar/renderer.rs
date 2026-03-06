@@ -101,7 +101,7 @@ pub fn draw_bar_common(
     let title_width = (title_end_x - x).max(0);
 
     if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
-        hit.status_hit_x = if is_selmon {
+        hit.status_hit_x = if is_selmon && status_width > 0 {
             status_start_x
         } else {
             work_rect_w - systray_width

@@ -260,6 +260,7 @@ pub struct Globals {
     pub tags: TagSet,
     pub systray: Option<Systray>,
     pub wayland_systray: WaylandSystray,
+    pub wayland_systray_menu: Option<WaylandSystrayMenu>,
 
     // Runtime flags
     pub animated: bool,
@@ -360,6 +361,7 @@ impl Default for Globals {
             tags: TagSet::default(),
             systray: None,
             wayland_systray: WaylandSystray::default(),
+            wayland_systray_menu: None,
             animated: true,
             focusfollowsmouse: true,
             focusfollowsfloatmouse: true,

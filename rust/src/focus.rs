@@ -227,6 +227,13 @@ pub fn focus_wayland(
     focus_generic(core, win, &backend)
 }
 
+/// Best-effort X11 focus helper for legacy call sites.
+pub fn focus_soft_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Option<WindowId>) {
+    if let Err(e) = focus_x11(core, x11, win) {
+        log::warn!("focus_x11({:?}) failed: {}", win, e);
+    }
+}
+
 /// Best-effort focus - backend-agnostic entry point.
 ///
 /// Calls the appropriate backend focus function and logs any errors,
@@ -305,7 +312,7 @@ pub fn hover_focus_target_x11(
         if let Some(mid) = core.g.clients.get(&win).and_then(|c| c.monitor_id) {
             if mid != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(mid);
-                focus_soft_x11(core, x11, None);
+                let _ = focus_x11(core, x11, None);
                 return;
             }
         }
@@ -330,13 +337,13 @@ pub fn hover_focus_target_x11(
         ) {
             if new_mon_id != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(new_mon_id);
-                focus_soft_x11(core, x11, None);
+                let _ = focus_x11(core, x11, None);
                 return;
             }
         }
     }
 
-    focus_soft_x11(core, x11, hovered_win);
+    let _ = focus_x11(core, x11, hovered_win);
 }
 
 /// Shared hover-focus behavior used by both X11 and Wayland pointer paths.
@@ -560,7 +567,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
 
 pub fn direction_focus_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: Direction) {
     if let Some(target) = get_direction_focus_candidate(core, direction) {
-        focus_soft_x11(core, x11, Some(target));
+        let _ = focus_x11(core, x11, Some(target));
     }
 }
 
@@ -693,7 +700,7 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
 
 pub fn focus_stack_x11(core: &mut CoreCtx, x11: &X11BackendRef, direction: StackDirection) {
     if let Some(target) = get_stack_focus_target(core, direction) {
-        focus_soft_x11(core, x11, Some(target));
+        let _ = focus_x11(core, x11, Some(target));
     }
 }
 

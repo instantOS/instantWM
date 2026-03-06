@@ -34,12 +34,19 @@ enum SystrayCmd {
         x: i32,
         y: i32,
     },
+    MenuClick {
+        service: String,
+        path: String,
+        id: i32,
+    },
 }
 
 #[derive(Debug)]
 enum SystrayEvt {
     ItemUpsert(WaylandSystrayItem),
     ItemRemoved(String, String),
+    MenuOpen(crate::types::WaylandSystrayMenu),
+    MenuClose,
 }
 
 pub struct WaylandSystrayRuntime {
@@ -79,6 +86,15 @@ impl WaylandSystrayRuntime {
                         .retain(|it| !(it.service == service && it.path == path));
                     changed |= core.g.wayland_systray.items.len() != before;
                 }
+                Ok(SystrayEvt::MenuOpen(menu)) => {
+                    core.g.wayland_systray_menu = Some(menu);
+                    changed = true;
+                }
+                Ok(SystrayEvt::MenuClose) => {
+                    if core.g.wayland_systray_menu.take().is_some() {
+                        changed = true;
+                    }
+                }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
             }
@@ -117,6 +133,12 @@ impl WaylandSystrayRuntime {
         };
 
         let _ = self.cmd_tx.send(cmd);
+    }
+
+    pub fn dispatch_menu_click_item(&self, service: String, path: String, id: i32) {
+        let _ = self
+            .cmd_tx
+            .send(SystrayCmd::MenuClick { service, path, id });
     }
 }
 
@@ -212,6 +234,8 @@ pub fn draw_wayland_systray(
         );
         x += draw_w + spacing;
     }
+
+    let _ = &core.g.wayland_systray_menu;
 }
 
 fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
@@ -313,6 +337,9 @@ fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd) {
             y,
         } => {
             let _ = call_item_method(conn, &service, &path, "ContextMenu", &(x, y));
+        }
+        SystrayCmd::MenuClick { service, path, id } => {
+            let _ = (service, path, id);
         }
     }
 }

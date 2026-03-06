@@ -77,6 +77,7 @@ pub(super) fn dispatch_wayland_bar_click(
                 runtime.dispatch_click_item(service, path, button, root_x, root_y);
             }
         }
+        wm.g.wayland_systray_menu = None;
         return;
     }
 
