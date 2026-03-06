@@ -79,10 +79,10 @@ use crate::wm::Wm;
 
 use super::autostart::run_autostart;
 
-// Access drm/rustix types through smithay's re-exports.
-use drm::control::{connector, crtc};
-use smithay::reexports::drm;
-use smithay::reexports::rustix;
+use smithay::reexports::drm::control::{connector, crtc, Device as ControlDevice};
+use smithay::reexports::drm::control::ModeTypeFlags;
+use smithay::reexports::drm::control::ResourceHandles;
+use smithay::reexports::drm::control::connector::Info as ConnectorInfo;
 
 /// Default screen dimensions when no DRM outputs are detected.
 const DEFAULT_SCREEN_WIDTH: i32 = 1280;
@@ -197,31 +197,73 @@ pub fn run() -> ! {
     }
 
     // ── GPU discovery ────────────────────────────────────────────────
-    let primary_gpu_path = udev::primary_gpu(&seat_name)
-        .ok()
-        .flatten()
-        .or_else(|| {
-            udev::all_gpus(&seat_name)
-                .ok()
-                .and_then(|gpus| gpus.into_iter().next())
-        })
-        .expect("no GPU found");
+    let gpus = udev::all_gpus(&seat_name).unwrap_or_default();
+    let mut primary_gpu_path = None;
+    let mut drm_device = None;
+    let mut drm_notifier = None;
+    let mut drm_fd = None;
+
+    // First pass: try to find a GPU with connected connectors.
+    for gpu_path in &gpus {
+        if let Ok(fd) = session.open(
+            gpu_path,
+            smithay::reexports::rustix::fs::OFlags::RDWR
+                | smithay::reexports::rustix::fs::OFlags::CLOEXEC
+                | smithay::reexports::rustix::fs::OFlags::NOCTTY
+                | smithay::reexports::rustix::fs::OFlags::NONBLOCK,
+        ) {
+            let fd = DrmDeviceFd::new(DeviceFd::from(fd));
+            if let Ok((device, notifier)) = DrmDevice::new(fd.clone(), true) {
+                if let Ok(res) = device.resource_handles() {
+                    let mut has_connected = false;
+                    for &conn_handle in res.connectors() {
+                        if let Ok(conn_info) = device.get_connector(conn_handle, false) {
+                            if conn_info.state() == connector::State::Connected {
+                                has_connected = true;
+                                break;
+                            }
+                        }
+                    }
+                    if has_connected {
+                        primary_gpu_path = Some(gpu_path.clone());
+                        drm_device = Some(device);
+                        drm_notifier = Some(notifier);
+                        drm_fd = Some(fd);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // Second pass: if no GPU with connected connectors found, try any GPU.
+    if primary_gpu_path.is_none() {
+        for gpu_path in &gpus {
+            if let Ok(fd) = session.open(
+                gpu_path,
+                smithay::reexports::rustix::fs::OFlags::RDWR
+                    | smithay::reexports::rustix::fs::OFlags::CLOEXEC
+                    | smithay::reexports::rustix::fs::OFlags::NOCTTY
+                    | smithay::reexports::rustix::fs::OFlags::NONBLOCK,
+            ) {
+                let fd = DrmDeviceFd::new(DeviceFd::from(fd));
+                if let Ok((device, notifier)) = DrmDevice::new(fd.clone(), true) {
+                    primary_gpu_path = Some(gpu_path.clone());
+                    drm_device = Some(device);
+                    drm_notifier = Some(notifier);
+                    drm_fd = Some(fd);
+                    break;
+                }
+            }
+        }
+    }
+
+    let primary_gpu_path = primary_gpu_path.expect("no GPU found");
+    let mut drm_device = drm_device.expect("failed to open DRM device");
+    let drm_notifier = drm_notifier.expect("failed to create DRM notifier");
+    let drm_fd = drm_fd.expect("failed to get DRM FD");
+
     log::info!("Using GPU: {:?}", primary_gpu_path);
-
-    // ── Open DRM device via session ──────────────────────────────────
-    let fd = session
-        .open(
-            &primary_gpu_path,
-            rustix::fs::OFlags::RDWR
-                | rustix::fs::OFlags::CLOEXEC
-                | rustix::fs::OFlags::NOCTTY
-                | rustix::fs::OFlags::NONBLOCK,
-        )
-        .expect("session open DRM device");
-    let drm_fd = DrmDeviceFd::new(DeviceFd::from(fd));
-
-    let (mut drm_device, drm_notifier) =
-        DrmDevice::new(drm_fd.clone(), true).expect("DrmDevice::new");
 
     // ── GBM + EGL + GLES renderer ────────────────────────────────────
     let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
@@ -256,8 +298,6 @@ pub fn run() -> ! {
     let mut _mon_idx_counter: usize = 0;
 
     {
-        use drm::control::{Device as ControlDevice, ModeTypeFlags};
-
         let res = drm_device.resource_handles().expect("drm resource_handles");
         let mut used_crtcs: Vec<crtc::Handle> = Vec::new();
 
@@ -265,7 +305,9 @@ pub fn run() -> ! {
             let Ok(conn_info) = drm_device.get_connector(conn_handle, false) else {
                 continue;
             };
-            if conn_info.state() != connector::State::Connected {
+            if conn_info.state() != connector::State::Connected
+                && conn_info.state() != connector::State::Unknown
+            {
                 continue;
             }
             let modes = conn_info.modes();
@@ -283,11 +325,8 @@ pub fn run() -> ! {
                     .then_with(|| b.vrefresh().cmp(&a.vrefresh()))
             });
 
-            let mode = modes
-                .iter()
-                .find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED))
-                .copied()
-                .unwrap_or(sorted_modes[0]);
+            // Always pick the largest resolution/highest refresh rate mode.
+            let mode = sorted_modes[0];
 
             let encoder_crtcs: Vec<crtc::Handle> = conn_info
                 .encoders()
@@ -401,6 +440,7 @@ pub fn run() -> ! {
     libinput_context
         .udev_assign_seat(&seat_name)
         .expect("libinput assign seat");
+    libinput_context.dispatch().ok();
 
     // Clone handles upfront so the main loop closure can pass them by ref.
     let keyboard_handle = state.keyboard.clone();

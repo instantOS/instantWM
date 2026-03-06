@@ -156,5 +156,29 @@ pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<String>, variants: Vec
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
     if !ctx.g().keyboard_layout.layouts.is_empty() {
         set_keyboard_layout(ctx, 0);
+    } else {
+        // Fallback to environment variables (standard Wayland convention)
+        let layout = std::env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
+        if !layout.is_empty() {
+            let variant = std::env::var("XKB_DEFAULT_VARIANT").unwrap_or_default();
+            let options = std::env::var("XKB_DEFAULT_OPTIONS").ok();
+            let model = std::env::var("XKB_DEFAULT_MODEL").ok();
+            log::info!(
+                "Initializing keyboard layout from env: layout={}, variant={}, options={:?}, model={:?}",
+                layout,
+                variant,
+                options,
+                model
+            );
+            ctx.backend().set_keyboard_layout(
+                &layout,
+                &variant,
+                options.as_deref(),
+                model.as_deref(),
+            );
+        } else {
+            // Last resort: standard US layout
+            ctx.backend().set_keyboard_layout("us", "", None, None);
+        }
     }
 }

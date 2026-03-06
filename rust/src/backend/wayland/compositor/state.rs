@@ -352,8 +352,6 @@ impl WaylandState {
 
         output.change_current_state(
             Some(mode),
-            // Keep Flipped180: required for this backend's output orientation,
-            // consistent with the official Smithay demo compositor setup.
             Some(Transform::Flipped180),
             Some(Scale::Integer(1)),
             Some((0, 0).into()),
