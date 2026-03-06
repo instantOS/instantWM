@@ -378,31 +378,3 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
         key!(0, XK_9 => |ctx| crate::tags::view::view(ctx, TagMask::single(9).unwrap())),
     ]
 }
-macro_rules! btn_x11 {
-    ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, $arg:ident| $action:expr) => {
-        Button {
-            target: $target,
-            mask: $mods,
-            button: $button,
-            action: Rc::new(|$ctx, $arg| {
-                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
-                    let $ctx = ctx_x11;
-                    $action
-                }
-            }),
-        }
-    };
-    ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, _| $action:expr) => {
-        Button {
-            target: $target,
-            mask: $mods,
-            button: $button,
-            action: Rc::new(|$ctx, _| {
-                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
-                    let $ctx = ctx_x11;
-                    $action
-                }
-            }),
-        }
-    };
-}

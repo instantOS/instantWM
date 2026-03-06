@@ -6,12 +6,6 @@ use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, WindowId, SCRATCHPAD_MASK};
 use x11rb::protocol::xproto::ConnectionExt;
 
-/// Toggle view of tags using type-safe mask.
-pub fn toggle_view(ctx: &mut WmCtxX11, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    toggle_view_ctx(&mut wm_ctx, mask);
-}
-
 /// View tags using type-safe mask.
 pub fn view(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.g_mut().selected_monitor_id();
@@ -202,11 +196,6 @@ pub fn win_view(ctx: &mut WmCtxX11) {
     }
 
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, Some(win));
-}
-
-pub fn swap_tags(ctx: &mut WmCtxX11, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    swap_tags_ctx(&mut wm_ctx, mask);
 }
 
 pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
