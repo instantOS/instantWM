@@ -11,6 +11,7 @@ use crate::backend::BackendKind;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
+use crate::bar::{draw_bar, draw_bars_x11};
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
 use crate::types::{Client, Rect, WindowId};
@@ -228,6 +229,27 @@ impl<'a> WmCtx<'a> {
 
     pub fn backend_kind_REMOVED(&self) -> BackendKind {
         self.backend().kind()
+    }
+
+    /// Backend-agnostic bar refresh request.
+    ///
+    /// - X11: performs an immediate draw.
+    /// - Wayland: marks bar cache as dirty; next frame re-renders.
+    pub fn request_bar_update(&mut self, monitor_id: Option<usize>) {
+        match self {
+            WmCtx::X11(ctx_x11) => {
+                ctx_x11.core.bar.mark_dirty();
+                if let Some(id) = monitor_id {
+                    draw_bar(&mut ctx_x11.core, &ctx_x11.x11, id);
+                } else {
+                    draw_bars_x11(&mut ctx_x11.core, &ctx_x11.x11);
+                }
+            }
+            WmCtx::Wayland(ctx_wayland) => {
+                let _ = monitor_id;
+                ctx_wayland.core.bar.mark_dirty();
+            }
+        }
     }
 
     // For backend-specific operations, use match on the enum directly

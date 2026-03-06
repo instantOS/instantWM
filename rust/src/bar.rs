@@ -21,6 +21,7 @@ use crate::types::*;
 pub struct BarState {
     pausedraw: bool,
     draw_bar_recursion: usize,
+    bar_update_seq: u64,
     pub command_offsets: [i32; 20],
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
@@ -52,6 +53,16 @@ impl BarState {
 
     pub fn clear_command_offsets(&mut self) {
         self.command_offsets.fill(-1);
+    }
+
+    /// Bump the backend-agnostic bar invalidation sequence.
+    pub fn mark_dirty(&mut self) {
+        self.bar_update_seq = self.bar_update_seq.wrapping_add(1);
+    }
+
+    /// Current bar invalidation sequence.
+    pub fn update_seq(&self) -> u64 {
+        self.bar_update_seq
     }
 
     /// Clear cached widths. Called at the start of each bar render.

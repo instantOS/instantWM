@@ -1,6 +1,5 @@
 //! Layout manager — the stateful half of the layout system.
 
-use crate::bar::draw_bar;
 use crate::contexts::WmCtx;
 use crate::layouts::algo::save_floating;
 use crate::types::{MonitorId, Rect, WindowId};
@@ -124,15 +123,14 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+    ctx.request_bar_update(Some(monitor_id));
+
     if ctx
         .g()
         .monitor(monitor_id)
         .map_or(false, |m| m.current_layout().is_overview())
     {
         return;
-    }
-    if let WmCtx::X11(ctx_x11) = ctx {
-        draw_bar(&mut ctx_x11.core, &ctx_x11.x11, monitor_id);
     }
 
     // Extract data from monitor first to avoid borrow conflicts
@@ -233,9 +231,7 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     if ctx.g().selected_monitor().sel.is_some() {
         arrange(ctx, Some(selected_monitor_id));
     } else {
-        if let WmCtx::X11(ctx_x11) = ctx {
-            draw_bar(&mut ctx_x11.core, &ctx_x11.x11, selected_monitor_id);
-        }
+        ctx.request_bar_update(Some(selected_monitor_id));
     }
 }
 

@@ -523,6 +523,7 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
 //TODO: document what this does
 fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
     let mut hasher = DefaultHasher::new();
+    core.bar.update_seq().hash(&mut hasher);
     core.g.cfg.showbar.hash(&mut hasher);
     core.g.cfg.bar_height.hash(&mut hasher);
     core.g.cfg.horizontal_padding.hash(&mut hasher);
@@ -540,6 +541,7 @@ fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
         m.bar_y.hash(&mut hasher);
         m.showbar.hash(&mut hasher);
         m.current_tag.hash(&mut hasher);
+        m.selected_tags().hash(&mut hasher);
         m.sel.hash(&mut hasher);
         hash_gesture(&mut hasher, m.gesture);
         if let Some(tag) = m.current_tag() {
