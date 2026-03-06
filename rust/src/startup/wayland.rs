@@ -1,11 +1,13 @@
-//! Wayland compositor startup and event loop.
+//! Wayland compositor startup and event loop (nested / winit backend).
+//!
+//! The standalone DRM/KMS backend lives in `super::drm`.  Everything shared
+//! between the two backends (globals init, session env, XWayland, socket
+//! setup, bar elements, frame callbacks) lives in `super::common_wayland`.
 
-use std::process::{exit, Stdio};
-use std::sync::Arc;
+use std::process::exit;
 use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
@@ -13,10 +15,8 @@ use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::Point;
-use smithay::wayland::socket::ListeningSocketSource;
-use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
-use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
+use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
@@ -25,25 +25,17 @@ use crate::wm::Wm;
 mod bar;
 pub mod cursor;
 mod init;
-mod input;
+pub mod input;
 mod render;
 
-use self::init::{
-    apply_wayland_session_env, init_wayland_globals, sanitize_wayland_size,
-    spawn_wayland_smoke_window,
-};
+use self::init::{sanitize_wayland_size, spawn_wayland_smoke_window};
 use self::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     handle_resize,
 };
-pub use self::input::{
-    handle_keyboard as handle_keyboard_drm, handle_pointer_axis as handle_pointer_axis_drm,
-    handle_pointer_button as handle_pointer_button_drm,
-    handle_pointer_motion_absolute as handle_pointer_motion_absolute_drm,
-    handle_pointer_motion_relative as handle_pointer_motion_relative_drm,
-};
 use self::render::{render_frame, wayland_border_elements_shared as border_elements_shared_impl};
 use super::autostart::run_autostart;
+use crate::startup::common_wayland::{init_wayland_globals, setup_wayland_socket, spawn_xwayland};
 
 pub fn run() -> ! {
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
@@ -66,6 +58,7 @@ pub fn run() -> ! {
     state.attach_renderer(backend.renderer());
     state.init_dmabuf_global(backend.renderer().dmabuf_formats().into_iter().collect());
     state.init_screencopy_manager();
+
     let output_size = backend.window_size();
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;
@@ -73,62 +66,14 @@ pub fn run() -> ! {
     update_geom(&mut wm.ctx());
 
     let output = state.create_output("winit", initial_w, initial_h);
-    let mut damage_tracker = OutputDamageTracker::from_output(&output);
+    let mut damage_tracker =
+        smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
 
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
-    let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
-    let socket_name = listening_socket
-        .socket_name()
-        .to_string_lossy()
-        .into_owned();
-    apply_wayland_session_env(&socket_name);
-
-    loop_handle
-        .insert_source(listening_socket, |client, _, data| {
-            let _ = data
-                .display_handle
-                .insert_client(client, Arc::new(WaylandClientState::default()));
-        })
-        .expect("listening socket source");
-
-    match XWayland::spawn(
-        &state.display_handle,
-        None,
-        std::iter::empty::<(String, String)>(),
-        true,
-        Stdio::null(),
-        Stdio::null(),
-        |_| (),
-    ) {
-        Ok((xwayland, client)) => {
-            std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number()));
-            let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
-            {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => {
-                    data.xdisplay = Some(display_number);
-                    std::env::set_var("DISPLAY", format!(":{display_number}"));
-                    match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
-                        Ok(wm) => data.xwm = Some(wm),
-                        Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
-                    }
-                }
-                XWaylandEvent::Error => {
-                    log::error!("XWayland failed to start");
-                }
-            }) {
-                log::error!("failed to insert XWayland source: {err}");
-            }
-        }
-        Err(err) => {
-            log::warn!("failed to spawn XWayland: {err}");
-        }
-    }
+    setup_wayland_socket(&loop_handle, &state);
+    spawn_xwayland(&state, &loop_handle);
 
     run_autostart();
     spawn_wayland_smoke_window();

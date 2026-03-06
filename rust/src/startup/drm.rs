@@ -30,7 +30,7 @@
 //! every output is marked dirty for a full repaint.
 
 use std::collections::HashMap;
-use std::process::{exit, Stdio};
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -48,37 +48,31 @@ use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
-use smithay::backend::renderer::element::Kind;
+
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::{Bind, ImportDma};
 use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::{Event as SessionEvent, Session};
 use smithay::backend::udev;
 use smithay::desktop::space::render_output;
-use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
-use smithay::desktop::PopupManager;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent, Libinput};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::{DeviceFd, Physical, Point, Rectangle};
-use smithay::wayland::seat::WaylandFocus;
-use smithay::wayland::socket::ListeningSocketSource;
-use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
-use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
+use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
-use crate::config::init_config;
-use crate::contexts::CoreCtx;
-use crate::monitor::update_geom;
+
 use crate::startup::common_wayland::{
-    wayland_font_height_from_size, wayland_font_size_from_config,
+    build_bar_elements, init_wayland_globals, send_frame_callbacks, setup_wayland_socket,
+    spawn_xwayland,
 };
 use crate::startup::wayland::cursor::CursorManager;
-use crate::startup::wayland::{
-    handle_keyboard_drm, handle_pointer_axis_drm, handle_pointer_button_drm,
-    handle_pointer_motion_absolute_drm, handle_pointer_motion_relative_drm,
+use crate::startup::wayland::input::{
+    handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion_absolute,
+    handle_pointer_motion_relative,
 };
 use crate::types::*;
 use crate::wm::Wm;
@@ -178,7 +172,7 @@ pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
 
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
-    init_drm_globals(&mut wm);
+    init_wayland_globals(&mut wm);
 
     let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();
@@ -375,55 +369,9 @@ pub fn run() -> ! {
         }
     }
 
-    // ── Wayland socket ───────────────────────────────────────────────
-    let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
-    let socket_name = listening_socket
-        .socket_name()
-        .to_string_lossy()
-        .into_owned();
-    apply_drm_session_env(&socket_name);
-
-    loop_handle
-        .insert_source(listening_socket, |client, _, data| {
-            let _ = data
-                .display_handle
-                .insert_client(client, Arc::new(WaylandClientState::default()));
-        })
-        .expect("listening socket source");
-
-    // ── XWayland ─────────────────────────────────────────────────────
-    match XWayland::spawn(
-        &state.display_handle,
-        None,
-        std::iter::empty::<(String, String)>(),
-        true,
-        Stdio::null(),
-        Stdio::null(),
-        |_| (),
-    ) {
-        Ok((xwayland, client)) => {
-            std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number()));
-            let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
-            {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => {
-                    data.xdisplay = Some(display_number);
-                    std::env::set_var("DISPLAY", format!(":{display_number}"));
-                    match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
-                        Ok(wm_handle) => data.xwm = Some(wm_handle),
-                        Err(e) => log::error!("failed to start X11 WM: {e}"),
-                    }
-                }
-                XWaylandEvent::Error => log::error!("XWayland failed"),
-            }) {
-                log::error!("failed to insert XWayland source: {err}");
-            }
-        }
-        Err(err) => log::warn!("failed to spawn XWayland: {err}"),
-    }
+    // ── Wayland socket + XWayland ────────────────────────────────────
+    setup_wayland_socket(&loop_handle, &state);
+    spawn_xwayland(&state, &loop_handle);
 
     // ── libinput ─────────────────────────────────────────────────────
     // Keep the raw Libinput context and poll it manually in the main loop
@@ -496,20 +444,23 @@ pub fn run() -> ! {
             // mirroring what LibinputInputBackend::process_events does
             // internally.
             libinput_context.dispatch().ok();
+            let mut any_input = false;
             for raw_event in libinput_context.by_ref() {
                 if let Some(event) = raw_event_to_input_event(raw_event) {
-                    let dirty = dispatch_libinput_event(
+                    if dispatch_libinput_event(
                         event,
                         state,
                         &mut wm,
                         &keyboard_handle,
                         &pointer_handle,
                         &shared,
-                    );
-                    if dirty {
-                        shared.lock().unwrap().mark_all_dirty();
+                    ) {
+                        any_input = true;
                     }
                 }
+            }
+            if any_input {
+                shared.lock().unwrap().mark_all_dirty();
             }
 
             // ── Layout + IPC ─────────────────────────────────────────
@@ -640,14 +591,14 @@ fn dispatch_libinput_event(
     match event {
         // ── Keyboard ─────────────────────────────────────────────────
         InputEvent::Keyboard { event } => {
-            handle_keyboard_drm::<LibinputInputBackend>(wm, state, keyboard_handle, event);
+            handle_keyboard::<LibinputInputBackend>(wm, state, keyboard_handle, event);
             true
         }
 
         // ── Relative pointer motion (regular mouse) ───────────────────
         InputEvent::PointerMotion { event } => {
             let mut loc = shared.lock().unwrap().pointer_location;
-            handle_pointer_motion_relative_drm::<LibinputInputBackend>(
+            handle_pointer_motion_relative::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
@@ -664,7 +615,7 @@ fn dispatch_libinput_event(
         // ── Absolute pointer motion (tablet / touchscreen) ────────────
         InputEvent::PointerMotionAbsolute { event } => {
             let mut loc = shared.lock().unwrap().pointer_location;
-            handle_pointer_motion_absolute_drm::<LibinputInputBackend>(
+            handle_pointer_motion_absolute::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
@@ -681,7 +632,7 @@ fn dispatch_libinput_event(
         // ── Pointer button ────────────────────────────────────────────
         InputEvent::PointerButton { event } => {
             let loc = shared.lock().unwrap().pointer_location;
-            handle_pointer_button_drm::<LibinputInputBackend>(
+            handle_pointer_button::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
@@ -695,7 +646,7 @@ fn dispatch_libinput_event(
         // ── Pointer axis (scroll wheel / touchpad) ────────────────────
         InputEvent::PointerAxis { event } => {
             let loc = shared.lock().unwrap().pointer_location;
-            handle_pointer_axis_drm::<LibinputInputBackend>(
+            handle_pointer_axis::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
@@ -750,27 +701,8 @@ fn render_drm_output(
     let mut custom_elements: Vec<DrmExtras> = Vec::new();
 
     // Bar
-    if wm.g.cfg.showbar {
-        let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
-        let bar_buffers = crate::bar::wayland::render_bar_buffers(
-            &mut core,
-            &mut wm.bar_painter,
-            smithay::utils::Scale::from(1.0),
-        );
-        for (buffer, x, y) in bar_buffers {
-            match MemoryRenderBufferRenderElement::from_buffer(
-                renderer,
-                (x as f64, y as f64),
-                &buffer,
-                None,
-                None,
-                None,
-                Kind::Unspecified,
-            ) {
-                Ok(elem) => custom_elements.push(DrmExtras::Memory(elem)),
-                Err(e) => log::warn!("bar buffer upload: {:?}", e),
-            }
-        }
+    for elem in build_bar_elements(wm, renderer) {
+        custom_elements.push(DrmExtras::Memory(elem));
     }
 
     // Window borders
@@ -835,30 +767,7 @@ fn render_drm_output(
     }
 
     // ── Frame callbacks ───────────────────────────────────────────────
-
-    let time = start_time.elapsed();
-    for window in state.space.elements() {
-        if let Some(wl_surface) = window.wl_surface() {
-            send_frames_surface_tree(
-                &wl_surface,
-                &entry.output,
-                time,
-                Some(Duration::from_millis(16)),
-                surface_primary_scanout_output,
-            );
-            if let Some(toplevel) = window.toplevel() {
-                for (popup, _) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-                    send_frames_surface_tree(
-                        popup.wl_surface(),
-                        &entry.output,
-                        time,
-                        Some(Duration::from_millis(16)),
-                        surface_primary_scanout_output,
-                    );
-                }
-            }
-        }
-    }
+    send_frame_callbacks(state, &entry.output, start_time.elapsed());
 
     true
 }
@@ -866,28 +775,6 @@ fn render_drm_output(
 // ═══════════════════════════════════════════════════════════════════════════
 // Initialisation helpers
 // ═══════════════════════════════════════════════════════════════════════════
-
-fn init_drm_globals(wm: &mut Wm) {
-    let cfg = init_config();
-    wm.g.cfg.screen_width = DEFAULT_SCREEN_WIDTH;
-    wm.g.cfg.screen_height = DEFAULT_SCREEN_HEIGHT;
-    crate::globals::apply_config(&mut wm.g, &cfg);
-    crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    wm.g.cfg.showbar = true;
-    let font_size = wayland_font_size_from_config(&cfg.fonts);
-    let font_height = wayland_font_height_from_size(font_size);
-    wm.bar_painter.set_font_size(font_size);
-    let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
-    wm.g.cfg.bar_height = (if cfg.bar_height > 0 {
-        font_height + cfg.bar_height
-    } else {
-        font_height + 12
-    })
-    .max(min_bar_height);
-    wm.g.cfg.horizontal_padding = font_height;
-    wm.g.x11.numlockmask = 0;
-    update_geom(&mut wm.ctx());
-}
 
 fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) {
     wm.g.monitors.clear();
@@ -958,16 +845,6 @@ fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) 
     if wm.g.selected_monitor_id() >= wm.g.monitors.count() {
         wm.g.set_selected_monitor(0);
     }
-}
-
-fn apply_drm_session_env(socket_name: &str) {
-    std::env::set_var("WAYLAND_DISPLAY", socket_name);
-    std::env::set_var("XDG_SESSION_TYPE", "wayland");
-    std::env::remove_var("DISPLAY");
-    std::env::set_var("GDK_BACKEND", "wayland");
-    std::env::set_var("QT_QPA_PLATFORM", "wayland");
-    std::env::set_var("SDL_VIDEODRIVER", "wayland");
-    std::env::set_var("CLUTTER_BACKEND", "wayland");
 }
 
 fn connector_type_name(interface: connector::Interface) -> &'static str {
