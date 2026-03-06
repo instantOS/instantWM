@@ -3,6 +3,7 @@
 //! Types for managing colors in the window manager UI.
 
 use crate::drw::Color;
+use serde::Deserialize;
 
 // =============================================================================
 // Scheme enums - typed identifiers for color sets
@@ -237,7 +238,8 @@ impl StatusScheme {
 // =============================================================================
 
 /// Color scheme using string colors (before parsing).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
 pub struct ColorSchemeStrings {
     /// Foreground color string.
     pub fg: String,
@@ -248,7 +250,8 @@ pub struct ColorSchemeStrings {
 }
 
 /// Tag scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
 pub struct TagColorSet {
     pub inactive: ColorSchemeStrings,
     pub filled: ColorSchemeStrings,
@@ -292,7 +295,8 @@ impl TagColorSet {
 }
 
 /// Window scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
 pub struct WindowColorSet {
     pub focus: ColorSchemeStrings,
     pub normal: ColorSchemeStrings,
@@ -344,7 +348,8 @@ impl WindowColorSet {
 }
 
 /// Close button scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default)]
 pub struct CloseButtonColorSet {
     pub normal: ColorSchemeStrings,
     pub locked: ColorSchemeStrings,
@@ -419,9 +424,11 @@ impl ColorSchemeStrings {
 }
 
 /// Tag color configurations using strings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
 pub struct TagColorConfigs {
     /// Non-hover color configs.
+    #[serde(rename = "normal")]
     pub no_hover: TagColorSet,
     /// Hover color configs.
     pub hover: TagColorSet,
@@ -452,9 +459,11 @@ impl TagColorConfigs {
 }
 
 /// Window color configurations using strings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
 pub struct WindowColorConfigs {
     /// Non-hover color configs.
+    #[serde(rename = "normal")]
     pub no_hover: WindowColorSet,
     /// Hover color configs.
     pub hover: WindowColorSet,
@@ -485,9 +494,11 @@ impl WindowColorConfigs {
 }
 
 /// Close button color configurations using strings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
 pub struct CloseButtonColorConfigs {
     /// Non-hover color configs.
+    #[serde(rename = "normal")]
     pub no_hover: CloseButtonColorSet,
     /// Hover color configs.
     pub hover: CloseButtonColorSet,
@@ -522,7 +533,8 @@ impl CloseButtonColorConfigs {
 }
 
 /// Border color configuration using strings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
 pub struct BorderColorConfig {
     /// Normal border color.
     pub normal: String,
@@ -556,7 +568,8 @@ impl BorderColorConfig {
 }
 
 /// Status color configuration using strings.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(default)]
 pub struct StatusColorConfig {
     /// Status bar colors.
     pub fg: String,
