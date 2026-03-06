@@ -8,7 +8,7 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
-use crate::keyboard::{down_key, down_press_x11, space_toggle_x11, up_key, up_press_x11};
+use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
@@ -175,11 +175,11 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_UP   => |ctx| {
             up_key(ctx, StackDirection::Previous)
         }),
-        key_x11!(MS,     XK_DOWN => |ctx| {
-            down_press_x11(ctx)
+        key!(MS,     XK_DOWN => |ctx| {
+            down_press(ctx)
         }),
-        key_x11!(MS,     XK_UP   => |ctx| {
-            up_press_x11(ctx)
+        key!(MS,     XK_UP   => |ctx| {
+            up_press(ctx)
         }),
         key!(MC, XK_J => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -195,9 +195,9 @@ pub fn get_keys() -> Vec<Key> {
         key!(MC, XK_RIGHT => |ctx| direction_focus(ctx, Direction::Right)),
         key!(MC, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
         key!(MC, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
-        key_x11!(MODKEY,  XK_TAB     => |ctx| last_view(ctx)),
+        key!(MODKEY,  XK_TAB     => |ctx| last_view(ctx)),
         key!(MS,      XK_TAB     => |ctx| focus_last_client(ctx)),
-        key_x11!(MA,      XK_TAB     => |ctx| follow_view(ctx)),
+        key!(MA,      XK_TAB     => |ctx| follow_view(ctx)),
         key!(MODKEY,  XK_LEFT    => |ctx| animation::anim_scroll(ctx, Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),
         key!(MA,      XK_LEFT    => |ctx| move_client(ctx, Direction::Left)),
@@ -217,11 +217,11 @@ pub fn get_keys() -> Vec<Key> {
                 crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        key_x11!(MODKEY,  XK_O       => |ctx| win_view(ctx)),
+        key!(MODKEY,  XK_O       => |ctx| win_view(ctx)),
         key!(MODKEY, XK_COMMA  => |ctx| focus_mon(ctx, MonitorDirection::PREV)),
         key!(MODKEY, XK_PERIOD => |ctx| focus_mon(ctx, MonitorDirection::NEXT)),
-        key_x11!(MS,     XK_COMMA  => |ctx| send_to_monitor(ctx, MonitorDirection::PREV)),
-        key_x11!(MS,     XK_PERIOD => |ctx| send_to_monitor(ctx, MonitorDirection::NEXT)),
+        key!(MS,     XK_COMMA  => |ctx| send_to_monitor(ctx, MonitorDirection::PREV)),
+        key!(MS,     XK_PERIOD => |ctx| send_to_monitor(ctx, MonitorDirection::NEXT)),
         key!(MA,     XK_COMMA  => |ctx| follow_mon(ctx, MonitorDirection::PREV)),
         key!(MA,     XK_PERIOD => |ctx| follow_mon(ctx, MonitorDirection::NEXT)),
         key!(MS,   XK_RETURN => zoom),
@@ -255,11 +255,11 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MS,       XK_M      => begin_keyboard_move),
         key_x11!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
-        key_x11!(MODKEY, XK_E  => |ctx| {
+        key!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_overview(ctx, TagMask::ALL_BITS)
         }),
-        key_x11!(MS,     XK_E  => |ctx| {
+        key!(MS,     XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_fullscreen_overview(ctx, TagMask::ALL_BITS)
         }),
@@ -284,8 +284,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MSA,    XK_S  => |ctx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle)),
         key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
         key!(MSA,    XK_D  => |ctx| toggle_double_draw(ctx.core_mut())),
-        key_x11!(MS,     XK_SPACE => |ctx| {
-            space_toggle_x11(ctx)
+        key!(MS,     XK_SPACE => |ctx| {
+            space_toggle(ctx)
         }),
         key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ToggleAction::Toggle)),
         key!(MC,     XK_R     => |ctx| redraw_win(ctx)),

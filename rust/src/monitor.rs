@@ -307,9 +307,7 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
         None => return,
     };
 
-    if let WmCtx::X11(ref mut ctx_x11) = ctx {
-        crate::tags::send_to_monitor(ctx_x11, direction);
-    }
+    crate::tags::send_to_monitor(ctx, direction);
 
     if let Some(monitor_id) = ctx.g_mut().clients.get(&c_win).and_then(|c| c.monitor_id) {
         ctx.g_mut().monitors.set_sel_idx(monitor_id);

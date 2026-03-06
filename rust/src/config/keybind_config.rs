@@ -343,19 +343,13 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
 
         // Tags / views
         "last_view" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                last_view(ctx_x11)
-            }
+            last_view(ctx)
         }),
         "follow_view" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                follow_view(ctx_x11)
-            }
+            follow_view(ctx)
         }),
         "win_view" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                win_view(ctx_x11)
-            }
+            win_view(ctx)
         }),
         "scroll_left" => Rc::new(|ctx| animation::anim_scroll(ctx, Direction::Left)),
         "scroll_right" => Rc::new(|ctx| animation::anim_scroll(ctx, Direction::Right)),
@@ -372,14 +366,10 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             }
         }),
         "toggle_overview" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                toggle_overview(ctx_x11, TagMask::ALL_BITS)
-            }
+            toggle_overview(ctx, TagMask::ALL_BITS)
         }),
         "toggle_fullscreen_overview" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                toggle_fullscreen_overview(ctx_x11, TagMask::ALL_BITS)
-            }
+            toggle_fullscreen_overview(ctx, TagMask::ALL_BITS)
         }),
 
         // Monitor

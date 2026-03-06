@@ -206,13 +206,13 @@ pub fn update_num_lock_mask_x11(
     x11_runtime.numlockmask = new_numlockmask;
 }
 
-pub fn up_press_x11(ctx_x11: &mut WmCtxX11<'_>) {
+pub fn up_press(ctx: &mut WmCtx) {
     let (selected_window, overlay_win, is_floating) = {
-        let mon = ctx_x11.core.g.selected_monitor();
+        let mon = ctx.g().selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let is_floating = sel
-            .and_then(|w| ctx_x11.core.g.clients.get(&w).map(|c| c.isfloating))
+            .and_then(|w| ctx.g().clients.get(&w).map(|c| c.isfloating))
             .unwrap_or(false);
         (sel, overlay, is_floating)
     };
@@ -222,40 +222,33 @@ pub fn up_press_x11(ctx_x11: &mut WmCtxX11<'_>) {
     }
 
     if selected_window == overlay_win {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        set_overlay_mode(&mut ctx, OverlayMode::Top);
+        set_overlay_mode(ctx, OverlayMode::Top);
         return;
     }
 
     if is_floating {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        toggle_floating(&mut ctx);
+        toggle_floating(ctx);
         return;
     }
 
     if let Some(win) = selected_window {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        crate::client::hide(&mut ctx, win);
+        crate::client::hide(ctx, win);
     }
 }
 
-pub fn down_press_x11(ctx_x11: &mut WmCtxX11<'_>) {
-    {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        if unhide_one(&mut ctx) {
-            return;
-        }
+pub fn down_press(ctx: &mut WmCtx) {
+    if unhide_one(ctx) {
+        return;
     }
 
     let (selected_window, overlay_win, snap_status, is_floating) = {
-        let mon = ctx_x11.core.g.selected_monitor();
+        let mon = ctx.g().selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let (snap_status, is_floating) = sel
             .and_then(|w| {
-                ctx_x11
-                    .core
-                    .g
+                ctx
+                    .g()
                     .clients
                     .get(&w)
                     .map(|c| (c.snap_status, c.isfloating))
@@ -270,21 +263,18 @@ pub fn down_press_x11(ctx_x11: &mut WmCtxX11<'_>) {
 
     if snap_status != SnapPosition::None {
         if let Some(win) = selected_window {
-            let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-            reset_snap(&mut ctx, win);
+            reset_snap(ctx, win);
         }
         return;
     }
 
     if selected_window == overlay_win {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        set_overlay_mode(&mut ctx, OverlayMode::Bottom);
+        set_overlay_mode(ctx, OverlayMode::Bottom);
         return;
     }
 
     if !is_floating {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        toggle_floating(&mut ctx);
+        toggle_floating(ctx);
     }
 }
 
@@ -347,18 +337,17 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     focus_stack(ctx, direction);
 }
 
-pub fn space_toggle_x11(ctx_x11: &mut WmCtxX11<'_>) {
-    let has_tiling = ctx_x11.core.g.selected_monitor().is_tiling_layout();
+pub fn space_toggle(ctx: &mut WmCtx) {
+    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        let Some(win) = ctx_x11.core.selected_client() else {
+        let Some(win) = ctx.selected_client() else {
             return;
         };
 
         let snap_status = {
-            ctx_x11
-                .core
-                .g
+            ctx
+                .g()
                 .clients
                 .get(&win)
                 .map(|c| c.snap_status)
@@ -366,41 +355,21 @@ pub fn space_toggle_x11(ctx_x11: &mut WmCtxX11<'_>) {
         };
 
         if snap_status != SnapPosition::None {
-            let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-            reset_snap(&mut ctx, win);
+            reset_snap(ctx, win);
         } else {
-            let border_pixel = ctx_x11
-                .core
-                .g
-                .cfg
-                .borderscheme
-                .as_ref()
-                .map(|s| s.normal.bg.pixel());
-            if let Some(pixel) = border_pixel {
-                let x11_win: Window = win.into();
-                let _ = change_window_attributes(
-                    ctx_x11.x11.conn,
-                    x11_win,
-                    &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
-                );
-                let _ = ctx_x11.x11.conn.flush();
-            }
+            let border_width = ctx.g().cfg.borderpx;
+            ctx.set_border(win, border_width);
 
-            {
-                let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-                save_floating_win(&mut ctx, win);
-            }
+            save_floating_win(ctx, win);
 
-            if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
+            if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
                 client.snap_status = SnapPosition::Maximized;
             }
 
-            let selmon_id = ctx_x11.core.g.selected_monitor_id();
-            let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-            arrange(&mut ctx, Some(selmon_id));
+            let selmon_id = ctx.g().selected_monitor_id();
+            arrange(ctx, Some(selmon_id));
         }
     } else {
-        let mut ctx = WmCtx::X11(ctx_x11.reborrow());
-        toggle_floating(&mut ctx);
+        toggle_floating(ctx);
     }
 }
