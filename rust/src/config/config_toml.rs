@@ -5,28 +5,28 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize, Default)]
-struct ConfigFile {
+struct ConfigToml {
     pub fonts: Option<Vec<String>>,
-    pub colors: Option<ColorConfigFile>,
+    pub colors: Option<ColorConfigToml>,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct ColorConfigFile {
-    pub tag: Option<TagColorFile>,
-    pub window: Option<WindowColorFile>,
-    pub close_button: Option<CloseButtonColorFile>,
-    pub border: Option<BorderColorFile>,
-    pub status: Option<StatusColorFile>,
+struct ColorConfigToml {
+    pub tag: Option<TagColorToml>,
+    pub window: Option<WindowColorToml>,
+    pub close_button: Option<CloseButtonColorToml>,
+    pub border: Option<BorderColorToml>,
+    pub status: Option<StatusColorToml>,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct TagColorFile {
-    pub normal: Option<TagColorSetFile>,
-    pub hover: Option<TagColorSetFile>,
+struct TagColorToml {
+    pub normal: Option<TagColorSetToml>,
+    pub hover: Option<TagColorSetToml>,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct TagColorSetFile {
+struct TagColorSetToml {
     pub inactive: Option<ColorTriplet>,
     pub filled: Option<ColorTriplet>,
     pub focus: Option<ColorTriplet>,
@@ -35,13 +35,13 @@ struct TagColorSetFile {
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct WindowColorFile {
-    pub normal: Option<WindowColorSetFile>,
-    pub hover: Option<WindowColorSetFile>,
+struct WindowColorToml {
+    pub normal: Option<WindowColorSetToml>,
+    pub hover: Option<WindowColorSetToml>,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct WindowColorSetFile {
+struct WindowColorSetToml {
     pub focus: Option<ColorTriplet>,
     pub normal: Option<ColorTriplet>,
     pub minimized: Option<ColorTriplet>,
@@ -52,20 +52,20 @@ struct WindowColorSetFile {
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct CloseButtonColorFile {
-    pub normal: Option<CloseButtonColorSetFile>,
-    pub hover: Option<CloseButtonColorSetFile>,
+struct CloseButtonColorToml {
+    pub normal: Option<CloseButtonColorSetToml>,
+    pub hover: Option<CloseButtonColorSetToml>,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct CloseButtonColorSetFile {
+struct CloseButtonColorSetToml {
     pub normal: Option<ColorTriplet>,
     pub locked: Option<ColorTriplet>,
     pub fullscreen: Option<ColorTriplet>,
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct BorderColorFile {
+struct BorderColorToml {
     pub normal: Option<String>,
     pub tile_focus: Option<String>,
     pub float_focus: Option<String>,
@@ -73,7 +73,7 @@ struct BorderColorFile {
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct StatusColorFile {
+struct StatusColorToml {
     pub fg: Option<String>,
     pub bg: Option<String>,
     pub detail: Option<String>,
@@ -98,7 +98,7 @@ fn apply_triplet(target: &mut crate::types::ColorSchemeStrings, src: &ColorTripl
     }
 }
 
-fn apply_tag_set(target: &mut crate::types::TagColorSet, src: &TagColorSetFile) {
+fn apply_tag_set(target: &mut crate::types::TagColorSet, src: &TagColorSetToml) {
     if let Some(triplet) = &src.inactive {
         apply_triplet(target.scheme_mut(SchemeTag::Inactive), triplet);
     }
@@ -116,7 +116,7 @@ fn apply_tag_set(target: &mut crate::types::TagColorSet, src: &TagColorSetFile) 
     }
 }
 
-fn apply_window_set(target: &mut crate::types::WindowColorSet, src: &WindowColorSetFile) {
+fn apply_window_set(target: &mut crate::types::WindowColorSet, src: &WindowColorSetToml) {
     if let Some(triplet) = &src.focus {
         apply_triplet(target.scheme_mut(SchemeWin::Focus), triplet);
     }
@@ -142,7 +142,7 @@ fn apply_window_set(target: &mut crate::types::WindowColorSet, src: &WindowColor
 
 fn apply_close_button_set(
     target: &mut crate::types::CloseButtonColorSet,
-    src: &CloseButtonColorSetFile,
+    src: &CloseButtonColorSetToml,
 ) {
     if let Some(triplet) = &src.normal {
         apply_triplet(target.scheme_mut(SchemeClose::Normal), triplet);
@@ -160,7 +160,7 @@ pub fn default_config_path() -> Option<PathBuf> {
     Some(config_dir.join("instantwm").join("config.toml"))
 }
 
-fn apply_colors(parsed: &ConfigFile, cfg: &mut Config) {
+fn apply_colors(parsed: &ConfigToml, cfg: &mut Config) {
     let Some(colors) = &parsed.colors else {
         return;
     };
@@ -221,7 +221,7 @@ fn apply_colors(parsed: &ConfigFile, cfg: &mut Config) {
     }
 }
 
-pub fn load_config(path: &Path) -> Result<ConfigFile, String> {
+pub fn load_config_toml(path: &Path) -> Result<ConfigToml, String> {
     let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
     toml::from_str(&contents).map_err(|err| err.to_string())
 }
@@ -235,7 +235,7 @@ pub fn apply_config_overrides(cfg: &mut Config) -> Result<(), String> {
         return Ok(());
     }
 
-    let parsed = load_config(&path)?;
+    let parsed = load_config_toml(&path)?;
 
     if let Some(fonts) = parsed.fonts.clone() {
         if !fonts.is_empty() {

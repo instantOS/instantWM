@@ -29,4 +29,3 @@ mod toggles;
 mod types;
 mod util;
 mod wm;
-mod xresources;

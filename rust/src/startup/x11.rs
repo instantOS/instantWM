@@ -82,7 +82,6 @@ fn wm_init(wm: &mut Wm) {
         let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
             return;
         };
-        crate::xresources::verify_tags_config(&mut crate::contexts::WmCtx::X11(ctx.reborrow()));
         crate::bar::x11::update_bars(&mut ctx.core, &ctx.x11);
         crate::bar::x11::update_status(&mut ctx.core, &ctx.x11);
         crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11);
@@ -241,9 +240,6 @@ fn init_cursors(wm: &mut Wm, drw: &mut Drw) {
 fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
     let bordercolors = wm.g.cfg.bordercolors.clone();
     let statusbarcolors = wm.g.cfg.statusbarcolors.clone();
-    let tagcolors = wm.g.tags.colors.clone();
-    let windowcolors = wm.g.cfg.windowcolors.clone();
-    let closebuttoncolors = wm.g.cfg.closebuttoncolors.clone();
 
     let borderscheme = drw
         .scm_create(&[bordercolors.normal.as_str()])
@@ -272,68 +268,6 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
             ColorScheme::from_vec(clr).map(|cs| StatusScheme::new(cs.fg, cs.bg, cs.detail))
         });
 
-    let tagschemes = TagSchemes {
-        no_hover: build_tag_schemes(drw, &tagcolors.no_hover),
-        hover: build_tag_schemes(drw, &tagcolors.hover),
-    };
-
-    let windowschemes = WindowSchemes {
-        no_hover: build_window_schemes(drw, &windowcolors.no_hover),
-        hover: build_window_schemes(drw, &windowcolors.hover),
-    };
-
-    let closebuttonschemes = CloseButtonSchemes {
-        no_hover: build_close_button_schemes(drw, &closebuttoncolors.no_hover),
-        hover: build_close_button_schemes(drw, &closebuttoncolors.hover),
-    };
-
     wm.g.cfg.borderscheme = borderscheme;
     wm.g.cfg.statusscheme = statusscheme;
-    wm.g.tags.schemes = tagschemes;
-    wm.g.cfg.windowschemes = windowschemes;
-    wm.g.cfg.closebuttonschemes = closebuttonschemes;
-}
-
-fn build_scheme(drw: &Drw, colors: &crate::types::ColorSchemeStrings) -> Option<ColorScheme> {
-    let clr = drw
-        .scm_create(&[
-            colors.fg.as_str(),
-            colors.bg.as_str(),
-            colors.detail.as_str(),
-        ])
-        .ok()?;
-    ColorScheme::from_vec(clr)
-}
-
-fn build_tag_schemes(drw: &Drw, colors: &crate::types::TagColorSet) -> TagSchemesSet {
-    TagSchemesSet {
-        inactive: build_scheme(drw, &colors.inactive).unwrap_or_default(),
-        filled: build_scheme(drw, &colors.filled).unwrap_or_default(),
-        focus: build_scheme(drw, &colors.focus).unwrap_or_default(),
-        nofocus: build_scheme(drw, &colors.nofocus).unwrap_or_default(),
-        empty: build_scheme(drw, &colors.empty).unwrap_or_default(),
-    }
-}
-
-fn build_window_schemes(drw: &Drw, colors: &crate::types::WindowColorSet) -> WindowSchemesSet {
-    WindowSchemesSet {
-        focus: build_scheme(drw, &colors.focus).unwrap_or_default(),
-        normal: build_scheme(drw, &colors.normal).unwrap_or_default(),
-        minimized: build_scheme(drw, &colors.minimized).unwrap_or_default(),
-        sticky: build_scheme(drw, &colors.sticky).unwrap_or_default(),
-        sticky_focus: build_scheme(drw, &colors.sticky_focus).unwrap_or_default(),
-        overlay: build_scheme(drw, &colors.overlay).unwrap_or_default(),
-        overlay_focus: build_scheme(drw, &colors.overlay_focus).unwrap_or_default(),
-    }
-}
-
-fn build_close_button_schemes(
-    drw: &Drw,
-    colors: &crate::types::CloseButtonColorSet,
-) -> CloseButtonSchemesSet {
-    CloseButtonSchemesSet {
-        normal: build_scheme(drw, &colors.normal).unwrap_or_default(),
-        locked: build_scheme(drw, &colors.locked).unwrap_or_default(),
-        fullscreen: build_scheme(drw, &colors.fullscreen).unwrap_or_default(),
-    }
 }

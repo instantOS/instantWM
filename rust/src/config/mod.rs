@@ -39,8 +39,8 @@ pub mod rules;
 pub use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 #[allow(unused_imports)]
 pub use appearance::{
-    border_color, close_button_color, get_border_colors, get_close_button_colors,
-    get_status_bar_colors, get_tag_colors, get_window_colors, tag_color,
+    get_border_colors, get_close_button_colors, get_status_bar_colors, get_tag_colors,
+    get_window_colors,
 };
 #[allow(unused_imports)]
 pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};
@@ -177,7 +177,6 @@ pub struct Config {
     pub desktop_keybinds: Vec<Key>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
-    pub resources: Vec<String>,
     pub fonts: Vec<String>,
 
     // --- External commands ---
@@ -231,7 +230,6 @@ pub fn init_config() -> Config {
         desktop_keybinds: get_desktop_keybinds(),
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
-        resources: Vec::new(),
         fonts: appearance::get_fonts(),
 
         // --- External commands ---

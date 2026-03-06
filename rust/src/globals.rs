@@ -68,8 +68,6 @@ pub struct RuntimeConfig {
     // Color schemes
     pub borderscheme: Option<BorderScheme>,
     pub statusscheme: Option<StatusScheme>,
-    pub windowschemes: WindowSchemes,
-    pub closebuttonschemes: CloseButtonSchemes,
 
     // Raw color strings for config override
     pub windowcolors: WindowColorConfigs,
@@ -83,8 +81,6 @@ pub struct RuntimeConfig {
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
 
-    // Resources
-    pub resources: Vec<String>,
     pub fonts: Vec<String>,
     pub config_font: String,
     pub instantmenumon: String,
@@ -119,8 +115,6 @@ impl Default for RuntimeConfig {
             systrayspacing: 2,
             borderscheme: None,
             statusscheme: None,
-            windowschemes: WindowSchemes::default(),
-            closebuttonschemes: CloseButtonSchemes::default(),
             windowcolors: WindowColorConfigs::default(),
             closebuttoncolors: CloseButtonColorConfigs::default(),
             bordercolors: BorderColorConfig::default(),
@@ -129,7 +123,6 @@ impl Default for RuntimeConfig {
             desktop_keybinds: Vec::new(),
             buttons: Vec::new(),
             rules: Vec::new(),
-            resources: Vec::new(),
             fonts: Vec::new(),
             config_font: String::new(),
             instantmenumon: String::new(),
@@ -454,7 +447,6 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.desktop_keybinds = cfg.desktop_keybinds.clone();
     g.cfg.buttons = cfg.buttons.clone();
     g.cfg.rules = cfg.rules.clone();
-    g.cfg.resources = cfg.resources.clone();
     g.cfg.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();
     // Rebuild tag template so monitor creation picks up any config changes.

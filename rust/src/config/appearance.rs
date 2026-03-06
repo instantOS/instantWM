@@ -49,7 +49,6 @@ pub(super) mod palette {
     pub const RED_HOVER: &str = "#e05951";
 }
 
-use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag};
 use palette::*;
 
 // ---------------------------------------------------------------------------
@@ -140,79 +139,6 @@ pub fn get_status_bar_colors() -> crate::types::StatusColorConfig {
         fg: TEXT.to_string(),
         bg: BG.to_string(),
         detail: BG.to_string(),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Typed per-scheme accessors (avoids magic index arithmetic at call sites)
-// ---------------------------------------------------------------------------
-
-pub fn tag_color(hover: SchemeHover, scheme: SchemeTag, col: ColIndex) -> &'static str {
-    match (hover, scheme, col) {
-        (SchemeHover::NoHover, SchemeTag::Inactive, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeTag::Inactive, ColIndex::Bg) => BG,
-        (SchemeHover::NoHover, SchemeTag::Inactive, ColIndex::Detail) => BG,
-        (SchemeHover::NoHover, SchemeTag::Filled, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeTag::Filled, ColIndex::Bg) => BG_ACCENT,
-        (SchemeHover::NoHover, SchemeTag::Filled, ColIndex::Detail) => LIGHT_BLUE,
-        (SchemeHover::NoHover, SchemeTag::Focus, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeTag::Focus, ColIndex::Bg) => LIGHT_GREEN,
-        (SchemeHover::NoHover, SchemeTag::Focus, ColIndex::Detail) => GREEN,
-        (SchemeHover::NoHover, SchemeTag::NoFocus, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeTag::NoFocus, ColIndex::Bg) => LIGHT_YELLOW,
-        (SchemeHover::NoHover, SchemeTag::NoFocus, ColIndex::Detail) => YELLOW,
-        (SchemeHover::NoHover, SchemeTag::Empty, ColIndex::Fg) => BLACK,
-        (SchemeHover::NoHover, SchemeTag::Empty, ColIndex::Bg) => LIGHT_RED,
-        (SchemeHover::NoHover, SchemeTag::Empty, ColIndex::Detail) => RED,
-
-        (SchemeHover::Hover, SchemeTag::Inactive, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeTag::Inactive, ColIndex::Bg) => BG_HOVER,
-        (SchemeHover::Hover, SchemeTag::Inactive, ColIndex::Detail) => BG,
-        (SchemeHover::Hover, SchemeTag::Filled, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeTag::Filled, ColIndex::Bg) => BG_ACCENT_HOVER,
-        (SchemeHover::Hover, SchemeTag::Filled, ColIndex::Detail) => LIGHT_BLUE_HOVER,
-        (SchemeHover::Hover, SchemeTag::Focus, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeTag::Focus, ColIndex::Bg) => LIGHT_GREEN_HOVER,
-        (SchemeHover::Hover, SchemeTag::Focus, ColIndex::Detail) => GREEN_HOVER,
-        (SchemeHover::Hover, SchemeTag::NoFocus, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeTag::NoFocus, ColIndex::Bg) => LIGHT_YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeTag::NoFocus, ColIndex::Detail) => YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeTag::Empty, ColIndex::Fg) => BLACK,
-        (SchemeHover::Hover, SchemeTag::Empty, ColIndex::Bg) => LIGHT_RED_HOVER,
-        (SchemeHover::Hover, SchemeTag::Empty, ColIndex::Detail) => RED_HOVER,
-    }
-}
-
-pub fn close_button_color(hover: SchemeHover, scheme: SchemeClose, col: ColIndex) -> &'static str {
-    match (hover, scheme, col) {
-        (SchemeHover::NoHover, SchemeClose::Normal, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeClose::Normal, ColIndex::Bg) => LIGHT_RED,
-        (SchemeHover::NoHover, SchemeClose::Normal, ColIndex::Detail) => RED,
-        (SchemeHover::NoHover, SchemeClose::Locked, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeClose::Locked, ColIndex::Bg) => LIGHT_YELLOW,
-        (SchemeHover::NoHover, SchemeClose::Locked, ColIndex::Detail) => YELLOW,
-        (SchemeHover::NoHover, SchemeClose::Fullscreen, ColIndex::Fg) => TEXT,
-        (SchemeHover::NoHover, SchemeClose::Fullscreen, ColIndex::Bg) => LIGHT_RED,
-        (SchemeHover::NoHover, SchemeClose::Fullscreen, ColIndex::Detail) => RED,
-
-        (SchemeHover::Hover, SchemeClose::Normal, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeClose::Normal, ColIndex::Bg) => LIGHT_RED_HOVER,
-        (SchemeHover::Hover, SchemeClose::Normal, ColIndex::Detail) => RED_HOVER,
-        (SchemeHover::Hover, SchemeClose::Locked, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeClose::Locked, ColIndex::Bg) => LIGHT_YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeClose::Locked, ColIndex::Detail) => YELLOW_HOVER,
-        (SchemeHover::Hover, SchemeClose::Fullscreen, ColIndex::Fg) => TEXT,
-        (SchemeHover::Hover, SchemeClose::Fullscreen, ColIndex::Bg) => LIGHT_RED_HOVER,
-        (SchemeHover::Hover, SchemeClose::Fullscreen, ColIndex::Detail) => RED_HOVER,
-    }
-}
-
-pub fn border_color(scheme: SchemeBorder) -> &'static str {
-    match scheme {
-        SchemeBorder::Normal => BG_ACCENT,
-        SchemeBorder::TileFocus => LIGHT_BLUE,
-        SchemeBorder::FloatFocus => LIGHT_GREEN,
-        SchemeBorder::Snap => LIGHT_YELLOW,
     }
 }
 
