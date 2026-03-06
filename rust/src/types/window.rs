@@ -133,3 +133,19 @@ pub struct Systray {
     /// List of tray icon windows.
     pub icons: Vec<WindowId>,
 }
+
+/// Wayland StatusNotifier tray icon model.
+#[derive(Debug, Clone, Default)]
+pub struct WaylandSystrayItem {
+    pub service: String,
+    pub path: String,
+    pub icon_rgba: Vec<u8>,
+    pub icon_w: i32,
+    pub icon_h: i32,
+}
+
+/// Wayland StatusNotifier tray state.
+#[derive(Debug, Clone, Default)]
+pub struct WaylandSystray {
+    pub items: Vec<WaylandSystrayItem>,
+}

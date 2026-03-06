@@ -6,7 +6,7 @@ pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
 pub(crate) const TEXT_PADDING: i32 = 6;
 
 #[derive(Debug, Clone)]
-enum StatusItem {
+pub(crate) enum StatusItem {
     Text(String),
     SetBg(String),
     SetFg(String),
@@ -28,15 +28,29 @@ pub(crate) fn draw_status_bar(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> (i32, i32) {
-    let stext = ctx.g.status_text.clone();
+    let stext = ctx.g.status_text.as_str();
     if stext.is_empty() {
         return (0, 0);
     }
 
-    let items = parse_status_items(stext.as_bytes());
+    if ctx.bar.status_cache_text.as_str() != stext {
+        ctx.bar.status_cache_text.clear();
+        ctx.bar.status_cache_text.push_str(stext);
+        ctx.bar.status_cache_items = parse_status_items(stext.as_bytes());
+    }
+
+    let items = ctx.bar.status_cache_items.as_slice();
     let layout = measure_layout(ctx, m, &items, painter);
 
-    draw_items(painter, m, bar_height, &items, layout, ctx.g, ctx.bar);
+    draw_items(
+        painter,
+        m,
+        bar_height,
+        items,
+        layout,
+        ctx.g,
+        &mut ctx.bar.command_offsets,
+    );
 
     (layout.draw_start_x, layout.total_width)
 }
@@ -181,7 +195,7 @@ fn draw_items(
     items: &[StatusItem],
     layout: StatusLayout,
     g: &crate::globals::Globals,
-    bar: &mut crate::bar::BarState,
+    command_offsets: &mut [i32; MAX_COMMAND_OFFSETS],
 ) {
     let Some(mut scheme) = crate::bar::theme::status_scheme(g) else {
         return;
@@ -195,8 +209,7 @@ fn draw_items(
         painter.rect(layout.draw_start_x, 0, draw_width, bar_height, true, true);
     }
 
-    let _ = MAX_COMMAND_OFFSETS;
-    bar.clear_command_offsets();
+    command_offsets.fill(-1);
 
     let mut x = layout.draw_start_x + 1;
     let mut marker_idx = 0usize;
@@ -236,7 +249,7 @@ fn draw_items(
             }
             StatusItem::CommandOffset => {
                 if marker_idx < MAX_COMMAND_OFFSETS {
-                    bar.command_offsets[marker_idx] = x;
+                    command_offsets[marker_idx] = x;
                     marker_idx += 1;
                 }
             }
@@ -244,7 +257,7 @@ fn draw_items(
     }
 
     if marker_idx < MAX_COMMAND_OFFSETS {
-        bar.command_offsets[marker_idx] = -1;
+        command_offsets[marker_idx] = -1;
     }
 
     let _ = m;

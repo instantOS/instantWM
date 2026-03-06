@@ -243,6 +243,8 @@ pub struct DragState {
     pub hover_resize: HoverResizeDragState,
     pub bar_active: bool,
     pub resize_direction: Option<ResizeDirection>,
+    /// Last cursor index applied to the X11 root cursor.
+    pub last_x11_cursor_index: Option<usize>,
 }
 
 pub struct Globals {

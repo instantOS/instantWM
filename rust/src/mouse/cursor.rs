@@ -4,6 +4,9 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{change_window_attributes, ChangeWindowAttributesAux};
 
 fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
+    if ctx.core.g.drag.last_x11_cursor_index == Some(cursor_index) {
+        return;
+    }
     let conn = ctx.x11.conn;
     let root = ctx.core.g.x11.root;
     if let Some(ref cursor) = ctx.core.g.cfg.cursors[cursor_index] {
@@ -13,6 +16,7 @@ fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
             &ChangeWindowAttributesAux::new().cursor(cursor.cursor),
         );
         let _ = conn.flush();
+        ctx.core.g.drag.last_x11_cursor_index = Some(cursor_index);
     }
 }
 

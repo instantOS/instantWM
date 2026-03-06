@@ -57,6 +57,47 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
     use crate::bar::get_layout_symbol_width;
 
     let start_menu_size = core.g.cfg.startmenusize;
+
+    if let Some(hit) = core.bar.monitor_hit_cache(mon.id()) {
+        if local_x < start_menu_size {
+            return BarPosition::StartMenu;
+        }
+
+        for r in &hit.tag_ranges {
+            if local_x >= r.start && local_x < r.end {
+                return BarPosition::Tag(r.tag_index);
+            }
+        }
+
+        if local_x >= hit.layout_start && local_x < hit.layout_end {
+            return BarPosition::LtSymbol;
+        }
+
+        if mon.sel.is_none() && local_x < hit.shutdown_end {
+            return BarPosition::ShutDown;
+        }
+
+        if local_x > hit.status_hit_x {
+            return BarPosition::StatusText;
+        }
+
+        for r in &hit.title_ranges {
+            if local_x >= r.start && local_x < r.end {
+                let this_width = (r.end - r.start).max(0);
+                let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
+                if mon.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
+                    return BarPosition::CloseButton(r.win);
+                }
+                if mon.sel == Some(r.win) && local_x >= resize_start {
+                    return BarPosition::ResizeWidget(r.win);
+                }
+                return BarPosition::WinTitle(r.win);
+            }
+        }
+
+        return BarPosition::Root;
+    }
+
     let (tag_end, tag_idx) = (get_tag_width(core), get_tag_at_x(core, local_x));
     let blw = get_layout_symbol_width(core, mon);
 

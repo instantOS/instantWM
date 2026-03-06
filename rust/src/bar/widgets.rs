@@ -1,3 +1,4 @@
+use crate::bar::{TagHitRange, TitleHitRange};
 use crate::contexts::CoreCtx;
 use crate::types::*;
 
@@ -103,6 +104,14 @@ pub(crate) fn draw_tag_indicators(
             urg & (1 << t.tag_index) != 0,
             detail_height,
         );
+
+        if let Some(hit) = ctx.bar.monitor_hit_cache_mut(m.id()) {
+            hit.tag_ranges.push(TagHitRange {
+                start: x - width,
+                end: x,
+                tag_index: t.tag_index,
+            });
+        }
     }
     ctx.bar.tag_strip_width = x;
 
@@ -126,7 +135,13 @@ pub(crate) fn draw_layout_indicator(
     if let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) {
         painter.set_scheme(scheme);
     }
+    let start_x = x;
     x = painter.text(x, 0, w, bar_height, lpad, &ltsymbol, false, 0);
+
+    if let Some(hit) = ctx.bar.monitor_hit_cache_mut(m.id()) {
+        hit.layout_start = start_x;
+        hit.layout_end = x;
+    }
 
     x
 }
@@ -252,7 +267,7 @@ pub(crate) fn draw_close_button(
 }
 
 fn draw_window_title(
-    ctx: &CoreCtx,
+    ctx: &mut CoreCtx,
     m: &Monitor,
     c: &Client,
     x: i32,
@@ -289,7 +304,7 @@ fn draw_window_title(
 }
 
 pub(crate) fn draw_window_titles(
-    ctx: &CoreCtx,
+    ctx: &mut CoreCtx,
     m: &Monitor,
     x: i32,
     w: i32,
@@ -335,6 +350,14 @@ pub(crate) fn draw_window_titles(
             if let Some(offset) = draw_window_title(ctx, m, &c, x, this_width, bar_height, painter)
             {
                 new_activeoffset = Some(offset);
+            }
+
+            if let Some(hit) = ctx.bar.monitor_hit_cache_mut(m.id()) {
+                hit.title_ranges.push(TitleHitRange {
+                    start: x,
+                    end: x + this_width,
+                    win: c.win,
+                });
             }
             x += this_width;
         }

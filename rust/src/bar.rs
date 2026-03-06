@@ -29,6 +29,35 @@ pub struct BarState {
     pub tag_strip_width: i32,
     /// Layout symbol width
     pub layout_symbol_width: i32,
+    /// Per-monitor hit-test geometry built during bar rendering.
+    pub hit_cache: Vec<MonitorHitCache>,
+    /// Cached parsed status commands for unchanged status text.
+    pub status_cache_text: String,
+    pub status_cache_items: Vec<status::StatusItem>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TagHitRange {
+    pub start: i32,
+    pub end: i32,
+    pub tag_index: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TitleHitRange {
+    pub start: i32,
+    pub end: i32,
+    pub win: WindowId,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MonitorHitCache {
+    pub tag_ranges: Vec<TagHitRange>,
+    pub title_ranges: Vec<TitleHitRange>,
+    pub layout_start: i32,
+    pub layout_end: i32,
+    pub shutdown_end: i32,
+    pub status_hit_x: i32,
 }
 
 impl BarState {
@@ -83,6 +112,22 @@ impl BarState {
     /// Get cached width for a tag slot.
     pub fn get_tag_width(&self, slot: usize) -> i32 {
         self.tag_widths.get(slot).copied().unwrap_or(0)
+    }
+
+    pub fn begin_monitor_hit_cache(&mut self, monitor_id: usize) {
+        if self.hit_cache.len() <= monitor_id {
+            self.hit_cache
+                .resize_with(monitor_id + 1, MonitorHitCache::default);
+        }
+        self.hit_cache[monitor_id] = MonitorHitCache::default();
+    }
+
+    pub fn monitor_hit_cache_mut(&mut self, monitor_id: usize) -> Option<&mut MonitorHitCache> {
+        self.hit_cache.get_mut(monitor_id)
+    }
+
+    pub fn monitor_hit_cache(&self, monitor_id: usize) -> Option<&MonitorHitCache> {
+        self.hit_cache.get(monitor_id)
     }
 }
 

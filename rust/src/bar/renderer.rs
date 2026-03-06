@@ -14,13 +14,13 @@ pub fn draw_bar_common(
     let bar = core.bar as *mut crate::bar::BarState;
     unsafe { (*bar).recursion_enter() };
 
-    let (monitor_num, work_rect_w) = match core.g.monitor(mon_idx) {
+    let (monitor_num, work_rect_w, monitor_id) = match core.g.monitor(mon_idx) {
         Some(m) => {
             if !m.shows_bar() || core.bar.pausedraw() {
                 unsafe { (*bar).recursion_exit() };
                 return;
             }
-            (m.num, m.work_rect.w)
+            (m.num, m.work_rect.w, m.id())
         }
         None => {
             unsafe { (*bar).recursion_exit() };
@@ -53,6 +53,7 @@ pub fn draw_bar_common(
         core.g.status_text_width = status_width;
     }
     core.bar.clear_cached_widths();
+    core.bar.begin_monitor_hit_cache(monitor_id);
 
     widgets::draw_startmenu_icon(core, bar_height, painter);
 
@@ -88,6 +89,10 @@ pub fn draw_bar_common(
         x = widgets::draw_shutdown_button(core, x, bar_height, painter);
     }
 
+    if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
+        hit.shutdown_end = x;
+    }
+
     let title_end_x = if is_selmon && status_width > 0 {
         status_start_x
     } else {
@@ -95,13 +100,20 @@ pub fn draw_bar_common(
     };
     let title_width = (title_end_x - x).max(0);
 
+    if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
+        hit.status_hit_x = if is_selmon {
+            status_start_x
+        } else {
+            work_rect_w - systray_width
+        };
+    }
+
     let mut new_activeoffset = None;
     if title_width > 0 {
-        let m = core.g.monitor(mon_idx).unwrap();
-        let ctx_imm = &*core;
+        let m = core.g.monitor(mon_idx).cloned().unwrap();
         new_activeoffset = widgets::draw_window_titles(
-            ctx_imm,
-            m,
+            core,
+            &m,
             x,
             title_width,
             visible_clients,

@@ -1,15 +1,53 @@
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::drw::Drw;
 use crate::types::ColorScheme;
+use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct SchemeKey {
+    fg: [u32; 4],
+    bg: [u32; 4],
+    detail: [u32; 4],
+}
+
+impl SchemeKey {
+    fn from_scheme(s: &BarScheme) -> Self {
+        Self {
+            fg: [
+                s.fg[0].to_bits(),
+                s.fg[1].to_bits(),
+                s.fg[2].to_bits(),
+                s.fg[3].to_bits(),
+            ],
+            bg: [
+                s.bg[0].to_bits(),
+                s.bg[1].to_bits(),
+                s.bg[2].to_bits(),
+                s.bg[3].to_bits(),
+            ],
+            detail: [
+                s.detail[0].to_bits(),
+                s.detail[1].to_bits(),
+                s.detail[2].to_bits(),
+                s.detail[3].to_bits(),
+            ],
+        }
+    }
+}
 
 pub struct X11BarPainter {
     drw: Drw,
     scheme: Option<BarScheme>,
+    scheme_cache: HashMap<SchemeKey, ColorScheme>,
 }
 
 impl X11BarPainter {
     pub fn new(drw: Drw) -> Self {
-        Self { drw, scheme: None }
+        Self {
+            drw,
+            scheme: None,
+            scheme_cache: HashMap::new(),
+        }
     }
 
     pub fn map(&self, win: crate::types::WindowId, x: i16, y: i16, w: u16, h: u16) {
@@ -23,10 +61,17 @@ impl BarPainter for X11BarPainter {
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {
-        let cs = ColorScheme {
-            fg: self.drw.clr_create_rgba(scheme.fg),
-            bg: self.drw.clr_create_rgba(scheme.bg),
-            detail: self.drw.clr_create_rgba(scheme.detail),
+        let key = SchemeKey::from_scheme(&scheme);
+        let cs = if let Some(existing) = self.scheme_cache.get(&key) {
+            existing.clone()
+        } else {
+            let built = ColorScheme {
+                fg: self.drw.clr_create_rgba(scheme.fg),
+                bg: self.drw.clr_create_rgba(scheme.bg),
+                detail: self.drw.clr_create_rgba(scheme.detail),
+            };
+            self.scheme_cache.insert(key, built.clone());
+            built
         };
         self.drw.set_scheme(cs);
         self.scheme = Some(scheme);

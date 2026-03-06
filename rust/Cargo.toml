@@ -41,6 +41,8 @@ smithay = { version = "0.7", default-features = false, features = [
 ] }
 calloop = { version = "0.14" }
 cosmic-text = "0.12"
+zbus = { version = "5" }
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 
 [build-dependencies]
 

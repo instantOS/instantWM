@@ -407,10 +407,6 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     }
 
     let selmon_id = ctx.core.g.selected_monitor_id();
-    let tagwidth = get_tag_width(&ctx.core);
-
-    // Update cached tag width
-    ctx.core.g.tags.width = tagwidth;
 
     let root_x = e.root_x as i32;
     let root_y = e.root_y as i32;
@@ -454,6 +450,9 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         }
         return;
     };
+
+    // Cache tag-strip width only when we are actually in the bar hot path.
+    ctx.core.g.tags.width = get_tag_width(&ctx.core);
 
     // Compute the bar position from the cursor's monitor-local x coordinate,
     // then convert to a gesture for hover highlighting.

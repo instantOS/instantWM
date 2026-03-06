@@ -110,6 +110,8 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     ctx.request_bar_update(Some(selmon_id));
 }
 
+//TODO: could this be named better?
+//TODO: what does this do?
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
         let selmon_id = ctx.g().selected_monitor_id();

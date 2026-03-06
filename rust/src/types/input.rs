@@ -103,6 +103,8 @@ pub enum BarPosition {
     ResizeWidget(WindowId),
     /// The status-text / command strip on the right side of the bar.
     StatusText,
+    /// A Wayland StatusNotifier tray item by index in the current tray model.
+    SystrayItem(usize),
     /// A client window (outside the bar entirely).
     ClientWin,
     /// The sidebar activation zone.
