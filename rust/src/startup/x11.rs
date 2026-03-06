@@ -69,7 +69,7 @@ fn wm_init(wm: &mut Wm) {
             return;
         };
         let conn = &x11.conn;
-        init_atoms(&mut wm.g, conn);
+        init_atoms(&mut wm.x11_runtime, conn);
     }
     init_drw_and_schemes(wm);
 
@@ -115,7 +115,7 @@ fn setup_signal_handlers() {
     }
 }
 
-fn init_atoms(g: &mut crate::globals::Globals, conn: &RustConnection) {
+fn init_atoms(x11_runtime: &mut crate::globals::X11RuntimeConfig, conn: &RustConnection) {
     let _utf8string = intern_atom(conn, "UTF8_STRING", false);
 
     let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
@@ -145,13 +145,13 @@ fn init_atoms(g: &mut crate::globals::Globals, conn: &RustConnection) {
     let xembed = intern_atom(conn, "_XEMBED", false);
     let xembed_info = intern_atom(conn, "_XEMBED_INFO", false);
 
-    g.x11.wmatom = crate::types::WmAtoms {
+    x11_runtime.wmatom = crate::types::WmAtoms {
         protocols: wm_protocols,
         delete: wm_delete,
         state: wm_state,
         take_focus: wm_take_focus,
     };
-    g.x11.netatom = crate::types::NetAtoms {
+    x11_runtime.netatom = crate::types::NetAtoms {
         active_window: net_active_window,
         supported: net_supported,
         system_tray: net_system_tray,
@@ -167,8 +167,8 @@ fn init_atoms(g: &mut crate::globals::Globals, conn: &RustConnection) {
         client_list: net_client_list,
         client_info: net_client_info,
     };
-    g.x11.motifatom = motifatom;
-    g.x11.xatom = crate::types::XAtoms {
+    x11_runtime.motifatom = motifatom;
+    x11_runtime.xatom = crate::types::XAtoms {
         manager: xembed_manager,
         xembed,
         xembed_info,
@@ -210,8 +210,8 @@ fn init_drw_and_schemes(wm: &mut Wm) {
     init_cursors(wm, &mut drw);
     init_schemes(wm, &mut drw);
 
-    wm.g.x11.xlibdisplay = XlibDisplay(drw.display());
-    wm.g.x11.drw = Some(drw);
+    wm.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
+    wm.x11_runtime.drw = Some(drw);
     wm.g.cfg.bar_height = bar_height as i32;
     wm.g.cfg.horizontal_padding = font_height as i32;
 }

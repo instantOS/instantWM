@@ -329,28 +329,26 @@ pub fn handle_pointer_button<B: InputBackend>(
 
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
             let clean_state = {
-                let ctx = wm.ctx();
                 crate::util::clean_mask(
                     modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    ctx.g.x11.numlockmask,
+                    wm.x11_runtime.numlockmask,
                 )
             };
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
         } else {
             let maybe_close = {
-                let ctx = wm.ctx();
-                let mon = ctx.g.selected_monitor();
+                let mon = wm.g.selected_monitor();
                 let local_x = root_x - mon.work_rect.x;
-                ctx.g.wayland_systray_menu.is_some()
+                wm.wayland_systray_menu.is_some()
                     && !crate::wayland_systray::hit_test_wayland_systray_menu_item(
-                        ctx.core(),
+                        &mut wm.ctx(),
                         &mon,
                         local_x,
                     )
                     .is_some()
             };
             if maybe_close {
-                wm.g.wayland_systray_menu = None;
+                wm.wayland_systray_menu = None;
                 wm.bar.mark_dirty();
             }
         }
@@ -433,10 +431,9 @@ pub fn handle_pointer_axis<B: InputBackend>(
         let root_y = pointer_location.y.round() as i32;
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
             let clean_state = {
-                let ctx = wm.ctx();
                 crate::util::clean_mask(
                     modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    ctx.g.x11.numlockmask,
+                    wm.x11_runtime.numlockmask,
                 )
             };
             dispatch_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);

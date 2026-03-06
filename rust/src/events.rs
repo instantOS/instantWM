@@ -54,12 +54,12 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.core.g.selected_monitor_id();
     let focusfollowsmouse = ctx.core.g.focusfollowsmouse;
 
-    if let Some(clicked_mon) =
-        ctx.core
-            .g
-            .monitors
-            .win_to_mon(event_win, ctx.x11_runtime().root, &*ctx.core.g.clients, None)
-    {
+    if let Some(clicked_mon) = ctx.core.g.monitors.win_to_mon(
+        event_win,
+        ctx.x11_runtime().root,
+        &*ctx.core.g.clients,
+        None,
+    ) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.core.g.set_selected_monitor(clicked_mon);
             selmon_id = clicked_mon;
@@ -695,9 +695,9 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
     let fullscreen_action = data[0];
 
     if fullscreen_action == 1 {
-        set_fullscreen_x11(&mut ctx.core, &ctx.x11, win, true);
+        set_fullscreen_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win, true);
     } else if fullscreen_action == 0 {
-        set_fullscreen_x11(&mut ctx.core, &ctx.x11, win, false);
+        set_fullscreen_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win, false);
     };
 }
 

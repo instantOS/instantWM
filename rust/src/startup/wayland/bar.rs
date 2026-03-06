@@ -130,7 +130,10 @@ fn dispatch_wayland_bar_button(
     root_y: i32,
     clean_state: u32,
 ) {
-    let numlockmask = ctx.g.x11.numlockmask;
+    let numlockmask = match ctx {
+        crate::contexts::WmCtx::X11(x11) => x11.x11_runtime().numlockmask,
+        crate::contexts::WmCtx::Wayland(_) => 0, // Wayland-only mode, numlockmask not used
+    };
     let buttons = ctx.g.cfg.buttons.clone();
     for b in &buttons {
         if !b.matches(pos) || b.button != btn {

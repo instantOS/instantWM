@@ -14,8 +14,8 @@ use crate::bar::BarState;
 use crate::bar::{draw_bar, draw_bars_x11};
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
-use crate::types::{Client, Rect, WindowId, Systray, WaylandSystray, WaylandSystrayMenu};
 use crate::globals::X11RuntimeConfig;
+use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
     pub g: &'a mut Globals,

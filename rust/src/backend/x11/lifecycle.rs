@@ -145,7 +145,7 @@ fn insert_client_and_apply_rules(
     w: WindowId,
     mut c: Client,
 ) {
-    c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg, w)
+    c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
         == crate::client::constants::WM_STATE_ICONIC;
     core.g.clients.insert(w, c);
     apply_rules(core, x11, w);
@@ -345,7 +345,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
             unfocus_win_x11(
                 &mut core,
                 &ctx_x11.x11,
-                ctx_x11.x11_cfg,
+                ctx_x11.x11_runtime,
                 selected_window,
                 false,
             );
@@ -520,7 +520,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         let tmp = ctx.reborrow();
         focus_soft(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(&mut ctx.core, &ctx.x11, ctx.x11_runtime());
+    update_client_list(&mut ctx.core, &ctx.x11);
 
     if let Some(mid) = monitor_id {
         let tmp = ctx.reborrow();

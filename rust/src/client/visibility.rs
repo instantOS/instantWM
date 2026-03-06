@@ -12,12 +12,12 @@
 
 use crate::animation::animate_client_x11;
 use crate::backend::x11::X11BackendRef;
+use crate::backend::BackendOps;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize_x11;
 use crate::client::state::set_client_state;
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
-// focus() is used via focus_soft() in this module
-use crate::backend::BackendOps;
+use crate::globals::X11RuntimeConfig;
 use crate::layouts::arrange;
 use crate::types::{Monitor, Rect, WindowId};
 use x11rb::connection::Connection;
@@ -32,11 +32,14 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> i32 {
+pub fn get_state_x11(
+    _core: &CoreCtx,
+    x11: &X11BackendRef,
+    wm_state_atom: u32,
+    win: WindowId,
+) -> i32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-
-    let wm_state_atom = core.g.x11.wmatom.state;
     let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
         return WM_STATE_NORMAL;
     };
@@ -187,8 +190,15 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
         c.is_hidden = false;
     }
 
-    if let WmCtx::X11(ctx_x11) = ctx {
-        show_x11(&mut ctx_x11.core, &ctx_x11.x11, win);
+    if let WmCtx::X11(ref mut ctx_x11) = ctx {
+        // Clone x11_runtime to avoid borrow conflict
+        let x11_cfg = ctx_x11.x11_runtime().clone();
+        show_x11(
+            &mut ctx_x11.core,
+            &ctx_x11.x11,
+            &x11_cfg,
+            win,
+        );
     }
     // On Wayland, map_window is not called here directly. show_hide_wayland
     // (called inside arrange below) checks !is_hidden and calls map_window
@@ -211,7 +221,11 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     }
 
     match ctx {
-        WmCtx::X11(ctx_x11) => hide_x11(&mut ctx_x11.core, &ctx_x11.x11, win),
+        WmCtx::X11(ref mut ctx_x11) => {
+            // Clone x11_runtime to avoid borrow conflict
+            let x11_cfg = ctx_x11.x11_runtime().clone();
+            hide_x11(&mut ctx_x11.core, &ctx_x11.x11, &x11_cfg, win)
+        }
         WmCtx::Wayland(_) => {
             ctx.backend().unmap_window(win);
             ctx.backend().flush();
@@ -242,7 +256,12 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// Called by [`show`] after it has cleared `is_hidden`. Responsible only for
 /// the X11-specific work: mapping the window, WM_STATE, slide-in animation.
 /// Guards, focus, and arrange are handled by the caller.
-fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+fn show_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_cfg: &X11RuntimeConfig,
+    win: WindowId,
+) {
     let Rect { x, y, w, h } = match core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,
@@ -252,7 +271,7 @@ fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let _ = x11.conn.map_window(x11_win);
     let _ = x11.conn.flush();
 
-    set_client_state(core, x11, win, WM_STATE_NORMAL);
+    set_client_state(core, x11, x11_cfg, win, WM_STATE_NORMAL);
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
@@ -265,7 +284,7 @@ fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let _ = x11.conn.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client_x11(core, x11, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client_x11(core, x11, x11_cfg, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -278,7 +297,7 @@ fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 /// X11-specific work: slide-down animation, server grab, unmap, WM_STATE,
 /// and geometry preservation. Guards, focus, and arrange are handled by the
 /// caller.
-fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, win: WindowId) {
     let Rect { x, y, w, h } = match core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,
@@ -291,6 +310,7 @@ fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         animate_client_x11(
             core,
             x11,
+            x11_cfg,
             win,
             &Rect {
                 x,
@@ -303,7 +323,7 @@ fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         );
     }
 
-    let root = core.g.x11.root;
+    let root = x11_cfg.root;
     let x11_win: Window = win.into();
 
     // Phase 1: grab server and suppress events
@@ -313,7 +333,7 @@ fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     // Phase 2: unmap and update state
     let _ = x11.conn.unmap_window(x11_win);
     let _ = x11.conn.flush();
-    set_client_state(core, x11, win, WM_STATE_ICONIC);
+    set_client_state(core, x11, x11_cfg, win, WM_STATE_ICONIC);
 
     // Phase 3: restore events and ungrab
     restore_event_masks(x11.conn, root, x11_win);

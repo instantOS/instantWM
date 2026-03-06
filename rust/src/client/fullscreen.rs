@@ -25,7 +25,8 @@ use crate::animation::animate_client_x11;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendRef;
 use crate::client::geometry::resize_client_x11;
-use crate::contexts::{CoreCtx, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::globals::X11RuntimeConfig;
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -41,13 +42,14 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 pub fn set_fullscreen_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
     win: WindowId,
     fullscreen: bool,
 ) {
     let x11_win: Window = win.into();
 
-    let net_wm_fullscreen = core.g.x11.netatom.wm_fullscreen;
-    let net_wm_state = core.g.x11.netatom.wm_state;
+    let net_wm_fullscreen = x11_runtime.netatom.wm_fullscreen;
+    let net_wm_state = x11_runtime.netatom.wm_state;
 
     // Snapshot what we need before taking a mutable borrow.
     let client_snapshot = core.g.clients.get(&win).map(|c| {
@@ -98,7 +100,7 @@ pub fn set_fullscreen_x11(
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
             if !is_floating {
-                animate_client_x11(core, x11, win, &mon_rect, 10, 0);
+                animate_client_x11(core, x11, x11_runtime, win, &mon_rect, 10, 0);
             }
 
             // Position and raise the window.
@@ -146,10 +148,12 @@ pub fn set_fullscreen_x11(
             let _ = x11.conn.flush();
 
             if let Some(mid) = monitor_id {
-                let mut tmp = crate::contexts::WmCtx::X11(WmCtxX11 {
+                let mut tmp = WmCtx::X11(WmCtxX11 {
                     core: core.reborrow(),
                     backend: BackendRef::from_x11(x11.conn, x11.screen_num),
                     x11: X11BackendRef::new(x11.conn, x11.screen_num),
+                    x11_runtime,
+                    systray: None,
                 });
                 arrange(&mut tmp, Some(mid));
             }
