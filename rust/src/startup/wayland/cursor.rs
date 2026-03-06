@@ -32,9 +32,8 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::backend::renderer::ImportMem;
 use smithay::input::pointer::{CursorIcon, CursorImageStatus};
-use smithay::utils::{Physical, Point, Scale, Transform};
+use smithay::utils::{Physical, Point, Transform};
 
 use xcursor::parser::{parse_xcursor, Image};
 use xcursor::CursorTheme;
@@ -80,34 +79,61 @@ impl CursorManager {
     /// cannot be found at all we synthesise a plain white 8×8 square so the
     /// compositor can still start.
     pub fn new(renderer: &mut GlesRenderer, theme: &str, size: u32) -> Self {
-        let load = |names: &[&str]| -> Option<CursorFrame> {
-            for name in names {
-                if let Some(frame) = load_cursor_frame(renderer, theme, name, size) {
-                    return Some(frame);
-                }
-                // Fallback: try the generic "default" theme.
-                if let Some(frame) = load_cursor_frame(renderer, "default", name, size) {
-                    return Some(frame);
-                }
-            }
-            None
-        };
-
         // The arrow cursor is mandatory; synthesise one if nothing is found.
-        let default = load(&["left_ptr", "default", "arrow"])
+        let default = load_cursor_names(renderer, theme, size, &["left_ptr", "default", "arrow"])
             .unwrap_or_else(|| synthesise_fallback_cursor(renderer));
 
         Self {
             default,
-            move_cursor: load(&["grabbing", "fleur", "move"]),
-            resize_nw: load(&["nw-resize", "size_fdiag", "bd_double_arrow"]),
-            resize_ne: load(&["ne-resize", "size_bdiag", "fd_double_arrow"]),
-            resize_sw: load(&["sw-resize", "size_bdiag", "fd_double_arrow"]),
-            resize_se: load(&["se-resize", "size_fdiag", "bd_double_arrow"]),
-            resize_n: load(&["n-resize", "size_ver", "v_double_arrow"]),
-            resize_s: load(&["s-resize", "size_ver", "v_double_arrow"]),
-            resize_e: load(&["e-resize", "size_hor", "h_double_arrow"]),
-            resize_w: load(&["w-resize", "size_hor", "h_double_arrow"]),
+            move_cursor: load_cursor_names(renderer, theme, size, &["grabbing", "fleur", "move"]),
+            resize_nw: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["nw-resize", "size_fdiag", "bd_double_arrow"],
+            ),
+            resize_ne: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["ne-resize", "size_bdiag", "fd_double_arrow"],
+            ),
+            resize_sw: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["sw-resize", "size_bdiag", "fd_double_arrow"],
+            ),
+            resize_se: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["se-resize", "size_fdiag", "bd_double_arrow"],
+            ),
+            resize_n: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["n-resize", "size_ver", "v_double_arrow"],
+            ),
+            resize_s: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["s-resize", "size_ver", "v_double_arrow"],
+            ),
+            resize_e: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["e-resize", "size_hor", "h_double_arrow"],
+            ),
+            resize_w: load_cursor_names(
+                renderer,
+                theme,
+                size,
+                &["w-resize", "size_hor", "h_double_arrow"],
+            ),
         }
     }
 
@@ -177,6 +203,27 @@ impl CursorManager {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/// Try each name in `names` against `theme` (and then the `"default"` theme
+/// as a fallback) and return the first one that loads successfully.
+fn load_cursor_names(
+    renderer: &mut GlesRenderer,
+    theme: &str,
+    size: u32,
+    names: &[&str],
+) -> Option<CursorFrame> {
+    for name in names {
+        if let Some(frame) = load_cursor_frame(renderer, theme, name, size) {
+            return Some(frame);
+        }
+        if theme != "default" {
+            if let Some(frame) = load_cursor_frame(renderer, "default", name, size) {
+                return Some(frame);
+            }
+        }
+    }
+    None
+}
 
 /// Try to load a cursor by name from the given theme at the given nominal
 /// size.  Returns the frame closest to `size` if multiple sizes are present.

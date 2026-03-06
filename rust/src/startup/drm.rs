@@ -38,8 +38,10 @@ use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent, GbmBufferedSurface};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
-use smithay::backend::input::{InputEvent, PointerMotionEvent};
-use smithay::backend::libinput::{LibinputInputBackend, LibinputSessionInterface};
+use smithay::backend::input::InputEvent;
+use smithay::backend::libinput::{
+    LibinputInputBackend, LibinputSessionInterface, PointerScrollAxis,
+};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -57,7 +59,7 @@ use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_
 use smithay::desktop::PopupManager;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
-use smithay::reexports::input::{Libinput, LibinputInterface};
+use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent, Libinput};
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::{DeviceFd, Physical, Point, Rectangle};
 use smithay::wayland::seat::WaylandFocus;
@@ -251,7 +253,7 @@ pub fn run() -> ! {
 
     let mut output_surfaces: Vec<OutputSurfaceEntry> = Vec::new();
     let mut output_x_offset: i32 = 0;
-    let mut mon_idx_counter: usize = 0;
+    let mut _mon_idx_counter: usize = 0;
 
     {
         use drm::control::{Device as ControlDevice, ModeTypeFlags};
@@ -350,7 +352,7 @@ pub fn run() -> ! {
                 height: mode_h,
             });
             output_x_offset += mode_w;
-            mon_idx_counter += 1;
+            _mon_idx_counter += 1;
         }
     }
 
@@ -489,18 +491,24 @@ pub fn run() -> ! {
 
             // ── Poll libinput ─────────────────────────────────────────
             // Dispatch all pending input events before running layout/render.
+            // We hold the raw Libinput context and map each raw event to the
+            // smithay InputEvent<LibinputInputBackend> variant manually,
+            // mirroring what LibinputInputBackend::process_events does
+            // internally.
             libinput_context.dispatch().ok();
-            while let Some(event) = libinput_context.next() {
-                let dirty = dispatch_libinput_event(
-                    InputEvent::from(event),
-                    state,
-                    &mut wm,
-                    &keyboard_handle,
-                    &pointer_handle,
-                    &shared,
-                );
-                if dirty {
-                    shared.lock().unwrap().mark_all_dirty();
+            for raw_event in libinput_context.by_ref() {
+                if let Some(event) = raw_event_to_input_event(raw_event) {
+                    let dirty = dispatch_libinput_event(
+                        event,
+                        state,
+                        &mut wm,
+                        &keyboard_handle,
+                        &pointer_handle,
+                        &shared,
+                    );
+                    if dirty {
+                        shared.lock().unwrap().mark_all_dirty();
+                    }
                 }
             }
 
@@ -513,9 +521,8 @@ pub fn run() -> ! {
                 }
             }
             if let Some(server) = ipc_server.as_mut() {
-                if server.process_pending(&mut wm) {
-                    shared.lock().unwrap().mark_all_dirty();
-                }
+                server.process_pending(&mut wm);
+                shared.lock().unwrap().mark_all_dirty();
             }
             state.sync_space_from_globals();
             state.tick_window_animations();
@@ -572,6 +579,45 @@ pub fn run() -> ! {
 // ═══════════════════════════════════════════════════════════════════════════
 // Input dispatch
 // ═══════════════════════════════════════════════════════════════════════════
+
+/// Map a raw `libinput::Event` to the corresponding smithay
+/// `InputEvent<LibinputInputBackend>`.
+///
+/// This mirrors the match block inside `LibinputInputBackend::process_events`.
+/// We replicate it here so that we can poll the raw `Libinput` context
+/// directly in the main loop without going through calloop.
+fn raw_event_to_input_event(event: LibinputRawEvent) -> Option<InputEvent<LibinputInputBackend>> {
+    use event::{keyboard::KeyboardEvent, pointer::PointerEvent, DeviceEvent};
+    Some(match event {
+        LibinputRawEvent::Keyboard(KeyboardEvent::Key(e)) => InputEvent::Keyboard { event: e },
+        LibinputRawEvent::Pointer(PointerEvent::Motion(e)) => {
+            InputEvent::PointerMotion { event: e }
+        }
+        LibinputRawEvent::Pointer(PointerEvent::MotionAbsolute(e)) => {
+            InputEvent::PointerMotionAbsolute { event: e }
+        }
+        LibinputRawEvent::Pointer(PointerEvent::Button(e)) => {
+            InputEvent::PointerButton { event: e }
+        }
+        LibinputRawEvent::Pointer(PointerEvent::ScrollWheel(e)) => InputEvent::PointerAxis {
+            event: PointerScrollAxis::Wheel(e),
+        },
+        LibinputRawEvent::Pointer(PointerEvent::ScrollFinger(e)) => InputEvent::PointerAxis {
+            event: PointerScrollAxis::Finger(e),
+        },
+        LibinputRawEvent::Pointer(PointerEvent::ScrollContinuous(e)) => InputEvent::PointerAxis {
+            event: PointerScrollAxis::Continuous(e),
+        },
+        LibinputRawEvent::Device(DeviceEvent::Added(e)) => InputEvent::DeviceAdded {
+            device: EventTrait::device(&e),
+        },
+        LibinputRawEvent::Device(DeviceEvent::Removed(e)) => InputEvent::DeviceRemoved {
+            device: EventTrait::device(&e),
+        },
+        // Touch, gesture, tablet tool, switch events — not yet handled.
+        _ => return None,
+    })
+}
 
 /// Handle one libinput `InputEvent`, calling the appropriate generic handler
 /// from `startup::wayland::input`.

@@ -650,7 +650,7 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     };
     let (new_y, new_h) = if affects_top {
         (root_y, (orig_bottom - root_y).max(1))
-    } else if affects_top == false && affects_bottom {
+    } else if !affects_top && affects_bottom {
         (orig_top, (root_y - orig_top + 1).max(1))
     } else {
         (orig_top, drag.win_start_geo.h.max(1))
