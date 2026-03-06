@@ -64,6 +64,7 @@ pub fn get_state_x11(core: &CoreCtx, x11: &X11Ctx, win: WindowId) -> i32 {
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
 pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11Ctx) {
+    // First pass: collect visibility data to avoid borrow issues
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
     for mon in core.g.monitors_iter_all() {
@@ -90,6 +91,7 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11Ctx) {
         }
     }
 
+    // Second pass: apply visibility changes
     for (win, geo, is_visible, is_floating, is_fullscreen, is_fake_fullscreen) in operations {
         if is_visible {
             let Rect { x, y, w, h } = geo;
@@ -136,6 +138,7 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11Ctx) {
 }
 
 pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
+    // First pass: collect visibility data
     let mut operations: Vec<(WindowId, bool)> = Vec::new();
 
     for mon in core.g.monitors_iter_all() {
@@ -149,6 +152,7 @@ pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
         }
     }
 
+    // Second pass: apply visibility changes
     for (win, is_visible) in operations {
         if is_visible {
             wayland.backend.map_window(win);

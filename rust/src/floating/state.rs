@@ -10,11 +10,7 @@ use x11rb::connection::Connection;
 
 /// Common helper for restoring border width when transitioning to floating.
 /// Returns the restored border width value.
-fn restore_client_border(
-    core: &mut CoreCtx,
-    backend: &impl BackendOps,
-    win: WindowId,
-) -> i32 {
+fn restore_client_border(core: &mut CoreCtx, backend: &impl BackendOps, win: WindowId) -> i32 {
     restore_border_width(core, win);
     let restored_bw = core
         .g
@@ -27,11 +23,7 @@ fn restore_client_border(
 }
 
 /// Apply borderscheme for X11 floating windows (X11 only).
-fn apply_floating_borderscheme(
-    core: &CoreCtx,
-    x11: &X11Ctx,
-    win: WindowId,
-) {
+fn apply_floating_borderscheme(core: &CoreCtx, x11: &X11Ctx, win: WindowId) {
     if let Some(ref scheme) = core.g.cfg.borderscheme {
         let pixel = scheme.float_focus.bg.color.pixel;
         let _ = x11rb::protocol::xproto::change_window_attributes(
@@ -202,15 +194,9 @@ pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
 }
 
 pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating, is_fixed) = match ctx {
-        WmCtx::X11(x11) => match x11.core.g.clients.get(&win) {
-            Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
-            None => return,
-        },
-        WmCtx::Wayland(wl) => match wl.core.g.clients.get(&win) {
-            Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
-            None => return,
-        },
+    let (is_true_fullscreen, is_floating, is_fixed) = match ctx.client(win) {
+        Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
+        None => return,
     };
 
     if is_true_fullscreen {
