@@ -1,6 +1,7 @@
+use crate::bar::{MonitorHitCache, TagHitRange, TitleHitRange};
 use crate::contexts::CoreCtx;
 use crate::globals::Globals;
-use crate::tags::{get_tag_at_x, get_tag_width};
+use crate::tags::get_tag_width;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -55,97 +56,41 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
 /// Compute which logical bar region the cursor's **monitor-local** x coordinate
 /// falls in for the given monitor.
 pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
-    use crate::bar::get_layout_symbol_width;
-
-    let start_menu_size = core.g.cfg.startmenusize;
     let is_selmon = core.g.selected_monitor().num == mon.num;
-    let x11_present = core.g.systray.is_some();
 
-    if let Some(hit) = core.bar.monitor_hit_cache(mon.id()) {
-        if local_x < start_menu_size {
-            return BarPosition::StartMenu;
+    // Prefer the pre-built hit cache populated during rendering; fall back to
+    // computing a temporary one from the same utility functions.
+    let owned;
+    let hit: &MonitorHitCache = match core.bar.monitor_hit_cache(mon.id()) {
+        Some(h) => h,
+        None => {
+            owned = build_fallback_hit_cache(mon, core);
+            &owned
         }
+    };
 
-        if core.g.cfg.showsystray && is_selmon && !x11_present {
-            if let Some(menu_idx) =
-                crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
-            {
-                return BarPosition::SystrayMenuItem(menu_idx);
-            }
-        }
+    hit_test(hit, mon, core, is_selmon, local_x)
+}
 
-        if core.g.cfg.showsystray && is_selmon && !x11_present {
-            if let Some(idx) =
-                crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x)
-            {
-                return BarPosition::SystrayItem(idx);
-            }
-        }
-
-        for r in &hit.tag_ranges {
-            if local_x >= r.start && local_x < r.end {
-                return BarPosition::Tag(r.tag_index);
-            }
-        }
-
-        if local_x >= hit.layout_start && local_x < hit.layout_end {
-            return BarPosition::LtSymbol;
-        }
-
-        if mon.sel.is_none() && local_x < hit.shutdown_end {
-            return BarPosition::ShutDown;
-        }
-
-        if core.g.status_text_width > 0 && local_x > hit.status_hit_x {
-            return BarPosition::StatusText;
-        }
-
-        for r in &hit.title_ranges {
-            if local_x >= r.start && local_x < r.end {
-                let this_width = (r.end - r.start).max(0);
-                let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
-                if mon.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
-                    return BarPosition::CloseButton(r.win);
-                }
-                if mon.sel == Some(r.win) && local_x >= resize_start {
-                    return BarPosition::ResizeWidget(r.win);
-                }
-                return BarPosition::WinTitle(r.win);
-            }
-        }
-
-        return BarPosition::Root;
-    }
-
-    let (tag_end, tag_idx) = (get_tag_width(core), get_tag_at_x(core, local_x));
-    let blw = get_layout_symbol_width(core, mon);
-
-    // ── Start menu ────────────────────────────────────────────────────────
-    if local_x < start_menu_size {
+/// Walk a `MonitorHitCache` to resolve a local-x coordinate into a `BarPosition`.
+/// This is the single source of truth for hit-testing; both the cached and the
+/// fallback paths go through here.
+fn hit_test(
+    hit: &MonitorHitCache,
+    mon: &Monitor,
+    core: &CoreCtx,
+    is_selmon: bool,
+    local_x: i32,
+) -> BarPosition {
+    if local_x < core.g.cfg.startmenusize {
         return BarPosition::StartMenu;
     }
 
-    // ── Tag buttons ───────────────────────────────────────────────────────
-    if tag_idx >= 0 {
-        return BarPosition::Tag(tag_idx as usize);
-    }
-
-    // ── Layout symbol ─────────────────────────────────────────────────────
-    if local_x < tag_end + blw {
-        return BarPosition::LtSymbol;
-    }
-
-    // ── Shutdown button (only when no client is selected) ─────────────────
-    let bar_height = core.g.cfg.bar_height;
-    if mon.sel.is_none() && local_x < tag_end + blw + bar_height {
-        return BarPosition::ShutDown;
-    }
-
-    if core.g.cfg.showsystray && is_selmon && !x11_present {
-        if let Some(menu_idx) =
+    if core.g.cfg.showsystray && is_selmon && !hit.x11_bar {
+        if let Some(idx) =
             crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
         {
-            return BarPosition::SystrayMenuItem(menu_idx);
+            return BarPosition::SystrayMenuItem(idx);
         }
         if let Some(idx) = crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x)
         {
@@ -153,63 +98,122 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
         }
     }
 
+    for r in &hit.tag_ranges {
+        if local_x >= r.start && local_x < r.end {
+            return BarPosition::Tag(r.tag_index);
+        }
+    }
+
+    if local_x >= hit.layout_start && local_x < hit.layout_end {
+        return BarPosition::LtSymbol;
+    }
+
+    if mon.sel.is_none() && local_x < hit.shutdown_end {
+        return BarPosition::ShutDown;
+    }
+
+    if core.g.status_text_width > 0 && local_x > hit.status_hit_x {
+        return BarPosition::StatusText;
+    }
+
+    for r in &hit.title_ranges {
+        if local_x >= r.start && local_x < r.end {
+            let this_width = (r.end - r.start).max(0);
+            let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
+            if mon.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
+                return BarPosition::CloseButton(r.win);
+            }
+            if mon.sel == Some(r.win) && local_x >= resize_start {
+                return BarPosition::ResizeWidget(r.win);
+            }
+            return BarPosition::WinTitle(r.win);
+        }
+    }
+
+    BarPosition::Root
+}
+
+/// Build a `MonitorHitCache` from scratch using the same utility functions that
+/// the renderer uses, for when the render-time cache is not yet available.
+fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
+    use crate::bar::get_layout_symbol_width;
+
+    let is_selmon = core.g.selected_monitor().num == mon.num;
+    let tag_end = get_tag_width(core);
+    let blw = get_layout_symbol_width(core, mon);
+    let bar_height = core.g.cfg.bar_height;
+
+    // ── Tag ranges ────────────────────────────────────────────────────────
+    let mut tag_ranges: Vec<TagHitRange> = Vec::new();
+    let mut acc = core.g.cfg.startmenusize;
+    for (slot, &w) in core.bar.tag_widths.iter().enumerate() {
+        tag_ranges.push(TagHitRange {
+            start: acc,
+            end: acc + w,
+            tag_index: slot,
+        });
+        acc += w;
+    }
+
+    // ── Layout symbol ─────────────────────────────────────────────────────
+    let layout_start = tag_end;
+    let layout_end = tag_end + blw;
+
+    // ── Shutdown button ───────────────────────────────────────────────────
+    let shutdown_end = layout_end + bar_height;
+
     // ── Status text ───────────────────────────────────────────────────────
     let systray_w = if core.g.cfg.showsystray && is_selmon {
-        crate::systray::get_systray_width_for_bar(core, x11_present)
+        crate::systray::get_systray_width_x11_for_bar(core)
+            .max(crate::systray::get_systray_width_wayland_for_bar(core))
     } else {
         0
     };
     let status_hit_x =
         mon.work_rect.w - systray_w - core.g.status_text_width + core.g.cfg.horizontal_padding - 2;
-    if core.g.status_text_width > 0 && local_x > status_hit_x {
-        return BarPosition::StatusText;
-    }
 
-    // ── Window title cells ────────────────────────────────────────────────
-    let mut visible_clients: Vec<WindowId> = Vec::new();
+    // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
-    for (c_win, c) in mon.iter_clients(core.g.clients.map()) {
-        if c.is_visible_on_tags(selected) {
-            visible_clients.push(c_win);
-        }
-    }
+    let visible_clients: Vec<WindowId> = mon
+        .iter_clients(core.g.clients.map())
+        .filter_map(|(win, c)| c.is_visible_on_tags(selected).then_some(win))
+        .collect();
 
+    let mut title_ranges: Vec<TitleHitRange> = Vec::new();
     if !visible_clients.is_empty() {
-        let title_area_start = tag_end + blw;
+        let title_area_start = layout_end;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
             (mon.work_rect.w - title_area_start).max(0)
         };
-
         let n = visible_clients.len() as i32;
         let each_width = total_width / n;
         let mut remainder = total_width % n;
-
         let mut cell_start = title_area_start;
-        for c_win in visible_clients {
+        for win in visible_clients {
             let this_width = if remainder > 0 {
                 remainder -= 1;
                 each_width + 1
             } else {
                 each_width
             };
-            let cell_end = cell_start + this_width;
-
-            if local_x < cell_end {
-                let resize_start = cell_start + this_width - RESIZE_WIDGET_WIDTH;
-                if mon.sel == Some(c_win) && local_x < cell_start + CLOSE_BUTTON_HIT_WIDTH {
-                    return BarPosition::CloseButton(c_win);
-                }
-                if mon.sel == Some(c_win) && local_x >= resize_start {
-                    return BarPosition::ResizeWidget(c_win);
-                }
-                return BarPosition::WinTitle(c_win);
-            }
-
-            cell_start = cell_end;
+            title_ranges.push(TitleHitRange {
+                start: cell_start,
+                end: cell_start + this_width,
+                win,
+            });
+            cell_start += this_width;
         }
     }
 
-    BarPosition::Root
+    MonitorHitCache {
+        tag_ranges,
+        title_ranges,
+        layout_start,
+        layout_end,
+        shutdown_end,
+        status_hit_x,
+        x11_bar: false,
+    }
 }
