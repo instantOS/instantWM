@@ -62,6 +62,24 @@ pub(super) fn dispatch_wayland_bar_click(
     let Some(button) = MouseButton::from_u8(button_code) else {
         return;
     };
+
+    if matches!(pos, BarPosition::SystrayItem(_)) {
+        if let Some(runtime) = wm.wayland_systray.as_ref() {
+            let BarPosition::SystrayItem(idx) = pos else {
+                return;
+            };
+            let target =
+                wm.g.wayland_systray
+                    .items
+                    .get(idx)
+                    .map(|it| (it.service.clone(), it.path.clone()));
+            if let Some((service, path)) = target {
+                runtime.dispatch_click_item(service, path, button, root_x, root_y);
+            }
+        }
+        return;
+    }
+
     let mut ctx = wm.ctx();
     dispatch_wayland_bar_button(&mut ctx, pos, button, root_x, root_y, clean_state);
 }

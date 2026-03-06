@@ -625,7 +625,7 @@ fn bar_render_key(core: &crate::contexts::CoreCtx) -> u64 {
             item.path.hash(&mut hasher);
             item.icon_w.hash(&mut hasher);
             item.icon_h.hash(&mut hasher);
-            item.icon_rgba.len().hash(&mut hasher);
+            item.icon_rgba.hash(&mut hasher);
         }
     }
 

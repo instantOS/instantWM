@@ -46,6 +46,7 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
         BarPosition::Tag(idx) => Gesture::Tag(idx),
         BarPosition::CloseButton(_) => Gesture::CloseButton,
         BarPosition::WinTitle(w) => Gesture::WinTitle(w),
+        BarPosition::SystrayItem(_) => Gesture::None,
         _ => Gesture::None,
     }
 }
@@ -121,6 +122,15 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
         return BarPosition::ShutDown;
     }
 
+    let is_selmon = core.g.selected_monitor().num == mon.num;
+    let x11_present = !core.g.x11.xlibdisplay.0.is_null();
+    if core.g.cfg.showsystray && is_selmon && !x11_present {
+        if let Some(idx) = crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x)
+        {
+            return BarPosition::SystrayItem(idx);
+        }
+    }
+
     // ── Status text ───────────────────────────────────────────────────────
     let systray_w = if core.g.cfg.showsystray && is_selmon {
         crate::systray::get_systray_width_for_bar(core, x11_present)
@@ -181,11 +191,3 @@ pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosi
 
     BarPosition::Root
 }
-    let is_selmon = core.g.selected_monitor().num == mon.num;
-    let x11_present = !core.g.x11.xlibdisplay.0.is_null();
-
-    if core.g.cfg.showsystray && is_selmon && !x11_present {
-        if let Some(idx) = crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x) {
-            return BarPosition::SystrayItem(idx);
-        }
-    }

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread;
 
@@ -5,7 +6,7 @@ use zbus::blocking::{Connection, Proxy};
 
 use crate::bar::paint::BarPainter;
 use crate::contexts::CoreCtx;
-use crate::types::{BarPosition, MouseButton, WaylandSystrayItem};
+use crate::types::{MouseButton, WaylandSystrayItem};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
@@ -37,9 +38,8 @@ enum SystrayCmd {
 
 #[derive(Debug)]
 enum SystrayEvt {
-    ItemAdded(String, String),
+    ItemUpsert(WaylandSystrayItem),
     ItemRemoved(String, String),
-    ItemChanged(String, String),
 }
 
 pub struct WaylandSystrayRuntime {
@@ -68,11 +68,8 @@ impl WaylandSystrayRuntime {
         let mut changed = false;
         loop {
             match self.evt_rx.try_recv() {
-                Ok(SystrayEvt::ItemAdded(service, path)) => {
-                    changed |= add_or_refresh_item(core, &service, &path);
-                }
-                Ok(SystrayEvt::ItemChanged(service, path)) => {
-                    changed |= add_or_refresh_item(core, &service, &path);
+                Ok(SystrayEvt::ItemUpsert(item)) => {
+                    changed |= upsert_item(core, item);
                 }
                 Ok(SystrayEvt::ItemRemoved(service, path)) => {
                     let before = core.g.wayland_systray.items.len();
@@ -89,37 +86,30 @@ impl WaylandSystrayRuntime {
         changed
     }
 
-    pub fn dispatch_click(
+    pub fn dispatch_click_item(
         &self,
-        core: &CoreCtx,
-        pos: BarPosition,
+        service: String,
+        path: String,
         button: MouseButton,
         root_x: i32,
         root_y: i32,
     ) {
-        let BarPosition::SystrayItem(idx) = pos else {
-            return;
-        };
-        let Some(item) = core.g.wayland_systray.items.get(idx) else {
-            return;
-        };
-
         let cmd = match button {
             MouseButton::Left => SystrayCmd::Activate {
-                service: item.service.clone(),
-                path: item.path.clone(),
+                service,
+                path,
                 x: root_x,
                 y: root_y,
             },
             MouseButton::Middle => SystrayCmd::SecondaryActivate {
-                service: item.service.clone(),
-                path: item.path.clone(),
+                service,
+                path,
                 x: root_x,
                 y: root_y,
             },
             MouseButton::Right => SystrayCmd::ContextMenu {
-                service: item.service.clone(),
-                path: item.path.clone(),
+                service,
+                path,
                 x: root_x,
                 y: root_y,
             },
@@ -246,7 +236,8 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
     };
 
     register_watcher_host(&conn);
-    let _ = refresh_all_items(&conn, &evt_tx);
+    let mut known_ids: HashSet<String> = HashSet::new();
+    let _ = reconcile_items(&conn, &evt_tx, &mut known_ids);
     let mut ticks = 0u32;
 
     loop {
@@ -256,21 +247,44 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
 
         ticks = ticks.wrapping_add(1);
         if ticks % 33 == 0 {
-            let _ = reconcile_items(&conn, &evt_tx);
+            let _ = reconcile_items(&conn, &evt_tx, &mut known_ids);
         }
 
         std::thread::sleep(std::time::Duration::from_millis(30));
     }
 }
 
-fn reconcile_items(conn: &Connection, evt_tx: &Sender<SystrayEvt>) -> zbus::Result<()> {
+fn reconcile_items(
+    conn: &Connection,
+    evt_tx: &Sender<SystrayEvt>,
+    known_ids: &mut HashSet<String>,
+) -> zbus::Result<()> {
     let proxy = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
     let services: Vec<String> = proxy.get_property("RegisteredStatusNotifierItems")?;
+    let mut seen = HashSet::new();
     for id in services {
+        seen.insert(id.clone());
         if let Some((service, path)) = parse_sni_id(&id) {
-            let _ = evt_tx.send(SystrayEvt::ItemChanged(service, path));
+            if let Some((icon_rgba, icon_w, icon_h)) =
+                fetch_item_icon_on_conn(conn, &service, &path)
+            {
+                let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
+                    service,
+                    path,
+                    icon_rgba,
+                    icon_w,
+                    icon_h,
+                }));
+            }
         }
     }
+
+    for removed in known_ids.difference(&seen) {
+        if let Some((service, path)) = parse_sni_id(removed) {
+            let _ = evt_tx.send(SystrayEvt::ItemRemoved(service, path));
+        }
+    }
+    *known_ids = seen;
     Ok(())
 }
 
@@ -321,17 +335,6 @@ fn register_watcher_host(conn: &Connection) {
     }
 }
 
-fn refresh_all_items(conn: &Connection, evt_tx: &Sender<SystrayEvt>) -> zbus::Result<()> {
-    let proxy = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
-    let services: Vec<String> = proxy.get_property("RegisteredStatusNotifierItems")?;
-    for id in services {
-        if let Some((service, path)) = parse_sni_id(&id) {
-            let _ = evt_tx.send(SystrayEvt::ItemAdded(service, path));
-        }
-    }
-    Ok(())
-}
-
 fn parse_sni_id(id: &str) -> Option<(String, String)> {
     if let Some((service, path)) = id.split_once('/') {
         let full_path = format!("/{path}");
@@ -346,20 +349,7 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
     Some((id.to_string(), "/StatusNotifierItem".to_string()))
 }
 
-fn add_or_refresh_item(core: &mut CoreCtx, service: &str, path: &str) -> bool {
-    let fetched = fetch_item_icon(service, path);
-    let Some((icon_rgba, icon_w, icon_h)) = fetched else {
-        return false;
-    };
-
-    let item = WaylandSystrayItem {
-        service: service.to_string(),
-        path: path.to_string(),
-        icon_rgba,
-        icon_w,
-        icon_h,
-    };
-
+fn upsert_item(core: &mut CoreCtx, item: WaylandSystrayItem) -> bool {
     if let Some(existing) = core
         .g
         .wayland_systray
@@ -378,9 +368,12 @@ fn add_or_refresh_item(core: &mut CoreCtx, service: &str, path: &str) -> bool {
     true
 }
 
-fn fetch_item_icon(service: &str, path: &str) -> Option<(Vec<u8>, i32, i32)> {
-    let conn = Connection::session().ok()?;
-    let proxy = Proxy::new(&conn, service, path, ITEM_IFACE).ok()?;
+fn fetch_item_icon_on_conn(
+    conn: &Connection,
+    service: &str,
+    path: &str,
+) -> Option<(Vec<u8>, i32, i32)> {
+    let proxy = Proxy::new(conn, service, path, ITEM_IFACE).ok()?;
 
     let pixmaps: Vec<(i32, i32, Vec<u8>)> = proxy.get_property("IconPixmap").ok()?;
     if pixmaps.is_empty() {

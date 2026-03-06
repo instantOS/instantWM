@@ -130,7 +130,7 @@ impl BarState {
         self.hit_cache.get(monitor_id)
     }
 
-    pub fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
+    pub(crate) fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
         if self.status_cache_text.as_str() != text {
             self.status_cache_text.clear();
             self.status_cache_text.push_str(text);
