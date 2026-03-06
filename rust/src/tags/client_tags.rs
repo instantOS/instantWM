@@ -1,32 +1,8 @@
 //! Client-to-tag assignment.
 
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::types::{TagMask, WindowId, SCRATCHPAD_MASK};
-
-/// Set the selected client's tags using type-safe mask.
-pub fn set_client_tag(ctx: &mut WmCtxX11, win: WindowId, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    set_client_tag_ctx(&mut wm_ctx, win, mask);
-}
-
-/// Tag all clients on current tag with the given mask.
-pub fn tag_all(ctx: &mut WmCtxX11, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    tag_all_ctx(&mut wm_ctx, mask);
-}
-
-/// Toggle tags on the selected client.
-pub fn toggle_tag(ctx: &mut WmCtxX11, win: WindowId, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    toggle_tag_ctx(&mut wm_ctx, win, mask);
-}
-
-/// Follow a tag (move client to tag and view it).
-pub fn follow_tag(ctx: &mut WmCtxX11, win: WindowId, mask: TagMask) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    follow_tag_ctx(&mut wm_ctx, win, mask);
-}
 
 pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let selmon_id = ctx.g_mut().selected_monitor_id();

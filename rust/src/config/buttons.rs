@@ -16,7 +16,7 @@ use crate::mouse::{
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push, Direction as PushDirection};
 use crate::tags::view::toggle_view_tag;
-use crate::tags::{follow_tag, set_client_tag, shift_view, toggle_tag};
+use crate::tags::{follow_tag_ctx, set_client_tag_ctx, shift_view, toggle_tag_ctx};
 use crate::toggles::{toggle_locked, toggle_prefix};
 use crate::types::{
     BarPosition, Button, Direction, MouseButton, StackDirection, TagMask, WindowId,
@@ -169,19 +169,19 @@ pub fn get_buttons() -> Vec<Button> {
         }),
         btn!(Tag(0), 0,      button:MouseButton::ScrollUp   => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Left)),
         btn!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Right)),
-        btn_x11!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
+        btn!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                set_client_tag(ctx, win, TagMask::ALL_BITS)
+                set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        btn_x11!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, _| {
+        btn!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                toggle_tag(ctx, win, TagMask::ALL_BITS)
+                toggle_tag_ctx(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        btn_x11!(Tag(0), MOD1,   button:MouseButton::Left => |ctx, _| {
+        btn!(Tag(0), MOD1,   button:MouseButton::Left => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                follow_tag(ctx, win, TagMask::ALL_BITS)
+                follow_tag_ctx(ctx, win, TagMask::ALL_BITS)
             }
         }),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp   => |ctx, _| shift_view(ctx, Direction::Left)),

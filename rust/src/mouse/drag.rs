@@ -966,8 +966,8 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.
 ///
 /// * Plain click on a different tag   → [`view`]
-/// * Plain click on the current tag   → drag; release with `Shift` → [`set_client_tag`],
-///   `Control` → [`tag_all`], no modifier → [`follow_tag`]
+/// * Plain click on the current tag   → drag; release with `Shift` → [`set_client_tag_ctx`],
+///   `Control` → [`tag_all_ctx`], no modifier → [`follow_tag_ctx`]
 ///
 /// Exits without action if the pointer leaves the bar during the drag.
 ///

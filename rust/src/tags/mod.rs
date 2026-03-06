@@ -21,7 +21,7 @@ pub use bar::{get_tag_at_x, get_tag_width};
 
 pub use naming::{name_tag, reset_name_tag};
 
-pub use client_tags::{follow_tag, set_client_tag, tag_all, toggle_tag};
+pub use client_tags::{follow_tag_ctx, set_client_tag_ctx, tag_all_ctx, toggle_tag_ctx};
 
 pub use view::{
     follow_view, last_view, shift_view, swap_tags, toggle_fullscreen_overview, toggle_overview,
@@ -43,13 +43,6 @@ pub fn compute_prefix(core: &mut CoreCtx, arg: u32) -> u32 {
         arg << 10
     } else {
         arg
-    }
-}
-
-pub fn zoom(ctx: &mut crate::contexts::WmCtx) {
-    let selected_window = ctx.g().selected_monitor().sel;
-    if let Some(win) = selected_window {
-        crate::client::pop(ctx, win);
     }
 }
 
