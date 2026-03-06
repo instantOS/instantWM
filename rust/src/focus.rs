@@ -227,26 +227,18 @@ pub fn focus_wayland(
     focus_generic(core, win, &backend)
 }
 
-/// Best-effort focus.
+/// Best-effort focus - backend-agnostic entry point.
 ///
-/// Focus failures typically mean the X11 connection is in a bad state; callers
-/// in event handlers usually can't recover, but we should not silently drop the
-/// error.
-pub fn focus_soft_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Option<WindowId>) {
-    if let Err(e) = focus_x11(core, x11, win) {
-        log::warn!("focus({:?}) failed: {}", win, e);
-    }
-}
-
-/// Backend-agnostic soft focus - does match internally.
-///
-/// For X11: calls focus_soft_x11 which logs but doesn't propagate errors.
-/// For Wayland: calls focus_wayland which logs but doesn't propagate errors.
+/// Calls the appropriate backend focus function and logs any errors,
+/// but does not propagate them. This is suitable for use in event
+/// handlers where focus failures should not abort the operation.
 pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
     match ctx {
         X11(WmCtxX11 { core, x11, .. }) => {
-            focus_soft_x11(core, x11, win);
+            if let Err(e) = focus_x11(core, x11, win) {
+                log::warn!("focus({:?}) failed: {}", win, e);
+            }
         }
         Wayland(WmCtxWayland { core, wayland, .. }) => {
             if let Err(e) = focus_wayland(core, wayland, win) {
