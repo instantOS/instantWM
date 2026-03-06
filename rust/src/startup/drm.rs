@@ -203,10 +203,9 @@ pub fn run() -> ! {
     let mut drm_notifier = None;
     let mut drm_fd = None;
 
-    // First pass: try to find a GPU with connected connectors.
-    for gpu_path in &gpus {
+    for gpu_path in gpus {
         if let Ok(fd) = session.open(
-            gpu_path,
+            &gpu_path,
             smithay::reexports::rustix::fs::OFlags::RDWR
                 | smithay::reexports::rustix::fs::OFlags::CLOEXEC
                 | smithay::reexports::rustix::fs::OFlags::NOCTTY
@@ -214,45 +213,26 @@ pub fn run() -> ! {
         ) {
             let fd = DrmDeviceFd::new(DeviceFd::from(fd));
             if let Ok((device, notifier)) = DrmDevice::new(fd.clone(), true) {
-                if let Ok(res) = device.resource_handles() {
-                    let mut has_connected = false;
-                    for &conn_handle in res.connectors() {
-                        if let Ok(conn_info) = device.get_connector(conn_handle, false) {
-                            if conn_info.state() == connector::State::Connected {
-                                has_connected = true;
-                                break;
-                            }
-                        }
-                    }
-                    if has_connected {
-                        primary_gpu_path = Some(gpu_path.clone());
-                        drm_device = Some(device);
-                        drm_notifier = Some(notifier);
-                        drm_fd = Some(fd);
-                        break;
-                    }
-                }
-            }
-        }
-    }
+                let has_connected = device
+                    .resource_handles()
+                    .map(|res| {
+                        res.connectors().iter().any(|&c| {
+                            device
+                                .get_connector(c, false)
+                                .map(|info| info.state() == connector::State::Connected)
+                                .unwrap_or(false)
+                        })
+                    })
+                    .unwrap_or(false);
 
-    // Second pass: if no GPU with connected connectors found, try any GPU.
-    if primary_gpu_path.is_none() {
-        for gpu_path in &gpus {
-            if let Ok(fd) = session.open(
-                gpu_path,
-                smithay::reexports::rustix::fs::OFlags::RDWR
-                    | smithay::reexports::rustix::fs::OFlags::CLOEXEC
-                    | smithay::reexports::rustix::fs::OFlags::NOCTTY
-                    | smithay::reexports::rustix::fs::OFlags::NONBLOCK,
-            ) {
-                let fd = DrmDeviceFd::new(DeviceFd::from(fd));
-                if let Ok((device, notifier)) = DrmDevice::new(fd.clone(), true) {
-                    primary_gpu_path = Some(gpu_path.clone());
+                if has_connected || primary_gpu_path.is_none() {
+                    primary_gpu_path = Some(gpu_path);
                     drm_device = Some(device);
                     drm_notifier = Some(notifier);
                     drm_fd = Some(fd);
-                    break;
+                    if has_connected {
+                        break;
+                    }
                 }
             }
         }
@@ -382,7 +362,7 @@ pub fn run() -> ! {
             };
             output.change_current_state(
                 Some(out_mode),
-                Some(smithay::utils::Transform::Flipped180),
+                Some(smithay::utils::Transform::Normal),
                 Some(Scale::Integer(1)),
                 Some((output_x_offset, 0).into()),
             );
@@ -497,10 +477,10 @@ pub fn run() -> ! {
 
     let loop_signal: LoopSignal = event_loop.get_signal();
 
-    // Use a 1 ms timeout so input events are processed at ≥ 1 kHz even when
-    // no VBlanks are pending.
+    // Use a 16 ms timeout (60 FPS) to avoid excessive CPU usage and potential
+    // hangs while still ensuring timely frame and input processing.
     event_loop
-        .run(Duration::from_millis(1), &mut state, move |state| {
+        .run(Duration::from_millis(16), &mut state, move |state| {
             state.attach_globals(&mut wm.g);
 
             // ── Poll libinput ─────────────────────────────────────────
@@ -551,23 +531,25 @@ pub fn run() -> ! {
             }
 
             // ── Render all outputs that have a pending frame ──────────
-            let session_active = shared.lock().unwrap().session_active;
-            if session_active {
-                let pointer_location = shared.lock().unwrap().pointer_location;
-                for entry in output_surfaces.iter_mut() {
-                    let needs_render = shared
-                        .lock()
-                        .unwrap()
-                        .render_flags
-                        .get(&entry.crtc)
-                        .copied()
-                        .unwrap_or(false);
+            let (session_active, pointer_location, render_flags) = {
+                let mut s = shared.lock().unwrap();
+                let flags = s.render_flags.clone();
+                // Clear flags upfront so that if an input event arrives *during*
+                // rendering it will set the flag again for the next frame.
+                for flag in s.render_flags.values_mut() {
+                    *flag = false;
+                }
+                (s.session_active, s.pointer_location, flags)
+            };
 
+            if session_active {
+                for entry in output_surfaces.iter_mut() {
+                    let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
                     if !needs_render {
                         continue;
                     }
 
-                    let submitted = render_drm_output(
+                    render_drm_output(
                         &mut wm,
                         state,
                         &mut renderer,
@@ -576,14 +558,6 @@ pub fn run() -> ! {
                         pointer_location,
                         start_time,
                     );
-
-                    if submitted {
-                        // Clear the flag now; it will be re-set by the next
-                        // VBlank event once the buffer has been scanned out.
-                        if let Some(f) = shared.lock().unwrap().render_flags.get_mut(&entry.crtc) {
-                            *f = false;
-                        }
-                    }
                 }
             }
 

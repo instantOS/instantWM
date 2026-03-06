@@ -352,7 +352,7 @@ impl WaylandState {
 
         output.change_current_state(
             Some(mode),
-            Some(Transform::Flipped180),
+            Some(Transform::Normal),
             Some(Scale::Integer(1)),
             Some((0, 0).into()),
         );
