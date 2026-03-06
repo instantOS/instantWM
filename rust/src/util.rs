@@ -135,17 +135,7 @@ pub fn get_sel_mon(ctx: &WmCtx) -> Option<MonitorId> {
 /// context, converting `let _ = conn.operation()` anti-patterns into
 /// properly handled errors with descriptive messages.
 ///
-/// # Example
-/// ```rust
-/// // Instead of:
-/// let _ = conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME);
-/// let _ = conn.flush();
-///
-/// // Use:
-/// conn.set_input_focus(InputFocus::POINTER_ROOT, root, CURRENT_TIME)
-///     .context("failed to set input focus")?;
-/// conn.flush().context("failed to flush X11 connection")?;
-/// ```
+
 pub trait X11ConnExt {
     /// Flush the connection, returning an error with context on failure.
     fn flush_ctx(&self) -> Result<()>;

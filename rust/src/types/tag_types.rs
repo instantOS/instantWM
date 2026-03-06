@@ -12,15 +12,7 @@ use crate::types::MAX_TAGS;
 /// `TagMask` represents a set of tags as a bitmask, but provides semantic methods
 /// for common operations and prevents mixing with arbitrary `u32` values.
 ///
-/// # Examples
-///
-/// ```
-/// use crate::types::TagMask;
-///
-/// let single = TagMask::single(3); // Tag 3 only
-/// let combined = TagMask::single(1) | TagMask::single(2); // Tags 1 and 2
-/// let all = TagMask::all(9); // First 9 tags
-/// ```
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub struct TagMask(u32);
 

@@ -2,17 +2,16 @@
 
 use crate::animation::animate_client;
 use crate::client::resize;
-use crate::contexts::{WmCtx, WmCtxX11};
-use crate::mouse::warp::warp_to_client_win;
+use crate::contexts::WmCtx;
 use crate::types::*;
 
-pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
-    let (is_floating, geo, border_width) = match ctx.core.g.clients.get(&win) {
+pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+    let (is_floating, geo, border_width) = match ctx.g().clients.get(&win) {
         Some(c) => (c.isfloating, c.geo, c.border_width),
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(&ctx.core) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
         return;
     }
 
@@ -21,7 +20,7 @@ pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
     let mut new_x = geo.x + dx;
     let mut new_y = geo.y + dy;
 
-    let mon_rect = ctx.core.g.selected_monitor().monitor_rect;
+    let mon_rect = ctx.g().selected_monitor().monitor_rect;
 
     new_x = new_x.max(mon_rect.x);
     new_y = new_y.max(mon_rect.y);
@@ -32,9 +31,8 @@ pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
         new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
-    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     animate_client(
-        &mut wm_ctx,
+        ctx,
         win,
         &Rect {
             x: new_x,
@@ -45,7 +43,7 @@ pub fn moveresize(ctx: &mut WmCtxX11, win: WindowId, dir: Direction) {
         5,
         0,
     );
-    warp_to_client_win(&ctx.core, &ctx.x11, ctx.x11_runtime, win);
+    ctx.warp_cursor_to_client(win);
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {

@@ -233,22 +233,22 @@ pub fn get_keys() -> Vec<Key> {
             }
         }),
         key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(&ctx.core, &ctx.x11, ctx.x11_runtime)),
-        key_x11!(MS,   XK_J      => |ctx| {
+        key!(MS,   XK_J      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
             }
         }),
-        key_x11!(MS,   XK_K      => |ctx| {
+        key!(MS,   XK_K      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Up)
             }
         }),
-        key_x11!(MS,   XK_L      => |ctx| {
+        key!(MS,   XK_L      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Right)
             }
         }),
-        key_x11!(MS,   XK_H      => |ctx| {
+        key!(MS,   XK_H      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Left)
             }

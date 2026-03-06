@@ -39,7 +39,7 @@ fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
 }
 
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
-    let numlockmask = ctx.x11_runtime().numlockmask;
+    let numlockmask = ctx.numlock_mask();
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
     let action = ctx

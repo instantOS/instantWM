@@ -11,22 +11,7 @@ use crate::types::{TagMask, TagSelection};
 /// This is the preferred way to switch tag views as it provides
 /// semantic meaning and type safety.
 ///
-/// # Examples
-///
-/// ```
-/// use crate::types::{TagMask, TagSelection};
-/// use crate::tags::tag_ops;
-///
-/// // View a single tag
-/// tag_ops::view_selection(ctx, TagSelection::Single(3));
-///
-/// // View all tags (overview)
-/// tag_ops::view_selection(ctx, TagSelection::All);
-///
-/// // View specific tags
-/// let mask = TagMask::single(1).unwrap() | TagMask::single(2).unwrap();
-/// tag_ops::view_selection(ctx, TagSelection::Multi(mask));
-/// ```
+
 pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
     let num_tags = ctx.g().tags.count();
     let current_mask = TagMask::from_bits(ctx.g().selected_monitor().selected_tags());

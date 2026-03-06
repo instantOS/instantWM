@@ -227,10 +227,6 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         (is_floating, has_tiling, current_tag)
     };
 
-    let WmCtx::X11(ctx_x11) = ctx else {
-        return;
-    };
-
     if has_tiling {
         let focus_dir = match dir {
             Direction::Left => Direction::Up,
@@ -239,15 +235,15 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => Direction::Down,
         };
         let mut target = None;
-        crate::focus::focus_direction(&ctx_x11.core, focus_dir, |win| target = win);
+        crate::focus::focus_direction(ctx.core(), focus_dir, |win| target = win);
         if let Some(win) = target {
-            crate::focus::focus_soft(&mut WmCtx::X11(ctx_x11.reborrow()), Some(win));
+            crate::focus::focus_soft(ctx, Some(win));
         }
         return;
     }
 
     if !has_tiling {
-        if let Some(selected_window) = ctx_x11.core.selected_client() {
+        if let Some(selected_window) = ctx.selected_client() {
             let snap_dir = match dir {
                 Direction::Right => SnapDir::Right,
                 Direction::Left => SnapDir::Left,
@@ -255,7 +251,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
                 Direction::Down => SnapDir::Down,
             };
             change_snap(
-                &mut WmCtx::X11(ctx_x11.reborrow()),
+                ctx,
                 selected_window,
                 snap_dir,
             );
@@ -275,7 +271,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         return;
     }
 
-    let animated = ctx_x11.core.g.animated;
+    let animated = ctx.g().animated;
     if animated {
         let modifier: i32 = match dir {
             Direction::Right => 1,
@@ -284,7 +280,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Down => 1,
         };
         let target = current_tag + modifier as u32;
-        check_client_on_target_tag(&ctx_x11.core.g, sel_mon, target);
+        check_client_on_target_tag(ctx.g(), sel_mon, target);
     }
 
     match dir {

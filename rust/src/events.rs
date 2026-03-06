@@ -1098,11 +1098,8 @@ pub fn setup_root(wm: &mut Wm) {
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     let _ = conn.flush();
 
-    let ctx = wm.ctx();
-    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
-        return;
-    };
-    update_geom(&mut WmCtx::X11(ctx.reborrow()));
+    let mut ctx = wm.ctx();
+    update_geom(&mut ctx);
 }
 
 pub fn cleanup(wm: &mut Wm) {
