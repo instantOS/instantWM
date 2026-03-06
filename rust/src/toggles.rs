@@ -1,6 +1,5 @@
 use crate::backend::x11::X11BackendRef;
-use crate::bar::draw_bar;
-use crate::contexts::CoreCtx;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::keyboard::grab_keys_x11;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -9,23 +8,18 @@ pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
     action.apply(value);
 }
 
-pub fn toggle_alt_tag(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
+pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     let new_value = {
-        let mut showalttag = core.g.tags.show_alt;
+        let mut showalttag = ctx.g().tags.show_alt;
         ctrl_toggle(&mut showalttag, action);
         showalttag
     };
 
-    core.g.tags.show_alt = new_value;
+    ctx.g_mut().tags.show_alt = new_value;
 
-    let monitors: Vec<usize> = core.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
-
-    for i in monitors {
-        draw_bar(core, x11, i);
-    }
-
-    let tagwidth = get_tag_width(core);
-    core.g.tags.width = tagwidth;
+    let tagwidth = get_tag_width(ctx.core());
+    ctx.g_mut().tags.width = tagwidth;
+    ctx.request_bar_update(None);
 }
 
 pub fn alt_tab_free(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
@@ -44,11 +38,12 @@ pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {
     let _ = monitor_id;
 }
 
-pub fn toggle_prefix(core: &mut CoreCtx, x11: &X11BackendRef) {
-    core.g.tags.prefix = !core.g.tags.prefix;
+pub fn toggle_prefix(ctx: &mut WmCtx) {
+    let next = !ctx.g().tags.prefix;
+    ctx.g_mut().tags.prefix = next;
 
-    let selmon_id = core.g.selected_monitor_id();
-    draw_bar(core, x11, selmon_id);
+    let selmon_id = ctx.g().selected_monitor_id();
+    ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn toggle_animated(core: &mut CoreCtx, action: ToggleAction) {
@@ -101,9 +96,9 @@ pub fn toggle_double_draw(core: &mut CoreCtx) {
     core.g.doubledraw = !core.g.doubledraw;
 }
 
-pub fn toggle_locked(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     let _mon_id = {
-        if let Some(client) = core.g.clients.get_mut(&win) {
+        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
             client.islocked = !client.islocked;
             client.monitor_id
         } else {
@@ -111,15 +106,15 @@ pub fn toggle_locked(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         }
     };
 
-    let selmon_id = core.g.selected_monitor_id();
-    draw_bar(core, x11, selmon_id);
+    let selmon_id = ctx.g().selected_monitor_id();
+    ctx.request_bar_update(Some(selmon_id));
 }
 
-pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleAction) {
+pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
-        let selmon_id = core.g.selected_monitor_id();
+        let selmon_id = ctx.g().selected_monitor_id();
 
-        let showtags = core.g.selected_monitor().showtags;
+        let showtags = ctx.g().selected_monitor().showtags;
 
         let mut show_bool = showtags != 0;
         ctrl_toggle(&mut show_bool, action);
@@ -128,12 +123,12 @@ pub fn toggle_show_tags(core: &mut CoreCtx, x11: &X11BackendRef, action: ToggleA
         (selmon_id, new_showtags)
     };
 
-    core.g.selected_monitor_mut().showtags = new_showtags;
+    ctx.g_mut().selected_monitor_mut().showtags = new_showtags;
 
-    let tagwidth = get_tag_width(core);
-    core.g.tags.width = tagwidth;
+    let tagwidth = get_tag_width(ctx.core());
+    ctx.g_mut().tags.width = tagwidth;
 
-    draw_bar(core, x11, selmon_id);
+    ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
@@ -144,10 +139,6 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     }
 }
 
-pub fn redraw_win(core: &mut CoreCtx, x11: &X11BackendRef) {
-    let monitors: Vec<usize> = core.g.monitors.iter().enumerate().map(|(i, _)| i).collect();
-
-    for i in monitors {
-        draw_bar(core, x11, i);
-    }
+pub fn redraw_win(ctx: &mut WmCtx) {
+    ctx.request_bar_update(None);
 }

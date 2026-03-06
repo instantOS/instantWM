@@ -5,7 +5,6 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
-use crate::bar::draw_bars_x11;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::mouse::{get_cursor_client_win_x11, warp as mouse_warp};
@@ -84,7 +83,9 @@ pub fn focus_x11(
         crate::keyboard::grab_keys_x11(core, x11);
     }
 
-    draw_bars_x11(core, x11);
+    // Any focus/selection transition can affect bar styling; invalidate bars.
+    core.bar.mark_dirty();
+    crate::bar::draw_bars_x11(core, x11);
 
     if let Some(w) = target.take() {
         let is_urgent = core.g.clients.get(&w).map(|c| c.isurgent).unwrap_or(false);
@@ -146,6 +147,9 @@ pub fn focus_wayland(
     if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
         mon.sel = target;
     }
+
+    // Selection/focus state influences bar visuals on Wayland as well.
+    core.bar.mark_dirty();
 
     if selection_state_changed {
         // Desktop keybinds change based on whether a window is selected.

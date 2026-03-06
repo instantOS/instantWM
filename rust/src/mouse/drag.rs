@@ -25,7 +25,6 @@
 use crate::backend::BackendKind;
 use crate::bar::bar_position_at_x;
 use crate::bar::bar_position_to_gesture;
-use crate::bar::draw_bar;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
@@ -247,18 +246,12 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
         if !state.cursor_on_bar || gesture_changed {
             ctx.g_mut().drag.bar_active = true;
             ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
-            match ctx {
-                WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
-                WmCtx::Wayland(_) => {}
-            }
+            ctx.request_bar_update(Some(selmon_id));
         }
     } else if state.cursor_on_bar {
         ctx.g_mut().drag.bar_active = false;
         ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
-        match ctx {
-            WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
-            WmCtx::Wayland(_) => {}
-        }
+        ctx.request_bar_update(Some(selmon_id));
     }
 
     on_bar
@@ -396,10 +389,7 @@ fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g_mut().drag.bar_active = false;
     let selmon_id = ctx.g_mut().selected_monitor_id();
     ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
-    match ctx {
-        WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
-        WmCtx::Wayland(_) => {}
-    }
+    ctx.request_bar_update(Some(selmon_id));
 }
 
 /// Handle a drop onto the bar: tile the window, optionally moving it to the
@@ -853,10 +843,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     };
     set_cursor_move(ctx);
     ctx.g_mut().drag.bar_active = true;
-    match ctx {
-        WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
-        WmCtx::Wayland(_) => {}
-    }
+    ctx.request_bar_update(Some(selmon_id));
     true
 }
 
@@ -902,10 +889,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if let Some(mon) = ctx.g_mut().monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
         }
-        match ctx {
-            WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
-            WmCtx::Wayland(_) => {}
-        }
+        ctx.request_bar_update(Some(selmon_id));
     }
     true
 }
@@ -956,10 +940,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         mon.gesture = Gesture::None;
     }
     set_cursor_default(ctx);
-    match ctx {
-        WmCtx::X11(x11) => draw_bar(&mut x11.core, &x11.x11, selmon_id),
-        WmCtx::Wayland(_) => {}
-    }
+    ctx.request_bar_update(Some(selmon_id));
 }
 
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.

@@ -1,6 +1,4 @@
-use crate::backend::x11::X11BackendRef;
-use crate::bar::draw_bar;
-use crate::contexts::CoreCtx;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
 
 pub fn set_special_next(core: &mut CoreCtx, value: u32) {
@@ -10,9 +8,9 @@ pub fn set_special_next(core: &mut CoreCtx, value: u32) {
     };
 }
 
-pub fn command_prefix(core: &mut CoreCtx, x11: &X11BackendRef, value: u32) {
-    core.g.tags.prefix = value != 0;
+pub fn command_prefix(ctx: &mut WmCtx, value: u32) {
+    ctx.g_mut().tags.prefix = value != 0;
 
-    let selmon_id = core.g.selected_monitor_id();
-    draw_bar(core, x11, selmon_id);
+    let selmon_id = ctx.g().selected_monitor_id();
+    ctx.request_bar_update(Some(selmon_id));
 }

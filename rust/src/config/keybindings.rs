@@ -271,13 +271,13 @@ pub fn get_keys() -> Vec<Key> {
                 toggle_sticky(ctx.core_mut(), win)
             }
         }),
-        key_x11!(MA,     XK_S  => |ctx| toggle_alt_tag(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
+        key!(MA,     XK_S  => |ctx| toggle_alt_tag(ctx, ToggleAction::Toggle)),
         key!(MSA,    XK_S  => |ctx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle)),
-        key_x11!(MSC,    XK_S  => |ctx| toggle_show_tags(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
+        key!(MSC,    XK_S  => |ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
         key!(MSA,    XK_D  => |ctx| toggle_double_draw(ctx.core_mut())),
         key_x11!(MS,     XK_SPACE => |ctx| space_toggle_x11(&mut ctx.core, &ctx.x11)),
         key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ToggleAction::Toggle)),
-        key_x11!(MC,     XK_R     => |ctx| redraw_win(&mut ctx.core, &ctx.x11)),
+        key!(MC,     XK_R     => |ctx| redraw_win(ctx)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 crate::client::hide(ctx, win)
@@ -292,7 +292,7 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MSC,    XK_Q   => |_| quit()),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, &["instanthotkeys", "gui"])),
-        key_x11!(MODKEY,  XK_F2 => |ctx| toggle_prefix(&mut ctx.core, &ctx.x11)),
+        key!(MODKEY,  XK_F2 => |ctx| toggle_prefix(ctx)),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, &["kitty"])),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, menu::SMART)),
         key!(MC,     XK_SPACE           => |ctx| spawn(ctx, menu::RUN)),

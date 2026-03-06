@@ -210,9 +210,9 @@ pub fn get_buttons() -> Vec<Button> {
                 kill_client(ctx, win)
             }
         }),
-        btn_x11!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => |ctx, _| {
+        btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                toggle_locked(&mut ctx.core, &ctx.x11, win)
+                toggle_locked(ctx, win)
             }
         }),
         // ── Resize widget ─────────────────────────────────────────────────
@@ -225,6 +225,6 @@ pub fn get_buttons() -> Vec<Button> {
         btn_x11!(SideBar, 0,       button:MouseButton::Left  => |ctx, arg| gesture_mouse(ctx, arg.btn)),
         btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, &["instantstartmenu"])),
         btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, &["quickmenu"])),
-        btn_x11!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(&mut ctx.core, &ctx.x11)),
+        btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx)),
     ]
 }

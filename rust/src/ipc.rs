@@ -179,16 +179,12 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::AltTag(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                toggle_alt_tag(&mut x11.core, &x11.x11, action);
-            }
+            toggle_alt_tag(&mut ctx, action);
             IpcResponse::ok("")
         }
         IpcCommand::HideTags(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                toggle_show_tags(&mut x11.core, &x11.x11, action);
-            }
+            toggle_show_tags(&mut ctx, action);
             IpcResponse::ok("")
         }
         IpcCommand::Layout(val) => {
@@ -197,9 +193,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::Prefix(arg) => {
             let val = arg.unwrap_or(1);
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                command_prefix(&mut x11.core, &x11.x11, val);
-            }
+            command_prefix(&mut ctx, val);
             IpcResponse::ok("")
         }
         IpcCommand::Border(arg) => {
@@ -236,15 +230,11 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::NameTag(name) => {
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                name_tag(&mut x11.core, &x11.x11, &name);
-            }
+            name_tag(&mut ctx, &name);
             IpcResponse::ok("")
         }
         IpcCommand::ResetNameTag => {
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                reset_name_tag(&mut x11.core, &x11.x11);
-            }
+            reset_name_tag(&mut ctx);
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadMake(name) => {
