@@ -73,3 +73,14 @@ investigate this for overdraw issues. Is that a performance risk?
 dmenu does not grab input on the wayland backend, I need to click it in order to type in it. This is
 not how it works on X11, investigate and fix
 
+on wayland, after I switch tags no window is in focus. Investigate and fix.
+Also, clicking on a window should probably focus it, although it should not raise it,
+raise only happens when I move it or make it floating or resize it etc. 
+
+clicking a window title should raise that window. 
+
+I would like to be able to configure mouse sensitivity in the wayland backend,
+using the toml file and IPC. I want this to work like it does on sway (as
+similar as possible), so users don't have to too much new stuff. 
+
+

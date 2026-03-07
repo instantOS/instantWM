@@ -121,10 +121,8 @@ pub fn handle_keyboard<B: InputBackend>(
                     &mut wm_ctx,
                     keysym
                         .raw_syms()
-                        .into_iter()
-                        .next()
-                        .map(u32::from)
-                        .unwrap_or(0),
+                        .first()
+                        .map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
                     return FilterResult::Intercept(());
