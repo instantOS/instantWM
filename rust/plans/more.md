@@ -71,3 +71,8 @@ dunst does not work on the wayland backend, some protocol is missing
 
 
 
+
+investigate this for overdraw issues. Is that a performance risk?
+
+
+

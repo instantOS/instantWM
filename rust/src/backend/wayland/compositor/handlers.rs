@@ -3,7 +3,7 @@ use smithay::{
     backend::renderer::ImportDma,
     desktop::{
         find_popup_root_surface, layer_map_for_output, LayerSurface as DesktopLayerSurface,
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, WindowSurfaceType,
     },
     input::{pointer::Focus, SeatHandler},
     output::Output,
@@ -11,6 +11,7 @@ use smithay::{
     utils::SERIAL_COUNTER,
     wayland::{
         buffer::BufferHandler,
+        compositor::with_states,
         compositor::CompositorHandler,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
@@ -23,7 +24,8 @@ use smithay::{
         },
         shell::{
             wlr_layer::{
-                Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState,
+                Layer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler,
+                WlrLayerShellState,
             },
             xdg::{
                 decoration::XdgDecorationHandler, PopupSurface, PositionerState, ToplevelSurface,
@@ -81,6 +83,29 @@ impl CompositorHandler for WaylandState {
             .cloned()
         {
             window.on_commit();
+        }
+
+        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
+            let mut map = layer_map_for_output(&output);
+            if let Some(layer) = map
+                .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+                .cloned()
+            {
+                map.arrange();
+                let initial_configure_sent = with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<LayerSurfaceData>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .initial_configure_sent
+                });
+                if !initial_configure_sent {
+                    layer.layer_surface().send_configure();
+                }
+                break;
+            }
         }
     }
 }
@@ -709,19 +734,6 @@ impl WlrLayerShellHandler for WaylandState {
         let mut map = layer_map_for_output(&target_output);
         let _ = map.map_layer(&layer_surface);
         map.arrange();
-        layer_surface.layer_surface().send_configure();
-        if layer_surface.can_receive_keyboard_focus() {
-            let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(
-                    self,
-                    Some(KeyboardFocusTarget::WlSurface(
-                        layer_surface.wl_surface().clone(),
-                    )),
-                    serial,
-                );
-            }
-        }
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {

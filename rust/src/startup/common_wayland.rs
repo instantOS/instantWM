@@ -423,6 +423,19 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
             }
         }
     }
+
+    // Layer surfaces (mako, dunst, waybar, etc.) — must get frame callbacks too.
+    for output in state.space.outputs().cloned().collect::<Vec<_>>() {
+        let map = smithay::desktop::layer_map_for_output(&output);
+        for layer_surface in map.layers() {
+            layer_surface.send_frame(
+                &output,
+                elapsed,
+                Some(Duration::from_millis(16)),
+                surface_primary_scanout_output,
+            );
+        }
+    }
 }
 
 pub(crate) fn wayland_border_elements_shared(
