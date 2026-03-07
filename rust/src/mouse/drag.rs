@@ -40,7 +40,6 @@ use super::constants::{
     DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH, REFRESH_RATE_HI, REFRESH_RATE_LO,
 };
 use super::cursor::{set_cursor_default, set_cursor_move};
-use super::grab::{grab_pointer, ungrab, wait_event};
 use super::monitor::handle_client_monitor_switch;
 use super::warp::{get_root_ptr, get_root_ptr_ctx_x11, warp_into_ctx_x11};
 
@@ -672,17 +671,20 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         edge_snap_indicator: None,
     };
 
-    super::grab::mouse_drag_loop(ctx, btn, 2, |ctx, m| {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        on_motion(
-            &mut wm_ctx,
-            win,
-            m.event_x as i32,
-            m.event_y as i32,
-            m.root_x as i32,
-            m.root_y as i32,
-            &mut state,
-        );
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            on_motion(
+                &mut wm_ctx,
+                win,
+                m.event_x as i32,
+                m.event_y as i32,
+                m.root_x as i32,
+                m.root_y as i32,
+                &mut state,
+            );
+        }
+        true
     });
 
     {
@@ -721,19 +723,22 @@ pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
 
     let mut last_y = start_y;
 
-    super::grab::mouse_drag_loop(ctx, btn, 2, |ctx, m| {
-        let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
-        if (last_y - m.event_y as i32).abs() > threshold {
-            let event_y = m.event_y as i32;
-            let cmd = if event_y < last_y {
-                &["/usr/share/instantassist/utils/p.sh", "+"]
-            } else {
-                &["/usr/share/instantassist/utils/p.sh", "-"]
-            };
-            let wm_ctx = WmCtx::X11(ctx.reborrow());
-            crate::util::spawn(&wm_ctx, cmd);
-            last_y = event_y;
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
+            if (last_y - m.event_y as i32).abs() > threshold {
+                let event_y = m.event_y as i32;
+                let cmd = if event_y < last_y {
+                    &["/usr/share/instantassist/utils/p.sh", "+"]
+                } else {
+                    &["/usr/share/instantassist/utils/p.sh", "-"]
+                };
+                let wm_ctx = WmCtx::X11(ctx.reborrow());
+                crate::util::spawn(&wm_ctx, cmd);
+                last_y = event_y;
+            }
         }
+        true
     });
 }
 
@@ -916,56 +921,28 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────────
-    if !grab_pointer(ctx, 2) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        drag_tag_finish(&mut wm_ctx, 0);
-        return;
-    }
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            // Update stored modifier state from latest motion.
+            let root_x = m.event_x as i32;
+            let root_y = m.event_y as i32;
+            let mod_state = u16::from(m.state) as u32;
 
-    let mut last_time: u32 = 0;
+            // Store motion with modifier state for release handling.
+            ctx.core.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
 
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    // Capture modifier state at release and finish.
-                    let modifier_state = u16::from(br.state) as u32;
-                    ungrab(ctx);
-                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    drag_tag_finish(&mut wm_ctx, modifier_state);
-                    return;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-
-                // Update stored modifier state from latest motion.
-                let root_x = m.event_x as i32;
-                let root_y = m.event_y as i32;
-                let mod_state = u16::from(m.state) as u32;
-
-                // Store motion with modifier state for release handling.
-                ctx.core.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
-
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                if !drag_tag_motion(&mut wm_ctx, root_x, root_y) {
-                    // Cursor left the bar — abort.
-                    break;
-                }
-            }
-            _ => {}
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            return drag_tag_motion(&mut wm_ctx, root_x, root_y);
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
+    let modifier_state = {
+        ctx.core.g.drag.tag.last_motion.map(|(_, _, m)| m).unwrap_or(0)
+    };
+
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    drag_tag_finish(&mut wm_ctx, 0);
+    drag_tag_finish(&mut wm_ctx, modifier_state);
 }
 
 // ── window title drag state machine ──────────────────────────────────────────
@@ -1382,39 +1359,16 @@ pub fn window_title_mouse_handler(
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
-    if !grab_pointer(ctx, 0) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        title_drag_finish(&mut wm_ctx);
-        return;
-    }
-
-    let mut last_time: u32 = 0;
-
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
+    super::grab::mouse_drag_loop(ctx, btn, 0, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
+                return false;
             }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
-                    return;
-                }
-            }
-            _ => {}
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     title_drag_finish(&mut wm_ctx);
 }
@@ -1442,39 +1396,16 @@ pub fn window_title_mouse_handler_right(
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
-    if !grab_pointer(ctx, 2) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        title_drag_finish(&mut wm_ctx);
-        return;
-    }
-
-    let mut last_time: u32 = 0;
-
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
+                return false;
             }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
-                    return;
-                }
-            }
-            _ => {}
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     title_drag_finish(&mut wm_ctx);
 }
