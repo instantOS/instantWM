@@ -250,17 +250,34 @@ fn load_cursor_frame(
 
 /// Upload one xcursor `Image` (RGBA bytes) to the GPU as a `TextureBuffer`.
 fn import_image(renderer: &mut GlesRenderer, image: &Image) -> Option<TextureBuffer<GlesTexture>> {
-    // xcursor gives us RGBA bytes.  In DRM fourcc notation on little-endian
-    // hardware, RGBA memory layout = Fourcc::Abgr8888.
+    // Fourcc::Abgr8888 — DO NOT change to Argb8888 or Rgba8888.
+    //
+    // xcursor gives us raw bytes in RGBA order (R at lowest address).  DRM
+    // fourcc codes are named by byte order on little-endian hardware, where
+    // the *first* byte in memory is the *least-significant* byte of the
+    // 32-bit word.  Mapping RGBA memory → LE 32-bit word gives:
+    //   byte[0]=R → bits 0-7  (A component in fourcc)
+    //   byte[1]=G → bits 8-15 (B component in fourcc)
+    //   byte[2]=B → bits 16-23 (G component in fourcc)
+    //   byte[3]=A → bits 24-31 (R component in fourcc)
+    // which is Fourcc::Abgr8888.  Using Argb8888 here swaps red and blue,
+    // making every cursor image appear with inverted colour channels.
     TextureBuffer::from_memory(
         renderer,
         &image.pixels_rgba,
         Fourcc::Abgr8888,
         (image.width as i32, image.height as i32),
-        false, // not y-flipped
-        1,     // scale factor 1 (cursor textures are always physical pixels)
+        // false = NOT y-flipped.  xcursor images are stored top-to-bottom,
+        // matching the screen's top-left origin.  Setting this to true would
+        // render every cursor sprite upside-down.
+        false,
+        1, // scale factor 1 — cursor textures are always in physical pixels;
+        // the hotspot and position calculations already account for scale.
+        // Transform::Normal — xcursor images need no additional rotation or
+        // reflection.  Any other transform would misalign the hotspot and
+        // visually rotate/flip the cursor sprite on screen.
         Transform::Normal,
-        None, // no opaque region hint (cursor has transparency)
+        None, // no opaque region hint — cursors have an alpha channel
     )
     .ok()
 }
@@ -275,11 +292,13 @@ fn synthesise_fallback_cursor(renderer: &mut GlesRenderer) -> CursorFrame {
     let buffer = TextureBuffer::from_memory(
         renderer,
         &pixels,
+        // Abgr8888: the pixel array is plain RGBA bytes — see import_image
+        // above for the full explanation of why Abgr8888 is the correct fourcc.
         Fourcc::Abgr8888,
         (W as i32, H as i32),
-        false,
-        1,
-        Transform::Normal,
+        false,             // not y-flipped — pixels are top-to-bottom
+        1,                 // physical-pixel scale, no DPI scaling needed
+        Transform::Normal, // no rotation/flip — hotspot is at (0, 0)
         None,
     )
     .expect("synthesise_fallback_cursor: from_memory failed");

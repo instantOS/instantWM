@@ -53,6 +53,19 @@ pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
     update_geom(&mut wm.ctx());
+    // Transform::Flipped180 is REQUIRED for the winit (nested) backend.
+    //
+    // Smithay's winit backend renders into an OpenGL framebuffer whose
+    // Y-axis points upward (OpenGL convention), but the host Wayland
+    // compositor expects the top-left origin (Wayland convention).  The
+    // result is that every frame arrives at the host upside-down unless
+    // we tell Smithay's output machinery to compensate with a 180° flip.
+    //
+    // Smithay applies this transform when compositing space elements so
+    // that the final pixel layout sent to the host is right-side up.
+    //
+    // DO NOT replace this with Transform::Normal — the entire compositor
+    // output will be rendered upside-down inside the host window.
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
