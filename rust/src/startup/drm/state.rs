@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use smithay::backend::allocator::gbm::GbmAllocator;
 use smithay::backend::drm::{DrmDeviceFd, GbmBufferedSurface};
@@ -30,6 +30,7 @@ pub struct OutputSurfaceEntry {
 pub struct SharedDrmState {
     pub session_active: bool,
     pub render_flags: HashMap<crtc::Handle, bool>,
+    pub pending_crtcs: HashSet<crtc::Handle>,
     pub pointer_location: Point<f64, smithay::utils::Logical>,
     pub total_width: i32,
     pub total_height: i32,
@@ -41,6 +42,7 @@ impl SharedDrmState {
         Self {
             session_active: true,
             render_flags: HashMap::new(),
+            pending_crtcs: HashSet::new(),
             pointer_location: Point::from(((total_width / 2) as f64, (total_height / 2) as f64)),
             total_width,
             total_height,
