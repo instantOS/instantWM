@@ -24,7 +24,7 @@ use crate::types::*;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
-use super::cursor::{set_cursor_move_wayland, set_cursor_resize_wayland};
+use super::cursor::set_cursor_resize_wayland;
 use super::grab::{grab_pointer, ungrab, wait_event};
 use super::monitor::handle_client_monitor_switch;
 use crate::types::input::get_resize_direction;
@@ -79,12 +79,8 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
             let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() else {
                 return;
             };
-            let Some((geo, is_floating, border_width)) = wl
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| (c.geo, c.isfloating, c.border_width))
+            let Some((geo, is_floating)) =
+                wl.core.g.clients.get(&win).map(|c| (c.geo, c.isfloating))
             else {
                 return;
             };
@@ -103,7 +99,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
                 let hit_x = ptr_x - new_geo.x;
                 let hit_y = ptr_y - new_geo.y;
                 let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
-                if let WmCtx::Wayland(wl2) = wmctx {
+                if let WmCtx::Wayland(ref mut wl2) = wmctx {
                     begin_wayland_super_resize(wl2, win, btn, dir, new_geo, ptr_x, ptr_y);
                 }
                 return;
@@ -113,7 +109,6 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
             let hit_y = ptr_y - geo.y;
             let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
             begin_wayland_super_resize(wl, win, btn, dir, geo, ptr_x, ptr_y);
-            let _ = border_width; // used via HoverResizeDragState
         }
     }
 }
