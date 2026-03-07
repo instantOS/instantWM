@@ -3,27 +3,30 @@ use smithay::{
     backend::renderer::ImportDma,
     desktop::{
         find_popup_root_surface, layer_map_for_output, LayerSurface as DesktopLayerSurface,
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, WindowSurfaceType,
     },
     input::{pointer::Focus, SeatHandler},
     output::Output,
-    reexports::wayland_server::{protocol::wl_seat, Client},
+    reexports::wayland_server::{protocol::wl_seat, Client, Resource},
     utils::SERIAL_COUNTER,
     wayland::{
         buffer::BufferHandler,
+        compositor::with_states,
         compositor::CompositorHandler,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
         selection::{
             data_device::{
-                ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+                set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
+                ServerDndGrabHandler,
             },
             SelectionHandler,
         },
         shell::{
             wlr_layer::{
-                Layer, LayerSurface as WlrLayerSurface, WlrLayerShellHandler, WlrLayerShellState,
+                Layer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler,
+                WlrLayerShellState,
             },
             xdg::{
                 decoration::XdgDecorationHandler, PopupSurface, PositionerState, ToplevelSurface,
@@ -81,6 +84,29 @@ impl CompositorHandler for WaylandState {
             .cloned()
         {
             window.on_commit();
+        }
+
+        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
+            let mut map = layer_map_for_output(&output);
+            if let Some(layer) = map
+                .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+                .cloned()
+            {
+                map.arrange();
+                let initial_configure_sent = with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<LayerSurfaceData>()
+                        .unwrap()
+                        .lock()
+                        .unwrap()
+                        .initial_configure_sent
+                });
+                if !initial_configure_sent {
+                    layer.layer_surface().send_configure();
+                }
+                break;
+            }
         }
     }
 }
@@ -164,6 +190,10 @@ fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
     ) {
         return true;
     }
+    is_launcher_x11_surface(x11)
+}
+
+fn is_launcher_x11_surface(x11: &smithay::xwayland::X11Surface) -> bool {
     let class = x11.class().to_ascii_lowercase();
     let instance = x11.instance().to_ascii_lowercase();
     let title = x11.title().to_ascii_lowercase();
@@ -173,6 +203,25 @@ fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
         || instance.contains("instantmenu")
         || title.contains("dmenu")
         || title.contains("instantmenu")
+}
+
+fn focus_overlay_if_launcher(state: &mut WaylandState, element: &smithay::desktop::Window) {
+    if !element
+        .x11_surface()
+        .as_ref()
+        .is_some_and(|x11| is_launcher_x11_surface(x11))
+    {
+        return;
+    }
+
+    let serial = SERIAL_COUNTER.next_serial();
+    if let Some(keyboard) = state.seat.get_keyboard() {
+        keyboard.set_focus(
+            state,
+            Some(KeyboardFocusTarget::Window(element.clone())),
+            serial,
+        );
+    }
 }
 
 impl XwmHandler for WaylandState {
@@ -214,10 +263,12 @@ impl XwmHandler for WaylandState {
             if let Some(existing) = existing {
                 self.space.map_element(existing.clone(), geo.loc, true);
                 self.space.raise_element(&existing, true);
+                focus_overlay_if_launcher(self, &existing);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
                 self.space.map_element(element.clone(), geo.loc, true);
                 self.space.raise_element(&element, true);
+                focus_overlay_if_launcher(self, &element);
             }
             return;
         }
@@ -265,6 +316,7 @@ impl XwmHandler for WaylandState {
         let element = smithay::desktop::Window::new_x11_window(window);
         self.space.map_element(element.clone(), geo.loc, true);
         self.space.raise_element(&element, true);
+        focus_overlay_if_launcher(self, &element);
     }
 
     fn unmapped_window(
@@ -465,10 +517,12 @@ impl SeatHandler for WaylandState {
 
     fn focus_changed(
         &mut self,
-        _seat: &smithay::input::Seat<Self>,
-        _target: Option<&KeyboardFocusTarget>,
+        seat: &smithay::input::Seat<Self>,
+        target: Option<&KeyboardFocusTarget>,
     ) {
-        // TODO: update data device focus for clipboard bridging.
+        let wl_surface = target.and_then(WaylandFocus::wl_surface);
+        let client = wl_surface.and_then(|s| self.display_handle.get_client(s.id()).ok());
+        set_data_device_focus(&self.display_handle, seat, client);
     }
 
     fn cursor_image(
@@ -709,19 +763,6 @@ impl WlrLayerShellHandler for WaylandState {
         let mut map = layer_map_for_output(&target_output);
         let _ = map.map_layer(&layer_surface);
         map.arrange();
-        layer_surface.layer_surface().send_configure();
-        if layer_surface.can_receive_keyboard_focus() {
-            let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(
-                    self,
-                    Some(KeyboardFocusTarget::WlSurface(
-                        layer_surface.wl_surface().clone(),
-                    )),
-                    serial,
-                );
-            }
-        }
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {

@@ -13,9 +13,7 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
-use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::globals::X11RuntimeConfig;
 // focus() is used via focus_soft() in this module
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -23,7 +21,6 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::{set_cursor_default, set_cursor_resize};
-use super::grab::{grab_pointer_with_keys_ctx, ungrab_ctx, wait_event_ctx};
 use super::warp::{get_root_ptr, warp_into_ctx_x11};
 
 use super::resize::resize_mouse_directional;
@@ -44,17 +41,33 @@ pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let (conn, clients) = match ctx {
-        WmCtx::X11(x11) => (&x11.x11.conn, &mut x11.core.g.clients),
-        WmCtx::Wayland(_) => return,
-    };
-    let Some(c) = clients.get(&win) else {
+    let Some(c) = ctx.g().clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
-    let x11_win: Window = win.into();
-    let _ = conn.warp_pointer(x11rb::NONE, x11_win, 0, 0, 0, 0, x_off as i16, y_off as i16);
-    let _ = conn.flush();
+    let target_x = c.geo.x + x_off;
+    let target_y = c.geo.y + y_off;
+    match ctx {
+        WmCtx::X11(x11) => {
+            let x11_win: Window = win.into();
+            let _ = x11.x11.conn.warp_pointer(
+                x11rb::NONE,
+                x11_win,
+                0,
+                0,
+                0,
+                0,
+                x_off as i16,
+                y_off as i16,
+            );
+            let _ = x11.x11.conn.flush();
+        }
+        WmCtx::Wayland(wl) => {
+            wl.wayland
+                .backend
+                .warp_pointer(target_x as f64, target_y as f64);
+        }
+    }
 }
 
 // ── Border detection ─────────────────────────────────────────────────────────
@@ -273,13 +286,8 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     let Some((x, y)) = get_root_ptr(ctx) else {
         return false;
     };
-    let _sel = ctx.selected_client();
     let in_border = is_in_resize_border(ctx, x, y);
     if !in_border {
-        return false;
-    }
-
-    if !grab_pointer_with_keys_ctx(ctx, 1) {
         return false;
     }
 
@@ -288,7 +296,6 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
     let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
-        ungrab_ctx(ctx);
         clear_hover_resize_offer(ctx);
     }
 
@@ -303,94 +310,98 @@ pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
 fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
     let mut action_started = false;
 
-    loop {
-        let Some(event) = wait_event_ctx(ctx) else {
-            break;
-        };
+    let x11 = match ctx {
+        WmCtx::X11(x11) => x11,
+        WmCtx::Wayland(_) => return false,
+    };
 
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(_) => break,
+    super::grab::mouse_drag_loop(x11, MouseButton::Left, 1, true, |ctx, event| {
+        match event {
+            x11rb::protocol::Event::ButtonRelease(_) => false,
 
             x11rb::protocol::Event::MotionNotify(_) => {
-                let in_border = get_root_ptr(ctx)
-                    .map(|(x, y)| is_in_resize_border(ctx, x, y))
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                let in_border = get_root_ptr(&wm_ctx)
+                    .map(|(x, y)| is_in_resize_border(&wm_ctx, x, y))
                     .unwrap_or(false);
                 if !in_border {
-                    // Focus the window under the cursor when leaving the
-                    // resize border zone.  Normally get_cursor_client_win
-                    // returns the correct window (since the cursor is outside
-                    // the floating window).  Fall back to searching the
-                    // client list if it returns the already-selected window.
-                    let sel = ctx.selected_client();
-                    let target = get_cursor_client_win(ctx)
+                    let sel = wm_ctx.selected_client();
+                    let target = get_cursor_client_win(&mut wm_ctx)
                         .filter(|&w| Some(w) != sel)
                         .or_else(|| {
-                            let (x, y) = get_root_ptr(ctx)?;
-                            find_tiled_win_at_point(ctx, x, y, sel)
+                            let (x, y) = get_root_ptr(&wm_ctx)?;
+                            find_tiled_win_at_point(&wm_ctx, x, y, sel)
                         });
                     if let Some(win) = target {
-                        crate::focus::focus_soft(ctx, Some(win));
+                        crate::focus::focus_soft(&mut wm_ctx, Some(win));
                     }
-                    break;
+                    return false;
                 }
+                true
             }
 
             x11rb::protocol::Event::KeyPress(k) => {
                 if k.detail == KEYCODE_ESCAPE {
-                    break;
+                    return false;
                 }
+                true
             }
 
             x11rb::protocol::Event::ButtonPress(bp) => {
                 action_started = true;
-                ungrab_ctx(ctx);
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
 
-                let Some(win) = ctx.selected_client() else {
-                    break;
+                let Some(win) = wm_ctx.selected_client() else {
+                    return false;
                 };
                 let (geo, w, h) = {
-                    let Some(c) = ctx.g_mut().clients.get(&win) else {
-                        break;
+                    let Some(c) = wm_ctx.g_mut().clients.get(&win) else {
+                        return false;
                     };
                     (c.geo, c.geo.w, c.geo.h)
                 };
 
                 // Query cursor position relative to the client window.
                 let (root_x, root_y, win_x, win_y) =
-                    query_pointer_on_win(ctx, win).unwrap_or((0, 0, 0, 0));
+                    query_pointer_on_win(&mut wm_ctx, win).unwrap_or((0, 0, 0, 0));
 
                 let btn = MouseButton::from_u8(bp.detail).unwrap_or(MouseButton::Left);
+                wm_ctx.raise_interactive(win);
                 match bp.detail {
                     // Right-click → move
                     3 => {
-                        if let WmCtx::X11(x11) = ctx {
-                            warp_into_ctx_x11(x11, win);
-                            crate::mouse::move_mouse(x11, btn);
-                        }
+                        let mut wm_ctx_x11 = match wm_ctx {
+                            WmCtx::X11(ref mut x11) => x11.reborrow(),
+                            _ => unreachable!(),
+                        };
+                        warp_into_ctx_x11(&mut wm_ctx_x11, win);
+                        crate::mouse::move_mouse(&mut wm_ctx_x11, btn);
                     }
                     // Left-click
                     1 => {
                         if is_at_top_middle_edge(&geo, root_x, root_y) {
-                            if let WmCtx::X11(x11) = ctx {
-                                warp_into_ctx_x11(x11, win);
-                                crate::mouse::move_mouse(x11, btn);
-                            }
+                            let mut wm_ctx_x11 = match wm_ctx {
+                                WmCtx::X11(ref mut x11) => x11.reborrow(),
+                                _ => unreachable!(),
+                            };
+                            warp_into_ctx_x11(&mut wm_ctx_x11, win);
+                            crate::mouse::move_mouse(&mut wm_ctx_x11, btn);
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
-                            warp_pointer_resize(ctx, win, dir);
-                            if let WmCtx::X11(x11) = ctx {
+                            warp_pointer_resize(&mut wm_ctx, win, dir);
+                            if let WmCtx::X11(ref mut x11) = wm_ctx {
                                 resize_mouse_directional(x11, Some(dir), btn);
                             }
                         }
                     }
                     _ => {}
                 }
-                break;
+                false
             }
 
-            _ => {}
+            _ => true,
         }
-    }
+    });
 
     action_started
 }
@@ -449,16 +460,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     // Activate resize cursor and enter the grab loop
     handle_floating_resize_hover(ctx, x, y, false);
 
-    if !grab_pointer_with_keys_ctx(ctx, 1) {
-        return false;
-    }
-
-    let action_started = run_hover_resize_loop(ctx);
-
-    if !action_started {
-        ungrab_ctx(ctx);
-        clear_hover_resize_offer(ctx);
-    }
+    let _ = run_hover_resize_loop(ctx);
 
     true
 }
@@ -479,15 +481,7 @@ pub fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
     get_cursor_client_win_with_conn(core, conn, root)
 }
 
-pub fn get_cursor_client_win_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-) -> Option<WindowId> {
-    get_cursor_client_win_with_conn(core, x11.conn, x11_runtime.root)
-}
-
-fn get_cursor_client_win_with_conn(
+pub fn get_cursor_client_win_with_conn(
     core: &CoreCtx,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,

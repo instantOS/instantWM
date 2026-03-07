@@ -7,7 +7,6 @@ use crate::backend::x11::X11BackendRef;
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
 use crate::contexts::WmCtx;
 use crate::focus::{focus_soft, unfocus_win};
-use crate::mouse::warp::warp_to_client_win;
 use crate::types::*;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::Window;
@@ -323,8 +322,8 @@ pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
             &x11rb::protocol::xproto::ConfigureWindowAux::new()
                 .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
         );
-        warp_to_client_win(&x11.core, &x11.x11, x11.x11_runtime, c_win);
     }
+    ctx.warp_cursor_to_client(c_win);
 }
 
 pub fn update_geom(ctx: &mut WmCtx) -> bool {

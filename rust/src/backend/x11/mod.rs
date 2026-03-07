@@ -65,6 +65,34 @@ impl<'a> X11BackendRef<'a> {
     }
 }
 
+/// RAII guard for X server grabs.
+///
+/// The WM uses two X11 connections (x11rb `RustConnection` + Xlib `Display*`
+/// for bar drawing).  A server grab on one connection blocks requests from the
+/// other.  If an `ungrab_server` sits in the write buffer while code on the
+/// Xlib side calls `XSync`, the result is a deadlock.
+///
+/// This guard ensures the grab is always released **and flushed** when the
+/// guard goes out of scope, making it impossible to forget the flush.
+pub struct ServerGrab<'a> {
+    conn: &'a RustConnection,
+}
+
+impl<'a> ServerGrab<'a> {
+    /// Send `GrabServer` and return a guard that will ungrab+flush on drop.
+    pub fn new(conn: &'a RustConnection) -> Self {
+        let _ = conn.grab_server();
+        Self { conn }
+    }
+}
+
+impl Drop for ServerGrab<'_> {
+    fn drop(&mut self) {
+        let _ = self.conn.ungrab_server();
+        let _ = self.conn.flush();
+    }
+}
+
 impl BackendOps for X11Backend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         self.as_ref().resize_window(window, rect)

@@ -181,10 +181,6 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
     let mut stack = tiled_stack;
     stack.push(bar_win);
-    if is_floating {
-        stack.retain(|w| *w != selected_window);
-        stack.push(selected_window);
-    }
     stack.extend(floating_stack);
     ctx.restack(&stack);
     ctx.flush();

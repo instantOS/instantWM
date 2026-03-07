@@ -28,7 +28,7 @@
 
 use crate::contexts::WmCtx;
 use crate::contexts::WmCtxX11;
-use crate::types::WindowId;
+use crate::types::{MouseButton, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -93,13 +93,14 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
         .map(|c| c.cursor as u32)
         .unwrap_or(x11rb::NONE);
 
-    // KEY_PRESS is NOT valid for grab_pointer.
-    // It must be handles separately or by listening on the root window.
     let result = conn
         .grab_pointer(
             false,
             root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+            EventMask::BUTTON_PRESS
+                | EventMask::BUTTON_RELEASE
+                | EventMask::POINTER_MOTION
+                | EventMask::KEY_PRESS,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
             x11rb::NONE,
@@ -161,6 +162,67 @@ pub fn ungrab_ctx(ctx: &WmCtx) {
     }
 }
 
+/// Generic X11 mouse-drag event loop.
+///
+/// Handles pointer grabbing, the motion-event loop (with throttling),
+/// and final ungrabbing.
+///
+/// If `with_keys` is true, also captures KeyPress events.
+/// The closure `on_event` returns `true` to continue the loop, `false` to break.
+pub fn mouse_drag_loop<F>(
+    ctx: &mut WmCtxX11<'_>,
+    btn: MouseButton,
+    cursor_index: usize,
+    with_keys: bool,
+    mut on_event: F,
+) where
+    F: FnMut(&mut WmCtxX11<'_>, &x11rb::protocol::Event) -> bool,
+{
+    let grabbed = if with_keys {
+        grab_pointer_with_keys(ctx, cursor_index)
+    } else {
+        grab_pointer(ctx, cursor_index)
+    };
+
+    if !grabbed {
+        return;
+    }
+
+    let mut last_time: u32 = 0;
+
+    loop {
+        let Some(event) = wait_event(ctx) else {
+            break;
+        };
+
+        let should_continue = match &event {
+            x11rb::protocol::Event::ButtonRelease(br) => {
+                if br.detail == btn.as_u8() {
+                    false
+                } else {
+                    on_event(ctx, &event)
+                }
+            }
+
+            x11rb::protocol::Event::MotionNotify(m) => {
+                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
+                    continue;
+                }
+                last_time = m.time;
+                on_event(ctx, &event)
+            }
+
+            _ => on_event(ctx, &event),
+        };
+
+        if !should_continue {
+            break;
+        }
+    }
+
+    ungrab(ctx);
+}
+
 // ── Passive button grabs ──────────────────────────────────────────────────────
 
 /// Register (or clear) passive button grabs on a client window.
@@ -176,7 +238,6 @@ pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: b
     let _ = conn.ungrab_button(0u8.into(), x11_win, ModMask::from(0u16));
 
     if focused {
-        let _ = conn.flush();
         return;
     }
 
@@ -204,6 +265,4 @@ pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: b
             );
         }
     }
-
-    let _ = conn.flush();
 }

@@ -126,9 +126,33 @@ pub fn send_event_x11(
     exists
 }
 
-// ---------------------------------------------------------------------------
-// Focus
-// ---------------------------------------------------------------------------
+/// Update the border color of `win` based on its current focus and floating state.
+pub fn refresh_border_color_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId, focused: bool) {
+    let Some(ref scheme) = core.g.cfg.borderscheme else {
+        return;
+    };
+    let Some(c) = core.g.clients.get(&win) else {
+        return;
+    };
+
+    let pixel = if focused {
+        let has_tiling = core.g.selected_monitor().is_tiling_layout();
+        let isfloating = c.isfloating || !has_tiling;
+        if isfloating {
+            scheme.float_focus.bg.pixel()
+        } else {
+            scheme.tile_focus.bg.pixel()
+        }
+    } else {
+        scheme.normal.bg.pixel()
+    };
+
+    let x11_win: Window = win.into();
+    let _ = x11.conn.change_window_attributes(
+        x11_win,
+        &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+    );
+}
 
 /// Give input focus to `win`.
 ///
@@ -159,20 +183,7 @@ pub fn set_focus_x11(
         );
     }
 
-    if let Some(ref scheme) = core.g.cfg.borderscheme {
-        let has_tiling = core.g.selected_monitor().is_tiling_layout();
-        let isfloating = c.isfloating || !has_tiling;
-        let pixel = if isfloating {
-            scheme.float_focus.bg.pixel()
-        } else {
-            scheme.tile_focus.bg.pixel()
-        };
-        let x11_win: Window = win.into();
-        let _ = x11.conn.change_window_attributes(
-            x11_win,
-            &ChangeWindowAttributesAux::new().border_pixel(pixel),
-        );
-    }
+    refresh_border_color_x11(core, x11, win, true);
 
     grab_buttons_x11(core, x11, x11_runtime, win, true);
 
@@ -217,14 +228,7 @@ pub fn unfocus_win_x11(
     grab_buttons_x11(core, x11, x11_runtime, win, false);
 
     // Reset the border to the normal (unfocused) colour.
-    if let Some(ref scheme) = core.g.cfg.borderscheme {
-        let pixel = scheme.normal.bg.pixel();
-        let x11_win: Window = win.into();
-        let _ = x11.conn.change_window_attributes(
-            x11_win,
-            &ChangeWindowAttributesAux::new().border_pixel(pixel),
-        );
-    }
+    refresh_border_color_x11(core, x11, win, false);
 
     if redirect_to_root {
         let _ = x11

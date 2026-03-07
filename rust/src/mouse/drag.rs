@@ -39,8 +39,7 @@ use x11rb::protocol::xproto::*;
 use super::constants::{
     DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH, REFRESH_RATE_HI, REFRESH_RATE_LO,
 };
-use super::cursor::{set_cursor_default, set_cursor_move, set_cursor_resize};
-use super::grab::{grab_pointer, ungrab, wait_event};
+use super::cursor::{set_cursor_default, set_cursor_move};
 use super::monitor::handle_client_monitor_switch;
 use super::warp::{get_root_ptr, get_root_ptr_ctx_x11, warp_into_ctx_x11};
 
@@ -230,7 +229,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
 
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.g().selected_monitor_id();
 
     if on_bar {
         let new_gesture = {
@@ -240,7 +239,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             bar_position_to_gesture(bar_position_at_x(mon, core, local_x))
         };
 
-        let gesture_changed = ctx.g_mut().selected_monitor().gesture != new_gesture;
+        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
 
         if !state.cursor_on_bar || gesture_changed {
             ctx.g_mut().drag.bar_active = true;
@@ -274,11 +273,11 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx.g_mut().selected_monitor().bar_y + ctx.g_mut().cfg.bar_height;
+        let bar_bottom = ctx.g().selected_monitor().bar_y + ctx.g().cfg.bar_height;
         new_y = bar_bottom;
     }
 
-    let has_tiling = ctx.g_mut().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     let (mut is_floating, mut drag_geo) = ctx
         .g()
@@ -301,7 +300,7 @@ fn on_motion(
     );
 
     if !has_tiling || is_floating {
-        let client_clone = ctx.g_mut().clients.get(&win).cloned();
+        let client_clone = ctx.g().clients.get(&win).cloned();
         if let Some(ref client) = client_clone {
             snap_to_monitor_edges(ctx, client, &mut new_x, &mut new_y);
         }
@@ -331,7 +330,7 @@ fn maybe_promote_tiled_drag_to_floating(
     is_floating: &mut bool,
     drag_geo: &mut Rect,
 ) {
-    let snap = ctx.g_mut().cfg.snap;
+    let snap = ctx.g().cfg.snap;
     if *is_floating
         || !has_tiling
         || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)
@@ -360,7 +359,7 @@ fn maybe_promote_tiled_drag_to_floating(
     set_floating_in_place(ctx, win);
 
     // Re-tile the remaining windows (touches only the other clients).
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.g().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
     // The window's width is changing (tiled → floating), so the old
@@ -386,7 +385,7 @@ fn maybe_promote_tiled_drag_to_floating(
 /// Called once the drag loop exits so that hover state is always cleaned up.
 fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g_mut().drag.bar_active = false;
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.g().selected_monitor_id();
     ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
     ctx.request_bar_update(Some(selmon_id));
 }
@@ -500,12 +499,12 @@ fn apply_edge_drop(
         return false;
     }
 
-    let is_tiling = ctx.g_mut().selected_monitor().is_tiling_layout();
+    let is_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     if is_tiling {
         let (mon_my, mon_mh) = (
-            ctx.g_mut().selected_monitor().monitor_rect.y,
-            ctx.g_mut().selected_monitor().monitor_rect.h,
+            ctx.g().selected_monitor().monitor_rect.y,
+            ctx.g().selected_monitor().monitor_rect.h,
         );
 
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
@@ -524,7 +523,7 @@ fn apply_edge_drop(
         if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
             c.isfloating = false;
         }
-        let selmon_id = ctx.g_mut().selected_monitor_id();
+        let selmon_id = ctx.g().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     } else {
         let dir = if at_left {
@@ -633,7 +632,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             };
             wl.core.g.altcursor = crate::types::AltCursor::None;
             super::set_cursor_move_wayland(wl);
-            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise(win);
+            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_interactive(win);
         }
     }
 }
@@ -652,11 +651,7 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         return;
     };
 
-    if !grab_pointer(ctx, 2) {
-        return;
-    }
     let Some((start_x, start_y)) = get_root_ptr_ctx_x11(ctx) else {
-        ungrab(ctx);
         return;
     };
 
@@ -675,43 +670,23 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
-    {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        let _ = refresh_rate(&mut wm_ctx);
-    }
-    let mut last_time: u32 = 0;
 
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                on_motion(
-                    &mut wm_ctx,
-                    win,
-                    m.event_x as i32,
-                    m.event_y as i32,
-                    m.root_x as i32,
-                    m.root_y as i32,
-                    &mut state,
-                );
-            }
-            _ => {}
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            on_motion(
+                &mut wm_ctx,
+                win,
+                m.event_x as i32,
+                m.event_y as i32,
+                m.root_x as i32,
+                m.root_y as i32,
+                &mut state,
+            );
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         clear_bar_hover(&mut wm_ctx);
@@ -735,52 +710,36 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
-    if !grab_pointer(ctx, 2) {
-        return;
+pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
+    if let WmCtx::X11(x11) = ctx {
+        gesture_mouse_x11(x11, btn);
     }
+}
+
+pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
     let Some((_, start_y)) = get_root_ptr_ctx_x11(ctx) else {
-        ungrab(ctx);
         return;
     };
 
     let mut last_y = start_y;
-    let mut last_time: u32 = 0;
 
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
+            if (last_y - m.event_y as i32).abs() > threshold {
+                let event_y = m.event_y as i32;
+                let cmd = if event_y < last_y {
+                    &["/usr/share/instantassist/utils/p.sh", "+"]
+                } else {
+                    &["/usr/share/instantassist/utils/p.sh", "-"]
+                };
+                let wm_ctx = WmCtx::X11(ctx.reborrow());
+                crate::util::spawn(&wm_ctx, cmd);
+                last_y = event_y;
             }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-
-                let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
-                if (last_y - m.event_y as i32).abs() > threshold {
-                    let event_y = m.event_y as i32;
-                    let cmd = if event_y < last_y {
-                        &["/usr/share/instantassist/utils/p.sh", "+"]
-                    } else {
-                        &["/usr/share/instantassist/utils/p.sh", "-"]
-                    };
-                    let wm_ctx = WmCtx::X11(ctx.reborrow());
-                    crate::util::spawn(&wm_ctx, cmd);
-                    last_y = event_y;
-                }
-            }
-            _ => {}
         }
-    }
-
-    ungrab(ctx);
+        true
+    });
 }
 
 // ── drag_tag ──────────────────────────────────────────────────────────────────
@@ -962,56 +921,34 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────────
-    if !grab_pointer(ctx, 2) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        drag_tag_finish(&mut wm_ctx, 0);
-        return;
-    }
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            // Update stored modifier state from latest motion.
+            let root_x = m.event_x as i32;
+            let root_y = m.event_y as i32;
+            let mod_state = u16::from(m.state) as u32;
 
-    let mut last_time: u32 = 0;
+            // Store motion with modifier state for release handling.
+            ctx.core.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
 
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    // Capture modifier state at release and finish.
-                    let modifier_state = u16::from(br.state) as u32;
-                    ungrab(ctx);
-                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    drag_tag_finish(&mut wm_ctx, modifier_state);
-                    return;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-
-                // Update stored modifier state from latest motion.
-                let root_x = m.event_x as i32;
-                let root_y = m.event_y as i32;
-                let mod_state = u16::from(m.state) as u32;
-
-                // Store motion with modifier state for release handling.
-                ctx.core.g.drag.tag.last_motion = Some((root_x, root_y, mod_state));
-
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                if !drag_tag_motion(&mut wm_ctx, root_x, root_y) {
-                    // Cursor left the bar — abort.
-                    break;
-                }
-            }
-            _ => {}
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            return drag_tag_motion(&mut wm_ctx, root_x, root_y);
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
+    let modifier_state = {
+        ctx.core
+            .g
+            .drag
+            .tag
+            .last_motion
+            .map(|(_, _, m)| m)
+            .unwrap_or(0)
+    };
+
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    drag_tag_finish(&mut wm_ctx, 0);
+    drag_tag_finish(&mut wm_ctx, modifier_state);
 }
 
 // ── window title drag state machine ──────────────────────────────────────────
@@ -1092,42 +1029,22 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if ctx.is_x11() {
             return false;
         }
+        // On Wayland a right-click title-drag hands off to HoverResizeDragState
+        // at the threshold-exceeded moment (see below).  If we somehow arrive
+        // here with a right-click still marked dragging it means HoverResizeDragState
+        // is now driving the resize — just clear the title state and bail so we
+        // don't double-process.
+        if ctx.g_mut().drag.title.button == MouseButton::Right {
+            ctx.g_mut().drag.title.active = false;
+            ctx.g_mut().drag.title.dragging = false;
+            return false;
+        }
+
         let td = &ctx.g_mut().drag.title;
         let win = td.win;
-        let td_button = td.button;
         let td_win_start_geo = td.win_start_geo;
         let td_start_x = td.start_x;
         let td_start_y = td.start_y;
-        if td_button == MouseButton::Right {
-            let (new_w, new_h, x, y, is_floating) = ctx
-                .g()
-                .clients
-                .get(&win)
-                .map(|c| {
-                    (
-                        (td_win_start_geo.w + (root_x - td_start_x)).max(1),
-                        (td_win_start_geo.h + (root_y - td_start_y)).max(1),
-                        c.geo.x,
-                        c.geo.y,
-                        c.isfloating,
-                    )
-                })
-                .unwrap_or((1, 1, 0, 0, false));
-            if is_floating {
-                resize(
-                    ctx,
-                    win,
-                    &Rect {
-                        x,
-                        y,
-                        w: new_w,
-                        h: new_h,
-                    },
-                    true,
-                );
-            }
-            return true;
-        }
         let mut new_x = td_win_start_geo.x + (root_x - td_start_x);
         let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
 
@@ -1173,83 +1090,162 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let btn = ctx.g_mut().drag.title.button;
     let was_hidden = ctx.g_mut().drag.title.was_hidden;
     let is_right_click = btn == MouseButton::Right;
+
+    if was_hidden {
+        crate::client::show(ctx, win);
+    }
+    crate::focus::focus_soft(ctx, Some(win));
+    ctx.raise_interactive(win);
+
     if ctx.is_wayland() {
-        // Keep the title drag active so Wayland motion/release can keep driving it.
-        if was_hidden {
-            crate::client::show(ctx, win);
-        }
-        crate::focus::focus_soft(ctx, Some(win));
-        ctx.raise(win);
-        if let Some((is_floating, geo, border_width, float_geo)) = ctx
-            .g()
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.geo, c.border_width, c.float_geo))
-        {
-            let mut current_geo = geo;
-            let mut anchor_rebased = false;
-            if !is_floating {
+        if is_right_click {
+            // Right-click title drag on Wayland: hand straight off to
+            // HoverResizeDragState.  That machinery already handles
+            // directional resize correctly — no warp, no anchor chaos.
+            //
+            // Promote tiled windows to floating first (same as the move path).
+            let (is_floating, geo, float_geo) = ctx
+                .g()
+                .clients
+                .get(&win)
+                .map(|c| (c.isfloating, c.geo, c.float_geo))
+                .unwrap_or((false, Rect::default(), Rect::default()));
+            let current_geo = if !is_floating {
                 set_floating_in_place(ctx, win);
                 let selmon_id = ctx.g_mut().selected_monitor_id();
                 arrange(ctx, Some(selmon_id));
                 let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
                 let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
-                let mut target_x = geo.x;
-                let mut target_y = geo.y;
-                if !is_right_click {
-                    // Match title-drag warp semantics: place the restored
-                    // floating window so its top-middle sits under the cursor.
-                    target_x = root_x - target_w / 2;
-                    target_y = root_y;
-                    ctx.g_mut().drag.title.win_start_geo.x = target_x;
-                    ctx.g_mut().drag.title.win_start_geo.y = target_y;
-                    ctx.g_mut().drag.title.start_x = root_x;
-                    ctx.g_mut().drag.title.start_y = root_y;
-                    anchor_rebased = true;
-                }
-                resize(
-                    ctx,
+                let new_geo = Rect {
+                    x: geo.x,
+                    y: geo.y,
+                    w: target_w,
+                    h: target_h,
+                };
+                resize(ctx, win, &new_geo, true);
+                new_geo
+            } else {
+                geo
+            };
+
+            // Compute direction from the original click position relative to
+            // the (possibly freshly promoted) window geometry.
+            let start_x = ctx.g().drag.title.start_x;
+            let start_y = ctx.g().drag.title.start_y;
+            let hit_x = start_x - current_geo.x;
+            let hit_y = start_y - current_geo.y;
+            let dir = crate::types::input::get_resize_direction(
+                current_geo.w,
+                current_geo.h,
+                hit_x,
+                hit_y,
+            );
+
+            // Arm HoverResizeDragState so calloop motion/release events drive
+            // the resize from here on.  The title drag is deactivated so
+            // title_drag_finish won't also fire.
+            //
+            // Warp the cursor to the nearest edge/corner for this direction so
+            // the visual position matches what is being dragged.  The resize
+            // math uses root_x/root_y directly against the window edges, so
+            // correctness doesn't depend on start_x/start_y — but placing the
+            // cursor at the right handle gives immediate visual feedback.
+            let bw = ctx
+                .g()
+                .clients
+                .get(&win)
+                .map(|c| c.border_width)
+                .unwrap_or(0);
+            let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
+            let warp_x = current_geo.x + x_off;
+            let warp_y = current_geo.y + y_off;
+
+            ctx.g_mut().drag.title.active = false;
+            ctx.g_mut().drag.title.dragging = false;
+            if let WmCtx::Wayland(wl) = ctx {
+                wl.wayland
+                    .backend
+                    .warp_pointer(warp_x as f64, warp_y as f64);
+                wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+                    active: true,
                     win,
-                    &Rect {
-                        x: target_x,
-                        y: target_y,
-                        w: target_w,
-                        h: target_h,
-                    },
-                    true,
-                );
-                current_geo.x = target_x;
-                current_geo.y = target_y;
-                current_geo.w = target_w;
-                current_geo.h = target_h;
-                ctx.g_mut().drag.title.win_start_geo.w = target_w;
-                ctx.g_mut().drag.title.win_start_geo.h = target_h;
+                    button: btn,
+                    direction: dir,
+                    move_mode: false,
+                    start_x: warp_x,
+                    start_y: warp_y,
+                    win_start_geo: current_geo,
+                    last_root_x: warp_x,
+                    last_root_y: warp_y,
+                };
+                wl.core.g.altcursor = crate::types::AltCursor::Resize;
+                wl.core.g.drag.resize_direction = Some(dir);
+                super::cursor::set_cursor_resize_wayland(wl, Some(dir));
             }
-            if is_right_click {
-                let (x_off, y_off) = ResizeDirection::BottomRight.warp_offset(
-                    current_geo.w,
-                    current_geo.h,
-                    border_width,
-                );
-                ctx.g_mut().drag.title.start_x = current_geo.x + x_off;
-                ctx.g_mut().drag.title.start_y = current_geo.y + y_off;
-            } else if !anchor_rebased {
-                // Wayland can't reliably warp the hardware pointer like X11, so
-                // emulate warp_into by rebasing the drag anchor into window bounds.
-                let pad = 10;
-                let max_x = (current_geo.w - pad).max(pad);
-                let max_y = (current_geo.h - pad).max(pad);
-                let offset_x = (root_x - current_geo.x).clamp(pad, max_x);
-                let offset_y = (root_y - current_geo.y).clamp(pad, max_y);
-                ctx.g_mut().drag.title.start_x = current_geo.x + offset_x;
-                ctx.g_mut().drag.title.start_y = current_geo.y + offset_y;
-            }
+            return true;
         }
-        if is_right_click {
-            set_cursor_resize(ctx, Some(ResizeDirection::BottomRight));
-        } else {
-            set_cursor_move(ctx);
+
+        // Left-click move path — keep title drag active so calloop drives it.
+        let (is_floating, geo, float_geo) = ctx
+            .g()
+            .clients
+            .get(&win)
+            .map(|c| (c.isfloating, c.geo, c.border_width, c.float_geo))
+            .map(|(f, g, _bw, fg)| (f, g, fg))
+            .unwrap_or((false, Rect::default(), Rect::default()));
+
+        let mut anchor_rebased = false;
+        if !is_floating {
+            set_floating_in_place(ctx, win);
+            let selmon_id = ctx.g_mut().selected_monitor_id();
+            arrange(ctx, Some(selmon_id));
+            let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
+            let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
+            // Place the restored floating window so its top-middle sits under
+            // the cursor (matches the title-bar drag warp semantics).
+            let target_x = root_x - target_w / 2;
+            let target_y = root_y;
+            ctx.g_mut().drag.title.win_start_geo = Rect {
+                x: target_x,
+                y: target_y,
+                w: target_w,
+                h: target_h,
+            };
+            ctx.g_mut().drag.title.start_x = root_x;
+            ctx.g_mut().drag.title.start_y = root_y;
+            anchor_rebased = true;
+            resize(
+                ctx,
+                win,
+                &Rect {
+                    x: target_x,
+                    y: target_y,
+                    w: target_w,
+                    h: target_h,
+                },
+                true,
+            );
         }
+
+        if !anchor_rebased {
+            // Clamp the drag anchor inside the window bounds and rebase
+            // start_x/y to the clamped position so deltas are correct even
+            // before the deferred warp takes effect.
+            let current_geo = ctx.g().clients.get(&win).map(|c| c.geo).unwrap_or(geo);
+            super::warp::warp_into(ctx, win);
+            let ptr = super::warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
+            let pad = super::warp::WARP_INTO_PADDING;
+            let clamped_x = ptr
+                .0
+                .clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
+            let clamped_y = ptr
+                .1
+                .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
+            ctx.g_mut().drag.title.start_x = clamped_x;
+            ctx.g_mut().drag.title.start_y = clamped_y;
+        }
+
+        set_cursor_move(ctx);
         ctx.g_mut().drag.title.dragging = true;
         return title_drag_motion(ctx, root_x, root_y);
     }
@@ -1257,20 +1253,13 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.g_mut().drag.title.dragging = true;
     ctx.g_mut().drag.title.active = false;
 
-    if was_hidden {
-        crate::client::show(ctx, win);
-    }
-    crate::focus::focus_soft(ctx, Some(win));
-
     if btn == MouseButton::Right {
         if let Some(c) = ctx.g_mut().clients.get(&win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
             if let WmCtx::X11(x11) = ctx {
-                let conn = x11.x11.conn;
-                let _x11_win: Window = win.into();
                 let x11_win: Window = win.into();
-                let _ = conn.warp_pointer(
+                let _ = x11.x11.conn.warp_pointer(
                     x11rb::NONE,
                     x11_win,
                     0i16,
@@ -1280,7 +1269,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                     x_off as i16,
                     y_off as i16,
                 );
-                let _ = conn.flush();
+                let _ = x11.x11.conn.flush();
             }
         }
         if let WmCtx::X11(x11) = ctx {
@@ -1376,39 +1365,16 @@ pub fn window_title_mouse_handler(
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
-    if !grab_pointer(ctx, 0) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        title_drag_finish(&mut wm_ctx);
-        return;
-    }
-
-    let mut last_time: u32 = 0;
-
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
+    super::grab::mouse_drag_loop(ctx, btn, 0, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
+                return false;
             }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
-                    return;
-                }
-            }
-            _ => {}
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     title_drag_finish(&mut wm_ctx);
 }
@@ -1436,39 +1402,16 @@ pub fn window_title_mouse_handler_right(
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
-    if !grab_pointer(ctx, 2) {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        title_drag_finish(&mut wm_ctx);
-        return;
-    }
-
-    let mut last_time: u32 = 0;
-
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
+    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+        if let x11rb::protocol::Event::MotionNotify(m) = event {
+            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+            if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
+                return false;
             }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
-                    return;
-                }
-            }
-            _ => {}
         }
-    }
+        true
+    });
 
-    ungrab(ctx);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     title_drag_finish(&mut wm_ctx);
 }

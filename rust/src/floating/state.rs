@@ -33,26 +33,11 @@ fn apply_floating_borderscheme(core: &CoreCtx, x11: &X11BackendRef, win: WindowI
             &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
                 .border_pixel(Some(pixel as u32)),
         );
-        let _ = x11.conn.flush();
     }
 }
 
 pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(x11) => {
-            if let Some(client) = x11.core.g.clients.get_mut(&win) {
-                client.isfloating = true;
-            }
-            restore_client_border(&mut x11.core, &x11.backend, win);
-            apply_floating_borderscheme(&x11.core, &x11.x11, win);
-        }
-        WmCtx::Wayland(wl) => {
-            if let Some(client) = wl.core.g.clients.get_mut(&win) {
-                client.isfloating = true;
-            }
-            restore_client_border(&mut wl.core, &wl.backend, win);
-        }
-    }
+    apply_float_change(ctx, win, true, false, true);
 }
 
 pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
@@ -119,11 +104,59 @@ pub fn apply_float_change(
                             client.old_border_width = client.border_width;
                         }
                         client.border_width = 0;
+                        x11.backend.set_border_width(win, 0);
                     }
                 }
             }
         }
-        WmCtx::Wayland(_) => {}
+        WmCtx::Wayland(wl) => {
+            if floating {
+                if let Some(client) = wl.core.g.clients.get_mut(&win) {
+                    client.isfloating = true;
+                }
+
+                if update_borders {
+                    restore_client_border(&mut wl.core, &wl.backend, win);
+                }
+
+                let saved_geo = wl.core.g.clients.get(&win).map(|c| c.float_geo);
+                let Some(saved_geo) = saved_geo else { return };
+
+                if animate {
+                    animate_client(
+                        ctx,
+                        win,
+                        &Rect {
+                            x: saved_geo.x,
+                            y: saved_geo.y,
+                            w: saved_geo.w,
+                            h: saved_geo.h,
+                        },
+                        7,
+                        0,
+                    );
+                } else {
+                    crate::client::resize(ctx, win, &saved_geo, false);
+                }
+            } else {
+                let client_count = wl.core.g.clients.len();
+                if let Some(client) = wl.core.g.clients.get_mut(&win) {
+                    client.isfloating = false;
+                    client.float_geo = client.geo;
+
+                    if update_borders
+                        && client_count <= 1
+                        && client.snap_status == SnapPosition::None
+                    {
+                        if client.border_width != 0 {
+                            client.old_border_width = client.border_width;
+                        }
+                        client.border_width = 0;
+                        wl.backend.set_border_width(win, 0);
+                    }
+                }
+            }
+        }
     }
 }
 

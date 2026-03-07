@@ -38,6 +38,11 @@ $SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-x11.desktop" "${DESTDIR}/usr/sh
 # Wayland display manager session
 $SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
 
+# Wayland debug session (logs to ~/.instantwm.log)
+$SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug-wrapper.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
+$SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
+
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm-rs"
-echo "X11 session:    ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
-echo "Wayland session: ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
+echo "Wayland session:  ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+echo "Wayland debug:    ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"

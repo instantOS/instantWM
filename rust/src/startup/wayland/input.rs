@@ -41,6 +41,62 @@ use super::bar::{
 use super::init::sanitize_wayland_size;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pending warp — compositor-side cursor teleport
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Consume any pending warp stored in `WaylandState` and synthesise a full
+/// Smithay pointer-motion event so that:
+///
+/// 1. The external `pointer_location` variable (owned by the event-loop
+///    closure) is updated to the new position.
+/// 2. `pointer_handle.motion()` is called, which sends `wl_pointer::enter`
+///    / `wl_pointer::motion` / `wl_pointer::leave` to the right clients and
+///    updates the internal Smithay focus.
+/// 3. `pointer_handle.frame()` closes the event batch.
+///
+/// Call this once per event-loop tick, *before* rendering, so the rendered
+/// cursor position matches the pointer protocol state.
+///
+/// Returns `true` when a warp was applied (callers may wish to mark output
+/// dirty so the new cursor position is painted immediately).
+pub fn apply_pending_warp(
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    pointer_location: &mut Point<f64, smithay::utils::Logical>,
+) -> bool {
+    let Some(target) = state.take_pending_warp() else {
+        return false;
+    };
+
+    *pointer_location = target;
+
+    let focus = state
+        .layer_surface_under_pointer(target)
+        .or_else(|| state.surface_under_pointer(target))
+        .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+
+    let serial = SERIAL_COUNTER.next_serial();
+    let time_msec = {
+        use smithay::utils::{Clock, Monotonic};
+        Clock::<Monotonic>::new().now().as_millis()
+    };
+    let motion = smithay::input::pointer::MotionEvent {
+        location: target,
+        serial,
+        time: time_msec,
+    };
+
+    // We need a mutable borrow of the handle to call motion/frame.
+    // Clone the handle (cheap Arc clone) so we can call methods on it while
+    // `state` is also borrowed through the focus computation above.
+    let mut ph = pointer_handle.clone();
+    ph.motion(state, focus, &motion);
+    ph.frame(state);
+
+    true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Resize helper (winit-only — output size comes from the backend window)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -53,6 +109,19 @@ pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
     update_geom(&mut wm.ctx());
+    // Transform::Flipped180 is REQUIRED for the winit (nested) backend.
+    //
+    // Smithay's winit backend renders into an OpenGL framebuffer whose
+    // Y-axis points upward (OpenGL convention), but the host Wayland
+    // compositor expects the top-left origin (Wayland convention).  The
+    // result is that every frame arrives at the host upside-down unless
+    // we tell Smithay's output machinery to compensate with a 180° flip.
+    //
+    // Smithay applies this transform when compositing space elements so
+    // that the final pixel layout sent to the host is right-side up.
+    //
+    // DO NOT replace this with Transform::Normal — the entire compositor
+    // output will be rendered upside-down inside the host window.
     output.change_current_state(
         Some(mode),
         Some(Transform::Flipped180),
@@ -106,12 +175,7 @@ pub fn handle_keyboard<B: InputBackend>(
                 let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
                 if crate::keyboard::handle_keysym(
                     &mut wm_ctx,
-                    keysym
-                        .raw_syms()
-                        .into_iter()
-                        .next()
-                        .map(u32::from)
-                        .unwrap_or(0),
+                    keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
                     return FilterResult::Intercept(());
@@ -319,13 +383,29 @@ pub fn handle_pointer_button<B: InputBackend>(
             }
         }
 
-        let button = smithay::input::pointer::ButtonEvent {
-            serial,
-            time: event.time_msec(),
-            button: event.button_code(),
-            state: event.state(),
-        };
-        pointer_handle.button(state, &button);
+        // Check ClientWin bindings (e.g. Super+Left to move) before forwarding
+        // the button event to the client, so modifier-based WM actions consume
+        // the press instead of passing it through.
+        let mut consumed = false;
+        if update_wayland_bar_hit_state(wm, root_x, root_y, false).is_none() {
+            if let Some(btn) = wm_button {
+                let clean_state = crate::util::clean_mask(
+                    modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                    wm.x11_runtime.numlockmask,
+                );
+                consumed = dispatch_wayland_client_button(wm, btn, root_x, root_y, clean_state);
+            }
+        }
+
+        if !consumed {
+            let button = smithay::input::pointer::ButtonEvent {
+                serial,
+                time: event.time_msec(),
+                button: event.button_code(),
+                state: event.state(),
+            };
+            pointer_handle.button(state, &button);
+        }
 
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
             let clean_state = {
@@ -335,7 +415,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                 )
             };
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
-        } else {
+        } else if !consumed {
             let maybe_close = {
                 let core = crate::contexts::CoreCtx::new(
                     &mut wm.g,
@@ -361,16 +441,35 @@ pub fn handle_pointer_button<B: InputBackend>(
             }
         }
 
-        let keyboard_focus = state
-            .layer_surface_under_pointer(pointer_location)
-            .map(|(surface, _)| KeyboardFocusTarget::WlSurface(surface))
-            .or_else(|| {
-                state
-                    .space
-                    .element_under(pointer_location)
-                    .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()))
-            });
-        keyboard_handle.set_focus(state, keyboard_focus, serial);
+        // Focus the clicked window through the WM (updates mon.sel, sends
+        // activated state to the client) but do NOT raise it — raising only
+        // happens on move/resize/float operations.
+        //
+        // Layer surfaces (e.g. panels) are not tracked by the WM; for those
+        // we fall back to a direct Smithay keyboard-focus call so they still
+        // receive key input after being clicked.
+        if let Some((layer_surface, _)) = state.layer_surface_under_pointer(pointer_location) {
+            // Layer surface: focus directly, no WM involvement needed.
+            keyboard_handle.set_focus(
+                state,
+                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
+                serial,
+            );
+        } else {
+            // Regular client window: route through the WM so that mon.sel,
+            // the activated flag, and bar highlighting are all kept in sync.
+            let clicked_win = find_hovered_window(wm, state, pointer_location);
+            if let Some(win) = clicked_win {
+                let mut ctx = wm.ctx();
+                crate::focus::focus_soft(&mut ctx, Some(win));
+            }
+            // If nothing was under the pointer (click on desktop), clear WM
+            // selection and Smithay focus both.
+            if clicked_win.is_none() {
+                let mut ctx = wm.ctx();
+                crate::focus::focus_soft(&mut ctx, None);
+            }
+        }
     } else if event.state() == smithay::backend::input::ButtonState::Released {
         if let Some(btn) = wm_button {
             if wayland_hover_resize_drag_finish(wm, btn) {
@@ -378,14 +477,19 @@ pub fn handle_pointer_button<B: InputBackend>(
             }
         }
 
-        let button = smithay::input::pointer::ButtonEvent {
-            serial,
-            time: event.time_msec(),
-            button: event.button_code(),
-            state: event.state(),
-        };
-        pointer_handle.button(state, &button);
         let released_btn = wm_button;
+        let is_wm_drag = (wm.g.drag.title.active && released_btn == Some(wm.g.drag.title.button))
+            || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button));
+
+        if !is_wm_drag {
+            let button = smithay::input::pointer::ButtonEvent {
+                serial,
+                time: event.time_msec(),
+                button: event.button_code(),
+                state: event.state(),
+            };
+            pointer_handle.button(state, &button);
+        }
 
         if wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button) {
             let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
@@ -507,6 +611,36 @@ fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
     None
 }
 
+fn dispatch_wayland_client_button(
+    wm: &mut Wm,
+    btn: MouseButton,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+) -> bool {
+    let buttons = wm.g.cfg.buttons.clone();
+    for b in &buttons {
+        if !b.matches(BarPosition::ClientWin) || b.button != btn {
+            continue;
+        }
+        if crate::util::clean_mask(b.mask, 0) != clean_state {
+            continue;
+        }
+        let mut ctx = wm.ctx();
+        (b.action)(
+            &mut ctx,
+            ButtonArg {
+                pos: BarPosition::ClientWin,
+                btn: b.button,
+                rx: root_x,
+                ry: root_y,
+            },
+        );
+        return true;
+    }
+    false
+}
+
 fn wayland_hover_resize_drag_begin(
     wm: &mut Wm,
     root_x: i32,
@@ -545,7 +679,7 @@ fn wayland_hover_resize_drag_begin(
         set_cursor_resize_wayland(&mut ctx, Some(dir));
     }
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
-    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise(win);
+    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(win);
     true
 }
 

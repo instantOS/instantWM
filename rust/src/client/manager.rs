@@ -1,6 +1,5 @@
 //! Structured data and low-level logic for clients.
 
-use crate::monitor::MonitorManager;
 use crate::types::{Client, ClientId, WindowId};
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -20,81 +19,12 @@ impl Deref for ClientManager {
 }
 
 impl ClientManager {
-    pub fn attach_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-        let monitors = &mut ctx.g_mut().monitors;
-        self.attach(monitors, win);
-    }
-
-    pub fn detach_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-        let monitors = &mut ctx.g_mut().monitors;
-        self.detach(monitors, win);
-    }
-
-    pub fn attach_stack_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-        let monitors = &mut ctx.g_mut().monitors;
-        self.attach_stack(monitors, win);
-    }
-
-    pub fn detach_stack_ctx(&mut self, ctx: &mut crate::contexts::WmCtx, win: WindowId) {
-        let monitors = &mut ctx.g_mut().monitors;
-        self.detach_stack(monitors, win);
-    }
     pub fn new() -> Self {
         Self::default()
     }
 
     // -------------------------------------------------------------------------
-    // List Invariants (The "Plumbing")
-    // -------------------------------------------------------------------------
-
-    pub fn attach(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
-            Some(id) => id,
-            None => return,
-        };
-        if let Some(mon) = monitors.get_mut(monitor_id) {
-            mon.clients.insert(0, win);
-        }
-    }
-
-    pub fn detach(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
-            Some(id) => id,
-            None => return,
-        };
-        if let Some(mon) = monitors.get_mut(monitor_id) {
-            mon.clients.retain(|&w| w != win);
-        }
-    }
-
-    pub fn attach_stack(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
-            Some(id) => id,
-            None => return,
-        };
-        if let Some(mon) = monitors.get_mut(monitor_id) {
-            mon.stack.insert(0, win);
-            if mon.sel.is_none() {
-                mon.sel = Some(win);
-            }
-        }
-    }
-
-    pub fn detach_stack(&mut self, monitors: &mut MonitorManager, win: WindowId) {
-        let monitor_id = match self.clients.get(&win).and_then(|c| c.monitor_id) {
-            Some(id) => id,
-            None => return,
-        };
-        if let Some(mon) = monitors.get_mut(monitor_id) {
-            mon.stack.retain(|&w| w != win);
-            if mon.sel == Some(win) {
-                mon.sel = mon.stack.first().copied();
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // High-Level Logic (Hiding the litter)
+    // Map access
     // -------------------------------------------------------------------------
 
     pub fn contains(&self, win: &WindowId) -> bool {

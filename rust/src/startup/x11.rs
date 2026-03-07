@@ -257,21 +257,19 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
     let bordercolors = wm.g.cfg.bordercolors.clone();
     let statusbarcolors = wm.g.cfg.statusbarcolors.clone();
 
-    let borderscheme = drw
-        .scm_create(&[bordercolors.normal.as_str()])
-        .ok()
-        .and_then(|normal| {
-            let color = ColorScheme::from_vec(normal)?;
-            let tile = drw.clr_create(bordercolors.tile_focus.as_str()).ok()?;
-            let float = drw.clr_create(bordercolors.float_focus.as_str()).ok()?;
-            let snap = drw.clr_create(bordercolors.snap.as_str()).ok()?;
-            Some(BorderScheme {
-                normal: ColorScheme::new(color.fg.clone(), color.bg.clone(), color.detail.clone()),
-                tile_focus: ColorScheme::new(tile.clone(), tile.clone(), tile.clone()),
-                float_focus: ColorScheme::new(float.clone(), float.clone(), float.clone()),
-                snap: ColorScheme::new(snap.clone(), snap.clone(), snap.clone()),
-            })
-        });
+    let borderscheme = (|| {
+        let normal = drw.scm_create(&[bordercolors.normal.as_str()]).ok()?;
+        let tile = drw.scm_create(&[bordercolors.tile_focus.as_str()]).ok()?;
+        let float = drw.scm_create(&[bordercolors.float_focus.as_str()]).ok()?;
+        let snap = drw.scm_create(&[bordercolors.snap.as_str()]).ok()?;
+
+        Some(BorderScheme {
+            normal: ColorScheme::from_vec(normal)?,
+            tile_focus: ColorScheme::from_vec(tile)?,
+            float_focus: ColorScheme::from_vec(float)?,
+            snap: ColorScheme::from_vec(snap)?,
+        })
+    })();
 
     let statusscheme = drw
         .scm_create(&[

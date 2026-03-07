@@ -3,9 +3,13 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "use_system_lib")]
+use smithay::backend::renderer::ImportEgl;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     backend::allocator::Format,
+    backend::drm::DrmNode,
+    backend::egl::{EGLDevice, EGLDisplay},
     backend::renderer::gles::GlesRenderer,
     desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurfaceType},
     input::{
@@ -18,10 +22,10 @@ use smithay::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
-    utils::{Logical, Point, Transform, SERIAL_COUNTER},
+    utils::{Logical, Physical, Point, Transform, SERIAL_COUNTER},
     wayland::{
         compositor::CompositorState,
-        dmabuf::{DmabufGlobal, DmabufState},
+        dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::{
@@ -119,6 +123,10 @@ pub struct WaylandState {
 
     /// Pending screencopy frames waiting to be fulfilled during the next render.
     pub pending_screencopies: Vec<PendingScreencopy>,
+
+    /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
+    /// The event loop consumes this each tick and synthesises a pointer motion.
+    pub pending_warp: Option<Point<f64, Logical>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -217,6 +225,7 @@ impl WaylandState {
             window_animations: HashMap::new(),
             focused_window: None,
             pending_screencopies: Vec::new(),
+            pending_warp: None,
         }
     }
 
@@ -303,18 +312,73 @@ impl WaylandState {
         self.globals = Some(NonNull::from(globals));
     }
 
-    pub fn init_dmabuf_global(&mut self, formats: Vec<Format>) {
+    /// Initialise the linux-dmabuf global.
+    ///
+    /// When `egl_display` is provided and a render DRM node can be resolved
+    /// from it, we advertise `zwp_linux_dmabuf_feedback_v1` **v4** which
+    /// includes the device node identifier.  GPU-accelerated clients (kitty,
+    /// wlroots apps, etc.) use this to discover which DRM device to open for
+    /// dmabuf allocation and to choose zero-copy import paths — without it
+    /// Mesa/EGL falls back to software rendering and emits warnings like
+    /// "failed to get driver name" / "failed to retrieve device information".
+    ///
+    /// Falls back to the plain v3 global (formats only, no device) when no
+    /// EGL display is given or the node cannot be resolved.
+    pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
         if self.dmabuf_global.is_some() {
             return;
         }
-        self.dmabuf_global = Some(
+
+        // Attempt to get the render DrmNode from the EGL display so we can
+        // advertise zwp_linux_dmabuf_feedback_v1 v4 with a proper device id.
+        let render_node: Option<DrmNode> = egl_display.and_then(|display| {
+            EGLDevice::device_for_display(display)
+                .map_err(|err| {
+                    log::warn!("dmabuf: failed to query EGLDevice for display: {err}");
+                })
+                .ok()
+                .and_then(|dev| {
+                    dev.try_get_render_node()
+                        .map_err(|err| {
+                            log::warn!("dmabuf: failed to query render node from EGLDevice: {err}");
+                        })
+                        .ok()
+                        .flatten()
+                })
+        });
+
+        self.dmabuf_global = Some(if let Some(node) = render_node {
+            log::info!("dmabuf: advertising zwp_linux_dmabuf_feedback_v1 v4 on node {node:?}");
+            let feedback = DmabufFeedbackBuilder::new(node.dev_id(), formats)
+                .build()
+                .expect("DmabufFeedbackBuilder::build");
             self.dmabuf_state
-                .create_global::<Self>(&self.display_handle, formats),
-        );
+                .create_global_with_default_feedback::<Self>(&self.display_handle, &feedback)
+        } else {
+            log::info!("dmabuf: no render node available, falling back to zwp_linux_dmabuf_v1 v3");
+            self.dmabuf_state
+                .create_global::<Self>(&self.display_handle, formats)
+        });
     }
 
     pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
         self.renderer = Some(NonNull::from(renderer));
+        // Bind the compositor's Wayland display to the EGL display.  This
+        // enables the legacy EGL_WL_bind_wayland_display / wl_drm path that
+        // Mesa falls back to when zwp_linux_dmabuf_feedback_v1 v4 is
+        // unavailable.  Together with the v4 dmabuf feedback we advertise in
+        // init_dmabuf_global this ensures GPU clients like kitty never need
+        // to resort to software rendering.
+        #[cfg(feature = "use_system_lib")]
+        {
+            match renderer.bind_wl_display(&self.display_handle) {
+                Ok(()) => log::info!("EGL wl_drm hardware-acceleration enabled"),
+                Err(err) => log::debug!(
+                    "EGL wl_drm not available ({}); dmabuf v4 will be used instead",
+                    err
+                ),
+            }
+        }
     }
 
     pub(super) fn renderer_mut(&mut self) -> Option<&mut GlesRenderer> {
@@ -352,7 +416,7 @@ impl WaylandState {
 
         output.change_current_state(
             Some(mode),
-            Some(Transform::Flipped180),
+            Some(Transform::Normal),
             Some(Scale::Integer(1)),
             Some((0, 0).into()),
         );
@@ -516,7 +580,7 @@ impl WaylandState {
                 }
             }
         }
-        self.raise_override_redirect_windows();
+        self.raise_unmanaged_x11_windows();
     }
 
     pub fn restack(&mut self, windows: &[WindowId]) {
@@ -525,7 +589,7 @@ impl WaylandState {
                 self.space.raise_element(&element, false);
             }
         }
-        self.raise_override_redirect_windows();
+        self.raise_unmanaged_x11_windows();
     }
 
     pub fn set_focus(&mut self, window: WindowId) {
@@ -595,6 +659,13 @@ impl WaylandState {
             self.window_animations.remove(&window);
             self.space.map_element(element.clone(), loc, false);
             self.window_index.insert(window, element);
+
+            // If this window was the pending focus target (set by focus_soft
+            // before arrange/show_hide ran), re-apply keyboard focus now that
+            // the window is actually in the space and reachable by set_focus.
+            if self.focused_window == Some(window) {
+                self.set_focus(window);
+            }
         }
     }
 
@@ -650,13 +721,22 @@ impl WaylandState {
         }
     }
 
+    /// Request the compositor to warp the pointer to `(x, y)` in logical
+    /// screen coordinates.  The warp is deferred until the next event-loop
+    /// tick so that the pointer handle and the caller's `pointer_location`
+    /// variable can both be updated consistently.
+    pub fn request_warp(&mut self, x: f64, y: f64) {
+        self.pending_warp = Some(Point::from((x, y)));
+    }
+
+    /// Consume and return the pending warp target, if any.
+    pub fn take_pending_warp(&mut self) -> Option<Point<f64, Logical>> {
+        self.pending_warp.take()
+    }
+
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
-    }
-
-    fn raise_override_redirect_windows(&mut self) {
-        self.raise_unmanaged_x11_windows();
     }
 
     fn raise_unmanaged_x11_windows(&mut self) {
@@ -672,6 +752,44 @@ impl WaylandState {
         for w in overlays {
             self.space.raise_element(&w, true);
         }
+    }
+
+    /// Collect all overlay/unmanaged windows (dmenu, override-redirect popups,
+    /// etc.) that should be rendered above the bar but below the cursor.
+    ///
+    /// Returns `(window, physical_location)` pairs ready for `AsRenderElements`.
+    ///
+    /// # Why this exists
+    ///
+    /// The bar is rendered as a `custom_element` which sits *above* every
+    /// element in `self.space` (Smithay's `render_output` prepends custom
+    /// elements before space elements in the front-to-back list).  Overlay
+    /// windows such as dmenu live inside the space and are therefore drawn
+    /// *beneath* the bar, which makes them invisible.
+    ///
+    /// The fix is to pull those windows out of the space's render contribution
+    /// and re-emit them as custom elements inserted between the cursor and the
+    /// bar.  The space still maps/tracks them for hit-testing and protocol
+    /// bookkeeping; we just override where in the z-stack they are drawn.
+    pub fn overlay_windows_for_render(&self, x_offset: i32) -> Vec<(Window, Point<i32, Physical>)> {
+        self.space
+            .elements()
+            .filter(|w| match w.user_data().get::<WindowIdMarker>() {
+                Some(m) => m.is_overlay,
+                // Windows with no marker are unmananged override-redirect X11
+                // surfaces mapped directly (e.g. via mapped_override_redirect_window).
+                None => w.x11_surface().is_some(),
+            })
+            .filter_map(|w| {
+                let loc = self.space.element_location(w)?;
+                // Translate from global compositor coordinates to the
+                // per-output local coordinate space, then convert to physical
+                // pixels (scale = 1 throughout, so this is a no-op numerically
+                // but keeps the type system happy).
+                let phys = Point::<i32, Physical>::from((loc.x - x_offset, loc.y));
+                Some((w.clone(), phys))
+            })
+            .collect()
     }
 
     pub fn window_exists(&self, window: WindowId) -> bool {
