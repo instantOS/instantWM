@@ -67,7 +67,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.g.cfg.showsystray && is_selmon && !hit.x11_bar {
+    if core.g.cfg.show_systray && is_selmon && !hit.x11_bar {
         if let Some(idx) =
             crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
         {
@@ -144,7 +144,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.g.cfg.showsystray && is_selmon {
+    let systray_w = if core.g.cfg.show_systray && is_selmon {
         crate::systray::get_systray_width_for_bar(core, true, None)
             .max(crate::systray::get_systray_width_for_bar(core, false, None))
     } else {

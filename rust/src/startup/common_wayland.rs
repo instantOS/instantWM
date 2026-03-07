@@ -156,7 +156,7 @@ pub fn init_wayland_globals(wm: &mut Wm) {
     wm.g.cfg.screen_height = 800;
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    wm.g.cfg.showbar = true;
+    wm.g.cfg.show_bar = true;
     let font_size = wayland_font_size_from_config(&cfg.fonts);
     let font_height = wayland_font_height_from_size(font_size);
     wm.bar_painter.set_font_size(font_size);
@@ -312,7 +312,7 @@ pub fn build_bar_elements(
     wm: &mut Wm,
     renderer: &mut GlesRenderer,
 ) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
-    if !wm.g.cfg.showbar {
+    if !wm.g.cfg.show_bar {
         return Vec::new();
     }
     if let Some(runtime) = wm.wayland_systray_runtime.as_ref() {

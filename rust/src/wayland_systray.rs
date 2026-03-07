@@ -153,7 +153,7 @@ impl WaylandSystrayRuntime {
 }
 
 pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 0;
     }
     // wayland_systray is not available from CoreCtx; caller must pass it if needed.
@@ -165,7 +165,7 @@ pub fn get_wayland_systray_width_with_state(
     core: &CoreCtx,
     wayland_systray: &WaylandSystray,
 ) -> i32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 0;
     }
     let items = &wayland_systray.items;

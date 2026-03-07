@@ -16,7 +16,7 @@ const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 1;
     }
 
@@ -41,7 +41,7 @@ pub fn get_systray_width_for_bar(
     x11_present: bool,
     systray: Option<&Systray>,
 ) -> i32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 0;
     }
     if x11_present {
@@ -53,7 +53,7 @@ pub fn get_systray_width_for_bar(
 
 /// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, icon_win: WindowId) {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return;
     }
 
@@ -122,7 +122,7 @@ pub fn update_systray_icon_state(
     icon_win: WindowId,
     ev: &PropertyNotifyEvent,
 ) {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return;
     }
 
@@ -201,7 +201,7 @@ pub fn update_systray(
     x11_runtime: &X11RuntimeConfig,
     mut systray: Option<&mut Systray>,
 ) {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return;
     }
 
@@ -426,7 +426,7 @@ pub fn win_to_systray_icon(
     systray: Option<&Systray>,
     win: WindowId,
 ) -> Option<WindowId> {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return None;
     }
 

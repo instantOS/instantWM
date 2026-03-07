@@ -359,7 +359,7 @@ pub fn hover_focus_target_x11(
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
-    if !core.g.focusfollowsmouse {
+    if !core.g.focus_follows_mouse {
         return;
     }
 
@@ -411,7 +411,7 @@ pub fn hover_focus_target_wayland(
     let Some(hovered_win) = hovered_win else {
         return;
     };
-    if !core.g.focusfollowsmouse {
+    if !core.g.focus_follows_mouse {
         return;
     }
 

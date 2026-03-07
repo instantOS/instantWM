@@ -75,7 +75,7 @@ pub fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntr
         let mut mon = crate::types::Monitor::new_with_values(
             wm.g.cfg.mfact,
             wm.g.cfg.nmaster,
-            wm.g.cfg.showbar,
+            wm.g.cfg.show_bar,
             wm.g.cfg.topbar,
         );
         mon.num = i as i32;
@@ -104,7 +104,7 @@ pub fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntr
         let mut mon = crate::types::Monitor::new_with_values(
             wm.g.cfg.mfact,
             wm.g.cfg.nmaster,
-            wm.g.cfg.showbar,
+            wm.g.cfg.show_bar,
             wm.g.cfg.topbar,
         );
         mon.monitor_rect = Rect {

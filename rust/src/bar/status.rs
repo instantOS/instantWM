@@ -177,7 +177,7 @@ fn measure_layout(
     let x11_present = x11_runtime
         .map(|r| !r.xlibdisplay.0.is_null())
         .unwrap_or(false);
-    let systray_w = if ctx.g.cfg.showsystray && is_selmon {
+    let systray_w = if ctx.g.cfg.show_systray && is_selmon {
         crate::systray::get_systray_width_for_bar(ctx, x11_present, systray)
     } else {
         0

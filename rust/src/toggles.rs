@@ -92,7 +92,7 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
 }
 
 pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.focusfollowsmouse, action);
+    ctrl_toggle(&mut core.g.focus_follows_mouse, action);
 }
 
 pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {

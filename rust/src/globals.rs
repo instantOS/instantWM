@@ -58,10 +58,10 @@ pub struct RuntimeConfig {
     pub decorhints: i32,
     pub mfact: f32,
     pub nmaster: i32,
-    pub showbar: bool,
+    pub show_bar: bool,
     pub topbar: bool,
     pub bar_height: i32,
-    pub showsystray: bool,
+    pub show_systray: bool,
     pub systraypinning: usize,
     pub systrayspacing: i32,
 
@@ -107,10 +107,10 @@ impl Default for RuntimeConfig {
             decorhints: 0,
             mfact: 0.55,
             nmaster: 1,
-            showbar: true,
+            show_bar: true,
             topbar: true,
             bar_height: 0,
-            showsystray: true,
+            show_systray: true,
             systraypinning: 0,
             systrayspacing: 2,
             borderscheme: None,
@@ -288,7 +288,7 @@ pub struct Globals {
 
     // Runtime flags
     pub animated: bool,
-    pub focusfollowsmouse: bool,
+    pub focus_follows_mouse: bool,
     pub focusfollowsfloatmouse: bool,
     pub altcursor: AltCursor,
     pub doubledraw: bool,
@@ -452,7 +452,7 @@ impl Default for Globals {
             clients: ClientManager::new(),
             tags: TagSet::default(),
             animated: true,
-            focusfollowsmouse: true,
+            focus_follows_mouse: true,
             focusfollowsfloatmouse: true,
             altcursor: AltCursor::None,
             doubledraw: false,
@@ -507,8 +507,8 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.startmenusize = cfg.startmenusize;
     g.cfg.systraypinning = cfg.systraypinning;
     g.cfg.systrayspacing = cfg.systrayspacing;
-    g.cfg.showsystray = cfg.showsystray;
-    g.cfg.showbar = cfg.showbar;
+    g.cfg.show_systray = cfg.showsystray;
+    g.cfg.show_bar = cfg.showbar;
     g.cfg.topbar = cfg.topbar;
     g.cfg.bar_height = cfg.bar_height;
     g.cfg.resizehints = cfg.resizehints;

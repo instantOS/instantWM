@@ -53,7 +53,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let buttons_clone = ctx.core.g.cfg.buttons.clone();
     let altcursor = ctx.core.g.altcursor;
     let mut selmon_id = ctx.core.g.selected_monitor_id();
-    let focusfollowsmouse = ctx.core.g.focusfollowsmouse;
+    let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
 
     if let Some(clicked_mon) = ctx.core.g.monitors.win_to_mon(
         event_win,
@@ -159,7 +159,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 }
 
 pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
-    let showsystray = ctx.core.g.cfg.showsystray;
+    let showsystray = ctx.core.g.cfg.show_systray;
     let systray_win = ctx.systray.as_ref().map(|s| s.win).unwrap_or_default();
     let net_system_tray_op = ctx.x11_runtime.netatom.system_tray_op;
     let net_wm_state = ctx.x11_runtime.netatom.wm_state;
@@ -260,7 +260,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    let focusfollowsmouse = ctx.core.g.focusfollowsmouse;
+    let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
     let focusfollowsfloatmouse = ctx.core.g.focusfollowsfloatmouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
@@ -455,7 +455,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.g.focusfollowsmouse {
+    if ctx.core.g.focus_follows_mouse {
         let rect = Rect {
             x: root_x,
             y: root_y,
