@@ -41,6 +41,14 @@ pub trait BackendOps {
         _model: Option<&str>,
     ) {
     }
+
+    fn list_displays(&self) -> Vec<String> {
+        vec![]
+    }
+    fn list_display_modes(&self, _display: &str) -> Vec<String> {
+        vec![]
+    }
+    fn set_display_mode(&self, _display: &str, _width: i32, _height: i32) {}
 }
 
 /// Owned backend implementation.
@@ -120,6 +128,18 @@ impl BackendOps for Backend {
     ) {
         self.as_ref()
             .set_keyboard_layout(layout, variant, options, model)
+    }
+
+    fn list_displays(&self) -> Vec<String> {
+        self.as_ref().list_displays()
+    }
+
+    fn list_display_modes(&self, display: &str) -> Vec<String> {
+        self.as_ref().list_display_modes(display)
+    }
+
+    fn set_display_mode(&self, display: &str, width: i32, height: i32) {
+        self.as_ref().set_display_mode(display, width, height)
     }
 }
 
@@ -239,6 +259,27 @@ impl BackendOps for BackendRef<'_> {
             BackendRef::Wayland(wayland) => {
                 wayland.set_keyboard_layout(layout, variant, options, model)
             }
+        }
+    }
+
+    fn list_displays(&self) -> Vec<String> {
+        match self {
+            BackendRef::X11(x11) => x11.list_displays(),
+            BackendRef::Wayland(wayland) => wayland.list_displays(),
+        }
+    }
+
+    fn list_display_modes(&self, display: &str) -> Vec<String> {
+        match self {
+            BackendRef::X11(x11) => x11.list_display_modes(display),
+            BackendRef::Wayland(wayland) => wayland.list_display_modes(display),
+        }
+    }
+
+    fn set_display_mode(&self, display: &str, width: i32, height: i32) {
+        match self {
+            BackendRef::X11(x11) => x11.set_display_mode(display, width, height),
+            BackendRef::Wayland(wayland) => wayland.set_display_mode(display, width, height),
         }
     }
 }

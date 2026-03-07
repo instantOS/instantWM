@@ -1,3 +1,4 @@
+use crate::backend::BackendOps;
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::keyboard_layout;
@@ -130,6 +131,9 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
     let mut ctx = wm.ctx();
 
     match cmd {
+        IpcCommand::ListDisplays => list_displays(&mut ctx),
+        IpcCommand::ListDisplayModes(name) => list_display_modes(&mut ctx, &name),
+        IpcCommand::SetDisplayMode(name, width, height) => set_display_mode(&mut ctx, &name, width, height),
         IpcCommand::List => list_windows(wm),
         IpcCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
         IpcCommand::Spawn(command) => spawn_command(&mut ctx, command),
@@ -343,4 +347,17 @@ fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcRespon
         Ok(child) => IpcResponse::ok(format!("pid={}", child.id())),
         Err(err) => IpcResponse::err(format!("spawn failed: {}", err)),
     }
+}
+
+fn list_displays(ctx: &mut crate::contexts::WmCtx) -> IpcResponse {
+    IpcResponse::ok(ctx.backend().list_displays().join("\n"))
+}
+
+fn list_display_modes(ctx: &mut crate::contexts::WmCtx, display: &str) -> IpcResponse {
+    IpcResponse::ok(ctx.backend().list_display_modes(display).join("\n"))
+}
+
+fn set_display_mode(ctx: &mut crate::contexts::WmCtx, display: &str, width: i32, height: i32) -> IpcResponse {
+    ctx.backend().set_display_mode(display, width, height);
+    IpcResponse::ok("OK")
 }

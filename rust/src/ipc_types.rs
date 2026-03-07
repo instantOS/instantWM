@@ -45,6 +45,9 @@ pub enum IpcCommand {
     /// Replace the configured keyboard layouts at runtime.
     /// (layouts, variants)
     SetKeyboardLayouts(Vec<String>, Vec<String>),
+    ListDisplays,
+    ListDisplayModes(String),
+    SetDisplayMode(String, i32, i32),
 }
 
 #[derive(Debug, Clone, Decode, Encode)]
