@@ -3,6 +3,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "use_system_lib")]
+use smithay::backend::renderer::ImportEgl;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     backend::allocator::Format,
@@ -356,6 +358,22 @@ impl WaylandState {
 
     pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
         self.renderer = Some(NonNull::from(renderer));
+        // Bind the compositor's Wayland display to the EGL display.  This
+        // enables the legacy EGL_WL_bind_wayland_display / wl_drm path that
+        // Mesa falls back to when zwp_linux_dmabuf_feedback_v1 v4 is
+        // unavailable.  Together with the v4 dmabuf feedback we advertise in
+        // init_dmabuf_global this ensures GPU clients like kitty never need
+        // to resort to software rendering.
+        #[cfg(feature = "use_system_lib")]
+        {
+            match renderer.bind_wl_display(&self.display_handle) {
+                Ok(()) => log::info!("EGL wl_drm hardware-acceleration enabled"),
+                Err(err) => log::debug!(
+                    "EGL wl_drm not available ({}); dmabuf v4 will be used instead",
+                    err
+                ),
+            }
+        }
     }
 
     pub(super) fn renderer_mut(&mut self) -> Option<&mut GlesRenderer> {
