@@ -44,17 +44,33 @@ pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let (conn, clients) = match ctx {
-        WmCtx::X11(x11) => (&x11.x11.conn, &mut x11.core.g.clients),
-        WmCtx::Wayland(_) => return,
-    };
-    let Some(c) = clients.get(&win) else {
+    let Some(c) = ctx.g().clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
-    let x11_win: Window = win.into();
-    let _ = conn.warp_pointer(x11rb::NONE, x11_win, 0, 0, 0, 0, x_off as i16, y_off as i16);
-    let _ = conn.flush();
+    let target_x = c.geo.x + x_off;
+    let target_y = c.geo.y + y_off;
+    match ctx {
+        WmCtx::X11(x11) => {
+            let x11_win: Window = win.into();
+            let _ = x11.x11.conn.warp_pointer(
+                x11rb::NONE,
+                x11_win,
+                0,
+                0,
+                0,
+                0,
+                x_off as i16,
+                y_off as i16,
+            );
+            let _ = x11.x11.conn.flush();
+        }
+        WmCtx::Wayland(wl) => {
+            wl.wayland
+                .backend
+                .warp_pointer(target_x as f64, target_y as f64);
+        }
+    }
 }
 
 // ── Border detection ─────────────────────────────────────────────────────────

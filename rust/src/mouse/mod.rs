@@ -3,7 +3,7 @@
 //! This module is split into focused sub-modules:
 //!
 //! - [`constants`]  — shared numeric constants (sizes, thresholds, keycodes)
-//! - [`warp`]       — cursor-warping utilities (`warp`, `force_warp`, `reset_cursor`, …)
+//! - [`warp`]       — cursor-warping utilities (`warp_into`, `warp_to_focus`, `reset_cursor`, …)
 //! - [`grab`]       — X11 pointer-grab helpers (`grab_buttons`, modal grab/ungrab)
 //! - [`drag`]       — drag loops: move window, drag tag bar, title-bar click/drag, gestures
 //! - [`resize`]     — resize loops: corner resize, aspect resize, hover-resize

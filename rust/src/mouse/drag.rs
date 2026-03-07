@@ -1237,18 +1237,35 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                     current_geo.h,
                     border_width,
                 );
-                ctx.g_mut().drag.title.start_x = current_geo.x + x_off;
-                ctx.g_mut().drag.title.start_y = current_geo.y + y_off;
+                let warp_x = current_geo.x + x_off;
+                let warp_y = current_geo.y + y_off;
+                ctx.g_mut().drag.title.start_x = warp_x;
+                ctx.g_mut().drag.title.start_y = warp_y;
+                // Warp the hardware pointer so the resize drag starts from the
+                // correct corner.  The deferred warp takes effect next tick;
+                // setting start_x/y to the warp target keeps the anchor correct
+                // for all subsequent motion events.
+                if let WmCtx::Wayland(wl) = ctx {
+                    wl.wayland
+                        .backend
+                        .warp_pointer(warp_x as f64, warp_y as f64);
+                }
             } else if !anchor_rebased {
-                // Wayland can't reliably warp the hardware pointer like X11, so
-                // emulate warp_into by rebasing the drag anchor into window bounds.
-                let pad = 10;
-                let max_x = (current_geo.w - pad).max(pad);
-                let max_y = (current_geo.h - pad).max(pad);
-                let offset_x = (root_x - current_geo.x).clamp(pad, max_x);
-                let offset_y = (root_y - current_geo.y).clamp(pad, max_y);
-                ctx.g_mut().drag.title.start_x = current_geo.x + offset_x;
-                ctx.g_mut().drag.title.start_y = current_geo.y + offset_y;
+                // Clamp the drag anchor inside the window bounds.  On X11 the
+                // hardware cursor is warped; on Wayland we warp and also rebase
+                // start_x/y to the clamped position so deltas are correct even
+                // before the deferred warp takes effect.
+                super::warp::warp_into(ctx, win);
+                let ptr = super::warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
+                let pad = super::warp::WARP_INTO_PADDING;
+                let clamped_x = ptr
+                    .0
+                    .clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
+                let clamped_y = ptr
+                    .1
+                    .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
+                ctx.g_mut().drag.title.start_x = clamped_x;
+                ctx.g_mut().drag.title.start_y = clamped_y;
             }
         }
         if is_right_click {
@@ -1273,10 +1290,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
             if let WmCtx::X11(x11) = ctx {
-                let conn = x11.x11.conn;
-                let _x11_win: Window = win.into();
                 let x11_win: Window = win.into();
-                let _ = conn.warp_pointer(
+                let _ = x11.x11.conn.warp_pointer(
                     x11rb::NONE,
                     x11_win,
                     0i16,
@@ -1286,7 +1301,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                     x_off as i16,
                     y_off as i16,
                 );
-                let _ = conn.flush();
+                let _ = x11.x11.conn.flush();
             }
         }
         if let WmCtx::X11(x11) = ctx {

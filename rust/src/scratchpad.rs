@@ -1,7 +1,6 @@
 use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::contexts::WmCtx;
 use crate::layouts::{arrange, restack};
-use crate::mouse::warp::warp_to_client_win;
 use crate::types::*;
 
 const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
@@ -129,9 +128,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         arrange(ctx, Some(mid));
         restack(ctx, mid);
         if focusfollowsmouse {
-            if let WmCtx::X11(x11) = ctx {
-                warp_to_client_win(&x11.core, &x11.x11, x11.x11_runtime, found);
-            }
+            ctx.warp_cursor_to_client(found);
         }
     }
 }
