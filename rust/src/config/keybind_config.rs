@@ -342,15 +342,9 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         }),
 
         // Tags / views
-        "last_view" => Rc::new(|ctx| {
-            last_view(ctx)
-        }),
-        "follow_view" => Rc::new(|ctx| {
-            follow_view(ctx)
-        }),
-        "win_view" => Rc::new(|ctx| {
-            win_view(ctx)
-        }),
+        "last_view" => Rc::new(|ctx| last_view(ctx)),
+        "follow_view" => Rc::new(|ctx| follow_view(ctx)),
+        "win_view" => Rc::new(|ctx| win_view(ctx)),
         "scroll_left" => Rc::new(|ctx| animation::anim_scroll(ctx, Direction::Left)),
         "scroll_right" => Rc::new(|ctx| animation::anim_scroll(ctx, Direction::Right)),
         "move_client_left" => Rc::new(|ctx| move_client(ctx, Direction::Left)),
@@ -365,12 +359,10 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
                 crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        "toggle_overview" => Rc::new(|ctx| {
-            toggle_overview(ctx, TagMask::ALL_BITS)
-        }),
-        "toggle_fullscreen_overview" => Rc::new(|ctx| {
-            toggle_fullscreen_overview(ctx, TagMask::ALL_BITS)
-        }),
+        "toggle_overview" => Rc::new(|ctx| toggle_overview(ctx, TagMask::ALL_BITS)),
+        "toggle_fullscreen_overview" => {
+            Rc::new(|ctx| toggle_fullscreen_overview(ctx, TagMask::ALL_BITS))
+        }
 
         // Monitor
         "focus_mon_prev" => Rc::new(|ctx| focus_mon(ctx, MonitorDirection::PREV)),

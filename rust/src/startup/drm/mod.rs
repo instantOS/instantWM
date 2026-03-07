@@ -43,6 +43,7 @@ use self::state::{
     DEFAULT_SCREEN_WIDTH,
 };
 use super::autostart::run_autostart;
+use crate::startup::wayland::input::apply_pending_warp;
 
 pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
@@ -240,6 +241,16 @@ pub fn run() -> ! {
             state.tick_window_animations();
             if state.has_active_window_animations() {
                 shared.lock().unwrap().mark_all_dirty();
+            }
+
+            // Apply any compositor-side cursor warp requested during this tick
+            // (e.g. from a warp-to-focus keybinding or IPC command).
+            {
+                let mut loc = shared.lock().unwrap().pointer_location;
+                if apply_pending_warp(state, &pointer_handle, &mut loc) {
+                    shared.lock().unwrap().pointer_location = loc;
+                    shared.lock().unwrap().mark_all_dirty();
+                }
             }
 
             let (session_active, pointer_location, render_flags) = {

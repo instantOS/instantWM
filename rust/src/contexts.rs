@@ -276,14 +276,39 @@ impl<'a> WmCtx<'a> {
         self.backend().set_focus(win);
     }
 
-    /// Warp cursor to client (X11 only, no-op on Wayland).
+    /// Warp cursor to client.
+    ///
+    /// On X11 this uses `XWarpPointer`.  On Wayland the warp is deferred to
+    /// the next event-loop tick via `WaylandState::pending_warp` so that
+    /// the pointer handle and the external `pointer_location` variable are
+    /// both updated atomically.
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
         match self {
             WmCtx::X11(x11) => {
                 crate::mouse::warp::warp_to_client_win(&x11.core, &x11.x11, x11.x11_runtime, win);
             }
-            WmCtx::Wayland(_) => {
-                // Wayland doesn't allow compositor cursor warping - no-op
+            WmCtx::Wayland(wl) => {
+                // Skip the warp if the pointer is already inside the window,
+                // mirroring the X11 behaviour in warp_to_client_win.
+                let Some(c) = wl.core.g.clients.get(&win) else {
+                    return;
+                };
+                let target_x = (c.geo.x + c.geo.w / 2) as f64;
+                let target_y = (c.geo.y + c.geo.h / 2) as f64;
+
+                // Check current pointer position to avoid jarring jumps when
+                // the cursor is already over the window.
+                if let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() {
+                    let in_window = ptr_x >= c.geo.x
+                        && ptr_x <= c.geo.x + c.geo.w
+                        && ptr_y >= c.geo.y
+                        && ptr_y <= c.geo.y + c.geo.h;
+                    if in_window {
+                        return;
+                    }
+                }
+
+                wl.wayland.backend.warp_pointer(target_x, target_y);
             }
         }
     }

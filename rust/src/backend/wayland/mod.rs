@@ -102,6 +102,16 @@ impl WaylandBackend {
         })
     }
 
+    /// Request the compositor to warp the hardware pointer to `(x, y)` in
+    /// logical screen coordinates.  The warp is deferred to the next
+    /// event-loop tick where the pointer handle and the external
+    /// `pointer_location` variable are both updated together.
+    pub fn warp_pointer(&self, x: f64, y: f64) {
+        let _ = self.with_state(|state: &mut WaylandState| {
+            state.request_warp(x, y);
+        });
+    }
+
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
             state.cursor_icon_override = icon;

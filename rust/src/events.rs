@@ -350,8 +350,11 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 5. Determine what's actually under the cursor
-    let topmost_win_under_cursor =
-        crate::mouse::hover::get_cursor_client_win_with_conn(&ctx.core, ctx.x11.conn, ctx.x11_runtime.root);
+    let topmost_win_under_cursor = crate::mouse::hover::get_cursor_client_win_with_conn(
+        &ctx.core,
+        ctx.x11.conn,
+        ctx.x11_runtime.root,
+    );
 
     // 6. Handle focus switching based on configuration
     crate::focus::hover_focus_target_x11(

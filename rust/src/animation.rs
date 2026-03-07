@@ -250,11 +250,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
                 Direction::Up => SnapDir::Up,
                 Direction::Down => SnapDir::Down,
             };
-            change_snap(
-                ctx,
-                selected_window,
-                snap_dir,
-            );
+            change_snap(ctx, selected_window, snap_dir);
         }
         return;
     }

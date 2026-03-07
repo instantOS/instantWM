@@ -123,6 +123,10 @@ pub struct WaylandState {
 
     /// Pending screencopy frames waiting to be fulfilled during the next render.
     pub pending_screencopies: Vec<PendingScreencopy>,
+
+    /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
+    /// The event loop consumes this each tick and synthesises a pointer motion.
+    pub pending_warp: Option<Point<f64, Logical>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -221,6 +225,7 @@ impl WaylandState {
             window_animations: HashMap::new(),
             focused_window: None,
             pending_screencopies: Vec::new(),
+            pending_warp: None,
         }
     }
 
@@ -676,6 +681,19 @@ impl WaylandState {
         if let Err(e) = keyboard.set_xkb_config(self, config) {
             log::error!("failed to apply wayland keyboard layout: {}", e);
         }
+    }
+
+    /// Request the compositor to warp the pointer to `(x, y)` in logical
+    /// screen coordinates.  The warp is deferred until the next event-loop
+    /// tick so that the pointer handle and the caller's `pointer_location`
+    /// variable can both be updated consistently.
+    pub fn request_warp(&mut self, x: f64, y: f64) {
+        self.pending_warp = Some(Point::from((x, y)));
+    }
+
+    /// Consume and return the pending warp target, if any.
+    pub fn take_pending_warp(&mut self) -> Option<Point<f64, Logical>> {
+        self.pending_warp.take()
     }
 
     pub fn flush(&mut self) {

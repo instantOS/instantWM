@@ -41,6 +41,62 @@ use super::bar::{
 use super::init::sanitize_wayland_size;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pending warp — compositor-side cursor teleport
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Consume any pending warp stored in `WaylandState` and synthesise a full
+/// Smithay pointer-motion event so that:
+///
+/// 1. The external `pointer_location` variable (owned by the event-loop
+///    closure) is updated to the new position.
+/// 2. `pointer_handle.motion()` is called, which sends `wl_pointer::enter`
+///    / `wl_pointer::motion` / `wl_pointer::leave` to the right clients and
+///    updates the internal Smithay focus.
+/// 3. `pointer_handle.frame()` closes the event batch.
+///
+/// Call this once per event-loop tick, *before* rendering, so the rendered
+/// cursor position matches the pointer protocol state.
+///
+/// Returns `true` when a warp was applied (callers may wish to mark output
+/// dirty so the new cursor position is painted immediately).
+pub fn apply_pending_warp(
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    pointer_location: &mut Point<f64, smithay::utils::Logical>,
+) -> bool {
+    let Some(target) = state.take_pending_warp() else {
+        return false;
+    };
+
+    *pointer_location = target;
+
+    let focus = state
+        .layer_surface_under_pointer(target)
+        .or_else(|| state.surface_under_pointer(target))
+        .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+
+    let serial = SERIAL_COUNTER.next_serial();
+    let time_msec = {
+        use smithay::utils::{Clock, Monotonic};
+        Clock::<Monotonic>::new().now().as_millis()
+    };
+    let motion = smithay::input::pointer::MotionEvent {
+        location: target,
+        serial,
+        time: time_msec,
+    };
+
+    // We need a mutable borrow of the handle to call motion/frame.
+    // Clone the handle (cheap Arc clone) so we can call methods on it while
+    // `state` is also borrowed through the focus computation above.
+    let mut ph = pointer_handle.clone();
+    ph.motion(state, focus, &motion);
+    ph.frame(state);
+
+    true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Resize helper (winit-only — output size comes from the backend window)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -119,10 +175,7 @@ pub fn handle_keyboard<B: InputBackend>(
                 let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
                 if crate::keyboard::handle_keysym(
                     &mut wm_ctx,
-                    keysym
-                        .raw_syms()
-                        .first()
-                        .map_or(0, |ks| ks.raw()),
+                    keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
                     return FilterResult::Intercept(());

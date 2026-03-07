@@ -29,8 +29,8 @@ pub mod render;
 
 use self::init::sanitize_wayland_size;
 use self::input::{
-    handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
-    handle_resize,
+    apply_pending_warp, handle_keyboard, handle_pointer_axis, handle_pointer_button,
+    handle_pointer_motion, handle_resize,
 };
 use self::render::render_frame;
 use super::autostart::run_autostart;
@@ -156,6 +156,10 @@ pub fn run() -> ! {
                 server.process_pending(&mut wm);
             }
             state.sync_space_from_globals();
+
+            // Apply any compositor-side cursor warp requested during this tick
+            // (e.g. from a warp-to-focus keybinding or IPC command).
+            apply_pending_warp(state, &pointer_handle, &mut pointer_location);
 
             render_frame(
                 &mut wm,

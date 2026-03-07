@@ -234,8 +234,33 @@ pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11R
 }
 
 pub fn warp_to_focus(ctx: &mut WmCtx) {
-    if let WmCtx::X11(x11) = ctx {
-        warp_to_focus_x11(&x11.core, &x11.x11, x11.x11_runtime);
+    match ctx {
+        WmCtx::X11(x11) => {
+            warp_to_focus_x11(&x11.core, &x11.x11, x11.x11_runtime);
+        }
+        WmCtx::Wayland(wl) => {
+            let Some(win) = wl.core.selected_client() else {
+                return;
+            };
+            let Some(c) = wl.core.g.clients.get(&win) else {
+                return;
+            };
+            let target_x = (c.geo.x + c.geo.w / 2) as f64;
+            let target_y = (c.geo.y + c.geo.h / 2) as f64;
+
+            // Skip if pointer is already inside the window.
+            if let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() {
+                let in_window = ptr_x >= c.geo.x
+                    && ptr_x <= c.geo.x + c.geo.w
+                    && ptr_y >= c.geo.y
+                    && ptr_y <= c.geo.y + c.geo.h;
+                if in_window {
+                    return;
+                }
+            }
+
+            wl.wayland.backend.warp_pointer(target_x, target_y);
+        }
     }
 }
 

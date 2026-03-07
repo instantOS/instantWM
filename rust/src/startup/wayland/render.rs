@@ -39,30 +39,33 @@ pub(super) fn render_frame(
 
         let scene = build_common_scene_elements(wm, state, renderer, 0);
 
-        let space_render_elements = smithay::desktop::space::space_render_elements(
-            renderer,
-            [&state.space],
-            output,
-            1.0,
-        )
-        .expect("space render elements");
+        let space_render_elements =
+            smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
+                .expect("space render elements");
 
         let layer_map = smithay::desktop::layer_map_for_output(output);
         let output_scale = output.current_scale().fractional_scale();
         let mut num_upper = 0;
         for surface in layer_map.layers().rev() {
-            if matches!(surface.layer(), smithay::wayland::shell::wlr_layer::Layer::Background | smithay::wayland::shell::wlr_layer::Layer::Bottom) {
+            if matches!(
+                surface.layer(),
+                smithay::wayland::shell::wlr_layer::Layer::Background
+                    | smithay::wayland::shell::wlr_layer::Layer::Bottom
+            ) {
                 continue;
             }
             if let Some(geo) = layer_map.layer_geometry(surface) {
-                let elems: Vec<smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>> =
-                    smithay::backend::renderer::element::AsRenderElements::render_elements(
-                        surface,
-                        renderer,
-                        geo.loc.to_physical_precise_round(output_scale),
-                        smithay::utils::Scale::from(output_scale),
-                        1.0,
-                    );
+                let elems: Vec<
+                    smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<
+                        GlesRenderer,
+                    >,
+                > = smithay::backend::renderer::element::AsRenderElements::render_elements(
+                    surface,
+                    renderer,
+                    geo.loc.to_physical_precise_round(output_scale),
+                    smithay::utils::Scale::from(output_scale),
+                    1.0,
+                );
                 num_upper += elems.len();
             }
         }
@@ -100,14 +103,15 @@ pub(super) fn render_frame(
             render_elements.push(WaylandExtras::Space(elem));
         }
 
-        let render_result = damage_tracker.render_output(
-            renderer,
-            &mut framebuffer,
-            buffer_age,
-            &render_elements,
-            [0.05, 0.05, 0.07, 1.0],
-        )
-        .expect("render output");
+        let render_result = damage_tracker
+            .render_output(
+                renderer,
+                &mut framebuffer,
+                buffer_age,
+                &render_elements,
+                [0.05, 0.05, 0.07, 1.0],
+            )
+            .expect("render output");
 
         // Fulfil pending screencopy requests while framebuffer is still bound.
         crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
