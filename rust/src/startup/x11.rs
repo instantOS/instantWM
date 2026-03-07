@@ -254,14 +254,20 @@ fn init_cursors(wm: &mut Wm, drw: &mut Drw) {
 }
 
 fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
-    let bordercolors = wm.g.cfg.bordercolors.clone();
-    let statusbarcolors = wm.g.cfg.statusbarcolors.clone();
+    use crate::bar::color::rgba_to_hex;
+
+    let bordercolors = wm.g.cfg.bordercolors;
+    let statusbarcolors = wm.g.cfg.statusbarcolors;
 
     let borderscheme = (|| {
-        let normal = drw.scm_create(&[bordercolors.normal.as_str()]).ok()?;
-        let tile = drw.scm_create(&[bordercolors.tile_focus.as_str()]).ok()?;
-        let float = drw.scm_create(&[bordercolors.float_focus.as_str()]).ok()?;
-        let snap = drw.scm_create(&[bordercolors.snap.as_str()]).ok()?;
+        let normal = drw.scm_create(&[&rgba_to_hex(bordercolors.normal)]).ok()?;
+        let tile = drw
+            .scm_create(&[&rgba_to_hex(bordercolors.tile_focus)])
+            .ok()?;
+        let float = drw
+            .scm_create(&[&rgba_to_hex(bordercolors.float_focus)])
+            .ok()?;
+        let snap = drw.scm_create(&[&rgba_to_hex(bordercolors.snap)]).ok()?;
 
         Some(BorderScheme {
             normal: ColorScheme::from_vec(normal)?,
@@ -273,9 +279,9 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
 
     let statusscheme = drw
         .scm_create(&[
-            statusbarcolors.fg.as_str(),
-            statusbarcolors.bg.as_str(),
-            statusbarcolors.detail.as_str(),
+            &rgba_to_hex(statusbarcolors.fg),
+            &rgba_to_hex(statusbarcolors.bg),
+            &rgba_to_hex(statusbarcolors.detail),
         ])
         .ok()
         .and_then(|clr| {

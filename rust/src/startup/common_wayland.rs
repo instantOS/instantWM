@@ -36,7 +36,6 @@ use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
 use crate::backend::wayland::compositor::WindowIdMarker;
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
-use crate::bar::color::rgba_from_hex;
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
 use crate::monitor::update_geom;
@@ -509,18 +508,18 @@ pub(crate) fn wayland_border_elements_shared(
             .unwrap_or(true);
         let rgba = if Some(*win) == sel {
             if c.isfloating || !has_tiling {
-                rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::FloatFocus))
-                    .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
-                    .unwrap_or([0.75, 0.40, 0.28, 1.0])
+                scheme
+                    .map(|s| color_to_rgba(&s.float_focus.bg))
+                    .unwrap_or(bordercolors.float_focus)
             } else {
-                rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::TileFocus))
-                    .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
-                    .unwrap_or([0.28, 0.52, 0.77, 1.0])
+                scheme
+                    .map(|s| color_to_rgba(&s.tile_focus.bg))
+                    .unwrap_or(bordercolors.tile_focus)
             }
         } else {
-            rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::Normal))
-                .or_else(|| scheme.map(|s| color_to_rgba(&s.normal.bg)))
-                .unwrap_or([0.18, 0.18, 0.20, 1.0])
+            scheme
+                .map(|s| color_to_rgba(&s.normal.bg))
+                .unwrap_or(bordercolors.normal)
         };
 
         let x = c.geo.x;

@@ -152,7 +152,7 @@ fn insert_client_and_apply_rules(
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
-    let borderpx = g.cfg.borderpx;
+    let borderpx = g.cfg.border_width_px;
     if let Some(client) = g.clients.get_mut(&w) {
         client.border_width = borderpx;
         client.old_border_width = borderpx;

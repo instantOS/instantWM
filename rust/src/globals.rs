@@ -51,7 +51,7 @@ pub struct RuntimeConfig {
     pub screen_height: i32,
 
     // Window manager configuration
-    pub borderpx: i32,
+    pub border_width_px: i32,
     pub snap: i32,
     pub startmenusize: i32,
     pub resizehints: i32,
@@ -100,7 +100,7 @@ impl Default for RuntimeConfig {
         Self {
             screen_width: 0,
             screen_height: 0,
-            borderpx: 1,
+            border_width_px: 1,
             snap: 32,
             startmenusize: 0,
             resizehints: 1,
@@ -502,7 +502,7 @@ impl X11Connection {
 
 /// Apply config values to the given `Globals` instance.
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
-    g.cfg.borderpx = cfg.borderpx;
+    g.cfg.border_width_px = cfg.borderpx;
     g.cfg.snap = cfg.snap;
     g.cfg.startmenusize = cfg.startmenusize;
     g.cfg.systraypinning = cfg.systraypinning;
@@ -586,25 +586,28 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
 
 impl Globals {
     /// Get the status bar color scheme.
-    pub fn status_scheme(&self) -> Option<crate::bar::paint::BarScheme> {
-        use crate::bar::color::rgba_from_hex;
-        use crate::config::{ColIndex, SchemeHover};
-
-        let fg = rgba_from_hex(self.cfg.statusbarcolors.get(ColIndex::Fg))?;
-        let bg = rgba_from_hex(self.cfg.statusbarcolors.get(ColIndex::Bg))?;
-        let detail = rgba_from_hex(self.cfg.statusbarcolors.get(ColIndex::Detail))?;
-        Some(crate::bar::paint::BarScheme { fg, bg, detail })
+    pub fn status_scheme(&self) -> crate::bar::paint::BarScheme {
+        let c = &self.cfg.statusbarcolors;
+        crate::bar::paint::BarScheme {
+            fg: c.fg,
+            bg: c.bg,
+            detail: c.detail,
+        }
     }
 
     /// Get the tag hover fill scheme.
-    pub fn tag_hover_fill_scheme(&self) -> Option<crate::bar::paint::BarScheme> {
+    pub fn tag_hover_fill_scheme(&self) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeHover, SchemeTag};
 
         let colors = self
             .tags
             .colors
             .scheme(SchemeHover::Hover, SchemeTag::Filled);
-        crate::bar::theme::scheme_from_strings(colors)
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
     }
 
     /// Get the color scheme for a tag.
@@ -614,7 +617,7 @@ impl Globals {
         tag_index: u32,
         occupied_tags: u32,
         is_hover: bool,
-    ) -> Option<crate::bar::paint::BarScheme> {
+    ) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeHover, SchemeTag};
 
         let scheme_idx = if occupied_tags & (1 << tag_index) != 0 {
@@ -653,15 +656,15 @@ impl Globals {
             },
             scheme_idx,
         );
-        crate::bar::theme::scheme_from_strings(colors)
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
     }
 
     /// Get the color scheme for a client window.
-    pub fn window_scheme(
-        &self,
-        c: &Client,
-        is_hover: bool,
-    ) -> Option<crate::bar::paint::BarScheme> {
+    pub fn window_scheme(&self, c: &Client, is_hover: bool) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeHover, SchemeWin};
 
         let selmon = self.selected_monitor();
@@ -694,7 +697,11 @@ impl Globals {
             },
             scheme_idx,
         );
-        crate::bar::theme::scheme_from_strings(colors)
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
     }
 
     /// Get the close button color scheme.
@@ -703,7 +710,7 @@ impl Globals {
         is_hover: bool,
         is_locked: bool,
         is_fullscreen: bool,
-    ) -> Option<crate::bar::paint::BarScheme> {
+    ) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeClose, SchemeHover};
 
         let scheme_idx = if is_locked {
@@ -722,6 +729,10 @@ impl Globals {
             },
             scheme_idx,
         );
-        crate::bar::theme::scheme_from_strings(colors)
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
     }
 }

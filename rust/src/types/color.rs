@@ -2,6 +2,7 @@
 //!
 //! Types for managing colors in the window manager UI.
 
+use crate::bar::color::{deserialize_hex_color, Rgba};
 use crate::drw::Color;
 use serde::Deserialize;
 
@@ -121,25 +122,6 @@ impl SchemeBorder {
     }
 }
 
-/// Which color component to read from a scheme triplet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColIndex {
-    Fg,
-    Bg,
-    Detail,
-}
-
-impl ColIndex {
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::Fg),
-            1 => Some(Self::Bg),
-            2 => Some(Self::Detail),
-            _ => None,
-        }
-    }
-}
-
 /// A color scheme with foreground, background, and detail colors.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColorScheme {
@@ -234,46 +216,57 @@ impl StatusScheme {
 }
 
 // =============================================================================
-// Configuration String Types (for config loading)
+// Configuration RGBA Types (for config loading)
 // =============================================================================
 
-/// Color scheme using string colors (before parsing).
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+/// Color scheme with pre-parsed RGBA values.
+///
+/// Colors are parsed once at config load time via serde, not at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(default)]
-pub struct ColorSchemeStrings {
-    /// Foreground color string.
-    pub fg: String,
-    /// Background color string.
-    pub bg: String,
-    /// Detail color string.
-    pub detail: String,
+pub struct ColorSchemeRgba {
+    /// Foreground color.
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub fg: Rgba,
+    /// Background color.
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub bg: Rgba,
+    /// Detail color.
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub detail: Rgba,
+}
+
+impl Default for ColorSchemeRgba {
+    fn default() -> Self {
+        Self::empty()
+    }
 }
 
 /// Tag scheme groupings (non-hover or hover).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct TagColorSet {
-    pub inactive: ColorSchemeStrings,
-    pub filled: ColorSchemeStrings,
-    pub focus: ColorSchemeStrings,
-    pub nofocus: ColorSchemeStrings,
-    pub empty: ColorSchemeStrings,
+    pub inactive: ColorSchemeRgba,
+    pub filled: ColorSchemeRgba,
+    pub focus: ColorSchemeRgba,
+    pub nofocus: ColorSchemeRgba,
+    pub empty: ColorSchemeRgba,
 }
 
 impl Default for TagColorSet {
     fn default() -> Self {
         Self {
-            inactive: ColorSchemeStrings::empty(),
-            filled: ColorSchemeStrings::empty(),
-            focus: ColorSchemeStrings::empty(),
-            nofocus: ColorSchemeStrings::empty(),
-            empty: ColorSchemeStrings::empty(),
+            inactive: ColorSchemeRgba::empty(),
+            filled: ColorSchemeRgba::empty(),
+            focus: ColorSchemeRgba::empty(),
+            nofocus: ColorSchemeRgba::empty(),
+            empty: ColorSchemeRgba::empty(),
         }
     }
 }
 
 impl TagColorSet {
-    pub fn scheme(&self, scheme: SchemeTag) -> &ColorSchemeStrings {
+    pub fn scheme(&self, scheme: SchemeTag) -> &ColorSchemeRgba {
         match scheme {
             SchemeTag::Inactive => &self.inactive,
             SchemeTag::Filled => &self.filled,
@@ -283,7 +276,7 @@ impl TagColorSet {
         }
     }
 
-    pub fn scheme_mut(&mut self, scheme: SchemeTag) -> &mut ColorSchemeStrings {
+    pub fn scheme_mut(&mut self, scheme: SchemeTag) -> &mut ColorSchemeRgba {
         match scheme {
             SchemeTag::Inactive => &mut self.inactive,
             SchemeTag::Filled => &mut self.filled,
@@ -298,31 +291,31 @@ impl TagColorSet {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct WindowColorSet {
-    pub focus: ColorSchemeStrings,
-    pub normal: ColorSchemeStrings,
-    pub minimized: ColorSchemeStrings,
-    pub sticky: ColorSchemeStrings,
-    pub sticky_focus: ColorSchemeStrings,
-    pub overlay: ColorSchemeStrings,
-    pub overlay_focus: ColorSchemeStrings,
+    pub focus: ColorSchemeRgba,
+    pub normal: ColorSchemeRgba,
+    pub minimized: ColorSchemeRgba,
+    pub sticky: ColorSchemeRgba,
+    pub sticky_focus: ColorSchemeRgba,
+    pub overlay: ColorSchemeRgba,
+    pub overlay_focus: ColorSchemeRgba,
 }
 
 impl Default for WindowColorSet {
     fn default() -> Self {
         Self {
-            focus: ColorSchemeStrings::empty(),
-            normal: ColorSchemeStrings::empty(),
-            minimized: ColorSchemeStrings::empty(),
-            sticky: ColorSchemeStrings::empty(),
-            sticky_focus: ColorSchemeStrings::empty(),
-            overlay: ColorSchemeStrings::empty(),
-            overlay_focus: ColorSchemeStrings::empty(),
+            focus: ColorSchemeRgba::empty(),
+            normal: ColorSchemeRgba::empty(),
+            minimized: ColorSchemeRgba::empty(),
+            sticky: ColorSchemeRgba::empty(),
+            sticky_focus: ColorSchemeRgba::empty(),
+            overlay: ColorSchemeRgba::empty(),
+            overlay_focus: ColorSchemeRgba::empty(),
         }
     }
 }
 
 impl WindowColorSet {
-    pub fn scheme(&self, scheme: SchemeWin) -> &ColorSchemeStrings {
+    pub fn scheme(&self, scheme: SchemeWin) -> &ColorSchemeRgba {
         match scheme {
             SchemeWin::Focus => &self.focus,
             SchemeWin::Normal => &self.normal,
@@ -334,7 +327,7 @@ impl WindowColorSet {
         }
     }
 
-    pub fn scheme_mut(&mut self, scheme: SchemeWin) -> &mut ColorSchemeStrings {
+    pub fn scheme_mut(&mut self, scheme: SchemeWin) -> &mut ColorSchemeRgba {
         match scheme {
             SchemeWin::Focus => &mut self.focus,
             SchemeWin::Normal => &mut self.normal,
@@ -351,23 +344,23 @@ impl WindowColorSet {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct CloseButtonColorSet {
-    pub normal: ColorSchemeStrings,
-    pub locked: ColorSchemeStrings,
-    pub fullscreen: ColorSchemeStrings,
+    pub normal: ColorSchemeRgba,
+    pub locked: ColorSchemeRgba,
+    pub fullscreen: ColorSchemeRgba,
 }
 
 impl Default for CloseButtonColorSet {
     fn default() -> Self {
         Self {
-            normal: ColorSchemeStrings::empty(),
-            locked: ColorSchemeStrings::empty(),
-            fullscreen: ColorSchemeStrings::empty(),
+            normal: ColorSchemeRgba::empty(),
+            locked: ColorSchemeRgba::empty(),
+            fullscreen: ColorSchemeRgba::empty(),
         }
     }
 }
 
 impl CloseButtonColorSet {
-    pub fn scheme(&self, scheme: SchemeClose) -> &ColorSchemeStrings {
+    pub fn scheme(&self, scheme: SchemeClose) -> &ColorSchemeRgba {
         match scheme {
             SchemeClose::Normal => &self.normal,
             SchemeClose::Locked => &self.locked,
@@ -375,7 +368,7 @@ impl CloseButtonColorSet {
         }
     }
 
-    pub fn scheme_mut(&mut self, scheme: SchemeClose) -> &mut ColorSchemeStrings {
+    pub fn scheme_mut(&mut self, scheme: SchemeClose) -> &mut ColorSchemeRgba {
         match scheme {
             SchemeClose::Normal => &mut self.normal,
             SchemeClose::Locked => &mut self.locked,
@@ -384,42 +377,19 @@ impl CloseButtonColorSet {
     }
 }
 
-impl ColorSchemeStrings {
-    /// Create a new color scheme from strings.
-    pub fn new(fg: impl Into<String>, bg: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self {
-            fg: fg.into(),
-            bg: bg.into(),
-            detail: detail.into(),
-        }
+impl ColorSchemeRgba {
+    /// Create a new color scheme from RGBA values.
+    pub fn new(fg: Rgba, bg: Rgba, detail: Rgba) -> Self {
+        Self { fg, bg, detail }
     }
 
-    /// Construct an empty (all blank) scheme.
+    /// Construct an empty (all black) scheme.
     pub fn empty() -> Self {
-        Self::new("", "", "")
-    }
-
-    /// Read a color by component.
-    pub fn get(&self, col: ColIndex) -> &str {
-        match col {
-            ColIndex::Fg => &self.fg,
-            ColIndex::Bg => &self.bg,
-            ColIndex::Detail => &self.detail,
-        }
-    }
-
-    /// Mutate a color by component.
-    pub fn set(&mut self, col: ColIndex, value: impl Into<String>) {
-        let value = value.into();
-        match col {
-            ColIndex::Fg => self.fg = value,
-            ColIndex::Bg => self.bg = value,
-            ColIndex::Detail => self.detail = value,
-        }
+        Self::new([0.0; 4], [0.0; 4], [0.0; 4])
     }
 
     pub fn is_empty(&self) -> bool {
-        self.fg.is_empty() && self.bg.is_empty() && self.detail.is_empty()
+        self.fg == [0.0; 4] && self.bg == [0.0; 4] && self.detail == [0.0; 4]
     }
 }
 
@@ -449,11 +419,11 @@ impl TagColorConfigs {
         }
     }
 
-    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeTag) -> &ColorSchemeStrings {
+    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeTag) -> &ColorSchemeRgba {
         self.schemes(hover).scheme(scheme)
     }
 
-    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeTag) -> &mut ColorSchemeStrings {
+    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeTag) -> &mut ColorSchemeRgba {
         self.schemes_mut(hover).scheme_mut(scheme)
     }
 }
@@ -484,11 +454,11 @@ impl WindowColorConfigs {
         }
     }
 
-    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeWin) -> &ColorSchemeStrings {
+    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeWin) -> &ColorSchemeRgba {
         self.schemes(hover).scheme(scheme)
     }
 
-    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeWin) -> &mut ColorSchemeStrings {
+    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeWin) -> &mut ColorSchemeRgba {
         self.schemes_mut(hover).scheme_mut(scheme)
     }
 }
@@ -519,45 +489,44 @@ impl CloseButtonColorConfigs {
         }
     }
 
-    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeClose) -> &ColorSchemeStrings {
+    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeClose) -> &ColorSchemeRgba {
         self.schemes(hover).scheme(scheme)
     }
 
-    pub fn scheme_mut(
-        &mut self,
-        hover: SchemeHover,
-        scheme: SchemeClose,
-    ) -> &mut ColorSchemeStrings {
+    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeClose) -> &mut ColorSchemeRgba {
         self.schemes_mut(hover).scheme_mut(scheme)
     }
 }
 
-/// Border color configuration using strings.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+/// Border color configuration with pre-parsed RGBA values.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
 #[serde(default)]
 pub struct BorderColorConfig {
     /// Normal border color.
-    pub normal: String,
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub normal: Rgba,
     /// Focused tiled window color.
-    pub tile_focus: String,
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub tile_focus: Rgba,
     /// Focused floating window color.
-    pub float_focus: String,
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub float_focus: Rgba,
     /// Snap indicator color.
-    pub snap: String,
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub snap: Rgba,
 }
 
 impl BorderColorConfig {
-    pub fn get(&self, scheme: SchemeBorder) -> &str {
+    pub fn get(&self, scheme: SchemeBorder) -> Rgba {
         match scheme {
-            SchemeBorder::Normal => &self.normal,
-            SchemeBorder::TileFocus => &self.tile_focus,
-            SchemeBorder::FloatFocus => &self.float_focus,
-            SchemeBorder::Snap => &self.snap,
+            SchemeBorder::Normal => self.normal,
+            SchemeBorder::TileFocus => self.tile_focus,
+            SchemeBorder::FloatFocus => self.float_focus,
+            SchemeBorder::Snap => self.snap,
         }
     }
 
-    pub fn set(&mut self, scheme: SchemeBorder, value: impl Into<String>) {
-        let value = value.into();
+    pub fn set(&mut self, scheme: SchemeBorder, value: Rgba) {
         match scheme {
             SchemeBorder::Normal => self.normal = value,
             SchemeBorder::TileFocus => self.tile_focus = value,
@@ -567,37 +536,23 @@ impl BorderColorConfig {
     }
 }
 
-/// Status color configuration using strings.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+/// Status bar color configuration with pre-parsed RGBA values.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
 #[serde(default)]
 pub struct StatusColorConfig {
-    /// Status bar colors.
-    pub fg: String,
+    /// Status bar foreground.
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub fg: Rgba,
     /// Status bar background.
-    pub bg: String,
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub bg: Rgba,
     /// Status bar detail/accent.
-    pub detail: String,
+    #[serde(deserialize_with = "deserialize_hex_color")]
+    pub detail: Rgba,
 }
 
 impl StatusColorConfig {
-    pub fn as_scheme(&self) -> ColorSchemeStrings {
-        ColorSchemeStrings::new(self.fg.clone(), self.bg.clone(), self.detail.clone())
-    }
-
-    pub fn get(&self, col: ColIndex) -> &str {
-        match col {
-            ColIndex::Fg => &self.fg,
-            ColIndex::Bg => &self.bg,
-            ColIndex::Detail => &self.detail,
-        }
-    }
-
-    pub fn set(&mut self, col: ColIndex, value: impl Into<String>) {
-        let value = value.into();
-        match col {
-            ColIndex::Fg => self.fg = value,
-            ColIndex::Bg => self.bg = value,
-            ColIndex::Detail => self.detail = value,
-        }
+    pub fn as_scheme(&self) -> ColorSchemeRgba {
+        ColorSchemeRgba::new(self.fg, self.bg, self.detail)
     }
 }

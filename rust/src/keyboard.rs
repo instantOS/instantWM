@@ -339,7 +339,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snap_status != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            let border_width = ctx.g().cfg.borderpx;
+            let border_width = ctx.g().cfg.border_width_px;
             ctx.set_border(win, border_width);
 
             save_floating_win(ctx, win);

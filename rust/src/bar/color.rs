@@ -1,14 +1,6 @@
 pub type Rgba = [f32; 4];
 
-pub fn rgba_from_color(color: &crate::drw::Color) -> Rgba {
-    [
-        color.color.color.red as f32 / 65535.0,
-        color.color.color.green as f32 / 65535.0,
-        color.color.color.blue as f32 / 65535.0,
-        color.color.color.alpha as f32 / 65535.0,
-    ]
-}
-
+/// Parse a hex color string (e.g., "#RRGGBB" or "RRGGBB") to RGBA.
 pub fn rgba_from_hex(color: &str) -> Option<Rgba> {
     let s = color.trim();
     let hex = s.strip_prefix('#').unwrap_or(s);
@@ -31,8 +23,35 @@ pub fn rgba_from_hex(color: &str) -> Option<Rgba> {
     ])
 }
 
-pub fn rgba_from_hex_opt(color: Option<&str>) -> Option<Rgba> {
-    rgba_from_hex(color?)
+/// Convert RGBA to a hex color string.
+pub fn rgba_to_hex(rgba: Rgba) -> String {
+    let r = (rgba[0] * 255.0).round() as u8;
+    let g = (rgba[1] * 255.0).round() as u8;
+    let b = (rgba[2] * 255.0).round() as u8;
+    let a = (rgba[3] * 255.0).round() as u8;
+    if a == 255 {
+        format!("#{:02X}{:02X}{:02X}", r, g, b)
+    } else {
+        format!("#{:02X}{:02X}{:02X}{:02X}", r, g, b, a)
+    }
+}
+
+/// Convert RGBA to a packed u32 (0xRRGGBB).
+pub fn rgba_to_u32(rgba: Rgba) -> u32 {
+    let r = (rgba[0] * 255.0).round() as u32;
+    let g = (rgba[1] * 255.0).round() as u32;
+    let b = (rgba[2] * 255.0).round() as u32;
+    (r << 16) | (g << 8) | b
+}
+
+/// Deserialize a hex color string to RGBA (for serde).
+pub fn deserialize_hex_color<'de, D>(deserializer: D) -> Result<Rgba, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let s = String::deserialize(deserializer)?;
+    rgba_from_hex(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {}", s)))
 }
 
 /// Parse a hex color string (e.g., "#RRGGBB" or "RRGGBB") to a packed u32.
