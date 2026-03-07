@@ -108,6 +108,8 @@ pub fn resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         return;
     };
 
+    with_wm_ctx_x11(ctx, |ctx| ctx.raise_interactive(win));
+
     with_wm_ctx_x11(ctx, |ctx| {
         crate::layouts::restack(ctx, ctx.g().selected_monitor_id())
     });
@@ -209,6 +211,8 @@ pub fn resize_mouse_directional(
     if is_blocked {
         return;
     };
+
+    with_wm_ctx_x11(ctx, |ctx| ctx.raise_interactive(win));
 
     with_wm_ctx_x11(ctx, |ctx| {
         crate::layouts::restack(ctx, ctx.g().selected_monitor_id())

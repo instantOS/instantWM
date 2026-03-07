@@ -774,22 +774,14 @@ fn render_drm_output(
 
     // ── Build render elements ─────────────────────────────────────────
 
+    // custom_elements is in front-to-back order: index 0 is the topmost element.
+    // Cursor must be collected first so it sits above bar and borders.
     let mut custom_elements: Vec<DrmExtras> = Vec::new();
 
-    // Bar
-    for elem in build_bar_elements(wm, renderer) {
-        custom_elements.push(DrmExtras::Memory(elem));
-    }
-
-    // Window borders
-    for elem in crate::startup::wayland::render::wayland_border_elements_shared(&wm.g, state) {
-        custom_elements.push(DrmExtras::Solid(elem));
-    }
-
-    // Cursor — rendered on top of everything.
-    // The global pointer location is translated into per-output local
-    // coordinates so that the cursor sits at the right position on each
-    // output in a multi-monitor setup.
+    // Cursor — must be first (frontmost) so it is never hidden behind the bar
+    // or window borders.  The global pointer location is translated into
+    // per-output local coordinates so that the cursor sits at the right
+    // position on each output in a multi-monitor setup.
     let local_pointer = Point::from((
         pointer_location.x - entry.x_offset as f64,
         pointer_location.y,
@@ -816,6 +808,16 @@ fn render_drm_output(
     }
     if let Some(cursor_elem) = cursor_manager.render_element(local_pointer, &cursor_presentation) {
         custom_elements.push(DrmExtras::Cursor(cursor_elem));
+    }
+
+    // Bar — rendered below the cursor but above windows.
+    for elem in build_bar_elements(wm, renderer) {
+        custom_elements.push(DrmExtras::Memory(elem));
+    }
+
+    // Window borders — rendered below bar and cursor, above window content.
+    for elem in crate::startup::wayland::render::wayland_border_elements_shared(&wm.g, state) {
+        custom_elements.push(DrmExtras::Solid(elem));
     }
 
     // ── Render ───────────────────────────────────────────────────────

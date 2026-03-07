@@ -633,7 +633,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             };
             wl.core.g.altcursor = crate::types::AltCursor::None;
             super::set_cursor_move_wayland(wl);
-            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise(win);
+            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_interactive(win);
         }
     }
 }
@@ -1179,7 +1179,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             crate::client::show(ctx, win);
         }
         crate::focus::focus_soft(ctx, Some(win));
-        ctx.raise(win);
+        ctx.raise_interactive(win);
         if let Some((is_floating, geo, border_width, float_geo)) = ctx
             .g()
             .clients

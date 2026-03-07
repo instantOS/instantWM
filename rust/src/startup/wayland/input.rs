@@ -545,7 +545,7 @@ fn wayland_hover_resize_drag_begin(
         set_cursor_resize_wayland(&mut ctx, Some(dir));
     }
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
-    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise(win);
+    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(win);
     true
 }
 

@@ -235,6 +235,20 @@ impl<'a> WmCtx<'a> {
         self.backend().raise_window(win);
     }
 
+    /// Raise a window and persist that z-order in monitor stack state.
+    ///
+    /// Use this for interactive operations (move/resize drags) so later
+    /// restacks do not drop the dragged floating window behind others.
+    pub fn raise_interactive(&mut self, win: WindowId) {
+        if let Some(mid) = self.g().clients.get(&win).and_then(|c| c.monitor_id) {
+            if let Some(mon) = self.g_mut().monitor_mut(mid) {
+                mon.stack.retain(|&w| w != win);
+                mon.stack.push(win);
+            }
+        }
+        self.backend().raise_window(win);
+    }
+
     pub fn restack(&self, wins: &[WindowId]) {
         self.backend().restack(wins);
     }
