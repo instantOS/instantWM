@@ -252,7 +252,10 @@ pub fn run() -> ! {
     let mut renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
 
     state.attach_renderer(&mut renderer);
-    state.init_dmabuf_global(renderer.dmabuf_formats().into_iter().collect());
+    state.init_dmabuf_global(
+        renderer.dmabuf_formats().into_iter().collect(),
+        Some(&egl_display),
+    );
     state.init_screencopy_manager();
 
     // ── Cursor textures ──────────────────────────────────────────────

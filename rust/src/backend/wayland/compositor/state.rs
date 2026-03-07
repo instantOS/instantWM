@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     backend::allocator::Format,
+    backend::drm::DrmNode,
+    backend::egl::{EGLDevice, EGLDisplay},
     backend::renderer::gles::GlesRenderer,
     desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurfaceType},
     input::{
@@ -21,7 +23,7 @@ use smithay::{
     utils::{Logical, Physical, Point, Transform, SERIAL_COUNTER},
     wayland::{
         compositor::CompositorState,
-        dmabuf::{DmabufGlobal, DmabufState},
+        dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::{
@@ -303,14 +305,53 @@ impl WaylandState {
         self.globals = Some(NonNull::from(globals));
     }
 
-    pub fn init_dmabuf_global(&mut self, formats: Vec<Format>) {
+    /// Initialise the linux-dmabuf global.
+    ///
+    /// When `egl_display` is provided and a render DRM node can be resolved
+    /// from it, we advertise `zwp_linux_dmabuf_feedback_v1` **v4** which
+    /// includes the device node identifier.  GPU-accelerated clients (kitty,
+    /// wlroots apps, etc.) use this to discover which DRM device to open for
+    /// dmabuf allocation and to choose zero-copy import paths — without it
+    /// Mesa/EGL falls back to software rendering and emits warnings like
+    /// "failed to get driver name" / "failed to retrieve device information".
+    ///
+    /// Falls back to the plain v3 global (formats only, no device) when no
+    /// EGL display is given or the node cannot be resolved.
+    pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
         if self.dmabuf_global.is_some() {
             return;
         }
-        self.dmabuf_global = Some(
+
+        // Attempt to get the render DrmNode from the EGL display so we can
+        // advertise zwp_linux_dmabuf_feedback_v1 v4 with a proper device id.
+        let render_node: Option<DrmNode> = egl_display.and_then(|display| {
+            EGLDevice::device_for_display(display)
+                .map_err(|err| {
+                    log::warn!("dmabuf: failed to query EGLDevice for display: {err}");
+                })
+                .ok()
+                .and_then(|dev| {
+                    dev.try_get_render_node()
+                        .map_err(|err| {
+                            log::warn!("dmabuf: failed to query render node from EGLDevice: {err}");
+                        })
+                        .ok()
+                        .flatten()
+                })
+        });
+
+        self.dmabuf_global = Some(if let Some(node) = render_node {
+            log::info!("dmabuf: advertising zwp_linux_dmabuf_feedback_v1 v4 on node {node:?}");
+            let feedback = DmabufFeedbackBuilder::new(node.dev_id(), formats)
+                .build()
+                .expect("DmabufFeedbackBuilder::build");
             self.dmabuf_state
-                .create_global::<Self>(&self.display_handle, formats),
-        );
+                .create_global_with_default_feedback::<Self>(&self.display_handle, &feedback)
+        } else {
+            log::info!("dmabuf: no render node available, falling back to zwp_linux_dmabuf_v1 v3");
+            self.dmabuf_state
+                .create_global::<Self>(&self.display_handle, formats)
+        });
     }
 
     pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {

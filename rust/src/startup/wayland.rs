@@ -63,7 +63,10 @@ pub fn run() -> ! {
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
     state.attach_renderer(backend.renderer());
-    state.init_dmabuf_global(backend.renderer().dmabuf_formats().into_iter().collect());
+    state.init_dmabuf_global(
+        backend.renderer().dmabuf_formats().into_iter().collect(),
+        Some(backend.renderer().egl_context().display()),
+    );
     state.init_screencopy_manager();
 
     let output_size = backend.window_size();
