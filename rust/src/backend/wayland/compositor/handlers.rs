@@ -7,7 +7,7 @@ use smithay::{
     },
     input::{pointer::Focus, SeatHandler},
     output::Output,
-    reexports::wayland_server::{protocol::wl_seat, Client},
+    reexports::wayland_server::{protocol::wl_seat, Client, Resource},
     utils::SERIAL_COUNTER,
     wayland::{
         buffer::BufferHandler,
@@ -18,7 +18,8 @@ use smithay::{
         seat::WaylandFocus,
         selection::{
             data_device::{
-                ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+                set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
+                ServerDndGrabHandler,
             },
             SelectionHandler,
         },
@@ -490,10 +491,12 @@ impl SeatHandler for WaylandState {
 
     fn focus_changed(
         &mut self,
-        _seat: &smithay::input::Seat<Self>,
-        _target: Option<&KeyboardFocusTarget>,
+        seat: &smithay::input::Seat<Self>,
+        target: Option<&KeyboardFocusTarget>,
     ) {
-        // TODO: update data device focus for clipboard bridging.
+        let wl_surface = target.and_then(WaylandFocus::wl_surface);
+        let client = wl_surface.and_then(|s| self.display_handle.get_client(s.id()).ok());
+        set_data_device_focus(&self.display_handle, seat, client);
     }
 
     fn cursor_image(
