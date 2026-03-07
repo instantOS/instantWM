@@ -127,12 +127,7 @@ pub fn send_event_x11(
 }
 
 /// Update the border color of `win` based on its current focus and floating state.
-pub fn refresh_border_color_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    win: WindowId,
-    focused: bool,
-) {
+pub fn refresh_border_color_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId, focused: bool) {
     let Some(ref scheme) = core.g.cfg.borderscheme else {
         return;
     };

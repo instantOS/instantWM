@@ -290,12 +290,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     if !has_tiling {
         if let Some(win) = ctx.selected_client() {
             if let WmCtx::X11(ref x11_ctx) = ctx {
-                crate::client::refresh_border_color_x11(
-                    &x11_ctx.core,
-                    &x11_ctx.x11,
-                    win,
-                    false,
-                );
+                crate::client::refresh_border_color_x11(&x11_ctx.core, &x11_ctx.x11, win, false);
             }
             change_snap(ctx, win, SnapDir::Up);
         }

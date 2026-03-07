@@ -938,7 +938,13 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
     });
 
     let modifier_state = {
-        ctx.core.g.drag.tag.last_motion.map(|(_, _, m)| m).unwrap_or(0)
+        ctx.core
+            .g
+            .drag
+            .tag
+            .last_motion
+            .map(|(_, _, m)| m)
+            .unwrap_or(0)
     };
 
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
