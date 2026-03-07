@@ -5,7 +5,7 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
-use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
+use crate::client::{refresh_border_color_x11, set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::globals::X11RuntimeConfig;
 use crate::types::*;
@@ -141,6 +141,23 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     fn post_state_update(&mut self, core: &mut CoreCtx) {
         core.bar.mark_dirty();
         crate::bar::draw_bars_x11(core, self.x11, self.x11_runtime, self.systray);
+
+        // Refresh border colors for all visible windows on the selected monitor.
+        // This ensures tiled/floating specific colors are applied correctly
+        // when the layout changes.
+        let selmon = core.g.selected_monitor();
+        let sel = selmon.sel;
+        let selected_tags = selmon.selected_tags();
+
+        let visible_windows: Vec<WindowId> = selmon
+            .iter_stack(&*core.g.clients)
+            .filter(|(_win, c)| c.is_visible_on_tags(selected_tags))
+            .map(|(win, _c)| win)
+            .collect();
+
+        for win in visible_windows {
+            refresh_border_color_x11(core, self.x11, win, Some(win) == sel);
+        }
     }
 }
 

@@ -394,12 +394,22 @@ impl Drw {
 
     /// Allocate a color scheme from a slice of color name strings.
     ///
-    /// The slice must have at least two entries (`[fg, bg, ...]`).
+    /// If fewer than 3 names are provided, the last color is duplicated to
+    /// fill the `[fg, bg, detail]` triplet.
     pub fn scm_create(&self, clrnames: &[&str]) -> Result<Vec<Color>, String> {
-        if clrnames.len() < 2 {
-            return Err("need at least two colors for a scheme".to_string());
+        if clrnames.is_empty() {
+            return Err("need at least one color for a scheme".to_string());
         }
-        clrnames.iter().map(|name| self.clr_create(name)).collect()
+        let mut colors: Vec<Color> = clrnames
+            .iter()
+            .map(|name| self.clr_create(name))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        while colors.len() < 3 {
+            colors.push(colors.last().unwrap().clone());
+        }
+
+        Ok(colors)
     }
 }
 

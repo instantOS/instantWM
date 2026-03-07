@@ -290,23 +290,12 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     if !has_tiling {
         if let Some(win) = ctx.selected_client() {
             if let WmCtx::X11(ref x11_ctx) = ctx {
-                let border_pixel = x11_ctx
-                    .core
-                    .g
-                    .cfg
-                    .borderscheme
-                    .as_ref()
-                    .map(|s| s.normal.bg.pixel());
-                if let Some(pixel) = border_pixel {
-                    let x11_win: x11rb::protocol::xproto::Window = win.into();
-                    let _ = x11rb::protocol::xproto::change_window_attributes(
-                        x11_ctx.x11.conn,
-                        x11_win,
-                        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
-                            .border_pixel(Some(pixel)),
-                    );
-                    let _ = x11_ctx.x11.conn.flush();
-                }
+                crate::client::refresh_border_color_x11(
+                    &x11_ctx.core,
+                    &x11_ctx.x11,
+                    win,
+                    false,
+                );
             }
             change_snap(ctx, win, SnapDir::Up);
         }

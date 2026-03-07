@@ -57,7 +57,9 @@ pub use geometry::{resize, resize_client_x11, resize_x11};
 pub use visibility::{hide, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{configure_x11, send_event_x11, set_focus_x11, unfocus_win_x11};
+pub use focus::{
+    configure_x11, refresh_border_color_x11, send_event_x11, set_focus_x11, unfocus_win_x11,
+};
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen, toggle_fake_fullscreen_x11};
