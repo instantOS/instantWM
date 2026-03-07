@@ -156,7 +156,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
             .collect();
 
         for win in visible_windows {
-            refresh_border_color_x11(core, self.x11, win, Some(win) == sel);
+            refresh_border_color_x11(core, self.x11, &*self.x11_runtime, win, Some(win) == sel);
         }
     }
 }

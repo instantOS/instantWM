@@ -644,14 +644,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let selmon_id = ctx.core.g.selected_monitor_id();
     let systray_win_opt = ctx.systray.as_ref().map(|s| s.win);
-    let statusescheme_bg_pixel = ctx
-        .core
-        .g
-        .cfg
-        .statusscheme
-        .as_ref()
-        .map(|s| s.bg.color.pixel as u32)
-        .unwrap_or(0);
+    let statusescheme_bg_pixel = ctx.x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let Some(systray_win) = systray_win_opt else {
         return;

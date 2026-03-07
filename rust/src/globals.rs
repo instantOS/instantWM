@@ -2,6 +2,7 @@ use crate::client::manager::ClientManager;
 use crate::config::commands::ExternalCommands;
 use crate::drw::{Cursor, Drw};
 use crate::monitor::MonitorManager;
+use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::*;
 use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
@@ -24,6 +25,10 @@ pub struct X11RuntimeConfig {
     pub root: Window,
     pub xlibdisplay: XlibDisplay,
     pub drw: Option<Drw>,
+    /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
+    pub borderscheme: crate::types::color::BorderScheme,
+    /// X11 color scheme for status bar.
+    pub statusscheme: crate::types::color::StatusScheme,
 }
 
 impl Default for X11RuntimeConfig {
@@ -38,6 +43,8 @@ impl Default for X11RuntimeConfig {
             root: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             drw: None,
+            borderscheme: BorderScheme::default(),
+            statusscheme: StatusScheme::default(),
         }
     }
 }
@@ -65,11 +72,7 @@ pub struct RuntimeConfig {
     pub systraypinning: usize,
     pub systrayspacing: i32,
 
-    // Color schemes
-    pub borderscheme: Option<BorderScheme>,
-    pub statusscheme: Option<StatusScheme>,
-
-    // Raw color strings for config override
+    // Raw color values for config (parsed at load time)
     pub windowcolors: WindowColorConfigs,
     pub closebuttoncolors: CloseButtonColorConfigs,
     pub bordercolors: BorderColorConfig,
@@ -113,8 +116,6 @@ impl Default for RuntimeConfig {
             show_systray: true,
             systraypinning: 0,
             systrayspacing: 2,
-            borderscheme: None,
-            statusscheme: None,
             windowcolors: WindowColorConfigs::default(),
             closebuttoncolors: CloseButtonColorConfigs::default(),
             bordercolors: BorderColorConfig::default(),

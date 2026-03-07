@@ -127,10 +127,14 @@ pub fn send_event_x11(
 }
 
 /// Update the border color of `win` based on its current focus and floating state.
-pub fn refresh_border_color_x11(core: &CoreCtx, x11: &X11BackendRef, win: WindowId, focused: bool) {
-    let Some(ref scheme) = core.g.cfg.borderscheme else {
-        return;
-    };
+pub fn refresh_border_color_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+    focused: bool,
+) {
+    let scheme = &x11_runtime.borderscheme;
     let Some(c) = core.g.clients.get(&win) else {
         return;
     };
@@ -183,7 +187,7 @@ pub fn set_focus_x11(
         );
     }
 
-    refresh_border_color_x11(core, x11, win, true);
+    refresh_border_color_x11(core, x11, x11_runtime, win, true);
 
     grab_buttons_x11(core, x11, x11_runtime, win, true);
 
@@ -228,7 +232,7 @@ pub fn unfocus_win_x11(
     grab_buttons_x11(core, x11, x11_runtime, win, false);
 
     // Reset the border to the normal (unfocused) colour.
-    refresh_border_color_x11(core, x11, win, false);
+    refresh_border_color_x11(core, x11, x11_runtime, win, false);
 
     if redirect_to_root {
         let _ = x11

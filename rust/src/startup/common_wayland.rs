@@ -441,7 +441,6 @@ pub(crate) fn wayland_border_elements_shared(
     g: &crate::globals::Globals,
     state: &WaylandState,
 ) -> Vec<SolidColorRenderElement> {
-    let scheme = g.cfg.borderscheme.as_ref();
     let bordercolors = &g.cfg.bordercolors;
     let mut out = Vec::new();
     let mut mapped_sizes: HashMap<WindowId, (i32, i32)> = HashMap::new();
@@ -508,18 +507,12 @@ pub(crate) fn wayland_border_elements_shared(
             .unwrap_or(true);
         let rgba = if Some(*win) == sel {
             if c.isfloating || !has_tiling {
-                scheme
-                    .map(|s| color_to_rgba(&s.float_focus.bg))
-                    .unwrap_or(bordercolors.float_focus)
+                bordercolors.float_focus
             } else {
-                scheme
-                    .map(|s| color_to_rgba(&s.tile_focus.bg))
-                    .unwrap_or(bordercolors.tile_focus)
+                bordercolors.tile_focus
             }
         } else {
-            scheme
-                .map(|s| color_to_rgba(&s.normal.bg))
-                .unwrap_or(bordercolors.normal)
+            bordercolors.normal
         };
 
         let x = c.geo.x;
@@ -671,13 +664,4 @@ fn push_solid(
         1.0,
         Kind::Unspecified,
     ));
-}
-
-fn color_to_rgba(color: &crate::drw::Color) -> [f32; 4] {
-    [
-        color.color.color.red as f32 / 65535.0,
-        color.color.color.green as f32 / 65535.0,
-        color.color.color.blue as f32 / 65535.0,
-        color.color.color.alpha as f32 / 65535.0,
-    ]
 }
