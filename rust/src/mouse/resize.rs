@@ -100,7 +100,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
                 let hit_y = ptr_y - new_geo.y;
                 let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
                 if let WmCtx::Wayland(ref mut wl2) = wmctx {
-                    begin_wayland_super_resize(wl2, win, btn, dir, new_geo, ptr_x, ptr_y);
+                    begin_wayland_super_resize(wl2, win, btn, dir, new_geo);
                 }
                 return;
             }
@@ -108,7 +108,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
             let hit_x = ptr_x - geo.x;
             let hit_y = ptr_y - geo.y;
             let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
-            begin_wayland_super_resize(wl, win, btn, dir, geo, ptr_x, ptr_y);
+            begin_wayland_super_resize(wl, win, btn, dir, geo);
         }
     }
 }
@@ -116,27 +116,46 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 /// Activate a `HoverResizeDragState` for a Super+RMB resize initiated anywhere
 /// on a Wayland window (not just the hover-border zone).  This reuses the same
 /// directional-resize event loop as hover-border resizes, giving correct
-/// per-quadrant behaviour with no cursor warp.
+/// per-quadrant behaviour with cursor warped to the nearest edge/corner.
 fn begin_wayland_super_resize(
     wl: &mut crate::contexts::WmCtxWayland<'_>,
     win: WindowId,
     btn: MouseButton,
     dir: ResizeDirection,
     geo: Rect,
-    ptr_x: i32,
-    ptr_y: i32,
 ) {
+    // Warp the cursor to the nearest edge/corner for this direction so the
+    // visual position of the cursor matches what is being dragged.  The resize
+    // math in wayland_hover_resize_drag_motion uses root_x/root_y directly
+    // against the window edges, so the first motion event is correct regardless
+    // of where the cursor started — but warping gives immediate visual feedback
+    // and prevents the cursor sitting in the middle of the window while a corner
+    // is moving.
+    let bw = wl
+        .core
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.border_width)
+        .unwrap_or(0);
+    let (x_off, y_off) = dir.warp_offset(geo.w, geo.h, bw);
+    let warp_x = geo.x + x_off;
+    let warp_y = geo.y + y_off;
+    wl.wayland
+        .backend
+        .warp_pointer(warp_x as f64, warp_y as f64);
+
     wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
         active: true,
         win,
         button: btn,
         direction: dir,
         move_mode: false,
-        start_x: ptr_x,
-        start_y: ptr_y,
+        start_x: warp_x,
+        start_y: warp_y,
         win_start_geo: geo,
-        last_root_x: ptr_x,
-        last_root_y: ptr_y,
+        last_root_x: warp_x,
+        last_root_y: warp_y,
     };
     wl.core.g.altcursor = AltCursor::Resize;
     wl.core.g.drag.resize_direction = Some(dir);
@@ -449,7 +468,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
             let hit_x = ptr_x - geo.x;
             let hit_y = ptr_y - geo.y;
             let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
-            begin_wayland_super_resize(wl, win, btn, dir, geo, ptr_x, ptr_y);
+            begin_wayland_super_resize(wl, win, btn, dir, geo);
         }
     }
 }

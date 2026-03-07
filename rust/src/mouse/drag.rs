@@ -1213,20 +1213,39 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             // Arm HoverResizeDragState so calloop motion/release events drive
             // the resize from here on.  The title drag is deactivated so
             // title_drag_finish won't also fire.
+            //
+            // Warp the cursor to the nearest edge/corner for this direction so
+            // the visual position matches what is being dragged.  The resize
+            // math uses root_x/root_y directly against the window edges, so
+            // correctness doesn't depend on start_x/start_y — but placing the
+            // cursor at the right handle gives immediate visual feedback.
+            let bw = ctx
+                .g()
+                .clients
+                .get(&win)
+                .map(|c| c.border_width)
+                .unwrap_or(0);
+            let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
+            let warp_x = current_geo.x + x_off;
+            let warp_y = current_geo.y + y_off;
+
             ctx.g_mut().drag.title.active = false;
             ctx.g_mut().drag.title.dragging = false;
             if let WmCtx::Wayland(wl) = ctx {
+                wl.wayland
+                    .backend
+                    .warp_pointer(warp_x as f64, warp_y as f64);
                 wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
                     active: true,
                     win,
                     button: btn,
                     direction: dir,
                     move_mode: false,
-                    start_x,
-                    start_y,
+                    start_x: warp_x,
+                    start_y: warp_y,
                     win_start_geo: current_geo,
-                    last_root_x: root_x,
-                    last_root_y: root_y,
+                    last_root_x: warp_x,
+                    last_root_y: warp_y,
                 };
                 wl.core.g.altcursor = crate::types::AltCursor::Resize;
                 wl.core.g.drag.resize_direction = Some(dir);
