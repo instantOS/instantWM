@@ -465,7 +465,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     if !destroyed {
         let x11_win: Window = win.into();
         {
-            let _ = ctx.x11.conn.grab_server();
+            let _grab = crate::backend::x11::ServerGrab::new(ctx.x11.conn);
             let _ = ctx.x11.conn.change_window_attributes(
                 x11_win,
                 &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
@@ -474,23 +474,15 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
                 ctx.x11
                     .conn
                     .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+
+            set_client_state(
+                &mut ctx.core,
+                &ctx.x11,
+                ctx.x11_runtime,
+                win,
+                WM_STATE_WITHDRAWN,
+            );
         }
-
-        set_client_state(
-            &mut ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            win,
-            WM_STATE_WITHDRAWN,
-        );
-
-        let _ = ctx.x11.conn.ungrab_server();
-        // Flush immediately: the bar-drawing code uses a separate Xlib Display
-        // connection which calls XSync.  If the server grab from RustConnection
-        // is still pending (not flushed), XSync on the Xlib side will deadlock
-        // because the X server blocks the second connection until the grab is
-        // released.
-        let _ = ctx.x11.conn.flush();
     }
 
     // Remove from the global map.

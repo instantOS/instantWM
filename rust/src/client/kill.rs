@@ -27,7 +27,6 @@ use crate::backend::x11::X11BackendRef;
 use crate::client::focus::send_event_x11;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
 use x11rb::CURRENT_TIME;
 
@@ -163,9 +162,7 @@ fn force_close_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, wmatom_delete: u32
     );
 
     if !sent {
-        let _ = ctx_x11.x11.conn.grab_server();
+        let _grab = crate::backend::x11::ServerGrab::new(ctx_x11.x11.conn);
         let _ = ctx_x11.x11.conn.kill_client(x11_win);
-        let _ = ctx_x11.x11.conn.ungrab_server();
-        let _ = ctx_x11.x11.conn.flush();
     }
 }

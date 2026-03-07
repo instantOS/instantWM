@@ -1123,7 +1123,7 @@ pub fn cleanup(wm: &mut Wm) {
     };
     let conn = &x11.conn;
 
-    let _ = conn.grab_server();
+    let _grab = crate::backend::x11::ServerGrab::new(conn);
 
     for (_id, mon) in wm.g.monitors_iter() {
         for &win in &mon.clients {
@@ -1137,7 +1137,4 @@ pub fn cleanup(wm: &mut Wm) {
             }
         }
     }
-
-    let _ = conn.ungrab_server();
-    let _ = conn.flush();
 }

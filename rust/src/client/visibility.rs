@@ -316,19 +316,16 @@ fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig,
     let root = x11_cfg.root;
     let x11_win: Window = win.into();
 
-    // Phase 1: grab server and suppress events
-    let _ = x11.conn.grab_server();
-    suppress_unmap_events(x11.conn, root, x11_win);
+    {
+        let _grab = crate::backend::x11::ServerGrab::new(x11.conn);
+        suppress_unmap_events(x11.conn, root, x11_win);
 
-    // Phase 2: unmap and update state
-    let _ = x11.conn.unmap_window(x11_win);
-    let _ = x11.conn.flush();
-    set_client_state(core, x11, x11_cfg, win, WM_STATE_ICONIC);
+        let _ = x11.conn.unmap_window(x11_win);
+        let _ = x11.conn.flush();
+        set_client_state(core, x11, x11_cfg, win, WM_STATE_ICONIC);
 
-    // Phase 3: restore events and ungrab
-    restore_event_masks(x11.conn, root, x11_win);
-    let _ = x11.conn.ungrab_server();
-    let _ = x11.conn.flush();
+        restore_event_masks(x11.conn, root, x11_win);
+    }
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.
