@@ -254,7 +254,7 @@ pub fn get_keys() -> Vec<Key> {
             }
         }),
         key!(MS,       XK_M      => begin_keyboard_move),
-        key_x11!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
+        key!(MA,   XK_M      => |ctx| resize_mouse_from_cursor(ctx, crate::types::MouseButton::Left)),
         key!(MODKEY, XK_E  => |ctx| {
             use crate::types::TagMask;
             toggle_overview(ctx, TagMask::ALL_BITS)

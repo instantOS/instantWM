@@ -206,38 +206,11 @@ pub fn get_buttons() -> Vec<Button> {
             }
         }),
         btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx, _| toggle_floating(ctx)),
-        btn!(ClientWin, MODKEY, button:MouseButton::Right => |ctx, arg| {
-            match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => resize_mouse_from_cursor(ctx_x11, arg.btn),
-                crate::contexts::WmCtx::Wayland(_) => {
-                    if let Some(win) = ctx.selected_client() {
-                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
-                    }
-                }
-            }
-        }),
-        btn!(ClientWin, MA, button:MouseButton::Right => |ctx, arg| {
-            match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => resize_mouse_from_cursor(ctx_x11, arg.btn),
-                crate::contexts::WmCtx::Wayland(_) => {
-                    if let Some(win) = ctx.selected_client() {
-                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
-                    }
-                }
-            }
-        }),
+        btn!(ClientWin, MODKEY, button:MouseButton::Right => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
+        btn!(ClientWin, MA, button:MouseButton::Right => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
         btn!(ClientWin, MS, button:MouseButton::Right => |ctx, arg| {
-            match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => {
-                    if let Some(win) = ctx_x11.core.selected_client() {
-                        resize_aspect_mouse(ctx_x11, win, arg.btn)
-                    }
-                }
-                crate::contexts::WmCtx::Wayland(_) => {
-                    if let Some(win) = ctx.selected_client() {
-                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
-                    }
-                }
+            if let Some(win) = ctx.selected_client() {
+                resize_aspect_mouse(ctx, win, arg.btn);
             }
         }),
         // ── Close button ──────────────────────────────────────────────────

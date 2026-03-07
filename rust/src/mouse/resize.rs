@@ -36,13 +36,12 @@ fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>)
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-pub fn resize_mouse_from_cursor(ctx: &mut WmCtxX11, btn: MouseButton) {
-    let Some(win) = ctx.core.selected_client() else {
+pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
+    let Some(win) = ctx.selected_client() else {
         return;
     };
     let is_blocked = ctx
-        .core
-        .g
+        .g()
         .clients
         .get(&win)
         .map(|c| c.is_true_fullscreen())
@@ -51,25 +50,32 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtxX11, btn: MouseButton) {
         return;
     };
 
-    let dir = {
-        let Some(c) = ctx.core.g.clients.get(&win) else {
-            return;
-        };
+    match ctx {
+        WmCtx::X11(ctx_x11) => {
+            let dir = {
+                let Some(c) = ctx_x11.core.g.clients.get(&win) else {
+                    return;
+                };
 
-        let conn = ctx.x11.conn;
-        let x11_win: Window = win.into();
-        let Ok(cookie) = conn.query_pointer(x11_win) else {
-            return;
-        };
-        let Ok(reply) = cookie.reply() else { return };
+                let conn = ctx_x11.x11.conn;
+                let x11_win: Window = win.into();
+                let Ok(cookie) = conn.query_pointer(x11_win) else {
+                    return;
+                };
+                let Ok(reply) = cookie.reply() else { return };
 
-        let hit_x = reply.win_x as i32;
-        let hit_y = reply.win_y as i32;
+                let hit_x = reply.win_x as i32;
+                let hit_y = reply.win_y as i32;
 
-        get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
-    };
+                get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
+            };
 
-    resize_mouse_directional(ctx, Some(dir), btn);
+            resize_mouse_directional(ctx_x11, Some(dir), btn);
+        }
+        WmCtx::Wayland(_) => {
+            crate::mouse::drag::title_drag_begin(ctx, win, btn, 0, 0, false);
+        }
+    }
 }
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.
@@ -359,7 +365,16 @@ pub fn force_resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
 /// Unlike [`resize_mouse`] this function does **not** toggle floating; it is
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
-pub fn resize_aspect_mouse(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
+pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
+    match ctx {
+        WmCtx::X11(ctx_x11) => resize_aspect_mouse_x11(ctx_x11, win, btn),
+        WmCtx::Wayland(_) => {
+            crate::mouse::drag::title_drag_begin(ctx, win, btn, 0, 0, false);
+        }
+    }
+}
+
+pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
     let is_fullscreen = ctx
         .core
         .g
