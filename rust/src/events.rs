@@ -313,10 +313,10 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                         return;
                     }
                     // Use the actual topmost window under cursor for focus
-                    if let Some(newc) = crate::mouse::get_cursor_client_win_x11(
+                    if let Some(newc) = crate::mouse::hover::get_cursor_client_win_with_conn(
                         &ctx.core,
-                        &ctx.x11,
-                        ctx.x11_runtime,
+                        ctx.x11.conn,
+                        ctx.x11_runtime.root,
                     ) {
                         if Some(newc) != selected_window {
                             crate::focus::focus_soft_x11(
@@ -351,7 +351,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 
     // 5. Determine what's actually under the cursor
     let topmost_win_under_cursor =
-        crate::mouse::get_cursor_client_win_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+        crate::mouse::hover::get_cursor_client_win_with_conn(&ctx.core, ctx.x11.conn, ctx.x11_runtime.root);
 
     // 6. Handle focus switching based on configuration
     crate::focus::hover_focus_target_x11(

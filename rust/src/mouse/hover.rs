@@ -480,15 +480,7 @@ pub fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
     get_cursor_client_win_with_conn(core, conn, root)
 }
 
-pub fn get_cursor_client_win_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-) -> Option<WindowId> {
-    get_cursor_client_win_with_conn(core, x11.conn, x11_runtime.root)
-}
-
-fn get_cursor_client_win_with_conn(
+pub fn get_cursor_client_win_with_conn(
     core: &CoreCtx,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,

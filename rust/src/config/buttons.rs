@@ -206,11 +206,38 @@ pub fn get_buttons() -> Vec<Button> {
             }
         }),
         btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx, _| toggle_floating(ctx)),
-        btn_x11!(ClientWin, MODKEY, button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
-        btn_x11!(ClientWin, MA,     button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
-        btn_x11!(ClientWin, MS,     button:MouseButton::Right  => |ctx, arg| {
-            if let Some(win) = ctx.selected_client() {
-                resize_aspect_mouse(ctx, win, arg.btn)
+        btn!(ClientWin, MODKEY, button:MouseButton::Right => |ctx, arg| {
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => resize_mouse_from_cursor(ctx_x11, arg.btn),
+                crate::contexts::WmCtx::Wayland(_) => {
+                    if let Some(win) = ctx.selected_client() {
+                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
+                    }
+                }
+            }
+        }),
+        btn!(ClientWin, MA, button:MouseButton::Right => |ctx, arg| {
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => resize_mouse_from_cursor(ctx_x11, arg.btn),
+                crate::contexts::WmCtx::Wayland(_) => {
+                    if let Some(win) = ctx.selected_client() {
+                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
+                    }
+                }
+            }
+        }),
+        btn!(ClientWin, MS, button:MouseButton::Right => |ctx, arg| {
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => {
+                    if let Some(win) = ctx_x11.core.selected_client() {
+                        resize_aspect_mouse(ctx_x11, win, arg.btn)
+                    }
+                }
+                crate::contexts::WmCtx::Wayland(_) => {
+                    if let Some(win) = ctx.selected_client() {
+                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
+                    }
+                }
             }
         }),
         // ── Close button ──────────────────────────────────────────────────

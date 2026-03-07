@@ -8,7 +8,6 @@ use crate::backend::BackendOps;
 use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::globals::X11RuntimeConfig;
-use crate::mouse::get_cursor_client_win_x11;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
@@ -323,13 +322,14 @@ pub fn hover_focus_target(
 /// Backend-agnostic cursor query for hover logic.
 pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
     use crate::contexts::{WmCtx::*, WmCtxX11};
+    use crate::mouse::hover::get_cursor_client_win_with_conn;
     match ctx {
         X11(WmCtxX11 {
             core,
             x11,
             x11_runtime,
             ..
-        }) => get_cursor_client_win_x11(core, x11, x11_runtime),
+        }) => get_cursor_client_win_with_conn(core, x11.conn, x11_runtime.root),
         Wayland(_) => None,
     }
 }

@@ -123,7 +123,53 @@ pub fn apply_float_change(
                 }
             }
         }
-        WmCtx::Wayland(_) => {}
+        WmCtx::Wayland(wl) => {
+            if floating {
+                if let Some(client) = wl.core.g.clients.get_mut(&win) {
+                    client.isfloating = true;
+                }
+
+                if update_borders {
+                    restore_client_border(&mut wl.core, &wl.backend, win);
+                }
+
+                let saved_geo = wl.core.g.clients.get(&win).map(|c| c.float_geo);
+                let Some(saved_geo) = saved_geo else { return };
+
+                if animate {
+                    animate_client(
+                        ctx,
+                        win,
+                        &Rect {
+                            x: saved_geo.x,
+                            y: saved_geo.y,
+                            w: saved_geo.w,
+                            h: saved_geo.h,
+                        },
+                        7,
+                        0,
+                    );
+                } else {
+                    crate::client::resize(ctx, win, &saved_geo, false);
+                }
+            } else {
+                let client_count = wl.core.g.clients.len();
+                if let Some(client) = wl.core.g.clients.get_mut(&win) {
+                    client.isfloating = false;
+                    client.float_geo = client.geo;
+
+                    if update_borders
+                        && client_count <= 1
+                        && client.snap_status == SnapPosition::None
+                    {
+                        if client.border_width != 0 {
+                            client.old_border_width = client.border_width;
+                        }
+                        client.border_width = 0;
+                    }
+                }
+            }
+        }
     }
 }
 
