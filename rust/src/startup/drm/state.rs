@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use smithay::backend::allocator::gbm::GbmAllocator;
 use smithay::backend::drm::{DrmDeviceFd, GbmBufferedSurface};
@@ -34,6 +34,12 @@ pub struct SharedDrmState {
     pub total_width: i32,
     pub total_height: i32,
     pub completed_crtcs: Vec<crtc::Handle>,
+    /// CRTCs that have a page flip in flight.  We must not call
+    /// `queue_buffer` on these until the corresponding VBlank arrives,
+    /// otherwise the flip fails with EBUSY and the swapchain slot that
+    /// `next_buffer` acquired is leaked.  After enough leaked slots the
+    /// swapchain is exhausted and rendering freezes permanently.
+    pub pending_crtcs: HashSet<crtc::Handle>,
 }
 
 impl SharedDrmState {
@@ -45,6 +51,7 @@ impl SharedDrmState {
             total_width,
             total_height,
             completed_crtcs: Vec::new(),
+            pending_crtcs: HashSet::new(),
         }
     }
 

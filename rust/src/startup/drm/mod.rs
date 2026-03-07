@@ -5,7 +5,7 @@ mod input;
 mod render;
 mod state;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -96,7 +96,9 @@ pub fn run() -> ! {
                 log::info!("Session paused (VT switch away) - suspending rendering");
                 session_libinput.suspend();
                 session_drm_device.pause();
-                shared_session.lock().unwrap().session_active = false;
+                let mut s = shared_session.lock().unwrap();
+                s.session_active = false;
+                s.pending_crtcs.clear();
             }
             SessionEvent::ActivateSession => {
                 log::info!("Session activated (VT switch back) - resuming rendering");
@@ -121,6 +123,7 @@ pub fn run() -> ! {
                 if let Some(flag) = s.render_flags.get_mut(&crtc) {
                     *flag = true;
                 }
+                s.pending_crtcs.remove(&crtc);
                 s.completed_crtcs.push(crtc);
             }
             DrmEvent::Error(err) => {
@@ -291,7 +294,7 @@ fn tick(
     update_scene_state(state, wm, shared, ipc_server);
     apply_pending_pointer_warp(state, shared, pointer_handle);
 
-    let (session_active, pointer_location, render_flags) = take_render_snapshot(shared);
+    let (session_active, pointer_location, render_flags, pending) = take_render_snapshot(shared);
     if !session_active {
         return;
     }
@@ -299,6 +302,15 @@ fn tick(
     for entry in output_surfaces.iter_mut() {
         let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
         if !needs_render {
+            continue;
+        }
+        // Never attempt to render on a CRTC whose previous page flip has
+        // not completed yet.  Doing so would fail at queue_buffer (EBUSY)
+        // and permanently leak the swapchain slot acquired by next_buffer.
+        if pending.contains(&entry.crtc) {
+            // Content is dirty but CRTC is busy — re-mark so we retry
+            // once the VBlank arrives and clears the pending state.
+            shared.lock().unwrap().render_flags.insert(entry.crtc, true);
             continue;
         }
 
@@ -311,6 +323,9 @@ fn tick(
             pointer_location,
             start_time,
         );
+        if rendered {
+            shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
+        }
         update_render_failures(shared, render_failures, entry.crtc, rendered);
     }
 }
@@ -401,13 +416,15 @@ fn take_render_snapshot(
     bool,
     smithay::utils::Point<f64, smithay::utils::Logical>,
     HashMap<crtc::Handle, bool>,
+    HashSet<crtc::Handle>,
 ) {
     let mut s = shared.lock().unwrap();
     let flags = s.render_flags.clone();
+    let pending = s.pending_crtcs.clone();
     for flag in s.render_flags.values_mut() {
         *flag = false;
     }
-    (s.session_active, s.pointer_location, flags)
+    (s.session_active, s.pointer_location, flags, pending)
 }
 
 fn update_render_failures(
