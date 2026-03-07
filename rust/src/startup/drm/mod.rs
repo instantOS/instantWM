@@ -311,6 +311,9 @@ fn tick(
             pointer_location,
             start_time,
         );
+        if rendered {
+            shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
+        }
         update_render_failures(shared, render_failures, entry.crtc, rendered);
     }
 }
@@ -318,7 +321,11 @@ fn tick(
 fn process_completed_frames(shared: &SharedDrm, output_surfaces: &mut [OutputSurfaceEntry]) {
     let completed_crtcs = {
         let mut s = shared.lock().unwrap();
-        std::mem::take(&mut s.completed_crtcs)
+        let crtcs = std::mem::take(&mut s.completed_crtcs);
+        for crtc in &crtcs {
+            s.pending_crtcs.remove(crtc);
+        }
+        crtcs
     };
 
     for crtc in completed_crtcs {
@@ -403,9 +410,15 @@ fn take_render_snapshot(
     HashMap<crtc::Handle, bool>,
 ) {
     let mut s = shared.lock().unwrap();
-    let flags = s.render_flags.clone();
-    for flag in s.render_flags.values_mut() {
-        *flag = false;
+    let mut flags = HashMap::new();
+    let pending = s.pending_crtcs.clone();
+    for (crtc, flag) in s.render_flags.iter_mut() {
+        if *flag && !pending.contains(&crtc) {
+            flags.insert(*crtc, true);
+            *flag = false;
+        } else {
+            flags.insert(*crtc, false);
+        }
     }
     (s.session_active, s.pointer_location, flags)
 }
