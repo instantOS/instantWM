@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, SizeHints};
 use crate::types::input::SnapPosition;
+use crate::types::TagMask;
 use crate::types::WindowId;
 
 /// Represents a managed client window in the window manager.
@@ -155,8 +156,6 @@ impl Client {
         x11: &crate::backend::x11::X11BackendRef,
         x11_runtime: &mut crate::globals::X11RuntimeConfig,
     ) {
-        use crate::types::TagMask;
-
         let tag_mask = TagMask::from_bits(core.g.tags.mask());
         let effective_mask = mask & tag_mask;
 

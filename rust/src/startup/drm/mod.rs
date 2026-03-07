@@ -46,7 +46,7 @@ use super::autostart::run_autostart;
 use crate::startup::wayland::input::apply_pending_warp;
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
-// great care and patience for random ass segfaults. Yes, this is awful, leave it. 
+// great care and patience for random ass segfaults. Yes, this is awful, leave it.
 // Hours spent on this: ~3h
 pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");

@@ -183,7 +183,7 @@ use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
-use crate::monitor::{focus_mon, follow_mon};
+use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};
@@ -365,10 +365,10 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         }
 
         // Monitor
-        "focus_mon_prev" => Rc::new(|ctx| focus_mon(ctx, MonitorDirection::PREV)),
-        "focus_mon_next" => Rc::new(|ctx| focus_mon(ctx, MonitorDirection::NEXT)),
-        "follow_mon_prev" => Rc::new(|ctx| follow_mon(ctx, MonitorDirection::PREV)),
-        "follow_mon_next" => Rc::new(|ctx| follow_mon(ctx, MonitorDirection::NEXT)),
+        "focus_mon_prev" => Rc::new(|ctx| focus_monitor(ctx, MonitorDirection::PREV)),
+        "focus_mon_next" => Rc::new(|ctx| focus_monitor(ctx, MonitorDirection::NEXT)),
+        "follow_mon_prev" => Rc::new(|ctx| move_to_monitor_and_follow(ctx, MonitorDirection::PREV)),
+        "follow_mon_next" => Rc::new(|ctx| move_to_monitor_and_follow(ctx, MonitorDirection::NEXT)),
 
         // Overlay
         "set_overlay" => Rc::new(set_overlay),

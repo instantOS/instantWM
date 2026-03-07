@@ -184,7 +184,7 @@ pub struct TagSet {
     /// Raw colour strings from config.
     pub colors: TagColorConfigs,
     /// Whether to display `alt_names` instead of `names`.
-    pub show_alt: bool,
+    pub show_alternative_names: bool,
     /// Prefix-key mode: next tag key toggles rather than views.
     pub prefix: bool,
     /// Cached pixel width of the tag strip in the bar.

@@ -259,7 +259,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 }
 
-pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
+pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     let target = {
         let mgr = &ctx.g_mut().monitors;
         if mgr.monitors.len() <= 1 {
@@ -300,7 +300,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
     focus_soft(ctx, None);
 }
 
-pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
+pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
     let c_win = match ctx.g_mut().monitors.sel().and_then(|m| m.sel) {
         Some(w) => w,
         None => return,

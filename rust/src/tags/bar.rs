@@ -34,7 +34,7 @@ pub(crate) fn visible_tags_ctx<'a>(
     occupied: u32,
 ) -> Vec<VisibleTag<'a>> {
     let horizontal_padding = core.g.cfg.horizontal_padding;
-    let show_alt = core.g.tags.show_alt;
+    let show_alt = core.g.tags.show_alternative_names;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
@@ -43,7 +43,7 @@ pub(crate) fn visible_tags_ctx<'a>(
         if tag_index >= monitor.tags.len() {
             continue;
         }
-        if should_skip(monitor, tag_index, occupied) {
+        if is_tag_hidden(monitor, tag_index, occupied) {
             continue;
         }
 
@@ -129,7 +129,7 @@ fn tag_index_for_slot(monitor: &Monitor, slot: usize) -> usize {
 /// Return `true` if the tag at `tag_index` should be hidden.
 ///
 /// A tag is hidden when `showtags != 0` and it is neither occupied nor selected.
-fn should_skip(monitor: &Monitor, tag_index: usize, occupied: u32) -> bool {
+fn is_tag_hidden(monitor: &Monitor, tag_index: usize, occupied: u32) -> bool {
     if monitor.showtags == 0 {
         return false;
     }
@@ -138,8 +138,8 @@ fn should_skip(monitor: &Monitor, tag_index: usize, occupied: u32) -> bool {
 }
 
 /// Choose between the regular name and the alt-name for display.
-fn display_name(tag: &crate::types::Tag, show_alt: bool) -> &str {
-    if show_alt && !tag.alt_name.is_empty() {
+fn display_name(tag: &crate::types::Tag, show_alternative_name: bool) -> &str {
+    if show_alternative_name && !tag.alt_name.is_empty() {
         tag.alt_name.as_str()
     } else {
         tag.name.as_str()
