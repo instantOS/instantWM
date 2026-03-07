@@ -583,3 +583,145 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
         mon.init_tags(&template);
     }
 }
+
+impl Globals {
+    /// Get the status bar color scheme.
+    pub fn status_scheme(&self) -> Option<crate::bar::paint::BarScheme> {
+        use crate::bar::color::rgba_from_hex;
+        use crate::config::{ColIndex, SchemeHover};
+
+        let fg = rgba_from_hex(self.cfg.statusbarcolors.get(ColIndex::Fg))?;
+        let bg = rgba_from_hex(self.cfg.statusbarcolors.get(ColIndex::Bg))?;
+        let detail = rgba_from_hex(self.cfg.statusbarcolors.get(ColIndex::Detail))?;
+        Some(crate::bar::paint::BarScheme { fg, bg, detail })
+    }
+
+    /// Get the tag hover fill scheme.
+    pub fn tag_hover_fill_scheme(&self) -> Option<crate::bar::paint::BarScheme> {
+        use crate::config::{SchemeHover, SchemeTag};
+
+        let colors = self
+            .tags
+            .colors
+            .scheme(SchemeHover::Hover, SchemeTag::Filled);
+        crate::bar::theme::scheme_from_strings(colors)
+    }
+
+    /// Get the color scheme for a tag.
+    pub fn tag_scheme(
+        &self,
+        m: &Monitor,
+        tag_index: u32,
+        occupied_tags: u32,
+        is_hover: bool,
+    ) -> Option<crate::bar::paint::BarScheme> {
+        use crate::config::{SchemeHover, SchemeTag};
+
+        let scheme_idx = if occupied_tags & (1 << tag_index) != 0 {
+            let selmon = self.selected_monitor();
+            let sel_has_tag = selmon
+                .sel
+                .and_then(|selected_window| {
+                    self.clients
+                        .get(&selected_window)
+                        .map(|c| c.tags & (1 << tag_index) != 0)
+                })
+                .unwrap_or(false);
+
+            let is_selected = selmon.num == m.num;
+
+            if is_selected && sel_has_tag {
+                SchemeTag::Focus
+            } else if m.selected_tags() & (1 << tag_index) != 0 {
+                SchemeTag::NoFocus
+            } else if m.showtags == 0 {
+                SchemeTag::Filled
+            } else {
+                SchemeTag::Inactive
+            }
+        } else if m.selected_tags() & (1 << tag_index) != 0 {
+            SchemeTag::Empty
+        } else {
+            SchemeTag::Inactive
+        };
+
+        let colors = self.tags.colors.scheme(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            scheme_idx,
+        );
+        crate::bar::theme::scheme_from_strings(colors)
+    }
+
+    /// Get the color scheme for a client window.
+    pub fn window_scheme(
+        &self,
+        c: &Client,
+        is_hover: bool,
+    ) -> Option<crate::bar::paint::BarScheme> {
+        use crate::config::{SchemeHover, SchemeWin};
+
+        let selmon = self.selected_monitor();
+        let is_selected = selmon.sel == Some(c.win);
+        let is_overlay = selmon.overlay == Some(c.win);
+
+        let scheme_idx = if is_selected {
+            if is_overlay {
+                SchemeWin::OverlayFocus
+            } else if c.issticky {
+                SchemeWin::StickyFocus
+            } else {
+                SchemeWin::Focus
+            }
+        } else if is_overlay {
+            SchemeWin::Overlay
+        } else if c.issticky {
+            SchemeWin::Sticky
+        } else if c.is_hidden {
+            SchemeWin::Minimized
+        } else {
+            SchemeWin::Normal
+        };
+
+        let colors = self.cfg.windowcolors.scheme(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            scheme_idx,
+        );
+        crate::bar::theme::scheme_from_strings(colors)
+    }
+
+    /// Get the close button color scheme.
+    pub fn close_button_scheme(
+        &self,
+        is_hover: bool,
+        is_locked: bool,
+        is_fullscreen: bool,
+    ) -> Option<crate::bar::paint::BarScheme> {
+        use crate::config::{SchemeClose, SchemeHover};
+
+        let scheme_idx = if is_locked {
+            SchemeClose::Locked
+        } else if is_fullscreen {
+            SchemeClose::Fullscreen
+        } else {
+            SchemeClose::Normal
+        };
+
+        let colors = self.cfg.closebuttoncolors.scheme(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            scheme_idx,
+        );
+        crate::bar::theme::scheme_from_strings(colors)
+    }
+}

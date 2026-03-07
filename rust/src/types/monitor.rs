@@ -350,6 +350,70 @@ impl Monitor {
     pub fn monitor_area(&self) -> Rect {
         self.monitor_rect
     }
+
+    /// Return true if the tag at `tag_index` should be hidden.
+    ///
+    /// A tag is hidden when `showtags != 0` and it is neither occupied nor selected.
+    pub fn should_hide_tag(&self, tag_index: usize, occupied: u32) -> bool {
+        if self.showtags == 0 {
+            return false;
+        }
+        let bit = 1u32 << tag_index;
+        (occupied & bit) == 0 && (self.selected_tags() & bit) == 0
+    }
+
+    /// Map a bar slot (0..8) to the actual tag index.
+    ///
+    /// Slot 8 is remapped to `current_tag - 1` when the monitor has more than 9
+    /// tags active (the "overflow" slot).
+    pub fn tag_index_for_slot(&self, slot: usize) -> usize {
+        const MAX_BAR_SLOTS: usize = 9;
+        if slot == MAX_BAR_SLOTS - 1 && self.current_tag > MAX_BAR_SLOTS {
+            self.current_tag - 1
+        } else {
+            slot
+        }
+    }
+
+    /// Compute a bitmask of tags that have at least one client on this monitor.
+    ///
+    /// Excludes the special scratchpad tag (255).
+    pub fn occupied_tags(&self, clients: &HashMap<WindowId, Client>) -> u32 {
+        let mut occupied: u32 = 0;
+        for &win in &self.clients {
+            if let Some(c) = clients.get(&win) {
+                if c.tags != 255 {
+                    occupied |= c.tags;
+                }
+            }
+        }
+        occupied
+    }
+
+    /// Compute which logical bar region the cursor's **monitor-local** x coordinate
+    /// falls in.
+    pub fn bar_position_at_x(
+        &self,
+        core: &crate::contexts::CoreCtx,
+        local_x: i32,
+    ) -> crate::types::BarPosition {
+        use crate::bar::model::{build_fallback_hit_cache, hit_test};
+
+        let is_selmon = core.g.selected_monitor().num == self.num;
+
+        // Prefer the pre-built hit cache populated during rendering; fall back to
+        // computing a temporary one from the same utility functions.
+        let owned;
+        let hit: &crate::bar::MonitorHitCache = match core.bar.monitor_hit_cache(self.id()) {
+            Some(h) => h,
+            None => {
+                owned = build_fallback_hit_cache(self, core);
+                &owned
+            }
+        };
+
+        hit_test(hit, self, core, is_selmon, local_x)
+    }
 }
 
 /// Find a monitor in a given direction from the current one.

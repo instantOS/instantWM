@@ -149,6 +149,16 @@ impl Client {
         self.border_width
     }
 
+    /// Get the monitor's size (width, height) for this client.
+    ///
+    /// Returns `(0, 0)` if the client is not assigned to a monitor.
+    pub fn monitor_size(&self, globals: &crate::globals::Globals) -> (i32, i32) {
+        self.monitor_id
+            .and_then(|id| globals.monitor(id))
+            .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
+            .unwrap_or((0, 0))
+    }
+
     pub fn set_tags(
         &mut self,
         mask: crate::types::TagMask,

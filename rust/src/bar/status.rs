@@ -199,7 +199,7 @@ fn draw_items(
     g: &crate::globals::Globals,
     command_offsets: &mut [i32; MAX_COMMAND_OFFSETS],
 ) {
-    let Some(mut scheme) = crate::bar::theme::status_scheme(g) else {
+    let Some(mut scheme) = g.status_scheme() else {
         return;
     };
     let base_scheme = scheme.clone();

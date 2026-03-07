@@ -170,6 +170,17 @@ impl Default for Tag {
     }
 }
 
+impl Tag {
+    /// Return the display name (regular or alt name).
+    pub fn display_name(&self, show_alternative: bool) -> &str {
+        if show_alternative && !self.alt_name.is_empty() {
+            &self.alt_name
+        } else {
+            &self.name
+        }
+    }
+}
+
 /// All tag-related configuration and runtime state, grouped in one place.
 ///
 /// Tag data (names, layouts, nmaster, mfact, showbar) lives on each

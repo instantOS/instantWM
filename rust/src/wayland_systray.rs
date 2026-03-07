@@ -249,7 +249,7 @@ pub fn draw_wayland_systray_with_state(
     painter: &mut crate::bar::wayland::WaylandBarPainter,
 ) {
     let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
-    if let Some(bg) = crate::bar::theme::status_scheme(core.g).map(|s| s.bg) {
+    if let Some(bg) = core.g.status_scheme().map(|s| s.bg) {
         let bg_scheme = crate::bar::paint::BarScheme {
             fg: bg,
             bg,
@@ -509,7 +509,7 @@ fn draw_menu_overlay(
     if layout.menu_slots.is_empty() {
         return;
     }
-    let Some(mut scheme) = crate::bar::theme::status_scheme(core.g) else {
+    let Some(mut scheme) = core.g.status_scheme() else {
         return;
     };
     painter.set_scheme(scheme.clone());

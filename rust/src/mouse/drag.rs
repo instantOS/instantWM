@@ -22,7 +22,6 @@
 //! post-loop cleanup (bar drop, monitor switch, bar redraw, …)
 //! ```
 
-use crate::bar::bar_position_at_x;
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
@@ -236,7 +235,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             let core = ctx.core();
             let mon = core.g.selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
-            bar_position_to_gesture(bar_position_at_x(mon, core, local_x))
+            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
         };
 
         let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
@@ -419,7 +418,7 @@ fn handle_bar_drop(
         let core = ctx.core();
         let mon = core.g.selected_monitor();
         let local_x = ptr_x - mon.work_rect.x;
-        bar_position_at_x(mon, core, local_x)
+        mon.bar_position_at_x(core, local_x)
     };
 
     // Remember whether the window was floating *before* any state change so
@@ -765,7 +764,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
                 .get(selmon_id)
                 .and_then(|mon| {
                     let local_x = ptr_x - mon.work_rect.x;
-                    match bar_position_at_x(mon, core, local_x) {
+                    match mon.bar_position_at_x(core, local_x) {
                         BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
                         _ => None,
                     }
@@ -834,7 +833,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         core.g
             .monitors
             .get(selmon_id)
-            .map(|mon| bar_position_to_gesture(bar_position_at_x(mon, core, local_x)))
+            .map(|mon| bar_position_to_gesture(mon.bar_position_at_x(core, local_x)))
             .unwrap_or(Gesture::None)
     };
     let gesture_key = match new_gesture {
@@ -875,7 +874,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                 let core = ctx.core();
                 let mon = core.g.selected_monitor();
                 let local_x = x - mon.work_rect.x;
-                bar_position_at_x(mon, core, local_x)
+                mon.bar_position_at_x(core, local_x)
             };
 
             if let BarPosition::Tag(tag_idx) = position {

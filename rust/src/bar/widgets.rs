@@ -16,7 +16,7 @@ pub(crate) fn draw_startmenu_icon(
     let startmenu_invert = ctx.g.selected_monitor().gesture == Gesture::StartMenu;
 
     let startmenu_size = ctx.g.cfg.startmenusize;
-    let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) else {
+    let Some(scheme) = ctx.g.status_scheme() else {
         return;
     };
 
@@ -73,8 +73,9 @@ pub(crate) fn draw_tag_indicators(
         let width = (text_w + horizontal_padding).max(horizontal_padding);
         ctx.bar.cache_tag_width(t.slot, width);
 
-        let Some(scheme) =
-            crate::bar::theme::tag_scheme(ctx.g, m, t.tag_index as u32, occupied_tags, is_hover)
+        let Some(scheme) = ctx
+            .g
+            .tag_scheme(m, t.tag_index as u32, occupied_tags, is_hover)
         else {
             x += width;
             continue;
@@ -82,7 +83,7 @@ pub(crate) fn draw_tag_indicators(
 
         let mut draw_scheme = scheme;
         if is_hover && bar_dragging {
-            if let Some(s) = crate::bar::theme::tag_hover_fill_scheme(ctx.g) {
+            if let Some(s) = ctx.g.tag_hover_fill_scheme() {
                 draw_scheme = s;
             }
         }
@@ -132,7 +133,7 @@ pub(crate) fn draw_layout_indicator(
     let w = (text_w + horizontal_padding).max(horizontal_padding);
     let lpad = ((w - text_w) / 2).max(0);
 
-    if let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) {
+    if let Some(scheme) = ctx.g.status_scheme() {
         painter.set_scheme(scheme);
     }
     let start_x = x;
@@ -159,7 +160,7 @@ pub(crate) fn draw_shutdown_button(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
     // Use the status scheme as the base colours.
-    if let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) {
+    if let Some(scheme) = ctx.g.status_scheme() {
         painter.set_scheme(scheme);
     }
 
@@ -230,8 +231,9 @@ pub(crate) fn draw_close_button(
         })
         .unwrap_or(false);
 
-    let Some(scheme) =
-        crate::bar::theme::close_button_scheme(ctx.g, close_hovered, c.islocked, is_fullscreen)
+    let Some(scheme) = ctx
+        .g
+        .close_button_scheme(close_hovered, c.islocked, is_fullscreen)
     else {
         return;
     };
@@ -281,7 +283,7 @@ fn draw_window_title(
     let client_name = c.name.as_str();
     let text_w = painter.text_width(client_name);
 
-    if let Some(scheme) = crate::bar::theme::window_scheme(ctx.g, c, is_hover) {
+    if let Some(scheme) = ctx.g.window_scheme(c, is_hover) {
         painter.set_scheme(scheme);
     }
 
@@ -364,7 +366,7 @@ pub(crate) fn draw_window_titles(
         return new_activeoffset;
     }
 
-    if let Some(scheme) = crate::bar::theme::status_scheme(ctx.g) {
+    if let Some(scheme) = ctx.g.status_scheme() {
         painter.set_scheme(scheme);
     }
     painter.rect(x, 0, w, bar_height, true, true);

@@ -1,7 +1,7 @@
 use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
-use crate::bar::{bar_position_at_x, bar_position_to_gesture};
+use crate::bar::bar_position_to_gesture;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
@@ -87,7 +87,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         }
     } else if let Some(mon) = ctx.core.g.monitor(selmon_id) {
         if event_win == mon.bar_win {
-            let position = bar_position_at_x(mon, &ctx.core, e.event_x as i32);
+            let position = mon.bar_position_at_x(&ctx.core, e.event_x as i32);
             if position == BarPosition::StartMenu {
                 reset_bar_x11(
                     &mut ctx.core,
@@ -507,7 +507,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let new_gesture = {
         let mon = ctx.core.g.selected_monitor();
         let local_x = root_x - mon.work_rect.x;
-        let position = bar_position_at_x(mon, &ctx.core, local_x);
+        let position = mon.bar_position_at_x(&ctx.core, local_x);
         match position {
             // The status-text and root areas don't produce a hover gesture —
             // reset the bar and bail out so we don't light up anything.

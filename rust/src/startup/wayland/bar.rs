@@ -1,4 +1,4 @@
-use crate::bar::{bar_position_at_x, bar_position_to_gesture};
+use crate::bar::bar_position_to_gesture;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
@@ -34,7 +34,7 @@ pub(super) fn update_wayland_bar_hit_state(
 
     let mon = ctx.g.selected_monitor();
     let local_x = root_x - mon.work_rect.x;
-    let pos = bar_position_at_x(&mon, ctx.core(), local_x);
+    let pos = mon.bar_position_at_x(ctx.core(), local_x);
     if reset_start_menu && pos == BarPosition::StartMenu {
         crate::bar::reset_bar_wayland(ctx.core_mut());
     }

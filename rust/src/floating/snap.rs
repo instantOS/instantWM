@@ -444,14 +444,3 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
         }
     }
 }
-
-/// Lightweight snap-state reconciliation used inside layout passes.
-///
-/// Unlike [`apply_snap`] this does **not** animate; it only updates in-memory
-/// fields on the [`Client`] struct (e.g. zeroing `border_width` for maximized
-/// windows) so the layout engine sees consistent state during arrange.
-pub fn apply_snap_mut(c: &mut Client, _m: &Monitor) {
-    if c.snap_status == SnapPosition::Maximized {
-        c.border_width = 0;
-    }
-}
