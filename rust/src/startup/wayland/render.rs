@@ -40,7 +40,40 @@ pub(super) fn render_frame(
     let damage = {
         let buffer_age = backend.buffer_age().unwrap_or(0);
         let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
+
+        // custom_elements is in front-to-back order: index 0 is the topmost element.
+        // The ordering below must be maintained:
+        //   1. Overlay windows (dmenu, popups) — above the bar, below the cursor
+        //   2. Bar
+        //   3. Window borders
+        //
+        // In the winit backend the cursor is a host-compositor hardware cursor and
+        // is always on top by nature, so it does not appear in this list.
+        //
+        // Overlay windows MUST come before the bar.  The bar is a custom_element
+        // that sits above ALL space elements in Smithay's front-to-back list.
+        // Without lifting overlays out here, dmenu and similar X11 launchers are
+        // drawn behind the bar and appear invisible.
+        //
+        // DO NOT reorder these sections.
         let mut custom_elements: Vec<WaylandExtras> = Vec::new();
+
+        // Overlay windows (dmenu, override-redirect popups, etc.) — above bar.
+        // x_offset = 0 for the winit backend (single output at origin).
+        for (window, phys_loc) in state.overlay_windows_for_render(0) {
+            use smithay::backend::renderer::element::AsRenderElements;
+            let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                AsRenderElements::render_elements(
+                    &window,
+                    renderer,
+                    phys_loc,
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                );
+            for elem in elems {
+                custom_elements.push(WaylandExtras::Surface(elem));
+            }
+        }
 
         for elem in build_bar_elements(wm, renderer) {
             custom_elements.push(WaylandExtras::Memory(elem));

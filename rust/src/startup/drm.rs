@@ -810,12 +810,39 @@ fn render_drm_output(
         custom_elements.push(DrmExtras::Cursor(cursor_elem));
     }
 
-    // Bar — rendered below the cursor but above windows.
+    // Overlay windows (dmenu, override-redirect popups, etc.) — rendered above
+    // the bar but below the cursor.
+    //
+    // These windows live inside `state.space` for hit-testing and protocol
+    // bookkeeping, but the bar is a custom_element that sits above ALL space
+    // elements in Smithay's front-to-back list.  Without this block, dmenu and
+    // similar X11 launchers would always be drawn behind the bar and appear
+    // invisible.  We lift them out here and re-emit them as custom elements at
+    // the correct z-level.
+    //
+    // DO NOT remove or move this block below the bar elements — doing so will
+    // cause overlay windows to appear behind the bar again.
+    for (window, phys_loc) in state.overlay_windows_for_render(entry.x_offset) {
+        use smithay::backend::renderer::element::AsRenderElements;
+        let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            AsRenderElements::render_elements(
+                &window,
+                renderer,
+                phys_loc,
+                smithay::utils::Scale::from(1.0),
+                1.0,
+            );
+        for elem in elems {
+            custom_elements.push(DrmExtras::Surface(elem));
+        }
+    }
+
+    // Bar — rendered below overlay windows and cursor, but above normal windows.
     for elem in build_bar_elements(wm, renderer) {
         custom_elements.push(DrmExtras::Memory(elem));
     }
 
-    // Window borders — rendered below bar and cursor, above window content.
+    // Window borders — rendered below bar, overlay windows, and cursor, above window content.
     for elem in crate::startup::wayland::render::wayland_border_elements_shared(&wm.g, state) {
         custom_elements.push(DrmExtras::Solid(elem));
     }

@@ -18,7 +18,7 @@ use smithay::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
-    utils::{Logical, Point, Transform, SERIAL_COUNTER},
+    utils::{Logical, Physical, Point, Transform, SERIAL_COUNTER},
     wayland::{
         compositor::CompositorState,
         dmabuf::{DmabufGlobal, DmabufState},
@@ -641,6 +641,44 @@ impl WaylandState {
         for w in overlays {
             self.space.raise_element(&w, true);
         }
+    }
+
+    /// Collect all overlay/unmanaged windows (dmenu, override-redirect popups,
+    /// etc.) that should be rendered above the bar but below the cursor.
+    ///
+    /// Returns `(window, physical_location)` pairs ready for `AsRenderElements`.
+    ///
+    /// # Why this exists
+    ///
+    /// The bar is rendered as a `custom_element` which sits *above* every
+    /// element in `self.space` (Smithay's `render_output` prepends custom
+    /// elements before space elements in the front-to-back list).  Overlay
+    /// windows such as dmenu live inside the space and are therefore drawn
+    /// *beneath* the bar, which makes them invisible.
+    ///
+    /// The fix is to pull those windows out of the space's render contribution
+    /// and re-emit them as custom elements inserted between the cursor and the
+    /// bar.  The space still maps/tracks them for hit-testing and protocol
+    /// bookkeeping; we just override where in the z-stack they are drawn.
+    pub fn overlay_windows_for_render(&self, x_offset: i32) -> Vec<(Window, Point<i32, Physical>)> {
+        self.space
+            .elements()
+            .filter(|w| match w.user_data().get::<WindowIdMarker>() {
+                Some(m) => m.is_overlay,
+                // Windows with no marker are unmananged override-redirect X11
+                // surfaces mapped directly (e.g. via mapped_override_redirect_window).
+                None => w.x11_surface().is_some(),
+            })
+            .filter_map(|w| {
+                let loc = self.space.element_location(w)?;
+                // Translate from global compositor coordinates to the
+                // per-output local coordinate space, then convert to physical
+                // pixels (scale = 1 throughout, so this is a no-op numerically
+                // but keeps the type system happy).
+                let phys = Point::<i32, Physical>::from((loc.x - x_offset, loc.y));
+                Some((w.clone(), phys))
+            })
+            .collect()
     }
 
     pub fn window_exists(&self, window: WindowId) -> bool {

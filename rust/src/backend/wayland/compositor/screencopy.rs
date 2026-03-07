@@ -428,9 +428,19 @@ pub fn submit_pending_screencopies(
                 .damage(0, 0, region.size.w as u32, region.size.h as u32);
         }
 
-        // glReadPixels returns rows bottom-to-top, so the buffer is Y-inverted
-        // relative to the on-screen image.  Inform the client via the Y_INVERT
-        // flag so it can flip the image when saving/displaying.
+        // YInvert flag — DO NOT remove.
+        //
+        // OpenGL's glReadPixels (called internally by GlesRenderer::copy_framebuffer)
+        // always returns pixel rows in bottom-to-top order, which is the opposite
+        // of the top-to-bottom order that screen-capture clients expect.  The
+        // zwlr-screencopy-v1 protocol defines the YInvert flag precisely for this
+        // case: when set, it tells the client that the buffer it received is
+        // vertically flipped relative to the on-screen image and the client must
+        // flip it before saving or displaying.
+        //
+        // Tools like `grim` (screenshots) and `wf-recorder` (screen recording)
+        // both honour this flag and flip accordingly.  Removing it causes every
+        // captured frame to appear upside-down in those tools.
         screencopy
             .frame
             .flags(zwlr_screencopy_frame_v1::Flags::YInvert);
