@@ -33,26 +33,11 @@ fn apply_floating_borderscheme(core: &CoreCtx, x11: &X11BackendRef, win: WindowI
             &x11rb::protocol::xproto::ChangeWindowAttributesAux::new()
                 .border_pixel(Some(pixel as u32)),
         );
-        let _ = x11.conn.flush();
     }
 }
 
 pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(x11) => {
-            if let Some(client) = x11.core.g.clients.get_mut(&win) {
-                client.isfloating = true;
-            }
-            restore_client_border(&mut x11.core, &x11.backend, win);
-            apply_floating_borderscheme(&x11.core, &x11.x11, win);
-        }
-        WmCtx::Wayland(wl) => {
-            if let Some(client) = wl.core.g.clients.get_mut(&win) {
-                client.isfloating = true;
-            }
-            restore_client_border(&mut wl.core, &wl.backend, win);
-        }
-    }
+    apply_float_change(ctx, win, true, false, true);
 }
 
 pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
@@ -119,6 +104,7 @@ pub fn apply_float_change(
                             client.old_border_width = client.border_width;
                         }
                         client.border_width = 0;
+                        x11.backend.set_border_width(win, 0);
                     }
                 }
             }
@@ -166,6 +152,7 @@ pub fn apply_float_change(
                             client.old_border_width = client.border_width;
                         }
                         client.border_width = 0;
+                        wl.backend.set_border_width(win, 0);
                     }
                 }
             }

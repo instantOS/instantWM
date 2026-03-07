@@ -230,7 +230,7 @@ fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
 
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.g().selected_monitor_id();
 
     if on_bar {
         let new_gesture = {
@@ -240,7 +240,7 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
             bar_position_to_gesture(bar_position_at_x(mon, core, local_x))
         };
 
-        let gesture_changed = ctx.g_mut().selected_monitor().gesture != new_gesture;
+        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
 
         if !state.cursor_on_bar || gesture_changed {
             ctx.g_mut().drag.bar_active = true;
@@ -274,11 +274,11 @@ fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx.g_mut().selected_monitor().bar_y + ctx.g_mut().cfg.bar_height;
+        let bar_bottom = ctx.g().selected_monitor().bar_y + ctx.g().cfg.bar_height;
         new_y = bar_bottom;
     }
 
-    let has_tiling = ctx.g_mut().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     let (mut is_floating, mut drag_geo) = ctx
         .g()
@@ -301,7 +301,7 @@ fn on_motion(
     );
 
     if !has_tiling || is_floating {
-        let client_clone = ctx.g_mut().clients.get(&win).cloned();
+        let client_clone = ctx.g().clients.get(&win).cloned();
         if let Some(ref client) = client_clone {
             snap_to_monitor_edges(ctx, client, &mut new_x, &mut new_y);
         }
@@ -331,7 +331,7 @@ fn maybe_promote_tiled_drag_to_floating(
     is_floating: &mut bool,
     drag_geo: &mut Rect,
 ) {
-    let snap = ctx.g_mut().cfg.snap;
+    let snap = ctx.g().cfg.snap;
     if *is_floating
         || !has_tiling
         || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)
@@ -360,7 +360,7 @@ fn maybe_promote_tiled_drag_to_floating(
     set_floating_in_place(ctx, win);
 
     // Re-tile the remaining windows (touches only the other clients).
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.g().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
     // The window's width is changing (tiled → floating), so the old
@@ -386,7 +386,7 @@ fn maybe_promote_tiled_drag_to_floating(
 /// Called once the drag loop exits so that hover state is always cleaned up.
 fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g_mut().drag.bar_active = false;
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.g().selected_monitor_id();
     ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
     ctx.request_bar_update(Some(selmon_id));
 }
@@ -500,12 +500,12 @@ fn apply_edge_drop(
         return false;
     }
 
-    let is_tiling = ctx.g_mut().selected_monitor().is_tiling_layout();
+    let is_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     if is_tiling {
         let (mon_my, mon_mh) = (
-            ctx.g_mut().selected_monitor().monitor_rect.y,
-            ctx.g_mut().selected_monitor().monitor_rect.h,
+            ctx.g().selected_monitor().monitor_rect.y,
+            ctx.g().selected_monitor().monitor_rect.h,
         );
 
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
@@ -524,7 +524,7 @@ fn apply_edge_drop(
         if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
             c.isfloating = false;
         }
-        let selmon_id = ctx.g_mut().selected_monitor_id();
+        let selmon_id = ctx.g().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     } else {
         let dir = if at_left {
@@ -652,11 +652,7 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         return;
     };
 
-    if !grab_pointer(ctx, 2) {
-        return;
-    }
     let Some((start_x, start_y)) = get_root_ptr_ctx_x11(ctx) else {
-        ungrab(ctx);
         return;
     };
 
@@ -675,43 +671,20 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
-    {
+
+    super::grab::mouse_drag_loop(ctx, btn, 2, |ctx, m| {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        let _ = refresh_rate(&mut wm_ctx);
-    }
-    let mut last_time: u32 = 0;
+        on_motion(
+            &mut wm_ctx,
+            win,
+            m.event_x as i32,
+            m.event_y as i32,
+            m.root_x as i32,
+            m.root_y as i32,
+            &mut state,
+        );
+    });
 
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                on_motion(
-                    &mut wm_ctx,
-                    win,
-                    m.event_x as i32,
-                    m.event_y as i32,
-                    m.root_x as i32,
-                    m.root_y as i32,
-                    &mut state,
-                );
-            }
-            _ => {}
-        }
-    }
-
-    ungrab(ctx);
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         clear_bar_hover(&mut wm_ctx);
@@ -742,51 +715,26 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 }
 
 pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
-    if !grab_pointer(ctx, 2) {
-        return;
-    }
     let Some((_, start_y)) = get_root_ptr_ctx_x11(ctx) else {
-        ungrab(ctx);
         return;
     };
 
     let mut last_y = start_y;
-    let mut last_time: u32 = 0;
 
-    loop {
-        let Some(event) = wait_event(ctx) else {
-            break;
-        };
-        match &event {
-            x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
-                    break;
-                }
-            }
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-
-                let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
-                if (last_y - m.event_y as i32).abs() > threshold {
-                    let event_y = m.event_y as i32;
-                    let cmd = if event_y < last_y {
-                        &["/usr/share/instantassist/utils/p.sh", "+"]
-                    } else {
-                        &["/usr/share/instantassist/utils/p.sh", "-"]
-                    };
-                    let wm_ctx = WmCtx::X11(ctx.reborrow());
-                    crate::util::spawn(&wm_ctx, cmd);
-                    last_y = event_y;
-                }
-            }
-            _ => {}
+    super::grab::mouse_drag_loop(ctx, btn, 2, |ctx, m| {
+        let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
+        if (last_y - m.event_y as i32).abs() > threshold {
+            let event_y = m.event_y as i32;
+            let cmd = if event_y < last_y {
+                &["/usr/share/instantassist/utils/p.sh", "+"]
+            } else {
+                &["/usr/share/instantassist/utils/p.sh", "-"]
+            };
+            let wm_ctx = WmCtx::X11(ctx.reborrow());
+            crate::util::spawn(&wm_ctx, cmd);
+            last_y = event_y;
         }
-    }
-
-    ungrab(ctx);
+    });
 }
 
 // ── drag_tag ──────────────────────────────────────────────────────────────────
