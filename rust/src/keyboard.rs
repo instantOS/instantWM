@@ -247,8 +247,7 @@ pub fn down_press(ctx: &mut WmCtx) {
         let overlay = mon.overlay;
         let (snap_status, is_floating) = sel
             .and_then(|w| {
-                ctx
-                    .g()
+                ctx.g()
                     .clients
                     .get(&w)
                     .map(|c| (c.snap_status, c.isfloating))
@@ -346,8 +345,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         };
 
         let snap_status = {
-            ctx
-                .g()
+            ctx.g()
                 .clients
                 .get(&win)
                 .map(|c| c.snap_status)

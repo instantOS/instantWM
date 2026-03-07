@@ -374,4 +374,3 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
-

@@ -3,8 +3,8 @@
 //! [`Color`] wraps an `XftColor` (a pixel value + 16-bit RGBA components).
 //! [`Cursor`] wraps an X11 cursor id created via `XCreateFontCursor`.
 
-use std::os::raw::c_ulong;
 use super::ffi::{XRenderColor, XftColor};
+use std::os::raw::c_ulong;
 
 // ── Color indices into a color scheme ────────────────────────────────────────
 

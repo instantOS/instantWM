@@ -79,10 +79,10 @@ use crate::wm::Wm;
 
 use super::autostart::run_autostart;
 
-use smithay::reexports::drm::control::{connector, crtc, Device as ControlDevice};
+use smithay::reexports::drm::control::connector::Info as ConnectorInfo;
 use smithay::reexports::drm::control::ModeTypeFlags;
 use smithay::reexports::drm::control::ResourceHandles;
-use smithay::reexports::drm::control::connector::Info as ConnectorInfo;
+use smithay::reexports::drm::control::{connector, crtc, Device as ControlDevice};
 
 /// Default screen dimensions when no DRM outputs are detected.
 const DEFAULT_SCREEN_WIDTH: i32 = 1280;
