@@ -46,11 +46,11 @@ crate::layouts::arrange(
 
 
 
-the indicator light for the capslock key does not work on wayland instantwm. 
+the indicator light for the capslock key does not work on wayland instantwm.
 
 
 I would like a swapescape option similar to sway and i3 in instantwm wayland,
-also accessible via the IPC. 
+also accessible via the IPC.
 
 
 Super + Shift + Space does not do anything on wayland.
@@ -63,7 +63,7 @@ dragging from the top bar does work
 
 The old xsetroot way of setting the status bar text is outdated, I want a
 unified solution for both X11 and wayland. Ideally that solution can render the
-i3status-rs format. 
+i3status-rs format.
 
 
 
@@ -75,13 +75,13 @@ not how it works on X11, investigate and fix
 
 on wayland, after I switch tags no window is in focus. Investigate and fix.
 Also, clicking on a window should probably focus it, although it should not raise it,
-raise only happens when I move it or make it floating or resize it etc. 
+raise only happens when I move it or make it floating or resize it etc.
 
-clicking a window title should raise that window. 
+clicking a window title should raise that window.
 
 I would like to be able to configure mouse sensitivity in the wayland backend,
 using the toml file and IPC. I want this to work like it does on sway (as
-similar as possible), so users don't have to too much new stuff. 
+similar as possible), so users don't have to too much new stuff.
 
 
 
@@ -89,8 +89,8 @@ There are a lot of different resize functions which largely do the same thing.
 Maybe instead, there should be one, with a resizeoptions struct?
 This could have fields like 'respect size hints', 'keep aspect ratio',
 'resizedirection' (existing enum) and all the nice stuff. That should also give
-the ability to make X11 and Wayland resizing more similar or even share code. 
-I am aware this is a potentially big refactor, but it should simplify things. 
+the ability to make X11 and Wayland resizing more similar or even share code.
+I am aware this is a potentially big refactor, but it should simplify things.
 
 
 
@@ -98,5 +98,5 @@ The systray does not show up on wayland on the drm backend. I start the
 compositor using gdm, open Telegram and there is nothing to the right of the
 window title where the telegram icon should be in the systray. Maybe this works
 differently between the nested wayland backend and the drm backend. They should
-share code if possible. Investigate and fix. 
+share code if possible. Investigate and fix.
 
