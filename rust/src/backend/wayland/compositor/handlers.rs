@@ -190,6 +190,10 @@ fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
     ) {
         return true;
     }
+    is_launcher_x11_surface(x11)
+}
+
+fn is_launcher_x11_surface(x11: &smithay::xwayland::X11Surface) -> bool {
     let class = x11.class().to_ascii_lowercase();
     let instance = x11.instance().to_ascii_lowercase();
     let title = x11.title().to_ascii_lowercase();
@@ -199,6 +203,25 @@ fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
         || instance.contains("instantmenu")
         || title.contains("dmenu")
         || title.contains("instantmenu")
+}
+
+fn focus_overlay_if_launcher(state: &mut WaylandState, element: &smithay::desktop::Window) {
+    if !element
+        .x11_surface()
+        .as_ref()
+        .is_some_and(|x11| is_launcher_x11_surface(x11))
+    {
+        return;
+    }
+
+    let serial = SERIAL_COUNTER.next_serial();
+    if let Some(keyboard) = state.seat.get_keyboard() {
+        keyboard.set_focus(
+            state,
+            Some(KeyboardFocusTarget::Window(element.clone())),
+            serial,
+        );
+    }
 }
 
 impl XwmHandler for WaylandState {
@@ -240,10 +263,12 @@ impl XwmHandler for WaylandState {
             if let Some(existing) = existing {
                 self.space.map_element(existing.clone(), geo.loc, true);
                 self.space.raise_element(&existing, true);
+                focus_overlay_if_launcher(self, &existing);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
                 self.space.map_element(element.clone(), geo.loc, true);
                 self.space.raise_element(&element, true);
+                focus_overlay_if_launcher(self, &element);
             }
             return;
         }
@@ -291,6 +316,7 @@ impl XwmHandler for WaylandState {
         let element = smithay::desktop::Window::new_x11_window(window);
         self.space.map_element(element.clone(), geo.loc, true);
         self.space.raise_element(&element, true);
+        focus_overlay_if_launcher(self, &element);
     }
 
     fn unmapped_window(
