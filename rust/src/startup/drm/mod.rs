@@ -5,6 +5,7 @@ mod input;
 mod render;
 mod state;
 
+use std::collections::HashMap;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,6 +20,7 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::drm::control::crtc;
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
@@ -182,6 +184,7 @@ pub fn run() -> ! {
 
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
     let start_time = std::time::Instant::now();
+    let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
@@ -254,7 +257,7 @@ pub fn run() -> ! {
                     if !needs_render {
                         continue;
                     }
-                    render_drm_output(
+                    let rendered = render_drm_output(
                         &mut wm,
                         state,
                         &mut renderer,
@@ -263,6 +266,33 @@ pub fn run() -> ! {
                         pointer_location,
                         start_time,
                     );
+
+                    if rendered {
+                        if let Some(failed_frames) = render_failures.remove(&entry.crtc) {
+                            if failed_frames >= 3 {
+                                log::info!(
+                                    "DRM render recovered on {:?} after {failed_frames} failed frames",
+                                    entry.crtc
+                                );
+                            }
+                        }
+                    } else {
+                        let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
+                        *failed_frames += 1;
+
+                        if *failed_frames == 1 || *failed_frames % 60 == 0 {
+                            log::warn!(
+                                "DRM render failed on {:?} (consecutive failures: {})",
+                                entry.crtc,
+                                *failed_frames
+                            );
+                        }
+
+                        // If rendering fails before a successful submission, no vblank may arrive
+                        // for this CRTC. Re-mark it dirty so the main loop keeps retrying and
+                        // transient failures do not deadlock output updates.
+                        shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                    }
                 }
             }
 

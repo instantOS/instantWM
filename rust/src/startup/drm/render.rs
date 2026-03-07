@@ -5,7 +5,6 @@ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::Bind;
-use smithay::desktop::space::render_output;
 use smithay::utils::{Physical, Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -24,6 +23,7 @@ render_elements! {
     Solid=SolidColorRenderElement,
     Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
     Cursor=TextureRenderElement<GlesTexture>,
+    Space=smithay::desktop::space::SpaceRenderElements<GlesRenderer, smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>,
 }
 
 pub fn render_drm_output(
@@ -64,26 +64,51 @@ pub fn render_drm_output(
     );
 
     let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
-    let mut custom_elements: Vec<DrmExtras> = cursor_elements;
+    let space_render_elements = smithay::desktop::space::space_render_elements(
+        renderer,
+        [&state.space],
+        &entry.output,
+        1.0,
+    )
+    .expect("space render elements");
+
+    let num_upper = count_upper_layer_render_elements(renderer, &entry.output);
+
+    let mut render_elements = Vec::with_capacity(
+        cursor_elements.len()
+            + scene.overlays.len()
+            + scene.bar.len()
+            + scene.borders.len()
+            + space_render_elements.len(),
+    );
+
+    for elem in cursor_elements {
+        render_elements.push(elem);
+    }
     for elem in scene.overlays {
-        custom_elements.push(DrmExtras::Surface(elem));
-    }
-    for elem in scene.bar {
-        custom_elements.push(DrmExtras::Memory(elem));
-    }
-    for elem in scene.borders {
-        custom_elements.push(DrmExtras::Solid(elem));
+        render_elements.push(DrmExtras::Surface(elem));
     }
 
-    let render_result = render_output(
-        &entry.output,
+    let mut space_iter = space_render_elements.into_iter();
+    for elem in space_iter.by_ref().take(num_upper) {
+        render_elements.push(DrmExtras::Space(elem));
+    }
+
+    for elem in scene.bar {
+        render_elements.push(DrmExtras::Memory(elem));
+    }
+    for elem in scene.borders {
+        render_elements.push(DrmExtras::Solid(elem));
+    }
+    for elem in space_iter {
+        render_elements.push(DrmExtras::Space(elem));
+    }
+
+    let render_result = entry.damage_tracker.render_output(
         renderer,
         &mut target,
-        1.0,
         age as usize,
-        [&state.space],
-        &custom_elements,
-        &mut entry.damage_tracker,
+        &render_elements,
         [0.05, 0.05, 0.07, 1.0],
     );
 
@@ -112,6 +137,38 @@ pub fn render_drm_output(
 
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
     true
+}
+
+fn count_upper_layer_render_elements(
+    renderer: &mut GlesRenderer,
+    output: &smithay::output::Output,
+) -> usize {
+    let layer_map = smithay::desktop::layer_map_for_output(output);
+    let output_scale = output.current_scale().fractional_scale();
+    let mut num_upper = 0;
+
+    for surface in layer_map.layers().rev() {
+        if matches!(
+            surface.layer(),
+            smithay::wayland::shell::wlr_layer::Layer::Background
+                | smithay::wayland::shell::wlr_layer::Layer::Bottom
+        ) {
+            continue;
+        }
+        if let Some(geo) = layer_map.layer_geometry(surface) {
+            let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::AsRenderElements::render_elements(
+                    surface,
+                    renderer,
+                    geo.loc.to_physical_precise_round(output_scale),
+                    smithay::utils::Scale::from(output_scale),
+                    1.0,
+                );
+            num_upper += elems.len();
+        }
+    }
+
+    num_upper
 }
 
 fn build_cursor_elements(
