@@ -11,12 +11,11 @@
 //! All three share the same grab/event-loop/ungrab skeleton; they differ only
 //! in how they compute the new width and height from the pointer position.
 //!
-//! # Resize-direction constants
-//!
-//! The `RESIZE_DIR_*` constants in [`super::constants`] identify which corner
-//! or edge is being dragged.  Currently only `RESIZE_DIR_BOTTOM_RIGHT` is used
-//! by the interactive loops; the others are reserved for future directional
-//! resize support.
+//! On Wayland, `resize_mouse_from_cursor` and `resize_aspect_mouse` bypass the
+//! title-drag state machine and instead directly activate a
+//! `HoverResizeDragState`.  This reuses the same directional-resize event loop
+//! that hover-border drags use, giving correct per-quadrant behaviour without
+//! any cursor warp or anchor chaos.
 
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
@@ -25,8 +24,10 @@ use crate::types::*;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{REFRESH_RATE_HI, REFRESH_RATE_LO};
+use super::cursor::{set_cursor_move_wayland, set_cursor_resize_wayland};
 use super::grab::{grab_pointer, ungrab, wait_event};
 use super::monitor::handle_client_monitor_switch;
+use crate::types::input::get_resize_direction;
 use crate::types::ResizeDirection;
 
 fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
@@ -72,10 +73,82 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
             resize_mouse_directional(ctx_x11, Some(dir), btn);
         }
-        WmCtx::Wayland(_) => {
-            crate::mouse::drag::title_drag_begin(ctx, win, btn, 0, 0, false);
+        WmCtx::Wayland(wl) => {
+            // Get the current pointer position and compute the resize direction
+            // from which quadrant of the window it falls in.
+            let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() else {
+                return;
+            };
+            let Some((geo, is_floating, border_width)) = wl
+                .core
+                .g
+                .clients
+                .get(&win)
+                .map(|c| (c.geo, c.isfloating, c.border_width))
+            else {
+                return;
+            };
+
+            // Promote tiled windows to floating before starting the resize.
+            let has_tiling = wl.core.g.selected_monitor().is_tiling_layout();
+            if !is_floating && has_tiling {
+                let mut wmctx = WmCtx::Wayland(wl.reborrow());
+                crate::floating::toggle_floating(&mut wmctx);
+                let selmon_id = wmctx.g().selected_monitor_id();
+                crate::layouts::arrange(&mut wmctx, Some(selmon_id));
+                // Re-read geometry after the layout change.
+                let Some(new_geo) = wmctx.g().clients.get(&win).map(|c| c.geo) else {
+                    return;
+                };
+                let hit_x = ptr_x - new_geo.x;
+                let hit_y = ptr_y - new_geo.y;
+                let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
+                if let WmCtx::Wayland(wl2) = wmctx {
+                    begin_wayland_super_resize(wl2, win, btn, dir, new_geo, ptr_x, ptr_y);
+                }
+                return;
+            }
+
+            let hit_x = ptr_x - geo.x;
+            let hit_y = ptr_y - geo.y;
+            let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+            begin_wayland_super_resize(wl, win, btn, dir, geo, ptr_x, ptr_y);
+            let _ = border_width; // used via HoverResizeDragState
         }
     }
+}
+
+/// Activate a `HoverResizeDragState` for a Super+RMB resize initiated anywhere
+/// on a Wayland window (not just the hover-border zone).  This reuses the same
+/// directional-resize event loop as hover-border resizes, giving correct
+/// per-quadrant behaviour with no cursor warp.
+fn begin_wayland_super_resize(
+    wl: &mut crate::contexts::WmCtxWayland<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    dir: ResizeDirection,
+    geo: Rect,
+    ptr_x: i32,
+    ptr_y: i32,
+) {
+    wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+        active: true,
+        win,
+        button: btn,
+        direction: dir,
+        move_mode: false,
+        start_x: ptr_x,
+        start_y: ptr_y,
+        win_start_geo: geo,
+        last_root_x: ptr_x,
+        last_root_y: ptr_y,
+    };
+    wl.core.g.altcursor = AltCursor::Resize;
+    wl.core.g.drag.resize_direction = Some(dir);
+    set_cursor_resize_wayland(wl, Some(dir));
+    let _ = crate::focus::focus_wayland(&mut wl.core, &wl.wayland, Some(win));
+    let mut wmctx = WmCtx::Wayland(wl.reborrow());
+    wmctx.raise_interactive(win);
 }
 
 /// Decide the motion-event throttle based on `globals.doubledraw`.
@@ -368,8 +441,20 @@ pub fn force_resize_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
 pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
     match ctx {
         WmCtx::X11(ctx_x11) => resize_aspect_mouse_x11(ctx_x11, win, btn),
-        WmCtx::Wayland(_) => {
-            crate::mouse::drag::title_drag_begin(ctx, win, btn, 0, 0, false);
+        WmCtx::Wayland(wl) => {
+            // Same approach as resize_mouse_from_cursor: use the current
+            // pointer position to pick a direction and activate
+            // HoverResizeDragState directly.
+            let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() else {
+                return;
+            };
+            let Some(geo) = wl.core.g.clients.get(&win).map(|c| c.geo) else {
+                return;
+            };
+            let hit_x = ptr_x - geo.x;
+            let hit_y = ptr_y - geo.y;
+            let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+            begin_wayland_super_resize(wl, win, btn, dir, geo, ptr_x, ptr_y);
         }
     }
 }

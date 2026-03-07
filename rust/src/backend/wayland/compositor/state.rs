@@ -549,7 +549,7 @@ impl WaylandState {
                 }
             }
         }
-        self.raise_override_redirect_windows();
+        self.raise_unmanaged_x11_windows();
     }
 
     pub fn restack(&mut self, windows: &[WindowId]) {
@@ -558,7 +558,7 @@ impl WaylandState {
                 self.space.raise_element(&element, false);
             }
         }
-        self.raise_override_redirect_windows();
+        self.raise_unmanaged_x11_windows();
     }
 
     pub fn set_focus(&mut self, window: WindowId) {
@@ -699,10 +699,6 @@ impl WaylandState {
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
-    }
-
-    fn raise_override_redirect_windows(&mut self) {
-        self.raise_unmanaged_x11_windows();
     }
 
     fn raise_unmanaged_x11_windows(&mut self) {

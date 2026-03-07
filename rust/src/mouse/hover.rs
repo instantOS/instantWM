@@ -13,9 +13,7 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
-use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::globals::X11RuntimeConfig;
 // focus() is used via focus_soft() in this module
 use crate::types::*;
 use x11rb::connection::Connection;

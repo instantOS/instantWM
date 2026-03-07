@@ -169,6 +169,10 @@ pub struct TitleDragState {
     pub dragging: bool,
     /// Skip bar-title click semantics on release (used for CSD move requests).
     pub suppress_click_action: bool,
+    /// Resize direction for right-click title-bar drags (Wayland only).
+    /// Computed from the click position relative to the window when the drag
+    /// threshold is first exceeded.  `None` means bottom-right (legacy default).
+    pub resize_dir: Option<crate::types::ResizeDirection>,
 }
 
 /// State for Wayland hover-border move/resize interactions.

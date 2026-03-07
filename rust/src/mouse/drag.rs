@@ -1105,27 +1105,48 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let td_start_x = td.start_x;
         let td_start_y = td.start_y;
         if td_button == MouseButton::Right {
-            let (new_w, new_h, x, y, is_floating) = ctx
+            let resize_dir = ctx
+                .g()
+                .drag
+                .title
+                .resize_dir
+                .unwrap_or(ResizeDirection::BottomRight);
+            let (affects_left, affects_right, affects_top, affects_bottom) =
+                resize_dir.affected_edges();
+
+            let orig_left = td_win_start_geo.x;
+            let orig_top = td_win_start_geo.y;
+            let orig_right = td_win_start_geo.x + td_win_start_geo.w;
+            let orig_bottom = td_win_start_geo.y + td_win_start_geo.h;
+
+            let (new_x, new_w) = if affects_left {
+                (root_x, (orig_right - root_x).max(1))
+            } else if affects_right {
+                (orig_left, (root_x - orig_left + 1).max(1))
+            } else {
+                (orig_left, td_win_start_geo.w.max(1))
+            };
+            let (new_y, new_h) = if affects_top {
+                (root_y, (orig_bottom - root_y).max(1))
+            } else if affects_bottom {
+                (orig_top, (root_y - orig_top + 1).max(1))
+            } else {
+                (orig_top, td_win_start_geo.h.max(1))
+            };
+
+            let is_floating = ctx
                 .g()
                 .clients
                 .get(&win)
-                .map(|c| {
-                    (
-                        (td_win_start_geo.w + (root_x - td_start_x)).max(1),
-                        (td_win_start_geo.h + (root_y - td_start_y)).max(1),
-                        c.geo.x,
-                        c.geo.y,
-                        c.isfloating,
-                    )
-                })
-                .unwrap_or((1, 1, 0, 0, false));
+                .map(|c| c.isfloating)
+                .unwrap_or(false);
             if is_floating {
                 resize(
                     ctx,
                     win,
                     &Rect {
-                        x,
-                        y,
+                        x: new_x,
+                        y: new_y,
                         w: new_w,
                         h: new_h,
                     },
@@ -1232,24 +1253,22 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 ctx.g_mut().drag.title.win_start_geo.h = target_h;
             }
             if is_right_click {
-                let (x_off, y_off) = ResizeDirection::BottomRight.warp_offset(
+                // Compute the resize direction from where the cursor was when
+                // the press happened (start_x/start_y), relative to the window.
+                // This gives per-quadrant directional resize without any warp.
+                let start_x = ctx.g().drag.title.start_x;
+                let start_y = ctx.g().drag.title.start_y;
+                let hit_x = start_x - current_geo.x;
+                let hit_y = start_y - current_geo.y;
+                let dir = crate::types::input::get_resize_direction(
                     current_geo.w,
                     current_geo.h,
-                    border_width,
+                    hit_x,
+                    hit_y,
                 );
-                let warp_x = current_geo.x + x_off;
-                let warp_y = current_geo.y + y_off;
-                ctx.g_mut().drag.title.start_x = warp_x;
-                ctx.g_mut().drag.title.start_y = warp_y;
-                // Warp the hardware pointer so the resize drag starts from the
-                // correct corner.  The deferred warp takes effect next tick;
-                // setting start_x/y to the warp target keeps the anchor correct
-                // for all subsequent motion events.
-                if let WmCtx::Wayland(wl) = ctx {
-                    wl.wayland
-                        .backend
-                        .warp_pointer(warp_x as f64, warp_y as f64);
-                }
+                ctx.g_mut().drag.title.resize_dir = Some(dir);
+                // No cursor warp: the anchor (start_x/start_y) stays exactly
+                // where the user pressed, so the first motion delta is correct.
             } else if !anchor_rebased {
                 // Clamp the drag anchor inside the window bounds.  On X11 the
                 // hardware cursor is warped; on Wayland we warp and also rebase
@@ -1269,7 +1288,13 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             }
         }
         if is_right_click {
-            set_cursor_resize(ctx, Some(ResizeDirection::BottomRight));
+            let dir = ctx
+                .g()
+                .drag
+                .title
+                .resize_dir
+                .unwrap_or(ResizeDirection::BottomRight);
+            set_cursor_resize(ctx, Some(dir));
         } else {
             set_cursor_move(ctx);
         }

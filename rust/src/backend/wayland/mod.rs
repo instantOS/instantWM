@@ -165,7 +165,8 @@ impl BackendOps for WaylandBackend {
     }
 
     fn window_title(&self, window: WindowId) -> Option<String> {
-        self.window_title(window)
+        self.with_state(|state: &mut WaylandState| state.window_title(window))
+            .flatten()
     }
 
     fn set_keyboard_layout(
