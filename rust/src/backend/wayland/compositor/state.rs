@@ -903,8 +903,8 @@ impl WaylandState {
         c.monitor_id = Some(monitor_id);
         c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
         g.clients.insert(window, c);
-        g.clients.list_push(window.0 as usize);
-        attach_client_to_monitor(g, window);
+        g.attach(window);
+        g.attach_stack(window);
     }
 
     pub(super) fn window_id_for_toplevel(&self, surface: &ToplevelSurface) -> Option<WindowId> {
@@ -935,34 +935,5 @@ impl WaylandState {
                     .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
                     .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
             })
-    }
-}
-
-pub(super) fn attach_client_to_monitor(g: &mut Globals, win: WindowId) {
-    let monitor_id = match g.clients.get(&win).and_then(|c| c.monitor_id) {
-        Some(mid) => mid,
-        None => return,
-    };
-    if let Some(mon) = g.monitor_mut(monitor_id) {
-        mon.clients.insert(0, win);
-        mon.stack.insert(0, win);
-        if mon.sel.is_none() {
-            mon.sel = Some(win);
-        }
-    }
-}
-
-pub(super) fn detach_client_from_monitor(g: &mut Globals, win: WindowId) {
-    let monitor_id = match g.clients.get(&win).and_then(|c| c.monitor_id) {
-        Some(mid) => mid,
-        None => return,
-    };
-
-    if let Some(mon) = g.monitor_mut(monitor_id) {
-        mon.clients.retain(|&w| w != win);
-        mon.stack.retain(|&w| w != win);
-        if mon.sel == Some(win) {
-            mon.sel = mon.stack.first().copied();
-        }
     }
 }

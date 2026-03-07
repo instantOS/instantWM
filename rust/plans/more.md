@@ -100,3 +100,7 @@ window title where the telegram icon should be in the systray. Maybe this works
 differently between the nested wayland backend and the drm backend. They should
 share code if possible. Investigate and fix. 
 
+
+
+figure out where to put client state, monitor? Monitor mnanager? Something
+erlse? Is there a mess?

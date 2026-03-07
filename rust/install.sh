@@ -14,7 +14,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "Building instantWM (release)..."
-cargo build --release --manifest-path "$SCRIPT_DIR/Cargo.toml"
+cargo build -manifest-path "$SCRIPT_DIR/Cargo.toml"
 
 echo "Installing..."
 $SUPERTOOL install -d "${DESTDIR}${PREFIX}/bin"

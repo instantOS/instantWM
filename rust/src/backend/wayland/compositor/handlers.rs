@@ -41,7 +41,7 @@ use smithay::{
 
 use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
-    state::{detach_client_from_monitor, WaylandClientState, WaylandState, WindowIdMarker},
+    state::{WaylandClientState, WaylandState, WindowIdMarker},
 };
 
 impl CompositorHandler for WaylandState {
@@ -388,9 +388,9 @@ impl XwmHandler for WaylandState {
                 return;
             };
             if g.clients.contains(&win) {
-                detach_client_from_monitor(g, win);
+                g.detach(win);
+                g.detach_stack(win);
                 g.clients.remove(&win);
-                g.clients.list_retain(|id| *id != win.0 as usize);
             }
         } else if is_overlay {
             let element = self
@@ -570,9 +570,9 @@ impl XdgShellHandler for WaylandState {
                 return;
             };
             if g.clients.contains(&win) {
-                detach_client_from_monitor(g, win);
+                g.detach(win);
+                g.detach_stack(win);
                 g.clients.remove(&win);
-                g.clients.list_retain(|id| *id != win.0 as usize);
             }
             g.selected_win()
         };
