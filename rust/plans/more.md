@@ -62,17 +62,14 @@ dragging from the top bar does work
 
 
 The old xsetroot way of setting the status bar text is outdated, I want a
-unified solution for both X11 and wayland. Ideally that soludion can render the
-same as i3blocks-rs (look up the format, I also have that installed for you to
-test. do run with timeout though)
-
-
-dunst does not work on the wayland backend, some protocol is missing
+unified solution for both X11 and wayland. Ideally that solution can render the
+i3status-rs format. 
 
 
 
 
 investigate this for overdraw issues. Is that a performance risk?
 
-
+dmenu does not grab input on the wayland backend, I need to click it in order to type in it. This is
+not how it works on X11, investigate and fix
 

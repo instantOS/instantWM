@@ -195,7 +195,16 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Root, MODKEY, button:MouseButton::Left        => |ctx, _| set_overlay(ctx)),
         btn!(Root, MODKEY, button:MouseButton::Right       => |ctx, _| spawn(ctx, &["instantnotify"])),
         // ── Client window ─────────────────────────────────────────────────
-        btn_x11!(ClientWin, MODKEY, button:MouseButton::Left   => |ctx, arg| move_mouse(ctx, arg.btn)),
+        btn!(ClientWin, MODKEY, button:MouseButton::Left => |ctx, arg| {
+            match ctx {
+                crate::contexts::WmCtx::X11(ctx_x11) => move_mouse(ctx_x11, arg.btn),
+                crate::contexts::WmCtx::Wayland(_) => {
+                    if let Some(win) = ctx.selected_client() {
+                        crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
+                    }
+                }
+            }
+        }),
         btn!(ClientWin, MODKEY, button:MouseButton::Middle => |ctx, _| toggle_floating(ctx)),
         btn_x11!(ClientWin, MODKEY, button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
         btn_x11!(ClientWin, MA,     button:MouseButton::Right  => |ctx, arg| resize_mouse_from_cursor(ctx, arg.btn)),
