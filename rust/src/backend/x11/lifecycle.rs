@@ -446,51 +446,30 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: Option<usize>) -> u32 {
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     let monitor_id = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id);
 
-    // Clear overlay and fullscreen references so those code paths don't hold
-    // dangling window IDs after the client is gone.
-    {
-        for mon in ctx.core.g.monitors_iter_all_mut() {
-            if mon.overlay == Some(win) {
-                mon.overlay = None;
-            }
-            if mon.fullscreen == Some(win) {
-                mon.fullscreen = None;
-            }
+    // Clear overlay and fullscreen references.
+    for mon in ctx.core.g.monitors_iter_all_mut() {
+        if mon.overlay == Some(win) {
+            mon.overlay = None;
+        }
+        if mon.fullscreen == Some(win) {
+            mon.fullscreen = None;
         }
     }
 
     {
-        let tmp = ctx.reborrow();
-        detach(&mut WmCtx::X11(tmp), win);
-    }
-    {
-        let tmp = ctx.reborrow();
-        detach_stack(&mut WmCtx::X11(tmp), win);
+        let mut tmp = WmCtx::X11(ctx.reborrow());
+        detach(&mut tmp, win);
+        detach_stack(&mut tmp, win);
     }
 
     if !destroyed {
         let x11_win: Window = win.into();
-        let _old_bw = ctx
-            .core
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.old_border_width)
-            .unwrap_or(0);
-
         {
             let _ = ctx.x11.conn.grab_server();
-
-            // Stop receiving events so we don't get confused during cleanup.
             let _ = ctx.x11.conn.change_window_attributes(
                 x11_win,
                 &ChangeWindowAttributesAux::new().event_mask(EventMask::NO_EVENT),
             );
-
-            // Restore the original border width the application expects.
-            // (Border width is set via BackendOps elsewhere)
-
-            // Release button grabs.
             let _ =
                 ctx.x11
                     .conn
@@ -518,8 +497,8 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     update_client_list(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
 
     if let Some(mid) = monitor_id {
-        let tmp = ctx.reborrow();
-        arrange(&mut WmCtx::X11(tmp), Some(mid));
+        let mut tmp = WmCtx::X11(ctx.reborrow());
+        arrange(&mut tmp, Some(mid));
     }
 }
 

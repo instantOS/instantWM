@@ -371,6 +371,77 @@ impl Globals {
     pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.monitors.iter_all_mut()
     }
+
+    // -------------------------------------------------------------------------
+    // Client List Management (Attach/Detach)
+    // -------------------------------------------------------------------------
+
+    /// Attach `win` to its assigned monitor's focus list.
+    pub fn attach(&mut self, win: WindowId) {
+        if let Some(mid) = self.clients.get(&win).and_then(|c| c.monitor_id) {
+            if let Some(mon) = self.monitors.get_mut(mid) {
+                mon.clients.insert(0, win);
+            }
+        }
+    }
+
+    /// Detach `win` from its assigned monitor's focus list.
+    pub fn detach(&mut self, win: WindowId) {
+        let monitor_id = self.clients.get(&win).and_then(|c| c.monitor_id);
+        if let Some(mid) = monitor_id {
+            if let Some(mon) = self.monitors.get_mut(mid) {
+                if mon.clients.contains(&win) {
+                    mon.clients.retain(|&w| w != win);
+                    return;
+                }
+            }
+        }
+
+        // Fallback: search all monitors if not found on the assigned one.
+        for mon in self.monitors.iter_all_mut() {
+            if mon.clients.contains(&win) {
+                mon.clients.retain(|&w| w != win);
+            }
+        }
+    }
+
+    /// Attach `win` to its assigned monitor's stacking list.
+    pub fn attach_stack(&mut self, win: WindowId) {
+        if let Some(mid) = self.clients.get(&win).and_then(|c| c.monitor_id) {
+            if let Some(mon) = self.monitors.get_mut(mid) {
+                mon.stack.insert(0, win);
+                if mon.sel.is_none() {
+                    mon.sel = Some(win);
+                }
+            }
+        }
+    }
+
+    /// Detach `win` from its assigned monitor's stacking list.
+    pub fn detach_stack(&mut self, win: WindowId) {
+        let monitor_id = self.clients.get(&win).and_then(|c| c.monitor_id);
+        if let Some(mid) = monitor_id {
+            if let Some(mon) = self.monitors.get_mut(mid) {
+                if mon.stack.contains(&win) {
+                    mon.stack.retain(|&w| w != win);
+                    if mon.sel == Some(win) {
+                        mon.sel = mon.stack.first().copied();
+                    }
+                    return;
+                }
+            }
+        }
+
+        // Fallback: search all monitors if not found on the assigned one.
+        for mon in self.monitors.iter_all_mut() {
+            if mon.stack.contains(&win) {
+                mon.stack.retain(|&w| w != win);
+                if mon.sel == Some(win) {
+                    mon.sel = mon.stack.first().copied();
+                }
+            }
+        }
+    }
 }
 
 impl Default for Globals {

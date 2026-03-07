@@ -209,9 +209,12 @@ impl<'a> Iterator for ClientListIter<'a> {
     type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let win = *self.iter.next()?;
-        let c = self.clients.get(&win)?;
-        Some((win, c))
+        while let Some(&win) = self.iter.next() {
+            if let Some(c) = self.clients.get(&win) {
+                return Some((win, c));
+            }
+        }
+        None
     }
 }
 
@@ -238,8 +241,11 @@ impl<'a> Iterator for ClientStackIter<'a> {
     type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let win = *self.iter.next()?;
-        let c = self.clients.get(&win)?;
-        Some((win, c))
+        while let Some(&win) = self.iter.next() {
+            if let Some(c) = self.clients.get(&win) {
+                return Some((win, c));
+            }
+        }
+        None
     }
 }

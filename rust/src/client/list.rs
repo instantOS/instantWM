@@ -12,27 +12,19 @@ use crate::types::WindowId;
 // ---------------------------------------------------------------------------
 
 pub fn attach(ctx: &mut WmCtx, win: WindowId) {
-    let mut mgr = std::mem::take(&mut ctx.g_mut().clients);
-    mgr.attach_ctx(ctx, win);
-    ctx.g_mut().clients = mgr;
+    ctx.g_mut().attach(win);
 }
 
 pub fn detach(ctx: &mut WmCtx, win: WindowId) {
-    let mut mgr = std::mem::take(&mut ctx.g_mut().clients);
-    mgr.detach_ctx(ctx, win);
-    ctx.g_mut().clients = mgr;
+    ctx.g_mut().detach(win);
 }
 
 pub fn attach_stack(ctx: &mut WmCtx, win: WindowId) {
-    let mut mgr = std::mem::take(&mut ctx.g_mut().clients);
-    mgr.attach_stack_ctx(ctx, win);
-    ctx.g_mut().clients = mgr;
+    ctx.g_mut().attach_stack(win);
 }
 
 pub fn detach_stack(ctx: &mut WmCtx, win: WindowId) {
-    let mut mgr = std::mem::take(&mut ctx.g_mut().clients);
-    mgr.detach_stack_ctx(ctx, win);
-    ctx.g_mut().clients = mgr;
+    ctx.g_mut().detach_stack(win);
 }
 
 // ---------------------------------------------------------------------------
