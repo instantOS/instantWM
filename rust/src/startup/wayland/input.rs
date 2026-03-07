@@ -441,16 +441,35 @@ pub fn handle_pointer_button<B: InputBackend>(
             }
         }
 
-        let keyboard_focus = state
-            .layer_surface_under_pointer(pointer_location)
-            .map(|(surface, _)| KeyboardFocusTarget::WlSurface(surface))
-            .or_else(|| {
-                state
-                    .space
-                    .element_under(pointer_location)
-                    .map(|(window, _)| KeyboardFocusTarget::Window(window.clone()))
-            });
-        keyboard_handle.set_focus(state, keyboard_focus, serial);
+        // Focus the clicked window through the WM (updates mon.sel, sends
+        // activated state to the client) but do NOT raise it — raising only
+        // happens on move/resize/float operations.
+        //
+        // Layer surfaces (e.g. panels) are not tracked by the WM; for those
+        // we fall back to a direct Smithay keyboard-focus call so they still
+        // receive key input after being clicked.
+        if let Some((layer_surface, _)) = state.layer_surface_under_pointer(pointer_location) {
+            // Layer surface: focus directly, no WM involvement needed.
+            keyboard_handle.set_focus(
+                state,
+                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
+                serial,
+            );
+        } else {
+            // Regular client window: route through the WM so that mon.sel,
+            // the activated flag, and bar highlighting are all kept in sync.
+            let clicked_win = find_hovered_window(wm, state, pointer_location);
+            if let Some(win) = clicked_win {
+                let mut ctx = wm.ctx();
+                crate::focus::focus_soft(&mut ctx, Some(win));
+            }
+            // If nothing was under the pointer (click on desktop), clear WM
+            // selection and Smithay focus both.
+            if clicked_win.is_none() {
+                let mut ctx = wm.ctx();
+                crate::focus::focus_soft(&mut ctx, None);
+            }
+        }
     } else if event.state() == smithay::backend::input::ButtonState::Released {
         if let Some(btn) = wm_button {
             if wayland_hover_resize_drag_finish(wm, btn) {
