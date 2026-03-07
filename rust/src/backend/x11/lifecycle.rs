@@ -485,6 +485,12 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         );
 
         let _ = ctx.x11.conn.ungrab_server();
+        // Flush immediately: the bar-drawing code uses a separate Xlib Display
+        // connection which calls XSync.  If the server grab from RustConnection
+        // is still pending (not flushed), XSync on the Xlib side will deadlock
+        // because the X server blocks the second connection until the grab is
+        // released.
+        let _ = ctx.x11.conn.flush();
     }
 
     // Remove from the global map.
