@@ -233,6 +233,12 @@ pub fn warp_to_focus_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11R
     }
 }
 
+pub fn warp_to_focus(ctx: &mut WmCtx) {
+    if let WmCtx::X11(x11) = ctx {
+        warp_to_focus_x11(&x11.core, &x11.x11, x11.x11_runtime);
+    }
+}
+
 /// Restore the root window's default (arrow) cursor and clear `altcursor`.
 ///
 /// Call this after a modal grab ends so that the cursor reverts to normal even

@@ -735,7 +735,13 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
 ///
 /// Watches for large vertical pointer movements; each time the cursor travels
 /// more than `monitor_height / 30` pixels [`crate::util::spawn`] is called.
-pub fn gesture_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
+pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
+    if let WmCtx::X11(x11) = ctx {
+        gesture_mouse_x11(x11, btn);
+    }
+}
+
+pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
     if !grab_pointer(ctx, 2) {
         return;
     }

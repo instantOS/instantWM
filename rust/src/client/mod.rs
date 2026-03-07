@@ -60,7 +60,7 @@ pub use visibility::{hide, show, show_hide};
 pub use focus::{configure_x11, send_event_x11, set_focus_x11, unfocus_win_x11};
 
 // -- Fullscreen --------------------------------------------------------------
-pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen_x11};
+pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen, toggle_fake_fullscreen_x11};
 
 pub fn save_border_width(core: &mut crate::contexts::CoreCtx, win: crate::types::WindowId) {
     core.g.clients.save_border_width(win);

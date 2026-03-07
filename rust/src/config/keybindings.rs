@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::animation;
 use crate::bar::x11::toggle_bar;
-use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
+use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
@@ -13,7 +13,7 @@ use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_mon, follow_mon};
-use crate::mouse::warp::warp_to_focus_x11;
+use crate::mouse::warp::warp_to_focus;
 use crate::mouse::{begin_keyboard_move, draw_window, moveresize, resize_mouse_from_cursor};
 use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};
@@ -232,7 +232,7 @@ pub fn get_keys() -> Vec<Key> {
                 center_window(ctx, win)
             }
         }),
-        key_x11!(MS,   XK_W      => |ctx| warp_to_focus_x11(&ctx.core, &ctx.x11, ctx.x11_runtime)),
+        key!(MS,   XK_W      => |ctx| warp_to_focus(ctx)),
         key!(MS,   XK_J      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
@@ -272,8 +272,8 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MS,     XK_S  => |ctx| scratchpad_make(ctx, None)),
-        key_x11!(MODKEY, XK_B  => |ctx| toggle_bar(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ctx.systray.as_deref())),
-        key_x11!(MS,     XK_F  => |ctx| toggle_fake_fullscreen_x11(ctx)),
+        key!(MODKEY, XK_B  => |ctx| crate::toggles::toggle_bar(ctx)),
+        key!(MS,     XK_F  => |ctx| toggle_fake_fullscreen(ctx)),
         key!(MC,     XK_F  => toggle_maximized),
         key!(MC,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -287,7 +287,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MS,     XK_SPACE => |ctx| {
             space_toggle(ctx)
         }),
-        key_x11!(MSCA,   XK_TAB   => |ctx| alt_tab_free(&mut ctx.core, &ctx.x11, ctx.x11_runtime, ToggleAction::Toggle)),
+        key!(MSCA,   XK_TAB   => |ctx| alt_tab_free(ctx, ToggleAction::Toggle)),
         key!(MC,     XK_R     => |ctx| redraw_win(ctx)),
         key!(MC,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {

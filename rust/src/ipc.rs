@@ -3,7 +3,7 @@ use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
-use crate::mouse::warp::warp_to_focus_x11;
+
 use crate::overlay::set_overlay;
 use crate::scratchpad::{
     scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_status,
@@ -143,9 +143,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::WarpFocus => {
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                warp_to_focus_x11(&x11.core, &x11.x11, x11.x11_runtime);
-            }
+            crate::mouse::warp::warp_to_focus(&mut ctx);
             IpcResponse::ok("")
         }
         IpcCommand::Tag(tag_num) => {
@@ -172,9 +170,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::AltTab(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            if let crate::contexts::WmCtx::X11(x11) = &mut ctx {
-                alt_tab_free(&mut x11.core, &x11.x11, x11.x11_runtime, action);
-            }
+            alt_tab_free(&mut ctx, action);
             IpcResponse::ok("")
         }
         IpcCommand::AltTag(arg) => {

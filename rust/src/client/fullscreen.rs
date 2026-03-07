@@ -226,3 +226,18 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
         client.isfakefullscreen = !client.isfakefullscreen;
     }
 }
+
+pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
+    match ctx {
+        WmCtx::X11(ctx_x11) => toggle_fake_fullscreen_x11(ctx_x11),
+        WmCtx::Wayland(_) => {
+            if let Some(win) = ctx.selected_client() {
+                if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+                    client.isfakefullscreen = !client.isfakefullscreen;
+                }
+                let selmon_id = ctx.g().selected_monitor_id();
+                arrange(ctx, Some(selmon_id));
+            }
+        }
+    }
+}

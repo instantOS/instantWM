@@ -231,7 +231,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(ShutDown, 0, button:MouseButton::Middle => |ctx, _| spawn(ctx, &["instantlock", "-o"])),
         btn!(ShutDown, 0, button:MouseButton::Right  => |ctx, _| spawn(ctx, &[".config/instantos/default/lockscreen"])),
         // ── Sidebar / start menu ────────────────────────────────────────────
-        btn_x11!(SideBar, 0,       button:MouseButton::Left  => |ctx, arg| gesture_mouse(ctx, arg.btn)),
+        btn!(SideBar, 0, button:MouseButton::Left => |ctx, arg| gesture_mouse(ctx, arg.btn)),
         btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, &["instantstartmenu"])),
         btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, &["quickmenu"])),
         btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx)),
