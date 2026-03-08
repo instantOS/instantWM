@@ -47,6 +47,49 @@ pub fn raw_event_to_input_event(
     })
 }
 
+pub fn configure_device(
+    device: &mut smithay::reexports::input::Device,
+    input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
+) {
+    use smithay::reexports::input::DeviceCapability;
+
+    let is_touchpad = device.has_capability(DeviceCapability::Gesture); // rough check for touchpad
+    let is_pointer = device.has_capability(DeviceCapability::Pointer);
+
+    let config_key = if is_touchpad {
+        "type:touchpad"
+    } else if is_pointer {
+        "type:pointer"
+    } else {
+        "type:keyboard"
+    };
+
+    if let Some(config) = input_config.get(config_key).or_else(|| input_config.get("*")) {
+        if let Some(tap) = &config.tap {
+            let enabled = tap.eq_ignore_ascii_case("enabled");
+            let _ = device.config_tap_set_enabled(enabled);
+        }
+
+        if let Some(natural_scroll) = &config.natural_scroll {
+            let enabled = natural_scroll.eq_ignore_ascii_case("enabled");
+            let _ = device.config_scroll_set_natural_scroll_enabled(enabled);
+        }
+
+        if let Some(accel_profile) = &config.accel_profile {
+            let profile = match accel_profile.to_lowercase().as_str() {
+                "flat" => smithay::reexports::input::AccelProfile::Flat,
+                "adaptive" => smithay::reexports::input::AccelProfile::Adaptive,
+                _ => smithay::reexports::input::AccelProfile::Flat,
+            };
+            let _ = device.config_accel_set_profile(profile);
+        }
+
+        if let Some(pointer_accel) = config.pointer_accel {
+            let _ = device.config_accel_set_speed(pointer_accel.clamp(-1.0, 1.0));
+        }
+    }
+}
+
 pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
@@ -61,6 +104,10 @@ pub fn dispatch_libinput_event(
     };
 
     match event {
+        InputEvent::DeviceAdded { mut device } => {
+            crate::startup::drm::input::configure_device(&mut device, &wm.g.cfg.input);
+            false
+        }
         InputEvent::Keyboard { event } => {
             handle_keyboard::<LibinputInputBackend>(wm, state, keyboard_handle, event);
             true
