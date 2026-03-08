@@ -21,6 +21,8 @@ pub struct ThemeConfig {
     pub desktop_keybinds: Vec<KeybindSpec>,
     /// Keyboard layout configuration.
     pub keyboard: KeyboardConfig,
+    /// Input configuration (mouse, touchpad).
+    pub input: std::collections::HashMap<String, InputConfig>,
 }
 
 impl Default for ThemeConfig {
@@ -31,6 +33,30 @@ impl Default for ThemeConfig {
             keybinds: Vec::new(),
             desktop_keybinds: Vec::new(),
             keyboard: KeyboardConfig::default(),
+            input: std::collections::HashMap::new(),
+        }
+    }
+}
+
+/// Input configuration from the TOML `[input]` section.
+/// Allows per-device or type-based (like `type:touchpad`) configuration
+/// similar to Sway.
+#[derive(Debug, Deserialize, Clone)]
+#[serde(default)]
+pub struct InputConfig {
+    pub tap: Option<String>,
+    pub natural_scroll: Option<String>,
+    pub accel_profile: Option<String>,
+    pub pointer_accel: Option<f64>,
+}
+
+impl Default for InputConfig {
+    fn default() -> Self {
+        Self {
+            tap: None,
+            natural_scroll: None,
+            accel_profile: None,
+            pointer_accel: None,
         }
     }
 }

@@ -96,6 +96,9 @@ pub struct RuntimeConfig {
     pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
+
+    // Input configuration
+    pub input: std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
 }
 
 impl Default for RuntimeConfig {
@@ -131,6 +134,7 @@ impl Default for RuntimeConfig {
             cursors: [const { None }; 10],
             horizontal_padding: 0,
             tag_template: Vec::new(),
+            input: std::collections::HashMap::new(),
         }
     }
 }
@@ -504,6 +508,7 @@ impl X11Connection {
 /// Apply config values to the given `Globals` instance.
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.border_width_px = cfg.borderpx;
+    g.cfg.input = cfg.input.clone();
     g.cfg.snap = cfg.snap;
     g.cfg.startmenusize = cfg.startmenusize;
     g.cfg.systraypinning = cfg.systraypinning;

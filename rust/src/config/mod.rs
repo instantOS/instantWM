@@ -193,6 +193,9 @@ pub struct Config {
     pub keyboard_options: Option<String>,
     /// XKB model string.
     pub keyboard_model: Option<String>,
+
+    // --- Input configuration ---
+    pub input: std::collections::HashMap<String, config_toml::InputConfig>,
 }
 
 // ---------------------------------------------------------------------------
@@ -266,5 +269,8 @@ pub fn init_config() -> Config {
         keyboard_variants: theme.keyboard.variant,
         keyboard_options: theme.keyboard.options,
         keyboard_model: theme.keyboard.model,
+
+        // --- Input configuration ---
+        input: theme.input,
     }
 }
