@@ -38,15 +38,31 @@ impl Default for ThemeConfig {
     }
 }
 
+/// Toggle setting for boolean-like input options (tap, natural_scroll).
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ToggleSetting {
+    Enabled,
+    Disabled,
+}
+
+/// Acceleration profile for pointer devices.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AccelProfile {
+    Flat,
+    Adaptive,
+}
+
 /// Input configuration from the TOML `[input]` section.
 /// Allows per-device or type-based (like `type:touchpad`) configuration
 /// similar to Sway.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
 pub struct InputConfig {
-    pub tap: Option<String>,
-    pub natural_scroll: Option<String>,
-    pub accel_profile: Option<String>,
+    pub tap: Option<ToggleSetting>,
+    pub natural_scroll: Option<ToggleSetting>,
+    pub accel_profile: Option<AccelProfile>,
     pub pointer_accel: Option<f64>,
 }
 

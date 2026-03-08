@@ -12,6 +12,7 @@ use crate::startup::wayland::input::{
 use crate::wm::Wm;
 
 use super::state::SharedDrmState;
+use crate::config::config_toml::{AccelProfile, ToggleSetting};
 
 pub fn raw_event_to_input_event(
     event: LibinputRawEvent,
@@ -65,21 +66,18 @@ pub fn configure_device(
     };
 
     if let Some(config) = input_config.get(config_key).or_else(|| input_config.get("*")) {
-        if let Some(tap) = &config.tap {
-            let enabled = tap.eq_ignore_ascii_case("enabled");
-            let _ = device.config_tap_set_enabled(enabled);
+        if let Some(tap) = config.tap {
+            let _ = device.config_tap_set_enabled(tap == ToggleSetting::Enabled);
         }
 
-        if let Some(natural_scroll) = &config.natural_scroll {
-            let enabled = natural_scroll.eq_ignore_ascii_case("enabled");
-            let _ = device.config_scroll_set_natural_scroll_enabled(enabled);
+        if let Some(natural_scroll) = config.natural_scroll {
+            let _ = device.config_scroll_set_natural_scroll_enabled(natural_scroll == ToggleSetting::Enabled);
         }
 
-        if let Some(accel_profile) = &config.accel_profile {
-            let profile = match accel_profile.to_lowercase().as_str() {
-                "flat" => smithay::reexports::input::AccelProfile::Flat,
-                "adaptive" => smithay::reexports::input::AccelProfile::Adaptive,
-                _ => smithay::reexports::input::AccelProfile::Flat,
+        if let Some(accel_profile) = config.accel_profile {
+            let profile = match accel_profile {
+                AccelProfile::Flat => smithay::reexports::input::AccelProfile::Flat,
+                AccelProfile::Adaptive => smithay::reexports::input::AccelProfile::Adaptive,
             };
             let _ = device.config_accel_set_profile(profile);
         }
