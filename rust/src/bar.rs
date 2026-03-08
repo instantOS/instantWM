@@ -52,6 +52,13 @@ pub struct TitleHitRange {
     pub win: WindowId,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SystrayHitSlot {
+    pub idx: usize,
+    pub start: i32,
+    pub end: i32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MonitorHitCache {
     pub tag_ranges: Vec<TagHitRange>,
@@ -63,6 +70,10 @@ pub struct MonitorHitCache {
     /// True when this cache was built for an X11 bar (as opposed to a Wayland bar).
     /// Used to skip Wayland-systray hit-testing on X11 bars.
     pub x11_bar: bool,
+    /// Systray item hit slots for Wayland bars. Populated during rendering.
+    pub systray_slots: Vec<SystrayHitSlot>,
+    /// Systray menu item hit slots for Wayland bars. Populated during rendering.
+    pub systray_menu_slots: Vec<SystrayHitSlot>,
 }
 
 impl BarState {

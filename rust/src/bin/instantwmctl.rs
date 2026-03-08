@@ -12,90 +12,207 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum CommandKind {
+    /// List all managed windows.
     List,
+    /// Get window geometry.
     Geom {
+        /// Window ID (defaults to currently selected window)
         window_id: Option<u32>,
     },
+    /// Spawn a command.
     Spawn {
+        /// Command to execute
         command: Vec<String>,
     },
+    /// Close a window.
     Close {
+        /// Window ID (defaults to currently selected window)
         window_id: Option<u32>,
     },
+    /// Quit the window manager.
     Quit,
+    /// Toggle overlay visibility (shows window titles on selected tag).
     Overlay,
+    /// Warp cursor to the currently focused window.
     WarpFocus,
+    /// Switch to a tag (workspace).
     Tag {
+        /// Tag number (1-8, defaults to 2; 0 is treated as 2)
         number: Option<u32>,
     },
+    /// Toggle or set animated windows mode.
+    ///
+    /// Action argument:
+    ///   (empty), 0, or 2: toggle
+    ///   1: disable (set false)
+    ///   other: enable (set true)
     Animated {
+        /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+    /// Toggle or set focus follows mouse.
+    ///
+    /// Action argument:
+    ///   (empty), 0, or 2: toggle
+    ///   1: disable (set false)
+    ///   other: enable (set true)
     FocusFollowsMouse {
+        /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+    /// Toggle or set focus follows mouse for floating windows only.
+    ///
+    /// Action argument:
+    ///   (empty), 0, or 2: toggle
+    ///   1: disable (set false)
+    ///   other: enable (set true)
     FocusFollowsFloatMouse {
+        /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+    /// Toggle or set alt-tab free mode (enables prefix-based window switching).
+    ///
+    /// Action argument:
+    ///   (empty), 0, or 2: toggle
+    ///   1: disable (set false)
+    ///   other: enable (set true)
     AltTab {
+        /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+    /// Toggle or set alt-tag mode (shows alternative tag names in bar).
+    ///
+    /// Action argument:
+    ///   (empty), 0, or 2: toggle
+    ///   1: disable (set false)
+    ///   other: enable (set true)
     AltTag {
+        /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+    /// Toggle or set hide tags visibility (hides tag bar).
+    ///
+    /// Action argument:
+    ///   (empty), 0, or 2: toggle
+    ///   1: disable (set false)
+    ///   other: enable (set true)
     HideTags {
+        /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+    /// Set the layout type.
+    ///
+    /// Layout indices: 0=Tile, 1=Grid, 2=Floating, 3=Monocle, 4=Vert, 5=Deck,
+    /// 6=Overview, 7=Bstack, 8=Horiz. Invalid indices default to Tile (0).
     Layout {
+        /// Layout index (0-based, invalid values default to Tile)
         number: Option<u32>,
     },
+    /// Enable or disable prefix mode for special keybindings.
+    ///
+    /// Non-zero value enables prefix mode; zero disables it.
     Prefix {
+        /// Value: non-zero to enable, zero to disable (default: 1)
         value: Option<u32>,
     },
+    /// Set border width for the selected window.
     Border {
+        /// Border width in pixels (defaults to configured BORDERPX)
         width: Option<u32>,
     },
+    /// Set special next mode for cycling through windows.
+    ///
+    /// Value 0 disables special next; non-zero enables floating window cycling.
     SpecialNext {
+        /// Mode: 0=none, non-zero=float (default: 0)
         value: Option<u32>,
     },
+    /// Move the selected window to another monitor.
+    ///
+    /// Direction:
+    ///   positive (e.g., 1): next monitor (right/down)
+    ///   negative (e.g., -1): previous monitor (left/up)
     TagMon {
+        /// Direction (1 for next, -1 for previous)
         direction: Option<i32>,
     },
+    /// Move the selected window to another monitor and follow it.
+    ///
+    /// Direction:
+    ///   positive (e.g., 1): next monitor (right/down)
+    ///   negative (e.g., -1): previous monitor (left/up)
     FollowMon {
+        /// Direction (1 for next, -1 for previous)
         direction: Option<i32>,
     },
+    /// Switch focus to another monitor.
+    ///
+    /// Direction:
+    ///   positive (e.g., 1): next monitor (right/down)
+    ///   negative (e.g., -1): previous monitor (left/up)
     FocusMon {
+        /// Direction (1 for next, -1 for previous)
         direction: Option<i32>,
     },
+    /// Switch focus to a specific monitor by index.
     FocusNMon {
+        /// Monitor index (0-based, defaults to 0)
         index: Option<i32>,
     },
+    /// Rename the current tag.
+    ///
+    /// Names longer than 16 bytes are ignored. Empty string resets to default.
     NameTag {
+        /// New tag name (max 16 bytes)
         name: String,
     },
+    /// Reset all tag names to defaults ("1" through "9").
     ResetNameTag,
+    /// Create a scratchpad from the selected window.
+    ///
+    /// The selected window is assigned the given name, moved to scratchpad tag,
+    /// and set to floating. Requires a non-empty name argument.
     ScratchpadMake {
+        /// Scratchpad name (required, must be non-empty)
         name: Option<String>,
     },
+    /// Remove scratchpad status from the selected window.
+    ///
+    /// Restores the window's previous tag visibility.
     ScratchpadUnmake,
+    /// Toggle scratchpad visibility.
+    ///
+    /// Shows the scratchpad if hidden, hides if shown. Requires a name argument.
     ScratchpadToggle {
+        /// Scratchpad name (required)
         name: Option<String>,
     },
+    /// Show scratchpad window (make visible on current tag).
     ScratchpadShow {
+        /// Scratchpad name (empty string = no-op)
         name: Option<String>,
     },
+    /// Hide scratchpad window (remove from current tag).
     ScratchpadHide {
+        /// Scratchpad name (empty string = no-op)
         name: Option<String>,
     },
+    /// Get scratchpad visibility status.
+    ///
+    /// Returns "ipc:scratchpad:<name>:0" (hidden) or "ipc:scratchpad:<name>:1" (visible),
+    /// or "ipc:scratchpads:<name1>=<status>,..." for all scratchpads.
     ScratchpadStatus {
+        /// Scratchpad name ("all" for all, empty for all)
         name: Option<String>,
     },
     /// Set keyboard layout by index (0-based).
     KeyboardLayout {
+        /// Layout index (0-based)
         index: u32,
     },
     /// Set keyboard layout by name (e.g. "us", "de").
     KeyboardLayoutName {
+        /// Layout name (e.g. "us", "de", "fr")
         name: String,
     },
     /// Cycle to the next keyboard layout.
