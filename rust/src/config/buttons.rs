@@ -11,7 +11,7 @@ use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 use crate::floating::toggle_floating;
 use crate::mouse::{
     drag_tag, draw_window, gesture_mouse, move_mouse, resize_aspect_mouse,
-    resize_mouse_from_cursor, window_title_mouse_handler, window_title_mouse_handler_right,
+    resize_mouse_from_cursor, window_title_mouse_handler,
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push, Direction as PushDirection};
@@ -105,7 +105,7 @@ pub fn get_buttons() -> Vec<Button> {
                       else { return };
             match ctx {
                 crate::contexts::WmCtx::X11(ctx_x11) => {
-                    window_title_mouse_handler_right(ctx_x11, win, arg.btn, arg.rx, arg.ry)
+                    window_title_mouse_handler(ctx_x11, win, arg.btn, arg.rx, arg.ry)
                 }
                 crate::contexts::WmCtx::Wayland(_) => {
                     crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);

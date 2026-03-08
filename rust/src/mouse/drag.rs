@@ -1346,6 +1346,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 ///
 /// Click: hidden → show+focus; focused → hide; otherwise → focus.
 /// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`move_mouse`].
+/// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
 ///
 /// On Wayland, starts the async state machine and returns immediately.
 /// On X11, runs a synchronous grab loop.
@@ -1363,45 +1364,10 @@ pub fn window_title_mouse_handler(
         return;
     }
 
-    // ── X11 synchronous grab loop ─────────────────────────────────────
-    super::grab::mouse_drag_loop(ctx, btn, 0, false, |ctx, event| {
-        if let x11rb::protocol::Event::MotionNotify(m) = event {
-            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
-                return false;
-            }
-        }
-        true
-    });
-
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    title_drag_finish(&mut wm_ctx);
-}
-
-// ── window_title_mouse_handler_right ─────────────────────────────────────────
-
-/// Right-click / drag handler for a window title bar entry.
-///
-/// Click: show+focus if hidden, otherwise zoom to master.
-/// Drag > [`DRAG_THRESHOLD`]: show+focus if hidden, resize from bottom-right.
-/// No-op when the window is in true fullscreen.
-///
-pub fn window_title_mouse_handler_right(
-    ctx: &mut WmCtxX11,
-    win: WindowId,
-    btn: MouseButton,
-    click_root_x: i32,
-    click_root_y: i32,
-) {
-    if !{
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        title_drag_begin(&mut wm_ctx, win, btn, click_root_x, click_root_y, false)
-    } {
-        return;
-    }
+    let cursor_index = if btn == MouseButton::Right { 2 } else { 0 };
 
     // ── X11 synchronous grab loop ─────────────────────────────────────
-    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+    super::grab::mouse_drag_loop(ctx, btn, cursor_index, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let mut wm_ctx = WmCtx::X11(ctx.reborrow());
             if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {

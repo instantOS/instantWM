@@ -163,19 +163,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
         return;
     };
 
-    if rect.w <= MIN_WINDOW_SIZE || rect.h <= MIN_WINDOW_SIZE {
-        return;
-    }
-
-    // Check the rect is meaningfully different from the current geometry.
-    let is_different = ctx.g_mut().clients.get(&win).is_some_and(|c| {
-        (c.geo.w - rect.w).abs() > 20
-            || (c.geo.h - rect.h).abs() > 20
-            || (c.geo.x - rect.x).abs() > 20
-            || (c.geo.y - rect.y).abs() > 20
-    });
-
-    if !is_different {
+    if !is_valid_window_size_rect(ctx, &rect, win) {
         return;
     }
 
@@ -183,16 +171,5 @@ pub fn draw_window(ctx: &mut WmCtx) {
     handle_monitor_switch(ctx, win, &rect);
 
     // Promote to floating if needed, then apply.
-    let is_floating = ctx
-        .g
-        .clients
-        .get(&win)
-        .map(|c| c.isfloating)
-        .unwrap_or(false);
-
-    if !is_floating {
-        toggle_floating(ctx);
-    }
-
-    resize(ctx, win, &rect, true);
+    apply_window_resize_rect(ctx, win, &rect);
 }
