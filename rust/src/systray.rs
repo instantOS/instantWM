@@ -16,7 +16,7 @@ const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 1;
     }
 
@@ -41,7 +41,7 @@ pub fn get_systray_width_for_bar(
     x11_present: bool,
     systray: Option<&Systray>,
 ) -> i32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 0;
     }
     if x11_present {
@@ -53,7 +53,7 @@ pub fn get_systray_width_for_bar(
 
 /// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, icon_win: WindowId) {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return;
     }
 
@@ -122,7 +122,7 @@ pub fn update_systray_icon_state(
     icon_win: WindowId,
     ev: &PropertyNotifyEvent,
 ) {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return;
     }
 
@@ -201,7 +201,7 @@ pub fn update_systray(
     x11_runtime: &X11RuntimeConfig,
     mut systray: Option<&mut Systray>,
 ) {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return;
     }
 
@@ -238,13 +238,7 @@ pub fn update_systray(
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
-        let bg_pixel = core
-            .g
-            .cfg
-            .statusscheme
-            .as_ref()
-            .map(|scheme| scheme.bg.color.pixel as u32)
-            .unwrap_or(0);
+        let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
         let systray_win = Some(x11.conn).and_then(|conn| {
             let systray_win = conn.generate_id().ok()?;
@@ -334,13 +328,7 @@ pub fn update_systray(
 
     let bar_height = core.g.cfg.bar_height;
     let systrayspacing = core.g.cfg.systrayspacing;
-    let bg_pixel = core
-        .g
-        .cfg
-        .statusscheme
-        .as_ref()
-        .map(|s| s.bg.color.pixel as u32)
-        .unwrap_or(0);
+    let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, i32, i32)> = icons
         .iter()
@@ -426,7 +414,7 @@ pub fn win_to_systray_icon(
     systray: Option<&Systray>,
     win: WindowId,
 ) -> Option<WindowId> {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return None;
     }
 

@@ -1,5 +1,4 @@
 use crate::backend::x11::X11BackendRef;
-use crate::bar::color::hex_to_u32;
 use crate::contexts::CoreCtx;
 use crate::globals::X11RuntimeConfig;
 use crate::types::{Monitor, Systray, WindowId};
@@ -50,7 +49,7 @@ pub fn resize_bar_win(
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
     let bar_height = core.g.cfg.bar_height;
-    let showsystray = core.g.cfg.showsystray;
+    let showsystray = core.g.cfg.show_systray;
     let is_selmon = core.g.selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
@@ -76,10 +75,12 @@ pub fn update_bars(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
+    use crate::bar::color::rgba_to_u32;
+
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bar_height = core.g.cfg.bar_height;
-        let showsystray = core.g.cfg.showsystray;
-        let status_bg = hex_to_u32(core.g.cfg.statusbarcolors.get(crate::config::ColIndex::Bg));
+        let showsystray = core.g.cfg.show_systray;
+        let status_bg = rgba_to_u32(core.g.cfg.statusbarcolors.bg);
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
         let selected_monitor_id = core.g.selected_monitor_id();

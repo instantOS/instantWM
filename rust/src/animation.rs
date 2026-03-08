@@ -28,9 +28,7 @@ fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
     core.g
         .clients
         .get(&win)
-        .and_then(|c| c.monitor_id)
-        .and_then(|monitor_id| core.g.monitor(monitor_id))
-        .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
+        .map(|c| c.monitor_size(&core.g))
         .unwrap_or((0, 0))
 }
 

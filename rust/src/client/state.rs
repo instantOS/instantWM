@@ -609,7 +609,7 @@ pub fn update_motif_hints(
     }
 
     let motif_atom = x11_runtime.motifatom;
-    let borderpx = core.g.cfg.borderpx;
+    let borderpx = core.g.cfg.border_width_px;
     let conn = x11.conn;
     let x11_win: Window = win.into();
 

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, SizeHints};
 use crate::types::input::SnapPosition;
+use crate::types::TagMask;
 use crate::types::WindowId;
 
 /// Represents a managed client window in the window manager.
@@ -148,6 +149,16 @@ impl Client {
         self.border_width
     }
 
+    /// Get the monitor's size (width, height) for this client.
+    ///
+    /// Returns `(0, 0)` if the client is not assigned to a monitor.
+    pub fn monitor_size(&self, globals: &crate::globals::Globals) -> (i32, i32) {
+        self.monitor_id
+            .and_then(|id| globals.monitor(id))
+            .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
+            .unwrap_or((0, 0))
+    }
+
     pub fn set_tags(
         &mut self,
         mask: crate::types::TagMask,
@@ -155,8 +166,6 @@ impl Client {
         x11: &crate::backend::x11::X11BackendRef,
         x11_runtime: &mut crate::globals::X11RuntimeConfig,
     ) {
-        use crate::types::TagMask;
-
         let tag_mask = TagMask::from_bits(core.g.tags.mask());
         let effective_mask = mask & tag_mask;
 

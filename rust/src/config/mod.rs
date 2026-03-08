@@ -38,7 +38,7 @@ pub mod rules;
 // not all of them are referenced inside this crate, but they are part of the
 // intended surface area for anyone reading or extending the config.
 #[allow(unused_imports)]
-pub use crate::types::{ColIndex, SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+pub use crate::types::{SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 #[allow(unused_imports)]
 pub use appearance::{
     get_border_colors, get_close_button_colors, get_status_bar_colors, get_tag_colors,
@@ -160,18 +160,18 @@ pub struct Config {
     // --- Tags ---
     pub tag_names: Vec<String>,
     pub tag_alt_names: Vec<String>,
-    /// Color table for tag buttons: `[hover][SchemeTag][ColIndex]`
+    /// Color table for tag buttons: `[hover][SchemeTag]`
     pub tag_colors: TagColorConfigs,
     pub num_tags: usize,
 
     // --- Color tables ---
-    /// `[hover][SchemeWin][ColIndex]`
+    /// `[hover][SchemeWin]`
     pub windowcolors: WindowColorConfigs,
-    /// `[hover][SchemeClose][ColIndex]`
+    /// `[hover][SchemeClose]`
     pub closebuttoncolors: CloseButtonColorConfigs,
     /// `[SchemeBorder as usize]`
     pub bordercolors: BorderColorConfig,
-    /// `[fg, bg, detail]`
+    /// Status bar colors (fg, bg, detail)
     pub statusbarcolors: StatusColorConfig,
 
     // --- Bindings ---

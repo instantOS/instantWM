@@ -153,7 +153,7 @@ impl WaylandSystrayRuntime {
 }
 
 pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 0;
     }
     // wayland_systray is not available from CoreCtx; caller must pass it if needed.
@@ -165,7 +165,7 @@ pub fn get_wayland_systray_width_with_state(
     core: &CoreCtx,
     wayland_systray: &WaylandSystray,
 ) -> i32 {
-    if !core.g.cfg.showsystray {
+    if !core.g.cfg.show_systray {
         return 0;
     }
     let items = &wayland_systray.items;
@@ -249,33 +249,32 @@ pub fn draw_wayland_systray_with_state(
     painter: &mut crate::bar::wayland::WaylandBarPainter,
 ) {
     let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
-    if let Some(bg) = crate::bar::theme::status_scheme(core.g).map(|s| s.bg) {
-        let bg_scheme = crate::bar::paint::BarScheme {
-            fg: bg,
-            bg,
-            detail: bg,
-        };
-        painter.set_scheme(bg_scheme);
-        if layout.tray_total_w > 0 {
-            painter.rect(
-                layout.tray_start_x,
-                0,
-                layout.tray_total_w,
-                core.g.cfg.bar_height,
-                true,
-                true,
-            );
-        }
-        if layout.menu_total_w > 0 {
-            painter.rect(
-                layout.menu_start_x,
-                0,
-                layout.menu_total_w,
-                core.g.cfg.bar_height,
-                true,
-                true,
-            );
-        }
+    let bg = core.g.status_scheme().bg;
+    let bg_scheme = crate::bar::paint::BarScheme {
+        fg: bg,
+        bg,
+        detail: bg,
+    };
+    painter.set_scheme(bg_scheme);
+    if layout.tray_total_w > 0 {
+        painter.rect(
+            layout.tray_start_x,
+            0,
+            layout.tray_total_w,
+            core.g.cfg.bar_height,
+            true,
+            true,
+        );
+    }
+    if layout.menu_total_w > 0 {
+        painter.rect(
+            layout.menu_start_x,
+            0,
+            layout.menu_total_w,
+            core.g.cfg.bar_height,
+            true,
+            true,
+        );
     }
 
     let icon_h = core.g.cfg.bar_height.max(1);
@@ -509,9 +508,7 @@ fn draw_menu_overlay(
     if layout.menu_slots.is_empty() {
         return;
     }
-    let Some(mut scheme) = crate::bar::theme::status_scheme(core.g) else {
-        return;
-    };
+    let mut scheme = core.g.status_scheme();
     painter.set_scheme(scheme.clone());
     let item_h = core.g.cfg.bar_height.max(1);
     for (row, item) in menu.items.iter().enumerate() {

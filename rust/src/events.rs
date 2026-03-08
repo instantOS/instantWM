@@ -1,7 +1,7 @@
 use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
-use crate::bar::{bar_position_at_x, bar_position_to_gesture};
+use crate::bar::bar_position_to_gesture;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
@@ -53,7 +53,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let buttons_clone = ctx.core.g.cfg.buttons.clone();
     let altcursor = ctx.core.g.altcursor;
     let mut selmon_id = ctx.core.g.selected_monitor_id();
-    let focusfollowsmouse = ctx.core.g.focusfollowsmouse;
+    let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
 
     if let Some(clicked_mon) = ctx.core.g.monitors.win_to_mon(
         event_win,
@@ -87,7 +87,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         }
     } else if let Some(mon) = ctx.core.g.monitor(selmon_id) {
         if event_win == mon.bar_win {
-            let position = bar_position_at_x(mon, &ctx.core, e.event_x as i32);
+            let position = mon.bar_position_at_x(&ctx.core, e.event_x as i32);
             if position == BarPosition::StartMenu {
                 reset_bar_x11(
                     &mut ctx.core,
@@ -159,7 +159,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 }
 
 pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
-    let showsystray = ctx.core.g.cfg.showsystray;
+    let showsystray = ctx.core.g.cfg.show_systray;
     let systray_win = ctx.systray.as_ref().map(|s| s.win).unwrap_or_default();
     let net_system_tray_op = ctx.x11_runtime.netatom.system_tray_op;
     let net_wm_state = ctx.x11_runtime.netatom.wm_state;
@@ -260,7 +260,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    let focusfollowsmouse = ctx.core.g.focusfollowsmouse;
+    let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
     let focusfollowsfloatmouse = ctx.core.g.focusfollowsfloatmouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
@@ -455,7 +455,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.g.focusfollowsmouse {
+    if ctx.core.g.focus_follows_mouse {
         let rect = Rect {
             x: root_x,
             y: root_y,
@@ -507,7 +507,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let new_gesture = {
         let mon = ctx.core.g.selected_monitor();
         let local_x = root_x - mon.work_rect.x;
-        let position = bar_position_at_x(mon, &ctx.core, local_x);
+        let position = mon.bar_position_at_x(&ctx.core, local_x);
         match position {
             // The status-text and root areas don't produce a hover gesture —
             // reset the bar and bail out so we don't light up anything.
@@ -644,14 +644,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let selmon_id = ctx.core.g.selected_monitor_id();
     let systray_win_opt = ctx.systray.as_ref().map(|s| s.win);
-    let statusescheme_bg_pixel = ctx
-        .core
-        .g
-        .cfg
-        .statusscheme
-        .as_ref()
-        .map(|s| s.bg.color.pixel as u32)
-        .unwrap_or(0);
+    let statusescheme_bg_pixel = ctx.x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let Some(systray_win) = systray_win_opt else {
         return;

@@ -114,8 +114,7 @@ pub struct WaylandState {
     next_window_id: u32,
     globals: Option<NonNull<Globals>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
-    hidden_windows: HashMap<WindowId, Window>,
-    /// O(1) window lookup index; mirrors `space.elements()` by `WindowId`.
+    /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     window_animations: HashMap<WindowId, WaylandWindowAnimation>,
     /// Currently focused window for O(1) deactivate-old / activate-new.
@@ -220,7 +219,6 @@ impl WaylandState {
             next_window_id: 1,
             globals: None,
             last_configured_size: HashMap::new(),
-            hidden_windows: HashMap::new(),
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             focused_window: None,
@@ -428,6 +426,37 @@ impl WaylandState {
         output
     }
 
+    pub fn list_displays(&self) -> Vec<String> {
+        self.space.outputs().map(|o| o.name()).collect()
+    }
+
+    pub fn list_display_modes(&self, display: &str) -> Vec<String> {
+        let mut result = Vec::new();
+        if let Some(output) = self.space.outputs().find(|o| o.name() == display) {
+            for mode in output.modes() {
+                result.push(format!(
+                    "{}x{}@{}",
+                    mode.size.w,
+                    mode.size.h,
+                    mode.refresh as f64 / 1000.0
+                ));
+            }
+        }
+        result
+    }
+
+    pub fn set_display_mode(&mut self, display: &str, width: i32, height: i32) {
+        if let Some(output) = self.space.outputs().find(|o| o.name() == display).cloned() {
+            if let Some(mode) = output
+                .modes()
+                .into_iter()
+                .find(|m| m.size.w == width && m.size.h == height)
+            {
+                output.change_current_state(Some(mode), None, None, None);
+            }
+        }
+    }
+
     pub fn sync_space_from_globals(&mut self) {
         let Some(g) = self.globals() else {
             return;
@@ -619,41 +648,40 @@ impl WaylandState {
             return;
         }
 
-        if let Some(element) = self.hidden_windows.remove(&window) {
-            let loc: Point<i32, Logical> = self
-                .globals()
-                .and_then(|g| g.clients.get(&window))
-                .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
-                .unwrap_or(Point::from((0, 0)));
-            self.window_animations.remove(&window);
-            self.space.map_element(element.clone(), loc, false);
-            self.window_index.insert(window, element);
+        if let Some(element) = self.window_index.get(&window).cloned() {
+            let is_mapped = self.space.elements().any(|w| w == &element);
+            if !is_mapped {
+                let loc: Point<i32, Logical> = self
+                    .globals()
+                    .and_then(|g| g.clients.get(&window))
+                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+                    .unwrap_or(Point::from((0, 0)));
+                self.window_animations.remove(&window);
+                self.space.map_element(element.clone(), loc, false);
 
-            // If this window was the pending focus target (set by focus_soft
-            // before arrange/show_hide ran), re-apply keyboard focus now that
-            // the window is actually in the space and reachable by set_focus.
-            if self.focused_window == Some(window) {
-                self.set_focus(window);
+                // If this window was the pending focus target (set by focus_soft
+                // before arrange/show_hide ran), re-apply keyboard focus now that
+                // the window is actually in the space and reachable by set_focus.
+                if self.focused_window == Some(window) {
+                    self.set_focus(window);
+                }
             }
         }
     }
 
     pub fn unmap_window(&mut self, window: WindowId) {
-        if let Some(element) = self.find_window(window).cloned() {
+        if let Some(element) = self.window_index.get(&window).cloned() {
             self.space.unmap_elem(&element);
-            self.hidden_windows.insert(window, element);
-            self.window_index.remove(&window);
         }
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
     }
 
     pub(super) fn remove_window_tracking(&mut self, window: WindowId) {
-        if let Some(element) = self.find_window(window).cloned() {
+        if let Some(element) = self.window_index.get(&window).cloned() {
             self.space.unmap_elem(&element);
         }
         self.window_index.remove(&window);
-        self.hidden_windows.remove(&window);
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
         if self.focused_window == Some(window) {
@@ -762,7 +790,7 @@ impl WaylandState {
     }
 
     pub fn window_exists(&self, window: WindowId) -> bool {
-        self.find_window(window).is_some() || self.hidden_windows.contains_key(&window)
+        self.window_index.contains_key(&window)
     }
 
     pub(super) fn alloc_window_id(&mut self) -> WindowId {
@@ -770,9 +798,7 @@ impl WaylandState {
             let id = self.next_window_id;
             self.next_window_id = self.next_window_id.wrapping_add(1).max(1);
             let window_id = WindowId::from(id);
-            if !self.window_index.contains_key(&window_id)
-                && !self.hidden_windows.contains_key(&window_id)
-            {
+            if !self.window_index.contains_key(&window_id) {
                 return window_id;
             }
         }
@@ -846,9 +872,7 @@ impl WaylandState {
     }
 
     pub fn window_title(&self, window: WindowId) -> Option<String> {
-        let element = self
-            .find_window(window)
-            .or_else(|| self.hidden_windows.get(&window))?;
+        let element = self.window_index.get(&window)?;
         let wl_surface = element.wl_surface()?;
         smithay::wayland::compositor::with_states(&wl_surface, |states| {
             states
@@ -898,8 +922,8 @@ impl WaylandState {
         c.geo = geo;
         c.old_geo = geo;
         c.float_geo = geo;
-        c.border_width = g.cfg.borderpx;
-        c.old_border_width = g.cfg.borderpx;
+        c.border_width = g.cfg.border_width_px;
+        c.old_border_width = g.cfg.border_width_px;
         c.monitor_id = Some(monitor_id);
         c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
         g.clients.insert(window, c);
@@ -909,31 +933,19 @@ impl WaylandState {
 
     pub(super) fn window_id_for_toplevel(&self, surface: &ToplevelSurface) -> Option<WindowId> {
         let wl_surface = surface.wl_surface();
-        self.space
-            .elements()
+        self.window_index
+            .values()
             .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
-            .or_else(|| {
-                self.hidden_windows
-                    .values()
-                    .find(|w| w.wl_surface().as_deref() == Some(wl_surface))
-                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
-            })
     }
 
     pub(super) fn window_id_for_x11_surface(
         &self,
         surface: &smithay::xwayland::X11Surface,
     ) -> Option<WindowId> {
-        self.space
-            .elements()
+        self.window_index
+            .values()
             .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
-            .or_else(|| {
-                self.hidden_windows
-                    .values()
-                    .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
-                    .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
-            })
     }
 }

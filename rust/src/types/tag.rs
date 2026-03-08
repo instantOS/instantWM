@@ -170,6 +170,17 @@ impl Default for Tag {
     }
 }
 
+impl Tag {
+    /// Return the display name (regular or alt name).
+    pub fn display_name(&self, show_alternative: bool) -> &str {
+        if show_alternative && !self.alt_name.is_empty() {
+            &self.alt_name
+        } else {
+            &self.name
+        }
+    }
+}
+
 /// All tag-related configuration and runtime state, grouped in one place.
 ///
 /// Tag data (names, layouts, nmaster, mfact, showbar) lives on each
@@ -184,7 +195,7 @@ pub struct TagSet {
     /// Raw colour strings from config.
     pub colors: TagColorConfigs,
     /// Whether to display `alt_names` instead of `names`.
-    pub show_alt: bool,
+    pub show_alternative_names: bool,
     /// Prefix-key mode: next tag key toggles rather than views.
     pub prefix: bool,
     /// Cached pixel width of the tag strip in the bar.

@@ -11,12 +11,12 @@ pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
 
 pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     let new_value = {
-        let mut showalttag = ctx.g().tags.show_alt;
+        let mut showalttag = ctx.g().tags.show_alternative_names;
         ctrl_toggle(&mut showalttag, action);
         showalttag
     };
 
-    ctx.g_mut().tags.show_alt = new_value;
+    ctx.g_mut().tags.show_alternative_names = new_value;
 
     let tagwidth = get_tag_width(ctx.core());
     ctx.g_mut().tags.width = tagwidth;
@@ -92,7 +92,7 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
 }
 
 pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.focusfollowsmouse, action);
+    ctrl_toggle(&mut core.g.focus_follows_mouse, action);
 }
 
 pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {

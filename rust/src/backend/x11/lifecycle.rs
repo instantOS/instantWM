@@ -71,6 +71,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     configure_client_border(
         ctx.core.g,
         &ctx.x11,
+        ctx.x11_runtime,
         w,
         borderpx,
         mon_monitor_rect,
@@ -152,7 +153,7 @@ fn insert_client_and_apply_rules(
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
-    let borderpx = g.cfg.borderpx;
+    let borderpx = g.cfg.border_width_px;
     if let Some(client) = g.clients.get_mut(&w) {
         client.border_width = borderpx;
         client.old_border_width = borderpx;
@@ -192,6 +193,7 @@ fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
 fn configure_client_border(
     g: &mut Globals,
     x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
     w: WindowId,
     borderpx: i32,
     mon_monitor_rect: Rect,
@@ -219,13 +221,11 @@ fn configure_client_border(
     }
 
     let x11_win: Window = w.into();
-    if let Some(ref scheme) = g.cfg.borderscheme {
-        let pixel = scheme.normal.bg.pixel();
-        let _ = x11.conn.change_window_attributes(
-            x11_win,
-            &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
-        );
-    }
+    let pixel = x11_runtime.borderscheme.normal.bg.pixel();
+    let _ = x11.conn.change_window_attributes(
+        x11_win,
+        &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),
+    );
     let _ = x11.conn.flush();
 }
 

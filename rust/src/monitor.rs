@@ -259,7 +259,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 }
 
-pub fn focus_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
+pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     let target = {
         let mgr = &ctx.g_mut().monitors;
         if mgr.monitors.len() <= 1 {
@@ -300,7 +300,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
     focus_soft(ctx, None);
 }
 
-pub fn follow_mon(ctx: &mut WmCtx, direction: MonitorDirection) {
+pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
     let c_win = match ctx.g_mut().monitors.sel().and_then(|m| m.sel) {
         Some(w) => w,
         None => return,
@@ -376,7 +376,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     let mut mon = Monitor::new_with_values(
         ctx.g_mut().cfg.mfact,
         ctx.g_mut().cfg.nmaster,
-        ctx.g_mut().cfg.showbar,
+        ctx.g_mut().cfg.show_bar,
         ctx.g_mut().cfg.topbar,
     );
     mon.init_tags(&template);
@@ -460,7 +460,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     let (mfact, nmaster, showbar, topbar) = (
         ctx.g_mut().cfg.mfact,
         ctx.g_mut().cfg.nmaster,
-        ctx.g_mut().cfg.showbar,
+        ctx.g_mut().cfg.show_bar,
         ctx.g_mut().cfg.topbar,
     );
     while ctx.g_mut().monitors.count() < new_count {

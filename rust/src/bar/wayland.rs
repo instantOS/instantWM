@@ -496,7 +496,7 @@ pub fn reset_bar_wayland(core: &mut crate::contexts::CoreCtx) {
 }
 
 pub fn should_draw_bar_wayland(core: &crate::contexts::CoreCtx) -> bool {
-    core.g.cfg.showbar
+    core.g.cfg.show_bar
 }
 
 pub fn render_bar_buffers(
@@ -535,7 +535,7 @@ pub fn render_bar_buffers(
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
         painter.begin(scale, origin_x, origin_y, width, height);
         draw_bar_common(core, None, None, None, mon_idx, painter);
-        if core.g.cfg.showsystray {
+        if core.g.cfg.show_systray {
             if let Some(mon) = core.g.monitor(mon_idx).cloned() {
                 crate::wayland_systray::draw_wayland_systray_with_state(
                     core,
@@ -588,7 +588,7 @@ fn bar_render_key(
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
     core.bar.update_seq().hash(&mut hasher);
-    core.g.cfg.showbar.hash(&mut hasher);
+    core.g.cfg.show_bar.hash(&mut hasher);
     core.g.cfg.bar_height.hash(&mut hasher);
     core.g.cfg.horizontal_padding.hash(&mut hasher);
     core.g.cfg.startmenusize.hash(&mut hasher);
@@ -630,7 +630,7 @@ fn bar_render_key(
         }
     }
 
-    if core.g.cfg.showsystray {
+    if core.g.cfg.show_systray {
         for item in &wayland_systray.items {
             item.service.hash(&mut hasher);
             item.path.hash(&mut hasher);

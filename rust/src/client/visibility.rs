@@ -332,19 +332,6 @@ fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig,
     resize_x11(core, x11, win, &Rect { x, y, w, h }, false);
 }
 
-pub fn calculate_yoffset(core: &CoreCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bar_height = core.g.cfg.bar_height;
-    let base_offset = if mon.showbar { bar_height } else { 0 };
-
-    for (_win, c) in mon.iter_clients(core.g.clients.map()) {
-        if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
-            return 0;
-        }
-    }
-
-    base_offset
-}
-
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

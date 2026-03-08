@@ -53,29 +53,10 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
     }
 }
 
-/// Compute which logical bar region the cursor's **monitor-local** x coordinate
-/// falls in for the given monitor.
-pub fn bar_position_at_x(mon: &Monitor, core: &CoreCtx, local_x: i32) -> BarPosition {
-    let is_selmon = core.g.selected_monitor().num == mon.num;
-
-    // Prefer the pre-built hit cache populated during rendering; fall back to
-    // computing a temporary one from the same utility functions.
-    let owned;
-    let hit: &MonitorHitCache = match core.bar.monitor_hit_cache(mon.id()) {
-        Some(h) => h,
-        None => {
-            owned = build_fallback_hit_cache(mon, core);
-            &owned
-        }
-    };
-
-    hit_test(hit, mon, core, is_selmon, local_x)
-}
-
 /// Walk a `MonitorHitCache` to resolve a local-x coordinate into a `BarPosition`.
 /// This is the single source of truth for hit-testing; both the cached and the
 /// fallback paths go through here.
-fn hit_test(
+pub(crate) fn hit_test(
     hit: &MonitorHitCache,
     mon: &Monitor,
     core: &CoreCtx,
@@ -86,7 +67,7 @@ fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.g.cfg.showsystray && is_selmon && !hit.x11_bar {
+    if core.g.cfg.show_systray && is_selmon && !hit.x11_bar {
         if let Some(idx) =
             crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
         {
@@ -135,7 +116,7 @@ fn hit_test(
 
 /// Build a `MonitorHitCache` from scratch using the same utility functions that
 /// the renderer uses, for when the render-time cache is not yet available.
-fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
+pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
     use crate::bar::get_layout_symbol_width;
 
     let is_selmon = core.g.selected_monitor().num == mon.num;
@@ -163,7 +144,7 @@ fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.g.cfg.showsystray && is_selmon {
+    let systray_w = if core.g.cfg.show_systray && is_selmon {
         crate::systray::get_systray_width_for_bar(core, true, None)
             .max(crate::systray::get_systray_width_for_bar(core, false, None))
     } else {

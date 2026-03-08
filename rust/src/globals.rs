@@ -2,6 +2,7 @@ use crate::client::manager::ClientManager;
 use crate::config::commands::ExternalCommands;
 use crate::drw::{Cursor, Drw};
 use crate::monitor::MonitorManager;
+use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::*;
 use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
@@ -24,6 +25,10 @@ pub struct X11RuntimeConfig {
     pub root: Window,
     pub xlibdisplay: XlibDisplay,
     pub drw: Option<Drw>,
+    /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
+    pub borderscheme: crate::types::color::BorderScheme,
+    /// X11 color scheme for status bar.
+    pub statusscheme: crate::types::color::StatusScheme,
 }
 
 impl Default for X11RuntimeConfig {
@@ -38,6 +43,8 @@ impl Default for X11RuntimeConfig {
             root: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             drw: None,
+            borderscheme: BorderScheme::default(),
+            statusscheme: StatusScheme::default(),
         }
     }
 }
@@ -51,25 +58,21 @@ pub struct RuntimeConfig {
     pub screen_height: i32,
 
     // Window manager configuration
-    pub borderpx: i32,
+    pub border_width_px: i32,
     pub snap: i32,
     pub startmenusize: i32,
     pub resizehints: i32,
     pub decorhints: i32,
     pub mfact: f32,
     pub nmaster: i32,
-    pub showbar: bool,
+    pub show_bar: bool,
     pub topbar: bool,
     pub bar_height: i32,
-    pub showsystray: bool,
+    pub show_systray: bool,
     pub systraypinning: usize,
     pub systrayspacing: i32,
 
-    // Color schemes
-    pub borderscheme: Option<BorderScheme>,
-    pub statusscheme: Option<StatusScheme>,
-
-    // Raw color strings for config override
+    // Raw color values for config (parsed at load time)
     pub windowcolors: WindowColorConfigs,
     pub closebuttoncolors: CloseButtonColorConfigs,
     pub bordercolors: BorderColorConfig,
@@ -100,21 +103,19 @@ impl Default for RuntimeConfig {
         Self {
             screen_width: 0,
             screen_height: 0,
-            borderpx: 1,
+            border_width_px: 1,
             snap: 32,
             startmenusize: 0,
             resizehints: 1,
             decorhints: 0,
             mfact: 0.55,
             nmaster: 1,
-            showbar: true,
+            show_bar: true,
             topbar: true,
             bar_height: 0,
-            showsystray: true,
+            show_systray: true,
             systraypinning: 0,
             systrayspacing: 2,
-            borderscheme: None,
-            statusscheme: None,
             windowcolors: WindowColorConfigs::default(),
             closebuttoncolors: CloseButtonColorConfigs::default(),
             bordercolors: BorderColorConfig::default(),
@@ -288,7 +289,7 @@ pub struct Globals {
 
     // Runtime flags
     pub animated: bool,
-    pub focusfollowsmouse: bool,
+    pub focus_follows_mouse: bool,
     pub focusfollowsfloatmouse: bool,
     pub altcursor: AltCursor,
     pub doubledraw: bool,
@@ -452,7 +453,7 @@ impl Default for Globals {
             clients: ClientManager::new(),
             tags: TagSet::default(),
             animated: true,
-            focusfollowsmouse: true,
+            focus_follows_mouse: true,
             focusfollowsfloatmouse: true,
             altcursor: AltCursor::None,
             doubledraw: false,
@@ -502,13 +503,13 @@ impl X11Connection {
 
 /// Apply config values to the given `Globals` instance.
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
-    g.cfg.borderpx = cfg.borderpx;
+    g.cfg.border_width_px = cfg.borderpx;
     g.cfg.snap = cfg.snap;
     g.cfg.startmenusize = cfg.startmenusize;
     g.cfg.systraypinning = cfg.systraypinning;
     g.cfg.systrayspacing = cfg.systrayspacing;
-    g.cfg.showsystray = cfg.showsystray;
-    g.cfg.showbar = cfg.showbar;
+    g.cfg.show_systray = cfg.showsystray;
+    g.cfg.show_bar = cfg.showbar;
     g.cfg.topbar = cfg.topbar;
     g.cfg.bar_height = cfg.bar_height;
     g.cfg.resizehints = cfg.resizehints;
@@ -581,5 +582,158 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
     // Initialise any monitors that already exist (re-init on config reload).
     for (_i, mon) in g.monitors.iter_mut() {
         mon.init_tags(&template);
+    }
+}
+
+impl Globals {
+    /// Get the status bar color scheme.
+    pub fn status_scheme(&self) -> crate::bar::paint::BarScheme {
+        let c = &self.cfg.statusbarcolors;
+        crate::bar::paint::BarScheme {
+            fg: c.fg,
+            bg: c.bg,
+            detail: c.detail,
+        }
+    }
+
+    /// Get the tag hover fill scheme.
+    pub fn tag_hover_fill_scheme(&self) -> crate::bar::paint::BarScheme {
+        use crate::config::{SchemeHover, SchemeTag};
+
+        let colors = self
+            .tags
+            .colors
+            .scheme(SchemeHover::Hover, SchemeTag::Filled);
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
+    }
+
+    /// Get the color scheme for a tag.
+    pub fn tag_scheme(
+        &self,
+        m: &Monitor,
+        tag_index: u32,
+        occupied_tags: u32,
+        is_hover: bool,
+    ) -> crate::bar::paint::BarScheme {
+        use crate::config::{SchemeHover, SchemeTag};
+
+        let scheme_idx = if occupied_tags & (1 << tag_index) != 0 {
+            let selmon = self.selected_monitor();
+            let sel_has_tag = selmon
+                .sel
+                .and_then(|selected_window| {
+                    self.clients
+                        .get(&selected_window)
+                        .map(|c| c.tags & (1 << tag_index) != 0)
+                })
+                .unwrap_or(false);
+
+            let is_selected = selmon.num == m.num;
+
+            if is_selected && sel_has_tag {
+                SchemeTag::Focus
+            } else if m.selected_tags() & (1 << tag_index) != 0 {
+                SchemeTag::NoFocus
+            } else if m.showtags == 0 {
+                SchemeTag::Filled
+            } else {
+                SchemeTag::Inactive
+            }
+        } else if m.selected_tags() & (1 << tag_index) != 0 {
+            SchemeTag::Empty
+        } else {
+            SchemeTag::Inactive
+        };
+
+        let colors = self.tags.colors.scheme(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            scheme_idx,
+        );
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
+    }
+
+    /// Get the color scheme for a client window.
+    pub fn window_scheme(&self, c: &Client, is_hover: bool) -> crate::bar::paint::BarScheme {
+        use crate::config::{SchemeHover, SchemeWin};
+
+        let selmon = self.selected_monitor();
+        let is_selected = selmon.sel == Some(c.win);
+        let is_overlay = selmon.overlay == Some(c.win);
+
+        let scheme_idx = if is_selected {
+            if is_overlay {
+                SchemeWin::OverlayFocus
+            } else if c.issticky {
+                SchemeWin::StickyFocus
+            } else {
+                SchemeWin::Focus
+            }
+        } else if is_overlay {
+            SchemeWin::Overlay
+        } else if c.issticky {
+            SchemeWin::Sticky
+        } else if c.is_hidden {
+            SchemeWin::Minimized
+        } else {
+            SchemeWin::Normal
+        };
+
+        let colors = self.cfg.windowcolors.scheme(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            scheme_idx,
+        );
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
+    }
+
+    /// Get the close button color scheme.
+    pub fn close_button_scheme(
+        &self,
+        is_hover: bool,
+        is_locked: bool,
+        is_fullscreen: bool,
+    ) -> crate::bar::paint::BarScheme {
+        use crate::config::{SchemeClose, SchemeHover};
+
+        let scheme_idx = if is_locked {
+            SchemeClose::Locked
+        } else if is_fullscreen {
+            SchemeClose::Fullscreen
+        } else {
+            SchemeClose::Normal
+        };
+
+        let colors = self.cfg.closebuttoncolors.scheme(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            scheme_idx,
+        );
+        crate::bar::paint::BarScheme {
+            fg: colors.fg,
+            bg: colors.bg,
+            detail: colors.detail,
+        }
     }
 }

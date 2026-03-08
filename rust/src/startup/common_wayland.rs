@@ -36,7 +36,6 @@ use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
 use crate::backend::wayland::compositor::WindowIdMarker;
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
-use crate::bar::color::rgba_from_hex;
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
 use crate::monitor::update_geom;
@@ -157,7 +156,7 @@ pub fn init_wayland_globals(wm: &mut Wm) {
     wm.g.cfg.screen_height = 800;
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    wm.g.cfg.showbar = true;
+    wm.g.cfg.show_bar = true;
     let font_size = wayland_font_size_from_config(&cfg.fonts);
     let font_height = wayland_font_height_from_size(font_size);
     wm.bar_painter.set_font_size(font_size);
@@ -313,7 +312,7 @@ pub fn build_bar_elements(
     wm: &mut Wm,
     renderer: &mut GlesRenderer,
 ) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
-    if !wm.g.cfg.showbar {
+    if !wm.g.cfg.show_bar {
         return Vec::new();
     }
     if let Some(runtime) = wm.wayland_systray_runtime.as_ref() {
@@ -442,7 +441,6 @@ pub(crate) fn wayland_border_elements_shared(
     g: &crate::globals::Globals,
     state: &WaylandState,
 ) -> Vec<SolidColorRenderElement> {
-    let scheme = g.cfg.borderscheme.as_ref();
     let bordercolors = &g.cfg.bordercolors;
     let mut out = Vec::new();
     let mut mapped_sizes: HashMap<WindowId, (i32, i32)> = HashMap::new();
@@ -509,18 +507,12 @@ pub(crate) fn wayland_border_elements_shared(
             .unwrap_or(true);
         let rgba = if Some(*win) == sel {
             if c.isfloating || !has_tiling {
-                rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::FloatFocus))
-                    .or_else(|| scheme.map(|s| color_to_rgba(&s.float_focus.bg)))
-                    .unwrap_or([0.75, 0.40, 0.28, 1.0])
+                bordercolors.float_focus
             } else {
-                rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::TileFocus))
-                    .or_else(|| scheme.map(|s| color_to_rgba(&s.tile_focus.bg)))
-                    .unwrap_or([0.28, 0.52, 0.77, 1.0])
+                bordercolors.tile_focus
             }
         } else {
-            rgba_from_hex(bordercolors.get(crate::config::SchemeBorder::Normal))
-                .or_else(|| scheme.map(|s| color_to_rgba(&s.normal.bg)))
-                .unwrap_or([0.18, 0.18, 0.20, 1.0])
+            bordercolors.normal
         };
 
         let x = c.geo.x;
@@ -672,13 +664,4 @@ fn push_solid(
         1.0,
         Kind::Unspecified,
     ));
-}
-
-fn color_to_rgba(color: &crate::drw::Color) -> [f32; 4] {
-    [
-        color.color.color.red as f32 / 65535.0,
-        color.color.color.green as f32 / 65535.0,
-        color.color.color.blue as f32 / 65535.0,
-        color.color.color.alpha as f32 / 65535.0,
-    ]
 }

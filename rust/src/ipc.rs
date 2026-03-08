@@ -2,7 +2,7 @@ use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
-use crate::monitor::{focus_mon, focus_n_mon, follow_mon};
+use crate::monitor::{focus_monitor, focus_n_mon, move_to_monitor_and_follow};
 
 use crate::overlay::set_overlay;
 use crate::scratchpad::{
@@ -211,12 +211,12 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::FollowMon(dir) => {
             let direction = MonitorDirection::from(dir);
-            follow_mon(&mut ctx, direction);
+            move_to_monitor_and_follow(&mut ctx, direction);
             IpcResponse::ok("")
         }
         IpcCommand::FocusMon(dir) => {
             let direction = MonitorDirection::from(dir);
-            focus_mon(&mut ctx, direction);
+            focus_monitor(&mut ctx, direction);
             IpcResponse::ok("")
         }
         IpcCommand::FocusNMon(val) => {
