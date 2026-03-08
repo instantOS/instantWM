@@ -1012,6 +1012,176 @@ pub fn title_drag_begin(
     true
 }
 
+// ── helper for floating promotion ─────────────────────────────────────────────
+
+/// Promotes a window to floating if it isn't already, and returns its current geometry.
+/// If `center_under_ptr` is provided, the window's starting geometry is shifted so its
+/// top-middle sits under the pointer (used for left-click move initialization).
+fn promote_to_floating(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    center_under_ptr: Option<(i32, i32)>,
+) -> (Rect, bool) {
+    let (is_floating, geo, float_geo) = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|c| (c.isfloating, c.geo, c.float_geo))
+        .unwrap_or((false, Rect::default(), Rect::default()));
+
+    if is_floating {
+        return (geo, false);
+    }
+
+    set_floating_in_place(ctx, win);
+    let selmon_id = ctx.g_mut().selected_monitor_id();
+    arrange(ctx, Some(selmon_id));
+
+    let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
+    let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
+
+    let (target_x, target_y) = if let Some((root_x, root_y)) = center_under_ptr {
+        (root_x - target_w / 2, root_y)
+    } else {
+        (geo.x, geo.y)
+    };
+
+    let new_geo = Rect {
+        x: target_x,
+        y: target_y,
+        w: target_w,
+        h: target_h,
+    };
+    resize(ctx, win, &new_geo, true);
+    (new_geo, true)
+}
+
+// ── wayland title drag motion logic ──────────────────────────────────────────
+
+/// Process ongoing pointer motion for an already active Wayland left-click title drag.
+fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+    // On Wayland a right-click title-drag hands off to HoverResizeDragState
+    // at the threshold-exceeded moment. If we somehow arrive here with a
+    // right-click still marked dragging it means HoverResizeDragState is now
+    // driving the resize — clear the title state and bail.
+    if ctx.g_mut().drag.title.button == MouseButton::Right {
+        ctx.g_mut().drag.title.active = false;
+        ctx.g_mut().drag.title.dragging = false;
+        return false;
+    }
+
+    let td = &ctx.g_mut().drag.title;
+    let win = td.win;
+    let td_win_start_geo = td.win_start_geo;
+    let td_start_x = td.start_x;
+    let td_start_y = td.start_y;
+    let mut new_x = td_win_start_geo.x + (root_x - td_start_x);
+    let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
+
+    let (is_floating, geo) = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|c| (c.isfloating, c.geo))
+        .unwrap_or((false, Rect::default()));
+
+    if is_floating {
+        let client_clone = ctx.g_mut().clients.get(&win).cloned();
+        if let Some(ref c) = client_clone {
+            snap_to_monitor_edges(ctx, c, &mut new_x, &mut new_y);
+        }
+        resize(
+            ctx,
+            win,
+            &Rect {
+                x: new_x,
+                y: new_y,
+                w: geo.w,
+                h: geo.h,
+            },
+            true,
+        );
+        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+            client.float_geo.x = new_x;
+            client.float_geo.y = new_y;
+        }
+    }
+    true
+}
+
+/// Handle the transition from click to drag on Wayland when the threshold is exceeded.
+fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+    let win = ctx.g_mut().drag.title.win;
+    let btn = ctx.g_mut().drag.title.button;
+    let is_right_click = btn == MouseButton::Right;
+
+    if is_right_click {
+        // Right-click: promote to floating, arm HoverResizeDragState, warp cursor.
+        let (current_geo, _) = promote_to_floating(ctx, win, None);
+
+        let start_x = ctx.g().drag.title.start_x;
+        let start_y = ctx.g().drag.title.start_y;
+        let hit_x = start_x - current_geo.x;
+        let hit_y = start_y - current_geo.y;
+        let dir = crate::types::input::get_resize_direction(
+            current_geo.w,
+            current_geo.h,
+            hit_x,
+            hit_y,
+        );
+
+        let bw = ctx.g().clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+        let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
+        let warp_x = current_geo.x + x_off;
+        let warp_y = current_geo.y + y_off;
+
+        ctx.g_mut().drag.title.active = false;
+        ctx.g_mut().drag.title.dragging = false;
+
+        if let WmCtx::Wayland(wl) = ctx {
+            wl.wayland.backend.warp_pointer(warp_x as f64, warp_y as f64);
+            wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+                active: true,
+                win,
+                button: btn,
+                direction: dir,
+                move_mode: false,
+                start_x: warp_x,
+                start_y: warp_y,
+                win_start_geo: current_geo,
+                last_root_x: warp_x,
+                last_root_y: warp_y,
+            };
+            wl.core.g.altcursor = crate::types::AltCursor::Resize;
+            wl.core.g.drag.resize_direction = Some(dir);
+            super::cursor::set_cursor_resize_wayland(wl, Some(dir));
+        }
+        return true;
+    }
+
+    // Left-click: promote to floating (centering under pointer if newly floated),
+    // and keep title drag active so calloop drives it.
+    let (current_geo, anchor_rebased) = promote_to_floating(ctx, win, Some((root_x, root_y)));
+
+    if anchor_rebased {
+        ctx.g_mut().drag.title.win_start_geo = current_geo;
+        ctx.g_mut().drag.title.start_x = root_x;
+        ctx.g_mut().drag.title.start_y = root_y;
+    } else {
+        super::warp::warp_into(ctx, win);
+        let ptr = super::warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
+        let pad = super::warp::WARP_INTO_PADDING;
+        let clamped_x = ptr.0.clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
+        let clamped_y = ptr.1.clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
+        ctx.g_mut().drag.title.start_x = clamped_x;
+        ctx.g_mut().drag.title.start_y = clamped_y;
+    }
+
+    set_cursor_move(ctx);
+    ctx.g_mut().drag.title.dragging = true;
+    title_drag_motion(ctx, root_x, root_y)
+}
+
 /// Process a pointer motion event during an active title drag.
 ///
 /// Returns `true` if the drag threshold was exceeded and the drag action
@@ -1028,53 +1198,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if ctx.is_x11() {
             return false;
         }
-        // On Wayland a right-click title-drag hands off to HoverResizeDragState
-        // at the threshold-exceeded moment (see below).  If we somehow arrive
-        // here with a right-click still marked dragging it means HoverResizeDragState
-        // is now driving the resize — just clear the title state and bail so we
-        // don't double-process.
-        if ctx.g_mut().drag.title.button == MouseButton::Right {
-            ctx.g_mut().drag.title.active = false;
-            ctx.g_mut().drag.title.dragging = false;
-            return false;
-        }
-
-        let td = &ctx.g_mut().drag.title;
-        let win = td.win;
-        let td_win_start_geo = td.win_start_geo;
-        let td_start_x = td.start_x;
-        let td_start_y = td.start_y;
-        let mut new_x = td_win_start_geo.x + (root_x - td_start_x);
-        let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
-
-        let (is_floating, geo) = ctx
-            .g()
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.geo))
-            .unwrap_or((false, Rect::default()));
-        if is_floating {
-            let client_clone = ctx.g_mut().clients.get(&win).cloned();
-            if let Some(ref c) = client_clone {
-                snap_to_monitor_edges(ctx, c, &mut new_x, &mut new_y);
-            }
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: new_x,
-                    y: new_y,
-                    w: geo.w,
-                    h: geo.h,
-                },
-                true,
-            );
-            if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-                client.float_geo.x = new_x;
-                client.float_geo.y = new_y;
-            }
-        }
-        return true;
+        return title_drag_motion_dragging_wayland(ctx, root_x, root_y);
     }
 
     let td = &ctx.g_mut().drag.title;
@@ -1097,162 +1221,14 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.raise_interactive(win);
 
     if ctx.is_wayland() {
-        if is_right_click {
-            // Right-click title drag on Wayland: hand straight off to
-            // HoverResizeDragState.  That machinery already handles
-            // directional resize correctly — no warp, no anchor chaos.
-            //
-            // Promote tiled windows to floating first (same as the move path).
-            let (is_floating, geo, float_geo) = ctx
-                .g()
-                .clients
-                .get(&win)
-                .map(|c| (c.isfloating, c.geo, c.float_geo))
-                .unwrap_or((false, Rect::default(), Rect::default()));
-            let current_geo = if !is_floating {
-                set_floating_in_place(ctx, win);
-                let selmon_id = ctx.g_mut().selected_monitor_id();
-                arrange(ctx, Some(selmon_id));
-                let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
-                let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
-                let new_geo = Rect {
-                    x: geo.x,
-                    y: geo.y,
-                    w: target_w,
-                    h: target_h,
-                };
-                resize(ctx, win, &new_geo, true);
-                new_geo
-            } else {
-                geo
-            };
-
-            // Compute direction from the original click position relative to
-            // the (possibly freshly promoted) window geometry.
-            let start_x = ctx.g().drag.title.start_x;
-            let start_y = ctx.g().drag.title.start_y;
-            let hit_x = start_x - current_geo.x;
-            let hit_y = start_y - current_geo.y;
-            let dir = crate::types::input::get_resize_direction(
-                current_geo.w,
-                current_geo.h,
-                hit_x,
-                hit_y,
-            );
-
-            // Arm HoverResizeDragState so calloop motion/release events drive
-            // the resize from here on.  The title drag is deactivated so
-            // title_drag_finish won't also fire.
-            //
-            // Warp the cursor to the nearest edge/corner for this direction so
-            // the visual position matches what is being dragged.  The resize
-            // math uses root_x/root_y directly against the window edges, so
-            // correctness doesn't depend on start_x/start_y — but placing the
-            // cursor at the right handle gives immediate visual feedback.
-            let bw = ctx
-                .g()
-                .clients
-                .get(&win)
-                .map(|c| c.border_width)
-                .unwrap_or(0);
-            let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
-            let warp_x = current_geo.x + x_off;
-            let warp_y = current_geo.y + y_off;
-
-            ctx.g_mut().drag.title.active = false;
-            ctx.g_mut().drag.title.dragging = false;
-            if let WmCtx::Wayland(wl) = ctx {
-                wl.wayland
-                    .backend
-                    .warp_pointer(warp_x as f64, warp_y as f64);
-                wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
-                    active: true,
-                    win,
-                    button: btn,
-                    direction: dir,
-                    move_mode: false,
-                    start_x: warp_x,
-                    start_y: warp_y,
-                    win_start_geo: current_geo,
-                    last_root_x: warp_x,
-                    last_root_y: warp_y,
-                };
-                wl.core.g.altcursor = crate::types::AltCursor::Resize;
-                wl.core.g.drag.resize_direction = Some(dir);
-                super::cursor::set_cursor_resize_wayland(wl, Some(dir));
-            }
-            return true;
-        }
-
-        // Left-click move path — keep title drag active so calloop drives it.
-        let (is_floating, geo, float_geo) = ctx
-            .g()
-            .clients
-            .get(&win)
-            .map(|c| (c.isfloating, c.geo, c.border_width, c.float_geo))
-            .map(|(f, g, _bw, fg)| (f, g, fg))
-            .unwrap_or((false, Rect::default(), Rect::default()));
-
-        let mut anchor_rebased = false;
-        if !is_floating {
-            set_floating_in_place(ctx, win);
-            let selmon_id = ctx.g_mut().selected_monitor_id();
-            arrange(ctx, Some(selmon_id));
-            let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
-            let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
-            // Place the restored floating window so its top-middle sits under
-            // the cursor (matches the title-bar drag warp semantics).
-            let target_x = root_x - target_w / 2;
-            let target_y = root_y;
-            ctx.g_mut().drag.title.win_start_geo = Rect {
-                x: target_x,
-                y: target_y,
-                w: target_w,
-                h: target_h,
-            };
-            ctx.g_mut().drag.title.start_x = root_x;
-            ctx.g_mut().drag.title.start_y = root_y;
-            anchor_rebased = true;
-            resize(
-                ctx,
-                win,
-                &Rect {
-                    x: target_x,
-                    y: target_y,
-                    w: target_w,
-                    h: target_h,
-                },
-                true,
-            );
-        }
-
-        if !anchor_rebased {
-            // Clamp the drag anchor inside the window bounds and rebase
-            // start_x/y to the clamped position so deltas are correct even
-            // before the deferred warp takes effect.
-            let current_geo = ctx.g().clients.get(&win).map(|c| c.geo).unwrap_or(geo);
-            super::warp::warp_into(ctx, win);
-            let ptr = super::warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
-            let pad = super::warp::WARP_INTO_PADDING;
-            let clamped_x = ptr
-                .0
-                .clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
-            let clamped_y = ptr
-                .1
-                .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
-            ctx.g_mut().drag.title.start_x = clamped_x;
-            ctx.g_mut().drag.title.start_y = clamped_y;
-        }
-
-        set_cursor_move(ctx);
-        ctx.g_mut().drag.title.dragging = true;
-        return title_drag_motion(ctx, root_x, root_y);
+        return title_drag_start_wayland(ctx, root_x, root_y);
     }
 
+    // X11 specific start logic
     ctx.g_mut().drag.title.dragging = true;
     ctx.g_mut().drag.title.active = false;
 
-    if btn == MouseButton::Right {
+    if is_right_click {
         if let Some(c) = ctx.g_mut().clients.get(&win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -1282,7 +1258,6 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
     true
 }
-
 /// Finish a title drag interaction (button release without exceeding the
 /// drag threshold).  Performs the click action.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
