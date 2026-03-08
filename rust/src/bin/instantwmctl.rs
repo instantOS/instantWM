@@ -115,6 +115,10 @@ enum CommandKind {
         #[arg(long, num_args = 1..)]
         variant: Vec<String>,
     },
+    /// Update status text on the bar.
+    UpdateStatus {
+        text: String,
+    },
 }
 
 fn main() {
@@ -167,6 +171,7 @@ fn main() {
         CommandKind::SetKeyboardLayouts { layouts, variant } => {
             IpcCommand::SetKeyboardLayouts(layouts, variant)
         }
+        CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
     };
 
     let socket = std::env::var("INSTANTWM_SOCKET")

@@ -1141,6 +1141,7 @@ dependencies = [
  "log",
  "once_cell",
  "serde",
+ "serde_json",
  "smithay",
  "thiserror 1.0.69",
  "tokio",
