@@ -97,9 +97,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
         .grab_pointer(
             false,
             root,
-            EventMask::BUTTON_PRESS
-                | EventMask::BUTTON_RELEASE
-                | EventMask::POINTER_MOTION,
+            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
             x11rb::NONE,
@@ -187,12 +185,46 @@ pub fn mouse_drag_loop<F>(
         return;
     }
 
-    let mut last_time: u32 = 0;
-
     loop {
-        let Some(event) = wait_event(ctx) else {
+        // Wait for at least one event (blocking).
+        let Some(mut event) = wait_event(ctx) else {
             break;
         };
+
+        // If it's a motion event, compress it by eating all subsequent pending
+        // motion events in the queue, keeping only the absolute latest.
+        // This ensures zero-latency dragging without artificial 16ms FPS caps.
+        if let x11rb::protocol::Event::MotionNotify(_) = event {
+            while let Ok(Some(next_evt)) = ctx.x11.conn.poll_for_event() {
+                if let x11rb::protocol::Event::MotionNotify(_) = next_evt {
+                    event = next_evt; // Discard older motion, keep newest.
+                } else {
+                    // It's a different event (e.g. ButtonRelease). We must put it
+                    // back so wait_event/poll_for_event yield it next time!
+                    // x11rb doesn't let us un-read events easily, so we process
+                    // the compressed motion *now*, then process this next_evt.
+                    if !on_event(ctx, &event) {
+                        ungrab(ctx);
+                        return;
+                    }
+
+                    // Now process the non-motion event we peeked.
+                    if let x11rb::protocol::Event::ButtonRelease(br) = next_evt {
+                        if br.detail == btn.as_u8() {
+                            ungrab(ctx);
+                            return;
+                        }
+                    }
+                    if !on_event(ctx, &next_evt) {
+                        ungrab(ctx);
+                        return;
+                    }
+
+                    // We've processed the peeking; continue the main `wait_event` loop.
+                    continue;
+                }
+            }
+        }
 
         let should_continue = match &event {
             x11rb::protocol::Event::ButtonRelease(br) => {
@@ -202,15 +234,6 @@ pub fn mouse_drag_loop<F>(
                     on_event(ctx, &event)
                 }
             }
-
-            x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= 1000 / crate::constants::animation::MOUSE_EVENT_RATE {
-                    continue;
-                }
-                last_time = m.time;
-                on_event(ctx, &event)
-            }
-
             _ => on_event(ctx, &event),
         };
 
