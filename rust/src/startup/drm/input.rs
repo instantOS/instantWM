@@ -65,13 +65,17 @@ pub fn configure_device(
         "type:keyboard"
     };
 
-    if let Some(config) = input_config.get(config_key).or_else(|| input_config.get("*")) {
+    if let Some(config) = input_config
+        .get(config_key)
+        .or_else(|| input_config.get("*"))
+    {
         if let Some(tap) = config.tap {
             let _ = device.config_tap_set_enabled(tap == ToggleSetting::Enabled);
         }
 
         if let Some(natural_scroll) = config.natural_scroll {
-            let _ = device.config_scroll_set_natural_scroll_enabled(natural_scroll == ToggleSetting::Enabled);
+            let _ = device
+                .config_scroll_set_natural_scroll_enabled(natural_scroll == ToggleSetting::Enabled);
         }
 
         if let Some(accel_profile) = config.accel_profile {

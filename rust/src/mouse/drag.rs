@@ -1123,14 +1123,15 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let start_y = ctx.g().drag.title.start_y;
         let hit_x = start_x - current_geo.x;
         let hit_y = start_y - current_geo.y;
-        let dir = crate::types::input::get_resize_direction(
-            current_geo.w,
-            current_geo.h,
-            hit_x,
-            hit_y,
-        );
+        let dir =
+            crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
-        let bw = ctx.g().clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+        let bw = ctx
+            .g()
+            .clients
+            .get(&win)
+            .map(|c| c.border_width)
+            .unwrap_or(0);
         let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
         let warp_x = current_geo.x + x_off;
         let warp_y = current_geo.y + y_off;
@@ -1139,7 +1140,9 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         ctx.g_mut().drag.title.dragging = false;
 
         if let WmCtx::Wayland(wl) = ctx {
-            wl.wayland.backend.warp_pointer(warp_x as f64, warp_y as f64);
+            wl.wayland
+                .backend
+                .warp_pointer(warp_x as f64, warp_y as f64);
             wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
                 active: true,
                 win,
@@ -1171,8 +1174,12 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         super::warp::warp_into(ctx, win);
         let ptr = super::warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
         let pad = super::warp::WARP_INTO_PADDING;
-        let clamped_x = ptr.0.clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
-        let clamped_y = ptr.1.clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
+        let clamped_x = ptr
+            .0
+            .clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
+        let clamped_y = ptr
+            .1
+            .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
         ctx.g_mut().drag.title.start_x = clamped_x;
         ctx.g_mut().drag.title.start_y = clamped_y;
     }

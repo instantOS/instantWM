@@ -93,6 +93,10 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut pointer_location = Point::from((0.0, 0.0));
 
+    if let Some(ref cmd) = wm.g.cfg.status_command {
+        crate::bar::status::spawn_status_command(cmd);
+    }
+
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {

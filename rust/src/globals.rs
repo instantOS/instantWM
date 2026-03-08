@@ -99,6 +99,9 @@ pub struct RuntimeConfig {
 
     // Input configuration
     pub input: std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
+
+    // Status command
+    pub status_command: Option<String>,
 }
 
 impl Default for RuntimeConfig {
@@ -135,6 +138,7 @@ impl Default for RuntimeConfig {
             horizontal_padding: 0,
             tag_template: Vec::new(),
             input: std::collections::HashMap::new(),
+            status_command: None,
         }
     }
 }
@@ -533,6 +537,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.rules = cfg.rules.clone();
     g.cfg.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();
+    g.cfg.status_command = cfg.status_command.clone();
 
     // Initialize keyboard layout state from config
     if !cfg.keyboard_layouts.is_empty() {

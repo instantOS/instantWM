@@ -579,7 +579,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         }
 
         let net_wm_name = ctx.x11_runtime.netatom.wm_name;
-        if e.atom == u32::from(u32::from(AtomEnum::WM_NAME)) || e.atom == net_wm_name {
+        if e.atom == u32::from(AtomEnum::WM_NAME) || e.atom == net_wm_name {
             update_title_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win);
         }
     };

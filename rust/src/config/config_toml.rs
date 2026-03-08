@@ -23,6 +23,8 @@ pub struct ThemeConfig {
     pub keyboard: KeyboardConfig,
     /// Input configuration (mouse, touchpad).
     pub input: std::collections::HashMap<String, InputConfig>,
+    /// Background command to execute for reading status bar text, typically `i3status-rs`
+    pub status_command: Option<String>,
 }
 
 impl Default for ThemeConfig {
@@ -34,6 +36,7 @@ impl Default for ThemeConfig {
             desktop_keybinds: Vec::new(),
             keyboard: KeyboardConfig::default(),
             input: std::collections::HashMap::new(),
+            status_command: None,
         }
     }
 }

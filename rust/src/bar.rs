@@ -2,7 +2,7 @@ pub mod color;
 pub(crate) mod model;
 pub mod paint;
 mod renderer;
-mod status;
+pub mod status;
 pub(crate) mod theme;
 pub mod wayland;
 mod widgets;

@@ -289,7 +289,12 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             if let crate::backend::Backend::X11(_) = wm.backend {
                 let mut ctx = wm.ctx();
                 if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-                    crate::bar::draw_bars_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, x11_ctx.systray.as_deref());
+                    crate::bar::draw_bars_x11(
+                        &mut x11_ctx.core,
+                        &x11_ctx.x11,
+                        x11_ctx.x11_runtime,
+                        x11_ctx.systray.as_deref(),
+                    );
                 }
             }
             wm.bar.mark_dirty();

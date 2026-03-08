@@ -232,10 +232,8 @@ enum CommandKind {
         #[arg(long, num_args = 1..)]
         variant: Vec<String>,
     },
-    /// Update status text on the bar.
-    UpdateStatus {
-        text: String,
-    },
+    /// Update status text on the bar. If text is "-", read from stdin continuously.
+    UpdateStatus { text: String },
 }
 
 fn main() {
@@ -288,7 +286,41 @@ fn main() {
         CommandKind::SetKeyboardLayouts { layouts, variant } => {
             IpcCommand::SetKeyboardLayouts(layouts, variant)
         }
-        CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
+        CommandKind::UpdateStatus { text } => {
+            if text == "-" {
+                use std::io::BufRead;
+                let stdin = std::io::stdin();
+                let mut reader = stdin.lock();
+                let mut line = String::new();
+
+                while reader.read_line(&mut line).unwrap_or(0) > 0 {
+                    let trim_line = line.trim();
+                    if trim_line == "["
+                        || trim_line.starts_with("{\"version\"")
+                        || trim_line.is_empty()
+                    {
+                        line.clear();
+                        continue;
+                    }
+
+                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|_| {
+                        format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
+                    });
+
+                    if let Ok(mut stream) = UnixStream::connect(&socket) {
+                        let request = IpcCommand::UpdateStatus(trim_line.to_string());
+                        if let Ok(data) =
+                            bincode::encode_to_vec(&request, bincode::config::standard())
+                        {
+                            let _ = stream.write_all(&data);
+                        }
+                    }
+                    line.clear();
+                }
+                std::process::exit(0);
+            }
+            IpcCommand::UpdateStatus(text)
+        }
     };
 
     let socket = std::env::var("INSTANTWM_SOCKET")

@@ -297,3 +297,52 @@ fn draw_items(
 
     let _ = m;
 }
+
+pub(crate) fn spawn_status_command(cmd: &str) {
+    let cmd_str = cmd.to_string();
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader, Write};
+        use std::os::unix::net::UnixStream;
+        use std::process::{Command, Stdio};
+
+        let mut child = match Command::new("sh")
+            .arg("-c")
+            .arg(&cmd_str)
+            .stdout(Stdio::piped())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "instantwm: failed to spawn status_command '{}': {}",
+                    cmd_str, e
+                );
+                return;
+            }
+        };
+
+        if let Some(stdout) = child.stdout.take() {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines() {
+                if let Ok(line) = line {
+                    let text = line.trim();
+                    if text == "[" || text.starts_with("{\"version\"") || text.is_empty() {
+                        continue;
+                    }
+
+                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|_| {
+                        format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
+                    });
+
+                    if let Ok(mut stream) = UnixStream::connect(&socket) {
+                        let req = crate::ipc_types::IpcCommand::UpdateStatus(text.to_string());
+                        if let Ok(data) = bincode::encode_to_vec(&req, bincode::config::standard())
+                        {
+                            let _ = stream.write_all(&data);
+                        }
+                    }
+                }
+            }
+        }
+    });
+}

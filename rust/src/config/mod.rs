@@ -196,6 +196,7 @@ pub struct Config {
 
     // --- Input configuration ---
     pub input: std::collections::HashMap<String, config_toml::InputConfig>,
+    pub status_command: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -272,5 +273,6 @@ pub fn init_config() -> Config {
 
         // --- Input configuration ---
         input: theme.input,
+        status_command: theme.status_command,
     }
 }
