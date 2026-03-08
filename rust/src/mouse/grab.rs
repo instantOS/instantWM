@@ -99,8 +99,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
             root,
             EventMask::BUTTON_PRESS
                 | EventMask::BUTTON_RELEASE
-                | EventMask::POINTER_MOTION
-                | EventMask::KEY_PRESS,
+                | EventMask::POINTER_MOTION,
             GrabMode::ASYNC,
             GrabMode::ASYNC,
             x11rb::NONE,

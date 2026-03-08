@@ -460,7 +460,11 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     // Activate resize cursor and enter the grab loop
     handle_floating_resize_hover(ctx, x, y, false);
 
-    let _ = run_hover_resize_loop(ctx);
+    let action_started = run_hover_resize_loop(ctx);
+
+    if !action_started {
+        clear_hover_resize_offer(ctx);
+    }
 
     true
 }
