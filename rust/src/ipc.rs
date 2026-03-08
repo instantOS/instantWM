@@ -1,3 +1,4 @@
+use crate::bar::draw_bar;
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::keyboard_layout;
@@ -280,6 +281,19 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         }
         IpcCommand::SetKeyboardLayouts(layouts, variants) => {
             keyboard_layout::set_keyboard_layouts(&mut ctx, layouts, variants);
+            IpcResponse::ok("")
+        }
+        IpcCommand::UpdateStatus(text) => {
+            wm.g.status_text = text;
+
+            if let crate::backend::Backend::X11(_) = wm.backend {
+                let mut ctx = wm.ctx();
+                if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
+                    crate::bar::draw_bars_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, x11_ctx.systray.as_deref());
+                }
+            }
+            wm.bar.mark_dirty();
+
             IpcResponse::ok("")
         }
     }
