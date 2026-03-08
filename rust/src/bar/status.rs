@@ -4,6 +4,7 @@ use crate::types::{Monitor, Rect, Systray};
 
 pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
 pub(crate) const TEXT_PADDING: i32 = 6;
+use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub(crate) enum StatusItem {
@@ -51,7 +52,41 @@ pub(crate) fn draw_status_bar(
     (layout.draw_start_x, layout.total_width)
 }
 
+fn parse_i3bar_json(bytes: &[u8]) -> Option<Vec<StatusItem>> {
+    let mut json_str = std::str::from_utf8(bytes).ok()?;
+    if json_str.starts_with(',') {
+        json_str = &json_str[1..];
+    }
+    let array: Vec<Value> = serde_json::from_str(json_str).ok()?;
+    let mut items = Vec::new();
+    for block in array {
+        let obj = block.as_object()?;
+        if let Some(color) = obj.get("color").and_then(Value::as_str) {
+            if color.starts_with('#') {
+                items.push(StatusItem::SetFg(color.to_string()));
+            }
+        }
+        if let Some(bg) = obj.get("background").and_then(Value::as_str) {
+            if bg.starts_with('#') {
+                items.push(StatusItem::SetBg(bg.to_string()));
+            }
+        }
+        if let Some(full_text) = obj.get("full_text").and_then(Value::as_str) {
+            items.push(StatusItem::Text(full_text.to_string()));
+        }
+        if !items.is_empty() {
+            items.push(StatusItem::ResetColors);
+            items.push(StatusItem::Text(" ".to_string()));
+        }
+    }
+    Some(items)
+}
+
 pub(crate) fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
+    if let Some(items) = parse_i3bar_json(bytes) {
+        return items;
+    }
+
     let mut items = Vec::new();
     let mut i = 0usize;
     let mut text_start = 0usize;
