@@ -58,6 +58,8 @@ enum SystrayEvt {
 pub struct WaylandSystrayRuntime {
     cmd_tx: Sender<SystrayCmd>,
     evt_rx: Receiver<SystrayEvt>,
+    /// Track if the systray thread is still running
+    thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl WaylandSystrayRuntime {
@@ -70,11 +72,27 @@ impl WaylandSystrayRuntime {
             run_systray_thread(cmd_rx, evt_tx);
         });
 
-        if spawn.is_err() {
-            return None;
-        }
+        let thread_handle = match spawn {
+            Ok(handle) => Some(handle),
+            Err(e) => {
+                log::warn!("wayland systray: failed to spawn thread: {e}");
+                return None;
+            }
+        };
 
-        Some(Self { cmd_tx, evt_rx })
+        Some(Self {
+            cmd_tx,
+            evt_rx,
+            thread_handle,
+        })
+    }
+
+    /// Check if the systray thread is still running
+    pub fn is_alive(&self) -> bool {
+        self.thread_handle
+            .as_ref()
+            .map(|h| !h.is_finished())
+            .unwrap_or(false)
     }
 
     pub fn poll_events(
@@ -242,13 +260,37 @@ pub fn draw_wayland_systray(
 }
 
 pub fn draw_wayland_systray_with_state(
-    core: &CoreCtx,
+    core: &mut CoreCtx,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &crate::types::Monitor,
     painter: &mut crate::bar::wayland::WaylandBarPainter,
 ) {
     let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
+
+    // Populate the hit cache with systray slots
+    let mon_id = mon.id();
+    if let Some(hit) = core.bar.monitor_hit_cache_mut(mon_id) {
+        hit.systray_slots = layout
+            .tray_slots
+            .iter()
+            .map(|s| crate::bar::SystrayHitSlot {
+                idx: s.idx,
+                start: s.start,
+                end: s.end,
+            })
+            .collect();
+        hit.systray_menu_slots = layout
+            .menu_slots
+            .iter()
+            .map(|s| crate::bar::SystrayHitSlot {
+                idx: s.idx,
+                start: s.start,
+                end: s.end,
+            })
+            .collect();
+    }
+
     let bg = core.g.status_scheme().bg;
     let bg_scheme = crate::bar::paint::BarScheme {
         fg: bg,
@@ -314,10 +356,15 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
     let conn = match Connection::session() {
         Ok(c) => c,
         Err(e) => {
-            log::warn!("wayland systray: no session bus: {e}");
+            log::error!(
+                "wayland systray: no session bus: {}. Check DBUS_SESSION_BUS_ADDRESS is set",
+                e
+            );
             return;
         }
     };
+
+    log::info!("wayland systray: connected to session bus");
 
     register_watcher_host(&conn);
     let mut known_ids: HashSet<String> = HashSet::new();

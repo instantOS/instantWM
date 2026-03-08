@@ -68,14 +68,17 @@ pub(crate) fn hit_test(
     }
 
     if core.g.cfg.show_systray && is_selmon && !hit.x11_bar {
-        if let Some(idx) =
-            crate::wayland_systray::hit_test_wayland_systray_menu_item(core, mon, local_x)
-        {
-            return BarPosition::SystrayMenuItem(idx);
+        // Check systray menu items first (they appear to the left of tray items)
+        for slot in &hit.systray_menu_slots {
+            if local_x >= slot.start && local_x < slot.end {
+                return BarPosition::SystrayMenuItem(slot.idx);
+            }
         }
-        if let Some(idx) = crate::wayland_systray::hit_test_wayland_systray_item(core, mon, local_x)
-        {
-            return BarPosition::SystrayItem(idx);
+        // Check systray tray items
+        for slot in &hit.systray_slots {
+            if local_x >= slot.start && local_x < slot.end {
+                return BarPosition::SystrayItem(slot.idx);
+            }
         }
     }
 
@@ -196,5 +199,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
         shutdown_end,
         status_hit_x,
         x11_bar: false,
+        systray_slots: Vec::new(),
+        systray_menu_slots: Vec::new(),
     }
 }

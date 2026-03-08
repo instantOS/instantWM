@@ -85,21 +85,6 @@ similar as possible), so users don't have to too much new stuff.
 
 
 
-There are a lot of different resize functions which largely do the same thing.
-Maybe instead, there should be one, with a resizeoptions struct?
-This could have fields like 'respect size hints', 'keep aspect ratio',
-'resizedirection' (existing enum) and all the nice stuff. That should also give
-the ability to make X11 and Wayland resizing more similar or even share code.
-I am aware this is a potentially big refactor, but it should simplify things.
-
-
-
-The systray does not show up on wayland on the drm backend. I start the
-compositor using gdm, open Telegram and there is nothing to the right of the
-window title where the telegram icon should be in the systray. Maybe this works
-differently between the nested wayland backend and the drm backend. They should
-share code if possible. Investigate and fix.
-
 
 
 figure out where to put client state, monitor? Monitor mnanager? Something
