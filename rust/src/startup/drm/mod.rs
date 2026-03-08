@@ -39,8 +39,8 @@ use self::gpu::build_output_surfaces;
 use self::input::{dispatch_libinput_event, raw_event_to_input_event};
 use self::render::render_drm_output;
 use self::state::{
-    sync_monitors_from_outputs_vec, SharedDrmState, CURSOR_SIZE, DEFAULT_SCREEN_HEIGHT,
-    DEFAULT_SCREEN_WIDTH,
+    sync_monitors_from_outputs_vec, OutputSurfaceEntry, SharedDrmState, CURSOR_SIZE,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH,
 };
 use super::autostart::run_autostart;
 use crate::startup::wayland::input::apply_pending_warp;
@@ -73,14 +73,16 @@ pub fn run() -> ! {
         crate::keyboard_layout::init_keyboard_layout(&mut ctx);
     }
 
-    let (primary_gpu_path, mut drm_device, drm_notifier, drm_fd) =
-        open_primary_gpu(&mut session, &seat_name);
+    let (
+        primary_gpu_path,
+        mut drm_device,
+        drm_notifier,
+        drm_fd,
+        gbm_device,
+        egl_display,
+        mut renderer,
+    ) = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
-
-    let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
-    let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
-    let egl_context = EGLContext::new(&egl_display).expect("EGLContext::new");
-    let mut renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
 
     state.attach_renderer(&mut renderer);
     state.init_dmabuf_global(
@@ -89,12 +91,7 @@ pub fn run() -> ! {
     );
     state.init_screencopy_manager();
 
-    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".to_string());
-    let cursor_size = std::env::var("XCURSOR_SIZE")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(CURSOR_SIZE);
-    let cursor_manager = CursorManager::new(&mut renderer, &cursor_theme, cursor_size);
+    let cursor_manager = init_cursor_manager(&mut renderer);
 
     let mut output_surfaces =
         build_output_surfaces(&mut drm_device, &mut renderer, &state, &gbm_device);
@@ -102,16 +99,7 @@ pub fn run() -> ! {
         state.space.map_output(&entry.output, (entry.x_offset, 0));
     }
 
-    let total_width = output_surfaces
-        .iter()
-        .map(|s| s.x_offset + s.width)
-        .max()
-        .unwrap_or(DEFAULT_SCREEN_WIDTH);
-    let total_height = output_surfaces
-        .iter()
-        .map(|s| s.height)
-        .max()
-        .unwrap_or(DEFAULT_SCREEN_HEIGHT);
+    let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
     sync_monitors_from_outputs_vec(&mut wm, &output_surfaces);
     {
@@ -119,13 +107,7 @@ pub fn run() -> ! {
         update_geom(&mut wm.ctx());
     }
 
-    let shared = Arc::new(Mutex::new(SharedDrmState::new(total_width, total_height)));
-    {
-        let mut s = shared.lock().unwrap();
-        for entry in &output_surfaces {
-            s.render_flags.insert(entry.crtc, true);
-        }
-    }
+    let shared = init_shared_state(&output_surfaces, total_width, total_height);
 
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
@@ -138,12 +120,130 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
     libinput_context.dispatch().ok();
 
-    let keyboard_handle = state.keyboard.clone();
-    let pointer_handle = state.pointer.clone();
+    let (keyboard_handle, pointer_handle) = (state.keyboard.clone(), state.pointer.clone());
 
-    let shared_session = Arc::clone(&shared);
-    let mut session_drm_device = drm_device;
+    setup_session_handlers(
+        &loop_handle,
+        notifier,
+        &shared,
+        &mut libinput_context,
+        drm_device,
+    );
+
+    setup_drm_vblank_handler(&loop_handle, drm_notifier, &shared);
+
+    run_autostart();
+    spawn_wayland_smoke_window();
+
+    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+    let start_time = std::time::Instant::now();
+    let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
+
+    run_event_loop(
+        event_loop,
+        &mut wm,
+        &mut state,
+        &mut libinput_context,
+        &shared,
+        &mut output_surfaces,
+        &mut renderer,
+        &cursor_manager,
+        &mut ipc_server,
+        &mut render_failures,
+        start_time,
+    );
+
+    exit(0);
+}
+
+/// Initialize GPU, EGL, and renderer.
+///
+/// This function is safety-critical: it handles raw file descriptors and
+/// unsafe EGL context creation. Do not reorder operations.
+fn init_gpu(
+    session: &mut LibSeatSession,
+    seat_name: &str,
+) -> (
+    std::path::PathBuf,
+    DrmDevice,
+    smithay::backend::drm::DrmDeviceNotifier,
+    DrmDeviceFd,
+    GbmDevice<DrmDeviceFd>,
+    EGLDisplay,
+    GlesRenderer,
+) {
+    let (primary_gpu_path, mut drm_device, drm_notifier, drm_fd) =
+        open_primary_gpu(session, seat_name);
+
+    let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
+    let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
+    let egl_context = EGLContext::new(&egl_display).expect("EGLContext::new");
+    let renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
+
+    (
+        primary_gpu_path,
+        drm_device,
+        drm_notifier,
+        drm_fd,
+        gbm_device,
+        egl_display,
+        renderer,
+    )
+}
+
+/// Initialize cursor manager from environment or defaults.
+fn init_cursor_manager(renderer: &mut GlesRenderer) -> CursorManager {
+    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".to_string());
+    let cursor_size = std::env::var("XCURSOR_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(CURSOR_SIZE);
+    CursorManager::new(renderer, &cursor_theme, cursor_size)
+}
+
+/// Compute total screen dimensions from output surfaces.
+fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> (i32, i32) {
+    let total_width = output_surfaces
+        .iter()
+        .map(|s| s.x_offset + s.width)
+        .max()
+        .unwrap_or(DEFAULT_SCREEN_WIDTH);
+    let total_height = output_surfaces
+        .iter()
+        .map(|s| s.height)
+        .max()
+        .unwrap_or(DEFAULT_SCREEN_HEIGHT);
+    (total_width, total_height)
+}
+
+/// Initialize shared DRM state with render flags for each CRTC.
+fn init_shared_state(
+    output_surfaces: &[OutputSurfaceEntry],
+    total_width: i32,
+    total_height: i32,
+) -> Arc<Mutex<SharedDrmState>> {
+    let shared = Arc::new(Mutex::new(SharedDrmState::new(total_width, total_height)));
+    {
+        let mut s = shared.lock().unwrap();
+        for entry in output_surfaces {
+            s.render_flags.insert(entry.crtc, true);
+        }
+    }
+    shared
+}
+
+/// Setup session pause/activate handlers for VT switching.
+fn setup_session_handlers(
+    loop_handle: &calloop::LoopHandle<WaylandState>,
+    notifier: smithay::backend::session::libseat::LibSeatSessionNotifier,
+    shared: &Arc<Mutex<SharedDrmState>>,
+    libinput_context: &mut Libinput,
+    drm_device: DrmDevice,
+) {
+    let shared_session = Arc::clone(shared);
     let mut session_libinput = libinput_context.clone();
+    let mut session_drm_device = drm_device;
+
     loop_handle
         .insert_source(notifier, move |event, _, _data| match event {
             SessionEvent::PauseSession => {
@@ -166,8 +266,15 @@ pub fn run() -> ! {
             }
         })
         .expect("session source");
+}
 
-    let shared_vblank = Arc::clone(&shared);
+/// Setup DRM vblank handler for render synchronization.
+fn setup_drm_vblank_handler(
+    loop_handle: &calloop::LoopHandle<WaylandState>,
+    drm_notifier: smithay::backend::drm::DrmDeviceNotifier,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    let shared_vblank = Arc::clone(shared);
     loop_handle
         .insert_source(drm_notifier, move |event, _metadata, _data| match event {
             DrmEvent::VBlank(crtc) => {
@@ -182,141 +289,226 @@ pub fn run() -> ! {
             }
         })
         .expect("drm notifier source");
+}
 
-    run_autostart();
-    spawn_wayland_smoke_window();
-
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
-    let start_time = std::time::Instant::now();
-    let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
-
+/// Run the main event loop.
+///
+/// This is the heart of the DRM backend. It handles:
+/// - Frame submission tracking
+/// - Libinput event dispatch
+/// - Layout arrangement
+/// - IPC command processing
+/// - Window animations
+/// - Cursor warp
+/// - DRM rendering
+#[allow(clippy::too_many_arguments)]
+fn run_event_loop(
+    mut event_loop: EventLoop<WaylandState>,
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    libinput_context: &mut Libinput,
+    shared: &Arc<Mutex<SharedDrmState>>,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    renderer: &mut GlesRenderer,
+    cursor_manager: &CursorManager,
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    render_failures: &mut HashMap<crtc::Handle, u32>,
+    start_time: std::time::Instant,
+) {
     let loop_signal: LoopSignal = event_loop.get_signal();
+    let keyboard_handle = state.keyboard.clone();
+    let pointer_handle = state.pointer.clone();
+
     event_loop
-        .run(Duration::from_millis(16), &mut state, move |state| {
+        .run(Duration::from_millis(16), state, move |state| {
             state.attach_globals(&mut wm.g);
 
-            let completed_crtcs = {
-                let mut s = shared.lock().unwrap();
-                std::mem::take(&mut s.completed_crtcs)
-            };
-            for crtc in completed_crtcs {
-                if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
-                    if let Err(err) = entry.surface.frame_submitted() {
-                        log::warn!("frame_submitted failed for {:?}: {err}", crtc);
-                    }
-                }
-            }
+            process_completed_crtcs(state, shared, output_surfaces);
 
-            if let Err(e) = libinput_context.dispatch() {
-                log::error!("libinput dispatch error: {e}");
-            }
-            let mut any_input = false;
-            for raw_event in libinput_context.by_ref() {
-                if let Some(event) = raw_event_to_input_event(raw_event) {
-                    if dispatch_libinput_event(
-                        event,
-                        state,
-                        &mut wm,
-                        &keyboard_handle,
-                        &pointer_handle,
-                        &shared,
-                    ) {
-                        any_input = true;
-                    }
-                }
-            }
-            if any_input {
-                shared.lock().unwrap().mark_all_dirty();
-            }
+            process_libinput_events(
+                libinput_context,
+                state,
+                wm,
+                &keyboard_handle,
+                &pointer_handle,
+                shared,
+            );
 
-            {
-                let mut ctx = wm.ctx();
-                if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
-                    let selected_monitor_id = ctx.g.selected_monitor_id();
-                    crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
-                }
-            }
-            if let Some(server) = ipc_server.as_mut() {
-                server.process_pending(&mut wm);
-                shared.lock().unwrap().mark_all_dirty();
-            }
-            state.sync_space_from_globals();
-            state.tick_window_animations();
-            if state.has_active_window_animations() {
-                shared.lock().unwrap().mark_all_dirty();
-            }
+            arrange_layout(wm, state);
 
-            // Apply any compositor-side cursor warp requested during this tick
-            // (e.g. from a warp-to-focus keybinding or IPC command).
-            {
-                let mut loc = shared.lock().unwrap().pointer_location;
-                if apply_pending_warp(state, &pointer_handle, &mut loc) {
-                    shared.lock().unwrap().pointer_location = loc;
-                    shared.lock().unwrap().mark_all_dirty();
-                }
-            }
+            process_ipc(ipc_server, wm, shared);
 
-            let (session_active, pointer_location, render_flags) = {
-                let mut s = shared.lock().unwrap();
-                let flags = s.render_flags.clone();
-                for flag in s.render_flags.values_mut() {
-                    *flag = false;
-                }
-                (s.session_active, s.pointer_location, flags)
-            };
+            process_animations(state, shared);
 
-            if session_active {
-                for entry in output_surfaces.iter_mut() {
-                    let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
-                    if !needs_render {
-                        continue;
-                    }
-                    let rendered = render_drm_output(
-                        &mut wm,
-                        state,
-                        &mut renderer,
-                        entry,
-                        &cursor_manager,
-                        pointer_location,
-                        start_time,
-                    );
+            process_cursor_warp(state, &pointer_handle, shared);
 
-                    if rendered {
-                        if let Some(failed_frames) = render_failures.remove(&entry.crtc) {
-                            if failed_frames >= 3 {
-                                log::info!(
-                                    "DRM render recovered on {:?} after {failed_frames} failed frames",
-                                    entry.crtc
-                                );
-                            }
-                        }
-                    } else {
-                        let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
-                        *failed_frames += 1;
-
-                        if *failed_frames == 1 || *failed_frames % 60 == 0 {
-                            log::warn!(
-                                "DRM render failed on {:?} (consecutive failures: {})",
-                                entry.crtc,
-                                *failed_frames
-                            );
-                        }
-
-                        // If rendering fails before a successful submission, no vblank may arrive
-                        // for this CRTC. Re-mark it dirty so the main loop keeps retrying and
-                        // transient failures do not deadlock output updates.
-                        shared.lock().unwrap().render_flags.insert(entry.crtc, true);
-                    }
-                }
-            }
+            render_outputs(
+                wm,
+                state,
+                renderer,
+                output_surfaces,
+                cursor_manager,
+                shared,
+                render_failures,
+                start_time,
+            );
 
             if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();
             }
         })
         .expect("event loop run");
+}
 
-    exit(0);
+/// Process frame submissions for completed CRTCs.
+fn process_completed_crtcs(
+    state: &mut WaylandState,
+    shared: &Arc<Mutex<SharedDrmState>>,
+    output_surfaces: &mut [OutputSurfaceEntry],
+) {
+    let completed_crtcs = {
+        let mut s = shared.lock().unwrap();
+        std::mem::take(&mut s.completed_crtcs)
+    };
+    for crtc in completed_crtcs {
+        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
+            if let Err(err) = entry.surface.frame_submitted() {
+                log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+            }
+        }
+    }
+}
+
+/// Process libinput events and dispatch to handlers.
+fn process_libinput_events(
+    libinput_context: &mut Libinput,
+    state: &mut WaylandState,
+    wm: &mut Wm,
+    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
+    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    if let Err(e) = libinput_context.dispatch() {
+        log::error!("libinput dispatch error: {e}");
+    }
+    let mut any_input = false;
+    for raw_event in libinput_context.by_ref() {
+        if let Some(event) = raw_event_to_input_event(raw_event) {
+            if dispatch_libinput_event(event, state, wm, keyboard_handle, pointer_handle, shared) {
+                any_input = true;
+            }
+        }
+    }
+    if any_input {
+        shared.lock().unwrap().mark_all_dirty();
+    }
+}
+
+/// Arrange layout if clients exist and no animations are active.
+fn arrange_layout(wm: &mut Wm, state: &mut WaylandState) {
+    let mut ctx = wm.ctx();
+    if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
+        let selected_monitor_id = ctx.g.selected_monitor_id();
+        crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
+    }
+}
+
+/// Process IPC commands.
+fn process_ipc(
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    wm: &mut Wm,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    if let Some(server) = ipc_server.as_mut() {
+        server.process_pending(wm);
+        shared.lock().unwrap().mark_all_dirty();
+    }
+}
+
+/// Process window animations.
+fn process_animations(state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
+    state.sync_space_from_globals();
+    state.tick_window_animations();
+    if state.has_active_window_animations() {
+        shared.lock().unwrap().mark_all_dirty();
+    }
+}
+
+/// Apply compositor-side cursor warp.
+fn process_cursor_warp(
+    state: &mut WaylandState,
+    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    let mut loc = shared.lock().unwrap().pointer_location;
+    if apply_pending_warp(state, pointer_handle, &mut loc) {
+        shared.lock().unwrap().pointer_location = loc;
+        shared.lock().unwrap().mark_all_dirty();
+    }
+}
+
+/// Render all outputs that need it.
+#[allow(clippy::too_many_arguments)]
+fn render_outputs(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    renderer: &mut GlesRenderer,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    cursor_manager: &CursorManager,
+    shared: &Arc<Mutex<SharedDrmState>>,
+    render_failures: &mut HashMap<crtc::Handle, u32>,
+    start_time: std::time::Instant,
+) {
+    let (session_active, pointer_location, render_flags) = {
+        let mut s = shared.lock().unwrap();
+        let flags = s.render_flags.clone();
+        for flag in s.render_flags.values_mut() {
+            *flag = false;
+        }
+        (s.session_active, s.pointer_location, flags)
+    };
+
+    if session_active {
+        for entry in output_surfaces.iter_mut() {
+            let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
+            if !needs_render {
+                continue;
+            }
+            let rendered = render_drm_output(
+                wm,
+                state,
+                renderer,
+                entry,
+                cursor_manager,
+                pointer_location,
+                start_time,
+            );
+
+            if rendered {
+                if let Some(failed_frames) = render_failures.remove(&entry.crtc) {
+                    if failed_frames >= 3 {
+                        log::info!(
+                            "DRM render recovered on {:?} after {failed_frames} failed frames",
+                            entry.crtc
+                        );
+                    }
+                }
+            } else {
+                let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
+                *failed_frames += 1;
+
+                if *failed_frames == 1 || *failed_frames % 60 == 0 {
+                    log::warn!(
+                        "DRM render failed on {:?} (consecutive failures: {})",
+                        entry.crtc,
+                        *failed_frames
+                    );
+                }
+
+                shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+            }
+        }
+    }
 }
 
 fn open_primary_gpu(
