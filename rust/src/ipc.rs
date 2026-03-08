@@ -253,7 +253,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadStatus(name) => {
-            let status = scratchpad_status(&ctx, name.as_deref().unwrap_or(""));
+            let status = scratchpad_status(ctx.g(), name.as_deref().unwrap_or(""));
             IpcResponse::ok(status)
         }
         IpcCommand::KeyboardLayout(index) => {

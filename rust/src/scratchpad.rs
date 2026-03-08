@@ -1,5 +1,6 @@
 use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::contexts::WmCtx;
+use crate::globals::Globals;
 use crate::layouts::{arrange, restack};
 use crate::types::*;
 
@@ -28,7 +29,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     };
 
-    if scratchpad_find(ctx, name).is_some() {
+    if scratchpad_find(ctx.g(), name).is_some() {
         return;
     }
 
@@ -92,7 +93,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
 }
 
 pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
-    let Some(found) = scratchpad_find(ctx, name) else {
+    let Some(found) = scratchpad_find(ctx.g(), name) else {
         return;
     };
 
@@ -134,7 +135,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 }
 
 pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
-    let Some(found) = scratchpad_find(ctx, name) else {
+    let Some(found) = scratchpad_find(ctx.g(), name) else {
         return;
     };
 
@@ -169,7 +170,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let found = match scratchpad_find(ctx, name) {
+    let found = match scratchpad_find(ctx.g(), name) {
         Some(w) => w,
         None => return,
     };
@@ -188,11 +189,11 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     }
 }
 
-pub fn scratchpad_status(ctx: &WmCtx, name: &str) -> String {
+pub fn scratchpad_status(g: &Globals, name: &str) -> String {
     if !name.is_empty() && name != "all" {
-        let found = scratchpad_find(ctx, name);
+        let found = scratchpad_find(g, name);
         let visible = found
-            .map(|w| ctx.g().clients.get(&w).map(|c| c.issticky).unwrap_or(false))
+            .map(|w| g.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
             .unwrap_or(false);
 
         return format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
@@ -201,8 +202,8 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) -> String {
     let mut status = String::from("ipc:scratchpads:");
     let mut first = true;
 
-    for mon in ctx.g().monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(&ctx.g().clients) {
+    for mon in g.monitors_iter_all() {
+        for (_c_win, c) in mon.iter_clients(&g.clients) {
             if c.is_scratchpad() {
                 if !first {
                     status.push(',');
@@ -224,13 +225,13 @@ pub fn scratchpad_status(ctx: &WmCtx, name: &str) -> String {
     status
 }
 
-fn scratchpad_find(ctx: &WmCtx, name: &str) -> Option<WindowId> {
+fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
     if name.is_empty() {
         return None;
     }
 
-    for mon in ctx.g().monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(&ctx.g().clients) {
+    for mon in g.monitors_iter_all() {
+        for (c_win, c) in mon.iter_clients(&g.clients) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);
             }

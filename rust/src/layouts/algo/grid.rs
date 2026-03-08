@@ -155,18 +155,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let cols = ((n as f32).sqrt() + 0.5) as u32;
 
     // Collect tiled clients first
-    let selected_tags = m.selected_tags();
-    let tiled_clients: Vec<_> = m
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let c = ctx.g_mut().clients.get(&win)?;
-            if !c.is_tiled(selected_tags) {
-                return None;
-            }
-            Some(win)
-        })
-        .collect();
+    let tiled = m.collect_tiled(&ctx.g.clients);
 
     for col in 0..cols {
         // Clients in this column: last column absorbs any remainder.
@@ -182,17 +171,11 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         for row in 0..cn {
             let idx = start_idx + row as usize;
-            if idx >= tiled_clients.len() {
+            if idx >= tiled.len() {
                 break;
             }
-            let win = tiled_clients[idx];
-
-            let border_width = ctx
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.border_width())
-                .unwrap_or(0);
+            let win = tiled[idx].win;
+            let border_width = tiled[idx].border_width;
 
             let cell_height = m.work_rect.h / cn as i32;
             let cell_x = m.work_rect.x + col as i32 * cell_width;

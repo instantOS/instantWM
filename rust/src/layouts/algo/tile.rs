@@ -25,13 +25,6 @@ use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
-struct TiledClient {
-    win: crate::types::WindowId,
-    border_width: i32,
-    total_height: i32,
-    geo_w: i32,
-}
-
 pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(
         ctx.g,
@@ -62,23 +55,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     // Collect tiled clients first
-    let selected_tags = m.selected_tags();
-    let tiled: Vec<TiledClient> = m
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let c = ctx.g_mut().clients.get(&win)?;
-            if !c.is_tiled(selected_tags) {
-                return None;
-            }
-            Some(TiledClient {
-                win,
-                border_width: c.border_width(),
-                total_height: c.total_height(),
-                geo_w: c.geo.w,
-            })
-        })
-        .collect();
+    let tiled = m.collect_tiled(&ctx.g.clients);
 
     let mut master_y_offset: u32 = 0;
     let mut stack_y_offset: u32 = 0;

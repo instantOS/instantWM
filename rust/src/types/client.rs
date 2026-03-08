@@ -195,6 +195,18 @@ impl Client {
     }
 }
 
+/// Lightweight snapshot of a tiled client for layout calculations.
+///
+/// Layout algorithms collect these once and then work purely with
+/// geometry — no further access to `ClientManager` needed.
+#[derive(Debug, Clone, Copy)]
+pub struct TiledClientInfo {
+    pub win: WindowId,
+    pub border_width: i32,
+    pub total_height: i32,
+    pub total_width: i32,
+}
+
 /// Iterator over a monitor's client list (focus order).
 ///
 /// Yields `(Window, &Client)` pairs so call-sites keep the window id and the

@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use crate::layouts::LayoutKind;
-use crate::types::client::{Client, ClientListIter, ClientStackIter};
+use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
@@ -226,6 +226,28 @@ impl Monitor {
             }
         }
         count
+    }
+
+    /// Collect tiled clients into lightweight info snapshots for layout use.
+    ///
+    /// This replaces the per-layout boilerplate of filtering + snapshotting.
+    pub fn collect_tiled(&self, clients: &HashMap<WindowId, Client>) -> Vec<TiledClientInfo> {
+        let selected_tags = self.selected_tags();
+        self.clients
+            .iter()
+            .filter_map(|&win| {
+                let c = clients.get(&win)?;
+                if !c.is_tiled(selected_tags) {
+                    return None;
+                }
+                Some(TiledClientInfo {
+                    win,
+                    border_width: c.border_width(),
+                    total_height: c.total_height(),
+                    total_width: c.total_width(),
+                })
+            })
+            .collect()
     }
 
     /// Get the currently selected client window, if any.

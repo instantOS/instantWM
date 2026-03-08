@@ -9,13 +9,6 @@ use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
-struct TiledClient {
-    win: crate::types::WindowId,
-    border_width: i32,
-    total_height: i32,
-    total_width: i32,
-}
-
 // ── deck ─────────────────────────────────────────────────────────────────────
 
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
@@ -36,23 +29,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     // Collect tiled clients first
-    let selected_tags = m.selected_tags();
-    let tiled: Vec<TiledClient> = m
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let c = ctx.g_mut().clients.get(&win)?;
-            if !c.is_tiled(selected_tags) {
-                return None;
-            }
-            Some(TiledClient {
-                win,
-                border_width: c.border_width(),
-                total_height: c.total_height(),
-                total_width: c.total_width(),
-            })
-        })
-        .collect();
+    let tiled = m.collect_tiled(&ctx.g.clients);
 
     let mut master_column_offset: u32 = 0;
     for (i, client) in tiled.iter().enumerate() {
@@ -113,23 +90,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         (m.work_rect.h, m.work_rect.w, m.work_rect.y)
     };
 
-    let selected_tags = m.selected_tags();
-    let tiled: Vec<TiledClient> = m
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let c = ctx.g_mut().clients.get(&win)?;
-            if !c.is_tiled(selected_tags) {
-                return None;
-            }
-            Some(TiledClient {
-                win,
-                border_width: c.border_width(),
-                total_height: c.total_height(),
-                total_width: c.total_width(),
-            })
-        })
-        .collect();
+    let tiled = m.collect_tiled(&ctx.g.clients);
 
     let mut master_row_offset: i32 = 0;
     let mut tx: i32 = m.work_rect.x;
@@ -201,23 +162,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         (m.work_rect.h, m.work_rect.h, m.work_rect.y)
     };
 
-    let selected_tags = m.selected_tags();
-    let tiled: Vec<TiledClient> = m
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let c = ctx.g_mut().clients.get(&win)?;
-            if !c.is_tiled(selected_tags) {
-                return None;
-            }
-            Some(TiledClient {
-                win,
-                border_width: c.border_width(),
-                total_height: c.total_height(),
-                total_width: c.total_width(),
-            })
-        })
-        .collect();
+    let tiled = m.collect_tiled(&ctx.g.clients);
 
     let mut master_row_offset: i32 = 0;
     let tx: i32 = m.work_rect.x;
