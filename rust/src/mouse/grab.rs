@@ -205,7 +205,7 @@ pub fn mouse_drag_loop<F>(
             }
 
             x11rb::protocol::Event::MotionNotify(m) => {
-                if m.time - last_time <= crate::constants::animation::MOUSE_EVENT_RATE {
+                if m.time - last_time <= 1000 / crate::constants::animation::MOUSE_EVENT_RATE {
                     continue;
                 }
                 last_time = m.time;
