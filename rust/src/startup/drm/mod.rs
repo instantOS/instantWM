@@ -13,6 +13,7 @@ use std::time::Duration;
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
+use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
@@ -84,6 +85,14 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
     libinput_context.dispatch().ok();
 
+    let (libinput_tx, libinput_rx) = std::sync::mpsc::channel();
+    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+    loop_handle
+        .insert_source(libinput_backend, move |mut event, _, _state| {
+            let _ = libinput_tx.send(event);
+        })
+        .expect("failed to insert libinput source");
+
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
@@ -149,6 +158,7 @@ pub fn run() -> ! {
                 &pointer_handle,
                 &mut ipc_server,
                 &mut renderer,
+                &libinput_rx,
                 &cursor_manager,
                 start_time,
                 &mut render_failures,
@@ -273,6 +283,9 @@ fn tick(
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     renderer: &mut GlesRenderer,
+    libinput_rx: &std::sync::mpsc::Receiver<
+        smithay::backend::input::InputEvent<LibinputInputBackend>,
+    >,
     cursor_manager: &CursorManager,
     start_time: std::time::Instant,
     render_failures: &mut HashMap<crtc::Handle, u32>,
@@ -284,7 +297,7 @@ fn tick(
         state,
         wm,
         shared,
-        libinput_context,
+        libinput_rx,
         keyboard_handle,
         pointer_handle,
     );
@@ -334,20 +347,16 @@ fn process_libinput_events(
     state: &mut WaylandState,
     wm: &mut Wm,
     shared: &SharedDrm,
-    libinput_context: &mut Libinput,
+    libinput_rx: &std::sync::mpsc::Receiver<
+        smithay::backend::input::InputEvent<LibinputInputBackend>,
+    >,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
 ) {
-    if let Err(e) = libinput_context.dispatch() {
-        log::error!("libinput dispatch error: {e}");
-    }
-
     let mut any_input = false;
-    for raw_event in libinput_context.by_ref() {
-        if let Some(event) = raw_event_to_input_event(raw_event) {
-            if dispatch_libinput_event(event, state, wm, keyboard_handle, pointer_handle, shared) {
-                any_input = true;
-            }
+    while let Ok(event) = libinput_rx.try_recv() {
+        if dispatch_libinput_event(event, state, wm, keyboard_handle, pointer_handle, shared) {
+            any_input = true;
         }
     }
 
