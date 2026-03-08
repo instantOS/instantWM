@@ -104,11 +104,15 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if m.nmaster == 1 && n > 1 {
-                mw = client.geo_w + client.border_width * 2;
+                if let Some(c) = ctx.g_mut().clients.get(&client.win) {
+                    mw = c.geo.w + c.border_width * 2;
+                }
             }
 
-            if master_y_offset as i32 + client.total_height < m.work_rect.h {
-                master_y_offset += client.total_height as u32;
+            if let Some(c) = ctx.g.clients.get(&client.win) {
+                if master_y_offset as i32 + c.total_height() < m.work_rect.h {
+                    master_y_offset += c.total_height() as u32;
+                }
             }
         } else {
             let h = (m.work_rect.h - stack_y_offset as i32) / (n - i as u32) as i32;
@@ -126,8 +130,10 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            if stack_y_offset as i32 + client.total_height < m.work_rect.h {
-                stack_y_offset += client.total_height as u32;
+            if let Some(c) = ctx.g.clients.get(&client.win) {
+                if stack_y_offset as i32 + c.total_height() < m.work_rect.h {
+                    stack_y_offset += c.total_height() as u32;
+                }
             }
         }
     }

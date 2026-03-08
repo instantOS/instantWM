@@ -71,7 +71,9 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 false,
             );
 
-            master_column_offset += client.total_height as u32;
+            if let Some(c) = ctx.g.clients.get(&client.win) {
+                master_column_offset += c.total_height() as u32;
+            }
         } else {
             resize(
                 ctx,
@@ -149,7 +151,9 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            master_row_offset += client.total_width;
+            if let Some(c) = ctx.g.clients.get(&client.win) {
+                master_row_offset += c.total_width();
+            }
         } else {
             let h = m.work_rect.h - mh;
             animate_client(
@@ -166,7 +170,9 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if tw != m.work_rect.w {
-                tx += client.total_width;
+                if let Some(c) = ctx.g.clients.get(&client.win) {
+                    tx += c.total_width();
+                }
             }
         }
     }
@@ -233,7 +239,9 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            master_row_offset += client.total_width;
+            if let Some(c) = ctx.g.clients.get(&client.win) {
+                master_row_offset += c.total_width();
+            }
         } else {
             animate_client(
                 ctx,
@@ -249,7 +257,9 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if th != m.work_rect.h {
-                stack_y_offset += client.total_height;
+                if let Some(c) = ctx.g.clients.get(&client.win) {
+                    stack_y_offset += c.total_height();
+                }
             }
         }
     }

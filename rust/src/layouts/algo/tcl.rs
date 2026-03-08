@@ -122,7 +122,11 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             raw_h
         };
 
-        let col_x = m.work_rect.x + mw + sw;
+        let col_x = if n < 3 {
+            m.work_rect.x + mw
+        } else {
+            m.work_rect.x + mw + sw
+        };
         let mut y = m.work_rect.y;
 
         // Stack clients start at index 1
