@@ -13,6 +13,7 @@ use std::time::Duration;
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
+use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
@@ -120,7 +121,16 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
     libinput_context.dispatch().ok();
 
-    let (keyboard_handle, pointer_handle) = (state.keyboard.clone(), state.pointer.clone());
+    let (libinput_tx, libinput_rx) = std::sync::mpsc::channel();
+    let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+    loop_handle
+        .insert_source(libinput_backend, move |mut event, _, _state| {
+            let _ = libinput_tx.send(event);
+        })
+        .expect("failed to insert libinput source");
+
+    let keyboard_handle = state.keyboard.clone();
+    let pointer_handle = state.pointer.clone();
 
     setup_session_handlers(
         &loop_handle,
@@ -151,6 +161,7 @@ pub fn run() -> ! {
         &mut ipc_server,
         &mut render_failures,
         start_time,
+        libinput_rx,
     );
 
     exit(0);
@@ -314,6 +325,9 @@ fn run_event_loop(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
+    libinput_rx: std::sync::mpsc::Receiver<
+        smithay::backend::input::InputEvent<LibinputInputBackend>,
+    >,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
     let keyboard_handle = state.keyboard.clone();
@@ -329,9 +343,10 @@ fn run_event_loop(
                 libinput_context,
                 state,
                 wm,
+                shared,
+                &libinput_rx,
                 &keyboard_handle,
                 &pointer_handle,
-                shared,
             );
 
             arrange_layout(wm, state);
@@ -350,7 +365,6 @@ fn run_event_loop(
                 cursor_manager,
                 shared,
                 render_failures,
-                start_time,
             );
 
             if state.display_handle.flush_clients().is_err() {
@@ -384,19 +398,20 @@ fn process_libinput_events(
     libinput_context: &mut Libinput,
     state: &mut WaylandState,
     wm: &mut Wm,
+    shared: &Arc<Mutex<SharedDrmState>>,
+    libinput_rx: &std::sync::mpsc::Receiver<
+        smithay::backend::input::InputEvent<LibinputInputBackend>,
+    >,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
-    shared: &Arc<Mutex<SharedDrmState>>,
 ) {
     if let Err(e) = libinput_context.dispatch() {
         log::error!("libinput dispatch error: {e}");
     }
     let mut any_input = false;
-    for raw_event in libinput_context.by_ref() {
-        if let Some(event) = raw_event_to_input_event(raw_event) {
-            if dispatch_libinput_event(event, state, wm, keyboard_handle, pointer_handle, shared) {
-                any_input = true;
-            }
+    while let Ok(event) = libinput_rx.try_recv() {
+        if dispatch_libinput_event(event, state, wm, keyboard_handle, pointer_handle, shared) {
+            any_input = true;
         }
     }
     if any_input {
