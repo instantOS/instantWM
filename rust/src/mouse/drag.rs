@@ -174,12 +174,10 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     crate::layouts::restack(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = ctx
-        .g()
-        .clients
-        .get(&selected_window)
-        .map(|c| c.snap_status != SnapPosition::None)
-        .unwrap_or(false);
+    let is_snapped = match ctx.g().clients.get(&selected_window) {
+        Some(c) => c.snap_status != SnapPosition::None,
+        None => return None,
+    };
     if is_snapped {
         reset_snap(ctx, selected_window);
         return None;
@@ -275,12 +273,10 @@ pub fn on_motion(
 
     let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
-    let (mut is_floating, mut drag_geo) = ctx
-        .g()
-        .clients
-        .get(&win)
-        .map(|c| (c.isfloating, c.geo))
-        .unwrap_or((false, Rect::default()));
+    let (mut is_floating, mut drag_geo) = match ctx.g().clients.get(&win) {
+        Some(c) => (c.isfloating, c.geo),
+        None => return,
+    };
 
     maybe_promote_tiled_drag_to_floating(
         ctx,
@@ -419,12 +415,10 @@ fn handle_bar_drop(
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = ctx
-        .g()
-        .clients
-        .get(&win)
-        .map(|c| c.isfloating)
-        .unwrap_or(false);
+    let was_floating = match ctx.g().clients.get(&win) {
+        Some(c) => c.isfloating,
+        None => return,
+    };
 
     if let BarPosition::Tag(tag_idx) = position {
         // Tile first (no arrange), then tag.
@@ -588,23 +582,13 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             let Some((root_x, root_y)) = wl.wayland.backend.pointer_location() else {
                 return;
             };
-            let geo = wl
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.geo)
-                .unwrap_or_default();
+            let (geo, is_floating) = match wl.core.g.clients.get(&win) {
+                Some(c) => (c.geo, c.isfloating),
+                None => return,
+            };
 
             // Ensure the window is floating so the move makes sense.
-            if !wl
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.isfloating)
-                .unwrap_or(false)
-            {
+            if !is_floating {
                 super::super::floating::set_floating_in_place(
                     &mut WmCtx::Wayland(wl.reborrow()),
                     win,
@@ -897,24 +881,19 @@ pub fn title_drag_begin(
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
-        if ctx
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.is_true_fullscreen())
-            .unwrap_or(false)
-        {
+        let is_true_fullscreen = match ctx.g.clients.get(&win) {
+            Some(c) => c.is_true_fullscreen(),
+            None => return false,
+        };
+        if is_true_fullscreen {
             return false;
         }
         crate::focus::focus_soft(ctx, Some(win));
     }
 
     let sel = ctx.selected_client();
-    let (win_start_geo, drop_restore_geo) = ctx
-        .g
-        .clients
-        .get(&win)
-        .map(|c| {
+    let (win_start_geo, drop_restore_geo) = match ctx.g.clients.get(&win) {
+        Some(c) => {
             let restore = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
                 c.geo
             } else if c.float_geo.w > 0 && c.float_geo.h > 0 {
@@ -923,8 +902,9 @@ pub fn title_drag_begin(
                 c.geo
             };
             (c.geo, restore)
-        })
-        .unwrap_or((Rect::default(), Rect::default()));
+        }
+        None => return false,
+    };
     ctx.g_mut().drag.title = crate::globals::TitleDragState {
         active: true,
         win,
@@ -953,12 +933,10 @@ fn promote_to_floating(
     win: WindowId,
     center_under_ptr: Option<(i32, i32)>,
 ) -> (Rect, bool) {
-    let (is_floating, geo, float_geo) = ctx
-        .g()
-        .clients
-        .get(&win)
-        .map(|c| (c.isfloating, c.geo, c.float_geo))
-        .unwrap_or((false, Rect::default(), Rect::default()));
+    let (is_floating, geo, float_geo) = match ctx.g().clients.get(&win) {
+        Some(c) => (c.isfloating, c.geo, c.float_geo),
+        None => return (Rect::default(), false),
+    };
 
     if is_floating {
         return (geo, false);
@@ -1009,12 +987,10 @@ fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32)
     let mut new_x = td_win_start_geo.x + (root_x - td_start_x);
     let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
 
-    let (is_floating, geo) = ctx
-        .g()
-        .clients
-        .get(&win)
-        .map(|c| (c.isfloating, c.geo))
-        .unwrap_or((false, Rect::default()));
+    let (is_floating, geo) = match ctx.g().clients.get(&win) {
+        Some(c) => (c.isfloating, c.geo),
+        None => return true,
+    };
 
     if is_floating {
         let client_clone = ctx.g_mut().clients.get(&win).cloned();
@@ -1057,12 +1033,10 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let dir =
             crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
-        let bw = ctx
-            .g()
-            .clients
-            .get(&win)
-            .map(|c| c.border_width)
-            .unwrap_or(0);
+        let bw = match ctx.g().clients.get(&win) {
+            Some(c) => c.border_width,
+            None => return true,
+        };
         let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
         let warp_x = current_geo.x + x_off;
         let warp_y = current_geo.y + y_off;

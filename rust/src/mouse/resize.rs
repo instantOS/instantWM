@@ -60,15 +60,13 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(win) = ctx.selected_client() else {
         return;
     };
-    let is_blocked = ctx
-        .g()
-        .clients
-        .get(&win)
-        .map(|c| c.is_true_fullscreen())
-        .unwrap_or(false);
+    let is_blocked = match ctx.g().clients.get(&win) {
+        Some(c) => c.is_true_fullscreen(),
+        None => return,
+    };
     if is_blocked {
         return;
-    };
+    }
 
     match ctx {
         WmCtx::X11(ctx_x11) => {
@@ -198,27 +196,20 @@ pub fn resize_mouse_directional(
     let Some(win) = ctx.core.selected_client() else {
         return;
     };
-    let is_blocked = ctx
-        .core
-        .client(win)
-        .map(|c| c.is_true_fullscreen())
-        .unwrap_or(false);
+    let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) = match ctx.core.client(win) {
+        Some(c) => (
+            c.is_true_fullscreen(),
+            c.geo.x,
+            c.geo.y,
+            c.geo.x + c.geo.w,
+            c.geo.y + c.geo.h,
+            c.border_width,
+        ),
+        None => return,
+    };
     if is_blocked {
         return;
-    };
-
-    let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
-        match ctx.core.client(win) {
-            Some(c) => (
-                c.geo.x,
-                c.geo.y,
-                c.geo.x + c.geo.w,
-                c.geo.y + c.geo.h,
-                c.border_width,
-            ),
-            None => return,
-        }
-    };
+    }
 
     let dir = direction.unwrap_or(ResizeDirection::BottomRight);
     let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
@@ -267,7 +258,10 @@ pub fn resize_mouse_directional(
             if should_toggle {
                 with_wm_ctx_x11(ctx, |ctx| toggle_floating(ctx));
             } else {
-                let is_floating = ctx.core.client(win).map(|c| c.isfloating).unwrap_or(false);
+                let is_floating = match ctx.core.client(win) {
+                    Some(c) => c.isfloating,
+                    None => return false,
+                };
                 let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();
 
                 if !has_tiling || is_floating {
@@ -326,23 +320,13 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 }
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let is_fullscreen = ctx
-        .core
-        .g
-        .clients
-        .get(&win)
-        .map(|c| c.is_fullscreen)
-        .unwrap_or(false);
+    let (is_fullscreen, orig_left, orig_top) = match ctx.core.g.clients.get(&win) {
+        Some(c) => (c.is_fullscreen, c.geo.x, c.geo.y),
+        None => return,
+    };
     if is_fullscreen {
         return;
-    };
-
-    let (orig_left, orig_top) = {
-        match ctx.core.client(win) {
-            Some(c) => (c.geo.x, c.geo.y),
-            None => return,
-        }
-    };
+    }
 
     with_wm_ctx_x11(ctx, |ctx| {
         let selmon_id = ctx.g().selected_monitor_id();

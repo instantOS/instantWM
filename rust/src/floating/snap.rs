@@ -156,21 +156,6 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     };
 
     // Save geometry before entering snap for the first time.
-    if snap_status == SnapPosition::None {
-        if ctx_x11
-            .core
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.isfloating)
-            .unwrap_or(false)
-        {
-            if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
-                client.float_geo = client.geo;
-            }
-        }
-    }
-
     let new_snap = {
         let row = snap_pos_to_index(snap_status);
         let col = direction as usize;
@@ -178,6 +163,9 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     };
 
     let monitor_id = if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
+        if snap_status == SnapPosition::None && client.isfloating {
+            client.float_geo = client.geo;
+        }
         client.snap_status = new_snap;
         client.monitor_id
     } else {
