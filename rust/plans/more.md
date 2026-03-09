@@ -89,3 +89,20 @@ similar as possible), so users don't have to too much new stuff.
 
 figure out where to put client state, monitor? Monitor mnanager? Something
 erlse? Is there a mess?
+
+
+Pattern 1: Default then require
+// backend/x11/lifecycle.rs:267
+let isfixed = g.clients.get(&w).map(|c| c.isfixed).unwrap_or(false);  // defaults to false
+let mut should_raise = false;
+if let Some(client) = g.clients.get_mut(&w) {  // but client MUST exist later
+    // ...
+}
+This is logically inconsistent - if we require the client later, we should require it upfront.
+Pattern 2: Silently ignore missing clients
+// floating/snap.rs:160-170
+if ctx.core.g.clients.get(&win).map(|c| c.isfloating).unwrap_or(false) {
+    if let Some(client) = ctx.core.g.clients.get_mut(&win) {  // silently does nothing if client gone
+        client.float_geo = client.geo;
+    }
+}
