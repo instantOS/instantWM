@@ -200,41 +200,7 @@ pub fn get_wayland_systray_width_with_state(
     width
 }
 
-pub fn hit_test_wayland_systray_item(core: &CoreCtx, mon: &Monitor, local_x: i32) -> Option<usize> {
-    // Without wayland_systray state this hit test cannot succeed.
-    // Use hit_test_wayland_systray_item_with_state for real hit testing.
-    let _ = (core, mon, local_x);
-    None
-}
-
-pub fn hit_test_wayland_systray_item_with_state(
-    core: &CoreCtx,
-    wayland_systray: &WaylandSystray,
-    wayland_systray_menu: Option<&WaylandSystrayMenu>,
-    mon: &Monitor,
-    local_x: i32,
-) -> Option<usize> {
-    let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
-    for slot in &layout.tray_slots {
-        if local_x >= slot.start && local_x < slot.end {
-            return Some(slot.idx);
-        }
-    }
-    None
-}
-
 pub fn hit_test_wayland_systray_menu_item(
-    core: &CoreCtx,
-    mon: &Monitor,
-    local_x: i32,
-) -> Option<usize> {
-    // Without wayland_systray state this hit test cannot succeed.
-    // Use hit_test_wayland_systray_menu_item_with_state for real hit testing.
-    let _ = (core, mon, local_x);
-    None
-}
-
-pub fn hit_test_wayland_systray_menu_item_with_state(
     core: &CoreCtx,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
@@ -251,15 +217,6 @@ pub fn hit_test_wayland_systray_menu_item_with_state(
 }
 
 pub fn draw_wayland_systray(
-    core: &CoreCtx,
-    mon: &crate::types::Monitor,
-    painter: &mut crate::bar::wayland::WaylandBarPainter,
-) {
-    // No-op stub: use draw_wayland_systray_with_state for actual rendering.
-    let _ = (core, mon, painter);
-}
-
-pub fn draw_wayland_systray_with_state(
     core: &mut CoreCtx,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,

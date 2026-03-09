@@ -537,7 +537,7 @@ pub fn render_bar_buffers(
         draw_bar_common(core, None, None, None, mon_idx, painter);
         if core.g.cfg.show_systray {
             if let Some(mon) = core.g.monitor(mon_idx).cloned() {
-                crate::wayland_systray::draw_wayland_systray_with_state(
+                crate::wayland_systray::draw_wayland_systray(
                     core,
                     wayland_systray,
                     wayland_systray_menu,
