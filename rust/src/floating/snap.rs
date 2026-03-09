@@ -148,24 +148,21 @@ fn snap_pos_to_index(s: SnapPosition) -> usize {
 /// If the window is not currently snapped, its current geometry is saved first
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
-    let snap_status = match ctx.client(win) {
-        Some(c) => c.snap_status,
-        None => return,
-    };
+    let (monitor_id, snap_status) = if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+        let status = client.snap_status;
 
-    // Save geometry before entering snap for the first time.
-    let new_snap = {
-        let row = snap_pos_to_index(snap_status);
-        let col = direction as usize;
-        SNAP_MATRIX[row][col]
-    };
+        // Save geometry before entering snap for the first time.
+        let new_snap = {
+            let row = snap_pos_to_index(status);
+            let col = direction as usize;
+            SNAP_MATRIX[row][col]
+        };
 
-    let monitor_id = if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-        if snap_status == SnapPosition::None && client.is_floating {
+        if status == SnapPosition::None && client.is_floating {
             client.float_geo = client.geo;
         }
         client.snap_status = new_snap;
-        client.monitor_id
+        (client.monitor_id, status)
     } else {
         return;
     };

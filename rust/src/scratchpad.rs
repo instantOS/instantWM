@@ -137,7 +137,7 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         return;
     };
 
-    let Some(client) = ctx.g_mut().clients.get(&found) else {
+    let Some(client) = ctx.g_mut().clients.get_mut(&found) else {
         return;
     };
     if !client.issticky {
@@ -145,10 +145,8 @@ pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     }
     let monitor_id = client.monitor_id;
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
-        client.issticky = false;
-        client.tags = SCRATCHPAD_MASK;
-    }
+    client.issticky = false;
+    client.tags = SCRATCHPAD_MASK;
 
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(monitor_id));
@@ -171,12 +169,10 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_sticky = ctx
-        .g
-        .clients
-        .get(&found)
-        .map(|c| c.issticky)
-        .unwrap_or(false);
+    let Some(client) = ctx.g().clients.get(&found) else {
+        return;
+    };
+    let is_sticky = client.issticky;
 
     if is_sticky {
         scratchpad_hide_name(ctx, name);
@@ -190,8 +186,7 @@ pub fn scratchpad_status(g: &Globals, name: &str) -> String {
         let found = scratchpad_find(g, name);
         let visible = found
             .and_then(|w| g.clients.get(&w))
-            .map(|c| c.issticky)
-            .unwrap_or(false);
+            .is_some_and(|c| c.issticky);
 
         return format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
     }

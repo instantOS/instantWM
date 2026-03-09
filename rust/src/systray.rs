@@ -140,7 +140,7 @@ pub fn update_systray_icon_state(
     }
 
     let (current_tags, _has_systray) = {
-        if let Some(client) = core.g.clients.get(&icon_win) {
+        if let Some(client) = core.g.clients.get_mut(&icon_win) {
             (client.tags, systray.is_some())
         } else {
             return;

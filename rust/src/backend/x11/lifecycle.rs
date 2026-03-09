@@ -200,25 +200,22 @@ fn configure_client_border(
     is_monocle: bool,
 ) {
     let bar_height = g.cfg.bar_height;
-    let (isfloating, client_width, client_height) = g
-        .clients
-        .get(&w)
-        .map(|c| (c.is_floating, c.geo.w, c.geo.h))
-        .unwrap_or((false, 0, 0));
 
-    let border_width = if !isfloating
+    let Some(client) = g.clients.get_mut(&w) else {
+        return;
+    };
+
+    let border_width = if !client.is_floating
         && is_monocle
-        && client_width > mon_monitor_rect.w - 30
-        && client_height > mon_monitor_rect.h - 30 - bar_height
+        && client.geo.w > mon_monitor_rect.w - 30
+        && client.geo.h > mon_monitor_rect.h - 30 - bar_height
     {
         0
     } else {
         borderpx
     };
 
-    if let Some(client) = g.clients.get_mut(&w) {
-        client.border_width = border_width;
-    }
+    client.border_width = border_width;
 
     let x11_win: Window = w.into();
     let pixel = x11_runtime.borderscheme.normal.bg.pixel();

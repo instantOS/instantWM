@@ -56,30 +56,19 @@ pub fn toggle_animated(core: &mut CoreCtx, action: ToggleAction) {
 }
 
 pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
-    let (old_bw, _mon_id) = {
-        if let Some(c) = core.g.clients.get(&win) {
-            (c.border_width, c.monitor_id)
-        } else {
-            return;
-        }
-    };
-
     let new_bw = width;
-    let d = old_bw - new_bw;
-
-    {
-        if let Some(client) = core.g.clients.get_mut(&win) {
-            client.border_width = new_bw;
-        }
-    }
 
     let geo = {
-        if let Some(c) = core.g.clients.get(&win) {
+        if let Some(client) = core.g.clients.get_mut(&win) {
+            let old_bw = client.border_width;
+            let d = old_bw - new_bw;
+            client.border_width = new_bw;
+
             Rect {
-                x: c.geo.x,
-                y: c.geo.y,
-                w: c.geo.w + 2 * d,
-                h: c.geo.h + 2 * d,
+                x: client.geo.x,
+                y: client.geo.y,
+                w: client.geo.w + 2 * d,
+                h: client.geo.h + 2 * d,
             }
         } else {
             return;
