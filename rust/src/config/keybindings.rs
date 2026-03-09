@@ -3,7 +3,6 @@
 use std::rc::Rc;
 
 use crate::animation;
-use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};

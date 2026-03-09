@@ -158,41 +158,6 @@ pub fn update_bars(
     }
 }
 
-pub fn toggle_bar(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&Systray>,
-) {
-    let animated = core.g.animated;
-    let client_count = core.g.clients.len() as i32;
-    let mut tmp_no_anim = false;
-    if animated && client_count > 6 {
-        core.g.animated = false;
-        tmp_no_anim = true;
-    }
-
-    let bar_height = core.g.cfg.bar_height;
-    let selmon = core.g.selected_monitor_mut();
-    selmon.showbar = !selmon.showbar;
-
-    let current_tag = selmon.current_tag;
-    if current_tag > 0 && current_tag <= selmon.tags.len() {
-        selmon.tags[current_tag - 1].showbar = selmon.showbar;
-    }
-
-    selmon.update_bar_position(bar_height);
-
-    let selmon_idx = core.g.selected_monitor_id();
-    if let Some(m) = core.g.monitor(selmon_idx).cloned() {
-        resize_bar_win(core, x11, &*x11_runtime, systray, &m);
-    }
-
-    if tmp_no_anim {
-        core.g.animated = true;
-    }
-}
-
 fn get_text_prop(x11: &X11BackendRef, win: Window, atom: u32) -> Option<String> {
     let conn = x11.conn;
     let reply = conn

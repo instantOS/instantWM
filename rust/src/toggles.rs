@@ -1,6 +1,4 @@
-use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::globals::X11RuntimeConfig;
 use crate::keyboard::grab_keys_x11;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -148,21 +146,12 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     }
 }
 
+//TODO: this is an unnecessary wrapper
 pub fn redraw_win(ctx: &mut WmCtx) {
     ctx.request_bar_update(None);
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
-    if let WmCtx::X11(x11) = ctx {
-        crate::bar::x11::toggle_bar(
-            &mut x11.core,
-            &x11.x11,
-            x11.x11_runtime,
-            x11.systray.as_deref(),
-        );
-        return;
-    }
-
     let animated = ctx.g().animated;
     let client_count = ctx.g().clients.len() as i32;
     let mut tmp_no_anim = false;
@@ -183,7 +172,31 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     selmon.update_bar_position(bar_height);
 
     let selmon_idx = ctx.g().selected_monitor_id();
-    ctx.request_bar_update(Some(selmon_idx));
+
+    match ctx {
+        WmCtx::X11(x11) => {
+            if let Some(m) = x11.core.g.monitors.get(selmon_idx).cloned() {
+                crate::bar::x11::resize_bar_win(
+                    &x11.core,
+                    &x11.x11,
+                    &*x11.x11_runtime,
+                    x11.systray.as_deref(),
+                    &m,
+                );
+            }
+            x11.core.bar.mark_dirty();
+            crate::bar::draw_bar(
+                &mut x11.core,
+                &x11.x11,
+                x11.x11_runtime,
+                x11.systray.as_deref(),
+                selmon_idx,
+            );
+        }
+        WmCtx::Wayland(_) => {
+            ctx.request_bar_update(Some(selmon_idx));
+        }
+    }
 
     if tmp_no_anim {
         ctx.g_mut().animated = true;

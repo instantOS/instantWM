@@ -34,6 +34,31 @@ pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
 pub const XEMBED_MODALITY_ON: u32 = 10;
 pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
+fn send_xembed_event(
+    ctx: &mut WmCtxX11<'_>,
+    icon_win: WindowId,
+    systray_win: WindowId,
+    msg: u32,
+    a: i64,
+    b: i64,
+) {
+    let xembed_atom = ctx.x11_runtime.xatom.xembed;
+    let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
+    crate::client::send_event_x11(
+        &mut ctx.core,
+        &ctx.x11,
+        ctx.x11_runtime,
+        icon_win,
+        xembed_atom,
+        structure_notify_mask,
+        CURRENT_TIME as i64,
+        msg as i64,
+        a,
+        u32::from(systray_win) as i64,
+        b,
+    );
+}
+
 #[inline]
 fn win_to_client_ctx(core: &crate::contexts::CoreCtx, win: WindowId) -> Option<WindowId> {
     if core.g.clients.contains(&win) {
@@ -723,59 +748,36 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let _ = conn.flush();
 
-    let xembed_atom = ctx.x11_runtime.xatom.xembed;
-    let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
-
-    crate::client::send_event_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
+    send_xembed_event(
+        ctx,
         icon_win,
-        xembed_atom,
-        structure_notify_mask,
-        CURRENT_TIME as i64,
-        XEMBED_EMBEDDED_NOTIFY as i64,
+        systray_win,
+        XEMBED_EMBEDDED_NOTIFY,
         0,
-        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
-    crate::client::send_event_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
+    send_xembed_event(
+        ctx,
         icon_win,
-        xembed_atom,
-        structure_notify_mask,
-        CURRENT_TIME as i64,
-        XEMBED_FOCUS_IN as i64,
+        systray_win,
+        XEMBED_FOCUS_IN,
         0,
-        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
-    crate::client::send_event_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
+    send_xembed_event(
+        ctx,
         icon_win,
-        xembed_atom,
-        structure_notify_mask,
-        CURRENT_TIME as i64,
-        XEMBED_WINDOW_ACTIVATE as i64,
+        systray_win,
+        XEMBED_WINDOW_ACTIVATE,
         0,
-        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
-    crate::client::send_event_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
+    send_xembed_event(
+        ctx,
         icon_win,
-        xembed_atom,
-        structure_notify_mask,
-        CURRENT_TIME as i64,
-        XEMBED_MODALITY_ON as i64,
+        systray_win,
+        XEMBED_MODALITY_ON,
         0,
-        u32::from(systray_win) as i64,
         XEMBED_EMBEDDED_VERSION as i64,
     );
 
@@ -1109,7 +1111,11 @@ pub fn setup_root(wm: &mut Wm) {
         0, // depth: CopyFromParent
         wmcheckwin,
         root,
-        0, 0, 1, 1, 0, // x, y, w, h, border_width
+        0,
+        0,
+        1,
+        1,
+        0, // x, y, w, h, border_width
         WindowClass::INPUT_OUTPUT,
         0, // visual: CopyFromParent
         &CreateWindowAux::new(),

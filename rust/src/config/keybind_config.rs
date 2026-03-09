@@ -174,7 +174,6 @@ pub fn parse_keysym(name: &str) -> Option<u32> {
 // ---------------------------------------------------------------------------
 
 use crate::animation;
-use crate::bar::x11::toggle_bar;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
@@ -192,6 +191,7 @@ use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
     toggle_overview, win_view,
 };
+use crate::toggles::toggle_bar;
 use crate::toggles::{
     redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix,
     toggle_show_tags, toggle_sticky, unhide_all,
@@ -383,16 +383,7 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         "scratchpad_make" => Rc::new(|ctx| scratchpad_make(ctx, None)),
 
         // Bar
-        "toggle_bar" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                toggle_bar(
-                    &mut ctx_x11.core,
-                    &ctx_x11.x11,
-                    ctx_x11.x11_runtime,
-                    ctx_x11.systray.as_deref(),
-                )
-            }
-        }),
+        "toggle_bar" => Rc::new(|ctx| toggle_bar(ctx)),
 
         // Toggles
         "toggle_sticky" => Rc::new(|ctx| {
