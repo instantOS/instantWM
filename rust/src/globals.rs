@@ -23,6 +23,8 @@ pub struct X11RuntimeConfig {
     pub numlockmask: u32,
     pub screen: i32,
     pub root: Window,
+    /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
+    pub wmcheckwin: Window,
     pub xlibdisplay: XlibDisplay,
     pub drw: Option<Drw>,
     /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
@@ -41,6 +43,7 @@ impl Default for X11RuntimeConfig {
             numlockmask: 0,
             screen: 0,
             root: 0,
+            wmcheckwin: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             drw: None,
             borderscheme: BorderScheme::default(),

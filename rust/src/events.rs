@@ -23,6 +23,7 @@ use crate::util::clean_mask;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
+use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
 pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
@@ -1102,6 +1103,85 @@ pub fn setup_root(wm: &mut Wm) {
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     let _ = conn.flush();
 
+    // Create the EWMH supporting WM check window.
+    let wmcheckwin = conn.generate_id().unwrap_or(0);
+    let _ = conn.create_window(
+        0, // depth: CopyFromParent
+        wmcheckwin,
+        root,
+        0, 0, 1, 1, 0, // x, y, w, h, border_width
+        WindowClass::INPUT_OUTPUT,
+        0, // visual: CopyFromParent
+        &CreateWindowAux::new(),
+    );
+    wm.x11_runtime.wmcheckwin = wmcheckwin;
+
+    // Set _NET_SUPPORTING_WM_CHECK on the check window itself.
+    let wm_check_atom = wm.x11_runtime.netatom.wm_check;
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        wmcheckwin,
+        wm_check_atom,
+        AtomEnum::WINDOW,
+        &[wmcheckwin],
+    );
+
+    // Set _NET_WM_NAME on the check window.
+    let wm_name_atom = wm.x11_runtime.netatom.wm_name;
+    let utf8_atom = conn
+        .intern_atom(false, b"UTF8_STRING")
+        .ok()
+        .and_then(|c| c.reply().ok())
+        .map(|r| r.atom)
+        .unwrap_or(AtomEnum::STRING.into());
+    let _ = conn.change_property8(
+        PropMode::REPLACE,
+        wmcheckwin,
+        wm_name_atom,
+        utf8_atom,
+        b"instantwm",
+    );
+
+    // Set _NET_SUPPORTING_WM_CHECK on the root window.
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        root,
+        wm_check_atom,
+        AtomEnum::WINDOW,
+        &[wmcheckwin],
+    );
+
+    // Advertise _NET_SUPPORTED atoms on the root window.
+    let netatom = &wm.x11_runtime.netatom;
+    let supported_atoms: Vec<u32> = vec![
+        netatom.active_window,
+        netatom.supported,
+        netatom.system_tray,
+        netatom.system_tray_op,
+        netatom.system_tray_orientation,
+        netatom.system_tray_orientation_horz,
+        netatom.wm_name,
+        netatom.wm_state,
+        netatom.wm_check,
+        netatom.wm_fullscreen,
+        netatom.wm_window_type,
+        netatom.wm_window_type_dialog,
+        netatom.client_list,
+        netatom.client_info,
+    ];
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        root,
+        netatom.supported,
+        AtomEnum::ATOM,
+        &supported_atoms,
+    );
+
+    // Clear stale client list and client info.
+    let _ = conn.delete_property(root, netatom.client_list);
+    let _ = conn.delete_property(root, netatom.client_info);
+    let _ = conn.flush();
+
     let mut ctx = wm.ctx();
     update_geom(&mut ctx);
 
@@ -1130,4 +1210,26 @@ pub fn cleanup(wm: &mut Wm) {
             }
         }
     }
+
+    // Destroy the EWMH check window.
+    let wmcheckwin = wm.x11_runtime.wmcheckwin;
+    if wmcheckwin != 0 {
+        let _ = conn.destroy_window(wmcheckwin);
+    }
+
+    // Remove EWMH properties from the root window.
+    let root = wm.x11_runtime.root;
+    let _ = conn.delete_property(root, wm.x11_runtime.netatom.supported);
+    let _ = conn.delete_property(root, wm.x11_runtime.netatom.wm_check);
+
+    // Free cursors via Xlib (they were created with XCreateFontCursor).
+    if let Some(ref drw) = wm.x11_runtime.drw {
+        for cursor in &wm.g.cfg.cursors {
+            if let Some(ref cur) = cursor {
+                drw.cur_free(cur);
+            }
+        }
+    }
+
+    let _ = conn.flush();
 }
