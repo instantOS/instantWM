@@ -635,15 +635,15 @@ impl Globals {
         use crate::config::{SchemeHover, SchemeTag};
         use crate::types::TagMask;
 
-        let tag_idx = tag_index as usize;
-        let scheme_idx = if occupied_tags.contains(tag_idx) {
+        let tag_num = tag_index as usize + 1;
+        let scheme_idx = if occupied_tags.contains(tag_num) {
             let selmon = self.selected_monitor();
             let sel_has_tag = selmon
                 .sel
                 .and_then(|selected_window| {
                     self.clients
                         .get(&selected_window)
-                        .map(|c| TagMask::from_bits(c.tags).contains(tag_idx))
+                        .map(|c| TagMask::from_bits(c.tags).contains(tag_num))
                 })
                 .unwrap_or(false);
 
@@ -651,7 +651,7 @@ impl Globals {
 
             if is_selected && sel_has_tag {
                 SchemeTag::Focus
-            } else if TagMask::from_bits(m.selected_tags()).contains(tag_idx) {
+            } else if TagMask::from_bits(m.selected_tags()).contains(tag_num) {
                 SchemeTag::NoFocus
             } else if m.showtags == 0 {
                 SchemeTag::Filled

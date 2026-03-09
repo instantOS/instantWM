@@ -380,8 +380,9 @@ impl Monitor {
         if self.showtags == 0 {
             return false;
         }
-        !occupied.contains(tag_index)
-            && !TagMask::from_bits(self.selected_tags()).contains(tag_index)
+        let tag_num = tag_index + 1;
+        !occupied.contains(tag_num)
+            && !TagMask::from_bits(self.selected_tags()).contains(tag_num)
     }
 
     /// Map a bar slot (0..8) to the actual tag index.
