@@ -709,7 +709,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         border_width: 0,
         isfloating: true,
         tags: 1,
-        monitor_id: Some(selmon_id),
+        monitor_id: selmon_id,
         ..Default::default()
     };
 
@@ -815,10 +815,9 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     };
 
     if let Some(c) = ctx.core.g.clients.get(&win) {
-        if let Some(monitor_id) = c.monitor_id {
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
-            restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
-        }
+        let monitor_id = c.monitor_id;
+        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
+        restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     };
 }
 

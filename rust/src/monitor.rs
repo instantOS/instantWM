@@ -146,7 +146,7 @@ impl MonitorManager {
         }
 
         if let Some(c) = clients.get(&w) {
-            return c.monitor_id;
+            return Some(c.monitor_id);
         }
 
         if self.monitors.is_empty() {

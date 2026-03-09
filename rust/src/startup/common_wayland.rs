@@ -458,9 +458,8 @@ pub(crate) fn wayland_border_elements_shared(
         let Some(c) = g.clients.get(win) else {
             continue;
         };
-        let is_visible = c
-            .monitor_id
-            .and_then(|mid| g.monitor(mid))
+        let is_visible = g
+            .monitor(c.monitor_id)
             .map(|m| c.is_visible_on_tags(m.selected_tags()))
             .unwrap_or(false);
         if !is_visible || c.is_hidden {
@@ -492,17 +491,15 @@ pub(crate) fn wayland_border_elements_shared(
         if bw <= 0 || content_w <= 0 || content_h <= 0 {
             continue;
         }
-        let is_visible = c
-            .monitor_id
-            .and_then(|mid| g.monitor(mid))
+        let is_visible = g
+            .monitor(c.monitor_id)
             .map(|m| c.is_visible_on_tags(m.selected_tags()))
             .unwrap_or(false);
         if !is_visible || c.is_hidden {
             continue;
         }
-        let has_tiling = c
-            .monitor_id
-            .and_then(|mid| g.monitor(mid))
+        let has_tiling = g
+            .monitor(c.monitor_id)
             .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
         let rgba = if Some(*win) == sel {

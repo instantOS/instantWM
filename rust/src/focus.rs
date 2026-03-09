@@ -645,13 +645,11 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let tags = last_client.tags;
     let last_mon_id = last_client.monitor_id;
 
-    if let Some(last_mid) = last_mon_id {
-        let sel_mon_id = ctx.g().selected_monitor_id();
-        if !ctx.g().monitors.is_empty() && sel_mon_id != last_mid {
-            if let Some(sel) = ctx.g().monitor(sel_mon_id).and_then(|m| m.sel) {
-                unfocus_win(ctx, sel, false);
-                ctx.g_mut().set_selected_monitor(last_mid);
-            }
+    let sel_mon_id = ctx.g().selected_monitor_id();
+    if !ctx.g().monitors.is_empty() && sel_mon_id != last_mon_id {
+        if let Some(sel) = ctx.g().monitor(sel_mon_id).and_then(|m| m.sel) {
+            unfocus_win(ctx, sel, false);
+            ctx.g_mut().set_selected_monitor(last_mon_id);
         }
     }
 

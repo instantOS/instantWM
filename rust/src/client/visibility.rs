@@ -224,15 +224,12 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         c.is_hidden = true;
     }
 
-    let snext = monitor_id.and_then(|mid| {
-        ctx.g()
-            .monitor(mid)
-            .and_then(|m| m.stack.iter().find(|&&w| w != win).copied())
-    });
+    let snext = ctx
+        .g()
+        .monitor(monitor_id)
+        .and_then(|m| m.stack.iter().find(|&&w| w != win).copied());
     crate::focus::focus_soft(ctx, snext);
-    if let Some(mid) = monitor_id {
-        arrange(ctx, Some(mid));
-    }
+    arrange(ctx, Some(monitor_id));
 }
 
 // ---------------------------------------------------------------------------

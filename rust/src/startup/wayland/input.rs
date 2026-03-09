@@ -577,11 +577,10 @@ fn find_hovered_window(
         if c.is_hidden {
             continue;
         }
-        let is_visible = c
-            .monitor_id
-            .and_then(|mid| wm.g.monitor(mid))
-            .map(|m| c.is_visible_on_tags(m.selected_tags()))
-            .unwrap_or(false);
+        let is_visible =
+            wm.g.monitor(c.monitor_id)
+                .map(|m| c.is_visible_on_tags(m.selected_tags()))
+                .unwrap_or(false);
         if !is_visible {
             continue;
         }

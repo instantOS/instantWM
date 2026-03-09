@@ -62,7 +62,7 @@ pub fn apply_size_hints_x11(
 fn clamp_position_to_bounds(
     core: &CoreCtx,
     geo: &mut Rect,
-    monitor_id: Option<MonitorId>,
+    monitor_id: MonitorId,
     interact: bool,
     total_w: i32,
     total_h: i32,
@@ -70,18 +70,16 @@ fn clamp_position_to_bounds(
     if interact {
         let screen = Rect::new(0, 0, core.g.cfg.screen_width, core.g.cfg.screen_height);
         geo.clamp_position(&screen, total_w, total_h);
-    } else if let Some(wr) = monitor_id
-        .and_then(|mid| core.g.monitors.get(mid))
-        .map(|m| m.work_rect)
-    {
+    } else if let Some(wr) = core.g.monitors.get(monitor_id).map(|m| m.work_rect) {
         geo.clamp_position(&wr, total_w, total_h);
     }
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(core: &CoreCtx, monitor_id: Option<MonitorId>) -> bool {
-    monitor_id
-        .and_then(|mid| core.g.monitors.get(mid))
+fn is_floating_layout(core: &CoreCtx, monitor_id: MonitorId) -> bool {
+    core.g
+        .monitors
+        .get(monitor_id)
         .map(|mon| !mon.is_tiling_layout())
         .unwrap_or(true)
 }

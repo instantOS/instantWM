@@ -153,8 +153,8 @@ impl Client {
     ///
     /// Returns `(0, 0)` if the client is not assigned to a monitor.
     pub fn monitor_size(&self, globals: &crate::globals::Globals) -> (i32, i32) {
-        self.monitor_id
-            .and_then(|id| globals.monitor(id))
+        globals
+            .monitor(self.monitor_id)
             .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
             .unwrap_or((0, 0))
     }

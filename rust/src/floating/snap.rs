@@ -200,16 +200,14 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 /// - [`SnapPosition::None`] restores the saved floating geometry.
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
-pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: Option<usize>) {
+pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
     let (snap_status, saved_geo, border_width) = match ctx.core.g.clients.get(&win) {
         Some(c) => (c.snap_status, c.float_geo, c.border_width),
         None => return,
     };
 
-    let Some(mid) = monitor_id else { return };
-
     // Geometry of the target monitor.
-    let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.core.g.monitor(mid) {
+    let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.core.g.monitor(monitor_id) {
         Some(m) => {
             let mony = m.monitor_rect.y
                 + if m.showbar {
