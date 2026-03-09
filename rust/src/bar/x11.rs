@@ -14,19 +14,8 @@ pub fn update_status(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&mut crate::types::Systray>,
 ) {
-    let root = x11_runtime.root;
-
-    let text = get_text_prop(x11, root, x11rb::protocol::xproto::AtomEnum::WM_NAME.into());
-    match text {
-        Some(t) => {
-            if t.starts_with("ipc:") {
-                return;
-            }
-            core.g.status_text = t;
-        }
-        None => {
-            core.g.status_text = format!("instantwm-{}", VERSION);
-        }
+    if core.g.status_text.is_empty() {
+        core.g.status_text = format!("instantwm-{}", VERSION);
     }
 
     let selmon_idx = core.g.selected_monitor_id();

@@ -149,6 +149,10 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
+    if let Some(ref cmd) = wm.g.cfg.status_command {
+        crate::bar::status::spawn_status_command(cmd);
+    }
+
     run_event_loop(
         event_loop,
         &mut wm,

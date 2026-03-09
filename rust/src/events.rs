@@ -572,16 +572,6 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if event_win == WindowId::from(ctx.x11_runtime.root) && e.atom == u32::from(AtomEnum::WM_NAME) {
-        crate::bar::x11::update_status(
-            &mut ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.systray.as_deref_mut(),
-        );
-        return;
-    };
-
     if ctx.core.g.clients.contains(&event_win) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
