@@ -161,16 +161,6 @@ pub fn update_title_x11(
     }
 }
 
-pub fn update_title_wayland(core: &mut CoreCtx, wayland: &WaylandCtx, win: WindowId) {
-    let name = wayland
-        .backend
-        .window_title(win)
-        .unwrap_or_else(|| BROKEN.to_string());
-    if let Some(client) = core.g.clients.get_mut(&win) {
-        client.name = name;
-    }
-}
-
 /// Read the window title directly from the X server.
 ///
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,

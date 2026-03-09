@@ -1,6 +1,6 @@
+use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
 use crate::backend::x11::lifecycle::{is_window_iconic, manage, unmanage};
 use crate::backend::x11::X11BackendRef;
-use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
 use crate::backend::BackendOps;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
@@ -60,15 +60,6 @@ fn send_xembed_event(
     );
 }
 
-#[inline]
-fn win_to_client_ctx(core: &crate::contexts::CoreCtx, win: WindowId) -> Option<WindowId> {
-    if core.g.clients.contains(&win) {
-        Some(win)
-    } else {
-        None
-    }
-}
-
 fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
@@ -99,7 +90,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     // (tag index, window handle, etc.) through to the button action.
     let bar_pos: BarPosition;
 
-    if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
+    if ctx.core.g.clients.contains(&event_win) {
         bar_pos = BarPosition::ClientWin;
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
@@ -107,8 +98,14 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
-            if let Some(monitor_id) = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id) {
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
+            if let Some(monitor_id) = ctx
+                .core
+                .g
+                .clients
+                .get(&event_win)
+                .and_then(|c| c.monitor_id)
+            {
                 restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
@@ -201,14 +198,14 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
-    let Some(win) = win_to_client_ctx(&ctx.core, event_win) else {
+    if !ctx.core.g.clients.contains(&event_win) {
         return;
     };
 
     if e.type_ == net_wm_state {
-        handle_net_wm_state(ctx, e, win);
+        handle_net_wm_state(ctx, e, event_win);
     } else if e.type_ == net_active_window {
-        handle_active_window(ctx, win);
+        handle_active_window(ctx, event_win);
     };
 }
 
@@ -229,8 +226,8 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
-        configure_x11(&mut ctx.core, &ctx.x11, win);
+    if ctx.core.g.clients.contains(&event_win) {
+        configure_x11(&mut ctx.core, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -250,9 +247,9 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
+    if ctx.core.g.clients.contains(&event_win) {
         let mut tmp = ctx.reborrow();
-        unmanage(&mut tmp, win, true);
+        unmanage(&mut tmp, event_win, true);
     } else if let Some(icon) =
         systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
@@ -309,7 +306,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         let has_tiling = selmon.is_tiling_layout();
         is_floating || !has_tiling
     };
-    let entering_client = win_to_client_ctx(&ctx.core, event_win);
+    let entering_client = ctx.core.g.clients.contains(&event_win);
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
@@ -323,8 +320,13 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         if crate::mouse::floating_to_tiled_hover(&mut WmCtx::X11(ctx.reborrow())) {
             return;
         }
+    }
 
-        // Case 1: Entering root with floating sel
+    // Enter events: check if entering root or client
+    let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
+
+    if is_floating_sel {
+        // Case 1: Entering root while sel is floating
         if entering_root {
             if hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow())) {
                 return;
@@ -332,8 +334,8 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
             // Fall through to normal focus handling
         }
         // Case 2: Entering a different client while sel is floating
-        else if let Some(ew) = entering_client {
-            if Some(ew) != selected_window {
+        else if entering_client {
+            if Some(event_win) != selected_window {
                 let resized = hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow()));
                 if focusfollowsfloatmouse {
                     if resized {
@@ -446,7 +448,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         return;
     };
 
-    if win_to_client_ctx(&ctx.core, event_win).is_none()
+    if !ctx.core.g.clients.contains(&event_win)
         && !is_override_redirect(&ctx.core, &ctx.x11, event_win)
     {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, event_win);
@@ -586,15 +588,15 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
+    if ctx.core.g.clients.contains(&event_win) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
-                if let Some(c) = ctx.core.g.clients.get_mut(&win) {
+                if let Some(c) = ctx.core.g.clients.get_mut(&event_win) {
                     c.hintsvalid = 0;
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
-                update_wm_hints(&mut ctx.core, &ctx.x11, win);
+                update_wm_hints(&mut ctx.core, &ctx.x11, event_win);
                 draw_bars_x11(
                     &mut ctx.core,
                     &ctx.x11,
@@ -607,7 +609,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
 
         let net_wm_name = ctx.x11_runtime.netatom.wm_name;
         if e.atom == u32::from(AtomEnum::WM_NAME) || e.atom == net_wm_name {
-            update_title_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win);
+            update_title_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, event_win);
         }
     };
 }
@@ -627,18 +629,18 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(win) = win_to_client_ctx(&ctx.core, event_win) {
+    if ctx.core.g.clients.contains(&event_win) {
         if e.response_type & 0x80 != 0 {
             set_client_state(
                 &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
-                win,
+                event_win,
                 WM_STATE_WITHDRAWN,
             );
         } else {
             let mut tmp = ctx.reborrow();
-            unmanage(&mut tmp, win, false);
+            unmanage(&mut tmp, event_win, false);
         }
     } else if let Some(_icon) =
         systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
