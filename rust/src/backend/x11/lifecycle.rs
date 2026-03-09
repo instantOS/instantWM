@@ -264,16 +264,15 @@ fn subscribe_manage_events(x11: &X11BackendRef, w: WindowId) {
 }
 
 fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent: bool) -> bool {
-    let isfixed = g.clients.get(&w).map(|c| c.isfixed).unwrap_or(false);
-    let mut should_raise = false;
     if let Some(client) = g.clients.get_mut(&w) {
         if !client.isfloating {
-            client.isfloating = has_transient_parent || isfixed;
+            client.isfloating = has_transient_parent || client.isfixed;
             client.oldstate = client.isfloating as i32;
         }
-        should_raise = client.isfloating;
+        client.isfloating
+    } else {
+        false
     }
-    should_raise
 }
 
 fn register_client_root(x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, w: WindowId) {

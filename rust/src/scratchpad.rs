@@ -189,7 +189,8 @@ pub fn scratchpad_status(g: &Globals, name: &str) -> String {
     if !name.is_empty() && name != "all" {
         let found = scratchpad_find(g, name);
         let visible = found
-            .map(|w| g.clients.get(&w).map(|c| c.issticky).unwrap_or(false))
+            .and_then(|w| g.clients.get(&w))
+            .map(|c| c.issticky)
             .unwrap_or(false);
 
         return format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
