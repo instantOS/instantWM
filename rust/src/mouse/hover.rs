@@ -375,7 +375,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                             _ => unreachable!(),
                         };
                         warp_into_ctx_x11(&mut wm_ctx_x11, win);
-                        crate::mouse::move_mouse(&mut wm_ctx_x11, btn, None);
+                        crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                     }
                     // Left-click
                     1 => {
@@ -385,7 +385,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                                 _ => unreachable!(),
                             };
                             warp_into_ctx_x11(&mut wm_ctx_x11, win);
-                            crate::mouse::move_mouse(&mut wm_ctx_x11, btn, None);
+                            crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);
                             warp_pointer_resize(&mut wm_ctx, win, dir);

@@ -3,7 +3,7 @@
 //! | Function                            | Description                                               |
 //! |-------------------------------------|-----------------------------------------------------------|
 //! | [`begin_keyboard_move`]             | Keyboard-initiated window drag (works on X11 and Wayland) |
-//! | [`move_mouse`]                      | Drag the focused window to a new position (X11 only)      |
+//! | [`crate::backend::x11::mouse::move_mouse_x11`] | Drag the focused window to a new position (X11 only) |
 //! | [`gesture_mouse`]                   | Vertical-swipe gesture recogniser on the root window      |
 //! | [`drag_tag`]                        | Drag across the tag bar to switch/move tags               |
 //! | [`window_title_mouse_handler`]      | Left-click/drag on a window title bar entry               |
@@ -123,29 +123,36 @@ fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
         && x < mon.monitor_rect.x + mon.monitor_rect.w
 }
 
-// ── move_mouse helpers ────────────────────────────────────────────────────────
+// ── move_mouse_x11 helpers ────────────────────────────────────────────────────
 
 /// State threaded through the move-mouse event loop.
-struct MoveState {
+pub struct MoveState {
     /// Drag origin in root coordinates.
-    start_x: i32,
-    start_y: i32,
+    pub start_x: i32,
+    pub start_y: i32,
     /// Window geometry at drag start.
-    grab_start_rect: Rect,
+    pub grab_start_rect: Rect,
     /// Whether the cursor was over the bar on the previous motion event.
-    cursor_on_bar: bool,
+    pub cursor_on_bar: bool,
     /// The last edge-snap zone the cursor was in.
-    edge_snap_indicator: Option<SnapPosition>,
+    pub edge_snap_indicator: Option<SnapPosition>,
 }
 
-/// Perform the pre-flight checks for `move_mouse`.
+/// Perform the pre-flight checks for [`crate::backend::x11::mouse::move_mouse_x11`].
 ///
 /// Returns the window to drag, or `None` if the drag should be aborted.
 /// As a side effect:
 /// * exits fake-fullscreen and returns `None` so the caller re-enters after the transition
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
-fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
+/// Perform the pre-flight checks for [`crate::backend::x11::mouse::move_mouse_x11`].
+///
+/// Returns the window to drag, or `None` if the drag should be aborted.
+/// As a side effect:
+/// * exits fake-fullscreen and returns `None` so the caller re-enters after the transition
+/// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
+/// * restores a near-maximized floating window to its saved geometry
+pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let (sel, is_true_fs, is_overlay, is_fullscreen) = {
         let g = ctx.g_mut();
         let mon = g.selected_monitor();
@@ -254,8 +261,8 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
     on_bar
 }
 
-/// Process a single throttled `MotionNotify` event during `move_mouse`.
-fn on_motion(
+/// Process a single throttled `MotionNotify` event during [`crate::backend::x11::mouse::move_mouse_x11`].
+pub fn on_motion(
     ctx: &mut WmCtx,
     win: WindowId,
     event_x: i32,
@@ -382,7 +389,7 @@ fn maybe_promote_tiled_drag_to_floating(
 /// Clears `bar_dragging` and redraws the bar unconditionally.
 ///
 /// Called once the drag loop exits so that hover state is always cleaned up.
-fn clear_bar_hover(ctx: &mut WmCtx) {
+pub fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g_mut().drag.bar_active = false;
     let selmon_id = ctx.g().selected_monitor_id();
     ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
@@ -557,13 +564,13 @@ pub fn complete_move_drop(
     }
 }
 
-// ── begin_keyboard_move / move_mouse ─────────────────────────────────────────
+// ── begin_keyboard_move / move_mouse_x11 ─────────────────────────────────────
 
 /// Keyboard-initiated window move — works on both X11 and Wayland.
 ///
-/// On **X11** this is identical to calling `move_mouse` directly: the pointer
-/// is grabbed and a synchronous event loop drives the drag until the button is
-/// released.
+/// On **X11** this is identical to calling [`crate::backend::x11::mouse::move_mouse_x11`]
+/// directly: the pointer is grabbed and a synchronous event loop drives the drag
+/// until the button is released.
 ///
 /// On **Wayland** a synchronous grab loop is not possible (no `XGrabPointer`
 /// equivalent in the protocol).  Instead we arm the existing
@@ -584,7 +591,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(x11) => {
             // X11: synchronous grab loop, unchanged behaviour.
-            move_mouse(x11, MouseButton::Left, None);
+            crate::backend::x11::mouse::move_mouse_x11(x11, MouseButton::Left, None);
         }
         WmCtx::Wayland(wl) => {
             // Wayland: arm the hover-resize state in move mode so that calloop
@@ -637,69 +644,6 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
 }
 
 /// Interactively drag the focused window with the mouse.
-///
-/// Grab → event loop → release handling. See helpers above for each phase.
-///
-/// This is the X11-only synchronous implementation.  For the backend-agnostic
-/// keyboard shortcut, use [`begin_keyboard_move`] instead.
-pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Option<Rect>) {
-    let Some(win) = ({
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        prepare_drag_target(&mut wm_ctx)
-    }) else {
-        return;
-    };
-
-    let Some((start_x, start_y)) = get_root_ptr_ctx_x11(ctx) else {
-        return;
-    };
-
-    // Use override from title drag if available (preserves pre-drag floating dimensions),
-    // otherwise get the current client geometry.
-    let grab_start_rect = float_restore_geo
-        .or_else(|| ctx.core.g.clients.get(&win).map(|c| c.geo))
-        .unwrap_or(Rect::default());
-
-    let mut state = MoveState {
-        start_x,
-        start_y,
-        grab_start_rect,
-        cursor_on_bar: false,
-        edge_snap_indicator: None,
-    };
-
-    super::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
-        if let x11rb::protocol::Event::MotionNotify(m) = event {
-            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            on_motion(
-                &mut wm_ctx,
-                win,
-                m.event_x as i32,
-                m.event_y as i32,
-                m.root_x as i32,
-                m.root_y as i32,
-                &mut state,
-            );
-        }
-        true
-    });
-
-    {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        clear_bar_hover(&mut wm_ctx);
-    }
-
-    {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        complete_move_drop(
-            &mut wm_ctx,
-            win,
-            state.grab_start_rect,
-            state.edge_snap_indicator,
-            None,
-        );
-    }
-}
 
 // ── gesture_mouse ─────────────────────────────────────────────────────────────
 
@@ -1260,7 +1204,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let float_restore_geo = ctx.g_mut().drag.title.drop_restore_geo;
         if let WmCtx::X11(x11) = ctx {
             warp_into_ctx_x11(x11, win);
-            move_mouse(x11, btn, Some(float_restore_geo));
+            crate::backend::x11::mouse::move_mouse_x11(x11, btn, Some(float_restore_geo));
         }
     }
     true
@@ -1327,7 +1271,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// Left-click / drag handler for a window title bar entry.
 ///
 /// Click: hidden → show+focus; focused → hide; otherwise → focus.
-/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`move_mouse`].
+/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`crate::backend::x11::mouse::move_mouse_x11`].
 /// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
 ///
 /// On Wayland, starts the async state machine and returns immediately.

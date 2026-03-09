@@ -149,10 +149,10 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     let mut x11_ctx = ctx.reborrow();
                     if btn == MouseButton::Right {
-                        crate::mouse::move_mouse(&mut x11_ctx, btn, None);
+                        crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
                     } else if btn == MouseButton::Left {
                         if dir == Some(crate::types::ResizeDirection::Top) {
-                            crate::mouse::move_mouse(&mut x11_ctx, btn, None);
+                            crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
                         } else {
                             resize_mouse_directional(&mut x11_ctx, dir, btn);
                         }

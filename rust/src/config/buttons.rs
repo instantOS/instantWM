@@ -10,7 +10,7 @@ use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 
 use crate::floating::toggle_floating;
 use crate::mouse::{
-    drag_tag, draw_window, gesture_mouse, move_mouse, resize_aspect_mouse,
+    drag_tag, draw_window, gesture_mouse, resize_aspect_mouse,
     resize_mouse_from_cursor, window_title_mouse_handler,
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
@@ -183,7 +183,9 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Client window ─────────────────────────────────────────────────
         btn!(ClientWin, MODKEY, button:MouseButton::Left => |ctx, arg| {
             match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => move_mouse(ctx_x11, arg.btn, None),
+                crate::contexts::WmCtx::X11(ctx_x11) => {
+                    crate::backend::x11::mouse::move_mouse_x11(ctx_x11, arg.btn, None)
+                }
                 crate::contexts::WmCtx::Wayland(_) => {
                     if let Some(win) = ctx.selected_client() {
                         crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
