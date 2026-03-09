@@ -600,6 +600,49 @@ fn get_transient_for_hint_x11(x11: &X11BackendRef, w: WindowId) -> Option<Window
         .map(WindowId::from)
 }
 
+use crate::backend::x11::ServerGrab;
+use crate::wm::Wm;
+use x11rb::protocol::xproto::{ConfigureWindowAux, Window};
+
+pub fn cleanup(wm: &mut Wm) {
+    let Some(x11) = wm.backend.x11() else {
+        return;
+    };
+    let conn = &x11.conn;
+
+    let _grab = ServerGrab::new(conn);
+
+    for (_id, mon) in wm.g.monitors_iter() {
+        for (win, c) in mon.iter_clients(&wm.g.clients) {
+            let old_bw = c.old_border_width;
+            let x11_win: Window = win.into();
+            let _ = conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().border_width(old_bw as u32),
+            );
+        }
+    }
+
+    let wmcheckwin = wm.x11_runtime.wmcheckwin;
+    if wmcheckwin != 0 {
+        let _ = conn.destroy_window(wmcheckwin);
+    }
+
+    let root = wm.x11_runtime.root;
+    let _ = conn.delete_property(root, wm.x11_runtime.netatom.supported);
+    let _ = conn.delete_property(root, wm.x11_runtime.netatom.wm_check);
+
+    if let Some(ref drw) = wm.x11_runtime.drw {
+        for cursor in &wm.g.cfg.cursors {
+            if let Some(ref cur) = cursor {
+                drw.cur_free(cur);
+            }
+        }
+    }
+
+    let _ = conn.flush();
+}
+
 pub fn is_window_iconic(
     x11: &X11BackendRef,
     x11_runtime: &crate::globals::X11RuntimeConfig,

@@ -54,7 +54,7 @@ pub fn run() {
     }
 
     crate::events::run(&mut wm, &mut ipc_server);
-    crate::events::cleanup(&mut wm);
+    crate::backend::x11::lifecycle::cleanup(&mut wm);
 }
 
 fn wm_init(wm: &mut Wm) {
