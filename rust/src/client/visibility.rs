@@ -78,7 +78,7 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
             let is_visible = c.is_visible_on_tags(selected_tags);
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
-                (c.isfloating, c.is_fullscreen, c.isfakefullscreen);
+                (c.is_floating, c.is_fullscreen, c.isfakefullscreen);
 
             operations.push((
                 win,

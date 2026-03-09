@@ -65,7 +65,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
         WindowMode::ToggleFloat => {
             let (is_floating, is_fixed) = ctx
                 .client(win)
-                .map(|c| (c.isfloating, c.is_fixed_size))
+                .map(|c| (c.is_floating, c.is_fixed_size))
                 .unwrap_or((false, false));
             // If currently tiled, go floating; if floating, go tiled (unless fixed)
             if !is_floating || is_fixed {
@@ -80,7 +80,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
     match target_mode {
         WindowMode::Floating => {
             if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-                client.isfloating = true;
+                client.is_floating = true;
             }
 
             // Restore borders
@@ -105,7 +105,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
         WindowMode::Tiled => {
             let client_count = ctx.g().clients.len();
             let clear_border = if let Some(client) = ctx.client_mut(win) {
-                client.isfloating = false;
+                client.is_floating = false;
                 client.float_geo = client.geo;
 
                 // Only clear border if this is the only client and not snapped
@@ -187,7 +187,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
             .g()
             .clients
             .get(&win)
-            .map(|c| c.isfloating)
+            .map(|c| c.is_floating)
             .unwrap_or(false);
 
         // For floating windows (or monitors with no tiling layout), restore

@@ -376,7 +376,7 @@ pub fn hover_focus_target_x11(
             .g
             .clients
             .get(&win)
-            .map(|c| c.isfloating)
+            .map(|c| c.is_floating)
             .unwrap_or(false);
         let has_tiling = core.g.selected_monitor().is_tiling_layout();
         if !core.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
@@ -425,7 +425,7 @@ pub fn hover_focus_target_wayland(
         .g
         .clients
         .get(&hovered_win)
-        .map(|c| c.isfloating)
+        .map(|c| c.is_floating)
         .unwrap_or(false);
     let has_tiling = core.g.selected_monitor().is_tiling_layout();
     if !core.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {

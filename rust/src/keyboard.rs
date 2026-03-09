@@ -212,7 +212,7 @@ pub fn up_press(ctx: &mut WmCtx) {
         let sel = mon.sel;
         let overlay = mon.overlay;
         let is_floating = sel
-            .and_then(|w| ctx.client(w).map(|c| c.isfloating))
+            .and_then(|w| ctx.client(w).map(|c| c.is_floating))
             .unwrap_or(false);
         (sel, overlay, is_floating)
     };
@@ -250,7 +250,7 @@ pub fn down_press(ctx: &mut WmCtx) {
                 ctx.g()
                     .clients
                     .get(&w)
-                    .map(|c| (c.snap_status, c.isfloating))
+                    .map(|c| (c.snap_status, c.is_floating))
             })
             .unwrap_or((SnapPosition::None, false));
         (sel, overlay, snap_status, is_floating)

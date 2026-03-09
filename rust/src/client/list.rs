@@ -47,7 +47,7 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
     for i in iter_start..clients.len() {
         let win = clients[i];
         if let Some(c) = ctx.client(win) {
-            if !c.isfloating && c.is_visible_on_tags(selected) && !c.is_hidden {
+            if !c.is_floating && c.is_visible_on_tags(selected) && !c.is_hidden {
                 return Some(win);
             }
         }

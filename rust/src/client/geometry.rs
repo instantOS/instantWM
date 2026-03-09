@@ -61,7 +61,7 @@ pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, 
             if let Some(c) = wl_ctx.core.g.clients.get_mut(&win) {
                 c.old_geo = c.geo;
                 c.geo = *rect;
-                if c.isfloating {
+                if c.is_floating {
                     c.float_geo = *rect;
                 }
                 wl_ctx.backend.resize_window(win, *rect);

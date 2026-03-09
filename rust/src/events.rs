@@ -132,7 +132,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                     .g
                     .clients
                     .get(&selected_window)
-                    .map(|c| c.isfloating)
+                    .map(|c| c.is_floating)
                     .unwrap_or(false);
                 let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
@@ -295,7 +295,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let is_floating_sel = {
         let is_floating = selected_window
             .and_then(|w| ctx.core.client(w))
-            .map(|c| c.isfloating)
+            .map(|c| c.is_floating)
             .unwrap_or(false);
         let has_tiling = selmon.is_tiling_layout();
         is_floating || !has_tiling
@@ -707,7 +707,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         old_geo: geo,
         old_border_width: border_width,
         border_width: 0,
-        isfloating: true,
+        is_floating: true,
         tags: 1,
         monitor_id: selmon_id,
         ..Default::default()

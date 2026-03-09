@@ -698,7 +698,7 @@ fn wayland_selected_resize_target_at(
         return None;
     }
     let has_tiling = mon.is_tiling_layout();
-    if !c.isfloating && has_tiling {
+    if !c.is_floating && has_tiling {
         return None;
     }
     if !is_point_in_resize_border(c.geo, root_x, root_y) {

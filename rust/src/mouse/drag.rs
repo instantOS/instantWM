@@ -25,7 +25,7 @@
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::floating::{set_window_mode, change_snap, reset_snap, SnapDir, WindowMode};
+use crate::floating::{change_snap, reset_snap, set_window_mode, SnapDir, WindowMode};
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
 use crate::tags::{move_client, shift_tag};
@@ -274,7 +274,7 @@ pub fn on_motion(
     let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
 
     let (mut is_floating, mut drag_geo) = match ctx.g().clients.get(&win) {
-        Some(c) => (c.isfloating, c.geo),
+        Some(c) => (c.is_floating, c.geo),
         None => return,
     };
 
@@ -413,7 +413,7 @@ fn handle_bar_drop(
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
     let was_floating = match ctx.g().clients.get(&win) {
-        Some(c) => c.isfloating,
+        Some(c) => c.is_floating,
         None => return,
     };
 
@@ -513,7 +513,7 @@ fn apply_edge_drop(
         }
 
         if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
-            c.isfloating = false;
+            c.is_floating = false;
         }
         let selmon_id = ctx.g().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
@@ -586,13 +586,17 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 return;
             };
             let (geo, is_floating) = match wl.core.g.clients.get(&win) {
-                Some(c) => (c.geo, c.isfloating),
+                Some(c) => (c.geo, c.is_floating),
                 None => return,
             };
 
             // Ensure the window is floating so the move makes sense.
             if !is_floating {
-                set_window_mode(&mut WmCtx::Wayland(wl.reborrow()), win, WindowMode::Floating);
+                set_window_mode(
+                    &mut WmCtx::Wayland(wl.reborrow()),
+                    win,
+                    WindowMode::Floating,
+                );
                 let selmon_id = wl.core.g.selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
@@ -931,7 +935,7 @@ fn promote_to_floating(
         .g()
         .clients
         .get(&win)
-        .map(|c| (c.isfloating, c.geo))
+        .map(|c| (c.is_floating, c.geo))
         .unwrap_or((false, Rect::default()));
 
     if is_floating {
@@ -991,7 +995,7 @@ fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32)
     let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
 
     let (is_floating, geo) = match ctx.g().clients.get(&win) {
-        Some(c) => (c.isfloating, c.geo),
+        Some(c) => (c.is_floating, c.geo),
         None => return true,
     };
 

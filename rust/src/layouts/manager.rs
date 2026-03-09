@@ -66,7 +66,7 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
                 return None;
             }
 
-            let strip_border = !info.isfloating
+            let strip_border = !info.is_floating
                 && !info.is_fullscreen
                 && ((clientcount == 1 && is_tiling) || is_monocle);
 
@@ -106,7 +106,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         None => return,
     };
 
-    let client_info = ctx.client(win).map(|c| (c.isfloating, c.border_width));
+    let client_info = ctx.client(win).map(|c| (c.is_floating, c.border_width));
 
     if let Some((is_floating, bw)) = client_info {
         if is_floating {
@@ -143,7 +143,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let is_tiling = m.current_layout().is_tiling();
         let selected_tags = m.selected_tags();
         let bar_win = m.bar_win;
-        let is_floating = ctx.client(selected_window).map_or(false, |c| c.isfloating);
+        let is_floating = ctx.client(selected_window).map_or(false, |c| c.is_floating);
         (
             selected_window,
             is_tiling,
@@ -169,7 +169,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         for &win in &m.stack {
             if let Some(c) = ctx.client(win) {
                 if c.is_visible_on_tags(selected_tags) {
-                    if c.isfloating {
+                    if c.is_floating {
                         floating_stack.push(win);
                     } else {
                         tiled_stack.push(win);

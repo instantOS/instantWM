@@ -97,7 +97,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
                 return;
             };
             let Some((geo, is_floating)) =
-                wl.core.g.clients.get(&win).map(|c| (c.geo, c.isfloating))
+                wl.core.g.clients.get(&win).map(|c| (c.geo, c.is_floating))
             else {
                 return;
             };
@@ -196,17 +196,18 @@ pub fn resize_mouse_directional(
     let Some(win) = ctx.core.selected_client() else {
         return;
     };
-    let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) = match ctx.core.client(win) {
-        Some(c) => (
-            c.is_true_fullscreen(),
-            c.geo.x,
-            c.geo.y,
-            c.geo.x + c.geo.w,
-            c.geo.y + c.geo.h,
-            c.border_width,
-        ),
-        None => return,
-    };
+    let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) =
+        match ctx.core.client(win) {
+            Some(c) => (
+                c.is_true_fullscreen(),
+                c.geo.x,
+                c.geo.y,
+                c.geo.x + c.geo.w,
+                c.geo.y + c.geo.h,
+                c.border_width,
+            ),
+            None => return,
+        };
     if is_blocked {
         return;
     }
@@ -248,7 +249,7 @@ pub fn resize_mouse_directional(
             let should_toggle = if let Some(client) = ctx.core.client(win) {
                 let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();
 
-                !client.isfloating
+                !client.is_floating
                     && has_tiling
                     && ((new_w - client.geo.w).abs() > snap || (new_h - client.geo.h).abs() > snap)
             } else {
@@ -259,7 +260,7 @@ pub fn resize_mouse_directional(
                 with_wm_ctx_x11(ctx, |ctx| toggle_floating(ctx));
             } else {
                 let is_floating = match ctx.core.client(win) {
-                    Some(c) => c.isfloating,
+                    Some(c) => c.is_floating,
                     None => return false,
                 };
                 let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();

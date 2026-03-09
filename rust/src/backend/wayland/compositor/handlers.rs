@@ -664,7 +664,7 @@ impl XdgShellHandler for WaylandState {
                 let Some(client) = g.clients.get(&win) else {
                     return;
                 };
-                if !client.isfloating {
+                if !client.is_floating {
                     return;
                 }
                 let geo = client.geo;

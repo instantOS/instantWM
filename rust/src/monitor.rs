@@ -248,7 +248,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         .g
         .clients
         .get(&win)
-        .map(|c| !c.isfloating)
+        .map(|c| !c.is_floating)
         .unwrap_or(false);
     if needs_arrange {
         crate::layouts::arrange(ctx, None);

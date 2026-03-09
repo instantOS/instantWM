@@ -95,7 +95,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         // Keep the client's own dimensions; only reposition it.
         let client_w = c.geo.w;
         let client_h = c.geo.h;
-        let is_floating = c.isfloating;
+        let is_floating = c.is_floating;
 
         // Persist float geometry so restore works after leaving overview.
         if is_floating {

@@ -503,7 +503,7 @@ pub(crate) fn wayland_border_elements_shared(
             .map(|m| m.is_tiling_layout())
             .unwrap_or(true);
         let rgba = if Some(*win) == sel {
-            if c.isfloating || !has_tiling {
+            if c.is_floating || !has_tiling {
                 bordercolors.float_focus
             } else {
                 bordercolors.tile_focus

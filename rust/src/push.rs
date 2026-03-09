@@ -21,7 +21,7 @@ pub fn push(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
         .g()
         .clients
         .get(&win)
-        .map(|c| c.isfloating)
+        .map(|c| c.is_floating)
         .unwrap_or(false);
 
     if is_floating {

@@ -44,7 +44,7 @@ pub fn zoom(ctx: &mut WmCtx) {
         .g()
         .clients
         .get(&win)
-        .map(|c| (c.isfloating, c.monitor_id))
+        .map(|c| (c.is_floating, c.monitor_id))
         .unwrap_or((true, 0));
 
     // Only meaningful in a tiling layout with a non-floating window.

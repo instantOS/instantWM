@@ -30,7 +30,7 @@ pub fn apply_size_hints_x11(
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
     let should_apply_hints =
-        core.g.cfg.resizehints != 0 || client.isfloating || is_floating_layout(core, monitor_id);
+        core.g.cfg.resizehints != 0 || client.is_floating || is_floating_layout(core, monitor_id);
 
     // Phase 1: Ensure positive dimensions.
     rect.w = rect.w.max(1);

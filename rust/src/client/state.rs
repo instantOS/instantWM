@@ -234,7 +234,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = core.g.clients.get_mut(&win) {
-        c.isfloating = false;
+        c.is_floating = false;
         c.tags = 0;
     }
 
@@ -247,7 +247,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     if special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next {
             if let Some(c) = core.g.clients.get_mut(&win) {
-                c.isfloating = true;
+                c.is_floating = true;
             }
         }
         core.g.specialnext = SpecialNext::None;
@@ -342,10 +342,10 @@ fn apply_float_rule(
 
     match float_rule {
         RuleFloat::FloatCenter => {
-            client.isfloating = true;
+            client.is_floating = true;
         }
         RuleFloat::FloatFullscreen => {
-            client.isfloating = true;
+            client.is_floating = true;
             client.geo.w = monitor_rect.w;
             client.geo.h = work_rect.h;
             client.geo.x = monitor_rect.x;
@@ -354,16 +354,16 @@ fn apply_float_rule(
             }
         }
         RuleFloat::Scratchpad => {
-            client.isfloating = true;
+            client.is_floating = true;
         }
         RuleFloat::Float => {
-            client.isfloating = true;
+            client.is_floating = true;
             if showbar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }
         RuleFloat::Tiled => {
-            client.isfloating = false;
+            client.is_floating = false;
         }
     }
 }
@@ -465,7 +465,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
 
     if wtype == Some(atom_dialog) {
         if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
-            client.isfloating = true;
+            client.is_floating = true;
         }
     }
 }

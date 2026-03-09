@@ -218,7 +218,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         let mon = ctx.g().selected_monitor();
         let is_floating = mon
             .sel
-            .and_then(|w| ctx.client(w).map(|c| c.isfloating))
+            .and_then(|w| ctx.client(w).map(|c| c.is_floating))
             .unwrap_or(false);
         let has_tiling = mon.is_tiling_layout();
         let current_tag = mon.current_tag as u32;
@@ -373,7 +373,7 @@ fn animate_client_wayland(
 fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
     if let Some(mon) = globals.monitor(sel_mon) {
         for (_c_win, c) in mon.iter_clients(&globals.clients) {
-            let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.isfloating;
+            let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.is_floating;
         }
     }
 }

@@ -216,8 +216,8 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
         client.border_width = 0;
         client.is_locked = true;
 
-        if !client.isfloating {
-            client.isfloating = true;
+        if !client.is_floating {
+            client.is_floating = true;
         }
     }
 
@@ -256,7 +256,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         client.border_width = client.old_border_width;
         client.issticky = false;
         client.is_locked = false;
-        client.isfloating = true;
+        client.is_floating = true;
     }
 
     arrange(ctx, Some(selected_monitor_id));
@@ -271,7 +271,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
         client.monitor_id = selmon_id;
-        client.isfloating = true;
+        client.is_floating = true;
     }
 
     attach(ctx, overlay_win);
@@ -281,8 +281,8 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
 /// Update overlay client properties for showing.
 fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: u32) {
     if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
-        if !client.isfloating {
-            client.isfloating = true;
+        if !client.is_floating {
+            client.is_floating = true;
         }
         client.border_width = 0;
         client.tags = tags;

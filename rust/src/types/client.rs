@@ -72,7 +72,7 @@ pub struct Client {
     /// Whether the window has fixed size.
     pub is_fixed_size: bool,
     /// Whether the window is floating.
-    pub isfloating: bool,
+    pub is_floating: bool,
     /// Whether the window has urgency hint.
     pub isurgent: bool,
     /// Whether the window should never receive focus.
@@ -134,7 +134,7 @@ impl Client {
     /// - Not hidden
     #[inline]
     pub fn is_tiled(&self, selected_tags: u32) -> bool {
-        !self.isfloating && self.is_visible_on_tags(selected_tags) && !self.is_hidden
+        !self.is_floating && self.is_visible_on_tags(selected_tags) && !self.is_hidden
     }
 
     /// Check if the client is in true fullscreen mode (not fake fullscreen).
@@ -177,7 +177,7 @@ impl Client {
     /// If the window is already floating, returns current geometry.
     /// Otherwise returns effective float geometry (saved float dims or current tiled dims).
     pub fn restore_geo_for_float(&self) -> Rect {
-        if self.isfloating {
+        if self.is_floating {
             self.geo
         } else {
             self.effective_float_geo()

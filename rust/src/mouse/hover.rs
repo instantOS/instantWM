@@ -103,7 +103,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
         if !c.is_visible_on_tags(selected) {
             continue;
         }
-        if !c.isfloating && has_tiling {
+        if !c.is_floating && has_tiling {
             continue;
         }
         if is_point_in_resize_border(&c.geo, x, y) {
@@ -162,7 +162,7 @@ fn find_tiled_win_at_point(
         if Some(w) == skip_win {
             continue;
         }
-        if !c.is_visible_on_tags(selected) || c.is_hidden || c.isfloating {
+        if !c.is_visible_on_tags(selected) || c.is_hidden || c.is_floating {
             continue;
         }
         // Check if the cursor is within the window's geometry (including border).
@@ -187,7 +187,7 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
         return false;
     };
     let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
-    if !c.isfloating && has_tiling {
+    if !c.is_floating && has_tiling {
         return false;
     }
 
@@ -206,7 +206,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     let selected = mon.selected_tags();
 
     for (_w, c) in mon.iter_clients(&ctx.g().clients) {
-        if c.is_visible_on_tags(selected) && !(c.isfloating || !has_tiling) {
+        if c.is_visible_on_tags(selected) && !(c.is_floating || !has_tiling) {
             return true;
         }
     }
@@ -424,7 +424,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     };
     let is_tiling_layout = ctx.g().selected_monitor().is_tiling_layout();
     let sel_geo = match ctx.client(selected_window) {
-        Some(c) if c.isfloating || !is_tiling_layout => c.geo,
+        Some(c) if c.is_floating || !is_tiling_layout => c.geo,
         _ => return false,
     };
 
@@ -441,7 +441,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         .g()
         .clients
         .get(&hovered_win)
-        .map(|c| !c.isfloating)
+        .map(|c| !c.is_floating)
         .unwrap_or(false);
     if !hovered_is_tiled {
         return false;

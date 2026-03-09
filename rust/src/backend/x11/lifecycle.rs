@@ -203,7 +203,7 @@ fn configure_client_border(
     let (isfloating, client_width, client_height) = g
         .clients
         .get(&w)
-        .map(|c| (c.isfloating, c.geo.w, c.geo.h))
+        .map(|c| (c.is_floating, c.geo.w, c.geo.h))
         .unwrap_or((false, 0, 0));
 
     let border_width = if !isfloating
@@ -265,11 +265,11 @@ fn subscribe_manage_events(x11: &X11BackendRef, w: WindowId) {
 
 fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent: bool) -> bool {
     if let Some(client) = g.clients.get_mut(&w) {
-        if !client.isfloating {
-            client.isfloating = has_transient_parent || client.is_fixed_size;
-            client.oldstate = client.isfloating as i32;
+        if !client.is_floating {
+            client.is_floating = has_transient_parent || client.is_fixed_size;
+            client.oldstate = client.is_floating as i32;
         }
-        client.isfloating
+        client.is_floating
     } else {
         false
     }

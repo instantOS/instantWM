@@ -49,7 +49,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
     let client_snapshot = ctx_x11.core.g.clients.get(&win).map(|c| {
         (
             c.is_fullscreen,
-            c.isfloating,
+            c.is_floating,
             c.isfakefullscreen,
             c.monitor_id,
             c.oldstate,
@@ -76,7 +76,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
             c.is_fullscreen = true;
-            c.oldstate = c.isfloating as i32;
+            c.oldstate = c.is_floating as i32;
         }
 
         ctx_x11.core.g.clients.save_border_width(win);
@@ -126,7 +126,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         // Mark as floating so the layout engine leaves it alone.
         if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
-            c.isfloating = true;
+            c.is_floating = true;
         }
     } else if !fullscreen && is_fs {
         // ---- Exit fullscreen ------------------------------------------------
@@ -142,7 +142,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
             c.is_fullscreen = false;
-            c.isfloating = c.oldstate != 0;
+            c.is_floating = c.oldstate != 0;
         }
 
         ctx_x11.core.g.clients.restore_border_width(win);

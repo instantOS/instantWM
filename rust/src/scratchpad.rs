@@ -49,8 +49,8 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     client.tags = SCRATCHPAD_MASK;
     client.issticky = false;
 
-    if !client.isfloating {
-        client.isfloating = true;
+    if !client.is_floating {
+        client.is_floating = true;
     }
 
     let selected_monitor_id = ctx.g_mut().selected_monitor_id();
@@ -105,7 +105,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
         client.issticky = true;
-        client.isfloating = true;
+        client.is_floating = true;
     }
 
     if target_mon != current_mon {

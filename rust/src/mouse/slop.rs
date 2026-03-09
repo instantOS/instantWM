@@ -110,7 +110,7 @@ pub fn apply_window_resize(
         .g
         .clients
         .get(&c_win)
-        .map(|c| c.isfloating)
+        .map(|c| c.is_floating)
         .unwrap_or(false);
 
     let rect = Rect {

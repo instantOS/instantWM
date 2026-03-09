@@ -221,7 +221,7 @@ impl Monitor {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
-            if c.is_visible_on_tags(selected) && !c.isfloating && !c.is_hidden {
+            if c.is_visible_on_tags(selected) && !c.is_floating && !c.is_hidden {
                 count += 1;
             }
         }
@@ -381,8 +381,7 @@ impl Monitor {
             return false;
         }
         let tag_num = tag_index + 1;
-        !occupied.contains(tag_num)
-            && !TagMask::from_bits(self.selected_tags()).contains(tag_num)
+        !occupied.contains(tag_num) && !TagMask::from_bits(self.selected_tags()).contains(tag_num)
     }
 
     /// Map a bar slot (0..8) to the actual tag index.
