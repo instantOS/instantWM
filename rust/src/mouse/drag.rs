@@ -584,7 +584,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(x11) => {
             // X11: synchronous grab loop, unchanged behaviour.
-            move_mouse(x11, MouseButton::Left);
+            move_mouse(x11, MouseButton::Left, None);
         }
         WmCtx::Wayland(wl) => {
             // Wayland: arm the hover-resize state in move mode so that calloop
@@ -642,7 +642,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
 ///
 /// This is the X11-only synchronous implementation.  For the backend-agnostic
 /// keyboard shortcut, use [`begin_keyboard_move`] instead.
-pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
+pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Option<Rect>) {
     let Some(win) = ({
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         prepare_drag_target(&mut wm_ctx)
@@ -654,13 +654,15 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton) {
         return;
     };
 
-    let grab_start_rect = ctx
-        .core
-        .g
-        .clients
-        .get(&win)
-        .map(|c| c.geo)
-        .unwrap_or(Rect::default());
+    // Use override from title drag if available (preserves pre-drag floating dimensions),
+    // otherwise get the current client geometry.
+    let grab_start_rect = float_restore_geo.or_else(|| {
+        ctx.core
+            .g
+            .clients
+            .get(&win)
+            .map(|c| c.geo)
+    }).unwrap_or(Rect::default());
 
     let mut state = MoveState {
         start_x,
@@ -1258,9 +1260,11 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             super::resize::resize_mouse_directional(x11, Some(ResizeDirection::BottomRight), btn);
         }
     } else {
+        // Pass saved floating dimensions to preserve them when dropping on the bar
+        let float_restore_geo = ctx.g_mut().drag.title.drop_restore_geo;
         if let WmCtx::X11(x11) = ctx {
             warp_into_ctx_x11(x11, win);
-            move_mouse(x11, btn);
+            move_mouse(x11, btn, Some(float_restore_geo));
         }
     }
     true

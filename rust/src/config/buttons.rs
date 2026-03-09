@@ -197,7 +197,7 @@ pub fn get_buttons() -> Vec<Button> {
         // ── Client window ─────────────────────────────────────────────────
         btn!(ClientWin, MODKEY, button:MouseButton::Left => |ctx, arg| {
             match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => move_mouse(ctx_x11, arg.btn),
+                crate::contexts::WmCtx::X11(ctx_x11) => move_mouse(ctx_x11, arg.btn, None),
                 crate::contexts::WmCtx::Wayland(_) => {
                     if let Some(win) = ctx.selected_client() {
                         crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
