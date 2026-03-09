@@ -159,6 +159,31 @@ impl Client {
             .unwrap_or((0, 0))
     }
 
+    /// Returns the floating geometry if valid, otherwise falls back to current geometry.
+    ///
+    /// When a window has never been floated, `float_geo` is zeroed. This method
+    /// provides the correct dimensions to use for floating: saved float dimensions
+    /// if available, otherwise the current tiled dimensions.
+    pub fn effective_float_geo(&self) -> Rect {
+        if self.float_geo.is_valid() {
+            self.float_geo
+        } else {
+            self.geo
+        }
+    }
+
+    /// Returns the geometry to use when restoring a window from tiled to floating.
+    ///
+    /// If the window is already floating, returns current geometry.
+    /// Otherwise returns effective float geometry (saved float dims or current tiled dims).
+    pub fn restore_geo_for_float(&self) -> Rect {
+        if self.isfloating {
+            self.geo
+        } else {
+            self.effective_float_geo()
+        }
+    }
+
     pub fn set_tags(
         &mut self,
         mask: crate::types::TagMask,

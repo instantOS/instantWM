@@ -34,6 +34,7 @@ fn apply_floating_borderscheme(x11: &X11BackendRef, win: WindowId, x11_runtime: 
     );
 }
 
+//TODO: this is redundant wrapper, remove
 pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
     apply_float_change(ctx, win, true, false, true);
 }
@@ -45,8 +46,7 @@ pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let float_geo = ctx.client(win).map(|c| c.float_geo);
-    if let Some(rect) = float_geo {
+    if let Some(rect) = ctx.client(win).map(|c| c.effective_float_geo()) {
         crate::client::resize(ctx, win, &rect, false);
     }
 }
@@ -74,7 +74,7 @@ pub fn apply_float_change(
             }
         }
 
-        let saved_geo = ctx.client(win).map(|c| c.float_geo);
+        let saved_geo = ctx.client(win).map(|c| c.effective_float_geo());
         let Some(saved_geo) = saved_geo else { return };
 
         if animate {

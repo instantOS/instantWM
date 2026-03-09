@@ -341,11 +341,8 @@ fn maybe_promote_tiled_drag_to_floating(
             .clients
             .get(&win)
             .map(|c| {
-                if c.float_geo.w > 0 && c.float_geo.h > 0 {
-                    (c.float_geo.w, c.float_geo.h)
-                } else {
-                    (c.geo.w, c.geo.h)
-                }
+                let eff = c.effective_float_geo();
+                (eff.w, eff.h)
             })
             .unwrap_or((drag_geo.w, drag_geo.h))
     };
@@ -915,13 +912,7 @@ pub fn title_drag_begin(
         .clients
         .get(&win)
         .map(|c| {
-            let restore = if c.isfloating && c.geo.w > 0 && c.geo.h > 0 {
-                c.geo
-            } else if c.float_geo.w > 0 && c.float_geo.h > 0 {
-                c.float_geo
-            } else {
-                c.geo
-            };
+            let restore = c.restore_geo_for_float();
             (c.geo, restore)
         })
         .unwrap_or((Rect::default(), Rect::default()));
@@ -953,12 +944,12 @@ fn promote_to_floating(
     win: WindowId,
     center_under_ptr: Option<(i32, i32)>,
 ) -> (Rect, bool) {
-    let (is_floating, geo, float_geo) = ctx
+    let (is_floating, geo) = ctx
         .g()
         .clients
         .get(&win)
-        .map(|c| (c.isfloating, c.geo, c.float_geo))
-        .unwrap_or((false, Rect::default(), Rect::default()));
+        .map(|c| (c.isfloating, c.geo))
+        .unwrap_or((false, Rect::default()));
 
     if is_floating {
         return (geo, false);
@@ -968,8 +959,15 @@ fn promote_to_floating(
     let selmon_id = ctx.g_mut().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
-    let target_w = if float_geo.w > 0 { float_geo.w } else { geo.w };
-    let target_h = if float_geo.h > 0 { float_geo.h } else { geo.h };
+    let (target_w, target_h) = ctx
+        .g()
+        .clients
+        .get(&win)
+        .map(|c| {
+            let eff = c.effective_float_geo();
+            (eff.w, eff.h)
+        })
+        .unwrap_or((geo.w, geo.h));
 
     let (target_x, target_y) = if let Some((root_x, root_y)) = center_under_ptr {
         (root_x - target_w / 2, root_y)
