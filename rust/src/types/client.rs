@@ -243,30 +243,23 @@ impl<'a> Iterator for ClientListIter<'a> {
 ///
 /// Yields `(Window, &Client)` pairs so restack/showhide style logic can use the
 /// correct ordering while keeping the window id available.
-pub struct ClientStackIter<'a> {
-    iter: std::slice::Iter<'a, WindowId>,
-    clients: &'a HashMap<WindowId, Client>,
-}
+///
+/// This uses the same implementation as [`ClientListIter`] — the distinction
+/// is semantic (stacking order vs focus order).
+pub struct ClientStackIter<'a>(ClientListIter<'a>);
 
 impl<'a> ClientStackIter<'a> {
     #[inline]
     pub fn new(stack: &'a Vec<WindowId>, map: &'a HashMap<WindowId, Client>) -> Self {
-        Self {
-            iter: stack.iter(),
-            clients: map,
-        }
+        Self(ClientListIter::new(stack, map))
     }
 }
 
 impl<'a> Iterator for ClientStackIter<'a> {
-    type Item = (WindowId, &'a Client);
+    type Item = <ClientListIter<'a> as Iterator>::Item;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(&win) = self.iter.next() {
-            if let Some(c) = self.clients.get(&win) {
-                return Some((win, c));
-            }
-        }
-        None
+        self.0.next()
     }
 }

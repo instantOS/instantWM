@@ -10,8 +10,8 @@ use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 
 use crate::floating::toggle_floating;
 use crate::mouse::{
-    drag_tag, draw_window, gesture_mouse, resize_aspect_mouse,
-    resize_mouse_from_cursor, window_title_mouse_handler,
+    drag_tag, draw_window, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
+    window_title_mouse_handler,
 };
 use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push, Direction as PushDirection};
