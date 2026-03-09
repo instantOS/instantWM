@@ -924,7 +924,7 @@ impl WaylandState {
         c.float_geo = geo;
         c.border_width = g.cfg.border_width_px;
         c.old_border_width = g.cfg.border_width_px;
-        c.monitor_id = Some(monitor_id);
+        c.monitor_id = monitor_id;
         c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
         g.clients.insert(window, c);
         g.attach(window);

@@ -312,11 +312,7 @@ fn list_windows(wm: &Wm) -> IpcResponse {
         let name = c.name.replace('\n', " ").replace('\t', " ");
         out.push_str(&format!(
             "{}\t{}\t{}\t{}\t{}\n",
-            c.win.0,
-            c.monitor_id.unwrap_or(0),
-            c.isfloating as u8,
-            c.is_fullscreen as u8,
-            name
+            c.win.0, c.monitor_id, c.isfloating as u8, c.is_fullscreen as u8, name
         ));
     }
     IpcResponse::ok(out)

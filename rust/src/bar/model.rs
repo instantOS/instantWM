@@ -28,7 +28,7 @@ impl ClientBarStats {
         let monitor_id = monitor.id();
         let mut occupied: u32 = 0;
         for client in globals.clients.values() {
-            if client.monitor_id != Some(monitor_id) {
+            if client.monitor_id != monitor_id {
                 continue;
             }
             occupied |= client.tags;

@@ -240,7 +240,7 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// restacks do not drop the dragged floating window behind others.
     pub fn raise_interactive(&mut self, win: WindowId) {
-        if let Some(mid) = self.g().clients.get(&win).and_then(|c| c.monitor_id) {
+        if let Some(mid) = self.g().clients.get(&win).map(|c| c.monitor_id) {
             if let Some(mon) = self.g_mut().monitor_mut(mid) {
                 mon.stack.retain(|&w| w != win);
                 mon.stack.push(win);

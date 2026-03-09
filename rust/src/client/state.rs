@@ -88,9 +88,9 @@ pub fn set_client_tag_prop(
         return;
     };
 
-    let mon_num = c
-        .monitor_id
-        .and_then(|mid| core.g.monitor(mid))
+    let mon_num = core
+        .g
+        .monitor(c.monitor_id)
         .map(|m| m.num as u32)
         .unwrap_or(0);
 
@@ -276,7 +276,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
                 .g
                 .clients
                 .get(&win)
-                .and_then(|c| c.monitor_id)
+                .map(|c| c.monitor_id)
                 .and_then(|mid| core.g.monitor(mid))
                 .map(|m| (m.monitor_rect, m.work_rect, m.showbar));
 
@@ -385,7 +385,7 @@ fn apply_monitor_rule(core: &mut CoreCtx, win: WindowId, rule: &crate::types::Ru
 
     if let Some(mid) = target_mid {
         if let Some(c) = core.g.clients.get_mut(&win) {
-            c.monitor_id = Some(mid);
+            c.monitor_id = mid;
         }
     }
 }
@@ -398,10 +398,9 @@ fn clamp_client_tags(core: &mut CoreCtx, win: WindowId, tag_mask: u32) {
         .clients
         .get(&win)
         .map(|c| (c.monitor_id, c.tags))
-        .unwrap_or((None, 0));
+        .unwrap_or((0, 0));
 
-    let Some(mid) = client_mon_id else { return };
-    let Some(mon) = core.g.monitor(mid) else {
+    let Some(mon) = core.g.monitor(client_mon_id) else {
         return;
     };
 

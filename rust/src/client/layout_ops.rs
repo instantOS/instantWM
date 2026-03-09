@@ -45,11 +45,12 @@ pub fn zoom(ctx: &mut WmCtx) {
         .clients
         .get(&win)
         .map(|c| (c.isfloating, c.monitor_id))
-        .unwrap_or((true, None));
+        .unwrap_or((true, 0));
 
     // Only meaningful in a tiling layout with a non-floating window.
-    let is_tiling = monitor_id
-        .and_then(|mid| ctx.g().monitor(mid))
+    let is_tiling = ctx
+        .g()
+        .monitor(monitor_id)
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -58,8 +59,9 @@ pub fn zoom(ctx: &mut WmCtx) {
     }
 
     // Find the current master (first tiled client on the monitor).
-    let first_on_monitor = monitor_id
-        .and_then(|mid| ctx.g().monitor(mid))
+    let first_on_monitor = ctx
+        .g()
+        .monitor(monitor_id)
         .and_then(|mon| mon.clients.first().copied());
     let first_tiled = first_on_monitor.and_then(|w| next_tiled(ctx, Some(w)));
 

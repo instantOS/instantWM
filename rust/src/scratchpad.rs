@@ -102,7 +102,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         .g
         .clients
         .get(&found)
-        .and_then(|c| c.monitor_id)
+        .map(|c| c.monitor_id)
         .unwrap_or(current_mon);
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
@@ -115,7 +115,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         detach_stack(ctx, found);
 
         if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
-            client.monitor_id = Some(current_mon);
+            client.monitor_id = current_mon;
         }
 
         attach(ctx, found);

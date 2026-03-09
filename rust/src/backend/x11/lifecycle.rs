@@ -135,7 +135,7 @@ fn assign_initial_monitor_and_tags(
             return;
         }
     }
-    c.monitor_id = Some(g.selected_monitor_id());
+    c.monitor_id = g.selected_monitor_id();
     c.tags = initial_tags_for_monitor(g, c.monitor_id);
 }
 
@@ -162,7 +162,7 @@ fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
 }
 
 fn monitor_rects_for_client(g: &crate::globals::Globals, w: WindowId) -> (Rect, Rect) {
-    let monitor_id = g.clients.get(&w).and_then(|c| c.monitor_id);
+    let monitor_id = g.clients.get(&w).map(|c| c.monitor_id);
     monitor_id
         .and_then(|mid| g.monitor(mid))
         .map(|m| (m.work_rect, m.monitor_rect))
@@ -183,7 +183,7 @@ fn clamp_client_to_work_area(g: &mut crate::globals::Globals, w: WindowId, mon_w
 }
 
 fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
-    let monitor_id = g.clients.get(&w).and_then(|c| c.monitor_id);
+    let monitor_id = g.clients.get(&w).map(|c| c.monitor_id);
     monitor_id
         .and_then(|mid| g.monitor(mid))
         .map(|mon| !mon.is_tiling_layout())
@@ -351,9 +351,8 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
 
 fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden: bool) -> Client {
     let mut c = ctx.g().clients.get(&w).cloned().unwrap_or_default();
-    if let Some(monitor_id) = c.monitor_id {
-        arrange(ctx, Some(monitor_id));
-    }
+    let monitor_id = c.monitor_id;
+    arrange(ctx, Some(monitor_id));
     if !initially_hidden {
         ctx.backend().map_window(w);
         ctx.backend().flush();
@@ -403,9 +402,9 @@ fn run_manage_animation(
         );
     }
 
-    let is_tiling = c
-        .monitor_id
-        .and_then(|mid| ctx.g().monitor(mid))
+    let is_tiling = ctx
+        .g()
+        .monitor(c.monitor_id)
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
@@ -413,9 +412,7 @@ fn run_manage_animation(
         ctx.backend().raise_window(w);
         ctx.backend().flush();
     } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
-        if let Some(monitor_id) = c.monitor_id {
-            arrange(ctx, Some(monitor_id));
-        }
+        arrange(ctx, Some(c.monitor_id));
     }
 }
 
@@ -423,9 +420,8 @@ fn run_manage_animation(
 ///
 /// This mirrors DWM semantics: a new client appears on all tags currently
 /// visible on its target monitor.
-pub fn initial_tags_for_monitor(g: &Globals, monitor_id: Option<usize>) -> u32 {
-    monitor_id
-        .and_then(|mid| g.monitor(mid))
+pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
+    g.monitor(monitor_id)
         .map(|m| m.selected_tags())
         .filter(|tags| *tags != 0)
         .unwrap_or(1)
@@ -444,7 +440,7 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: Option<usize>) -> u32 {
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let monitor_id = ctx.core.g.clients.get(&win).and_then(|c| c.monitor_id);
+    let monitor_id = ctx.core.g.clients.get(&win).map(|c| c.monitor_id);
 
     // Clear overlay and fullscreen references.
     for mon in ctx.core.g.monitors_iter_all_mut() {
@@ -582,7 +578,7 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
     if let Some(client) = g.clients.get_mut(&w) {
         client.tags = tags;
         if let Some(mid) = target_mon {
-            client.monitor_id = Some(mid);
+            client.monitor_id = mid;
         }
     }
 }
@@ -613,7 +609,10 @@ pub fn is_window_iconic(
     let x11_win: Window = win.into();
 
     let state_atom = x11_runtime.wmatom.state;
-    let Ok(cookie) = x11.conn.get_property(false, x11_win, state_atom, state_atom, 0, 2) else {
+    let Ok(cookie) = x11
+        .conn
+        .get_property(false, x11_win, state_atom, state_atom, 0, 2)
+    else {
         return false;
     };
     let Ok(reply) = cookie.reply() else {

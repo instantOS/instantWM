@@ -390,7 +390,7 @@ impl Globals {
 
     /// Attach `win` to its assigned monitor's focus list.
     pub fn attach(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.get(&win).and_then(|c| c.monitor_id) {
+        if let Some(mid) = self.clients.get(&win).map(|c| c.monitor_id) {
             if let Some(mon) = self.monitors.get_mut(mid) {
                 mon.clients.insert(0, win);
             }
@@ -399,7 +399,7 @@ impl Globals {
 
     /// Detach `win` from its assigned monitor's focus list.
     pub fn detach(&mut self, win: WindowId) {
-        let monitor_id = self.clients.get(&win).and_then(|c| c.monitor_id);
+        let monitor_id = self.clients.get(&win).map(|c| c.monitor_id);
         if let Some(mid) = monitor_id {
             if let Some(mon) = self.monitors.get_mut(mid) {
                 if mon.clients.contains(&win) {
@@ -419,7 +419,7 @@ impl Globals {
 
     /// Attach `win` to its assigned monitor's stacking list.
     pub fn attach_stack(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.get(&win).and_then(|c| c.monitor_id) {
+        if let Some(mid) = self.clients.get(&win).map(|c| c.monitor_id) {
             if let Some(mon) = self.monitors.get_mut(mid) {
                 mon.stack.insert(0, win);
                 if mon.sel.is_none() {
@@ -431,7 +431,7 @@ impl Globals {
 
     /// Detach `win` from its assigned monitor's stacking list.
     pub fn detach_stack(&mut self, win: WindowId) {
-        let monitor_id = self.clients.get(&win).and_then(|c| c.monitor_id);
+        let monitor_id = self.clients.get(&win).map(|c| c.monitor_id);
         if let Some(mid) = monitor_id {
             if let Some(mon) = self.monitors.get_mut(mid) {
                 if mon.stack.contains(&win) {

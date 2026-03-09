@@ -96,7 +96,7 @@ pub struct Client {
     /// Tags to restore when unhiding from scratchpad.
     pub scratchpad_restore_tags: u32,
     /// Monitor this client is on.
-    pub monitor_id: Option<MonitorId>,
+    pub monitor_id: MonitorId,
     /// Window ID.
     pub win: WindowId,
 }

@@ -364,7 +364,7 @@ pub fn hover_focus_target_x11(
     }
 
     if let Some(win) = hovered_win {
-        if let Some(mid) = core.g.clients.get(&win).and_then(|c| c.monitor_id) {
+        if let Some(mid) = core.g.clients.get(&win).map(|c| c.monitor_id) {
             if mid != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(mid);
                 let _ = focus_x11(core, x11, x11_runtime, None, None);
@@ -415,7 +415,7 @@ pub fn hover_focus_target_wayland(
         return;
     }
 
-    if let Some(mid) = core.g.clients.get(&hovered_win).and_then(|c| c.monitor_id) {
+    if let Some(mid) = core.g.clients.get(&hovered_win).map(|c| c.monitor_id) {
         if mid != core.g.selected_monitor_id() {
             core.g.set_selected_monitor(mid);
         }

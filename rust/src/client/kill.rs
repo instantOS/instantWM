@@ -45,9 +45,10 @@ fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     let is_fullscreen = client.is_fullscreen;
-    let mon_mh = client
-        .monitor_id
-        .and_then(|mid| ctx_x11.core.g.monitor(mid))
+    let mon_mh = ctx_x11
+        .core
+        .g
+        .monitor(client.monitor_id)
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 

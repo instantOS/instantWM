@@ -226,7 +226,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     detach_stack(ctx, win);
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-        client.monitor_id = Some(target_mon);
+        client.monitor_id = target_mon;
         if !is_scratchpad {
             client.tags = target_tags;
         }
@@ -308,7 +308,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    if let Some(monitor_id) = ctx.g_mut().clients.get(&c_win).and_then(|c| c.monitor_id) {
+    if let Some(monitor_id) = ctx.g_mut().clients.get(&c_win).map(|c| c.monitor_id) {
         ctx.g_mut().monitors.set_sel_idx(monitor_id);
     }
 
@@ -494,14 +494,14 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
                 .g
                 .clients
                 .values()
-                .filter(|c| c.monitor_id == Some(i))
+                .filter(|c| c.monitor_id == i)
                 .map(|c| c.win)
                 .collect();
             for win in clients_to_move {
                 detach(ctx, win);
                 detach_stack(ctx, win);
                 if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
-                    c.monitor_id = Some(0);
+                    c.monitor_id = 0;
                 }
                 attach(ctx, win);
                 attach_stack(ctx, win);

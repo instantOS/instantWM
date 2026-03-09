@@ -87,8 +87,11 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                 c.border_width = 0;
             }
 
-            let mon_rect = monitor_id
-                .and_then(|mid| ctx_x11.core.g.monitor(mid).map(|m| m.monitor_rect))
+            let mon_rect = ctx_x11
+                .core
+                .g
+                .monitor(monitor_id)
+                .map(|m| m.monitor_rect)
                 .unwrap_or_default();
 
             // Animate the expansion only for non-floating clients (floating
@@ -149,10 +152,8 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             resize_client_x11(&mut ctx_x11.core, &ctx_x11.x11, win, &old_geo);
             let _ = ctx_x11.x11.conn.flush();
 
-            if let Some(mid) = monitor_id {
-                let mut tmp = WmCtx::X11(ctx_x11.reborrow());
-                arrange(&mut tmp, Some(mid));
-            }
+            let mut tmp = WmCtx::X11(ctx_x11.reborrow());
+            arrange(&mut tmp, Some(monitor_id));
         }
     }
 }
@@ -180,40 +181,38 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
                 c.old_border_width,
             )
         })
-        .unwrap_or((false, false, None, 0));
+        .unwrap_or((false, false, 0, 0));
 
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.
     if is_fullscreen && isfakefullscreen {
         let borderpx = ctx_x11.core.g.cfg.border_width_px;
 
-        if let Some(mid) = monitor_id {
-            let mon_rect = ctx_x11
-                .core
-                .g
-                .monitor(mid)
-                .map(|m| m.monitor_rect)
-                .unwrap_or_default();
+        let mon_rect = ctx_x11
+            .core
+            .g
+            .monitor(monitor_id)
+            .map(|m| m.monitor_rect)
+            .unwrap_or_default();
 
-            resize_client_x11(
-                &mut ctx_x11.core,
-                &ctx_x11.x11,
-                win,
-                &Rect {
-                    x: mon_rect.x + borderpx,
-                    y: mon_rect.y + borderpx,
-                    w: mon_rect.w - 2 * borderpx,
-                    h: mon_rect.h - 2 * borderpx,
-                },
-            );
+        resize_client_x11(
+            &mut ctx_x11.core,
+            &ctx_x11.x11,
+            win,
+            &Rect {
+                x: mon_rect.x + borderpx,
+                y: mon_rect.y + borderpx,
+                w: mon_rect.w - 2 * borderpx,
+                h: mon_rect.h - 2 * borderpx,
+            },
+        );
 
-            let x11_win: Window = win.into();
-            let _ = ctx_x11.x11.conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = ctx_x11.x11.conn.flush();
-        }
+        let x11_win: Window = win.into();
+        let _ = ctx_x11.x11.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+        );
+        let _ = ctx_x11.x11.conn.flush();
     }
 
     // Restore the border width when leaving fake-fullscreen while still in

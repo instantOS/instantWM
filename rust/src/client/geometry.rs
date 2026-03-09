@@ -112,11 +112,11 @@ pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId,
 
 /// Calculate the target rect for scaling a client to `scale` percent of its monitor.
 fn calculate_scaled_geometry(
-    monitor_id: Option<crate::types::MonitorId>,
+    monitor_id: crate::types::MonitorId,
     old_geo: Rect,
     border_width: i32,
     scale: i32,
-    get_monitor_rect: impl FnOnce(Option<crate::types::MonitorId>) -> Rect,
+    get_monitor_rect: impl FnOnce(crate::types::MonitorId) -> Rect,
 ) -> Rect {
     let mon_rect = get_monitor_rect(monitor_id);
 
@@ -144,7 +144,11 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
                 None => return,
             };
             calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-                mid.and_then(|m| x11_ctx.core.g.monitors.get(m))
+                x11_ctx
+                    .core
+                    .g
+                    .monitors
+                    .get(mid)
                     .map(|m| m.monitor_rect)
                     .unwrap_or(c.geo)
             })
@@ -155,7 +159,11 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
                 None => return,
             };
             calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-                mid.and_then(|m| wl_ctx.core.g.monitors.get(m))
+                wl_ctx
+                    .core
+                    .g
+                    .monitors
+                    .get(mid)
                     .map(|m| m.monitor_rect)
                     .unwrap_or(c.geo)
             })

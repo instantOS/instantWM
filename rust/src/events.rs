@@ -99,13 +99,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
-            if let Some(monitor_id) = ctx
-                .core
-                .g
-                .clients
-                .get(&event_win)
-                .and_then(|c| c.monitor_id)
-            {
+            if let Some(monitor_id) = ctx.core.g.clients.get(&event_win).map(|c| c.monitor_id) {
                 restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }

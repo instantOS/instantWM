@@ -270,7 +270,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
     detach_stack(ctx, overlay_win);
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
-        client.monitor_id = Some(selmon_id);
+        client.monitor_id = selmon_id;
         client.isfloating = true;
     }
 
