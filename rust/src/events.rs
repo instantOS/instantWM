@@ -1205,15 +1205,13 @@ pub fn cleanup(wm: &mut Wm) {
     let _grab = crate::backend::x11::ServerGrab::new(conn);
 
     for (_id, mon) in wm.g.monitors_iter() {
-        for &win in &mon.clients {
-            if let Some(c) = wm.g.clients.get(&win) {
-                let old_bw = c.old_border_width;
-                let x11_win: Window = win.into();
-                let _ = conn.configure_window(
-                    x11_win,
-                    &ConfigureWindowAux::new().border_width(old_bw as u32),
-                );
-            }
+        for (win, c) in mon.iter_clients(&wm.g.clients) {
+            let old_bw = c.old_border_width;
+            let x11_win: Window = win.into();
+            let _ = conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().border_width(old_bw as u32),
+            );
         }
     }
 

@@ -402,11 +402,9 @@ impl Monitor {
     /// Excludes the special scratchpad tag (255).
     pub fn occupied_tags(&self, clients: &HashMap<WindowId, Client>) -> u32 {
         let mut occupied: u32 = 0;
-        for &win in &self.clients {
-            if let Some(c) = clients.get(&win) {
-                if c.tags != 255 {
-                    occupied |= c.tags;
-                }
+        for (_win, c) in self.iter_clients(clients) {
+            if c.tags != 255 {
+                occupied |= c.tags;
             }
         }
         occupied

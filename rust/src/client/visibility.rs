@@ -19,7 +19,7 @@ use crate::client::state::set_client_state;
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::globals::X11RuntimeConfig;
 use crate::layouts::arrange;
-use crate::types::{Monitor, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -74,10 +74,7 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
     for mon in core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
 
-        for &win in &mon.clients {
-            let Some(c) = core.g.clients.get(&win) else {
-                continue;
-            };
+        for (win, c) in mon.iter_clients(&core.g.clients) {
 
             let is_visible = c.is_visible_on_tags(selected_tags);
             let geo = c.geo;
@@ -147,10 +144,7 @@ pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
 
     for mon in core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
-        for &win in &mon.clients {
-            let Some(c) = core.g.clients.get(&win) else {
-                continue;
-            };
+        for (win, c) in mon.iter_clients(&core.g.clients) {
             let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             operations.push((win, is_visible));
         }
