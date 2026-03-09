@@ -33,5 +33,5 @@ pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 // ── state ────────────────────────────────────────────────────────────────────
 
 pub use state::{
-    save_floating_win, set_floating_in_place, set_tiled, toggle_floating, toggle_maximized,
+    apply_float_change, save_floating_win, set_tiled, toggle_floating, toggle_maximized,
 };

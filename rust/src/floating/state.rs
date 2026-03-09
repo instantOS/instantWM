@@ -34,11 +34,6 @@ fn apply_floating_borderscheme(x11: &X11BackendRef, win: WindowId, x11_runtime: 
     );
 }
 
-//TODO: this is redundant wrapper, remove
-pub fn set_floating_in_place(ctx: &mut WmCtx, win: WindowId) {
-    apply_float_change(ctx, win, true, false, true);
-}
-
 pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         client.float_geo = client.geo;
@@ -132,43 +127,6 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     apply_float_change(ctx, win, new_state, true, true);
     let selmon_id = ctx.g().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
-}
-
-pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let (_is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.client(win) {
-        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
-        None => return,
-    };
-
-    if is_fake_fullscreen {
-        return;
-    }
-
-    let new_state = !is_floating || is_fixed;
-    apply_float_change(ctx, win, new_state, false, false);
-    let selmon_id = ctx.g().selected_monitor_id();
-    arrange(ctx, Some(selmon_id));
-}
-
-pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating) = match ctx.client(win) {
-        Some(c) => (c.is_true_fullscreen(), c.isfloating),
-        None => return,
-    };
-
-    if is_true_fullscreen {
-        return;
-    }
-    if is_floating {
-        return;
-    }
-
-    apply_float_change(ctx, win, true, false, false);
-
-    if should_arrange {
-        let selmon_id = ctx.g().selected_monitor_id();
-        arrange(ctx, Some(selmon_id));
-    }
 }
 
 pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {

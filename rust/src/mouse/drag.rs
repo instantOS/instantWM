@@ -25,7 +25,7 @@
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::floating::{change_snap, reset_snap, set_floating_in_place, set_tiled, SnapDir};
+use crate::floating::{apply_float_change, change_snap, reset_snap, set_tiled, SnapDir};
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
 use crate::tags::{move_client, shift_tag};
@@ -344,7 +344,7 @@ fn maybe_promote_tiled_drag_to_floating(
     };
 
     // Flip isfloating + restore border — zero configure_window calls.
-    set_floating_in_place(ctx, win);
+    apply_float_change(ctx, win, true, false, true);
 
     // Re-tile the remaining windows (touches only the other clients).
     let selmon_id = ctx.g().selected_monitor_id();
@@ -586,10 +586,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
 
             // Ensure the window is floating so the move makes sense.
             if !is_floating {
-                super::super::floating::set_floating_in_place(
-                    &mut WmCtx::Wayland(wl.reborrow()),
-                    win,
-                );
+                apply_float_change(&mut WmCtx::Wayland(wl.reborrow()), win, true, false, true);
                 let selmon_id = wl.core.g.selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
@@ -935,7 +932,7 @@ fn promote_to_floating(
         return (geo, false);
     }
 
-    set_floating_in_place(ctx, win);
+    apply_float_change(ctx, win, true, false, true);
     let selmon_id = ctx.g_mut().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
