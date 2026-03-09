@@ -174,9 +174,7 @@ pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
     if !core.g.cfg.show_systray {
         return 0;
     }
-    // wayland_systray is not available from CoreCtx; caller must pass it if needed.
-    // This function is a fallback that returns 0 when systray state is unavailable.
-    0
+    core.g.wayland_systray_width
 }
 
 pub fn get_wayland_systray_width_with_state(

@@ -95,6 +95,8 @@ pub fn run() -> ! {
 
     if let Some(ref cmd) = wm.g.cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
+    } else {
+        crate::bar::status::spawn_default_status();
     }
 
     let loop_signal: LoopSignal = event_loop.get_signal();

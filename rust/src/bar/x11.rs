@@ -6,18 +6,12 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 pub fn update_status(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&mut crate::types::Systray>,
 ) {
-    if core.g.status_text.is_empty() {
-        core.g.status_text = format!("instantwm-{}", VERSION);
-    }
-
     let selmon_idx = core.g.selected_monitor_id();
     // Note: systray is consumed by update_systray below, so we pass None here
     // to avoid moving it. The systray width for status bar layout is based on

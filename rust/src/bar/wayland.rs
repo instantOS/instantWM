@@ -515,6 +515,10 @@ pub fn render_bar_buffers(
             .collect();
     }
 
+    // Cache the Wayland systray width so status bar layout can account for it.
+    core.g.wayland_systray_width =
+        crate::wayland_systray::get_wayland_systray_width_with_state(core, wayland_systray);
+
     let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
         .g
         .monitors_iter()

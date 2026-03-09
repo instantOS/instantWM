@@ -298,11 +298,63 @@ fn draw_items(
     let _ = m;
 }
 
+fn send_status_ipc(text: &str) {
+    use std::io::Write;
+    use std::os::unix::net::UnixStream;
+
+    let socket = std::env::var("INSTANTWM_SOCKET")
+        .unwrap_or_else(|_| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
+
+    if let Ok(mut stream) = UnixStream::connect(&socket) {
+        let req = crate::ipc_types::IpcCommand::UpdateStatus(text.to_string());
+        if let Ok(data) = bincode::encode_to_vec(&req, bincode::config::standard()) {
+            let _ = stream.write_all(&data);
+        }
+    }
+}
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn default_status_text() -> String {
+    use std::time::SystemTime;
+
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Convert to local time using libc
+    let time_str = unsafe {
+        let secs_i64 = secs as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&secs_i64, &mut tm);
+        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    };
+
+    format!("instantwm-{VERSION} {time_str}")
+}
+
+/// Spawn a background thread that periodically sends the default status
+/// (version + current time) via IPC. Used when no `status_command` is configured.
+pub(crate) fn spawn_default_status() {
+    std::thread::spawn(move || {
+        use std::thread;
+        use std::time::Duration;
+
+        // Wait briefly for the IPC socket to be ready.
+        thread::sleep(Duration::from_millis(500));
+
+        loop {
+            send_status_ipc(&default_status_text());
+            thread::sleep(Duration::from_secs(30));
+        }
+    });
+}
+
 pub(crate) fn spawn_status_command(cmd: &str) {
     let cmd_str = cmd.to_string();
     std::thread::spawn(move || {
-        use std::io::{BufRead, BufReader, Write};
-        use std::os::unix::net::UnixStream;
+        use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
 
         let mut child = match Command::new("sh")
@@ -329,18 +381,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     if text == "[" || text.starts_with("{\"version\"") || text.is_empty() {
                         continue;
                     }
-
-                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|_| {
-                        format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
-                    });
-
-                    if let Ok(mut stream) = UnixStream::connect(&socket) {
-                        let req = crate::ipc_types::IpcCommand::UpdateStatus(text.to_string());
-                        if let Ok(data) = bincode::encode_to_vec(&req, bincode::config::standard())
-                        {
-                            let _ = stream.write_all(&data);
-                        }
-                    }
+                    send_status_ipc(text);
                 }
             }
         }

@@ -51,6 +51,8 @@ pub fn run() {
 
     if let Some(ref cmd) = wm.g.cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
+    } else {
+        crate::bar::status::spawn_default_status();
     }
 
     crate::events::run(&mut wm, &mut ipc_server);

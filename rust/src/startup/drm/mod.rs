@@ -151,6 +151,8 @@ pub fn run() -> ! {
 
     if let Some(ref cmd) = wm.g.cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
+    } else {
+        crate::bar::status::spawn_default_status();
     }
 
     run_event_loop(
@@ -369,6 +371,7 @@ fn run_event_loop(
                 cursor_manager,
                 shared,
                 render_failures,
+                start_time,
             );
 
             if state.display_handle.flush_clients().is_err() {
