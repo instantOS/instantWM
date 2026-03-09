@@ -115,8 +115,6 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     ctx.request_bar_update(Some(selmon_id));
 }
 
-//TODO: could this be named better?
-//TODO: what does this do?
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
         let selmon_id = ctx.g().selected_monitor_id();
@@ -144,11 +142,6 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     for win in clients {
         crate::client::show(ctx, win);
     }
-}
-
-//TODO: this is an unnecessary wrapper
-pub fn redraw_win(ctx: &mut WmCtx) {
-    ctx.request_bar_update(None);
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {

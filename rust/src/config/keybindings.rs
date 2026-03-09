@@ -22,7 +22,7 @@ use crate::tags::{
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
-    alt_tab_free, redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix,
+    alt_tab_free, toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix,
     toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{Direction, Key, StackDirection, TagMask, ToggleAction};
@@ -276,7 +276,7 @@ pub fn get_keys() -> Vec<Key> {
             space_toggle(ctx)
         }),
         key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| alt_tab_free(ctx, ToggleAction::Toggle)),
-        key!(MODKEY | CONTROL,     XK_R     => |ctx| redraw_win(ctx)),
+        key!(MODKEY | CONTROL,     XK_R     => |ctx| ctx.request_bar_update(None)),
         key!(MODKEY | CONTROL,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 crate::client::hide(ctx, win)

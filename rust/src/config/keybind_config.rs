@@ -193,8 +193,8 @@ use crate::tags::{
 };
 use crate::toggles::toggle_bar;
 use crate::toggles::{
-    redraw_win, toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix,
-    toggle_show_tags, toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix, toggle_show_tags,
+    toggle_sticky, unhide_all,
 };
 use crate::types::{Direction, MonitorDirection, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
@@ -396,7 +396,6 @@ fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         "toggle_show_tags" => Rc::new(|ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
         "toggle_double_draw" => Rc::new(|ctx| toggle_double_draw(ctx.core_mut())),
         "toggle_prefix" => Rc::new(|ctx| toggle_prefix(ctx)),
-        "redraw_win" => Rc::new(|ctx| redraw_win(ctx)),
         "unhide_all" => Rc::new(|ctx| unhide_all(ctx)),
         "hide" => Rc::new(|ctx| {
             if let Some(win) = ctx.selected_client() {

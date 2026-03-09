@@ -49,7 +49,7 @@ Keybinds section:
     set_overlay, create_overlay, scratchpad_toggle, scratchpad_make,
     toggle_bar, toggle_sticky, toggle_alt_tag, toggle_animated,
     toggle_show_tags, toggle_prefix, toggle_fake_fullscreen,
-    redraw_win, unhide_all, hide, draw_window, begin_keyboard_move,
+    unhide_all, hide, draw_window, begin_keyboard_move,
     next_keyboard_layout, prev_keyboard_layout
 
   Structured keyboard layout action:
