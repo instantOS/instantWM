@@ -2,7 +2,7 @@
 
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
-use crate::types::{TagMask, WindowId, SCRATCHPAD_MASK};
+use crate::types::{TagMask, WindowId};
 
 pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     let selmon_id = ctx.g_mut().selected_monitor_id();
@@ -12,9 +12,8 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         return;
     }
 
-    let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
     if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-        if TagMask::from_bits(client.tags) == scratchpad {
+        if TagMask::from_bits(client.tags).is_scratchpad_only() {
             client.issticky = false;
         }
         client.tags = effective_mask.bits();
@@ -42,7 +41,6 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
-    let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
 
     let m = ctx.g().selected_monitor();
     let clients_on_tag: Vec<_> = m
@@ -53,7 +51,7 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
 
     for win in clients_on_tag {
         if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-            if TagMask::from_bits(client.tags) == scratchpad {
+            if TagMask::from_bits(client.tags).is_scratchpad_only() {
                 client.issticky = false;
             }
             client.tags = effective_mask.bits();
@@ -80,7 +78,7 @@ pub fn toggle_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         .clients
         .get(&win)
         .map_or(TagMask::EMPTY, |c| TagMask::from_bits(c.tags));
-    if current_tags.bits() == SCRATCHPAD_MASK {
+    if current_tags.is_scratchpad_only() {
         set_client_tag_ctx(ctx, win, mask);
         return;
     }

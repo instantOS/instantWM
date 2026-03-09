@@ -75,7 +75,6 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
         let selected_tags = mon.selected_tags();
 
         for (win, c) in mon.iter_clients(&core.g.clients) {
-
             let is_visible = c.is_visible_on_tags(selected_tags);
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =

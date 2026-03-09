@@ -173,7 +173,7 @@ impl Client {
             return;
         }
 
-        if self.tags == crate::types::SCRATCHPAD_MASK {
+        if TagMask::from_bits(self.tags).is_scratchpad_only() {
             self.issticky = false;
         }
 

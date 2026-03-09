@@ -50,7 +50,7 @@ pub(crate) fn draw_tag_indicators(
     ctx: &mut CoreCtx,
     m: &Monitor,
     mut x: i32,
-    occupied_tags: u32,
+    occupied_tags: TagMask,
     urg: u32,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,

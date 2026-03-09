@@ -629,19 +629,21 @@ impl Globals {
         &self,
         m: &Monitor,
         tag_index: u32,
-        occupied_tags: u32,
+        occupied_tags: TagMask,
         is_hover: bool,
     ) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeHover, SchemeTag};
+        use crate::types::TagMask;
 
-        let scheme_idx = if occupied_tags & (1 << tag_index) != 0 {
+        let tag_idx = tag_index as usize;
+        let scheme_idx = if occupied_tags.contains(tag_idx) {
             let selmon = self.selected_monitor();
             let sel_has_tag = selmon
                 .sel
                 .and_then(|selected_window| {
                     self.clients
                         .get(&selected_window)
-                        .map(|c| c.tags & (1 << tag_index) != 0)
+                        .map(|c| TagMask::from_bits(c.tags).contains(tag_idx))
                 })
                 .unwrap_or(false);
 
@@ -649,7 +651,7 @@ impl Globals {
 
             if is_selected && sel_has_tag {
                 SchemeTag::Focus
-            } else if m.selected_tags() & (1 << tag_index) != 0 {
+            } else if TagMask::from_bits(m.selected_tags()).contains(tag_idx) {
                 SchemeTag::NoFocus
             } else if m.showtags == 0 {
                 SchemeTag::Filled

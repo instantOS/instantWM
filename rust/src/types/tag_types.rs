@@ -5,7 +5,7 @@
 
 use std::ops::{BitAnd, BitOr, BitXor, Not};
 
-use crate::types::MAX_TAGS;
+use crate::types::{core::SCRATCHPAD_MASK, MAX_TAGS};
 
 /// A type-safe wrapper around tag bitmask operations.
 ///
@@ -22,6 +22,9 @@ impl TagMask {
 
     /// Create a mask with all bits set (all tags selected).
     pub const ALL_BITS: Self = Self(!0);
+
+    /// Mask representing only the scratchpad tag.
+    pub const SCRATCHPAD: Self = Self(SCRATCHPAD_MASK);
 
     /// Create a mask representing a single tag (1-indexed).
     ///
@@ -107,6 +110,26 @@ impl TagMask {
     /// Count the number of selected tags.
     pub fn count(&self) -> u32 {
         self.0.count_ones()
+    }
+
+    /// Returns true if this mask represents only the scratchpad tag.
+    ///
+    /// Use this to check if a client is on the scratchpad.
+    pub fn is_scratchpad_only(self) -> bool {
+        self.0 == SCRATCHPAD_MASK
+    }
+
+    /// Returns true if this mask contains the scratchpad tag (possibly with other tags).
+    pub fn contains_scratchpad(self) -> bool {
+        self.0 & SCRATCHPAD_MASK != 0
+    }
+
+    /// Returns this mask with the scratchpad bit excluded.
+    ///
+    /// Use this when computing "occupied tags" for display purposes,
+    /// to exclude scratchpad clients.
+    pub fn without_scratchpad(self) -> Self {
+        Self(self.0 & !SCRATCHPAD_MASK)
     }
 
     /// Toggle a specific tag in this mask.

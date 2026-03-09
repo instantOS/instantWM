@@ -10,7 +10,7 @@
 //! tag-index remapping, skip logic, display names, and widths in one place.
 
 use crate::contexts::CoreCtx;
-use crate::types::Monitor;
+use crate::types::{Monitor, TagMask};
 
 /// Maximum number of tag slots rendered in the bar.
 const MAX_BAR_SLOTS: usize = 9;
@@ -30,7 +30,7 @@ pub(crate) struct VisibleTag<'a> {
 pub(crate) fn visible_tags_ctx<'a>(
     core: &CoreCtx,
     monitor: &'a Monitor,
-    occupied: u32,
+    occupied: TagMask,
 ) -> Vec<VisibleTag<'a>> {
     let horizontal_padding = core.g.cfg.horizontal_padding;
     let show_alt = core.g.tags.show_alternative_names;

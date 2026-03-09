@@ -6,7 +6,7 @@ use crate::types::*;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientBarStats {
-    pub occupied_tags: u32,
+    pub occupied_tags: TagMask,
     pub urgent_tags: u32,
     pub visible_clients: i32,
 }
@@ -26,15 +26,17 @@ impl ClientBarStats {
 
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
         let monitor_id = monitor.id();
+        let mut occupied: u32 = 0;
         for client in globals.clients.values() {
             if client.monitor_id != Some(monitor_id) {
                 continue;
             }
-            stats.occupied_tags |= if client.tags == 255 { 0 } else { client.tags };
+            occupied |= client.tags;
             if client.isurgent {
                 stats.urgent_tags |= client.tags;
             }
         }
+        stats.occupied_tags = TagMask::from_bits(occupied).without_scratchpad();
 
         stats
     }

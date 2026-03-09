@@ -376,12 +376,12 @@ impl Monitor {
     /// Return true if the tag at `tag_index` should be hidden.
     ///
     /// A tag is hidden when `showtags != 0` and it is neither occupied nor selected.
-    pub fn should_hide_tag(&self, tag_index: usize, occupied: u32) -> bool {
+    pub fn should_hide_tag(&self, tag_index: usize, occupied: TagMask) -> bool {
         if self.showtags == 0 {
             return false;
         }
-        let bit = 1u32 << tag_index;
-        (occupied & bit) == 0 && (self.selected_tags() & bit) == 0
+        !occupied.contains(tag_index)
+            && !TagMask::from_bits(self.selected_tags()).contains(tag_index)
     }
 
     /// Map a bar slot (0..8) to the actual tag index.
@@ -399,15 +399,13 @@ impl Monitor {
 
     /// Compute a bitmask of tags that have at least one client on this monitor.
     ///
-    /// Excludes the special scratchpad tag (255).
-    pub fn occupied_tags(&self, clients: &HashMap<WindowId, Client>) -> u32 {
+    /// Excludes the scratchpad tag from the result.
+    pub fn occupied_tags(&self, clients: &HashMap<WindowId, Client>) -> TagMask {
         let mut occupied: u32 = 0;
         for (_win, c) in self.iter_clients(clients) {
-            if c.tags != 255 {
-                occupied |= c.tags;
-            }
+            occupied |= c.tags;
         }
-        occupied
+        TagMask::from_bits(occupied).without_scratchpad()
     }
 
     /// Compute which logical bar region the cursor's **monitor-local** x coordinate

@@ -3,7 +3,7 @@
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
-use crate::types::{Direction, TagMask, WindowId, SCRATCHPAD_MASK};
+use crate::types::{Direction, TagMask, WindowId};
 use x11rb::protocol::xproto::ConnectionExt;
 
 /// View tags using type-safe mask.
@@ -142,8 +142,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     }
 
     // Exclude scratchpad
-    let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
-    let next_mask = next_mask & !scratchpad;
+    let next_mask = next_mask & !TagMask::SCRATCHPAD;
 
     view(ctx, next_mask);
 }
@@ -168,11 +167,9 @@ pub fn win_view(ctx: &mut WmCtx) {
     };
 
     let tags = ctx.g().clients.get(&win).map(|c| c.tags).unwrap_or(1);
-
-    let scratchpad = TagMask::from_bits(SCRATCHPAD_MASK);
     let tag_mask = TagMask::from_bits(tags);
 
-    if tag_mask == scratchpad {
+    if tag_mask.is_scratchpad_only() {
         let current_tag = ctx.g().selected_monitor().current_tag;
         if let Some(mask) = TagMask::single(current_tag) {
             view(ctx, mask);
