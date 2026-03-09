@@ -139,7 +139,7 @@ fn calculate_scaled_geometry(
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
     let target = match ctx {
         crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
-            let c = match x11_ctx.core.g.clients.get(&win) {
+            let c = match x11_ctx.core.client(win) {
                 Some(c) => c,
                 None => return,
             };
@@ -154,7 +154,7 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
             })
         }
         crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
-            let c = match wl_ctx.core.g.clients.get(&win) {
+            let c = match wl_ctx.core.client(win) {
                 Some(c) => c,
                 None => return,
             };

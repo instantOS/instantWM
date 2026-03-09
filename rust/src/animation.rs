@@ -218,7 +218,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         let mon = ctx.g().selected_monitor();
         let is_floating = mon
             .sel
-            .and_then(|w| ctx.g().clients.get(&w).map(|c| c.isfloating))
+            .and_then(|w| ctx.client(w).map(|c| c.isfloating))
             .unwrap_or(false);
         let has_tiling = mon.is_tiling_layout();
         let current_tag = mon.current_tag as u32;

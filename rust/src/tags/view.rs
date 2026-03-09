@@ -124,7 +124,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
         let clients = ctx.g().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx.g().clients.get(&win) {
+            if let Some(c) = ctx.client(win) {
                 if TagMask::from_bits(c.tags).intersects(next_mask) {
                     found = true;
                     break;
@@ -166,7 +166,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         return;
     };
 
-    let tags = ctx.g().clients.get(&win).map(|c| c.tags).unwrap_or(1);
+    let tags = ctx.client(win).map(|c| c.tags).unwrap_or(1);
     let tag_mask = TagMask::from_bits(tags);
 
     if tag_mask.is_scratchpad_only() {

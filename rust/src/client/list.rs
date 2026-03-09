@@ -46,7 +46,7 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
 
     for i in iter_start..clients.len() {
         let win = clients[i];
-        if let Some(c) = ctx.g().clients.get(&win) {
+        if let Some(c) = ctx.client(win) {
             if !c.isfloating && c.is_visible_on_tags(selected) && !c.is_hidden {
                 return Some(win);
             }
@@ -60,7 +60,7 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
 pub fn pop(ctx: &mut WmCtx, win: WindowId) {
     detach(ctx, win);
     attach(ctx, win);
-    let monitor_id = ctx.g().clients.get(&win).map(|c| c.monitor_id);
+    let monitor_id = ctx.client(win).map(|c| c.monitor_id);
     crate::focus::focus_soft(ctx, Some(win));
 
     if let Some(mid) = monitor_id {

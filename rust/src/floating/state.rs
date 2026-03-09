@@ -45,7 +45,7 @@ pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let float_geo = ctx.g().clients.get(&win).map(|c| c.float_geo);
+    let float_geo = ctx.client(win).map(|c| c.float_geo);
     if let Some(rect) = float_geo {
         crate::client::resize(ctx, win, &rect, false);
     }
@@ -74,7 +74,7 @@ pub fn apply_float_change(
             }
         }
 
-        let saved_geo = ctx.g().clients.get(&win).map(|c| c.float_geo);
+        let saved_geo = ctx.client(win).map(|c| c.float_geo);
         let Some(saved_geo) = saved_geo else { return };
 
         if animate {
@@ -84,7 +84,7 @@ pub fn apply_float_change(
         }
     } else {
         let client_count = ctx.g().clients.len();
-        let clear_border = if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+        let clear_border = if let Some(client) = ctx.client_mut(win) {
             client.isfloating = false;
             client.float_geo = client.geo;
 
@@ -111,7 +111,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let mon = ctx.g().selected_monitor();
     let selected_window = match mon.sel {
         Some(sel) if Some(sel) != mon.overlay => {
-            if let Some(c) = ctx.g().clients.get(&sel) {
+            if let Some(c) = ctx.client(sel) {
                 if c.is_true_fullscreen() {
                     return;
                 }
@@ -124,9 +124,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let Some(win) = selected_window else { return };
 
     let (is_floating, is_fixed) = ctx
-        .g()
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| (c.isfloating, c.isfixed))
         .unwrap_or((false, false));
 
@@ -137,11 +135,10 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 }
 
 pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
-    let (_is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) =
-        match ctx.g().clients.get(&win) {
-            Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
-            None => return,
-        };
+    let (_is_fullscreen, is_fake_fullscreen, is_floating, is_fixed) = match ctx.client(win) {
+        Some(c) => (c.is_fullscreen, c.isfakefullscreen, c.isfloating, c.isfixed),
+        None => return,
+    };
 
     if is_fake_fullscreen {
         return;
@@ -154,7 +151,7 @@ pub fn change_floating_win(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn set_floating(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating) = match ctx.g().clients.get(&win) {
+    let (is_true_fullscreen, is_floating) = match ctx.client(win) {
         Some(c) => (c.is_true_fullscreen(), c.isfloating),
         None => return,
     };

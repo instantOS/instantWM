@@ -632,7 +632,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
     let last_win = last_client_win;
 
-    let last_client = match ctx.g().clients.get(&last_win) {
+    let last_client = match ctx.client(last_win) {
         Some(c) => c.clone(),
         None => return,
     };

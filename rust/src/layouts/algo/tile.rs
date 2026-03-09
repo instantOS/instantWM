@@ -81,12 +81,12 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if m.nmaster == 1 && n > 1 {
-                if let Some(c) = ctx.g_mut().clients.get(&client.win) {
+                if let Some(c) = ctx.client(client.win) {
                     mw = c.geo.w + c.border_width * 2;
                 }
             }
 
-            if let Some(c) = ctx.g.clients.get(&client.win) {
+            if let Some(c) = ctx.client(client.win) {
                 if master_y_offset as i32 + c.total_height() < m.work_rect.h {
                     master_y_offset += c.total_height() as u32;
                 }

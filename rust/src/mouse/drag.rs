@@ -42,16 +42,6 @@ use super::cursor::{set_cursor_default, set_cursor_move};
 use super::monitor::handle_client_monitor_switch;
 use super::warp::{get_root_ptr, get_root_ptr_ctx_x11, warp_into_ctx_x11};
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
-
-fn refresh_rate(ctx: &mut WmCtx) -> u32 {
-    if ctx.g_mut().doubledraw {
-        REFRESH_RATE_HI
-    } else {
-        REFRESH_RATE_LO
-    }
-}
-
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
     snap_window_to_monitor_edges(ctx, c.win, c.geo.w, c.geo.h, new_x, new_y);
@@ -153,7 +143,7 @@ pub struct MoveState {
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
-    let (sel, is_true_fs, is_overlay, is_fullscreen) = {
+    let (sel, is_true_fullscreen, is_overlay, is_fullscreen) = {
         let g = ctx.g_mut();
         let mon = g.selected_monitor();
         let sel = mon.sel?;
@@ -168,7 +158,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         )
     };
 
-    if is_true_fs {
+    if is_true_fullscreen {
         return None;
     }
     if is_overlay {
@@ -306,9 +296,8 @@ pub fn on_motion(
     );
 
     if !has_tiling || is_floating {
-        let client_clone = ctx.g().clients.get(&win).cloned();
-        if let Some(ref client) = client_clone {
-            snap_to_monitor_edges(ctx, client, &mut new_x, &mut new_y);
+        if let Some(client) = ctx.client(win).cloned() {
+            snap_to_monitor_edges(ctx, &client, &mut new_x, &mut new_y);
         }
         resize(
             ctx,

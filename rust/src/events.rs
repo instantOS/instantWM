@@ -99,7 +99,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
-            if let Some(monitor_id) = ctx.core.g.clients.get(&event_win).map(|c| c.monitor_id) {
+            if let Some(monitor_id) = ctx.core.client(event_win).map(|c| c.monitor_id) {
                 restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
@@ -294,7 +294,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let selected_window = selmon.sel;
     let is_floating_sel = {
         let is_floating = selected_window
-            .and_then(|w| ctx.core.g.clients.get(&w))
+            .and_then(|w| ctx.core.client(w))
             .map(|c| c.isfloating)
             .unwrap_or(false);
         let has_tiling = selmon.is_tiling_layout();
@@ -814,7 +814,7 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         crate::client::show(&mut WmCtx::X11(ctx.reborrow()), win);
     };
 
-    if let Some(c) = ctx.core.g.clients.get(&win) {
+    if let Some(c) = ctx.core.client(win) {
         let monitor_id = c.monitor_id;
         crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
         restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);

@@ -192,6 +192,10 @@ impl<'a> WmCtx<'a> {
         self.core().client(win)
     }
 
+    pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
+        self.core_mut().client_mut(win)
+    }
+
     pub fn g(&self) -> &Globals {
         self.core().g
     }

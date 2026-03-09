@@ -212,7 +212,7 @@ pub fn up_press(ctx: &mut WmCtx) {
         let sel = mon.sel;
         let overlay = mon.overlay;
         let is_floating = sel
-            .and_then(|w| ctx.g().clients.get(&w).map(|c| c.isfloating))
+            .and_then(|w| ctx.client(w).map(|c| c.isfloating))
             .unwrap_or(false);
         (sel, overlay, is_floating)
     };

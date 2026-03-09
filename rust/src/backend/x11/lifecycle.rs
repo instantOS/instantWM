@@ -440,7 +440,7 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let monitor_id = ctx.core.g.clients.get(&win).map(|c| c.monitor_id);
+    let monitor_id = ctx.core.client(win).map(|c| c.monitor_id);
 
     // Clear overlay and fullscreen references.
     for mon in ctx.core.g.monitors_iter_all_mut() {

@@ -67,7 +67,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
 
     let monitor_tags = ctx.g_mut().selected_monitor().selected_tags();
 
-    let Some(client) = ctx.g_mut().clients.get(&selected_window) else {
+    let Some(client) = ctx.client(selected_window) else {
         return;
     };
     if !client.is_scratchpad() {
@@ -76,7 +76,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     let restore_tags = client.scratchpad_restore_tags;
     let monitor_id = client.monitor_id;
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) {
+    if let Some(client) = ctx.client_mut(selected_window) {
         client.scratchpad_name.clear();
         client.issticky = false;
         client.tags = if restore_tags != 0 {

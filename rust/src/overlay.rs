@@ -319,7 +319,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     // Gather all needed data in one place
     let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
         let mon = ctx.g().monitor(selmon_id).unwrap();
-        let client = match ctx.g().clients.get(&overlay_win) {
+        let client = match ctx.client(overlay_win) {
             Some(c) => c,
             None => return,
         };
@@ -414,7 +414,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data
     let (is_locked, is_fullscreen, hide_info) = {
-        let client = match ctx.g().clients.get(&overlay_win) {
+        let client = match ctx.client(overlay_win) {
             Some(c) => c,
             None => return,
         };
@@ -468,7 +468,7 @@ pub fn set_overlay(ctx: &mut WmCtx) {
             None => return,
         };
 
-        let visible = if let Some(c) = ctx.g().clients.get(&overlay_win) {
+        let visible = if let Some(c) = ctx.client(overlay_win) {
             let selected = mon.selected_tags();
             c.is_visible_on_tags(selected)
         } else {

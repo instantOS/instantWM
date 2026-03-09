@@ -112,7 +112,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
                 let selmon_id = wmctx.g().selected_monitor_id();
                 crate::layouts::arrange(&mut wmctx, Some(selmon_id));
                 // Re-read geometry after the layout change.
-                let Some(new_geo) = wmctx.g().clients.get(&win).map(|c| c.geo) else {
+                let Some(new_geo) = wmctx.client(win).map(|c| c.geo) else {
                     return;
                 };
                 let hit_x = ptr_x - new_geo.x;
@@ -200,9 +200,7 @@ pub fn resize_mouse_directional(
     };
     let is_blocked = ctx
         .core
-        .g
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| c.is_true_fullscreen())
         .unwrap_or(false);
     if is_blocked {
@@ -210,7 +208,7 @@ pub fn resize_mouse_directional(
     };
 
     let (orig_left, orig_top, orig_right, orig_bottom, border_width) = {
-        match ctx.core.g.clients.get(&win) {
+        match ctx.core.client(win) {
             Some(c) => (
                 c.geo.x,
                 c.geo.y,
@@ -256,7 +254,7 @@ pub fn resize_mouse_directional(
 
             let snap = ctx.core.g.cfg.snap;
 
-            let should_toggle = if let Some(client) = ctx.core.g.clients.get(&win) {
+            let should_toggle = if let Some(client) = ctx.core.client(win) {
                 let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();
 
                 !client.isfloating
@@ -269,13 +267,7 @@ pub fn resize_mouse_directional(
             if should_toggle {
                 with_wm_ctx_x11(ctx, |ctx| toggle_floating(ctx));
             } else {
-                let is_floating = ctx
-                    .core
-                    .g
-                    .clients
-                    .get(&win)
-                    .map(|c| c.isfloating)
-                    .unwrap_or(false);
+                let is_floating = ctx.core.client(win).map(|c| c.isfloating).unwrap_or(false);
                 let has_tiling = ctx.core.g.selected_monitor().is_tiling_layout();
 
                 if !has_tiling || is_floating {
@@ -346,7 +338,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
     };
 
     let (orig_left, orig_top) = {
-        match ctx.core.g.clients.get(&win) {
+        match ctx.core.client(win) {
             Some(c) => (c.geo.x, c.geo.y),
             None => return,
         }

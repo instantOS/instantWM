@@ -201,7 +201,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 
     let (is_scratchpad, target_tags) = {
-        let client = match ctx.g_mut().clients.get(&win) {
+        let client = match ctx.client(win) {
             Some(c) => c,
             None => return,
         };
@@ -308,7 +308,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    if let Some(monitor_id) = ctx.g_mut().clients.get(&c_win).map(|c| c.monitor_id) {
+    if let Some(monitor_id) = ctx.client(c_win).map(|c| c.monitor_id) {
         ctx.g_mut().monitors.set_sel_idx(monitor_id);
     }
 
@@ -346,7 +346,7 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
 // -----------------------------------------------------------------------------
 
 fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    let Some(client) = ctx.g_mut().clients.get(&win) else {
+    let Some(client) = ctx.client(win) else {
         return;
     };
     if !client.is_scratchpad() || client.issticky {

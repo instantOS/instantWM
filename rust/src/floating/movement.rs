@@ -6,7 +6,7 @@ use crate::contexts::WmCtx;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo, border_width) = match ctx.g().clients.get(&win) {
+    let (is_floating, geo, border_width) = match ctx.client(win) {
         Some(c) => (c.isfloating, c.geo, c.border_width),
         None => return,
     };
@@ -47,7 +47,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo) = match ctx.g().clients.get(&win) {
+    let (is_floating, geo) = match ctx.client(win) {
         Some(c) => (c.isfloating, c.geo),
         None => return,
     };
@@ -83,7 +83,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     if is_overlay {
         return;
     }
-    let (geo, is_floating) = match ctx.g().clients.get(&win) {
+    let (geo, is_floating) = match ctx.client(win) {
         Some(c) => (c.geo, c.isfloating),
         None => return,
     };

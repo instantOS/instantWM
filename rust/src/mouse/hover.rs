@@ -41,7 +41,7 @@ pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let Some(c) = ctx.g().clients.get(&win) else {
+    let Some(c) = ctx.client(win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -183,7 +183,7 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
     let Some(win) = ctx.selected_client() else {
         return false;
     };
-    let Some(c) = ctx.g().clients.get(&win) else {
+    let Some(c) = ctx.client(win) else {
         return false;
     };
     let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
@@ -355,7 +355,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                     return false;
                 };
                 let (geo, w, h) = {
-                    let Some(c) = wm_ctx.g_mut().clients.get(&win) else {
+                    let Some(c) = wm_ctx.client(win) else {
                         return false;
                     };
                     (c.geo, c.geo.w, c.geo.h)
@@ -423,7 +423,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
         None => return false,
     };
     let is_tiling_layout = ctx.g().selected_monitor().is_tiling_layout();
-    let sel_geo = match ctx.g().clients.get(&selected_window) {
+    let sel_geo = match ctx.client(selected_window) {
         Some(c) if c.isfloating || !is_tiling_layout => c.geo,
         _ => return false,
     };

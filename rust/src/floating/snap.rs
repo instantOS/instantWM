@@ -201,7 +201,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
 pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
-    let (snap_status, saved_geo, border_width) = match ctx.core.g.clients.get(&win) {
+    let (snap_status, saved_geo, border_width) = match ctx.core.client(win) {
         Some(c) => (c.snap_status, c.float_geo, c.border_width),
         None => return,
     };
@@ -418,7 +418,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
-    let (is_floating, snap_status) = match ctx.g().clients.get(&win) {
+    let (is_floating, snap_status) = match ctx.client(win) {
         Some(c) => (c.isfloating, c.snap_status),
         None => return,
     };
