@@ -1,11 +1,11 @@
-use crate::backend::x11::lifecycle::{manage, unmanage};
+use crate::backend::x11::lifecycle::{is_window_iconic, manage, unmanage};
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
-    WM_STATE_ICONIC, WM_STATE_WITHDRAWN,
+    WM_STATE_WITHDRAWN,
 };
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::ipc::IpcServer;
@@ -986,7 +986,7 @@ fn classify_windows(
             .and_then(|cookie| cookie.reply().ok())
             .map(|wa| wa.map_state == MapState::VIEWABLE)
             .unwrap_or(false);
-        let is_iconic = is_window_iconic(core, x11, x11_runtime, win_id);
+        let is_iconic = is_window_iconic(x11, x11_runtime, win_id);
 
         if !is_viewable && !is_iconic {
             continue;
@@ -1019,30 +1019,6 @@ fn classify_windows(
     }
 
     (managed, transients)
-}
-
-fn is_window_iconic(
-    _core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
-    win: WindowId,
-) -> bool {
-    let conn = x11.conn;
-    let x11_win: Window = win.into();
-
-    let state_atom = x11_runtime.wmatom.state;
-    let Ok(cookie) = conn.get_property(false, x11_win, state_atom, state_atom, 0, 2) else {
-        return false;
-    };
-    let Ok(reply) = cookie.reply() else {
-        return false;
-    };
-
-    reply
-        .value32()
-        .and_then(|mut it| it.next())
-        .map(|v| v as i32 == WM_STATE_ICONIC)
-        .unwrap_or(false)
 }
 
 /// Adopt all pre-existing X11 windows at WM startup.

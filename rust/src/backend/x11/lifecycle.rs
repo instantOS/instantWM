@@ -32,7 +32,7 @@ use crate::animation::animate_client_x11;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
-use crate::client::constants::{WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
+use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::resize;
@@ -603,4 +603,26 @@ fn get_transient_for_hint_x11(x11: &X11BackendRef, w: WindowId) -> Option<Window
         .and_then(|cookie| cookie.reply().ok())
         .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
         .map(WindowId::from)
+}
+
+pub fn is_window_iconic(
+    x11: &X11BackendRef,
+    x11_runtime: &crate::globals::X11RuntimeConfig,
+    win: WindowId,
+) -> bool {
+    let x11_win: Window = win.into();
+
+    let state_atom = x11_runtime.wmatom.state;
+    let Ok(cookie) = x11.conn.get_property(false, x11_win, state_atom, state_atom, 0, 2) else {
+        return false;
+    };
+    let Ok(reply) = cookie.reply() else {
+        return false;
+    };
+
+    reply
+        .value32()
+        .and_then(|mut it| it.next())
+        .map(|v| v as i32 == WM_STATE_ICONIC)
+        .unwrap_or(false)
 }
