@@ -624,7 +624,7 @@ fn bar_render_key(
             c.name.hash(&mut hasher);
             c.tags.hash(&mut hasher);
             c.isurgent.hash(&mut hasher);
-            c.islocked.hash(&mut hasher);
+            c.is_locked.hash(&mut hasher);
             c.is_fullscreen.hash(&mut hasher);
             c.is_hidden.hash(&mut hasher);
         }

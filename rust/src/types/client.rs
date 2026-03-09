@@ -70,13 +70,13 @@ pub struct Client {
     /// Tags this client belongs to (bitmask).
     pub tags: u32,
     /// Whether the window has fixed size.
-    pub isfixed: bool,
+    pub is_fixed_size: bool,
     /// Whether the window is floating.
     pub isfloating: bool,
     /// Whether the window has urgency hint.
     pub isurgent: bool,
     /// Whether the window should never receive focus.
-    pub neverfocus: bool,
+    pub never_focus: bool,
     /// Old window state.
     pub oldstate: i32,
     /// Whether the window is fullscreen.
@@ -84,7 +84,7 @@ pub struct Client {
     /// Whether the window is in fake fullscreen mode.
     pub isfakefullscreen: bool,
     /// Whether the window is locked (can't be closed accidentally).
-    pub islocked: bool,
+    pub is_locked: bool,
     /// Whether the window is sticky (visible on all tags).
     pub issticky: bool,
     /// Whether the window is minimized/hidden.

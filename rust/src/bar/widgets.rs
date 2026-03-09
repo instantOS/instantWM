@@ -221,7 +221,7 @@ pub(crate) fn draw_close_button(
 
     let mut scheme = ctx
         .g
-        .close_button_scheme(close_hovered, c.islocked, is_fullscreen);
+        .close_button_scheme(close_hovered, c.is_locked, is_fullscreen);
     // Use the scheme detail color for the lower accent bar (matches intended darker tone).
     scheme.fg = scheme.detail;
     painter.set_scheme(scheme);

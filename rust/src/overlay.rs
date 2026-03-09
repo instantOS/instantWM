@@ -214,7 +214,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&temp_client) {
         client.border_width = 0;
-        client.islocked = true;
+        client.is_locked = true;
 
         if !client.isfloating {
             client.isfloating = true;
@@ -255,7 +255,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
     if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
         client.border_width = client.old_border_width;
         client.issticky = false;
-        client.islocked = false;
+        client.is_locked = false;
         client.isfloating = true;
     }
 
@@ -327,7 +327,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             mon.overlaymode,
             mon.monitor_rect,
             mon.work_rect.w,
-            client.islocked,
+            client.is_locked,
             client.geo.w,
             client.geo.h,
         )
@@ -433,7 +433,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
         };
 
         (
-            client.islocked,
+            client.is_locked,
             is_overlay_fullscreen(ctx, overlay_win, mon),
             hide_info,
         )

@@ -17,7 +17,7 @@
 
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::floating::state::save_floating_win;
+use crate::floating::state::save_floating_geometry;
 use crate::types::*;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
@@ -36,7 +36,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 
     let wins_to_save = collect_floating_wins(ctx.g(), mid);
     for win in wins_to_save {
-        save_floating_win(ctx, win);
+        save_floating_geometry(ctx, win);
     }
 }
 
@@ -49,7 +49,7 @@ pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 
     let wins_to_restore = collect_floating_wins(ctx.g(), mid);
     for win in wins_to_restore {
-        super::state::restore_floating_win(ctx, win);
+        super::state::restore_floating_geometry(ctx, win);
     }
 }
 
@@ -160,7 +160,7 @@ fn collect_distribute_targets(
     let mut wins = Vec::new();
     for (c_win, c) in mon.iter_clients(globals.clients.map()) {
         if c.isfloating
-            && !c.isfixed
+            && !c.is_fixed_size
             && (c.tags & tag_set) != 0
             && c.snap_status == SnapPosition::None
         {

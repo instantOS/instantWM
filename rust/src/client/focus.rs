@@ -173,7 +173,7 @@ pub fn set_focus_x11(
         return;
     };
 
-    if !c.neverfocus {
+    if !c.never_focus {
         let x11_win: Window = win.into();
         let _ = x11
             .conn

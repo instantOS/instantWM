@@ -266,7 +266,7 @@ fn subscribe_manage_events(x11: &X11BackendRef, w: WindowId) {
 fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent: bool) -> bool {
     if let Some(client) = g.clients.get_mut(&w) {
         if !client.isfloating {
-            client.isfloating = has_transient_parent || client.isfixed;
+            client.isfloating = has_transient_parent || client.is_fixed_size;
             client.oldstate = client.isfloating as i32;
         }
         client.isfloating

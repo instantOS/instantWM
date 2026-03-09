@@ -104,7 +104,7 @@ pub fn toggle_double_draw(core: &mut CoreCtx) {
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     let _mon_id = {
         if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-            client.islocked = !client.islocked;
+            client.is_locked = !client.is_locked;
             client.monitor_id
         } else {
             return;

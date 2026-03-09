@@ -10,6 +10,16 @@ use crate::layouts::arrange;
 use crate::types::*;
 use x11rb::connection::Connection;
 
+/// Whether a window should be floating or tiled.
+#[derive(Clone, Copy, Default)]
+pub enum WindowMode {
+    #[default]
+    Tiled,
+    Floating,
+    /// Toggle between floating and tiled based on current state.
+    ToggleFloat,
+}
+
 /// Common helper for restoring border width when transitioning to floating.
 /// Returns the restored border width value.
 fn restore_client_border(core: &mut CoreCtx, backend: &impl BackendOps, win: WindowId) -> i32 {
@@ -34,30 +44,46 @@ fn apply_floating_borderscheme(x11: &X11BackendRef, win: WindowId, x11_runtime: 
     );
 }
 
-pub fn save_floating_win(ctx: &mut WmCtx, win: WindowId) {
+pub fn save_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         client.float_geo = client.geo;
     }
 }
 
-pub fn restore_floating_win(ctx: &mut WmCtx, win: WindowId) {
+pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     if let Some(rect) = ctx.client(win).map(|c| c.effective_float_geo()) {
         crate::client::resize(ctx, win, &rect, false);
     }
 }
-pub fn apply_float_change(
-    ctx: &mut WmCtx,
-    win: WindowId,
-    floating: bool,
-    animate: bool,
-    update_borders: bool,
-) {
-    if floating {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-            client.isfloating = true;
-        }
 
-        if update_borders {
+/// Set a window to floating or tiled mode.
+/// Returns true if the caller should animate (when going to floating mode).
+/// Handles border updates and geometry changes but NOT animation (callers handle that separately).
+pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool {
+    // Handle ToggleFloat by determining the actual target mode
+    let target_mode = match mode {
+        WindowMode::ToggleFloat => {
+            let (is_floating, is_fixed) = ctx
+                .client(win)
+                .map(|c| (c.isfloating, c.is_fixed_size))
+                .unwrap_or((false, false));
+            // If currently tiled, go floating; if floating, go tiled (unless fixed)
+            if !is_floating || is_fixed {
+                WindowMode::Floating
+            } else {
+                WindowMode::Tiled
+            }
+        }
+        other => other,
+    };
+
+    match target_mode {
+        WindowMode::Floating => {
+            if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+                client.isfloating = true;
+            }
+
+            // Restore borders
             match ctx {
                 WmCtx::X11(x11) => {
                     restore_client_border(&mut x11.core, &x11.backend, win);
@@ -67,38 +93,41 @@ pub fn apply_float_change(
                     restore_client_border(&mut wl.core, &wl.backend, win);
                 }
             }
-        }
 
-        let saved_geo = ctx.client(win).map(|c| c.effective_float_geo());
-        let Some(saved_geo) = saved_geo else { return };
-
-        if animate {
-            animate_client(ctx, win, &saved_geo, 7, 0);
-        } else {
+            // Apply saved float geometry
+            let saved_geo = ctx.client(win).map(|c| c.effective_float_geo());
+            let Some(saved_geo) = saved_geo else {
+                return false;
+            };
             crate::client::resize(ctx, win, &saved_geo, false);
+            true // Caller should animate
         }
-    } else {
-        let client_count = ctx.g().clients.len();
-        let clear_border = if let Some(client) = ctx.client_mut(win) {
-            client.isfloating = false;
-            client.float_geo = client.geo;
+        WindowMode::Tiled => {
+            let client_count = ctx.g().clients.len();
+            let clear_border = if let Some(client) = ctx.client_mut(win) {
+                client.isfloating = false;
+                client.float_geo = client.geo;
 
-            if update_borders && client_count <= 1 && client.snap_status == SnapPosition::None {
-                if client.border_width != 0 {
-                    client.old_border_width = client.border_width;
+                // Only clear border if this is the only client and not snapped
+                if client_count <= 1 && client.snap_status == SnapPosition::None {
+                    if client.border_width != 0 {
+                        client.old_border_width = client.border_width;
+                    }
+                    client.border_width = 0;
+                    true
+                } else {
+                    false
                 }
-                client.border_width = 0;
-                true
             } else {
                 false
-            }
-        } else {
-            false
-        };
+            };
 
-        if clear_border {
-            ctx.backend().set_border_width(win, 0);
+            if clear_border {
+                ctx.backend().set_border_width(win, 0);
+            }
+            false // No animation needed for tiling
         }
+        WindowMode::ToggleFloat => unreachable!(), // Already handled above
     }
 }
 
@@ -118,36 +147,18 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let Some(win) = selected_window else { return };
 
-    let (is_floating, is_fixed) = ctx
-        .client(win)
-        .map(|c| (c.isfloating, c.isfixed))
-        .unwrap_or((false, false));
+    // ToggleFloat handles deriving current state and determining new state internally
+    let should_animate = set_window_mode(ctx, win, WindowMode::ToggleFloat);
 
-    let new_state = !is_floating || is_fixed;
-    apply_float_change(ctx, win, new_state, true, true);
+    // Animate when going to floating mode
+    if should_animate {
+        if let Some(saved_geo) = ctx.client(win).map(|c| c.effective_float_geo()) {
+            animate_client(ctx, win, &saved_geo, 7, 0);
+        }
+    }
+
     let selmon_id = ctx.g().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
-}
-
-pub fn set_tiled(ctx: &mut WmCtx, win: WindowId, should_arrange: bool) {
-    let (is_true_fullscreen, is_floating, is_fixed) = match ctx.client(win) {
-        Some(c) => (c.is_true_fullscreen(), c.isfloating, c.isfixed),
-        None => return,
-    };
-
-    if is_true_fullscreen {
-        return;
-    }
-    if !is_floating && !is_fixed {
-        return;
-    }
-
-    apply_float_change(ctx, win, false, false, false);
-
-    if should_arrange {
-        let selmon_id = ctx.g().selected_monitor_id();
-        arrange(ctx, Some(selmon_id));
-    }
 }
 
 /// Toggle the "maximized" state of the selected window.
@@ -182,7 +193,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
         // For floating windows (or monitors with no tiling layout), restore
         // the saved pre-maximized geometry.
         if is_floating || !super::helpers::has_tiling_layout(ctx.core()) {
-            restore_floating_win(ctx, win);
+            restore_floating_geometry(ctx, win);
             // On X11, nudge the window by 1 px so the server re-evaluates
             // size hints and repaints the frame correctly.
             if let WmCtx::X11(x11) = ctx {
@@ -200,7 +211,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 
         // Save floating geometry so we can restore it on toggle-off.
         if super::helpers::check_floating(ctx.core(), win) {
-            save_floating_win(ctx, win);
+            save_floating_geometry(ctx, win);
         }
     }
 

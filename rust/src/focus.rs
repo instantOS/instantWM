@@ -449,7 +449,7 @@ pub fn set_focus_win_x11(
 ) {
     let x11_win: Window = win.into();
     if let Some(c) = core.g.clients.get(&win) {
-        if !c.neverfocus {
+        if !c.never_focus {
             let _ = x11
                 .conn
                 .set_input_focus(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);

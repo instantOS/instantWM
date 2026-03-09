@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::floating::{change_snap, reset_snap, save_floating_win, toggle_floating, SnapDir};
+use crate::floating::{change_snap, reset_snap, save_floating_geometry, toggle_floating, SnapDir};
 use crate::focus::{direction_focus, focus_stack};
 use crate::globals::X11RuntimeConfig;
 
@@ -348,7 +348,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             let border_width = ctx.g().cfg.border_width_px;
             ctx.set_border(win, border_width);
 
-            save_floating_win(ctx, win);
+            save_floating_geometry(ctx, win);
 
             if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
                 client.snap_status = SnapPosition::Maximized;

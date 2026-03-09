@@ -512,7 +512,7 @@ pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
     if let Some(client) = core.g.clients.get_mut(&win) {
         client.isurgent = is_urgent;
-        client.neverfocus = if flags & WM_HINTS_INPUT_HINT != 0 {
+        client.never_focus = if flags & WM_HINTS_INPUT_HINT != 0 {
             input == 0
         } else {
             false

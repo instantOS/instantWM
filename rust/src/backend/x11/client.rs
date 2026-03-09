@@ -183,7 +183,7 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Windo
         (0.0, 0.0)
     };
 
-    c.isfixed = c.size_hints.is_fixed();
+    c.is_fixed_size = c.size_hints.is_fixed();
     c.hintsvalid = 1;
 }
 

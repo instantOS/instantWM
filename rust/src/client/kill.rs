@@ -40,7 +40,7 @@ fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
         return;
     };
 
-    if client.islocked {
+    if client.is_locked {
         return;
     }
 
@@ -119,7 +119,7 @@ fn close_win_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
         .g
         .clients
         .get(&win)
-        .map(|c| c.islocked)
+        .map(|c| c.is_locked)
         .unwrap_or(true);
 
     if is_locked {

@@ -25,7 +25,7 @@
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::floating::{apply_float_change, change_snap, reset_snap, set_tiled, SnapDir};
+use crate::floating::{set_window_mode, change_snap, reset_snap, SnapDir, WindowMode};
 // focus() is used via focus_soft() in this module
 use crate::layouts::{arrange, restack};
 use crate::tags::{move_client, shift_tag};
@@ -344,7 +344,7 @@ fn maybe_promote_tiled_drag_to_floating(
     };
 
     // Flip isfloating + restore border — zero configure_window calls.
-    apply_float_change(ctx, win, true, false, true);
+    set_window_mode(ctx, win, WindowMode::Floating);
 
     // Re-tile the remaining windows (touches only the other clients).
     let selmon_id = ctx.g().selected_monitor_id();
@@ -382,8 +382,8 @@ pub fn clear_bar_hover(ctx: &mut WmCtx) {
 /// hovered tag first.
 ///
 /// Mirrors the C `handle_bar_drop`:
-/// * Dropped on a tag button → `set_tiled()` + `tag()`
-/// * Dropped elsewhere on bar, window floating → `set_tiled()`
+/// * Dropped on a tag button → `set_window_mode(Tiled)` + `tag()`
+/// * Dropped elsewhere on bar, window floating → `set_window_mode(Tiled)`
 ///
 /// # `grab_start_rect`
 ///
@@ -421,17 +421,21 @@ fn handle_bar_drop(
         // Tile first (no arrange), then tag.
         //
         // Old order: tag() → arrange() [window still floating, layout skips
-        // it] → set_tiled() → arrange() again.  That's two arrange passes.
+        // it] → set_window_mode() → arrange() again.  That's two arrange passes.
         //
-        // New order: set_tiled(should_arrange=false) saves float_geo from the
+        // New order: set_window_mode(should_arrange=false) saves float_geo from the
         // current floating geometry *before* tag() calls arrange().  Then
         // tag() calls arrange() exactly once with the window already marked
         // tiled, so the layout places it correctly in a single pass.
         //
         // tag() uses selmon->sel internally (via set_client_tag_impl), so win
         // must still be the selected window at this point — which it is because
-        // set_tiled does not touch focus.
-        set_tiled(ctx, win, false);
+        // set_window_mode does not touch focus.
+
+        // Don't tile fullscreen windows
+        if !ctx.client(win).is_some_and(|c| c.is_true_fullscreen()) {
+            set_window_mode(ctx, win, WindowMode::Tiled);
+        }
         crate::tags::client_tags::set_client_tag_ctx(
             ctx,
             win,
@@ -439,10 +443,12 @@ fn handle_bar_drop(
         );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
-        // Use set_tiled(win, …) directly instead of toggle_floating() which
+        // Use set_window_mode directly instead of toggle_floating() which
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
-        set_tiled(ctx, win, true);
+        set_window_mode(ctx, win, WindowMode::Tiled);
+        let selmon_id = ctx.g().selected_monitor_id();
+        arrange(ctx, Some(selmon_id));
     } else {
         // Window is already tiled and not dropped on a tag — nothing to do.
         return;
@@ -450,7 +456,7 @@ fn handle_bar_drop(
 
     // ── Correct float_geo using pre-drag dimensions ───────────────────────
     //
-    // Keep the drop position (x/y from set_tiled's saved client.geo), but
+    // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
     if was_floating {
         if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
@@ -586,7 +592,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
 
             // Ensure the window is floating so the move makes sense.
             if !is_floating {
-                apply_float_change(&mut WmCtx::Wayland(wl.reborrow()), win, true, false, true);
+                set_window_mode(&mut WmCtx::Wayland(wl.reborrow()), win, WindowMode::Floating);
                 let selmon_id = wl.core.g.selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
@@ -932,7 +938,7 @@ fn promote_to_floating(
         return (geo, false);
     }
 
-    apply_float_change(ctx, win, true, false, true);
+    set_window_mode(ctx, win, WindowMode::Floating);
     let selmon_id = ctx.g_mut().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
