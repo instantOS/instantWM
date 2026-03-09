@@ -656,13 +656,9 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
 
     // Use override from title drag if available (preserves pre-drag floating dimensions),
     // otherwise get the current client geometry.
-    let grab_start_rect = float_restore_geo.or_else(|| {
-        ctx.core
-            .g
-            .clients
-            .get(&win)
-            .map(|c| c.geo)
-    }).unwrap_or(Rect::default());
+    let grab_start_rect = float_restore_geo
+        .or_else(|| ctx.core.g.clients.get(&win).map(|c| c.geo))
+        .unwrap_or(Rect::default());
 
     let mut state = MoveState {
         start_x,
@@ -1337,32 +1333,31 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// On Wayland, starts the async state machine and returns immediately.
 /// On X11, runs a synchronous grab loop.
 pub fn window_title_mouse_handler(
-    ctx: &mut WmCtxX11,
+    ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
     click_root_x: i32,
     click_root_y: i32,
 ) {
-    if !{
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        title_drag_begin(&mut wm_ctx, win, btn, click_root_x, click_root_y, false)
-    } {
+    if !title_drag_begin(ctx, win, btn, click_root_x, click_root_y, false) {
         return;
     }
 
-    let cursor_index = if btn == MouseButton::Right { 2 } else { 0 };
-
-    // ── X11 synchronous grab loop ─────────────────────────────────────
-    super::grab::mouse_drag_loop(ctx, btn, cursor_index, false, |ctx, event| {
-        if let x11rb::protocol::Event::MotionNotify(m) = event {
-            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
-                return false;
-            }
+    match ctx {
+        WmCtx::X11(ctx_x11) => {
+            let cursor_index = if btn == MouseButton::Right { 2 } else { 0 };
+            super::grab::mouse_drag_loop(ctx_x11, btn, cursor_index, false, |ctx, event| {
+                if let x11rb::protocol::Event::MotionNotify(m) = event {
+                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                    if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
+                        return false;
+                    }
+                }
+                true
+            });
+            let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+            title_drag_finish(&mut wm_ctx);
         }
-        true
-    });
-
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    title_drag_finish(&mut wm_ctx);
+        WmCtx::Wayland(_) => {}
+    }
 }

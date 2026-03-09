@@ -86,14 +86,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
-            match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => {
-                    window_title_mouse_handler(ctx_x11, win, arg.btn, arg.rx, arg.ry)
-                }
-                crate::contexts::WmCtx::Wayland(_) => {
-                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
-                }
-            }
+            window_title_mouse_handler(ctx, win, arg.btn, arg.rx, arg.ry)
         }),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Middle => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
@@ -103,14 +96,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => |ctx, arg| {
             let win = if let BarPosition::WinTitle(w) = arg.pos { w }
                       else { return };
-            match ctx {
-                crate::contexts::WmCtx::X11(ctx_x11) => {
-                    window_title_mouse_handler(ctx_x11, win, arg.btn, arg.rx, arg.ry)
-                }
-                crate::contexts::WmCtx::Wayland(_) => {
-                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
-                }
-            }
+            window_title_mouse_handler(ctx, win, arg.btn, arg.rx, arg.ry)
         }),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Left  => |ctx, _| set_overlay(ctx)),
         btn!(WinTitle(WindowId(0)), MODKEY, button:MouseButton::Right => |ctx, _| spawn(ctx, &["instantnotify"])),
