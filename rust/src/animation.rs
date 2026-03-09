@@ -214,15 +214,11 @@ pub fn check_animate_x11(
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     let sel_mon = ctx.g().selected_monitor_id();
 
-    let (_is_floating, has_tiling, current_tag) = {
+    let (has_tiling, current_tag) = {
         let mon = ctx.g().selected_monitor();
-        let is_floating = mon
-            .sel
-            .and_then(|w| ctx.client(w).map(|c| c.is_floating))
-            .unwrap_or(false);
         let has_tiling = mon.is_tiling_layout();
         let current_tag = mon.current_tag as u32;
-        (is_floating, has_tiling, current_tag)
+        (has_tiling, current_tag)
     };
 
     if has_tiling {
@@ -298,32 +294,6 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
         ),
         WmCtx::Wayland(ref mut wl_ctx) => {
             animate_client_wayland(wl_ctx, win, rect, frames, reset_pos)
-        }
-    }
-}
-
-pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
-    match ctx {
-        WmCtx::X11(ref mut x11_ctx) => check_animate_x11(
-            &mut x11_ctx.core,
-            &x11_ctx.x11,
-            x11_ctx.x11_runtime,
-            win,
-            rect,
-            frames,
-            reset_pos,
-        ),
-        WmCtx::Wayland(ref mut wl_ctx) => {
-            let should_animate = wl_ctx
-                .core
-                .g
-                .clients
-                .get(&win)
-                .map(|c| c.geo != *rect)
-                .unwrap_or(false);
-            if should_animate {
-                animate_client_wayland(wl_ctx, win, rect, frames, reset_pos);
-            }
         }
     }
 }
