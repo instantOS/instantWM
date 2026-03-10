@@ -260,176 +260,195 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
     }
 }
 
-/// Compile a named action string into a closure.
-fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
-    let action: Rc<dyn Fn(&mut WmCtx)> = match name.to_ascii_lowercase().as_str() {
-        // Client operations
-        "zoom" => Rc::new(zoom),
-        "kill" | "kill_client" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                kill_client(ctx, win)
-            }
-        }),
-        "shut_kill" => Rc::new(|ctx| shut_kill(ctx)),
-        "quit" => Rc::new(|_| quit()),
+// ---------------------------------------------------------------------------
+// Action compilation
+// ---------------------------------------------------------------------------
 
-        // Focus
-        "focus_next" => Rc::new(|ctx| focus_stack(ctx, StackDirection::Next)),
-        "focus_prev" | "focus_previous" => {
-            Rc::new(|ctx| focus_stack(ctx, StackDirection::Previous))
+/// Macro to define named actions once and generate both:
+/// - A list of action names (for `--list-actions`)
+/// - Match arms (for `compile_named_action`)
+macro_rules! define_actions {
+    // Base case: no more actions
+    () => {
+        pub fn get_named_actions() -> Vec<&'static str> {
+            vec![]
         }
-        "focus_last" | "focus_last_client" => Rc::new(|ctx| focus_last_client(ctx)),
-        "focus_up" => Rc::new(|ctx| direction_focus(ctx, Direction::Up)),
-        "focus_down" => Rc::new(|ctx| direction_focus(ctx, Direction::Down)),
-        "focus_left" => Rc::new(|ctx| direction_focus(ctx, Direction::Left)),
-        "focus_right" => Rc::new(|ctx| direction_focus(ctx, Direction::Right)),
-        "down_key" => Rc::new(|ctx| down_key(ctx, StackDirection::Next)),
-        "up_key" => Rc::new(|ctx| up_key(ctx, StackDirection::Previous)),
-
-        // Layout
-        "toggle_layout" => Rc::new(toggle_layout),
-        "layout_tile" => Rc::new(|ctx| set_layout(ctx, LayoutKind::Tile)),
-        "layout_float" | "layout_floating" => Rc::new(|ctx| set_layout(ctx, LayoutKind::Floating)),
-        "layout_monocle" => Rc::new(|ctx| set_layout(ctx, LayoutKind::Monocle)),
-        "layout_grid" => Rc::new(|ctx| set_layout(ctx, LayoutKind::Grid)),
-        "cycle_layout_next" => Rc::new(|ctx| cycle_layout_direction(ctx, true)),
-        "cycle_layout_prev" => Rc::new(|ctx| cycle_layout_direction(ctx, false)),
-        "inc_nmaster" => Rc::new(|ctx| inc_nmaster_by(ctx, 1)),
-        "dec_nmaster" => Rc::new(|ctx| inc_nmaster_by(ctx, -1)),
-        "mfact_grow" => Rc::new(|ctx| set_mfact(ctx, 0.05)),
-        "mfact_shrink" => Rc::new(|ctx| set_mfact(ctx, -0.05)),
-
-        // Floating
-        "center_window" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                center_window(ctx, win)
-            }
-        }),
-        "toggle_maximized" => Rc::new(toggle_maximized),
-        "distribute_clients" => Rc::new(distribute_clients),
-
-        // Resize (floating)
-        "key_resize_up" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                key_resize(ctx, win, Direction::Up)
-            }
-        }),
-        "key_resize_down" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                key_resize(ctx, win, Direction::Down)
-            }
-        }),
-        "key_resize_left" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                key_resize(ctx, win, Direction::Left)
-            }
-        }),
-        "key_resize_right" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                key_resize(ctx, win, Direction::Right)
-            }
-        }),
-
-        // Push (reorder in stack)
-        "push_up" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                push(ctx, win, PushDirection::Up)
-            }
-        }),
-        "push_down" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                push(ctx, win, PushDirection::Down)
-            }
-        }),
-
-        // Tags / views
-        "last_view" => Rc::new(|ctx| last_view(ctx)),
-        "follow_view" => Rc::new(|ctx| follow_view(ctx)),
-        "win_view" => Rc::new(|ctx| win_view(ctx)),
-        "scroll_left" => Rc::new(|ctx| animation::anim_scroll(ctx, Direction::Left)),
-        "scroll_right" => Rc::new(|ctx| animation::anim_scroll(ctx, Direction::Right)),
-        "move_client_left" => Rc::new(|ctx| move_client(ctx, Direction::Left)),
-        "move_client_right" => Rc::new(|ctx| move_client(ctx, Direction::Right)),
-        "shift_tag_left" => Rc::new(|ctx| shift_tag(ctx, Direction::Left, 1)),
-        "shift_tag_right" => Rc::new(|ctx| shift_tag(ctx, Direction::Right, 1)),
-        "shift_view_left" => Rc::new(|ctx| shift_view(ctx, Direction::Left)),
-        "shift_view_right" => Rc::new(|ctx| shift_view(ctx, Direction::Right)),
-        "view_all" => Rc::new(|ctx| crate::tags::view::view(ctx, TagMask::ALL_BITS)),
-        "tag_all" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
-            }
-        }),
-        "toggle_overview" => Rc::new(|ctx| toggle_overview(ctx, TagMask::ALL_BITS)),
-        "toggle_fullscreen_overview" => {
-            Rc::new(|ctx| toggle_fullscreen_overview(ctx, TagMask::ALL_BITS))
-        }
-
-        // Monitor
-        "focus_mon_prev" => Rc::new(|ctx| focus_monitor(ctx, MonitorDirection::PREV)),
-        "focus_mon_next" => Rc::new(|ctx| focus_monitor(ctx, MonitorDirection::NEXT)),
-        "follow_mon_prev" => Rc::new(|ctx| move_to_monitor_and_follow(ctx, MonitorDirection::PREV)),
-        "follow_mon_next" => Rc::new(|ctx| move_to_monitor_and_follow(ctx, MonitorDirection::NEXT)),
-
-        // Overlay
-        "set_overlay" => Rc::new(set_overlay),
-        "create_overlay" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                create_overlay(ctx, win)
-            }
-        }),
-
-        // Scratchpad
-        "scratchpad_toggle" => Rc::new(|ctx| scratchpad_toggle(ctx, None)),
-        "scratchpad_make" => Rc::new(|ctx| scratchpad_make(ctx, None)),
-
-        // Bar
-        "toggle_bar" => Rc::new(|ctx| toggle_bar(ctx)),
-
-        // Toggles
-        "toggle_sticky" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                toggle_sticky(ctx.core_mut(), win)
-            }
-        }),
-        "toggle_alt_tag" => Rc::new(|ctx| toggle_alt_tag(ctx, ToggleAction::Toggle)),
-        "toggle_animated" => Rc::new(|ctx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle)),
-        "toggle_show_tags" => Rc::new(|ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
-        "toggle_double_draw" => Rc::new(|ctx| toggle_double_draw(ctx.core_mut())),
-        "toggle_prefix" => Rc::new(|ctx| toggle_prefix(ctx)),
-        "unhide_all" => Rc::new(|ctx| unhide_all(ctx)),
-        "hide" => Rc::new(|ctx| {
-            if let Some(win) = ctx.selected_client() {
-                crate::client::hide(ctx, win)
-            }
-        }),
-
-        // Fake fullscreen (X11)
-        "toggle_fake_fullscreen" => Rc::new(|ctx| {
-            if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
-                toggle_fake_fullscreen_x11(ctx_x11)
-            }
-        }),
-
-        // Mouse-driven operations
-        "draw_window" => Rc::new(draw_window),
-        "begin_keyboard_move" => Rc::new(begin_keyboard_move),
-
-        // Keyboard layout switching
-        "next_keyboard_layout" => {
-            Rc::new(|ctx| crate::keyboard_layout::cycle_keyboard_layout(ctx, true))
-        }
-        "prev_keyboard_layout" => {
-            Rc::new(|ctx| crate::keyboard_layout::cycle_keyboard_layout(ctx, false))
-        }
-
-        _ => {
-            eprintln!("instantwm: unknown action '{name}' in keybind config");
-            return None;
+        fn compile_named_action(_name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
+            None
         }
     };
-    Some(action)
+    // Recursive case: handle action with single name
+    ($($name:expr => $action:expr),* $(,)?) => {
+        pub fn get_named_actions() -> Vec<&'static str> {
+            vec![$($name),*]
+        }
+        fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
+            match name.to_ascii_lowercase().as_str() {
+                $($name => Some(Rc::new($action))),*,
+                _ => {
+                    eprintln!("instantwm: unknown action '{name}' in keybind config");
+                    None
+                }
+            }
+        }
+    };
 }
+
+// Define all named actions: (name, closure)
+// Note: aliases are handled separately in get_named_actions()
+define_actions!(
+    // Client operations
+    "zoom" => zoom,
+    "kill" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            kill_client(ctx, win)
+        }
+    },
+    "shut_kill" => |ctx: &mut WmCtx| shut_kill(ctx),
+    "quit" => |_: &mut WmCtx| quit(),
+
+    // Focus
+    "focus_next" => |ctx: &mut WmCtx| focus_stack(ctx, StackDirection::Next),
+    "focus_prev" => |ctx: &mut WmCtx| focus_stack(ctx, StackDirection::Previous),
+    "focus_last" => |ctx: &mut WmCtx| focus_last_client(ctx),
+    "focus_up" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Up),
+    "focus_down" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Down),
+    "focus_left" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Left),
+    "focus_right" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Right),
+    "down_key" => |ctx: &mut WmCtx| down_key(ctx, StackDirection::Next),
+    "up_key" => |ctx: &mut WmCtx| up_key(ctx, StackDirection::Previous),
+
+    // Layout
+    "toggle_layout" => toggle_layout,
+    "layout_tile" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Tile),
+    "layout_float" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Floating),
+    "layout_monocle" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Monocle),
+    "layout_grid" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Grid),
+    "cycle_layout_next" => |ctx: &mut WmCtx| cycle_layout_direction(ctx, true),
+    "cycle_layout_prev" => |ctx: &mut WmCtx| cycle_layout_direction(ctx, false),
+    "inc_nmaster" => |ctx: &mut WmCtx| inc_nmaster_by(ctx, 1),
+    "dec_nmaster" => |ctx: &mut WmCtx| inc_nmaster_by(ctx, -1),
+    "mfact_grow" => |ctx: &mut WmCtx| set_mfact(ctx, 0.05),
+    "mfact_shrink" => |ctx: &mut WmCtx| set_mfact(ctx, -0.05),
+
+    // Floating
+    "center_window" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            center_window(ctx, win)
+        }
+    },
+    "toggle_maximized" => toggle_maximized,
+    "distribute_clients" => distribute_clients,
+
+    // Resize (floating)
+    "key_resize_up" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            key_resize(ctx, win, Direction::Up)
+        }
+    },
+    "key_resize_down" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            key_resize(ctx, win, Direction::Down)
+        }
+    },
+    "key_resize_left" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            key_resize(ctx, win, Direction::Left)
+        }
+    },
+    "key_resize_right" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            key_resize(ctx, win, Direction::Right)
+        }
+    },
+
+    // Push (reorder in stack)
+    "push_up" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            push(ctx, win, PushDirection::Up)
+        }
+    },
+    "push_down" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            push(ctx, win, PushDirection::Down)
+        }
+    },
+
+    // Tags / views
+    "last_view" => |ctx: &mut WmCtx| last_view(ctx),
+    "follow_view" => |ctx: &mut WmCtx| follow_view(ctx),
+    "win_view" => |ctx: &mut WmCtx| win_view(ctx),
+    "scroll_left" => |ctx: &mut WmCtx| animation::anim_scroll(ctx, Direction::Left),
+    "scroll_right" => |ctx: &mut WmCtx| animation::anim_scroll(ctx, Direction::Right),
+    "move_client_left" => |ctx: &mut WmCtx| move_client(ctx, Direction::Left),
+    "move_client_right" => |ctx: &mut WmCtx| move_client(ctx, Direction::Right),
+    "shift_tag_left" => |ctx: &mut WmCtx| shift_tag(ctx, Direction::Left, 1),
+    "shift_tag_right" => |ctx: &mut WmCtx| shift_tag(ctx, Direction::Right, 1),
+    "shift_view_left" => |ctx: &mut WmCtx| shift_view(ctx, Direction::Left),
+    "shift_view_right" => |ctx: &mut WmCtx| shift_view(ctx, Direction::Right),
+    "view_all" => |ctx: &mut WmCtx| crate::tags::view::view(ctx, TagMask::ALL_BITS),
+    "tag_all" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
+        }
+    },
+    "toggle_overview" => |ctx: &mut WmCtx| toggle_overview(ctx, TagMask::ALL_BITS),
+    "toggle_fullscreen_overview" => |ctx: &mut WmCtx| toggle_fullscreen_overview(ctx, TagMask::ALL_BITS),
+
+    // Monitor
+    "focus_mon_prev" => |ctx: &mut WmCtx| focus_monitor(ctx, MonitorDirection::PREV),
+    "focus_mon_next" => |ctx: &mut WmCtx| focus_monitor(ctx, MonitorDirection::NEXT),
+    "follow_mon_prev" => |ctx: &mut WmCtx| move_to_monitor_and_follow(ctx, MonitorDirection::PREV),
+    "follow_mon_next" => |ctx: &mut WmCtx| move_to_monitor_and_follow(ctx, MonitorDirection::NEXT),
+
+    // Overlay
+    "set_overlay" => set_overlay,
+    "create_overlay" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            create_overlay(ctx, win)
+        }
+    },
+
+    // Scratchpad
+    "scratchpad_toggle" => |ctx: &mut WmCtx| scratchpad_toggle(ctx, None),
+    "scratchpad_make" => |ctx: &mut WmCtx| scratchpad_make(ctx, None),
+
+    // Bar
+    "toggle_bar" => |ctx: &mut WmCtx| toggle_bar(ctx),
+
+    // Toggles
+    "toggle_sticky" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            toggle_sticky(ctx.core_mut(), win)
+        }
+    },
+    "toggle_alt_tag" => |ctx: &mut WmCtx| toggle_alt_tag(ctx, ToggleAction::Toggle),
+    "toggle_animated" => |ctx: &mut WmCtx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle),
+    "toggle_show_tags" => |ctx: &mut WmCtx| toggle_show_tags(ctx, ToggleAction::Toggle),
+    "toggle_double_draw" => |ctx: &mut WmCtx| toggle_double_draw(ctx.core_mut()),
+    "toggle_prefix" => |ctx: &mut WmCtx| toggle_prefix(ctx),
+    "unhide_all" => |ctx: &mut WmCtx| unhide_all(ctx),
+    "hide" => |ctx: &mut WmCtx| {
+        if let Some(win) = ctx.selected_client() {
+            crate::client::hide(ctx, win)
+        }
+    },
+
+    // Fake fullscreen (X11)
+    "toggle_fake_fullscreen" => |ctx: &mut WmCtx| {
+        if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
+            toggle_fake_fullscreen_x11(ctx_x11)
+        }
+    },
+
+    // Mouse-driven operations
+    "draw_window" => draw_window,
+    "begin_keyboard_move" => begin_keyboard_move,
+
+    // Keyboard layout switching
+    "next_keyboard_layout" => |ctx: &mut WmCtx| crate::keyboard_layout::cycle_keyboard_layout(ctx, true),
+    "prev_keyboard_layout" => |ctx: &mut WmCtx| crate::keyboard_layout::cycle_keyboard_layout(ctx, false),
+);
 
 // ---------------------------------------------------------------------------
 // Merge logic

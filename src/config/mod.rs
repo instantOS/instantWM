@@ -25,7 +25,6 @@ pub mod appearance;
 pub mod buttons;
 pub mod commands;
 pub mod commands_common;
-pub mod config_doc;
 pub mod config_toml;
 pub mod keybind_config;
 pub mod keybindings;
