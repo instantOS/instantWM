@@ -84,17 +84,30 @@ impl Default for InputConfig {
 ///
 /// ```toml
 /// [keyboard]
-/// layouts = ["us", "de", "fr"]
-/// variant = ["", "nodeadkeys", ""]
+/// layouts = [
+///   { name = "us" },
+///   { name = "de", variant = "nodeadkeys" },
+///   { name = "fr" }
+/// ]
 /// options = "grp:alt_shift_toggle"
 /// ```
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
+#[serde(default)]
+pub struct KeyboardLayoutConfig {
+    /// Layout name (e.g., "us", "de", "fr").
+    pub name: String,
+    /// Optional variant (e.g., "nodeadkeys", "colemak").
+    #[serde(default)]
+    pub variant: Option<String>,
+}
+
+/// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct KeyboardConfig {
-    /// XKB layout names, e.g. `["us", "de", "fr"]`.
-    pub layouts: Vec<String>,
-    /// Per-layout variants (same length as `layouts`), e.g. `["", "nodeadkeys"]`.
-    pub variant: Vec<String>,
+    /// XKB layout configurations.
+    #[serde(default)]
+    pub layouts: Vec<KeyboardLayoutConfig>,
     /// XKB options string, e.g. `"grp:alt_shift_toggle,compose:ralt"`.
     pub options: Option<String>,
     /// XKB model, e.g. `"pc105"`. Defaults to system default if unset.
@@ -105,7 +118,6 @@ impl Default for KeyboardConfig {
     fn default() -> Self {
         Self {
             layouts: Vec::new(),
-            variant: Vec::new(),
             options: None,
             model: None,
         }

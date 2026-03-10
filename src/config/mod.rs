@@ -184,10 +184,8 @@ pub struct Config {
     pub external_commands: ExternalCommands,
 
     // --- Keyboard layouts ---
-    /// XKB layout names, e.g. `["us", "de"]`.
-    pub keyboard_layouts: Vec<String>,
-    /// Per-layout XKB variants (parallel to `keyboard_layouts`).
-    pub keyboard_variants: Vec<String>,
+    /// XKB keyboard layouts.
+    pub keyboard_layouts: Vec<config_toml::KeyboardLayoutConfig>,
     /// XKB options string.
     pub keyboard_options: Option<String>,
     /// XKB model string.
@@ -265,13 +263,12 @@ pub fn init_config() -> Config {
         external_commands: default_commands(),
 
         // --- Keyboard layouts ---
-        keyboard_layouts: theme.keyboard.layouts,
-        keyboard_variants: theme.keyboard.variant,
-        keyboard_options: theme.keyboard.options,
-        keyboard_model: theme.keyboard.model,
+        keyboard_layouts: theme.keyboard.layouts.clone(),
+        keyboard_options: theme.keyboard.options.clone(),
+        keyboard_model: theme.keyboard.model.clone(),
 
         // --- Input configuration ---
-        input: theme.input,
-        status_command: theme.status_command,
+        input: theme.input.clone(),
+        status_command: theme.status_command.clone(),
     }
 }

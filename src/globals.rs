@@ -592,13 +592,9 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
         let layouts: Vec<KeyboardLayout> = cfg
             .keyboard_layouts
             .iter()
-            .enumerate()
-            .map(|(i, name)| {
-                let variant = cfg.keyboard_variants.get(i).cloned().unwrap_or_default();
-                KeyboardLayout {
-                    name: name.clone(),
-                    variant: if variant.is_empty() { None } else { Some(variant) },
-                }
+            .map(|c| KeyboardLayout {
+                name: c.name.clone(),
+                variant: c.variant.clone(),
             })
             .collect();
         g.keyboard_layout = KeyboardLayoutState {
