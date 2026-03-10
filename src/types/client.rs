@@ -31,36 +31,6 @@ pub struct Client {
     /// Size hints from WM_NORMAL_HINTS property.
     pub size_hints: SizeHints,
 
-    // Backward-compatible size hint fields
-    /// Base width.
-    pub base_width: i32,
-    /// Base height.
-    pub base_height: i32,
-    /// Minimum width.
-    pub min_width: i32,
-    /// Minimum height.
-    pub min_height: i32,
-    /// Maximum width.
-    pub max_width: i32,
-    /// Maximum height.
-    pub max_height: i32,
-    /// Width increment.
-    pub inc_width: i32,
-    /// Height increment.
-    pub inc_height: i32,
-    /// Base aspect numerator.
-    pub base_aspect_num: i32,
-    /// Base aspect denominator.
-    pub base_aspect_denom: i32,
-    /// Minimum aspect numerator.
-    pub min_aspect_num: i32,
-    /// Minimum aspect denominator.
-    pub min_aspect_denom: i32,
-    /// Maximum aspect numerator.
-    pub max_aspect_num: i32,
-    /// Maximum aspect denominator.
-    pub max_aspect_denom: i32,
-
     /// Whether size hints are valid.
     pub hintsvalid: i32,
     /// Current border width.
