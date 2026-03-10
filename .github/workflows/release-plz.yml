@@ -62,7 +62,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
