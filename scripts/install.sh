@@ -30,17 +30,17 @@ if [ -f "$SCRIPT_DIR/target/release/instantwmctl" ]; then
 fi
 
 # startinstantos session script
-$SUPERTOOL install -m 755 "$SCRIPT_DIR/../startinstantos" "${DESTDIR}${PREFIX}/bin/startinstantos"
+$SUPERTOOL install -m 755 "$SCRIPT_DIR/startinstantos" "${DESTDIR}${PREFIX}/bin/startinstantos"
 
 # X11 display manager session
-$SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-x11.desktop" "${DESTDIR}/usr/share/xsessions/instantwm.desktop"
+$SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-x11.desktop" "${DESTDIR}/usr/share/xsessions/instantwm.desktop"
 
 # Wayland display manager session
-$SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+$SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
 
 # Wayland debug session (logs to ~/.instantwm.log)
-$SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug-wrapper.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
-$SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
+$SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
+$SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"

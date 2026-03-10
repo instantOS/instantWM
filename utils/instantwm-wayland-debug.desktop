@@ -3,6 +3,6 @@ Encoding=UTF-8
 Name=instantWM (Wayland Debug)
 Comment=instantOS window manager (Wayland) with verbose logging to ~/.instantwm.log
 Exec=instantwm-debug
-DesktopNames=instantwm-rs
+DesktopNames=instantwm
 Icon=instantwm
 Type=Application

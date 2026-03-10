@@ -2,7 +2,7 @@
 Encoding=UTF-8
 Name=instantWM (Wayland)
 Comment=instantOS window manager (Wayland)
-Exec=instantwm-rs --backend drm
+Exec=instantwm-wayland
 DesktopNames=instantwm
 Icon=instantwm
 Type=Application

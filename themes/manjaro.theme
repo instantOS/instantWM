@@ -1,7 +1,0 @@
-static const char *fonts[] = {"Cantarell-Regular:size=12"};
-static const char col_gray1[] = "#1B2224"; /* top bar d */
-static const char col_gray2[] = "#A4ABAA";/*unfocused fonts d */
-static const char col_gray3[] = "#686868";/*unfocused border d */
-static const char col_gray4[] = "#FFFFFF";/*focused fonts d */
-static const char col_gray5[] = "#2EB398";/*focused windows d */
-static const char col_cyan[] = "#2EB398";/*focused instantmenu or topbar d */
