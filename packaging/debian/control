@@ -1,0 +1,10 @@
+Package: instantwm
+Version: VERSION
+Section: x11
+Priority: optional
+Architecture: amd64
+Depends: libx11-6, libxcb1, libxkbcommon0, libxcursor1, libxinerama1, libxrandr2, libxss1, libxtst6, libxfixes3, libxdamage1, libxcomposite1, libxrender1, libxi6, libxres1, libxvmc1, libxxf86vm1, libxt6, libxmu6, libxpm4, libxaw7, libfontconfig1, libfreetype6, libdrm2, libgbm1, libwayland0, libinput7, libseat1, libegl1, libgl1, libevdev2, libwacom1, libdbus-1-3
+Maintainer: instantOS <hello@instantos.io>
+Description: A tiling window manager for X11 and Wayland
+ instantWM is a tiling window manager for X11 and Wayland.
+ It aims to be lightweight while providing a modern feature set.
