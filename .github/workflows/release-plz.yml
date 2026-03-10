@@ -9,7 +9,7 @@ jobs:
     name: Release-plz release
     runs-on: self-hosted
     container:
-      image: archlinux:latest
+      image: ubuntu:latest
     if: ${{ github.repository_owner == 'instantOS' }}
     env:
       CARGO_HOME: /opt/cargo
@@ -19,11 +19,7 @@ jobs:
       id-token: write
     steps:
       - name: Install dependencies
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinux
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed curl git ca-certificates jq tar base-devel cmake pkgconf openssl
+        run: apt-get update && apt-get install -y curl git ca-certificates jq tar build-essential pkg-config libssl-dev cmake
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
