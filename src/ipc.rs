@@ -7,8 +7,8 @@ use crate::monitor::{focus_monitor, focus_n_mon, move_to_monitor_and_follow};
 
 use crate::overlay::set_overlay;
 use crate::scratchpad::{
-    scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_status,
-    scratchpad_toggle, scratchpad_unmake,
+    scratchpad_hide_name, scratchpad_list, scratchpad_make, scratchpad_show_name,
+    scratchpad_status, scratchpad_toggle, scratchpad_unmake,
 };
 use crate::tags::send_to_monitor;
 use crate::tags::{name_tag, reset_name_tag};
@@ -224,29 +224,33 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             reset_name_tag(&mut ctx);
             IpcResponse::ok("")
         }
-        IpcCommand::ScratchpadMake(name) => {
-            scratchpad_make(&mut ctx, name.as_deref());
-            IpcResponse::ok("")
-        }
-        IpcCommand::ScratchpadUnmake => {
-            scratchpad_unmake(&mut ctx);
-            IpcResponse::ok("")
+        IpcCommand::ScratchpadList => {
+            let list = scratchpad_list(ctx.g());
+            IpcResponse::ok(list)
         }
         IpcCommand::ScratchpadToggle(name) => {
             scratchpad_toggle(&mut ctx, name.as_deref());
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadShow(name) => {
-            scratchpad_show_name(&mut ctx, name.as_deref().unwrap_or(""));
+            scratchpad_show_name(&mut ctx, &name);
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadHide(name) => {
-            scratchpad_hide_name(&mut ctx, name.as_deref().unwrap_or(""));
+            scratchpad_hide_name(&mut ctx, &name);
             IpcResponse::ok("")
         }
         IpcCommand::ScratchpadStatus(name) => {
             let status = scratchpad_status(ctx.g(), name.as_deref().unwrap_or(""));
             IpcResponse::ok(status)
+        }
+        IpcCommand::ScratchpadCreate(name) => {
+            scratchpad_make(&mut ctx, name.as_deref());
+            IpcResponse::ok("")
+        }
+        IpcCommand::ScratchpadDelete => {
+            scratchpad_unmake(&mut ctx);
+            IpcResponse::ok("")
         }
         IpcCommand::KeyboardNext => {
             keyboard_layout::cycle_keyboard_layout(&mut ctx, true);

@@ -20,8 +20,7 @@ struct KeyboardLayoutArg {
 impl From<String> for KeyboardLayoutArg {
     fn from(s: String) -> Self {
         // Parse "layout(variant)" syntax
-        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('('))
-        {
+        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
             Self {
                 name: name.to_string(),
                 variant: Some(variant.to_string()),
@@ -78,6 +77,51 @@ enum KeyboardAction {
         /// Layout name or index to remove (e.g., "de" or "#1")
         layout: String,
     },
+}
+
+/// Scratchpad actions.
+#[derive(Debug, Subcommand)]
+enum ScratchpadAction {
+    /// List all scratchpads (show names and visibility status).
+    List,
+    /// Show scratchpad visibility status.
+    ///
+    /// With no argument, shows status for all scratchpads.
+    /// With a name, shows status for that specific scratchpad.
+    Status {
+        /// Scratchpad name (empty or omitted for all)
+        name: Option<String>,
+    },
+    /// Show a scratchpad (make visible on current tag).
+    Show {
+        /// Scratchpad name (required)
+        name: String,
+    },
+    /// Hide a scratchpad (remove from current tag).
+    Hide {
+        /// Scratchpad name (required)
+        name: String,
+    },
+    /// Toggle scratchpad visibility.
+    ///
+    /// Shows the scratchpad if hidden, hides if visible.
+    /// With no argument, toggles the default scratchpad.
+    Toggle {
+        /// Scratchpad name (optional, defaults to first/only scratchpad)
+        name: Option<String>,
+    },
+    /// Create a scratchpad from the selected window.
+    ///
+    /// The selected window is assigned the given name, moved to scratchpad tag,
+    /// and set to floating. If no name is given, uses "default".
+    Create {
+        /// Scratchpad name (optional, defaults to "default")
+        name: Option<String>,
+    },
+    /// Remove scratchpad status from the selected window.
+    ///
+    /// Restores the window's previous tag visibility.
+    Delete,
 }
 
 #[derive(Debug, Subcommand)]
@@ -242,47 +286,15 @@ enum CommandKind {
     },
     /// Reset all tag names to defaults ("1" through "9").
     ResetNameTag,
-    /// Create a scratchpad from the selected window.
-    ///
-    /// The selected window is assigned the given name, moved to scratchpad tag,
-    /// and set to floating. Requires a non-empty name argument.
-    ScratchpadMake {
-        /// Scratchpad name (required, must be non-empty)
-        name: Option<String>,
-    },
-    /// Remove scratchpad status from the selected window.
-    ///
-    /// Restores the window's previous tag visibility.
-    ScratchpadUnmake,
-    /// Toggle scratchpad visibility.
-    ///
-    /// Shows the scratchpad if hidden, hides if shown. Requires a name argument.
-    ScratchpadToggle {
-        /// Scratchpad name (required)
-        name: Option<String>,
-    },
-    /// Show scratchpad window (make visible on current tag).
-    ScratchpadShow {
-        /// Scratchpad name (empty string = no-op)
-        name: Option<String>,
-    },
-    /// Hide scratchpad window (remove from current tag).
-    ScratchpadHide {
-        /// Scratchpad name (empty string = no-op)
-        name: Option<String>,
-    },
-    /// Get scratchpad visibility status.
-    ///
-    /// Returns "ipc:scratchpad:<name>:0" (hidden) or "ipc:scratchpad:<name>:1" (visible),
-    /// or "ipc:scratchpads:<name1>=<status>,..." for all scratchpads.
-    ScratchpadStatus {
-        /// Scratchpad name ("all" for all, empty for all)
-        name: Option<String>,
-    },
     /// Keyboard layout management.
     Keyboard {
         #[command(subcommand)]
         action: KeyboardAction,
+    },
+    /// Scratchpad management.
+    Scratchpad {
+        #[command(subcommand)]
+        action: ScratchpadAction,
     },
     /// Update status text on the bar. If text is "-", read from stdin continuously.
     UpdateStatus { text: String },
@@ -332,12 +344,6 @@ fn main() {
         CommandKind::FocusNMon { index } => IpcCommand::FocusNMon(index.unwrap_or(0)),
         CommandKind::NameTag { name } => IpcCommand::NameTag(name),
         CommandKind::ResetNameTag => IpcCommand::ResetNameTag,
-        CommandKind::ScratchpadMake { name } => IpcCommand::ScratchpadMake(name),
-        CommandKind::ScratchpadUnmake => IpcCommand::ScratchpadUnmake,
-        CommandKind::ScratchpadToggle { name } => IpcCommand::ScratchpadToggle(name),
-        CommandKind::ScratchpadShow { name } => IpcCommand::ScratchpadShow(name),
-        CommandKind::ScratchpadHide { name } => IpcCommand::ScratchpadHide(name),
-        CommandKind::ScratchpadStatus { name } => IpcCommand::ScratchpadStatus(name),
         CommandKind::Keyboard { action } => match action {
             KeyboardAction::List { all } => {
                 if all {
@@ -362,6 +368,15 @@ fn main() {
                 IpcCommand::KeyboardAdd(KeyboardLayout::from(arg))
             }
             KeyboardAction::Remove { layout } => IpcCommand::KeyboardRemove(layout),
+        },
+        CommandKind::Scratchpad { action } => match action {
+            ScratchpadAction::List => IpcCommand::ScratchpadList,
+            ScratchpadAction::Status { name } => IpcCommand::ScratchpadStatus(name),
+            ScratchpadAction::Show { name } => IpcCommand::ScratchpadShow(name),
+            ScratchpadAction::Hide { name } => IpcCommand::ScratchpadHide(name),
+            ScratchpadAction::Toggle { name } => IpcCommand::ScratchpadToggle(name),
+            ScratchpadAction::Create { name } => IpcCommand::ScratchpadCreate(name),
+            ScratchpadAction::Delete => IpcCommand::ScratchpadDelete,
         },
         CommandKind::UpdateStatus { text } => {
             if text == "-" {

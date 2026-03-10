@@ -227,10 +227,7 @@ pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<()
 
     // Add the layout
     let new_index = ctx.g().keyboard_layout.layouts.len();
-    ctx.g_mut()
-        .keyboard_layout
-        .layouts
-        .push(layout);
+    ctx.g_mut().keyboard_layout.layouts.push(layout);
 
     // Switch to the new layout
     set_keyboard_layout(ctx, new_index);

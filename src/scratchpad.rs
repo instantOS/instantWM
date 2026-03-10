@@ -217,6 +217,38 @@ pub fn scratchpad_status(g: &Globals, name: &str) -> String {
     status
 }
 
+/// List all scratchpads with their visibility status.
+///
+/// Returns a formatted string like:
+/// ```
+/// * term     (visible)
+///   music    (hidden)
+/// ```
+pub fn scratchpad_list(g: &Globals) -> String {
+    let mut out = String::new();
+    let mut first = true;
+
+    for mon in g.monitors_iter_all() {
+        for (_c_win, c) in mon.iter_clients(&g.clients) {
+            if c.is_scratchpad() {
+                if !first {
+                    out.push('\n');
+                }
+                let marker = if c.issticky { "* " } else { "  " };
+                let status = if c.issticky { "(visible)" } else { "(hidden)" };
+                out.push_str(&format!("{}{} {}", marker, c.scratchpad_name, status));
+                first = false;
+            }
+        }
+    }
+
+    if first {
+        out.push_str("no scratchpads");
+    }
+
+    out
+}
+
 fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
     if name.is_empty() {
         return None;

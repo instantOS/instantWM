@@ -26,8 +26,7 @@ impl KeyboardLayout {
 impl From<&str> for KeyboardLayout {
     fn from(s: &str) -> Self {
         // Parse "layout(variant)" syntax
-        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('('))
-        {
+        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
             Self::with_variant(name, variant)
         } else {
             Self::new(s)
@@ -35,7 +34,7 @@ impl From<&str> for KeyboardLayout {
     }
 }
 
-impl From< crate::globals::KeyboardLayout> for KeyboardLayout {
+impl From<crate::globals::KeyboardLayout> for KeyboardLayout {
     fn from(l: crate::globals::KeyboardLayout) -> Self {
         Self {
             name: l.name,
@@ -69,12 +68,20 @@ pub enum IpcCommand {
     FocusNMon(i32),
     NameTag(String),
     ResetNameTag,
-    ScratchpadMake(Option<String>),
-    ScratchpadUnmake,
+    /// List all scratchpads (show names and visibility status).
+    ScratchpadList,
+    /// Toggle scratchpad visibility.
     ScratchpadToggle(Option<String>),
-    ScratchpadShow(Option<String>),
-    ScratchpadHide(Option<String>),
+    /// Show a scratchpad (make visible on current tag).
+    ScratchpadShow(String),
+    /// Hide a scratchpad (remove from current tag).
+    ScratchpadHide(String),
+    /// Get scratchpad visibility status.
     ScratchpadStatus(Option<String>),
+    /// Create a scratchpad from the selected window.
+    ScratchpadCreate(Option<String>),
+    /// Remove scratchpad status from the selected window.
+    ScratchpadDelete,
     /// Switch to the next keyboard layout.
     KeyboardNext,
     /// Switch to the previous keyboard layout.
