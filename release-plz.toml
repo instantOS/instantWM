@@ -1,0 +1,6 @@
+# Release-plz configuration
+# Skip crates.io publishing - we only want GitHub releases
+
+[workspace]
+# Disable all package publishing
+publish = false
