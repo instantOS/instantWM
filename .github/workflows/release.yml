@@ -58,6 +58,7 @@ jobs:
             libxaw \
             fontconfig \
             freetype2 \
+            libxft \
             libdrm \
             wayland \
             wayland-protocols \
@@ -328,6 +329,7 @@ jobs:
             libxaw \
             fontconfig \
             freetype2 \
+            libxft \
             libdrm \
             wayland \
             wayland-protocols \

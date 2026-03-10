@@ -57,6 +57,7 @@ jobs:
             libx11 \
             fontconfig \
             freetype2 \
+            libxft \
             libdrm \
             wayland \
             wayland-protocols \
