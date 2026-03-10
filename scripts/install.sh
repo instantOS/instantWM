@@ -30,10 +30,17 @@ if [[ -x /usr/bin/doas ]] && [[ -s /etc/doas.conf ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="$SCRIPT_DIR/target/$BUILD_TYPE"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+TARGET_DIR="$PROJECT_DIR/target/$BUILD_TYPE"
+
+# Build command differs: debug is default (no flag), release needs --release
+BUILD_CMD=(cargo build --manifest-path "$PROJECT_DIR/Cargo.toml")
+if [[ "$BUILD_TYPE" == "release" ]]; then
+    BUILD_CMD+=(--release)
+fi
 
 echo "Building instantWM ($BUILD_TYPE)..."
-cargo build --manifest-path "$SCRIPT_DIR/Cargo.toml" --"$BUILD_TYPE"
+"${BUILD_CMD[@]}"
 
 INSTANTWM_BIN="$TARGET_DIR/instantwm"
 INSTANTWMCTL_BIN="$TARGET_DIR/instantwmctl"
@@ -60,14 +67,14 @@ fi
 $SUPERTOOL install -m 755 "$SCRIPT_DIR/startinstantos" "${DESTDIR}${PREFIX}/bin/startinstantos"
 
 # X11 display manager session
-$SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-x11.desktop" "${DESTDIR}/usr/share/xsessions/instantwm.desktop"
+$SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-x11.desktop" "${DESTDIR}/usr/share/xsessions/instantwm.desktop"
 
 # Wayland display manager session
-$SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+$SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
 
 # Wayland debug session (logs to ~/.instantwm.log)
 $SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
-$SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
+$SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
