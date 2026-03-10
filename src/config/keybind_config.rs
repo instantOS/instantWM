@@ -293,7 +293,7 @@ macro_rules! define_actions {
         pub fn get_named_actions() -> Vec<ActionMeta> {
             vec![]
         }
-        fn compile_named_action(_name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
+        fn compile_named_action_impl(_name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             None
         }
     };
@@ -302,7 +302,7 @@ macro_rules! define_actions {
         pub fn get_named_actions() -> Vec<ActionMeta> {
             vec![$(ActionMeta { name: $name, doc: "" }),*]
         }
-        fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
+        fn compile_named_action_impl(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             match name.to_ascii_lowercase().as_str() {
                 $($name => Some(Rc::new($action))),*,
                 _ => {
@@ -473,6 +473,11 @@ define_actions!(
 // ---------------------------------------------------------------------------
 // Merge logic
 // ---------------------------------------------------------------------------
+
+/// Compile a named action string into a closure (public wrapper).
+pub fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
+    compile_named_action_impl(name)
+}
 
 /// Merge TOML keybind specs into a default keybind list.
 ///
