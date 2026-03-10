@@ -462,23 +462,8 @@ jobs:
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
-          mkdir -p target/deb
-          pkgdir="target/deb/instantwm-${VERSION}"
-          mkdir -p "$pkgdir/usr/bin"
-          mkdir -p "$pkgdir/usr/share/man/man1"
-          mkdir -p "$pkgdir/DEBIAN"
-
-          install -Dm0755 target/release/instantwm "$pkgdir/usr/bin/instantwm"
-          install -Dm0755 target/release/instantwmctl "$pkgdir/usr/bin/instantwmctl"
-
-          if [[ -f instantwm.1 ]]; then
-            install -Dm0644 instantwm.1 "$pkgdir/usr/share/man/man1/instantwm.1"
-          fi
-
-          cp packaging/debian/control "$pkgdir/DEBIAN/control"
-          sed -i "s/^Version: .*/Version: ${VERSION}/" "$pkgdir/DEBIAN/control"
-
-          dpkg-deb --build "$pkgdir" "target/deb/instantwm_${VERSION}_amd64.deb"
+          chmod +x utils/build_deb.sh
+          ./utils/build_deb.sh
       - name: Collect deb artifacts
         env:
           VERSION: ${{ steps.vars.outputs.version }}
