@@ -32,7 +32,7 @@ jobs:
             cmake \
             jq \
             xorg-server \
-            xorg-xvfb \
+            xorg-server-xvfb \
             libx11 \
             libxext \
             libxrandr \
@@ -59,7 +59,7 @@ jobs:
             freetype2 \
             libdrm \
             libgbm \
-            libwayland \
+            wayland \
             wayland-protocols \
             libinput \
             libseat \

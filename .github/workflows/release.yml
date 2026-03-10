@@ -34,7 +34,7 @@ jobs:
             pacman-contrib \
             fzf \
             xorg-server \
-            xorg-xvfb \
+            xorg-server-xvfb \
             libx11 \
             libxext \
             libxrandr \
@@ -60,7 +60,7 @@ jobs:
             freetype2 \
             libdrm \
             libgbm \
-            libwayland \
+            wayland \
             wayland-protocols \
             libinput \
             libseat \
@@ -310,7 +310,7 @@ jobs:
             jq \
             sudo \
             xorg-server \
-            xorg-xvfb \
+            xorg-server-xvfb \
             libx11 \
             libxext \
             libxrandr \
@@ -336,7 +336,7 @@ jobs:
             freetype2 \
             libdrm \
             libgbm \
-            libwayland \
+            wayland \
             wayland-protocols \
             libinput \
             libseat \
@@ -370,15 +370,15 @@ jobs:
       - name: Build package
         run: |
           WORKSPACE="$PWD"
-          su builder -c "cd '$WORKSPACE' && makepkg -s --noconfirm --skippgpcheck"
+          su builder -c "cd '$WORKSPACE/pkgbuild/instantwm' && makepkg -s --noconfirm --skippgpcheck"
       - name: Collect package artifacts
         env:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p artifacts
           shopt -s nullglob
-          for pkg in *.pkg.tar.zst; do mv "$pkg" artifacts/; done
-          for src in *.src.tar.zst; do mv "$src" artifacts/; done
+          for pkg in pkgbuild/instantwm/*.pkg.tar.zst; do mv "$pkg" artifacts/; done
+          for src in pkgbuild/instantwm/*.src.tar.zst; do mv "$src" artifacts/; done
       - name: Upload Arch package
         uses: actions/upload-artifact@v4
         with:
