@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use serde::Deserialize;
+use serde::Serialize;
 
 use crate::config::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::config::keysyms::*;
@@ -18,7 +19,7 @@ use crate::types::Key;
 // ---------------------------------------------------------------------------
 
 /// A single keybind entry from the TOML config.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 pub struct KeybindSpec {
     /// Modifier keys, e.g. `["Super", "Shift"]`.
     #[serde(default)]
@@ -30,7 +31,7 @@ pub struct KeybindSpec {
 }
 
 /// An action that a keybind can trigger.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(untagged)]
 pub enum ActionSpec {
     /// A named WM action: `"zoom"`, `"focus_next"`, etc.
@@ -40,7 +41,7 @@ pub enum ActionSpec {
 }
 
 /// Structured action variants parsed from inline TOML tables.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StructuredAction {
     /// Spawn an external command: `{ spawn = ["kitty", "--arg"] }`.

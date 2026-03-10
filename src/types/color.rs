@@ -2,9 +2,9 @@
 //!
 //! Types for managing colors in the window manager UI.
 
-use crate::bar::color::{deserialize_hex_color, Rgba};
+use crate::bar::color::{deserialize_hex_color, serialize_hex_color, Rgba};
 use crate::drw::Color;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // =============================================================================
 // Scheme enums - typed identifiers for color sets
@@ -222,17 +222,17 @@ impl StatusScheme {
 /// Color scheme with pre-parsed RGBA values.
 ///
 /// Colors are parsed once at config load time via serde, not at runtime.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ColorSchemeRgba {
     /// Foreground color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub fg: Rgba,
     /// Background color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub bg: Rgba,
     /// Detail color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub detail: Rgba,
 }
 
@@ -243,7 +243,7 @@ impl Default for ColorSchemeRgba {
 }
 
 /// Tag scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct TagColorSet {
     pub inactive: ColorSchemeRgba,
@@ -288,7 +288,7 @@ impl TagColorSet {
 }
 
 /// Window scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct WindowColorSet {
     pub focus: ColorSchemeRgba,
@@ -341,7 +341,7 @@ impl WindowColorSet {
 }
 
 /// Close button scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct CloseButtonColorSet {
     pub normal: ColorSchemeRgba,
@@ -394,7 +394,7 @@ impl ColorSchemeRgba {
 }
 
 /// Tag color configurations using strings.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct TagColorConfigs {
     /// Non-hover color configs.
@@ -429,7 +429,7 @@ impl TagColorConfigs {
 }
 
 /// Window color configurations using strings.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct WindowColorConfigs {
     /// Non-hover color configs.
@@ -464,7 +464,7 @@ impl WindowColorConfigs {
 }
 
 /// Close button color configurations using strings.
-#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct CloseButtonColorConfigs {
     /// Non-hover color configs.
@@ -499,20 +499,20 @@ impl CloseButtonColorConfigs {
 }
 
 /// Border color configuration with pre-parsed RGBA values.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct BorderColorConfig {
     /// Normal border color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub normal: Rgba,
     /// Focused tiled window color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub tile_focus: Rgba,
     /// Focused floating window color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub float_focus: Rgba,
     /// Snap indicator color.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub snap: Rgba,
 }
 
@@ -537,17 +537,17 @@ impl BorderColorConfig {
 }
 
 /// Status bar color configuration with pre-parsed RGBA values.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct StatusColorConfig {
     /// Status bar foreground.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub fg: Rgba,
     /// Status bar background.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub bg: Rgba,
     /// Status bar detail/accent.
-    #[serde(deserialize_with = "deserialize_hex_color")]
+    #[serde(deserialize_with = "deserialize_hex_color", serialize_with = "serialize_hex_color")]
     pub detail: Rgba,
 }
 

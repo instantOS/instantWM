@@ -7,10 +7,10 @@ use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fs;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
     pub fonts: Vec<String>,
@@ -42,7 +42,7 @@ impl Default for ThemeConfig {
 }
 
 /// Toggle setting for boolean-like input options (tap, natural_scroll).
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ToggleSetting {
     Enabled,
@@ -50,7 +50,7 @@ pub enum ToggleSetting {
 }
 
 /// Acceleration profile for pointer devices.
-#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AccelProfile {
     Flat,
@@ -60,7 +60,7 @@ pub enum AccelProfile {
 /// Input configuration from the TOML `[input]` section.
 /// Allows per-device or type-based (like `type:touchpad`) configuration
 /// similar to Sway.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct InputConfig {
     pub tap: Option<ToggleSetting>,
@@ -88,7 +88,7 @@ impl Default for InputConfig {
 /// variant = ["", "nodeadkeys", ""]
 /// options = "grp:alt_shift_toggle"
 /// ```
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct KeyboardConfig {
     /// XKB layout names, e.g. `["us", "de", "fr"]`.
@@ -112,7 +112,7 @@ impl Default for KeyboardConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ColorConfig {
     pub tag: TagColorConfigs,

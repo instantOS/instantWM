@@ -54,6 +54,14 @@ where
     rgba_from_hex(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {}", s)))
 }
 
+/// Serialize an RGBA color to a hex string (for serde).
+pub fn serialize_hex_color<S>(rgba: &Rgba, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&rgba_to_hex(*rgba))
+}
+
 /// Parse a hex color string (e.g., "#RRGGBB" or "RRGGBB") to a packed u32.
 /// Returns the default color (0x121212) if parsing fails.
 pub fn hex_to_u32(color: &str) -> u32 {

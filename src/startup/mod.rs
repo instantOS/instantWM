@@ -29,7 +29,9 @@ pub fn run() {
     let cli = Cli::parse();
 
     if cli.print_config {
-        println!("{}", crate::config::config_doc::CONFIG_DOC);
+        let config = crate::config::config_toml::ThemeConfig::default();
+        let toml = toml::to_string_pretty(&config).expect("failed to serialize default config");
+        println!("{toml}");
         return;
     }
 
