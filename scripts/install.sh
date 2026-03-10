@@ -6,15 +6,42 @@ set -euo pipefail
 PREFIX="${PREFIX:-/usr/local}"
 DESTDIR="${DESTDIR:-}"
 
+# Parse arguments
+BUILD_TYPE="debug"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        debug)
+            BUILD_TYPE="debug"
+            ;;
+        release)
+            BUILD_TYPE="release"
+            ;;
+        *)
+            echo "Usage: $0 [debug|release]"
+            exit 1
+            ;;
+    esac
+    shift
+done
+
 SUPERTOOL="sudo"
 if [[ -x /usr/bin/doas ]] && [[ -s /etc/doas.conf ]]; then
     SUPERTOOL="doas"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="$SCRIPT_DIR/target/$BUILD_TYPE"
 
-echo "Building instantWM (release)..."
-cargo build --manifest-path "$SCRIPT_DIR/Cargo.toml"
+echo "Building instantWM ($BUILD_TYPE)..."
+cargo build --manifest-path "$SCRIPT_DIR/Cargo.toml" --"$BUILD_TYPE"
+
+INSTANTWM_BIN="$TARGET_DIR/instantwm"
+INSTANTWMCTL_BIN="$TARGET_DIR/instantwmctl"
+
+if [[ ! -f "$INSTANTWM_BIN" ]]; then
+    echo "Error: $INSTANTWM_BIN not found. Build may have failed."
+    exit 1
+fi
 
 echo "Installing..."
 $SUPERTOOL install -d "${DESTDIR}${PREFIX}/bin"
@@ -22,11 +49,11 @@ $SUPERTOOL install -d "${DESTDIR}/usr/share/xsessions"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/wayland-sessions"
 
 # Binary
-$SUPERTOOL install -m 755 "$SCRIPT_DIR/target/release/instantwm" "${DESTDIR}${PREFIX}/bin/instantwm"
+$SUPERTOOL install -m 755 "$INSTANTWM_BIN" "${DESTDIR}${PREFIX}/bin/instantwm"
 
 # instantwmctl helper binary
-if [ -f "$SCRIPT_DIR/target/release/instantwmctl" ]; then
-    $SUPERTOOL install -m 755 "$SCRIPT_DIR/target/release/instantwmctl" "${DESTDIR}${PREFIX}/bin/instantwmctl"
+if [ -f "$INSTANTWMCTL_BIN" ]; then
+    $SUPERTOOL install -m 755 "$INSTANTWMCTL_BIN" "${DESTDIR}${PREFIX}/bin/instantwmctl"
 fi
 
 # startinstantos session script
@@ -44,5 +71,5 @@ $SUPERTOOL install -m 644 "$SCRIPT_DIR/../utils/instantwm-wayland-debug.desktop"
 
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
-echo "Wayland session:  ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
-echo "Wayland debug:    ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
+echo "Wayland session: ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+echo "Wayland debug:   ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
