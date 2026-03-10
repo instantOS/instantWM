@@ -58,11 +58,9 @@ jobs:
             fontconfig \
             freetype2 \
             libdrm \
-            libgbm \
             wayland \
             wayland-protocols \
             libinput \
-            libseat \
             seatd \
             egl-wayland \
             mesa \
