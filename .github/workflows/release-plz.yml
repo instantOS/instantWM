@@ -25,7 +25,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Mark workspace safe for git
@@ -36,7 +35,7 @@ jobs:
       - name: Run release-plz
         run: release-plz release --git-token "$RELEASE_PLZ_TOKEN"
         env:
-          RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+          RELEASE_PLZ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Clean up toolchains
         if: always()
         run: rm -rf /opt/cargo /opt/rustup
@@ -67,6 +66,5 @@ jobs:
         uses: release-plz/action@v0.5
         with:
           command: release-pr
-          publish: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
