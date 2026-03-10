@@ -259,13 +259,55 @@ pub struct DragState {
     pub last_x11_cursor_index: Option<usize>,
 }
 
+/// A single keyboard layout with optional variant.
+#[derive(Debug, Clone, Default)]
+pub struct KeyboardLayout {
+    /// XKB layout name (e.g., "us", "de", "fr").
+    pub name: String,
+    /// XKB variant for this layout (e.g., "nodeadkeys", "colemak").
+    pub variant: Option<String>,
+}
+
+impl KeyboardLayout {
+    /// Create a new keyboard layout.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            variant: None,
+        }
+    }
+
+    /// Create a new keyboard layout with a variant.
+    pub fn with_variant(name: impl Into<String>, variant: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            variant: Some(variant.into()),
+        }
+    }
+}
+
+impl From<&str> for KeyboardLayout {
+    fn from(s: &str) -> Self {
+        // Parse "layout(variant)" syntax
+        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
+            Self::with_variant(name, variant)
+        } else {
+            Self::new(s)
+        }
+    }
+}
+
+impl From<String> for KeyboardLayout {
+    fn from(s: String) -> Self {
+        Self::from(s.as_str())
+    }
+}
+
 /// Keyboard (XKB) layout runtime state.
 #[derive(Debug, Clone, Default)]
 pub struct KeyboardLayoutState {
-    /// Configured XKB layout names, e.g. `["us", "de", "fr"]`.
-    pub layouts: Vec<String>,
-    /// Per-layout XKB variants (parallel to `layouts`).
-    pub variants: Vec<String>,
+    /// Configured XKB layouts with optional variants.
+    pub layouts: Vec<KeyboardLayout>,
     /// XKB options string.
     pub options: Option<String>,
     /// XKB model string.
@@ -277,14 +319,14 @@ pub struct KeyboardLayoutState {
 impl KeyboardLayoutState {
     /// The currently active layout name, or `None` if no layouts are configured.
     pub fn current_layout(&self) -> Option<&str> {
-        self.layouts.get(self.current).map(|s| s.as_str())
+        self.layouts.get(self.current).map(|l| l.name.as_str())
     }
 
     /// The variant for the currently active layout, or empty string.
     pub fn current_variant(&self) -> &str {
-        self.variants
+        self.layouts
             .get(self.current)
-            .map(|s| s.as_str())
+            .and_then(|l| l.variant.as_deref())
             .unwrap_or("")
     }
 }
@@ -547,9 +589,20 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
 
     // Initialize keyboard layout state from config
     if !cfg.keyboard_layouts.is_empty() {
+        let layouts: Vec<KeyboardLayout> = cfg
+            .keyboard_layouts
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let variant = cfg.keyboard_variants.get(i).cloned().unwrap_or_default();
+                KeyboardLayout {
+                    name: name.clone(),
+                    variant: if variant.is_empty() { None } else { Some(variant) },
+                }
+            })
+            .collect();
         g.keyboard_layout = KeyboardLayoutState {
-            layouts: cfg.keyboard_layouts.clone(),
-            variants: cfg.keyboard_variants.clone(),
+            layouts,
             options: cfg.keyboard_options.clone(),
             model: cfg.keyboard_model.clone(),
             current: 0,

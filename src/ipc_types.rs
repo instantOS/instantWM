@@ -1,5 +1,49 @@
 use bincode::{Decode, Encode};
 
+/// A single keyboard layout with optional variant (used for IPC).
+#[derive(Debug, Clone, Decode, Encode)]
+pub struct KeyboardLayout {
+    pub name: String,
+    pub variant: Option<String>,
+}
+
+impl KeyboardLayout {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            variant: None,
+        }
+    }
+
+    pub fn with_variant(name: impl Into<String>, variant: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            variant: Some(variant.into()),
+        }
+    }
+}
+
+impl From<&str> for KeyboardLayout {
+    fn from(s: &str) -> Self {
+        // Parse "layout(variant)" syntax
+        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('('))
+        {
+            Self::with_variant(name, variant)
+        } else {
+            Self::new(s)
+        }
+    }
+}
+
+impl From< crate::globals::KeyboardLayout> for KeyboardLayout {
+    fn from(l: crate::globals::KeyboardLayout) -> Self {
+        Self {
+            name: l.name,
+            variant: l.variant,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Decode, Encode)]
 pub enum IpcCommand {
     List,
@@ -31,19 +75,22 @@ pub enum IpcCommand {
     ScratchpadShow(Option<String>),
     ScratchpadHide(Option<String>),
     ScratchpadStatus(Option<String>),
-    /// Set keyboard layout by index (0-based).
-    KeyboardLayout(u32),
-    /// Set keyboard layout by name.
-    KeyboardLayoutName(String),
-    /// Cycle keyboard layout forward (true) or backward (false).
-    CycleKeyboardLayout(bool),
-    /// Get current keyboard layout info.
-    GetKeyboardLayout,
-    /// List all configured keyboard layouts.
-    ListKeyboardLayouts,
-    /// Replace the configured keyboard layouts at runtime.
-    /// (layouts, variants)
-    SetKeyboardLayouts(Vec<String>, Vec<String>),
+    /// Switch to the next keyboard layout.
+    KeyboardNext,
+    /// Switch to the previous keyboard layout.
+    KeyboardPrev,
+    /// Get current keyboard layout status (e.g., "2/3: us (nodeadkeys)").
+    KeyboardStatus,
+    /// List configured keyboard layouts (with * marker for current).
+    KeyboardList,
+    /// List all available XKB layouts from the system.
+    KeyboardListAll,
+    /// Set keyboard layouts (replaces all, switches to first).
+    KeyboardSet(Vec<KeyboardLayout>),
+    /// Add a keyboard layout to the active list.
+    KeyboardAdd(KeyboardLayout),
+    /// Remove a keyboard layout from the active list (by name or #index).
+    KeyboardRemove(String),
     /// Update status text via IPC.
     UpdateStatus(String),
 }

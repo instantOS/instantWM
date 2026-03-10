@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use instantwm::ipc_types::{IpcCommand, IpcResponse};
+use instantwm::ipc_types::{IpcCommand, IpcResponse, KeyboardLayout};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
@@ -8,6 +8,76 @@ use std::os::unix::net::UnixStream;
 struct Cli {
     #[command(subcommand)]
     command: CommandKind,
+}
+
+/// A keyboard layout argument (supports "layout" or "layout(variant)" syntax).
+#[derive(Debug, Clone)]
+struct KeyboardLayoutArg {
+    name: String,
+    variant: Option<String>,
+}
+
+impl From<String> for KeyboardLayoutArg {
+    fn from(s: String) -> Self {
+        // Parse "layout(variant)" syntax
+        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('('))
+        {
+            Self {
+                name: name.to_string(),
+                variant: Some(variant.to_string()),
+            }
+        } else {
+            Self {
+                name: s,
+                variant: None,
+            }
+        }
+    }
+}
+
+impl From<KeyboardLayoutArg> for KeyboardLayout {
+    fn from(arg: KeyboardLayoutArg) -> Self {
+        KeyboardLayout {
+            name: arg.name,
+            variant: arg.variant,
+        }
+    }
+}
+
+/// Keyboard layout actions.
+#[derive(Debug, Subcommand)]
+enum KeyboardAction {
+    /// List configured keyboard layouts (use --all for all available)
+    List {
+        /// List all available XKB layouts
+        #[arg(long)]
+        all: bool,
+    },
+    /// Show current keyboard layout
+    Status,
+    /// Switch to the next keyboard layout
+    Next,
+    /// Switch to the previous keyboard layout
+    Prev,
+    /// Set layouts (multiple allowed, like old set-keyboard-layouts)
+    ///
+    /// Layouts can be specified as "layout" or "layout(variant)"
+    /// (e.g., "us" "de(nodeadkeys)" "fr")
+    Set {
+        /// Layouts to set (e.g., "us" "de" "fr" or "us(nodeadkeys)")
+        #[arg(num_args = 1..)]
+        layouts: Vec<String>,
+    },
+    /// Add a layout to the active list
+    Add {
+        /// Layout name to add (e.g., "fr" or "de(nodeadkeys)")
+        name: String,
+    },
+    /// Remove a layout from the active list
+    Remove {
+        /// Layout name or index to remove (e.g., "de" or "#1")
+        layout: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -209,32 +279,10 @@ enum CommandKind {
         /// Scratchpad name ("all" for all, empty for all)
         name: Option<String>,
     },
-    /// Set keyboard layout by index (0-based).
-    KeyboardLayout {
-        /// Layout index (0-based)
-        index: u32,
-    },
-    /// Set keyboard layout by name (e.g. "us", "de").
-    KeyboardLayoutName {
-        /// Layout name (e.g. "us", "de", "fr")
-        name: String,
-    },
-    /// Cycle to the next keyboard layout.
-    NextKeyboardLayout,
-    /// Cycle to the previous keyboard layout.
-    PrevKeyboardLayout,
-    /// Show the current keyboard layout.
-    GetKeyboardLayout,
-    /// List all configured keyboard layouts.
-    ListKeyboardLayouts,
-    /// Replace configured keyboard layouts at runtime.
-    /// Layouts are positional args, variants follow `--variant`.
-    SetKeyboardLayouts {
-        /// Layout names, e.g. "us" "de" "fr"
-        layouts: Vec<String>,
-        /// Per-layout variants (optional, e.g. "" "nodeadkeys")
-        #[arg(long, num_args = 1..)]
-        variant: Vec<String>,
+    /// Keyboard layout management.
+    Keyboard {
+        #[command(subcommand)]
+        action: KeyboardAction,
     },
     /// Update status text on the bar. If text is "-", read from stdin continuously.
     UpdateStatus { text: String },
@@ -290,15 +338,31 @@ fn main() {
         CommandKind::ScratchpadShow { name } => IpcCommand::ScratchpadShow(name),
         CommandKind::ScratchpadHide { name } => IpcCommand::ScratchpadHide(name),
         CommandKind::ScratchpadStatus { name } => IpcCommand::ScratchpadStatus(name),
-        CommandKind::KeyboardLayout { index } => IpcCommand::KeyboardLayout(index),
-        CommandKind::KeyboardLayoutName { name } => IpcCommand::KeyboardLayoutName(name),
-        CommandKind::NextKeyboardLayout => IpcCommand::CycleKeyboardLayout(true),
-        CommandKind::PrevKeyboardLayout => IpcCommand::CycleKeyboardLayout(false),
-        CommandKind::GetKeyboardLayout => IpcCommand::GetKeyboardLayout,
-        CommandKind::ListKeyboardLayouts => IpcCommand::ListKeyboardLayouts,
-        CommandKind::SetKeyboardLayouts { layouts, variant } => {
-            IpcCommand::SetKeyboardLayouts(layouts, variant)
-        }
+        CommandKind::Keyboard { action } => match action {
+            KeyboardAction::List { all } => {
+                if all {
+                    IpcCommand::KeyboardListAll
+                } else {
+                    IpcCommand::KeyboardList
+                }
+            }
+            KeyboardAction::Status => IpcCommand::KeyboardStatus,
+            KeyboardAction::Next => IpcCommand::KeyboardNext,
+            KeyboardAction::Prev => IpcCommand::KeyboardPrev,
+            KeyboardAction::Set { layouts } => {
+                let keyboard_layouts: Vec<KeyboardLayout> = layouts
+                    .into_iter()
+                    .map(KeyboardLayoutArg::from)
+                    .map(KeyboardLayout::from)
+                    .collect();
+                IpcCommand::KeyboardSet(keyboard_layouts)
+            }
+            KeyboardAction::Add { name } => {
+                let arg = KeyboardLayoutArg::from(name);
+                IpcCommand::KeyboardAdd(KeyboardLayout::from(arg))
+            }
+            KeyboardAction::Remove { layout } => IpcCommand::KeyboardRemove(layout),
+        },
         CommandKind::UpdateStatus { text } => {
             if text == "-" {
                 use std::io::BufRead;

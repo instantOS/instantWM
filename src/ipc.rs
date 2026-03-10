@@ -248,32 +248,53 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
             let status = scratchpad_status(ctx.g(), name.as_deref().unwrap_or(""));
             IpcResponse::ok(status)
         }
-        IpcCommand::KeyboardLayout(index) => {
-            keyboard_layout::set_keyboard_layout(&mut ctx, index as usize);
+        IpcCommand::KeyboardNext => {
+            keyboard_layout::cycle_keyboard_layout(&mut ctx, true);
             IpcResponse::ok("")
         }
-        IpcCommand::KeyboardLayoutName(name) => {
-            if keyboard_layout::set_keyboard_layout_by_name(&mut ctx, &name) {
-                IpcResponse::ok("")
-            } else {
-                IpcResponse::err(format!("unknown keyboard layout '{name}'"))
-            }
-        }
-        IpcCommand::CycleKeyboardLayout(forward) => {
-            keyboard_layout::cycle_keyboard_layout(&mut ctx, forward);
+        IpcCommand::KeyboardPrev => {
+            keyboard_layout::cycle_keyboard_layout(&mut ctx, false);
             IpcResponse::ok("")
         }
-        IpcCommand::GetKeyboardLayout => {
+        IpcCommand::KeyboardStatus => {
             let status = keyboard_layout::keyboard_layout_status(&ctx);
             IpcResponse::ok(status)
         }
-        IpcCommand::ListKeyboardLayouts => {
+        IpcCommand::KeyboardList => {
             let list = keyboard_layout::keyboard_layout_list(&ctx);
             IpcResponse::ok(list)
         }
-        IpcCommand::SetKeyboardLayouts(layouts, variants) => {
-            keyboard_layout::set_keyboard_layouts(&mut ctx, layouts, variants);
+        IpcCommand::KeyboardListAll => {
+            let layouts = keyboard_layout::get_all_keyboard_layouts();
+            let list = layouts.join("\n");
+            IpcResponse::ok(list)
+        }
+        IpcCommand::KeyboardSet(layouts) => {
+            let globals_layouts: Vec<crate::globals::KeyboardLayout> = layouts
+                .into_iter()
+                .map(|l| crate::globals::KeyboardLayout {
+                    name: l.name,
+                    variant: l.variant,
+                })
+                .collect();
+            keyboard_layout::set_keyboard_layouts(&mut ctx, globals_layouts);
             IpcResponse::ok("")
+        }
+        IpcCommand::KeyboardAdd(layout) => {
+            let globals_layout = crate::globals::KeyboardLayout {
+                name: layout.name,
+                variant: layout.variant,
+            };
+            match keyboard_layout::add_keyboard_layout(&mut ctx, globals_layout) {
+                Ok(()) => IpcResponse::ok(""),
+                Err(e) => IpcResponse::err(e),
+            }
+        }
+        IpcCommand::KeyboardRemove(layout) => {
+            match keyboard_layout::remove_keyboard_layout(&mut ctx, &layout) {
+                Ok(()) => IpcResponse::ok(""),
+                Err(e) => IpcResponse::err(e),
+            }
         }
         IpcCommand::UpdateStatus(text) => {
             wm.g.status_text = text;
