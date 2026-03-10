@@ -4,6 +4,7 @@ use bincode::{Decode, Encode};
 pub enum IpcCommand {
     List,
     Geom(Option<u32>),
+    RunAction(String),
     Spawn(String),
     Close(Option<u32>),
     Quit,

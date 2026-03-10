@@ -12,6 +12,14 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum CommandKind {
+    /// Run a keybind action by name. Use --list to see available actions.
+    Action {
+        /// Action name (e.g., "zoom", "quit", "toggle_bar")
+        name: Option<String>,
+        /// List all available actions and exit.
+        #[arg(long = "list", short = 'l')]
+        list: bool,
+    },
     /// List all managed windows.
     List,
     /// Get window geometry.
@@ -239,6 +247,26 @@ enum CommandKind {
 fn main() {
     let cli = Cli::parse();
     let request = match cli.command {
+        CommandKind::Action { name, list } => {
+            if list {
+                use instantwm::config::keybind_config::{get_named_actions, get_structured_actions};
+                // Simple actions
+                for action in get_named_actions() {
+                    if action.doc.is_empty() {
+                        println!("{}", action.name);
+                    } else {
+                        println!("{} # {}", action.name, action.doc);
+                    }
+                }
+                // Structured actions (take args)
+                for action in get_structured_actions() {
+                    println!("{} # {} (takes args)", action.name, action.doc);
+                }
+                return;
+            }
+            let name = name.expect("action name required (use --list to see available actions)");
+            IpcCommand::RunAction(name)
+        }
         CommandKind::List => IpcCommand::List,
         CommandKind::Geom { window_id } => IpcCommand::Geom(window_id),
         CommandKind::Spawn { command } => {

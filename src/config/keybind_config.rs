@@ -264,13 +264,33 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
 // Action compilation
 // ---------------------------------------------------------------------------
 
+/// Metadata for a named action (for `--list-actions`).
+#[derive(Debug, Clone, Copy)]
+pub struct ActionMeta {
+    pub name: &'static str,
+    pub doc: &'static str,
+}
+
+/// All structured actions that take arguments.
+pub fn get_structured_actions() -> Vec<ActionMeta> {
+    vec![
+        ActionMeta { name: "spawn", doc: "spawn command" },
+        ActionMeta { name: "unbind", doc: "unbind keybind" },
+        ActionMeta { name: "set_layout", doc: "set layout" },
+        ActionMeta { name: "focus_stack", doc: "focus stack direction" },
+        ActionMeta { name: "set_mfact", doc: "set master factor" },
+        ActionMeta { name: "inc_nmaster", doc: "increment master count" },
+        ActionMeta { name: "keyboard_layout", doc: "set keyboard layout" },
+    ]
+}
+
 /// Macro to define named actions once and generate both:
-/// - A list of action names (for `--list-actions`)
+/// - A list of action metadata (for `--list-actions`)
 /// - Match arms (for `compile_named_action`)
 macro_rules! define_actions {
     // Base case: no more actions
     () => {
-        pub fn get_named_actions() -> Vec<&'static str> {
+        pub fn get_named_actions() -> Vec<ActionMeta> {
             vec![]
         }
         fn compile_named_action(_name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
@@ -279,8 +299,8 @@ macro_rules! define_actions {
     };
     // Recursive case: handle action with single name
     ($($name:expr => $action:expr),* $(,)?) => {
-        pub fn get_named_actions() -> Vec<&'static str> {
-            vec![$($name),*]
+        pub fn get_named_actions() -> Vec<ActionMeta> {
+            vec![$(ActionMeta { name: $name, doc: "" }),*]
         }
         fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             match name.to_ascii_lowercase().as_str() {

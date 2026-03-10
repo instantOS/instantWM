@@ -301,6 +301,15 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
 
             IpcResponse::ok("")
         }
+        IpcCommand::RunAction(name) => {
+            use crate::config::keybind_config::compile_named_action;
+            if let Some(action) = compile_named_action(&name) {
+                action(&mut ctx);
+                IpcResponse::ok("")
+            } else {
+                IpcResponse::err(format!("unknown action '{name}'"))
+            }
+        }
     }
 }
 

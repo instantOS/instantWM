@@ -39,9 +39,20 @@ pub fn run() {
     }
 
     if cli.list_actions {
-        let actions = crate::config::keybind_config::get_named_actions();
-        for action in actions {
-            println!("{action}");
+        use crate::config::keybind_config::{get_named_actions, get_structured_actions};
+
+        // Print simple actions
+        for action in get_named_actions() {
+            if action.doc.is_empty() {
+                println!("{}", action.name);
+            } else {
+                println!("{} # {}", action.name, action.doc);
+            }
+        }
+
+        // Print structured actions (they take args)
+        for action in get_structured_actions() {
+            println!("{} # {} (takes args)", action.name, action.doc);
         }
         return;
     }
