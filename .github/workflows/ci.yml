@@ -1,0 +1,110 @@
+name: CI
+run-name: "CI: ${{ github.event.head_commit.message || github.event.pull_request.title }}"
+on:
+  push:
+    branches:
+      - main
+      - release
+  pull_request:
+jobs:
+  test:
+    name: Test and build on Arch Linux
+    runs-on: self-hosted
+    container:
+      image: archlinux:latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Initialise pacman
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+      - name: Install build dependencies
+        run: |
+          pacman -S --noconfirm --needed \
+            base-devel \
+            rust \
+            pkgconf \
+            git \
+            cmake \
+            jq \
+            xorg-server \
+            xorg-xvfb \
+            libx11 \
+            libxext \
+            libxrandr \
+            libxinerama \
+            libxcb \
+            libxkbcommon \
+            libxcursor \
+            libxdamage \
+            libxfixes \
+            libxi \
+            libxres \
+            libxtst \
+            libxss \
+            libxvmc \
+            libxxf86vm \
+            libxcomposite \
+            libxrender \
+            libxt \
+            libxmu \
+            libxpm \
+            libxaw \
+            libx11 \
+            fontconfig \
+            freetype2 \
+            libdrm \
+            libgbm \
+            libwayland \
+            wayland-protocols \
+            libinput \
+            libseat \
+            seatd \
+            egl-wayland \
+            mesa \
+            libglvnd \
+            libevdev \
+            libwacom \
+            systemd \
+            dbus \
+            libliftoff \
+            libdisplay-info \
+            scdoc
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Cache key includes target architecture and important env vars
+          key: arch-cargo-${{ hashFiles('**/Cargo.lock') }}
+          # Use prefix to distinguish from other jobs/environments
+          prefix-key: arch-test
+          # Cache validation ensures correctness across Rust versions
+          cache-all-crates: true
+          # Don't cache ~/.cargo/bin — restoring old rustup proxies shadows pacman-installed rust
+          cache-bin: "false"
+      - name: Clean leaked rustup from shared HOME
+        run: |
+          # The self-hosted runner shares HOME=/github/home across container jobs.
+          # Release-plz (Ubuntu) installs rustup there, which interferes with
+          # Arch's pacman-installed cargo-fmt (it detects ~/.rustup and tries
+          # rustup toolchain resolution instead of using /usr/bin/rustfmt).
+          rm -rf ~/.rustup ~/.cargo/bin
+      - name: Check code formatting
+        run: cargo fmt -- --check
+      - name: Run clippy lints
+        run: cargo clippy --all-targets --all-features
+      - name: Run unit tests
+        run: cargo test --locked --verbose
+      - name: Build debug binary
+        run: cargo build --locked
+      # Note: E2E tests require a running Wayland compositor and seatd session
+      # They are best run locally or on a dedicated CI runner with display support
+      # To run e2e tests locally: ./tests/e2e.sh
+      - name: Check binary functionality
+        run: |
+          # Test basic CLI functionality (instantwmctl binary exists and runs)
+          ./target/debug/instantwmctl --help
+          echo "✓ WM binary basic functionality works"

@@ -106,3 +106,12 @@ if ctx.core.g.clients.get(&win).map(|c| c.isfloating).unwrap_or(false) {
         client.float_geo = client.geo;
     }
 }
+
+
+
+make keybinds toml configurable
+make default layout toml configurable
+ability to set keybind to none with toml
+
+
+
