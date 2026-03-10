@@ -22,7 +22,7 @@ $SUPERTOOL install -d "${DESTDIR}/usr/share/xsessions"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/wayland-sessions"
 
 # Binary
-$SUPERTOOL install -m 755 "$SCRIPT_DIR/target/release/instantwm" "${DESTDIR}${PREFIX}/bin/instantwm-rs"
+$SUPERTOOL install -m 755 "$SCRIPT_DIR/target/release/instantwm" "${DESTDIR}${PREFIX}/bin/instantwm"
 
 # instantwmctl helper binary
 if [ -f "$SCRIPT_DIR/target/release/instantwmctl" ]; then
@@ -42,7 +42,7 @@ $SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-wayland.desktop" "${DESTDIR}/us
 $SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug-wrapper.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
 $SUPERTOOL install -m 644 "$SCRIPT_DIR/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 
-echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm-rs"
+echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
 echo "Wayland session:  ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
 echo "Wayland debug:    ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
