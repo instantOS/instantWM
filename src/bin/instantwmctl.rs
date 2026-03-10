@@ -244,22 +244,13 @@ fn main() {
     let cli = Cli::parse();
     let request = match cli.command {
         CommandKind::Action { name, list } => {
+            // If --list flag is set, show the list
             if list {
-                use instantwm::config::keybind_config::{get_named_actions, get_structured_actions};
-                // Simple actions
-                for action in get_named_actions() {
-                    if action.doc.is_empty() {
-                        println!("{}", action.name);
-                    } else {
-                        println!("{} # {}", action.name, action.doc);
-                    }
-                }
-                // Structured actions (take args)
-                for action in get_structured_actions() {
-                    println!("{} # {} (takes args)", action.name, action.doc);
-                }
+                use instantwm::config::keybind_config::print_actions;
+                print_actions();
                 return;
             }
+            // No name provided - show error
             let name = name.expect("action name required (use --list to see available actions)");
             IpcCommand::RunAction(name)
         }

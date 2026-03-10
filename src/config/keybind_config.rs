@@ -269,19 +269,70 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
 pub struct ActionMeta {
     pub name: &'static str,
     pub doc: &'static str,
+    pub takes_args: bool,
 }
 
-/// All structured actions that take arguments.
+/// Structured actions that take arguments.
 pub fn get_structured_actions() -> Vec<ActionMeta> {
-    vec![
-        ActionMeta { name: "spawn", doc: "spawn command" },
-        ActionMeta { name: "unbind", doc: "unbind keybind" },
-        ActionMeta { name: "set_layout", doc: "set layout" },
-        ActionMeta { name: "focus_stack", doc: "focus stack direction" },
-        ActionMeta { name: "set_mfact", doc: "set master factor" },
-        ActionMeta { name: "inc_nmaster", doc: "increment master count" },
-        ActionMeta { name: "keyboard_layout", doc: "set keyboard layout" },
-    ]
+    let mut actions = vec![
+        ActionMeta {
+            name: "spawn",
+            doc: "spawn command",
+            takes_args: true,
+        },
+        ActionMeta {
+            name: "unbind",
+            doc: "unbind keybind",
+            takes_args: true,
+        },
+        ActionMeta {
+            name: "set_layout",
+            doc: "set layout",
+            takes_args: true,
+        },
+        ActionMeta {
+            name: "focus_stack",
+            doc: "focus stack direction",
+            takes_args: true,
+        },
+        ActionMeta {
+            name: "set_mfact",
+            doc: "set master factor",
+            takes_args: true,
+        },
+        ActionMeta {
+            name: "keyboard_layout",
+            doc: "set keyboard layout",
+            takes_args: true,
+        },
+    ];
+    actions.sort_by(|a, b| a.name.cmp(b.name));
+    actions
+}
+
+/// Helper function to get all actions (named + structured) sorted by name.
+pub fn get_all_actions() -> Vec<ActionMeta> {
+    let mut actions = get_named_actions();
+    actions.extend(get_structured_actions());
+    actions.sort_by(|a, b| a.name.cmp(b.name));
+    actions
+}
+
+/// Print all actions to stdout with documentation.
+/// Used by both instantwm --list-actions and instantwmctl action --list.
+pub fn print_actions() {
+    let mut actions = get_all_actions();
+    // Note: get_all_actions() already sorts by name
+
+    for action in &actions {
+        if action.doc.is_empty() {
+            println!("{}", action.name);
+        } else if action.takes_args {
+            println!("{} # {} (takes args)", action.name, action.doc);
+        } else {
+            println!("{} # {}", action.name, action.doc);
+        }
+    }
 }
 
 /// Macro to define named actions once and generate both:
@@ -297,14 +348,29 @@ macro_rules! define_actions {
             None
         }
     };
-    // Recursive case: handle action with single name
-    ($($name:expr => $action:expr),* $(,)?) => {
+    // Recursive case: action with documentation ("name", "doc") => action
+    (($name:expr, $doc:expr) => $action:expr, $($rest:tt)*) => {
+        define_actions!(@collect names: [$name] docs: [$doc] actions: [$action] $($rest)*);
+    };
+    // Recursive case: action without documentation "name" => action
+    ($name:expr => $action:expr, $($rest:tt)*) => {
+        define_actions!(@collect names: [$name] docs: [""] actions: [$action] $($rest)*);
+    };
+    // Collect entries
+    (@collect names: [$($names:expr),*] docs: [$($docs:expr),*] actions: [$($actions:expr),*] ($name:expr, $doc:expr) => $action:expr, $($rest:tt)*) => {
+        define_actions!(@collect names: [$($names,)* $name] docs: [$($docs,)* $doc] actions: [$($actions,)* $action] $($rest)*);
+    };
+    (@collect names: [$($names:expr),*] docs: [$($docs:expr),*] actions: [$($actions:expr),*] $name:expr => $action:expr, $($rest:tt)*) => {
+        define_actions!(@collect names: [$($names,)* $name] docs: [$($docs,)* ""] actions: [$($actions,)* $action] $($rest)*);
+    };
+    // Final generation
+    (@collect names: [$($names:expr),*] docs: [$($docs:expr),*] actions: [$($actions:expr),*]) => {
         pub fn get_named_actions() -> Vec<ActionMeta> {
-            vec![$(ActionMeta { name: $name, doc: "" }),*]
+            vec![$(ActionMeta { name: $names, doc: $docs, takes_args: false }),*]
         }
         fn compile_named_action_impl(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             match name.to_ascii_lowercase().as_str() {
-                $($name => Some(Rc::new($action))),*,
+                $($names => Some(Rc::new($actions))),*,
                 _ => {
                     eprintln!("instantwm: unknown action '{name}' in keybind config");
                     None
@@ -318,156 +384,156 @@ macro_rules! define_actions {
 // Note: aliases are handled separately in get_named_actions()
 define_actions!(
     // Client operations
-    "zoom" => zoom,
-    "kill" => |ctx: &mut WmCtx| {
+    ("zoom", "zoom client into master area") => zoom,
+    ("kill", "close focused window gracefully") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             kill_client(ctx, win)
         }
     },
-    "shut_kill" => |ctx: &mut WmCtx| shut_kill(ctx),
-    "quit" => |_: &mut WmCtx| quit(),
+    ("shut_kill", "force kill focused window") => |ctx: &mut WmCtx| shut_kill(ctx),
+    ("quit", "quit instantwm") => |_: &mut WmCtx| quit(),
 
     // Focus
-    "focus_next" => |ctx: &mut WmCtx| focus_stack(ctx, StackDirection::Next),
-    "focus_prev" => |ctx: &mut WmCtx| focus_stack(ctx, StackDirection::Previous),
-    "focus_last" => |ctx: &mut WmCtx| focus_last_client(ctx),
-    "focus_up" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Up),
-    "focus_down" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Down),
-    "focus_left" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Left),
-    "focus_right" => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Right),
-    "down_key" => |ctx: &mut WmCtx| down_key(ctx, StackDirection::Next),
-    "up_key" => |ctx: &mut WmCtx| up_key(ctx, StackDirection::Previous),
+    ("focus_next", "focus next window in stack") => |ctx: &mut WmCtx| focus_stack(ctx, StackDirection::Next),
+    ("focus_prev", "focus previous window in stack") => |ctx: &mut WmCtx| focus_stack(ctx, StackDirection::Previous),
+    ("focus_last", "focus last focused window") => |ctx: &mut WmCtx| focus_last_client(ctx),
+    ("focus_up", "focus window above") => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Up),
+    ("focus_down", "focus window below") => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Down),
+    ("focus_left", "focus window to left") => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Left),
+    ("focus_right", "focus window to right") => |ctx: &mut WmCtx| direction_focus(ctx, Direction::Right),
+    ("down_key", "alt-tab forward") => |ctx: &mut WmCtx| down_key(ctx, StackDirection::Next),
+    ("up_key", "alt-tab backward") => |ctx: &mut WmCtx| up_key(ctx, StackDirection::Previous),
 
     // Layout
     "toggle_layout" => toggle_layout,
-    "layout_tile" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Tile),
-    "layout_float" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Floating),
-    "layout_monocle" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Monocle),
-    "layout_grid" => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Grid),
-    "cycle_layout_next" => |ctx: &mut WmCtx| cycle_layout_direction(ctx, true),
-    "cycle_layout_prev" => |ctx: &mut WmCtx| cycle_layout_direction(ctx, false),
-    "inc_nmaster" => |ctx: &mut WmCtx| inc_nmaster_by(ctx, 1),
-    "dec_nmaster" => |ctx: &mut WmCtx| inc_nmaster_by(ctx, -1),
-    "mfact_grow" => |ctx: &mut WmCtx| set_mfact(ctx, 0.05),
-    "mfact_shrink" => |ctx: &mut WmCtx| set_mfact(ctx, -0.05),
+    ("layout_tile", "set tile layout") => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Tile),
+    ("layout_float", "set floating layout") => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Floating),
+    ("layout_monocle", "set monocle layout (fullscreen)") => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Monocle),
+    ("layout_grid", "set grid layout") => |ctx: &mut WmCtx| set_layout(ctx, LayoutKind::Grid),
+    ("cycle_layout_next", "cycle to next layout") => |ctx: &mut WmCtx| cycle_layout_direction(ctx, true),
+    ("cycle_layout_prev", "cycle to previous layout") => |ctx: &mut WmCtx| cycle_layout_direction(ctx, false),
+    ("inc_nmaster", "increase master window count") => |ctx: &mut WmCtx| inc_nmaster_by(ctx, 1),
+    ("dec_nmaster", "decrease master window count") => |ctx: &mut WmCtx| inc_nmaster_by(ctx, -1),
+    ("mfact_grow", "increase master area width") => |ctx: &mut WmCtx| set_mfact(ctx, 0.05),
+    ("mfact_shrink", "decrease master area width") => |ctx: &mut WmCtx| set_mfact(ctx, -0.05),
 
     // Floating
-    "center_window" => |ctx: &mut WmCtx| {
+    ("center_window", "center focused window") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             center_window(ctx, win)
         }
     },
-    "toggle_maximized" => toggle_maximized,
-    "distribute_clients" => distribute_clients,
+    ("toggle_maximized", "toggle maximized state") => toggle_maximized,
+    ("distribute_clients", "distribute windows evenly") => distribute_clients,
 
     // Resize (floating)
-    "key_resize_up" => |ctx: &mut WmCtx| {
+    ("key_resize_up", "resize floating window up") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             key_resize(ctx, win, Direction::Up)
         }
     },
-    "key_resize_down" => |ctx: &mut WmCtx| {
+    ("key_resize_down", "resize floating window down") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             key_resize(ctx, win, Direction::Down)
         }
     },
-    "key_resize_left" => |ctx: &mut WmCtx| {
+    ("key_resize_left", "resize floating window left") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             key_resize(ctx, win, Direction::Left)
         }
     },
-    "key_resize_right" => |ctx: &mut WmCtx| {
+    ("key_resize_right", "resize floating window right") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             key_resize(ctx, win, Direction::Right)
         }
     },
 
     // Push (reorder in stack)
-    "push_up" => |ctx: &mut WmCtx| {
+    ("push_up", "push window up in stack") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             push(ctx, win, PushDirection::Up)
         }
     },
-    "push_down" => |ctx: &mut WmCtx| {
+    ("push_down", "push window down in stack") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             push(ctx, win, PushDirection::Down)
         }
     },
 
     // Tags / views
-    "last_view" => |ctx: &mut WmCtx| last_view(ctx),
-    "follow_view" => |ctx: &mut WmCtx| follow_view(ctx),
-    "win_view" => |ctx: &mut WmCtx| win_view(ctx),
-    "scroll_left" => |ctx: &mut WmCtx| animation::anim_scroll(ctx, Direction::Left),
-    "scroll_right" => |ctx: &mut WmCtx| animation::anim_scroll(ctx, Direction::Right),
-    "move_client_left" => |ctx: &mut WmCtx| move_client(ctx, Direction::Left),
-    "move_client_right" => |ctx: &mut WmCtx| move_client(ctx, Direction::Right),
-    "shift_tag_left" => |ctx: &mut WmCtx| shift_tag(ctx, Direction::Left, 1),
-    "shift_tag_right" => |ctx: &mut WmCtx| shift_tag(ctx, Direction::Right, 1),
-    "shift_view_left" => |ctx: &mut WmCtx| shift_view(ctx, Direction::Left),
-    "shift_view_right" => |ctx: &mut WmCtx| shift_view(ctx, Direction::Right),
-    "view_all" => |ctx: &mut WmCtx| crate::tags::view::view(ctx, TagMask::ALL_BITS),
-    "tag_all" => |ctx: &mut WmCtx| {
+    ("last_view", "view previously viewed tags") => |ctx: &mut WmCtx| last_view(ctx),
+    ("follow_view", "follow client to its tags") => |ctx: &mut WmCtx| follow_view(ctx),
+    ("win_view", "view tags of focused client") => |ctx: &mut WmCtx| win_view(ctx),
+    ("scroll_left", "scroll tags left") => |ctx: &mut WmCtx| animation::anim_scroll(ctx, Direction::Left),
+    ("scroll_right", "scroll tags right") => |ctx: &mut WmCtx| animation::anim_scroll(ctx, Direction::Right),
+    ("move_client_left", "move client to tag on left") => |ctx: &mut WmCtx| move_client(ctx, Direction::Left),
+    ("move_client_right", "move client to tag on right") => |ctx: &mut WmCtx| move_client(ctx, Direction::Right),
+    ("shift_tag_left", "shift client to tag on left") => |ctx: &mut WmCtx| shift_tag(ctx, Direction::Left, 1),
+    ("shift_tag_right", "shift client to tag on right") => |ctx: &mut WmCtx| shift_tag(ctx, Direction::Right, 1),
+    ("shift_view_left", "shift view to tag on left") => |ctx: &mut WmCtx| shift_view(ctx, Direction::Left),
+    ("shift_view_right", "shift view to tag on right") => |ctx: &mut WmCtx| shift_view(ctx, Direction::Right),
+    ("view_all", "view all tags") => |ctx: &mut WmCtx| crate::tags::view::view(ctx, TagMask::ALL_BITS),
+    ("tag_all", "tag client with all tags") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
         }
     },
-    "toggle_overview" => |ctx: &mut WmCtx| toggle_overview(ctx, TagMask::ALL_BITS),
-    "toggle_fullscreen_overview" => |ctx: &mut WmCtx| toggle_fullscreen_overview(ctx, TagMask::ALL_BITS),
+    ("toggle_overview", "toggle overview mode") => |ctx: &mut WmCtx| toggle_overview(ctx, TagMask::ALL_BITS),
+    ("toggle_fullscreen_overview", "toggle fullscreen overview") => |ctx: &mut WmCtx| toggle_fullscreen_overview(ctx, TagMask::ALL_BITS),
 
     // Monitor
-    "focus_mon_prev" => |ctx: &mut WmCtx| focus_monitor(ctx, MonitorDirection::PREV),
-    "focus_mon_next" => |ctx: &mut WmCtx| focus_monitor(ctx, MonitorDirection::NEXT),
-    "follow_mon_prev" => |ctx: &mut WmCtx| move_to_monitor_and_follow(ctx, MonitorDirection::PREV),
-    "follow_mon_next" => |ctx: &mut WmCtx| move_to_monitor_and_follow(ctx, MonitorDirection::NEXT),
+    ("focus_mon_prev", "focus previous monitor") => |ctx: &mut WmCtx| focus_monitor(ctx, MonitorDirection::PREV),
+    ("focus_mon_next", "focus next monitor") => |ctx: &mut WmCtx| focus_monitor(ctx, MonitorDirection::NEXT),
+    ("follow_mon_prev", "move client to prev monitor and follow") => |ctx: &mut WmCtx| move_to_monitor_and_follow(ctx, MonitorDirection::PREV),
+    ("follow_mon_next", "move client to next monitor and follow") => |ctx: &mut WmCtx| move_to_monitor_and_follow(ctx, MonitorDirection::NEXT),
 
     // Overlay
     "set_overlay" => set_overlay,
-    "create_overlay" => |ctx: &mut WmCtx| {
+    ("create_overlay", "create overlay from focused client") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             create_overlay(ctx, win)
         }
     },
 
     // Scratchpad
-    "scratchpad_toggle" => |ctx: &mut WmCtx| scratchpad_toggle(ctx, None),
-    "scratchpad_make" => |ctx: &mut WmCtx| scratchpad_make(ctx, None),
+    ("scratchpad_toggle", "toggle scratchpad") => |ctx: &mut WmCtx| scratchpad_toggle(ctx, None),
+    ("scratchpad_make", "make focused client a scratchpad") => |ctx: &mut WmCtx| scratchpad_make(ctx, None),
 
     // Bar
-    "toggle_bar" => |ctx: &mut WmCtx| toggle_bar(ctx),
+    ("toggle_bar", "toggle status bar") => |ctx: &mut WmCtx| toggle_bar(ctx),
 
     // Toggles
-    "toggle_sticky" => |ctx: &mut WmCtx| {
+    ("toggle_sticky", "toggle sticky (visible on all tags)") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             toggle_sticky(ctx.core_mut(), win)
         }
     },
     "toggle_alt_tag" => |ctx: &mut WmCtx| toggle_alt_tag(ctx, ToggleAction::Toggle),
-    "toggle_animated" => |ctx: &mut WmCtx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle),
-    "toggle_show_tags" => |ctx: &mut WmCtx| toggle_show_tags(ctx, ToggleAction::Toggle),
+    ("toggle_animated", "toggle window animations") => |ctx: &mut WmCtx| toggle_animated(ctx.core_mut(), ToggleAction::Toggle),
+    ("toggle_show_tags", "show/hide tag bar") => |ctx: &mut WmCtx| toggle_show_tags(ctx, ToggleAction::Toggle),
     "toggle_double_draw" => |ctx: &mut WmCtx| toggle_double_draw(ctx.core_mut()),
-    "toggle_prefix" => |ctx: &mut WmCtx| toggle_prefix(ctx),
-    "unhide_all" => |ctx: &mut WmCtx| unhide_all(ctx),
-    "hide" => |ctx: &mut WmCtx| {
+    ("toggle_prefix", "toggle prefix mode") => |ctx: &mut WmCtx| toggle_prefix(ctx),
+    ("unhide_all", "show all hidden windows") => |ctx: &mut WmCtx| unhide_all(ctx),
+    ("hide", "hide focused window") => |ctx: &mut WmCtx| {
         if let Some(win) = ctx.selected_client() {
             crate::client::hide(ctx, win)
         }
     },
 
     // Fake fullscreen (X11)
-    "toggle_fake_fullscreen" => |ctx: &mut WmCtx| {
+    ("toggle_fake_fullscreen", "toggle fake fullscreen (X11)") => |ctx: &mut WmCtx| {
         if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
             toggle_fake_fullscreen_x11(ctx_x11)
         }
     },
 
     // Mouse-driven operations
-    "draw_window" => draw_window,
-    "begin_keyboard_move" => begin_keyboard_move,
+    ("draw_window", "start dragging/resizing window") => draw_window,
+    ("begin_keyboard_move", "move window with keyboard") => begin_keyboard_move,
 
     // Keyboard layout switching
-    "next_keyboard_layout" => |ctx: &mut WmCtx| crate::keyboard_layout::cycle_keyboard_layout(ctx, true),
-    "prev_keyboard_layout" => |ctx: &mut WmCtx| crate::keyboard_layout::cycle_keyboard_layout(ctx, false),
+    ("next_keyboard_layout", "cycle to next keyboard layout") => |ctx: &mut WmCtx| crate::keyboard_layout::cycle_keyboard_layout(ctx, true),
+    ("prev_keyboard_layout", "cycle to previous keyboard layout") => |ctx: &mut WmCtx| crate::keyboard_layout::cycle_keyboard_layout(ctx, false),
 );
 
 // ---------------------------------------------------------------------------
