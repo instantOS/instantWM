@@ -174,7 +174,7 @@ fn begin_wayland_super_resize(
         last_root_x: warp_x,
         last_root_y: warp_y,
     };
-    wl.core.g.altcursor = AltCursor::Resize;
+    wl.core.g.cursor_icon = AltCursor::Resize;
     wl.core.g.drag.resize_direction = Some(dir);
     set_cursor_resize_wayland(wl, Some(dir));
     let _ = crate::focus::focus_wayland(&mut wl.core, &wl.wayland, Some(win));

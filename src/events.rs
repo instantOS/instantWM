@@ -69,7 +69,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.g.cfg.buttons.clone();
-    let altcursor = ctx.core.g.altcursor;
+    let altcursor = ctx.core.g.cursor_icon;
     let mut selmon_id = ctx.core.g.selected_monitor_id();
     let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
 
@@ -279,7 +279,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
-    let focusfollowsfloatmouse = ctx.core.g.focusfollowsfloatmouse;
+    let focusfollowsfloatmouse = ctx.core.g.focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
 
@@ -516,7 +516,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             ctx.x11_runtime,
             ctx.systray.as_deref(),
         );
-        if ctx.core.g.altcursor == AltCursor::Sidebar {
+        if ctx.core.g.cursor_icon == AltCursor::Sidebar {
             reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
         }
         return;

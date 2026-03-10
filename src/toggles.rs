@@ -83,11 +83,11 @@ pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
 }
 
 pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.focusfollowsfloatmouse, action);
+    ctrl_toggle(&mut core.g.focus_follows_float_mouse, action);
 }
 
 pub fn toggle_double_draw(core: &mut CoreCtx) {
-    core.g.doubledraw = !core.g.doubledraw;
+    core.g.double_draw = !core.g.double_draw;
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {

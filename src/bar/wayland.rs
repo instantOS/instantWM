@@ -491,14 +491,6 @@ pub fn draw_bars_wayland(core: &mut crate::contexts::CoreCtx, painter: &mut Wayl
         crate::bar::renderer::compute_status_hit_width(painter, &core.g.status_text);
 }
 
-pub fn reset_bar_wayland(core: &mut crate::contexts::CoreCtx) {
-    crate::bar::renderer::reset_bar_common(core);
-}
-
-pub fn should_draw_bar_wayland(core: &crate::contexts::CoreCtx) -> bool {
-    core.g.cfg.show_bar
-}
-
 pub fn render_bar_buffers(
     core: &mut crate::contexts::CoreCtx,
     painter: &mut WaylandBarPainter,

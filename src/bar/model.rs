@@ -60,16 +60,16 @@ pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
 /// fallback paths go through here.
 pub(crate) fn hit_test(
     hit: &MonitorHitCache,
-    mon: &Monitor,
+    monitor: &Monitor,
     core: &CoreCtx,
-    is_selmon: bool,
+    is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
     if local_x < core.g.cfg.startmenusize {
         return BarPosition::StartMenu;
     }
 
-    if core.g.cfg.show_systray && is_selmon && !hit.x11_bar {
+    if core.g.cfg.show_systray && is_selected_monitor && !hit.x11_bar {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {
@@ -94,7 +94,7 @@ pub(crate) fn hit_test(
         return BarPosition::LtSymbol;
     }
 
-    if mon.sel.is_none() && local_x < hit.shutdown_end {
+    if monitor.sel.is_none() && local_x < hit.shutdown_end {
         return BarPosition::ShutDown;
     }
 
@@ -106,10 +106,10 @@ pub(crate) fn hit_test(
         if local_x >= r.start && local_x < r.end {
             let this_width = (r.end - r.start).max(0);
             let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
-            if mon.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
+            if monitor.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
                 return BarPosition::CloseButton(r.win);
             }
-            if mon.sel == Some(r.win) && local_x >= resize_start {
+            if monitor.sel == Some(r.win) && local_x >= resize_start {
                 return BarPosition::ResizeWidget(r.win);
             }
             return BarPosition::WinTitle(r.win);
@@ -126,7 +126,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     let is_selmon = core.g.selected_monitor().num == mon.num;
     let tag_end = get_tag_width(core);
-    let blw = get_layout_symbol_width(core, mon);
+    let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
     let bar_height = core.g.cfg.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Layout symbol ─────────────────────────────────────────────────────
     let layout_start = tag_end;
-    let layout_end = tag_end + blw;
+    let layout_end = tag_end + bar_layout_symbol_width;
 
     // ── Shutdown button ───────────────────────────────────────────────────
     let shutdown_end = layout_end + bar_height;

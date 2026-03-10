@@ -261,8 +261,8 @@ fn draw_window_title(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> Option<u32> {
-    let selmon = ctx.g.selected_monitor();
-    let is_hover = selmon.gesture == Gesture::WinTitle(c.win);
+    let selected_monitor = ctx.g.selected_monitor();
+    let is_hover = selected_monitor.gesture == Gesture::WinTitle(c.win);
 
     let client_name = c.name.as_str();
     let text_w = painter.text_width(client_name);
@@ -277,7 +277,7 @@ fn draw_window_title(
 
     painter.text(x, 0, width, bar_height, lpad, client_name, false, 4);
 
-    let is_selected = selmon.sel == Some(c.win);
+    let is_selected = selected_monitor.sel == Some(c.win);
 
     if is_selected {
         draw_close_button(ctx, c, x, bar_height, painter);

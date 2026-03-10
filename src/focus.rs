@@ -379,7 +379,8 @@ pub fn hover_focus_target_x11(
             .map(|c| c.is_floating)
             .unwrap_or(false);
         let has_tiling = core.g.selected_monitor().is_tiling_layout();
-        if !core.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
+        if !core.g.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root
+        {
             return;
         }
     } else {
@@ -428,7 +429,7 @@ pub fn hover_focus_target_wayland(
         .map(|c| c.is_floating)
         .unwrap_or(false);
     let has_tiling = core.g.selected_monitor().is_tiling_layout();
-    if !core.g.focusfollowsfloatmouse && hovered_is_floating && has_tiling && !entering_root {
+    if !core.g.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
         return;
     }
 

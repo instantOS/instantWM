@@ -10,7 +10,7 @@ pub mod x11;
 mod x11_painter;
 
 pub use model::bar_position_to_gesture;
-pub use wayland::reset_bar_wayland;
+pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 
 use crate::backend::x11::X11BackendRef;
