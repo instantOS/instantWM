@@ -1,0 +1,73 @@
+name: Release-plz
+run-name: "Release-plz: ${{ github.event.head_commit.message }}"
+on:
+  push:
+    branches:
+      - main
+jobs:
+  release-plz-release:
+    name: Release-plz release
+    runs-on: self-hosted
+    container:
+      image: archlinux:latest
+    if: ${{ github.repository_owner == 'instantOS' }}
+    env:
+      CARGO_HOME: /opt/cargo
+      RUSTUP_HOME: /opt/rustup
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed curl git ca-certificates jq tar base-devel cmake pkgconf openssl
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install release-plz
+        run: |
+          curl -sSLf https://github.com/release-plz/release-plz/releases/latest/download/release-plz-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin
+      - name: Run release-plz
+        run: release-plz release --git-token "$RELEASE_PLZ_TOKEN"
+        env:
+          RELEASE_PLZ_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - name: Clean up toolchains
+        if: always()
+        run: rm -rf /opt/cargo /opt/rustup
+  release-plz-pr:
+    name: Release-plz PR
+    runs-on: self-hosted
+    container:
+      image: ubuntu:latest
+    if: ${{ github.repository_owner == 'instantOS' }}
+    permissions:
+      pull-requests: write
+      contents: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ secrets.RELEASE_PLZ_TOKEN }}
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}

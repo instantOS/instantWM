@@ -1,0 +1,529 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+jobs:
+  build:
+    name: Build release artifacts
+    runs-on: self-hosted
+    container:
+      image: archlinux:latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Initialise pacman
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+      - name: Install build dependencies
+        run: |
+          pacman -S --noconfirm --needed \
+            base-devel \
+            rust \
+            pkgconf \
+            git \
+            cmake \
+            jq \
+            pacman-contrib \
+            fzf \
+            xorg-server \
+            xorg-xvfb \
+            libx11 \
+            libxext \
+            libxrandr \
+            libxinerama \
+            libxcb \
+            libxkbcommon \
+            libxcursor \
+            libxdamage \
+            libxfixes \
+            libxi \
+            libxres \
+            libxtst \
+            libxss \
+            libxvmc \
+            libxxf86vm \
+            libxcomposite \
+            libxrender \
+            libxt \
+            libxmu \
+            libxpm \
+            libxaw \
+            fontconfig \
+            freetype2 \
+            libdrm \
+            libgbm \
+            libwayland \
+            wayland-protocols \
+            libinput \
+            libseat \
+            seatd \
+            egl-wayland \
+            mesa \
+            libglvnd \
+            libevdev \
+            libwacom \
+            systemd \
+            dbus \
+            libliftoff \
+            libdisplay-info \
+            scdoc
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+      - name: Create build user
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$PWD"
+      - name: Determine target triple
+        id: target
+        run: |
+          target=$(rustc -vV | awk '/^host:/ {print $2}')
+          if [[ -z "$target" ]]; then
+            echo "Failed to determine host target triple" >&2
+            exit 1
+          fi
+          echo "triple=$target" >> "$GITHUB_OUTPUT"
+      - name: Extract version
+        id: vars
+        run: |
+          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
+          if [[ -z "$version" ]]; then
+            echo "Failed to determine version from Cargo.toml" >&2
+            exit 1
+          fi
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [[ -n "$tag_version" && "$tag_version" != "$version" ]]; then
+            echo "Tag version $tag_version does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Run tests
+        run: |
+          WORKSPACE="$PWD"
+          su builder -c "cd '$WORKSPACE' && CARGO_TERM_COLOR=always cargo test --locked"
+      - name: Build release binary
+        run: |
+          WORKSPACE="$PWD"
+          su builder -c "cd '$WORKSPACE' && CARGO_TERM_COLOR=always cargo build --release --locked"
+      - name: Strip binary
+        run: |
+          WORKSPACE="$PWD"
+          su builder -c "cd '$WORKSPACE' && strip target/release/instantwm target/release/instantwmctl"
+      - name: Collect artifacts
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          TARGET: ${{ steps.target.outputs.triple }}
+        run: |
+          mkdir -p artifacts
+          # instantwm binary
+          pkg_dir="instantwm-${TARGET}-v${VERSION}"
+          tmpdir=$(mktemp -d)
+          mkdir -p "$tmpdir/$pkg_dir"
+          install -Dm0755 "target/release/instantwm" "$tmpdir/$pkg_dir/instantwm"
+          install -Dm0755 "target/release/instantwmctl" "$tmpdir/$pkg_dir/instantwmctl"
+          tar -czf "artifacts/${pkg_dir}.tgz" -C "$tmpdir" "$pkg_dir"
+          sha256sum "artifacts/${pkg_dir}.tgz" > "artifacts/${pkg_dir}.tgz.sha256"
+          rm -rf "$tmpdir"
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-${{ steps.target.outputs.triple }}
+          path: |
+            artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz
+            artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz.sha256
+  cross-compile:
+    name: Cross-compile for ARM and musl targets
+    runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
+    env:
+      CARGO_TERM_COLOR: always
+      DEBIAN_FRONTEND: noninteractive
+      CARGO_HOME: /opt/cargo
+      RUSTUP_HOME: /opt/rustup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential curl ca-certificates pkg-config \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            musl-tools \
+            unzip \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcb-dev \
+            libxkbcommon-dev \
+            libxcursor-dev \
+            libxdamage-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxres-dev \
+            libxtst-dev \
+            libxss-dev \
+            libxvmc-dev \
+            libxxf86vm-dev \
+            libxcomposite-dev \
+            libxrender-dev \
+            libxt-dev \
+            libxmu-dev \
+            libxpm-dev \
+            libxaw-dev \
+            libfontconfig1-dev \
+            libfreetype-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libinput-dev \
+            libseat-dev \
+            libegl-dev \
+            libgl-dev \
+            libevdev-dev \
+            libwacom-dev \
+            libdbus-1-dev \
+            libliftoff-dev \
+            libdisplay-info-dev
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+      - name: Add Rust cross-compilation targets
+        run: |
+          rustup target add \
+            aarch64-unknown-linux-gnu \
+            armv7-unknown-linux-gnueabihf \
+            x86_64-unknown-linux-musl
+      - name: Extract version
+        id: vars
+        run: |
+          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
+          if [[ -z "$version" ]]; then
+            echo "Failed to determine version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cross-compile
+      - name: Cross compile for ARM64 Linux
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: cargo build --locked --release --target aarch64-unknown-linux-gnu
+      - name: Cross compile for ARMv7 Linux
+        env:
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+        run: cargo build --locked --release --target armv7-unknown-linux-gnueabihf
+      - name: Cross compile for x86_64 musl
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
+      - name: Strip cross-compiled binaries
+        run: |
+          aarch64-linux-gnu-strip target/aarch64-unknown-linux-gnu/release/instantwm target/aarch64-unknown-linux-gnu/release/instantwmctl
+          arm-linux-gnueabihf-strip target/armv7-unknown-linux-gnueabihf/release/instantwm target/armv7-unknown-linux-gnueabihf/release/instantwmctl
+          strip target/x86_64-unknown-linux-musl/release/instantwm target/x86_64-unknown-linux-musl/release/instantwmctl
+      - name: Collect cross-compile artifacts
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          mkdir -p artifacts
+
+          # ARM64 Linux
+          pkg_dir_aarch64="instantwm-aarch64-unknown-linux-gnu-v${VERSION}"
+          tmpdir_aarch64=$(mktemp -d)
+          mkdir -p "$tmpdir_aarch64/$pkg_dir_aarch64"
+          install -Dm0755 "target/aarch64-unknown-linux-gnu/release/instantwm" "$tmpdir_aarch64/$pkg_dir_aarch64/instantwm"
+          install -Dm0755 "target/aarch64-unknown-linux-gnu/release/instantwmctl" "$tmpdir_aarch64/$pkg_dir_aarch64/instantwmctl"
+          tar -czf "artifacts/${pkg_dir_aarch64}.tgz" -C "$tmpdir_aarch64" "$pkg_dir_aarch64"
+          sha256sum "artifacts/${pkg_dir_aarch64}.tgz" > "artifacts/${pkg_dir_aarch64}.tgz.sha256"
+          rm -rf "$tmpdir_aarch64"
+
+          # ARMv7 Linux
+          pkg_dir_armv7="instantwm-armv7-unknown-linux-gnueabihf-v${VERSION}"
+          tmpdir_armv7=$(mktemp -d)
+          mkdir -p "$tmpdir_armv7/$pkg_dir_armv7"
+          install -Dm0755 "target/armv7-unknown-linux-gnueabihf/release/instantwm" "$tmpdir_armv7/$pkg_dir_armv7/instantwm"
+          install -Dm0755 "target/armv7-unknown-linux-gnueabihf/release/instantwmctl" "$tmpdir_armv7/$pkg_dir_armv7/instantwmctl"
+          tar -czf "artifacts/${pkg_dir_armv7}.tgz" -C "$tmpdir_armv7" "$pkg_dir_armv7"
+          sha256sum "artifacts/${pkg_dir_armv7}.tgz" > "artifacts/${pkg_dir_armv7}.tgz.sha256"
+          rm -rf "$tmpdir_armv7"
+
+          # x86_64 musl (static)
+          pkg_dir_musl_x86="instantwm-x86_64-unknown-linux-musl-v${VERSION}"
+          tmpdir_musl_x86=$(mktemp -d)
+          mkdir -p "$tmpdir_musl_x86/$pkg_dir_musl_x86"
+          install -Dm0755 "target/x86_64-unknown-linux-musl/release/instantwm" "$tmpdir_musl_x86/$pkg_dir_musl_x86/instantwm"
+          install -Dm0755 "target/x86_64-unknown-linux-musl/release/instantwmctl" "$tmpdir_musl_x86/$pkg_dir_musl_x86/instantwmctl"
+          tar -czf "artifacts/${pkg_dir_musl_x86}.tgz" -C "$tmpdir_musl_x86" "$pkg_dir_musl_x86"
+          sha256sum "artifacts/${pkg_dir_musl_x86}.tgz" > "artifacts/${pkg_dir_musl_x86}.tgz.sha256"
+          rm -rf "$tmpdir_musl_x86"
+      - name: Upload cross-compile artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-cross-binaries
+          path: |
+            artifacts/instantwm-aarch64-unknown-linux-gnu-v${{ steps.vars.outputs.version }}.tgz
+            artifacts/instantwm-aarch64-unknown-linux-gnu-v${{ steps.vars.outputs.version }}.tgz.sha256
+            artifacts/instantwm-armv7-unknown-linux-gnueabihf-v${{ steps.vars.outputs.version }}.tgz
+            artifacts/instantwm-armv7-unknown-linux-gnueabihf-v${{ steps.vars.outputs.version }}.tgz.sha256
+            artifacts/instantwm-x86_64-unknown-linux-musl-v${{ steps.vars.outputs.version }}.tgz
+            artifacts/instantwm-x86_64-unknown-linux-musl-v${{ steps.vars.outputs.version }}.tgz.sha256
+      - name: Clean up toolchains
+        if: always()
+        run: rm -rf /opt/cargo /opt/rustup
+  pkgbuild:
+    name: Build Arch package
+    runs-on: self-hosted
+    container:
+      image: archlinux:latest
+    needs: build
+    steps:
+      - name: Initialise pacman
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm
+      - name: Install build dependencies
+        run: |
+          pacman -S --noconfirm --needed \
+            base-devel \
+            rust \
+            pkgconf \
+            git \
+            cmake \
+            pacman-contrib \
+            fzf \
+            jq \
+            sudo \
+            xorg-server \
+            xorg-xvfb \
+            libx11 \
+            libxext \
+            libxrandr \
+            libxinerama \
+            libxcb \
+            libxkbcommon \
+            libxcursor \
+            libxdamage \
+            libxfixes \
+            libxi \
+            libxres \
+            libxtst \
+            libxss \
+            libxvmc \
+            libxxf86vm \
+            libxcomposite \
+            libxrender \
+            libxt \
+            libxmu \
+            libxpm \
+            libxaw \
+            fontconfig \
+            freetype2 \
+            libdrm \
+            libgbm \
+            libwayland \
+            wayland-protocols \
+            libinput \
+            libseat \
+            seatd \
+            egl-wayland \
+            mesa \
+            libglvnd \
+            libevdev \
+            libwacom \
+            systemd \
+            dbus \
+            libliftoff \
+            libdisplay-info \
+            scdoc
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Extract version
+        id: vars
+        run: |
+          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
+          if [[ -z "$version" ]]; then
+            echo "Failed to determine version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Create build user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          chown -R builder:builder "$PWD"
+      - name: Build package
+        run: |
+          WORKSPACE="$PWD"
+          su builder -c "cd '$WORKSPACE' && makepkg -s --noconfirm --skippgpcheck"
+      - name: Collect package artifacts
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          mkdir -p artifacts
+          shopt -s nullglob
+          for pkg in *.pkg.tar.zst; do mv "$pkg" artifacts/; done
+          for src in *.src.tar.zst; do mv "$src" artifacts/; done
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-arch-packages
+          path: artifacts/
+  deb:
+    name: Build Debian package
+    runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            dpkg-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcb-dev \
+            libxkbcommon-dev \
+            libxcursor-dev \
+            libxdamage-dev \
+            libxfixes-dev \
+            libxi-dev \
+            libxres-dev \
+            libxtst-dev \
+            libxss-dev \
+            libxvmc-dev \
+            libxxf86vm-dev \
+            libxcomposite-dev \
+            libxrender-dev \
+            libxt-dev \
+            libxmu-dev \
+            libxpm-dev \
+            libxaw-dev \
+            libfontconfig1-dev \
+            libfreetype-dev \
+            libdrm-dev \
+            libgbm-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libinput-dev \
+            libseat-dev \
+            libegl-dev \
+            libgl-dev \
+            libevdev-dev \
+            libwacom-dev \
+            libdbus-1-dev \
+            libliftoff-dev \
+            libdisplay-info-dev
+      - name: Extract version
+        id: vars
+        run: |
+          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
+          if [[ -z "$version" ]]; then
+            echo "Failed to determine version from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Download native build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-x86_64-unknown-linux-gnu
+          path: dist
+      - name: Extract binary from tarball
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          tar -xzf "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}.tgz" -C dist
+          install -Dm0755 "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}/instantwm" target/release/instantwm
+          install -Dm0755 "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}/instantwmctl" target/release/instantwmctl
+      - name: Build .deb package
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          mkdir -p target/deb
+          # Create debian package structure
+          pkgdir="target/deb/instantwm-${VERSION}"
+          mkdir -p "$pkgdir/usr/bin"
+          mkdir -p "$pkgdir/usr/share/man/man1"
+          mkdir -p "$pkgdir/DEBIAN"
+
+          # Install binaries
+          install -Dm0755 target/release/instantwm "$pkgdir/usr/bin/instantwm"
+          install -Dm0755 target/release/instantwmctl "$pkgdir/usr/bin/instantwmctl"
+
+          # Install man page if exists
+          if [[ -f instantwm.1 ]]; then
+            install -Dm0644 instantwm.1 "$pkgdir/usr/share/man/man1/instantwm.1"
+          fi
+
+          # Create control file
+          cat > "$pkgdir/DEBIAN/control" <<EOF
+Package: instantwm
+Version: ${VERSION}
+Section: x11
+Priority: optional
+Architecture: amd64
+Depends: libx11-6, libxcb1, libxkbcommon0, libxcursor1, libxinerama1, libxrandr2, libxss1, libxtst6, libxfixes3, libxdamage1, libxcomposite1, libxrender1, libxi6, libxres1, libxvmc1, libxxf86vm1, libxt6, libxmu6, libxpm4, libxaw7, libfontconfig1, libfreetype6, libdrm2, libgbm1, libwayland0, libinput7, libseat1, libegl1, libgl1, libevdev2, libwacom1, libdbus-1-3
+Maintainer: instantOS <hello@instantos.io>
+Description: A tiling window manager for X11 and Wayland
+ instantWM is a tiling window manager for X11 and Wayland.
+ It aims to be lightweight while providing a modern feature set.
+EOF
+
+          # Build the package
+          dpkg-deb --build "$pkgdir" "target/deb/instantwm_${VERSION}_amd64.deb"
+      - name: Collect deb artifacts
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          mkdir -p artifacts
+          mv target/deb/instantwm_${VERSION}_amd64.deb artifacts/
+          cd artifacts && sha256sum instantwm_${VERSION}_amd64.deb > instantwm_${VERSION}_amd64.deb.sha256
+      - name: Upload deb package
+        uses: actions/upload-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-deb
+          path: artifacts/
+  release:
+    name: Publish GitHub release
+    runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
+    needs:
+      - build
+      - cross-compile
+      - pkgbuild
+      - deb
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
