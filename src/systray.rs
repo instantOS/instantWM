@@ -45,8 +45,16 @@ pub fn get_systray_width_for_bar(
         return 0;
     }
     if x11_present {
-        get_systray_width(core, systray) as i32
+        // When systray state is available, calculate the real width.
+        // When systray is None, rely on the cached value set during bar rendering.
+        if systray.is_some() {
+            get_systray_width(core, systray) as i32
+        } else {
+            // Use cached value from bar rendering
+            core.g.systray_width
+        }
     } else {
+        // Wayland: use cached value
         crate::wayland_systray::get_wayland_systray_width(core)
     }
 }

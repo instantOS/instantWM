@@ -174,7 +174,7 @@ pub fn get_wayland_systray_width(core: &CoreCtx) -> i32 {
     if !core.g.cfg.show_systray {
         return 0;
     }
-    core.g.wayland_systray_width
+    core.g.systray_width
 }
 
 pub fn get_wayland_systray_width_with_state(

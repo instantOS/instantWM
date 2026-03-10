@@ -308,8 +308,8 @@ pub struct Globals {
     pub drag: DragState,
     pub status_text_width: i32,
     pub status_text: String,
-    /// Cached Wayland systray width (pixels). Updated before each bar render.
-    pub wayland_systray_width: i32,
+    /// Cached systray width (pixels) for the active backend. Updated before each bar render.
+    pub systray_width: i32,
 
     /// XKB keyboard layout state.
     pub keyboard_layout: KeyboardLayoutState,
@@ -474,7 +474,7 @@ impl Default for Globals {
             drag: DragState::default(),
             status_text_width: 0,
             status_text: String::new(),
-            wayland_systray_width: 0,
+            systray_width: 0,
             keyboard_layout: KeyboardLayoutState::default(),
         }
     }

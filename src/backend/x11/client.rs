@@ -95,7 +95,7 @@ fn apply_icccm_size_hints_x11(
         .g
         .clients
         .get(&win)
-        .map(|c| c.hintsvalid == 0)
+        .map(|c| c.size_hints_valid == 0)
         .unwrap_or(false);
 
     if needs_update {
@@ -184,7 +184,7 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Windo
     };
 
     c.is_fixed_size = c.size_hints.is_fixed();
-    c.hintsvalid = 1;
+    c.size_hints_valid = 1;
 }
 
 fn fetch_wm_normal_hints(x11: &X11BackendRef, win: WindowId) -> Option<Vec<u32>> {
