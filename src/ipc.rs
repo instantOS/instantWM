@@ -135,14 +135,6 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
         IpcCommand::Spawn(command) => spawn_command(&mut ctx, command),
         IpcCommand::Close(window_id) => close_window(&mut ctx, window_id.map(WindowId::from)),
-        IpcCommand::Quit => {
-            wm.quit();
-            IpcResponse::ok("")
-        }
-        IpcCommand::Overlay => {
-            set_overlay(&mut ctx);
-            IpcResponse::ok("")
-        }
         IpcCommand::WarpFocus => {
             crate::mouse::warp::warp_to_focus(&mut ctx);
             IpcResponse::ok("")

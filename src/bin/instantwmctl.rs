@@ -37,10 +37,6 @@ enum CommandKind {
         /// Window ID (defaults to currently selected window)
         window_id: Option<u32>,
     },
-    /// Quit the window manager.
-    Quit,
-    /// Toggle overlay visibility (shows window titles on selected tag).
-    Overlay,
     /// Warp cursor to the currently focused window.
     WarpFocus,
     /// Switch to a tag (workspace).
@@ -277,8 +273,6 @@ fn main() {
             IpcCommand::Spawn(command.join(" "))
         }
         CommandKind::Close { window_id } => IpcCommand::Close(window_id),
-        CommandKind::Quit => IpcCommand::Quit,
-        CommandKind::Overlay => IpcCommand::Overlay,
         CommandKind::WarpFocus => IpcCommand::WarpFocus,
         CommandKind::Tag { number } => IpcCommand::Tag(number.unwrap_or(2)),
         CommandKind::Animated { action } => IpcCommand::Animated(action),

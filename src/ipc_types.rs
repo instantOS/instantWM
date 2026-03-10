@@ -7,8 +7,6 @@ pub enum IpcCommand {
     RunAction(String),
     Spawn(String),
     Close(Option<u32>),
-    Quit,
-    Overlay,
     WarpFocus,
     Tag(u32),
     Animated(Option<String>),
