@@ -53,6 +53,8 @@ jobs:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
     steps:
+      - name: Install dependencies
+        run: apt-get update && apt-get install -y curl git ca-certificates jq tar build-essential pkg-config libssl-dev cmake
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
