@@ -1,0 +1,75 @@
+# Maintainer: instantOS <hello@instantos.io>
+pkgname=instantwm
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A tiling window manager for X11 and Wayland"
+arch=('x86_64')
+url="https://instantos.io"
+license=('MIT')
+depends=(
+    'libx11'
+    'libxcb'
+    'libxkbcommon'
+    'libxcursor'
+    'libxinerama'
+    'libxrandr'
+    'libxss'
+    'libxtst'
+    'libxfixes'
+    'libxdamage'
+    'libxcomposite'
+    'libxrender'
+    'libxi'
+    'libxres'
+    'libxvmc'
+    'libxxf86vm'
+    'libxt'
+    'libxmu'
+    'libxpm'
+    'libxaw'
+    'fontconfig'
+    'freetype'
+    'libdrm'
+    'libgbm'
+    'wayland'
+    'libinput'
+    'libseat'
+    'libegl'
+    'mesa'
+    'libglvnd'
+    'libevdev'
+    'libwacom'
+    'dbus'
+    'systemd'
+)
+makedepends=(
+    'rust'
+    'cargo'
+    'cmake'
+    'pkgconf'
+)
+source=("$pkgname-$pkgver.tar.gz")
+md5sums=('SKIP')
+options=('!lto')
+
+build() {
+    cd "$pkgname-$pkgver"
+    cargo build --release --locked
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+
+    # Binaries
+    install -Dm755 target/release/instantwm "$pkgdir/usr/bin/instantwm"
+    install -Dm755 target/release/instantwmctl "$pkgdir/usr/bin/instantwmctl"
+
+    # License
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    # X11 session
+    install -Dm644 utils/instantwm-x11.desktop "$pkgdir/usr/share/xsessions/instantwm.desktop"
+
+    # Wayland session
+    install -Dm644 utils/instantwm-wayland.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-wayland.desktop"
+}
