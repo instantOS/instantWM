@@ -326,18 +326,193 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
     }
 }
 
+/// Information about a single window for JSON output.
+#[derive(Debug, serde::Serialize)]
+struct WindowInfo {
+    id: u64,
+    title: String,
+    monitor: usize,
+    tags: Vec<u32>,
+    geometry: GeometryInfo,
+    border_width: i32,
+    state: WindowState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scratchpad: Option<ScratchpadInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size_hints: Option<SizeHintsInfo>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct GeometryInfo {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct WindowState {
+    floating: bool,
+    fullscreen: bool,
+    #[serde(rename = "fake_fullscreen")]
+    fake_fullscreen: bool,
+    sticky: bool,
+    hidden: bool,
+    urgent: bool,
+    locked: bool,
+    fixed_size: bool,
+    never_focus: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ScratchpadInfo {
+    name: String,
+    #[serde(rename = "restore_tags")]
+    restore_tags: Vec<u32>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SizeHintsInfo {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_width: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    min_height: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_width: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_height: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_width: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_height: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    width_increment: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    height_increment: Option<i32>,
+}
+
+/// Root structure for window list JSON output.
+#[derive(Debug, serde::Serialize)]
+struct WindowList {
+    windows: Vec<WindowInfo>,
+}
+
 fn list_windows(wm: &Wm) -> IpcResponse {
     let mut wins: Vec<_> = wm.g.clients.values().collect();
     wins.sort_by_key(|c| c.win.0);
-    let mut out = String::new();
-    for c in wins {
-        let name = c.name.replace('\n', " ").replace('\t', " ");
-        out.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\n",
-            c.win.0, c.monitor_id, c.is_floating as u8, c.is_fullscreen as u8, name
-        ));
+
+    let tag_mask = wm.g.tags.mask();
+
+    let windows: Vec<WindowInfo> = wins
+        .iter()
+        .map(|c| {
+            // Convert tags bitmask to array of tag numbers (1-indexed)
+            let tags: Vec<u32> = (1..=32)
+                .filter(|&t| {
+                    let tag_bit = 1u32 << (t - 1);
+                    (c.tags & tag_bit) != 0 && (tag_bit & tag_mask) != 0
+                })
+                .collect();
+
+            // Build scratchpad info if applicable
+            let scratchpad = if c.is_scratchpad() {
+                let restore_tags: Vec<u32> = (1..=32)
+                    .filter(|&t| {
+                        let tag_bit = 1u32 << (t - 1);
+                        (c.scratchpad_restore_tags & tag_bit) != 0
+                    })
+                    .collect();
+                Some(ScratchpadInfo {
+                    name: c.scratchpad_name.clone(),
+                    restore_tags,
+                })
+            } else {
+                None
+            };
+
+            // Build size hints info (only include non-default values)
+            let size_hints = if c.size_hints_valid > 0 {
+                Some(SizeHintsInfo {
+                    min_width: if c.size_hints.minw > 0 {
+                        Some(c.size_hints.minw)
+                    } else {
+                        None
+                    },
+                    min_height: if c.size_hints.minh > 0 {
+                        Some(c.size_hints.minh)
+                    } else {
+                        None
+                    },
+                    max_width: if c.size_hints.maxw > 0 {
+                        Some(c.size_hints.maxw)
+                    } else {
+                        None
+                    },
+                    max_height: if c.size_hints.maxh > 0 {
+                        Some(c.size_hints.maxh)
+                    } else {
+                        None
+                    },
+                    base_width: if c.size_hints.basew > 0 {
+                        Some(c.size_hints.basew)
+                    } else {
+                        None
+                    },
+                    base_height: if c.size_hints.baseh > 0 {
+                        Some(c.size_hints.baseh)
+                    } else {
+                        None
+                    },
+                    width_increment: if c.size_hints.incw > 0 {
+                        Some(c.size_hints.incw)
+                    } else {
+                        None
+                    },
+                    height_increment: if c.size_hints.inch > 0 {
+                        Some(c.size_hints.inch)
+                    } else {
+                        None
+                    },
+                })
+            } else {
+                None
+            };
+
+            WindowInfo {
+                id: c.win.0 as u64,
+                title: c.name.clone(),
+                monitor: c.monitor_id,
+                tags,
+                geometry: GeometryInfo {
+                    x: c.geo.x,
+                    y: c.geo.y,
+                    width: c.geo.w,
+                    height: c.geo.h,
+                },
+                border_width: c.border_width,
+                state: WindowState {
+                    floating: c.is_floating,
+                    fullscreen: c.is_fullscreen,
+                    fake_fullscreen: c.isfakefullscreen,
+                    sticky: c.issticky,
+                    hidden: c.is_hidden,
+                    urgent: c.isurgent,
+                    locked: c.is_locked,
+                    fixed_size: c.is_fixed_size,
+                    never_focus: c.never_focus,
+                },
+                scratchpad,
+                size_hints,
+            }
+        })
+        .collect();
+
+    let window_list = WindowList { windows };
+
+    match serde_json::to_string_pretty(&window_list) {
+        Ok(json) => IpcResponse::ok(json),
+        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
     }
-    IpcResponse::ok(out)
 }
 
 fn close_window(ctx: &mut crate::contexts::WmCtx, parsed_id: Option<WindowId>) -> IpcResponse {
@@ -349,6 +524,13 @@ fn close_window(ctx: &mut crate::contexts::WmCtx, parsed_id: Option<WindowId>) -
     IpcResponse::ok("")
 }
 
+/// Geometry information for a single window (JSON output).
+#[derive(Debug, serde::Serialize)]
+struct WindowGeometryInfo {
+    id: u64,
+    geometry: GeometryInfo,
+}
+
 fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
     let target = parsed_id.or_else(|| wm.g.selected_win());
     let Some(win) = target else {
@@ -357,10 +539,21 @@ fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
     let Some(c) = wm.g.clients.get(&win) else {
         return IpcResponse::err("window not found");
     };
-    IpcResponse::ok(format!(
-        "{}\t{}\t{}\t{}\t{}",
-        c.win.0, c.geo.x, c.geo.y, c.geo.w, c.geo.h
-    ))
+
+    let info = WindowGeometryInfo {
+        id: c.win.0 as u64,
+        geometry: GeometryInfo {
+            x: c.geo.x,
+            y: c.geo.y,
+            width: c.geo.w,
+            height: c.geo.h,
+        },
+    };
+
+    match serde_json::to_string_pretty(&info) {
+        Ok(json) => IpcResponse::ok(json),
+        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
+    }
 }
 
 fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcResponse {
