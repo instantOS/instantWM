@@ -22,7 +22,7 @@
 //! other requests from the dying client are processed between the kill and the
 //! expected `DestroyNotify`.
 
-use crate::animation::animate_client_x11;
+use crate::animation::animate_client;
 use crate::client::focus::send_event_x11;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
@@ -56,8 +56,10 @@ fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
 
     if animated && win != anim_client && !is_fullscreen {
         ctx_x11.core.focus.anim_client = win;
-        animate_client_x11(
-            ctx_x11,
+        // Use backend-agnostic animation via WmCtx
+        let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+        animate_client(
+            &mut wm_ctx,
             win,
             &Rect {
                 x: 0,

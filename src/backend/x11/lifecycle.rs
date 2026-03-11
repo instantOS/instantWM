@@ -28,7 +28,7 @@
 //! When the global `animated` flag is set, newly managed windows slide in from
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
-use crate::animation::animate_client_x11;
+use crate::animation::animate_client;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
@@ -381,20 +381,20 @@ fn run_manage_animation(
         true,
     );
     ctx.backend().flush();
-    if let WmCtx::X11(ctx_x11) = ctx {
-        animate_client_x11(
-            ctx_x11,
-            w,
-            &Rect {
-                x: c.geo.x,
-                y: c.geo.y,
-                w: 0,
-                h: 0,
-            },
-            7,
-            0,
-        );
-    }
+
+    // Use backend-agnostic animation
+    crate::animation::animate_client(
+        ctx,
+        w,
+        &Rect {
+            x: c.geo.x,
+            y: c.geo.y,
+            w: 0,
+            h: 0,
+        },
+        7,
+        0,
+    );
 
     let is_tiling = ctx
         .g()
