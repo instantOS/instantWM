@@ -68,63 +68,49 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     }
 
+    let Some((ptr_x, ptr_y)) = ctx.pointer_location() else {
+        return;
+    };
+
+    let Some((geo, is_floating)) = ctx.client(win).map(|c| (c.geo, c.is_floating)) else {
+        return;
+    };
+
+    // Promote tiled windows to floating before starting the resize.
+    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
+    if !is_floating && has_tiling {
+        toggle_floating(ctx);
+        let selmon_id = ctx.g().selected_monitor_id();
+        crate::layouts::arrange(ctx, Some(selmon_id));
+        // Re-read geometry after the layout change.
+        let Some(new_geo) = ctx.client(win).map(|c| c.geo) else {
+            return;
+        };
+
+        let hit_x = ptr_x - new_geo.x;
+        let hit_y = ptr_y - new_geo.y;
+        let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
+
+        match ctx {
+            WmCtx::X11(x11) => {
+                resize_mouse_directional(x11, Some(dir), btn);
+            }
+            WmCtx::Wayland(wl) => {
+                begin_wayland_super_resize(wl, win, btn, dir, new_geo);
+            }
+        }
+        return;
+    }
+
+    let hit_x = ptr_x - geo.x;
+    let hit_y = ptr_y - geo.y;
+    let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+
     match ctx {
-        WmCtx::X11(ctx_x11) => {
-            let dir = {
-                let Some(c) = ctx_x11.core.g.clients.get(&win) else {
-                    return;
-                };
-
-                let conn = ctx_x11.x11.conn;
-                let x11_win: Window = win.into();
-                let Ok(cookie) = conn.query_pointer(x11_win) else {
-                    return;
-                };
-                let Ok(reply) = cookie.reply() else { return };
-
-                let hit_x = reply.win_x as i32;
-                let hit_y = reply.win_y as i32;
-
-                get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y)
-            };
-
-            resize_mouse_directional(ctx_x11, Some(dir), btn);
+        WmCtx::X11(x11) => {
+            resize_mouse_directional(x11, Some(dir), btn);
         }
         WmCtx::Wayland(wl) => {
-            // Get the current pointer position and compute the resize direction
-            // from which quadrant of the window it falls in.
-            let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() else {
-                return;
-            };
-            let Some((geo, is_floating)) =
-                wl.core.g.clients.get(&win).map(|c| (c.geo, c.is_floating))
-            else {
-                return;
-            };
-
-            // Promote tiled windows to floating before starting the resize.
-            let has_tiling = wl.core.g.selected_monitor().is_tiling_layout();
-            if !is_floating && has_tiling {
-                let mut wmctx = WmCtx::Wayland(wl.reborrow());
-                crate::floating::toggle_floating(&mut wmctx);
-                let selmon_id = wmctx.g().selected_monitor_id();
-                crate::layouts::arrange(&mut wmctx, Some(selmon_id));
-                // Re-read geometry after the layout change.
-                let Some(new_geo) = wmctx.client(win).map(|c| c.geo) else {
-                    return;
-                };
-                let hit_x = ptr_x - new_geo.x;
-                let hit_y = ptr_y - new_geo.y;
-                let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
-                if let WmCtx::Wayland(ref mut wl2) = wmctx {
-                    begin_wayland_super_resize(wl2, win, btn, dir, new_geo);
-                }
-                return;
-            }
-
-            let hit_x = ptr_x - geo.x;
-            let hit_y = ptr_y - geo.y;
-            let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
             begin_wayland_super_resize(wl, win, btn, dir, geo);
         }
     }
@@ -300,21 +286,23 @@ pub fn resize_mouse_directional(
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
 pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
+    let Some((ptr_x, ptr_y)) = ctx.pointer_location() else {
+        return;
+    };
+
+    let Some(geo) = ctx.client(win).map(|c| c.geo) else {
+        return;
+    };
+
+    let hit_x = ptr_x - geo.x;
+    let hit_y = ptr_y - geo.y;
+    let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+
     match ctx {
-        WmCtx::X11(ctx_x11) => resize_aspect_mouse_x11(ctx_x11, win, btn),
+        WmCtx::X11(x11) => {
+            resize_aspect_mouse_x11(x11, win, btn);
+        }
         WmCtx::Wayland(wl) => {
-            // Same approach as resize_mouse_from_cursor: use the current
-            // pointer position to pick a direction and activate
-            // HoverResizeDragState directly.
-            let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() else {
-                return;
-            };
-            let Some(geo) = wl.core.g.clients.get(&win).map(|c| c.geo) else {
-                return;
-            };
-            let hit_x = ptr_x - geo.x;
-            let hit_y = ptr_y - geo.y;
-            let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
             begin_wayland_super_resize(wl, win, btn, dir, geo);
         }
     }
@@ -329,10 +317,11 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         return;
     }
 
-    with_wm_ctx_x11(ctx, |ctx| {
-        let selmon_id = ctx.g().selected_monitor_id();
-        crate::layouts::restack(ctx, selmon_id);
-    });
+    {
+        let mut tmp = WmCtx::X11(ctx.reborrow());
+        let selmon_id = tmp.g().selected_monitor_id();
+        crate::layouts::restack(&mut tmp, selmon_id);
+    }
 
     super::grab::mouse_drag_loop(ctx, btn, 1, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {

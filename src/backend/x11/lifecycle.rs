@@ -230,7 +230,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     crate::client::focus::configure_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
     crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
-    update_wm_hints(&mut ctx_x11.core, &ctx_x11.x11, w);
+    update_wm_hints(ctx_x11, w);
     read_client_info(ctx_x11.core.g, &ctx_x11.x11, ctx_x11.x11_runtime, w);
     set_client_tag_prop(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);

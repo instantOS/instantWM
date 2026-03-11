@@ -1,4 +1,4 @@
-use crate::backend::x11::{apply_size_hints_x11, X11BackendRef};
+use crate::backend::x11::X11BackendRef;
 use crate::client::set_client_state;
 use crate::contexts::CoreCtx;
 use crate::globals::X11RuntimeConfig;
@@ -77,7 +77,7 @@ pub fn update_systray_icon_geom(
 
     let mut rect = Rect::new(geo_x, geo_y, new_geo_w, new_geo_h);
 
-    let _ = apply_size_hints_x11(core, x11, icon_win, &mut rect, false);
+    let _ = crate::client::geometry::apply_size_hints(core, Some(x11), icon_win, &mut rect, false);
 
     // Now update the client with the computed values
     if let Some(client) = core.g.clients.get_mut(&icon_win) {

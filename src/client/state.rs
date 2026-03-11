@@ -479,8 +479,8 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
 /// * If the urgency hint is set on the *currently selected* window, the hint is
 ///   cleared immediately (the user is already looking at it).
 /// * The `neverfocus` flag is derived from the `InputHint` field.
-pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
-    let conn = x11.conn;
+pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+    let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
     let Ok(cookie) =
@@ -502,15 +502,15 @@ pub fn update_wm_hints(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
     let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
-    let is_selected = core.g.selected_monitor().sel == Some(win);
+    let is_selected = ctx.core.g.selected_monitor().sel == Some(win);
 
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.
     if is_selected && is_urgent {
-        clear_urgency_hint(core, x11, win);
+        clear_urgency_hint(&mut ctx.core, &ctx.x11, win);
     }
 
-    if let Some(client) = core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.core.g.clients.get_mut(&win) {
         client.isurgent = is_urgent;
         client.never_focus = if flags & WM_HINTS_INPUT_HINT != 0 {
             input == 0
