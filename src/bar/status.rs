@@ -167,17 +167,17 @@ pub(crate) fn draw_status_bar(
     m: &Monitor,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
-) -> (i32, i32) {
+) -> (i32, i32, Vec<StatusClickTarget>) {
     let stext = ctx.g.status_text.as_str();
     if stext.is_empty() {
         ctx.bar.clear_command_offsets();
-        ctx.bar.status_click_targets.clear();
-        return (0, 0);
+        return (0, 0, Vec::new());
     }
 
     let items = ctx.bar.status_items_for_text(stext).to_vec();
     let layout = measure_layout(systray_width, m, items.as_slice(), painter);
 
+    let mut click_targets = Vec::new();
     draw_items(
         painter,
         bar_height,
@@ -185,10 +185,10 @@ pub(crate) fn draw_status_bar(
         layout,
         ctx.g,
         &mut ctx.bar.command_offsets,
-        &mut ctx.bar.status_click_targets,
+        &mut click_targets,
     );
 
-    (layout.draw_start_x, layout.total_width)
+    (layout.draw_start_x, layout.total_width, click_targets)
 }
 
 fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
@@ -432,17 +432,15 @@ pub(crate) fn make_i3_click_event(
 }
 
 pub(crate) fn emit_i3bar_status_click(
-    bar: &mut crate::bar::BarState,
-    status_text: &str,
+    parsed: &ParsedStatus,
+    click_targets: &[StatusClickTarget],
     local_x: i32,
     y: i32,
     button: u8,
     bar_height: i32,
     clean_state: u32,
 ) -> bool {
-    let parsed = bar.parsed_status_for_text(status_text).clone();
-    let Some((block, target)) = resolve_i3_click(&parsed, &bar.status_click_targets, local_x)
-    else {
+    let Some((block, target)) = resolve_i3_click(parsed, click_targets, local_x) else {
         return false;
     };
 

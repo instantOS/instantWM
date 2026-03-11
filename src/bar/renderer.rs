@@ -2,32 +2,14 @@ use crate::bar::model::ClientBarStats;
 use crate::bar::paint::BarPainter;
 use crate::bar::{status, widgets};
 use crate::contexts::CoreCtx;
-use crate::types::{Gesture, Systray};
-
-/// X11-specific bar drawing implementation.
-pub(crate) fn draw_bar_x11(
-    core: &mut CoreCtx,
-    systray: Option<&Systray>,
-    mon_idx: usize,
-    painter: &mut dyn BarPainter,
-) {
-    draw_bar_inner(core, true, systray, mon_idx, painter);
-}
-
-/// Wayland-specific bar drawing implementation.
-pub(crate) fn draw_bar_wayland(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
-    draw_bar_inner(core, false, None, mon_idx, painter);
-}
+use crate::types::Gesture;
 
 /// Core bar drawing implementation shared between X11 and Wayland.
 ///
-/// This function contains all the common widget drawing logic that is
-/// backend-agnostic. The x11_present parameter is used to determine which
-/// systray width calculation method to use.
-fn draw_bar_inner(
+/// Systray width must be cached in `core.g.systray_width` by the caller
+/// before invoking this function.
+pub(crate) fn draw_bar(
     core: &mut CoreCtx,
-    x11_present: bool,
-    systray: Option<&Systray>,
     mon_idx: usize,
     painter: &mut dyn BarPainter,
 ) {
@@ -57,25 +39,22 @@ fn draw_bar_inner(
     let is_selmon = core.g.selected_monitor().num == monitor_num;
 
     let systray_width = if core.g.cfg.show_systray && is_selmon {
-        crate::systray::get_systray_width_for_bar(core, x11_present, systray)
+        core.g.systray_width
     } else {
         0
     };
 
-    let (status_start_x, status_width) = if is_selmon {
+    let (status_start_x, status_width, status_click_targets) = if is_selmon {
         let m = core.g.monitor(mon_idx).cloned().unwrap();
         status::draw_status_bar(core, systray_width, &m, bar_height, painter)
     } else {
-        (0, 0)
+        (0, 0, Vec::new())
     };
 
-    if is_selmon {
-        core.g.status_text_width = status_width;
-    }
     core.bar.clear_cached_widths();
     core.bar.begin_monitor_hit_cache(monitor_id);
     if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
-        hit.x11_bar = x11_present;
+        hit.status_click_targets = status_click_targets;
     }
 
     widgets::draw_startmenu_icon(core, bar_height, painter);
@@ -162,11 +141,4 @@ pub fn reset_bar_common(core: &mut CoreCtx) {
     }
 
     core.g.selected_monitor_mut().gesture = Gesture::None;
-}
-
-pub fn compute_status_hit_width(painter: &mut dyn BarPainter, text: &str) -> i32 {
-    if text.is_empty() {
-        return 0;
-    }
-    painter.text_width(text) + crate::bar::status::TEXT_PADDING * 2
 }

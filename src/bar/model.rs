@@ -69,7 +69,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.g.cfg.show_systray && is_selected_monitor && !hit.x11_bar {
+    if core.g.cfg.show_systray && is_selected_monitor {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {
@@ -98,7 +98,7 @@ pub(crate) fn hit_test(
         return BarPosition::ShutDown;
     }
 
-    if core.g.status_text_width > 0 && local_x > hit.status_hit_x {
+    if is_selected_monitor && local_x > hit.status_hit_x {
         return BarPosition::StatusText;
     }
 
@@ -150,13 +150,11 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Status text ───────────────────────────────────────────────────────
     let systray_w = if core.g.cfg.show_systray && is_selmon {
-        crate::systray::get_systray_width_for_bar(core, true, None)
-            .max(crate::systray::get_systray_width_for_bar(core, false, None))
+        core.g.systray_width
     } else {
         0
     };
-    let status_hit_x =
-        mon.work_rect.w - systray_w - core.g.status_text_width + core.g.cfg.horizontal_padding - 2;
+    let status_hit_x = mon.work_rect.w - systray_w;
 
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
@@ -200,8 +198,8 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
         layout_end,
         shutdown_end,
         status_hit_x,
-        x11_bar: false,
         systray_slots: Vec::new(),
         systray_menu_slots: Vec::new(),
+        status_click_targets: Vec::new(),
     }
 }

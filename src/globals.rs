@@ -348,7 +348,6 @@ pub struct Globals {
     pub double_draw: bool,
     pub specialnext: SpecialNext,
     pub drag: DragState,
-    pub status_text_width: i32,
     pub status_text: String,
     /// Cached systray width (pixels) for the active backend. Updated before each bar render.
     pub systray_width: i32,
@@ -514,7 +513,6 @@ impl Default for Globals {
             double_draw: false,
             specialnext: SpecialNext::None,
             drag: DragState::default(),
-            status_text_width: 0,
             status_text: String::new(),
             systray_width: 0,
             keyboard_layout: KeyboardLayoutState::default(),

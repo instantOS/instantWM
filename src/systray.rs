@@ -36,29 +36,6 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
     }
 }
 
-pub fn get_systray_width_for_bar(
-    core: &CoreCtx,
-    x11_present: bool,
-    systray: Option<&Systray>,
-) -> i32 {
-    if !core.g.cfg.show_systray {
-        return 0;
-    }
-    if x11_present {
-        // When systray state is available, calculate the real width.
-        // When systray is None, rely on the cached value set during bar rendering.
-        if systray.is_some() {
-            get_systray_width(core, systray) as i32
-        } else {
-            // Use cached value from bar rendering
-            core.g.systray_width
-        }
-    } else {
-        // Wayland: use cached value
-        crate::wayland_systray::get_wayland_systray_width(core)
-    }
-}
-
 /// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, icon_win: WindowId) {
     if !core.g.cfg.show_systray {

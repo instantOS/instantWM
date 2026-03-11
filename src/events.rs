@@ -107,14 +107,19 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if event_win == mon.bar_win {
             let local_x = e.event_x as i32;
             let position = mon.bar_position_at_x(&ctx.core, local_x);
+            let monitor_id = mon.id();
             if position == BarPosition::StartMenu {
                 reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
 
             if position == BarPosition::StatusText {
+                let parsed = ctx.core.bar.parsed_status_for_text(&ctx.core.g.status_text).clone();
+                let click_targets = ctx.core.bar.monitor_hit_cache(monitor_id)
+                    .map(|h| h.status_click_targets.as_slice())
+                    .unwrap_or(&[]);
                 emit_i3bar_status_click(
-                    &mut ctx.core.bar,
-                    &ctx.core.g.status_text,
+                    &parsed,
+                    click_targets,
                     local_x,
                     e.event_y as i32,
                     e.detail,

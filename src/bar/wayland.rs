@@ -485,11 +485,6 @@ impl BarPainter for WaylandBarPainter {
     }
 }
 
-pub fn draw_bars_wayland(core: &mut crate::contexts::CoreCtx, painter: &mut WaylandBarPainter) {
-    core.g.status_text_width =
-        crate::bar::renderer::compute_status_hit_width(painter, &core.g.status_text);
-}
-
 pub fn render_bar_buffers(
     core: &mut crate::contexts::CoreCtx,
     painter: &mut WaylandBarPainter,
@@ -529,7 +524,7 @@ pub fn render_bar_buffers(
 
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
         painter.begin(scale, origin_x, origin_y, width, height);
-        crate::bar::renderer::draw_bar_wayland(core, mon_idx, painter);
+        crate::bar::renderer::draw_bar(core, mon_idx, painter);
         if core.g.cfg.show_systray {
             if let Some(mon) = core.g.monitor(mon_idx).cloned() {
                 crate::wayland_systray::draw_wayland_systray(

@@ -115,26 +115,12 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     result
 }
 
-pub fn grab_pointer_with_keys_ctx(ctx: &WmCtx, cursor_index: usize) -> bool {
-    match ctx {
-        WmCtx::X11(x11) => grab_pointer_with_keys(x11, cursor_index),
-        WmCtx::Wayland(_) => false,
-    }
-}
-
 /// Wait for the next X11 event.
 ///
 /// Borrows the connection only for the duration of the call, so the caller
 /// can freely mutate `ctx` between events.
 pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
     ctx.x11.conn.wait_for_event().ok()
-}
-
-pub fn wait_event_ctx(ctx: &WmCtx) -> Option<x11rb::protocol::Event> {
-    match ctx {
-        WmCtx::X11(x11) => wait_event(x11),
-        WmCtx::Wayland(_) => None,
-    }
 }
 
 /// Release an active pointer grab and flush pending requests.
@@ -151,12 +137,6 @@ fn ungrab_inner(conn: &x11rb::rust_connection::RustConnection) {
 #[inline]
 pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
     ungrab_inner(ctx.x11.conn);
-}
-
-pub fn ungrab_ctx(ctx: &WmCtx) {
-    if let WmCtx::X11(x11) = ctx {
-        ungrab(x11);
-    }
 }
 
 /// Generic X11 mouse-drag event loop.

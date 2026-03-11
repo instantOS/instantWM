@@ -14,15 +14,6 @@ pub fn update_status(
 ) {
     let selmon_idx = core.g.selected_monitor_id();
 
-    // Cache the X11 systray width before passing None to draw_bar.
-    // The systray parameter is consumed by update_systray below, so we compute
-    // the width now while we still have access to the systray state.
-    if let Some(ref systray_ref) = systray {
-        core.g.systray_width = crate::systray::get_systray_width(core, Some(systray_ref)) as i32;
-    } else {
-        core.g.systray_width = 0;
-    }
-
     super::draw_bar(core, x11_runtime, None, selmon_idx);
 
     crate::systray::update_systray(core, x11, x11_runtime, systray);

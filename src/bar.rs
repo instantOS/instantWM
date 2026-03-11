@@ -24,7 +24,6 @@ pub struct BarState {
     draw_bar_recursion: usize,
     bar_update_seq: u64,
     pub command_offsets: [i32; 20],
-    pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
     /// Total width of the tag strip (including start menu)
@@ -67,13 +66,11 @@ pub struct MonitorHitCache {
     pub layout_end: i32,
     pub shutdown_end: i32,
     pub status_hit_x: i32,
-    /// True when this cache was built for an X11 bar (as opposed to a Wayland bar).
-    /// Used to skip Wayland-systray hit-testing on X11 bars.
-    pub x11_bar: bool,
     /// Systray item hit slots for Wayland bars. Populated during rendering.
     pub systray_slots: Vec<SystrayHitSlot>,
     /// Systray menu item hit slots for Wayland bars. Populated during rendering.
     pub systray_menu_slots: Vec<SystrayHitSlot>,
+    pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
 }
 
 impl BarState {
@@ -200,6 +197,10 @@ pub fn draw_bar(
         return;
     }
 
+    if core.g.cfg.show_systray {
+        core.g.systray_width = crate::systray::get_systray_width(core, systray) as i32;
+    }
+
     let drw = {
         let Some(drw) = x11_runtime.drw.as_mut() else {
             return;
@@ -213,7 +214,7 @@ pub fn draw_bar(
 
     let mut painter = x11_painter::X11BarPainter::new(drw);
 
-    renderer::draw_bar_x11(core, systray, mon_idx, &mut painter);
+    renderer::draw_bar(core, mon_idx, &mut painter);
 
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
