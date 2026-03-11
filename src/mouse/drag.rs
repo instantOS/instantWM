@@ -38,7 +38,7 @@ use x11rb::protocol::xproto::*;
 use super::constants::{DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 use super::cursor::{set_cursor_default, set_cursor_move};
 use super::monitor::handle_client_monitor_switch;
-use super::warp::{get_root_ptr, get_root_ptr_ctx_x11, warp_into};
+use super::warp::{get_root_ptr, warp_into};
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
@@ -633,7 +633,8 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 }
 
 pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
-    let Some((_, start_y)) = get_root_ptr_ctx_x11(ctx) else {
+    let wm_ctx = WmCtx::X11(ctx.reborrow());
+    let Some((_, start_y)) = get_root_ptr(&wm_ctx) else {
         return;
     };
 

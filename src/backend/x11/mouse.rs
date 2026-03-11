@@ -4,7 +4,7 @@ use crate::contexts::WmCtxX11;
 use crate::mouse::drag::{
     clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target, MoveState,
 };
-use crate::mouse::warp::get_root_ptr_ctx_x11;
+use crate::mouse::warp::get_root_ptr;
 use crate::types::{MouseButton, Rect};
 
 /// X11-only synchronous window move implementation.
@@ -20,7 +20,8 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         return;
     };
 
-    let Some((start_x, start_y)) = get_root_ptr_ctx_x11(ctx) else {
+    let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    let Some((start_x, start_y)) = get_root_ptr(&wm_ctx) else {
         return;
     };
 

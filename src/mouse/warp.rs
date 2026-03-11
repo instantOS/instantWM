@@ -23,21 +23,10 @@ pub(crate) const WARP_INTO_PADDING: i32 = 10;
 
 // ── Pointer position query ────────────────────────────────────────────────────
 
-/// Query the current root-window pointer position via X11.
-pub(crate) fn get_root_ptr_x11(x11: &X11BackendRef, root: Window) -> Option<(i32, i32)> {
-    let cookie = query_pointer(x11.conn, root).ok()?;
-    let reply = cookie.reply().ok()?;
-    Some((reply.root_x as i32, reply.root_y as i32))
-}
-
 /// Query the current pointer position in root (logical) coordinates.
 /// Returns `None` when the position is unavailable.
 pub fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
     ctx.pointer_location()
-}
-
-pub fn get_root_ptr_ctx_x11(ctx: &WmCtxX11<'_>) -> Option<(i32, i32)> {
-    get_root_ptr_x11(&ctx.x11, ctx.x11_runtime.root)
 }
 
 // ── Public backend-agnostic API ───────────────────────────────────────────────
