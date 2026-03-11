@@ -164,6 +164,19 @@ impl BackendOps for WaylandBackend {
         let _ = self.with_state(WaylandState::flush);
     }
 
+    fn pointer_location(&self) -> Option<(i32, i32)> {
+        self.with_state(|state: &mut WaylandState| {
+            let loc = state.pointer.current_location();
+            (loc.x.round() as i32, loc.y.round() as i32)
+        })
+    }
+
+    fn warp_pointer(&self, x: f64, y: f64) {
+        let _ = self.with_state(|state: &mut WaylandState| {
+            state.request_warp(x, y);
+        });
+    }
+
     fn window_title(&self, window: WindowId) -> Option<String> {
         self.with_state(|state: &mut WaylandState| state.window_title(window))
             .flatten()

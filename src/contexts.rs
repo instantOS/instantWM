@@ -235,6 +235,14 @@ impl<'a> WmCtx<'a> {
         self.backend().flush();
     }
 
+    pub fn pointer_location(&self) -> Option<(i32, i32)> {
+        self.backend().pointer_location()
+    }
+
+    pub fn warp_pointer(&self, x: f64, y: f64) {
+        self.backend().warp_pointer(x, y);
+    }
+
     pub fn raise(&self, win: WindowId) {
         self.backend().raise_window(win);
     }
@@ -287,34 +295,43 @@ impl<'a> WmCtx<'a> {
     /// the pointer handle and the external `pointer_location` variable are
     /// both updated atomically.
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
-        match self {
-            WmCtx::X11(x11) => {
-                crate::mouse::warp::warp_to_client_win(&x11.core, &x11.x11, x11.x11_runtime, win);
-            }
-            WmCtx::Wayland(wl) => {
-                // Skip the warp if the pointer is already inside the window,
-                // mirroring the X11 behaviour in warp_to_client_win.
-                let Some(c) = wl.core.g.clients.get(&win) else {
-                    return;
-                };
-                let target_x = (c.geo.x + c.geo.w / 2) as f64;
-                let target_y = (c.geo.y + c.geo.h / 2) as f64;
+        let bar_height = self.g().cfg.bar_height;
 
-                // Check current pointer position to avoid jarring jumps when
-                // the cursor is already over the window.
-                if let Some((ptr_x, ptr_y)) = wl.wayland.backend.pointer_location() {
-                    let in_window = ptr_x >= c.geo.x
-                        && ptr_x <= c.geo.x + c.geo.w
-                        && ptr_y >= c.geo.y
-                        && ptr_y <= c.geo.y + c.geo.h;
-                    if in_window {
-                        return;
-                    }
-                }
-
-                wl.wayland.backend.warp_pointer(target_x, target_y);
-            }
+        // No target window – centre on the selected monitor's work area.
+        if win == WindowId::default() {
+            let mon = self.g().selected_monitor();
+            let target_x = (mon.work_rect.x + mon.work_rect.w / 2) as f64;
+            let target_y = (mon.work_rect.y + mon.work_rect.h / 2) as f64;
+            self.warp_pointer(target_x, target_y);
+            return;
         }
+
+        let Some(c) = self.g().clients.get(&win).cloned() else {
+            return;
+        };
+
+        let Some((ptr_x, ptr_y)) = self.pointer_location() else {
+            return;
+        };
+
+        // Skip if already inside the window (including border).
+        let in_window = c.geo.contains_point(ptr_x, ptr_y)
+            || (ptr_x > c.geo.x - c.border_width
+                && ptr_y > c.geo.y - c.border_width
+                && ptr_x < c.geo.x + c.geo.w + c.border_width * 2
+                && ptr_y < c.geo.y + c.geo.h + c.border_width * 2);
+
+        let on_bar = self.g().monitor(c.monitor_id).is_some_and(|mon| {
+            (ptr_y > mon.bar_y && ptr_y < mon.bar_y + bar_height) || (mon.topbar && ptr_y == 0)
+        });
+
+        if in_window || on_bar {
+            return;
+        }
+
+        let target_x = (c.geo.x + c.geo.w / 2) as f64;
+        let target_y = (c.geo.y + c.geo.h / 2) as f64;
+        self.warp_pointer(target_x, target_y);
     }
 
     /// Returns true when running under Wayland.

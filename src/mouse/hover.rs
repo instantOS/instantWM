@@ -21,7 +21,7 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::{set_cursor_default, set_cursor_resize};
-use super::warp::{get_root_ptr, warp_into_ctx_x11};
+use super::warp::{get_root_ptr, warp_into};
 
 use super::resize::resize_mouse_directional;
 
@@ -374,7 +374,8 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                             WmCtx::X11(ref mut x11) => x11.reborrow(),
                             _ => unreachable!(),
                         };
-                        warp_into_ctx_x11(&mut wm_ctx_x11, win);
+                        let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
+                        super::warp::warp_into(&mut wmctx, win);
                         crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                     }
                     // Left-click
@@ -384,7 +385,8 @@ fn run_hover_resize_loop(ctx: &mut WmCtx) -> bool {
                                 WmCtx::X11(ref mut x11) => x11.reborrow(),
                                 _ => unreachable!(),
                             };
-                            warp_into_ctx_x11(&mut wm_ctx_x11, win);
+                            let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
+                            super::warp::warp_into(&mut wmctx, win);
                             crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                         } else {
                             let dir = get_resize_direction(w, h, win_x, win_y);

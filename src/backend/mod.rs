@@ -23,6 +23,13 @@ pub trait BackendOps {
     fn set_border_width(&self, window: WindowId, width: i32);
     fn window_exists(&self, window: WindowId) -> bool;
     fn flush(&self);
+
+    /// Get current pointer location in root coordinates.
+    fn pointer_location(&self) -> Option<(i32, i32)>;
+
+    /// Warp pointer to (x, y) in root coordinates.
+    fn warp_pointer(&self, x: f64, y: f64);
+
     /// Read the window title from the backend.
     ///
     /// Returns `None` when the title is not available or the backend
@@ -105,6 +112,14 @@ impl BackendOps for Backend {
 
     fn flush(&self) {
         self.as_ref().flush()
+    }
+
+    fn pointer_location(&self) -> Option<(i32, i32)> {
+        self.as_ref().pointer_location()
+    }
+
+    fn warp_pointer(&self, x: f64, y: f64) {
+        self.as_ref().warp_pointer(x, y)
     }
 
     fn window_title(&self, window: WindowId) -> Option<String> {
@@ -217,6 +232,20 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.flush(),
             BackendRef::Wayland(wayland) => wayland.flush(),
+        }
+    }
+
+    fn pointer_location(&self) -> Option<(i32, i32)> {
+        match self {
+            BackendRef::X11(x11) => x11.pointer_location(),
+            BackendRef::Wayland(wayland) => wayland.pointer_location(),
+        }
+    }
+
+    fn warp_pointer(&self, x: f64, y: f64) {
+        match self {
+            BackendRef::X11(x11) => x11.warp_pointer(x, y),
+            BackendRef::Wayland(wayland) => wayland.warp_pointer(x, y),
         }
     }
 

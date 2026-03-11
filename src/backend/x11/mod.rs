@@ -193,4 +193,25 @@ impl BackendOps for X11BackendRef<'_> {
     fn flush(&self) {
         let _ = self.conn.flush();
     }
+
+    fn pointer_location(&self) -> Option<(i32, i32)> {
+        let root = self.conn.setup().roots[self.screen_num].root;
+        let reply = self.conn.query_pointer(root).ok()?.reply().ok()?;
+        Some((reply.root_x as i32, reply.root_y as i32))
+    }
+
+    fn warp_pointer(&self, x: f64, y: f64) {
+        let root = self.conn.setup().roots[self.screen_num].root;
+        let _ = self.conn.warp_pointer(
+            CURRENT_TIME,
+            root,
+            0,
+            0,
+            0,
+            0,
+            x.round() as i16,
+            y.round() as i16,
+        );
+        let _ = self.conn.flush();
+    }
 }

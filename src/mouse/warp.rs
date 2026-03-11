@@ -33,85 +33,11 @@ pub(crate) fn get_root_ptr_x11(x11: &X11BackendRef, root: Window) -> Option<(i32
 /// Query the current pointer position in root (logical) coordinates.
 /// Returns `None` when the position is unavailable.
 pub fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    match ctx {
-        WmCtx::X11(x11) => get_root_ptr_x11(&x11.x11, x11.x11_runtime.root),
-        WmCtx::Wayland(wl) => wl.wayland.backend.pointer_location(),
-    }
+    ctx.pointer_location()
 }
 
 pub fn get_root_ptr_ctx_x11(ctx: &WmCtxX11<'_>) -> Option<(i32, i32)> {
     get_root_ptr_x11(&ctx.x11, ctx.x11_runtime.root)
-}
-
-// ── Core X11 warp implementation ──────────────────────────────────────────────
-
-/// Move the X11 pointer to the centre of `win`, skipping if already inside.
-///
-/// If `win` is the default (zero) `WindowId`, warps to the centre of the
-/// selected monitor's work area instead.  The warp is also skipped when the
-/// pointer is on the bar of the window's monitor.
-pub(crate) fn warp_to_client_win(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    let conn = x11.conn;
-    let root = x11_runtime.root;
-    let bar_height = core.g.cfg.bar_height;
-
-    // No target window – centre on the selected monitor's work area.
-    if win == WindowId::default() {
-        let mon = core.g.selected_monitor();
-        let _ = conn.warp_pointer(
-            CURRENT_TIME,
-            root,
-            0,
-            0,
-            0,
-            0,
-            (mon.work_rect.x + mon.work_rect.w / 2) as i16,
-            (mon.work_rect.y + mon.work_rect.h / 2) as i16,
-        );
-        let _ = conn.flush();
-        return;
-    }
-
-    let Some(c) = core.g.clients.get(&win) else {
-        return;
-    };
-
-    let Some((ptr_x, ptr_y)) = get_root_ptr_x11(x11, root) else {
-        return;
-    };
-
-    // Skip if already inside the window (including border).
-    let in_window = c.geo.contains_point(ptr_x, ptr_y)
-        || (ptr_x > c.geo.x - c.border_width
-            && ptr_y > c.geo.y - c.border_width
-            && ptr_x < c.geo.x + c.geo.w + c.border_width * 2
-            && ptr_y < c.geo.y + c.geo.h + c.border_width * 2);
-
-    let on_bar = core.g.monitor(c.monitor_id).is_some_and(|mon| {
-        (ptr_y > mon.bar_y && ptr_y < mon.bar_y + bar_height) || (mon.topbar && ptr_y == 0)
-    });
-
-    if in_window || on_bar {
-        return;
-    }
-
-    let x11_win: Window = c.win.into();
-    let _ = conn.warp_pointer(
-        CURRENT_TIME,
-        x11_win,
-        0,
-        0,
-        0,
-        0,
-        (c.geo.w / 2) as i16,
-        (c.geo.h / 2) as i16,
-    );
-    let _ = conn.flush();
 }
 
 // ── Public backend-agnostic API ───────────────────────────────────────────────
@@ -125,33 +51,27 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
     if win == WindowId::default() {
         return;
     }
-    match ctx {
-        WmCtx::X11(x11) => warp_into_x11(&x11.core, &x11.x11, x11.x11_runtime, win),
-        WmCtx::Wayland(wl) => {
-            let Some(c) = wl.core.g.clients.get(&win) else {
-                return;
-            };
-            let (mut tx, mut ty) = wl
-                .wayland
-                .backend
-                .pointer_location()
-                .map(|(px, py)| (px as i32, py as i32))
-                .unwrap_or((c.geo.x + c.geo.w / 2, c.geo.y + c.geo.h / 2));
 
-            if tx < c.geo.x {
-                tx = c.geo.x + WARP_INTO_PADDING;
-            } else if tx > c.geo.x + c.geo.w {
-                tx = c.geo.x + c.geo.w - WARP_INTO_PADDING;
-            }
-            if ty < c.geo.y {
-                ty = c.geo.y + WARP_INTO_PADDING;
-            } else if ty > c.geo.y + c.geo.h {
-                ty = c.geo.y + c.geo.h - WARP_INTO_PADDING;
-            }
+    let Some(c) = ctx.g().clients.get(&win).cloned() else {
+        return;
+    };
 
-            wl.wayland.backend.warp_pointer(tx as f64, ty as f64);
-        }
+    let (mut tx, mut ty) = ctx
+        .pointer_location()
+        .unwrap_or((c.geo.x + c.geo.w / 2, c.geo.y + c.geo.h / 2));
+
+    if tx < c.geo.x {
+        tx = c.geo.x + WARP_INTO_PADDING;
+    } else if tx > c.geo.x + c.geo.w {
+        tx = c.geo.x + c.geo.w - WARP_INTO_PADDING;
     }
+    if ty < c.geo.y {
+        ty = c.geo.y + WARP_INTO_PADDING;
+    } else if ty > c.geo.y + c.geo.h {
+        ty = c.geo.y + c.geo.h - WARP_INTO_PADDING;
+    }
+
+    ctx.warp_pointer(tx as f64, ty as f64);
 }
 
 /// `warp_into` for X11-specific call-sites that already hold a `WmCtxX11`.

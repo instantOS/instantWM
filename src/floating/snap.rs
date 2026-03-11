@@ -171,7 +171,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     match ctx {
         WmCtx::X11(ctx_x11) => {
             apply_snap(ctx_x11, win, monitor_id);
-            warp_to_client_win(&ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, win);
+            ctx_x11.reborrow().warp_cursor_to_client(win);
             crate::focus::focus_soft_x11(
                 &mut ctx_x11.core,
                 &ctx_x11.x11,
@@ -183,6 +183,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
             // Wayland: use generic snap geometry (no animation)
             let monitor = ctx.g().monitor(monitor_id).cloned().unwrap();
             apply_snap_for_window(ctx, win, &monitor);
+            ctx.warp_cursor_to_client(win);
         }
     }
 }
