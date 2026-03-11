@@ -123,20 +123,14 @@ pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
     ctx.x11.conn.wait_for_event().ok()
 }
 
-/// Release an active pointer grab and flush pending requests.
-#[inline]
-fn ungrab_inner(conn: &x11rb::rust_connection::RustConnection) {
-    let _ = ungrab_pointer(conn, CURRENT_TIME);
-    let _ = conn.flush();
-}
-
 /// Release an active pointer grab via context.
 ///
 /// Always call this when a drag/resize loop ends, even on early returns,
 /// to avoid leaving the pointer permanently grabbed.
 #[inline]
 pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
-    ungrab_inner(ctx.x11.conn);
+    let _ = ungrab_pointer(ctx.x11.conn, CURRENT_TIME);
+    let _ = ctx.x11.conn.flush();
 }
 
 /// Generic X11 mouse-drag event loop.
