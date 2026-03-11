@@ -22,11 +22,8 @@
 //! border intact.
 
 use crate::animation::animate_client_x11;
-use crate::backend::x11::X11BackendRef;
-use crate::backend::BackendRef;
 use crate::client::geometry::resize_client_x11;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::globals::X11RuntimeConfig;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;

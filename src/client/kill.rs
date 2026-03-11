@@ -23,9 +23,8 @@
 //! expected `DestroyNotify`.
 
 use crate::animation::animate_client_x11;
-use crate::backend::x11::X11BackendRef;
 use crate::client::focus::send_event_x11;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::{ConnectionExt, Window};
 use x11rb::CURRENT_TIME;

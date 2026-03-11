@@ -8,7 +8,6 @@ use crate::contexts::{CoreCtx, WmCtx};
 use crate::globals::X11RuntimeConfig;
 use crate::layouts::arrange;
 use crate::types::*;
-use x11rb::connection::Connection;
 
 /// Whether a window should be floating or tiled.
 #[derive(Clone, Copy, Default)]

@@ -45,13 +45,13 @@ pub mod visibility;
 // ---------------------------------------------------------------------------
 
 // -- Constants ---------------------------------------------------------------
-pub use constants::{WM_STATE_ICONIC, WM_STATE_WITHDRAWN};
+pub use constants::WM_STATE_WITHDRAWN;
 
 // -- Linked-list management --------------------------------------------------
 pub use list::{attach, attach_stack, detach, detach_stack};
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{resize, resize_client_x11, resize_x11};
+pub use geometry::{resize, resize_client_x11};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{hide, show, show_hide};

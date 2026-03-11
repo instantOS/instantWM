@@ -26,10 +26,9 @@ use crate::client::constants::{
 use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize_x11;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::globals::X11RuntimeConfig;
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;

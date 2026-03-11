@@ -53,21 +53,6 @@ I would like a swapescape option similar to sway and i3 in instantwm wayland,
 also accessible via the IPC.
 
 
-Super + Shift + Space does not do anything on wayland.
-
-Super + Left click drag and Super + Right click drag do not work on wayland, but
-dragging from the top bar does work
-
-
-
-
-The old xsetroot way of setting the status bar text is outdated, I want a
-unified solution for both X11 and wayland. Ideally that solution can render the
-i3status-rs format.
-
-
-
-
 investigate this for overdraw issues. Is that a performance risk?
 
 dmenu does not grab input on the wayland backend, I need to click it in order to type in it. This is
@@ -82,8 +67,6 @@ clicking a window title should raise that window.
 I would like to be able to configure mouse sensitivity in the wayland backend,
 using the toml file and IPC. I want this to work like it does on sway (as
 similar as possible), so users don't have to too much new stuff.
-
-
 
 
 
@@ -112,6 +95,3 @@ if ctx.core.g.clients.get(&win).map(|c| c.isfloating).unwrap_or(false) {
 make keybinds toml configurable
 make default layout toml configurable
 ability to set keybind to none with toml
-
-
-

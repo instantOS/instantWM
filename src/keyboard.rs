@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use crate::backend::x11::X11BackendRef;
-use crate::backend::BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, save_floating_geometry, toggle_floating, SnapDir};
 use crate::focus::{direction_focus, focus_stack};

@@ -1,6 +1,5 @@
 use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
-use crate::backend::x11::lifecycle::{is_window_iconic, manage, unmanage};
-use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::BackendOps;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
@@ -8,7 +7,7 @@ use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
     WM_STATE_WITHDRAWN,
 };
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::ipc::IpcServer;
 use crate::keyboard::{grab_keys_x11, key_press_x11, key_release_x11};
 use crate::layouts::{arrange, restack};
@@ -107,12 +106,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if event_win == mon.bar_win {
             let position = mon.bar_position_at_x(&ctx.core, e.event_x as i32);
             if position == BarPosition::StartMenu {
-                reset_bar_x11(
-                    &mut ctx.core,
-                    &ctx.x11,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
+                reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
             bar_pos = position;
         } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
@@ -461,12 +455,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             && root_y >= selmon.bar_y
             && root_y < selmon.bar_y + ctx.core.g.cfg.bar_height;
         if !in_bar && selmon.gesture != Gesture::None {
-            reset_bar_x11(
-                &mut ctx.core,
-                &ctx.x11,
-                ctx.x11_runtime,
-                ctx.systray.as_deref(),
-            );
+            reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
         }
         return;
     }
@@ -509,12 +498,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         if handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
             return;
         }
-        reset_bar_x11(
-            &mut ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.systray.as_deref(),
-        );
+        reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
         if ctx.core.g.cursor_icon == AltCursor::Sidebar {
             reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
         }
@@ -534,12 +518,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             // The status-text and root areas don't produce a hover gesture —
             // reset the bar and bail out so we don't light up anything.
             BarPosition::StatusText | BarPosition::Root => {
-                reset_bar_x11(
-                    &mut ctx.core,
-                    &ctx.x11,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
+                reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
                 return;
             }
             other => bar_position_to_gesture(other),
@@ -579,12 +558,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
                 update_wm_hints(&mut ctx.core, &ctx.x11, event_win);
-                draw_bars_x11(
-                    &mut ctx.core,
-                    &ctx.x11,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
+                draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
             _ => {}
         }
@@ -638,12 +612,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
-    reset_bar_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
-        ctx.systray.as_deref(),
-    );
+    reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {

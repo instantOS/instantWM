@@ -15,11 +15,7 @@ pub(crate) fn draw_bar_x11(
 }
 
 /// Wayland-specific bar drawing implementation.
-pub(crate) fn draw_bar_wayland(
-    core: &mut CoreCtx,
-    mon_idx: usize,
-    painter: &mut dyn BarPainter,
-) {
+pub(crate) fn draw_bar_wayland(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
     draw_bar_inner(core, false, None, mon_idx, painter);
 }
 

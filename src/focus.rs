@@ -140,7 +140,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
 
     fn post_state_update(&mut self, core: &mut CoreCtx) {
         core.bar.mark_dirty();
-        crate::bar::draw_bars_x11(core, self.x11, self.x11_runtime, self.systray);
+        crate::bar::draw_bars_x11(core, self.x11_runtime, self.systray);
 
         // Refresh border colors for all visible windows on the selected monitor.
         // This ensures tiled/floating specific colors are applied correctly

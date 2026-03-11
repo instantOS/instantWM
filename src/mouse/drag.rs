@@ -35,9 +35,7 @@ use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-use super::constants::{
-    DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH, REFRESH_RATE_HI, REFRESH_RATE_LO,
-};
+use super::constants::{DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 use super::cursor::{set_cursor_default, set_cursor_move};
 use super::monitor::handle_client_monitor_switch;
 use super::warp::{get_root_ptr, get_root_ptr_ctx_x11, warp_into_ctx_x11};

@@ -1,11 +1,8 @@
-use crate::bar::draw_bar;
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{IpcCommand, IpcResponse};
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_monitor, focus_n_mon, move_to_monitor_and_follow};
-
-use crate::overlay::set_overlay;
 use crate::scratchpad::{
     scratchpad_hide_name, scratchpad_list, scratchpad_make, scratchpad_show_name,
     scratchpad_status, scratchpad_toggle, scratchpad_unmake,
@@ -308,7 +305,6 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
                 if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
                     crate::bar::draw_bars_x11(
                         &mut x11_ctx.core,
-                        &x11_ctx.x11,
                         x11_ctx.x11_runtime,
                         x11_ctx.systray.as_deref(),
                     );
