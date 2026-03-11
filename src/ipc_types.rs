@@ -1,5 +1,8 @@
 use bincode::{Decode, Encode};
 
+/// Protocol version generated at compile time from crate version and git hash.
+pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
+
 /// A single keyboard layout with optional variant (used for IPC).
 #[derive(Debug, Clone, Decode, Encode)]
 pub struct KeyboardLayout {
@@ -39,6 +42,35 @@ impl From<crate::globals::KeyboardLayout> for KeyboardLayout {
         Self {
             name: l.name,
             variant: l.variant,
+        }
+    }
+}
+
+/// IPC request with protocol version validation.
+#[derive(Debug, Clone, Decode, Encode)]
+pub struct IpcRequest {
+    pub version: String,
+    pub command: IpcCommand,
+}
+
+impl IpcRequest {
+    /// Create a new IPC request with the current protocol version.
+    pub fn new(command: IpcCommand) -> Self {
+        Self {
+            version: IPC_PROTOCOL_VERSION.to_string(),
+            command,
+        }
+    }
+
+    /// Validate that the request's protocol version matches the expected version.
+    pub fn validate_version(&self) -> Result<(), String> {
+        if self.version == IPC_PROTOCOL_VERSION {
+            Ok(())
+        } else {
+            Err(format!(
+                "version mismatch: client is {}, server is {}. Please ensure instantwmctl and instantWM are the same version.",
+                self.version, IPC_PROTOCOL_VERSION
+            ))
         }
     }
 }

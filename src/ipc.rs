@@ -1,5 +1,5 @@
 use crate::commands::{command_prefix, set_special_next};
-use crate::ipc_types::{IpcCommand, IpcResponse};
+use crate::ipc_types::{IpcCommand, IpcRequest, IpcResponse};
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_monitor, focus_n_mon, move_to_monitor_and_follow};
@@ -75,9 +75,9 @@ impl IpcServer {
             return;
         }
 
-        let cmd: IpcCommand = match bincode::decode_from_slice(&buffer, bincode::config::standard())
+        let request: IpcRequest = match bincode::decode_from_slice(&buffer, bincode::config::standard())
         {
-            Ok((cmd, _)) => cmd,
+            Ok((req, _)) => req,
             Err(e) => {
                 let _ = send_response(
                     &mut stream,
@@ -87,7 +87,13 @@ impl IpcServer {
             }
         };
 
-        let response = handle_command(wm, cmd);
+        // Validate protocol version
+        if let Err(e) = request.validate_version() {
+            let _ = send_response(&mut stream, &IpcResponse::err(e));
+            return;
+        }
+
+        let response = handle_command(wm, request.command);
         let _ = send_response(&mut stream, &response);
     }
 }

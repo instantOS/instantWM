@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use instantwm::ipc_types::{IpcCommand, IpcResponse, KeyboardLayout};
+use instantwm::ipc_types::{IpcCommand, IpcRequest, IpcResponse, KeyboardLayout};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
@@ -400,7 +400,7 @@ fn main() {
                     });
 
                     if let Ok(mut stream) = UnixStream::connect(&socket) {
-                        let request = IpcCommand::UpdateStatus(trim_line.to_string());
+                        let request = IpcRequest::new(IpcCommand::UpdateStatus(trim_line.to_string()));
                         if let Ok(data) =
                             bincode::encode_to_vec(&request, bincode::config::standard())
                         {
@@ -425,6 +425,7 @@ fn main() {
         }
     };
 
+    let request = IpcRequest::new(request);
     let data = match bincode::encode_to_vec(&request, bincode::config::standard()) {
         Ok(d) => d,
         Err(e) => {
