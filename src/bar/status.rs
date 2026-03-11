@@ -1,6 +1,5 @@
 use crate::contexts::CoreCtx;
-use crate::globals::X11RuntimeConfig;
-use crate::types::{Monitor, Rect, Systray};
+use crate::types::{Monitor, Rect};
 
 pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
 pub(crate) const TEXT_PADDING: i32 = 6;
@@ -23,10 +22,13 @@ struct StatusLayout {
     total_width: i32,
 }
 
+/// Draw the status bar.
+///
+/// The systray_width parameter is pre-calculated by the caller to avoid
+/// backend-specific dependencies in this function.
 pub(crate) fn draw_status_bar(
     ctx: &mut CoreCtx,
-    x11_runtime: Option<&X11RuntimeConfig>,
-    systray: Option<&Systray>,
+    systray_width: i32,
     m: &Monitor,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
@@ -37,7 +39,7 @@ pub(crate) fn draw_status_bar(
     }
 
     let items = ctx.bar.status_items_for_text(stext).to_vec();
-    let layout = measure_layout(ctx, x11_runtime, systray, m, items.as_slice(), painter);
+    let layout = measure_layout(ctx, systray_width, m, items.as_slice(), painter);
 
     draw_items(
         painter,
@@ -191,8 +193,7 @@ fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
 
 fn measure_layout(
     ctx: &CoreCtx,
-    x11_runtime: Option<&X11RuntimeConfig>,
-    systray: Option<&Systray>,
+    systray_width: i32,
     m: &Monitor,
     items: &[StatusItem],
     painter: &mut dyn crate::bar::paint::BarPainter,
@@ -208,16 +209,7 @@ fn measure_layout(
     }
 
     let draw_width = (width + 2).max(0);
-    let is_selmon = ctx.g.selected_monitor().num == m.num;
-    let x11_present = x11_runtime
-        .map(|r| !r.xlibdisplay.0.is_null())
-        .unwrap_or(false);
-    let systray_w = if ctx.g.cfg.show_systray && is_selmon {
-        crate::systray::get_systray_width_for_bar(ctx, x11_present, systray)
-    } else {
-        0
-    };
-    let draw_start_x = m.work_rect.w - draw_width - systray_w;
+    let draw_start_x = m.work_rect.w - draw_width - systray_width;
 
     StatusLayout {
         draw_start_x,

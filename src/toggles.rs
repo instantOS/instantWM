@@ -169,7 +169,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
             x11.core.bar.mark_dirty();
             crate::bar::draw_bar(
                 &mut x11.core,
-                &x11.x11,
                 x11.x11_runtime,
                 x11.systray.as_deref(),
                 selmon_idx,

@@ -23,7 +23,7 @@ pub fn update_status(
         core.g.systray_width = 0;
     }
 
-    super::draw_bar(core, x11, x11_runtime, None, selmon_idx);
+    super::draw_bar(core, x11_runtime, None, selmon_idx);
 
     crate::systray::update_systray(core, x11, x11_runtime, systray);
 }

@@ -1,15 +1,36 @@
-use crate::backend::x11::X11BackendRef;
 use crate::bar::model::ClientBarStats;
 use crate::bar::paint::BarPainter;
 use crate::bar::{status, widgets};
 use crate::contexts::CoreCtx;
-use crate::globals::X11RuntimeConfig;
 use crate::types::{Gesture, Systray};
 
-pub fn draw_bar_common(
+/// X11-specific bar drawing implementation.
+pub(crate) fn draw_bar_x11(
     core: &mut CoreCtx,
-    x11: Option<&X11BackendRef>,
-    x11_runtime: Option<&X11RuntimeConfig>,
+    systray: Option<&Systray>,
+    mon_idx: usize,
+    painter: &mut dyn BarPainter,
+) {
+    draw_bar_inner(core, true, systray, mon_idx, painter);
+}
+
+/// Wayland-specific bar drawing implementation.
+pub(crate) fn draw_bar_wayland(
+    core: &mut CoreCtx,
+    mon_idx: usize,
+    painter: &mut dyn BarPainter,
+) {
+    draw_bar_inner(core, false, None, mon_idx, painter);
+}
+
+/// Core bar drawing implementation shared between X11 and Wayland.
+///
+/// This function contains all the common widget drawing logic that is
+/// backend-agnostic. The x11_present parameter is used to determine which
+/// systray width calculation method to use.
+fn draw_bar_inner(
+    core: &mut CoreCtx,
+    x11_present: bool,
     systray: Option<&Systray>,
     mon_idx: usize,
     painter: &mut dyn BarPainter,
@@ -40,14 +61,14 @@ pub fn draw_bar_common(
     let is_selmon = core.g.selected_monitor().num == monitor_num;
 
     let systray_width = if core.g.cfg.show_systray && is_selmon {
-        crate::systray::get_systray_width_for_bar(core, x11.is_some(), systray)
+        crate::systray::get_systray_width_for_bar(core, x11_present, systray)
     } else {
         0
     };
 
     let (status_start_x, status_width) = if is_selmon {
         let m = core.g.monitor(mon_idx).cloned().unwrap();
-        status::draw_status_bar(core, x11_runtime, systray, &m, bar_height, painter)
+        status::draw_status_bar(core, systray_width, &m, bar_height, painter)
     } else {
         (0, 0)
     };
@@ -58,7 +79,7 @@ pub fn draw_bar_common(
     core.bar.clear_cached_widths();
     core.bar.begin_monitor_hit_cache(monitor_id);
     if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
-        hit.x11_bar = x11.is_some();
+        hit.x11_bar = x11_present;
     }
 
     widgets::draw_startmenu_icon(core, bar_height, painter);

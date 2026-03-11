@@ -410,7 +410,6 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
         if is_bar_win {
             draw_bar(
                 &mut ctx.core,
-                &ctx.x11,
                 ctx.x11_runtime,
                 ctx.systray.as_deref(),
                 monitor_id,
@@ -551,7 +550,6 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         ctx.core.g.selected_monitor_mut().gesture = new_gesture;
         draw_bar(
             &mut ctx.core,
-            &ctx.x11,
             ctx.x11_runtime,
             ctx.systray.as_deref(),
             selmon_id,

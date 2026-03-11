@@ -338,7 +338,6 @@ impl<'a> WmCtx<'a> {
                 if let Some(id) = monitor_id {
                     draw_bar(
                         &mut ctx_x11.core,
-                        &ctx_x11.x11,
                         ctx_x11.x11_runtime,
                         ctx_x11.systray.as_deref(),
                         id,
@@ -346,7 +345,6 @@ impl<'a> WmCtx<'a> {
                 } else {
                     draw_bars_x11(
                         &mut ctx_x11.core,
-                        &ctx_x11.x11,
                         ctx_x11.x11_runtime,
                         ctx_x11.systray.as_deref(),
                     );
