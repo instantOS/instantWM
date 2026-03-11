@@ -6,7 +6,7 @@ use crate::client::constants::{
     SIZE_HINTS_P_RESIZE_INC,
 };
 use crate::contexts::CoreCtx;
-use crate::types::{MonitorId, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::ConnectionExt;
 
@@ -21,98 +21,7 @@ pub fn apply_size_hints_x11(
     rect: &mut Rect,
     interact: bool,
 ) -> bool {
-    let client = match core.g.clients.get(&win) {
-        Some(c) => c,
-        None => return false,
-    };
-
-    let old_geo = client.geo;
-    let border_width = client.border_width;
-    let monitor_id = client.monitor_id;
-    let should_apply_hints =
-        core.g.cfg.resizehints != 0 || client.is_floating || is_floating_layout(core, monitor_id);
-
-    // Phase 1: Ensure positive dimensions.
-    rect.w = rect.w.max(1);
-    rect.h = rect.h.max(1);
-
-    // Phase 2: Clamp position to keep window visible.
-    clamp_position_to_bounds(
-        core,
-        rect,
-        monitor_id,
-        interact,
-        old_geo.total_width(border_width),
-        old_geo.total_height(border_width),
-    );
-
-    // Phase 3: Enforce minimum size (bar height).
-    let bar_height = core.g.cfg.bar_height;
-    rect.enforce_minimum(bar_height, bar_height);
-
-    // Phase 4: Apply ICCCM size hints (X11 only).
-    if should_apply_hints {
-        apply_icccm_size_hints_x11(core, x11, win, rect);
-    }
-
-    rect.differs_from(&old_geo)
-}
-
-/// Clamp window position to keep it within usable screen area.
-fn clamp_position_to_bounds(
-    core: &CoreCtx,
-    geo: &mut Rect,
-    monitor_id: MonitorId,
-    interact: bool,
-    total_w: i32,
-    total_h: i32,
-) {
-    if interact {
-        let screen = Rect::new(0, 0, core.g.cfg.screen_width, core.g.cfg.screen_height);
-        geo.clamp_position(&screen, total_w, total_h);
-    } else if let Some(wr) = core.g.monitors.get(monitor_id).map(|m| m.work_rect) {
-        geo.clamp_position(&wr, total_w, total_h);
-    }
-}
-
-/// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(core: &CoreCtx, monitor_id: MonitorId) -> bool {
-    core.g
-        .monitors
-        .get(monitor_id)
-        .map(|mon| !mon.is_tiling_layout())
-        .unwrap_or(true)
-}
-
-/// Apply ICCCM WM_NORMAL_HINTS constraints to the geometry.
-fn apply_icccm_size_hints_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    win: WindowId,
-    geo: &mut Rect,
-) {
-    let needs_update = core
-        .g
-        .clients
-        .get(&win)
-        .map(|c| c.size_hints_valid == 0)
-        .unwrap_or(false);
-
-    if needs_update {
-        update_size_hints_x11(core, x11, win);
-    }
-
-    let client = match core.g.clients.get(&win) {
-        Some(c) => c,
-        None => return,
-    };
-
-    let (w, h) =
-        client
-            .size_hints
-            .constrain_size(geo.w, geo.h, client.min_aspect, client.max_aspect);
-    geo.w = w;
-    geo.h = h;
+    crate::client::geometry::apply_size_hints(core, Some(x11), win, rect, interact)
 }
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,

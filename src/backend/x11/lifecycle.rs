@@ -233,7 +233,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     update_wm_hints(&mut ctx_x11.core, &ctx_x11.x11, w);
     read_client_info(ctx_x11.core.g, &ctx_x11.x11, ctx_x11.x11_runtime, w);
     set_client_tag_prop(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
-    update_motif_hints(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    update_motif_hints(ctx_x11, w);
 }
 
 fn snapshot_float_geo(g: &mut Globals, w: WindowId, mon_monitor_rect: Rect) {
@@ -383,9 +383,7 @@ fn run_manage_animation(
     ctx.backend().flush();
     if let WmCtx::X11(ctx_x11) = ctx {
         animate_client_x11(
-            &mut ctx_x11.core,
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
+            ctx_x11,
             w,
             &Rect {
                 x: c.geo.x,

@@ -3,9 +3,8 @@
 //! # Responsibilities
 //!
 //! * [`resize`] – high-level resize that runs size-hint validation first.
-//! * [`resize_client`] – low-level X11 configure + state update.
-//! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM `WM_NORMAL_HINTS`.
-//! * [`update_size_hints`] / [`update_size_hints_win`] – read `WM_NORMAL_HINTS` from X.
+//! * [`WmCtx::resize_client`](crate::contexts::WmCtx::resize_client) – low-level configure + state update.
+//! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM size hints.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
 //!
 //! # Dimension helpers
@@ -14,96 +13,140 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::x11::{apply_size_hints_x11, X11BackendRef};
-use crate::backend::BackendOps;
+use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
 use crate::types::{Rect, WindowId};
-
-use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, Window};
 
 // ---------------------------------------------------------------------------
 // High-level resize (validates size hints)
 // ---------------------------------------------------------------------------
 
-/// Resize `win` to the given `rect`, enforcing `WM_NORMAL_HINTS` constraints.
+/// Backend-agnostic resize entry point.
 ///
-/// If the size-hint check determines that nothing changed *and* there is more
-/// than one client on screen, the X11 configure call is skipped.  With a
-/// single client we always apply the resize so the window fills its space.
-pub fn resize_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    win: WindowId,
-    rect: &Rect,
-    interact: bool,
-) {
-    if !core.g.clients.contains(&win) {
+pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
+    if !ctx.g().clients.contains(&win) {
         return;
     }
 
     let mut new_rect = *rect;
-    let changed = apply_size_hints_x11(core, x11, win, &mut new_rect, interact);
-    let client_count = core.g.clients.len();
+
+    let x11 = match ctx {
+        crate::contexts::WmCtx::X11(ref x11) => Some(&x11.x11),
+        _ => None,
+    };
+
+    let changed = apply_size_hints(ctx.core_mut(), x11, win, &mut new_rect, interact);
+    let client_count = ctx.g().clients.len();
+
     if changed || client_count == 1 {
-        resize_client_x11(core, x11, win, &new_rect);
+        ctx.resize_client(win, new_rect);
     }
 }
 
-/// Backend-agnostic resize entry point.
+/// Apply size hints to the given rect and return whether it changed.
 ///
-pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
-    match ctx {
-        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
-            resize_x11(&mut x11_ctx.core, &x11_ctx.x11, win, rect, interact)
-        }
-        crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
-            let _ = interact;
-            if let Some(c) = wl_ctx.core.g.clients.get_mut(&win) {
-                c.old_geo = c.geo;
-                c.geo = *rect;
-                if c.is_floating {
-                    c.float_geo = *rect;
-                }
-                wl_ctx.backend.resize_window(win, *rect);
-            }
-        }
-    }
-}
+/// Returns `true` if the resulting geometry differs from the client's current
+/// stored geometry (i.e. an actual change would occur).
+pub fn apply_size_hints(
+    core: &mut CoreCtx,
+    x11: Option<&X11BackendRef>,
+    win: WindowId,
+    rect: &mut Rect,
+    interact: bool,
+) -> bool {
+    let client = match core.g.clients.get(&win) {
+        Some(c) => c,
+        None => return false,
+    };
 
-// ---------------------------------------------------------------------------
-// Low-level resize (direct X11 configure)
-// ---------------------------------------------------------------------------
+    let old_geo = client.geo;
+    let border_width = client.border_width;
+    let monitor_id = client.monitor_id;
+    let should_apply_hints =
+        core.g.cfg.resizehints != 0 || client.is_floating || is_floating_layout(core, monitor_id);
 
-/// Update the stored geometry for `win` and issue an X11 `ConfigureWindow`.
-///
-/// This is the single source of truth for moving/resizing a window at the X11
-/// level.  Always call [`resize`] from layout code so that size hints are
-/// respected; call this directly only when you have already validated the
-/// geometry (e.g. during fullscreen transitions).
-pub fn resize_client_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, rect: &Rect) {
-    core.g.clients.update_geometry(win, *rect);
+    // Phase 1: Ensure positive dimensions.
+    rect.w = rect.w.max(1);
+    rect.h = rect.h.max(1);
 
-    let x11_win: Window = win.into();
-    let width = rect.w.max(1) as u32;
-    let height = rect.h.max(1) as u32;
-    let _ = x11.conn.configure_window(
-        x11_win,
-        &ConfigureWindowAux::new()
-            .x(rect.x)
-            .y(rect.y)
-            .width(width)
-            .height(height),
+    // Phase 2: Clamp position to keep window visible.
+    clamp_position_to_bounds(
+        core,
+        rect,
+        monitor_id,
+        interact,
+        old_geo.total_width(border_width),
+        old_geo.total_height(border_width),
     );
 
-    if let Some(border_width) = core.g.clients.get(&win).map(|c| c.border_width) {
-        let _ = x11.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().border_width(border_width as u32),
-        );
+    // Phase 3: Enforce minimum size (bar height).
+    let bar_height = core.g.cfg.bar_height;
+    rect.enforce_minimum(bar_height, bar_height);
+
+    // Phase 4: Apply ICCCM size hints (X11 only).
+    if should_apply_hints {
+        if let Some(x11_backend) = x11 {
+            apply_icccm_size_hints_x11(core, x11_backend, win, rect);
+        }
     }
 
-    // Send a synthetic ConfigureNotify so the client knows its geometry.
-    crate::client::focus::configure_x11(core, x11, win);
+    rect.differs_from(&old_geo)
+}
+
+/// Clamp window position to keep it within usable screen area.
+fn clamp_position_to_bounds(
+    core: &CoreCtx,
+    geo: &mut Rect,
+    monitor_id: crate::types::MonitorId,
+    interact: bool,
+    total_w: i32,
+    total_h: i32,
+) {
+    if interact {
+        let screen = Rect::new(0, 0, core.g.cfg.screen_width, core.g.cfg.screen_height);
+        geo.clamp_position(&screen, total_w, total_h);
+    } else if let Some(wr) = core.g.monitors.get(monitor_id).map(|m| m.work_rect) {
+        geo.clamp_position(&wr, total_w, total_h);
+    }
+}
+
+/// Check if the client's monitor is using a floating layout.
+fn is_floating_layout(core: &CoreCtx, monitor_id: crate::types::MonitorId) -> bool {
+    core.g
+        .monitors
+        .get(monitor_id)
+        .map(|mon| !mon.is_tiling_layout())
+        .unwrap_or(true)
+}
+
+fn apply_icccm_size_hints_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    win: WindowId,
+    geo: &mut Rect,
+) {
+    let needs_update = core
+        .g
+        .clients
+        .get(&win)
+        .map(|c| c.size_hints_valid == 0)
+        .unwrap_or(false);
+
+    if needs_update {
+        crate::backend::x11::client::update_size_hints_x11(core, x11, win);
+    }
+
+    let client = match core.g.clients.get(&win) {
+        Some(c) => c,
+        None => return,
+    };
+
+    let (w, h) =
+        client
+            .size_hints
+            .constrain_size(geo.w, geo.h, client.min_aspect, client.max_aspect);
+    geo.w = w;
+    geo.h = h;
 }
 
 // ---------------------------------------------------------------------------
@@ -137,37 +180,19 @@ fn calculate_scaled_geometry(
 ///
 /// `scale` is an integer percentage (e.g. `75` means 75 %).
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
-    let target = match ctx {
-        crate::contexts::WmCtx::X11(ref mut x11_ctx) => {
-            let c = match x11_ctx.core.client(win) {
-                Some(c) => c,
-                None => return,
-            };
-            calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-                x11_ctx
-                    .core
-                    .g
-                    .monitors
-                    .get(mid)
-                    .map(|m| m.monitor_rect)
-                    .unwrap_or(c.geo)
-            })
-        }
-        crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
-            let c = match wl_ctx.core.client(win) {
-                Some(c) => c,
-                None => return,
-            };
-            calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-                wl_ctx
-                    .core
-                    .g
-                    .monitors
-                    .get(mid)
-                    .map(|m| m.monitor_rect)
-                    .unwrap_or(c.geo)
-            })
-        }
+    let target = {
+        let core = ctx.core();
+        let c = match core.client(win) {
+            Some(c) => c,
+            None => return,
+        };
+        calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
+            core.g
+                .monitors
+                .get(mid)
+                .map(|m| m.monitor_rect)
+                .unwrap_or(c.geo)
+        })
     };
 
     resize(ctx, win, &target, false);

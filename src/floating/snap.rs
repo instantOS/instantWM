@@ -339,7 +339,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
 
         // apply_size is X11-specific
         if let WmCtx::X11(x11) = ctx {
-            super::helpers::apply_size(&mut x11.core, &x11.x11, win);
+            super::helpers::apply_size(x11, win);
         }
     }
 }

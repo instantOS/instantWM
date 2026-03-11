@@ -196,7 +196,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
             // On X11, nudge the window by 1 px so the server re-evaluates
             // size hints and repaints the frame correctly.
             if let WmCtx::X11(x11) = ctx {
-                super::helpers::apply_size(&mut x11.core, &x11.x11, win);
+                super::helpers::apply_size(x11, win);
             }
         }
 

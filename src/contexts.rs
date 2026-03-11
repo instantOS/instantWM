@@ -72,6 +72,14 @@ pub struct WaylandCtx<'a> {
     pub backend: &'a crate::backend::wayland::WaylandBackend,
 }
 
+impl<'a> WaylandCtx<'a> {
+    pub fn reborrow(&self) -> WaylandCtx<'_> {
+        WaylandCtx {
+            backend: self.backend,
+        }
+    }
+}
+
 pub struct XwaylandCtx<'a> {
     pub xdisplay: u32,
     pub xwm: Option<&'a smithay::xwayland::X11Wm>,
@@ -131,9 +139,7 @@ impl<'a> WmCtxWayland<'a> {
         WmCtxWayland {
             core: self.core.reborrow(),
             backend: self.backend.reborrow(),
-            wayland: WaylandCtx {
-                backend: self.wayland.backend,
-            },
+            wayland: self.wayland.reborrow(),
             xwayland: self.xwayland.as_ref().map(|xw| XwaylandCtx {
                 xdisplay: xw.xdisplay,
                 xwm: xw.xwm,
@@ -265,8 +271,23 @@ impl<'a> WmCtx<'a> {
         self.backend().restack(wins);
     }
 
-    pub fn resize_client(&self, win: WindowId, rect: Rect) {
+    pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
+        if let Some(c) = self.g_mut().clients.get_mut(&win) {
+            c.old_geo = c.geo;
+            c.geo = rect;
+            if c.is_floating {
+                c.float_geo = rect;
+            }
+        }
+
         self.backend().resize_window(win, rect);
+
+        match self {
+            WmCtx::X11(ref mut x11) => {
+                crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);
+            }
+            WmCtx::Wayland(_) => {}
+        }
     }
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {

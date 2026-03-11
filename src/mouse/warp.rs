@@ -15,9 +15,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::globals::X11RuntimeConfig;
 use crate::types::*;
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-use x11rb::CURRENT_TIME;
 
 pub(crate) const WARP_INTO_PADDING: i32 = 10;
 
@@ -72,55 +70,6 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
     }
 
     ctx.warp_pointer(tx as f64, ty as f64);
-}
-
-/// `warp_into` for X11-specific call-sites that already hold a `WmCtxX11`.
-pub fn warp_into_ctx_x11(ctx: &WmCtxX11<'_>, win: WindowId) {
-    warp_into_x11(&ctx.core, &ctx.x11, ctx.x11_runtime, win);
-}
-
-/// Clamp the X11 pointer into `win`'s geometry with padding.
-pub fn warp_into_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    if win == WindowId::default() {
-        return;
-    }
-
-    let Some(c) = core.g.clients.get(&win) else {
-        return;
-    };
-
-    let Some((mut x, mut y)) = get_root_ptr_x11(x11, x11_runtime.root) else {
-        return;
-    };
-
-    if x < c.geo.x {
-        x = c.geo.x + WARP_INTO_PADDING;
-    } else if x > c.geo.x + c.geo.w {
-        x = c.geo.x + c.geo.w - WARP_INTO_PADDING;
-    }
-
-    if y < c.geo.y {
-        y = c.geo.y + WARP_INTO_PADDING;
-    } else if y > c.geo.y + c.geo.h {
-        y = c.geo.y + c.geo.h - WARP_INTO_PADDING;
-    }
-
-    let _ = x11.conn.warp_pointer(
-        CURRENT_TIME,
-        x11_runtime.root,
-        0,
-        0,
-        0,
-        0,
-        x as i16,
-        y as i16,
-    );
-    let _ = x11.conn.flush();
 }
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.

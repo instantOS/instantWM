@@ -51,7 +51,7 @@ pub use constants::WM_STATE_WITHDRAWN;
 pub use list::{attach, attach_stack, detach, detach_stack};
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{resize, resize_client_x11};
+pub use geometry::{apply_size_hints, resize, scale_client};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{hide, show, show_hide};

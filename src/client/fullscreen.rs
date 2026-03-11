@@ -22,7 +22,6 @@
 //! border intact.
 
 use crate::animation::animate_client_x11;
-use crate::client::geometry::resize_client_x11;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
@@ -95,9 +94,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             // windows just snap into place immediately).
             if !is_floating {
                 animate_client_x11(
-                    &mut ctx_x11.core,
-                    &ctx_x11.x11,
-                    ctx_x11.x11_runtime,
+                    ctx_x11,
                     win,
                     &mon_rect,
                     10,
@@ -146,11 +143,11 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
-            resize_client_x11(&mut ctx_x11.core, &ctx_x11.x11, win, &old_geo);
+            let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
+            wmctx.resize_client(win, old_geo);
             let _ = ctx_x11.x11.conn.flush();
 
-            let mut tmp = WmCtx::X11(ctx_x11.reborrow());
-            arrange(&mut tmp, Some(monitor_id));
+            arrange(&mut wmctx, Some(monitor_id));
         }
     }
 }
@@ -192,11 +189,9 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
             .map(|m| m.monitor_rect)
             .unwrap_or_default();
 
-        resize_client_x11(
-            &mut ctx_x11.core,
-            &ctx_x11.x11,
+        ctx_x11.reborrow().resize_client(
             win,
-            &Rect {
+            Rect {
                 x: mon_rect.x + borderpx,
                 y: mon_rect.y + borderpx,
                 w: mon_rect.w - 2 * borderpx,

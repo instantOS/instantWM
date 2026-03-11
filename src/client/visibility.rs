@@ -14,10 +14,9 @@ use crate::animation::animate_client_x11;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
-use crate::client::geometry::resize_x11;
+use crate::client::geometry::resize;
 use crate::client::state::set_client_state;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
-use crate::globals::X11RuntimeConfig;
+use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -67,15 +66,15 @@ pub fn get_state_x11(
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
+pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
     // First pass: collect visibility data to avoid borrow issues
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
-    for mon in core.g.monitors_iter_all() {
+    for mon in ctx.core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
 
-        for (win, c) in mon.iter_clients(&core.g.clients) {
-            let is_visible = c.is_visible_on_tags(selected_tags);
+        for (win, c) in mon.iter_clients(&ctx.core.g.clients) {
+            let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
                 (c.is_floating, c.is_fullscreen, c.isfakefullscreen);
@@ -98,7 +97,7 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
             let x11_win: Window = win.into();
             let width = w.max(1) as u32;
             let height = h.max(1) as u32;
-            let _ = x11.conn.configure_window(
+            let _ = ctx.x11.conn.configure_window(
                 x11_win,
                 &ConfigureWindowAux::new()
                     .x(x)
@@ -106,25 +105,27 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
                     .width(width)
                     .height(height),
             );
-            let _ = x11.conn.flush();
+            let _ = ctx.x11.conn.flush();
 
-            let is_tiling = core.g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
+            let is_tiling = ctx.core.g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
 
             if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
-                resize_x11(core, x11, win, &Rect { x, y, w, h }, false);
+                let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
+                resize(&mut tmp_ctx, win, &Rect { x, y, w, h }, false);
             }
         } else {
             let w_val = geo.w
-                + 2 * core
+                + 2 * ctx
+                    .core
                     .g
                     .clients
                     .get(&win)
-                    .map(|c| c.border_width())
+                    .map(|c| c.border_width)
                     .unwrap_or(0);
             let y = geo.y;
 
             let x11_win: Window = win.into();
-            let _ = x11.conn.configure_window(
+            let _ = ctx.x11.conn.configure_window(
                 x11_win,
                 &ConfigureWindowAux::new()
                     .x(-2 * w_val)
@@ -132,18 +133,18 @@ pub fn show_hide_x11(core: &mut CoreCtx, x11: &X11BackendRef) {
                     .width(geo.w as u32)
                     .height(geo.h as u32),
             );
-            let _ = x11.conn.flush();
+            let _ = ctx.x11.conn.flush();
         }
     }
 }
 
-pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
+pub fn show_hide_wayland(ctx: &mut WmCtxWayland<'_>) {
     // First pass: collect visibility data
     let mut operations: Vec<(WindowId, bool)> = Vec::new();
 
-    for mon in core.g.monitors_iter_all() {
+    for mon in ctx.core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
-        for (win, c) in mon.iter_clients(&core.g.clients) {
+        for (win, c) in mon.iter_clients(&ctx.core.g.clients) {
             let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             operations.push((win, is_visible));
         }
@@ -152,19 +153,17 @@ pub fn show_hide_wayland(core: &mut CoreCtx, wayland: &WaylandCtx) {
     // Second pass: apply visibility changes
     for (win, is_visible) in operations {
         if is_visible {
-            wayland.backend.map_window(win);
+            ctx.wayland.backend.map_window(win);
         } else {
-            wayland.backend.unmap_window(win);
+            ctx.wayland.backend.unmap_window(win);
         }
     }
 }
 
 pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
     match ctx {
-        crate::contexts::WmCtx::X11(ctx_x11) => show_hide_x11(&mut ctx_x11.core, &ctx_x11.x11),
-        crate::contexts::WmCtx::Wayland(ctx_wayland) => {
-            show_hide_wayland(&mut ctx_wayland.core, &ctx_wayland.wayland)
-        }
+        crate::contexts::WmCtx::X11(ctx_x11) => show_hide_x11(ctx_x11),
+        crate::contexts::WmCtx::Wayland(ctx_wayland) => show_hide_wayland(ctx_wayland),
     }
 }
 
@@ -184,9 +183,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     }
 
     if let WmCtx::X11(ref mut ctx_x11) = ctx {
-        // Clone x11_runtime to avoid borrow conflict
-        let x11_cfg = ctx_x11.x11_runtime().clone();
-        show_x11(&mut ctx_x11.core, &ctx_x11.x11, &x11_cfg, win);
+        show_x11(ctx_x11, win);
     }
     // On Wayland, map_window is not called here directly. show_hide_wayland
     // (called inside arrange below) checks !is_hidden and calls map_window
@@ -210,9 +207,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 
     match ctx {
         WmCtx::X11(ref mut ctx_x11) => {
-            // Clone x11_runtime to avoid borrow conflict
-            let x11_cfg = ctx_x11.x11_runtime().clone();
-            hide_x11(&mut ctx_x11.core, &ctx_x11.x11, &x11_cfg, win)
+            hide_x11(ctx_x11, win);
         }
         WmCtx::Wayland(_) => {
             ctx.backend().unmap_window(win);
@@ -241,30 +236,47 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// Called by [`show`] after it has cleared `is_hidden`. Responsible only for
 /// the X11-specific work: mapping the window, WM_STATE, slide-in animation.
 /// Guards, focus, and arrange are handled by the caller.
-fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, win: WindowId) {
-    let Rect { x, y, w, h } = match core.g.clients.get(&win) {
+fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+    let Rect { x, y, w, h } = match ctx.core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };
 
     let x11_win: Window = win.into();
-    let _ = x11.conn.map_window(x11_win);
-    let _ = x11.conn.flush();
+    let _ = ctx.x11.conn.map_window(x11_win);
+    let _ = ctx.x11.conn.flush();
 
-    set_client_state(core, x11, x11_cfg, win, WM_STATE_NORMAL);
+    set_client_state(
+        &mut ctx.core,
+        &ctx.x11,
+        ctx.x11_runtime,
+        win,
+        WM_STATE_NORMAL,
+    );
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
-    resize_x11(core, x11, win, &Rect { x, y: -50, w, h }, false);
+    {
+        let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
+        resize(&mut tmp_ctx, win, &Rect { x, y: -50, w, h }, false);
+    }
 
-    let _ = x11.conn.configure_window(
+    let _ = ctx.x11.conn.configure_window(
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
-    let _ = x11.conn.flush();
+    let _ = ctx.x11.conn.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client_x11(core, x11, x11_cfg, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    animate_client_x11(
+        &mut ctx.core,
+        &ctx.x11,
+        ctx.x11_runtime,
+        win,
+        &Rect { x, y, w: 0, h: 0 },
+        14,
+        0,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -277,20 +289,20 @@ fn show_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig,
 /// X11-specific work: slide-down animation, server grab, unmap, WM_STATE,
 /// and geometry preservation. Guards, focus, and arrange are handled by the
 /// caller.
-fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, win: WindowId) {
-    let Rect { x, y, w, h } = match core.g.clients.get(&win) {
+fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+    let Rect { x, y, w, h } = match ctx.core.g.clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };
-    let bar_height = core.g.cfg.bar_height;
-    let animated = core.g.animated;
+    let bar_height = ctx.core.g.cfg.bar_height;
+    let animated = ctx.core.g.animated;
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
         animate_client_x11(
-            core,
-            x11,
-            x11_cfg,
+            &mut ctx.core,
+            &ctx.x11,
+            ctx.x11_runtime,
             win,
             &Rect {
                 x,
@@ -303,23 +315,32 @@ fn hide_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig,
         );
     }
 
-    let root = x11_cfg.root;
+    let root = ctx.x11_runtime.root;
     let x11_win: Window = win.into();
 
     {
-        let _grab = crate::backend::x11::ServerGrab::new(x11.conn);
-        suppress_unmap_events(x11.conn, root, x11_win);
+        let _grab = crate::backend::x11::ServerGrab::new(ctx.x11.conn);
+        suppress_unmap_events(ctx.x11.conn, root, x11_win);
 
-        let _ = x11.conn.unmap_window(x11_win);
-        let _ = x11.conn.flush();
-        set_client_state(core, x11, x11_cfg, win, WM_STATE_ICONIC);
+        let _ = ctx.x11.conn.unmap_window(x11_win);
+        let _ = ctx.x11.conn.flush();
+        set_client_state(
+            &mut ctx.core,
+            &ctx.x11,
+            ctx.x11_runtime,
+            win,
+            WM_STATE_ICONIC,
+        );
 
-        restore_event_masks(x11.conn, root, x11_win);
+        restore_event_masks(ctx.x11.conn, root, x11_win);
     }
 
     // Keep the stored geometry intact so the window returns to the right place
     // when shown again.
-    resize_x11(core, x11, win, &Rect { x, y, w, h }, false);
+    {
+        let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
+        resize(&mut tmp_ctx, win, &Rect { x, y, w, h }, false);
+    }
 }
 
 // ---------------------------------------------------------------------------

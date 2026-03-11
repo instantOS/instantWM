@@ -57,9 +57,7 @@ fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if animated && win != anim_client && !is_fullscreen {
         ctx_x11.core.focus.anim_client = win;
         animate_client_x11(
-            &mut ctx_x11.core,
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
+            ctx_x11,
             win,
             &Rect {
                 x: 0,

@@ -25,8 +25,8 @@ use crate::client::constants::{
 };
 use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen_x11;
-use crate::client::geometry::resize_x11;
-use crate::contexts::{CoreCtx, WmCtxX11};
+use crate::client::geometry::resize;
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::globals::X11RuntimeConfig;
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
 use x11rb::connection::Connection;
@@ -587,19 +587,14 @@ pub fn set_urgent(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: b
 /// global `borderpx` value is used.
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
-pub fn update_motif_hints(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    if core.g.cfg.decorhints == 0 {
+pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+    if ctx.core.g.cfg.decorhints == 0 {
         return;
     }
 
-    let motif_atom = x11_runtime.motifatom;
-    let borderpx = core.g.cfg.border_width_px;
-    let conn = x11.conn;
+    let motif_atom = ctx.x11_runtime.motifatom;
+    let borderpx = ctx.core.g.cfg.border_width_px;
+    let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
     let Ok(cookie) = conn.get_property(false, x11_win, motif_atom, motif_atom, 0, 5) else {
@@ -624,7 +619,8 @@ pub fn update_motif_hints(
         return;
     }
 
-    let (c_w, c_h, c_x, c_y) = core
+    let (c_w, c_h, c_x, c_y) = ctx
+        .core
         .g
         .clients
         .get(&win)
@@ -644,25 +640,27 @@ pub fn update_motif_hints(
         0
     };
 
-    if let Some(client) = core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.core.g.clients.get_mut(&win) {
         client.border_width = new_bw;
         client.old_border_width = new_bw;
     }
 
     // Resize to account for the changed border (total size stays the same;
     // the content area grows or shrinks by the border delta).
-    resize_x11(
-        core,
-        x11,
-        win,
-        &Rect {
-            x: c_x,
-            y: c_y,
-            w: c_w - 2 * new_bw,
-            h: c_h - 2 * new_bw,
-        },
-        false,
-    );
+    {
+        let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
+        resize(
+            &mut tmp_ctx,
+            win,
+            &Rect {
+                x: c_x,
+                y: c_y,
+                w: c_w - 2 * new_bw,
+                h: c_h - 2 * new_bw,
+            },
+            false,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::constants::animation::*;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{change_snap, SnapDir};
 use crate::globals::X11RuntimeConfig;
 use crate::tags::view::scroll_view;
@@ -28,35 +28,20 @@ fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
     core.g
         .clients
         .get(&win)
-        .map(|c| c.monitor_size(&core.g))
-        .unwrap_or((0, 0))
+        .and_then(|c| core.g.monitors.get(c.monitor_id))
+        .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
+        .unwrap_or((core.g.cfg.screen_width, core.g.cfg.screen_height))
 }
 
 fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i32, i32) {
-    let actual_w = if target_w > mon_w - 4 {
-        mon_w - 4
-    } else {
-        target_w
-    };
-    let actual_h = if target_h > mon_h - 4 {
-        mon_h - 4
-    } else {
-        target_h
-    };
-    (actual_w, actual_h)
+    (target_w.min(mon_w), target_h.min(mon_h))
 }
 
-fn final_rect(
-    rect: &Rect,
-    start_rect: &Rect,
-    actual_w: i32,
-    actual_h: i32,
-    reset_pos: i32,
-) -> Rect {
+fn final_rect(rect: &Rect, start_rect: &Rect, actual_w: i32, actual_h: i32, reset_pos: i32) -> Rect {
     let (x, y) = if reset_pos != 0 {
-        (start_rect.x, start_rect.y)
-    } else {
         (rect.x, rect.y)
+    } else {
+        (start_rect.x, start_rect.y)
     };
     Rect {
         x,
@@ -66,24 +51,16 @@ fn final_rect(
     }
 }
 
-fn try_resize_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, rect: &Rect) {
+fn try_resize_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
     if rect.is_valid() {
-        crate::client::resize_client_x11(core, x11, win, rect);
+        ctx.reborrow().resize_client(win, *rect);
     }
 }
 
-pub fn animate_client_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_cfg: &X11RuntimeConfig,
-    win: WindowId,
-    rect: &Rect,
-    frames: i32,
-    reset_pos: i32,
-) {
+pub fn animate_client_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     // Handled below by !ctx.g_mut().animated or frames <= 0 check.
 
-    let start_rect = match get_start_rect(core, win, reset_pos) {
+    let start_rect = match get_start_rect(&ctx.core, win, reset_pos) {
         Some(r) => r,
         None => return,
     };
@@ -91,13 +68,12 @@ pub fn animate_client_x11(
     let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
     let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
 
-    let (mon_w, mon_h) = get_monitor_size(core, win);
+    let (mon_w, mon_h) = get_monitor_size(&ctx.core, win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
-    if !core.g.animated || frames <= 0 {
+    if !ctx.core.g.animated || frames <= 0 {
         try_resize_x11(
-            core,
-            x11,
+            ctx,
             win,
             &Rect {
                 x: rect.x,
@@ -109,10 +85,10 @@ pub fn animate_client_x11(
         return;
     }
 
-    let effective_frames = if !x11_cfg.xlibdisplay.0.is_null() {
+    let effective_frames = if !ctx.x11_runtime.xlibdisplay.0.is_null() {
         let queued_events = unsafe {
             crate::drw::XEventsQueued(
-                x11_cfg.xlibdisplay.0 as *mut std::os::raw::c_void,
+                ctx.x11_runtime.xlibdisplay.0 as *mut std::os::raw::c_void,
                 QUEUED_ALREADY,
             )
         };
@@ -130,7 +106,7 @@ pub fn animate_client_x11(
     let final_rect = final_rect(rect, &start_rect, actual_w, actual_h, reset_pos);
 
     if effective_frames == 0 {
-        try_resize_x11(core, x11, win, &final_rect);
+        try_resize_x11(ctx, win, &final_rect);
         return;
     }
 
@@ -151,9 +127,7 @@ pub fn animate_client_x11(
             let delta_h = actual_h - start_rect.h;
             if delta_w != 0 || delta_h != 0 {
                 animate_client_x11(
-                    core,
-                    x11,
-                    x11_cfg,
+                    ctx,
                     win,
                     &Rect {
                         x: start_rect.x + delta_w,
@@ -171,8 +145,7 @@ pub fn animate_client_x11(
                 let step_x = (start_rect.x as f64 + progress * dx) as i32;
                 let step_y = (start_rect.y as f64 + progress * dy) as i32;
                 try_resize_x11(
-                    core,
-                    x11,
+                    ctx,
                     win,
                     &Rect {
                         x: step_x,
@@ -181,32 +154,30 @@ pub fn animate_client_x11(
                         h: actual_h,
                     },
                 );
-                let _ = x11.conn.flush();
+                let _ = ctx.x11.conn.flush();
                 thread::sleep(Duration::from_micros(FRAME_SLEEP_MICROS));
             }
         }
     }
 
-    try_resize_x11(core, x11, win, &final_rect);
-    let _ = x11.conn.flush();
+    try_resize_x11(ctx, win, &final_rect);
+    let _ = ctx.x11.conn.flush();
 }
 
 pub fn check_animate_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_cfg: &X11RuntimeConfig,
+    ctx: &mut WmCtxX11<'_>,
     win: WindowId,
     rect: &Rect,
     frames: i32,
     reset_pos: i32,
 ) {
-    if let Some(client) = core.g.clients.get(&win) {
+    if let Some(client) = ctx.core.g.clients.get(&win) {
         let should_animate = client.geo.x != rect.x
             || client.geo.y != rect.y
             || client.geo.w != rect.w
             || client.geo.h != rect.h;
         if should_animate {
-            animate_client_x11(core, x11, x11_cfg, win, rect, frames, reset_pos);
+            animate_client_x11(ctx, win, rect, frames, reset_pos);
         }
     }
 }
@@ -228,122 +199,29 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Up => Direction::Up,
             Direction::Down => Direction::Down,
         };
-        let mut target = None;
-        crate::focus::focus_direction(ctx.core(), focus_dir, |win| target = win);
-        if let Some(win) = target {
-            crate::focus::focus_soft(ctx, Some(win));
-        }
-        return;
-    }
-
-    if !has_tiling {
-        if let Some(selected_window) = ctx.selected_client() {
-            let snap_dir = match dir {
-                Direction::Right => SnapDir::Right,
-                Direction::Left => SnapDir::Left,
-                Direction::Up => SnapDir::Up,
-                Direction::Down => SnapDir::Down,
-            };
-            change_snap(ctx, selected_window, snap_dir);
-        }
-        return;
-    }
-
-    if current_tag == 0 {
-        return;
-    }
-
-    if dir == Direction::Left && current_tag == 1 {
-        return;
-    }
-
-    if dir == Direction::Right && current_tag >= MAX_TAG_NUMBER {
-        return;
-    }
-
-    let animated = ctx.g().animated;
-    if animated {
-        let modifier: i32 = match dir {
-            Direction::Right => 1,
-            Direction::Left => -1,
-            Direction::Up => -1,
-            Direction::Down => 1,
-        };
-        let target = current_tag + modifier as u32;
-        check_client_on_target_tag(ctx.g(), sel_mon, target);
-    }
-
-    match dir {
-        Direction::Right => scroll_view(ctx, Direction::Right),
-        Direction::Left => scroll_view(ctx, Direction::Left),
-        Direction::Up => scroll_view(ctx, Direction::Left),
-        Direction::Down => scroll_view(ctx, Direction::Right),
-    }
-}
-
-pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
-    match ctx {
-        WmCtx::X11(ref mut x11_ctx) => animate_client_x11(
-            &mut x11_ctx.core,
-            &x11_ctx.x11,
-            x11_ctx.x11_runtime,
-            win,
-            rect,
-            frames,
-            reset_pos,
-        ),
-        WmCtx::Wayland(ref mut wl_ctx) => {
-            animate_client_wayland(wl_ctx, win, rect, frames, reset_pos)
-        }
-    }
-}
-
-fn animate_client_wayland(
-    ctx: &mut WmCtxWayland,
-    win: WindowId,
-    rect: &Rect,
-    frames: i32,
-    reset_pos: i32,
-) {
-    let start_rect =
-        match ctx
-            .core
-            .g
-            .clients
-            .get(&win)
-            .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
-        {
-            Some(r) => r,
-            None => return,
-        };
-    let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
-    let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
-    let final_rect = Rect {
-        x: if reset_pos != 0 { start_rect.x } else { rect.x },
-        y: if reset_pos != 0 { start_rect.y } else { rect.y },
-        w: target_w.max(1),
-        h: target_h.max(1),
-    };
-
-    if let Some(c) = ctx.core.g.clients.get_mut(&win) {
-        c.old_geo = c.geo;
-        c.geo = final_rect;
-    }
-
-    if frames <= 0 || !ctx.core.g.animated {
-        let was_animated = ctx.core.g.animated;
-        ctx.core.g.animated = false;
-        ctx.backend.resize_window(win, final_rect);
-        ctx.core.g.animated = was_animated;
+        crate::focus::focus_dir(ctx, focus_dir);
     } else {
-        ctx.backend.resize_window(win, final_rect);
+        scroll_view(ctx, dir);
+    }
+
+    if let WmCtx::X11(ref mut ctx_x11) = ctx {
+        for (id, client) in ctx_x11.core.g.clients.iter() {
+            if client.monitor_id == sel_mon && client.tags == current_tag {
+                let rect = client.geo;
+                animate_client_x11(ctx_x11, *id, &rect, 10, 0);
+            }
+        }
     }
 }
 
-fn check_client_on_target_tag(globals: &crate::globals::Globals, sel_mon: MonitorId, target: u32) {
-    if let Some(mon) = globals.monitor(sel_mon) {
-        for (_c_win, c) in mon.iter_clients(&globals.clients) {
-            let _has_client_on_tag = (c.tags & (1 << (target - 1))) != 0 && !c.is_floating;
-        }
-    }
+pub fn check_animate_snap(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
+    check_animate_x11(ctx, win, rect, 10, 1);
+}
+
+pub fn animate_maximize(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
+    animate_client_x11(ctx, win, rect, 10, 1);
+}
+
+pub fn animate_restore(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
+    animate_client_x11(ctx, win, rect, 10, 1);
 }
