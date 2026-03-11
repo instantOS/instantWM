@@ -1,7 +1,5 @@
 use crate::bar::bar_position_to_gesture;
-use crate::bar::status::{
-    enqueue_i3bar_click_event, hit_test_i3_click_target, make_i3_click_event,
-};
+use crate::bar::status::emit_i3bar_status_click;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
@@ -108,34 +106,15 @@ pub(super) fn dispatch_wayland_bar_click(
     if pos == BarPosition::StatusText {
         let selmon = wm.g.selected_monitor().clone();
         let local_x = root_x - selmon.work_rect.x;
-        let status_text = wm.g.status_text.clone();
-        let parsed = wm.bar.parsed_status_for_text(&status_text).clone();
-
-        if let Some(line) = parsed.i3bar.as_ref() {
-            if let Some(block_idx) = hit_test_i3_click_target(&wm.bar.status_click_targets, local_x)
-            {
-                if let Some(block) = line.blocks.get(block_idx) {
-                    if let Some(target) = wm
-                        .bar
-                        .status_click_targets
-                        .iter()
-                        .copied()
-                        .find(|target| target.index == block_idx)
-                    {
-                        let click_event = make_i3_click_event(
-                            block,
-                            target,
-                            button_code,
-                            local_x,
-                            root_y - selmon.bar_y,
-                            wm.g.cfg.bar_height,
-                            clean_state,
-                        );
-                        enqueue_i3bar_click_event(click_event);
-                    }
-                }
-            }
-        }
+        emit_i3bar_status_click(
+            &mut wm.bar,
+            &wm.g.status_text,
+            local_x,
+            root_y - selmon.bar_y,
+            button_code,
+            wm.g.cfg.bar_height,
+            clean_state,
+        );
     }
 
     let mut ctx = wm.ctx();

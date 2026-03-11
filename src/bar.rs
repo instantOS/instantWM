@@ -24,7 +24,7 @@ pub struct BarState {
     draw_bar_recursion: usize,
     bar_update_seq: u64,
     pub command_offsets: [i32; 20],
-    pub status_click_targets: Vec<status::StatusClickTarget>,
+    pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
     /// Total width of the tag strip (including start menu)

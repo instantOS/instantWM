@@ -373,6 +373,22 @@ pub(crate) fn hit_test_i3_click_target(
         .map(|target| target.index)
 }
 
+pub(crate) fn resolve_i3_click<'a>(
+    parsed: &'a ParsedStatus,
+    click_targets: &[StatusClickTarget],
+    local_x: i32,
+) -> Option<(&'a I3Block, StatusClickTarget)> {
+    let line = parsed.i3bar.as_ref()?;
+    let block_idx = hit_test_i3_click_target(click_targets, local_x)?;
+    let block = line.blocks.get(block_idx)?;
+    let target = click_targets
+        .iter()
+        .copied()
+        .find(|target| target.index == block_idx)?;
+
+    Some((block, target))
+}
+
 pub(crate) fn modifiers_from_mask(mask: u32) -> Vec<String> {
     let mut modifiers = Vec::new();
 
@@ -415,13 +431,40 @@ pub(crate) fn make_i3_click_event(
     }
 }
 
+pub(crate) fn emit_i3bar_status_click(
+    bar: &mut crate::bar::BarState,
+    status_text: &str,
+    local_x: i32,
+    y: i32,
+    button: u8,
+    bar_height: i32,
+    clean_state: u32,
+) -> bool {
+    let parsed = bar.parsed_status_for_text(status_text).clone();
+    let Some((block, target)) = resolve_i3_click(&parsed, &bar.status_click_targets, local_x)
+    else {
+        return false;
+    };
+
+    enqueue_i3bar_click_event(make_i3_click_event(
+        block,
+        target,
+        button,
+        local_x,
+        y,
+        bar_height,
+        clean_state,
+    ));
+    true
+}
+
 pub(crate) fn write_i3bar_click_event<W: Write>(
     mut writer: W,
     event: &I3ClickEvent,
     first_event: &mut bool,
 ) -> std::io::Result<()> {
     if *first_event {
-        writer.write_all(b"[\n")?;
+        writer.write_all(b"{\"version\":1,\"click_events\":true}\n[\n")?;
         *first_event = false;
     } else {
         writer.write_all(b",\n")?;
