@@ -37,7 +37,7 @@ use crate::startup::wayland::cursor::CursorManager;
 use crate::wm::Wm;
 
 use self::gpu::build_output_surfaces;
-use self::input::{dispatch_libinput_event, raw_event_to_input_event};
+use self::input::dispatch_libinput_event;
 use self::render::render_drm_output;
 use self::state::{
     sync_monitors_from_outputs_vec, OutputSurfaceEntry, SharedDrmState, CURSOR_SIZE,

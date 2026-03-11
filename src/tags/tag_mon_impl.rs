@@ -11,15 +11,10 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
-use crate::backend::x11::X11BackendRef;
-use crate::backend::BackendRef;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::globals::X11RuntimeConfig;
+use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
-use crate::types::{MonitorDirection, Systray, WindowId};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, StackMode, Window};
+use crate::types::{MonitorDirection, WindowId};
 
 // ---------------------------------------------------------------------------
 // Public API

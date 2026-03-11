@@ -2,6 +2,9 @@ use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
 use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::BackendOps;
 use crate::bar::bar_position_to_gesture;
+use crate::bar::status::{
+    enqueue_i3bar_click_event, hit_test_i3_click_target, make_i3_click_event,
+};
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
     configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
@@ -104,10 +107,44 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         }
     } else if let Some(mon) = ctx.core.g.monitor(selmon_id) {
         if event_win == mon.bar_win {
-            let position = mon.bar_position_at_x(&ctx.core, e.event_x as i32);
+            let local_x = e.event_x as i32;
+            let position = mon.bar_position_at_x(&ctx.core, local_x);
             if position == BarPosition::StartMenu {
                 reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
+
+            if position == BarPosition::StatusText {
+                let status_text = ctx.core.g.status_text.clone();
+                let parsed = ctx.core.bar.parsed_status_for_text(&status_text).clone();
+                if let Some(line) = parsed.i3bar.as_ref() {
+                    if let Some(block_idx) =
+                        hit_test_i3_click_target(&ctx.core.bar.status_click_targets, local_x)
+                    {
+                        if let Some(block) = line.blocks.get(block_idx) {
+                            if let Some(target) = ctx
+                                .core
+                                .bar
+                                .status_click_targets
+                                .iter()
+                                .copied()
+                                .find(|target| target.index == block_idx)
+                            {
+                                let click_event = make_i3_click_event(
+                                    block,
+                                    target,
+                                    e.detail,
+                                    local_x,
+                                    e.event_y as i32,
+                                    ctx.core.g.cfg.bar_height,
+                                    clean_mask(e.state.into(), numlockmask),
+                                );
+                                enqueue_i3bar_click_event(click_event);
+                            }
+                        }
+                    }
+                }
+            }
+
             bar_pos = position;
         } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
             bar_pos = BarPosition::SideBar;

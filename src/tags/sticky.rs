@@ -5,7 +5,7 @@
 //! transfer) it must lose its sticky status so it stops following every view.
 
 use crate::contexts::CoreCtx;
-use crate::types::{Client, WindowId};
+use crate::types::WindowId;
 
 // ---------------------------------------------------------------------------
 // Public API

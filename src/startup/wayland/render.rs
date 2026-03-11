@@ -5,7 +5,6 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::WinitGraphicsBackend;
-use smithay::desktop::space::render_output;
 use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;

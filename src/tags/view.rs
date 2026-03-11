@@ -1,10 +1,9 @@
 //! View (workspace) navigation.
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtx};
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, WindowId};
-use x11rb::protocol::xproto::ConnectionExt;
 
 /// View tags using type-safe mask.
 pub fn view(ctx: &mut WmCtx, mask: TagMask) {

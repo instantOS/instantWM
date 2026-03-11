@@ -24,6 +24,7 @@ pub struct BarState {
     draw_bar_recursion: usize,
     bar_update_seq: u64,
     pub command_offsets: [i32; 20],
+    pub status_click_targets: Vec<status::StatusClickTarget>,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
     /// Total width of the tag strip (including start menu)
@@ -34,7 +35,7 @@ pub struct BarState {
     hit_cache: Vec<MonitorHitCache>,
     /// Cached parsed status commands for unchanged status text.
     status_cache_text: String,
-    status_cache_items: Vec<status::StatusItem>,
+    status_cache: status::ParsedStatus,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -149,9 +150,18 @@ impl BarState {
         if self.status_cache_text.as_str() != text {
             self.status_cache_text.clear();
             self.status_cache_text.push_str(text);
-            self.status_cache_items = status::parse_status_items(text.as_bytes());
+            self.status_cache = status::parse_status(text.as_bytes());
         }
-        self.status_cache_items.as_slice()
+        self.status_cache.items.as_slice()
+    }
+
+    pub(crate) fn parsed_status_for_text(&mut self, text: &str) -> &status::ParsedStatus {
+        if self.status_cache_text.as_str() != text {
+            self.status_cache_text.clear();
+            self.status_cache_text.push_str(text);
+            self.status_cache = status::parse_status(text.as_bytes());
+        }
+        &self.status_cache
     }
 }
 
