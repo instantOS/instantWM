@@ -1,14 +1,48 @@
-use crate::backend::x11::X11BackendRef;
-use crate::backend::BackendOps;
 use crate::constants::animation::*;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::floating::{change_snap, SnapDir};
-use crate::globals::X11RuntimeConfig;
 use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::thread;
 use std::time::Duration;
 use x11rb::connection::Connection;
+
+/// Backend-agnostic animation entry point.
+///
+/// On X11: performs smooth animation with easing.
+/// On Wayland: immediately sets the geometry (Wayland handles transitions differently).
+pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
+    match ctx {
+        WmCtx::X11(ctx_x11) => animate_client_x11(ctx_x11, win, rect, frames, reset_pos),
+        WmCtx::Wayland(_ctx_wayland) => {
+            // Wayland: no smooth animation, just resize immediately
+            ctx.resize_client(win, *rect);
+        }
+    }
+}
+
+/// Backend-agnostic check and animate.
+pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
+    match ctx {
+        WmCtx::X11(ctx_x11) => check_animate_x11(ctx_x11, win, rect, frames, reset_pos),
+        WmCtx::Wayland(_ctx_wayland) => {
+            // Check if geometry actually changed
+            let should_animate = ctx
+                .g()
+                .clients
+                .get(&win)
+                .map(|client| {
+                    client.geo.x != rect.x
+                        || client.geo.y != rect.y
+                        || client.geo.w != rect.w
+                        || client.geo.h != rect.h
+                })
+                .unwrap_or(false);
+            if should_animate {
+                ctx.resize_client(win, *rect);
+            }
+        }
+    }
+}
 
 const QUEUED_ALREADY: std::os::raw::c_int = 0;
 
@@ -37,7 +71,13 @@ fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i3
     (target_w.min(mon_w), target_h.min(mon_h))
 }
 
-fn final_rect(rect: &Rect, start_rect: &Rect, actual_w: i32, actual_h: i32, reset_pos: i32) -> Rect {
+fn final_rect(
+    rect: &Rect,
+    start_rect: &Rect,
+    actual_w: i32,
+    actual_h: i32,
+    reset_pos: i32,
+) -> Rect {
     let (x, y) = if reset_pos != 0 {
         (rect.x, rect.y)
     } else {
@@ -53,11 +93,18 @@ fn final_rect(rect: &Rect, start_rect: &Rect, actual_w: i32, actual_h: i32, rese
 
 fn try_resize_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
     if rect.is_valid() {
-        ctx.reborrow().resize_client(win, *rect);
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        wm_ctx.resize_client(win, *rect);
     }
 }
 
-pub fn animate_client_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
+pub fn animate_client_x11(
+    ctx: &mut WmCtxX11<'_>,
+    win: WindowId,
+    rect: &Rect,
+    frames: i32,
+    reset_pos: i32,
+) {
     // Handled below by !ctx.g_mut().animated or frames <= 0 check.
 
     let start_rect = match get_start_rect(&ctx.core, win, reset_pos) {
@@ -199,17 +246,22 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
             Direction::Up => Direction::Up,
             Direction::Down => Direction::Down,
         };
-        crate::focus::focus_dir(ctx, focus_dir);
+        crate::focus::direction_focus(ctx, focus_dir);
     } else {
         scroll_view(ctx, dir);
     }
 
     if let WmCtx::X11(ref mut ctx_x11) = ctx {
-        for (id, client) in ctx_x11.core.g.clients.iter() {
-            if client.monitor_id == sel_mon && client.tags == current_tag {
-                let rect = client.geo;
-                animate_client_x11(ctx_x11, *id, &rect, 10, 0);
-            }
+        let clients_to_animate: Vec<(WindowId, Rect)> = ctx_x11
+            .core
+            .g
+            .clients
+            .iter()
+            .filter(|(_, client)| client.monitor_id == sel_mon && client.tags == current_tag)
+            .map(|(id, client)| (*id, client.geo))
+            .collect();
+        for (id, rect) in clients_to_animate {
+            animate_client_x11(ctx_x11, id, &rect, 10, 0);
         }
     }
 }

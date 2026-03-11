@@ -93,13 +93,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
             if !is_floating {
-                animate_client_x11(
-                    ctx_x11,
-                    win,
-                    &mon_rect,
-                    10,
-                    0,
-                );
+                animate_client_x11(ctx_x11, win, &mon_rect, 10, 0);
             }
 
             // Position and raise the window.
@@ -145,8 +139,6 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             // Snap back to the geometry that was stored before going fullscreen.
             let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
             wmctx.resize_client(win, old_geo);
-            let _ = ctx_x11.x11.conn.flush();
-
             arrange(&mut wmctx, Some(monitor_id));
         }
     }
@@ -189,7 +181,8 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
             .map(|m| m.monitor_rect)
             .unwrap_or_default();
 
-        ctx_x11.reborrow().resize_client(
+        let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+        wm_ctx.resize_client(
             win,
             Rect {
                 x: mon_rect.x + borderpx,

@@ -8,11 +8,7 @@ use crate::types::Gesture;
 ///
 /// Systray width must be cached in `core.g.systray_width` by the caller
 /// before invoking this function.
-pub(crate) fn draw_bar(
-    core: &mut CoreCtx,
-    mon_idx: usize,
-    painter: &mut dyn BarPainter,
-) {
+pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
     let bar = core.bar as *mut crate::bar::BarState;
     unsafe { (*bar).recursion_enter() };
 

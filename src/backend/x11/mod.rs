@@ -129,6 +129,14 @@ impl BackendOps for X11Backend {
     fn flush(&self) {
         self.as_ref().flush()
     }
+
+    fn pointer_location(&self) -> Option<(i32, i32)> {
+        self.as_ref().pointer_location()
+    }
+
+    fn warp_pointer(&self, x: f64, y: f64) {
+        self.as_ref().warp_pointer(x, y)
+    }
 }
 
 impl BackendOps for X11BackendRef<'_> {

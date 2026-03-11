@@ -21,7 +21,6 @@ use crate::animation::check_animate_x11;
 use crate::client::{restore_border_width, save_border_width};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::algo::apply_snap_for_window;
-use crate::mouse::warp::warp_to_client_win;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -171,7 +170,8 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     match ctx {
         WmCtx::X11(ctx_x11) => {
             apply_snap(ctx_x11, win, monitor_id);
-            ctx_x11.reborrow().warp_cursor_to_client(win);
+            let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+            wm_ctx.warp_cursor_to_client(win);
             crate::focus::focus_soft_x11(
                 &mut ctx_x11.core,
                 &ctx_x11.x11,
@@ -295,7 +295,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
         }
     };
 
-    check_animate_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, win, &rect, 7, 0);
+    check_animate_x11(ctx, win, &rect, 7, 0);
 
     // Raise the window if it is the focused one (Maximized only).
     if snap_status == SnapPosition::Maximized {

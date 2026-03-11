@@ -113,8 +113,15 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             }
 
             if position == BarPosition::StatusText {
-                let parsed = ctx.core.bar.parsed_status_for_text(&ctx.core.g.status_text).clone();
-                let click_targets = ctx.core.bar.monitor_hit_cache(monitor_id)
+                let parsed = ctx
+                    .core
+                    .bar
+                    .parsed_status_for_text(&ctx.core.g.status_text)
+                    .clone();
+                let click_targets = ctx
+                    .core
+                    .bar
+                    .monitor_hit_cache(monitor_id)
                     .map(|h| h.status_click_targets.as_slice())
                     .unwrap_or(&[]);
                 emit_i3bar_status_click(
@@ -577,7 +584,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
-                update_wm_hints(&mut ctx.core, &ctx.x11, event_win);
+                update_wm_hints(ctx, event_win);
                 draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
             _ => {}

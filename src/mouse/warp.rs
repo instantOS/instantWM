@@ -15,6 +15,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::globals::X11RuntimeConfig;
 use crate::types::*;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 pub(crate) const WARP_INTO_PADDING: i32 = 10;

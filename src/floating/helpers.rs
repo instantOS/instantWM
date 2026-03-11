@@ -2,7 +2,7 @@
 //!
 //! None of these functions mutate floating state – they only inspect it.
 
-use crate::contexts::CoreCtx;
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::types::WindowId;
 
 // ── Layout query ─────────────────────────────────────────────────────────────
@@ -64,6 +64,7 @@ pub fn apply_size(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let geo = ctx.core.g.clients.get(&win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;
-        ctx.reborrow().resize_client(win, rect);
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        wm_ctx.resize_client(win, rect);
     }
 }

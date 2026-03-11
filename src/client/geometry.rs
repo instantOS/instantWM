@@ -30,12 +30,18 @@ pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, 
 
     let mut new_rect = *rect;
 
-    let x11 = match ctx {
-        crate::contexts::WmCtx::X11(ref x11) => Some(&x11.x11),
-        _ => None,
+    let changed = match ctx {
+        crate::contexts::WmCtx::X11(ref mut x11_ctx) => apply_size_hints(
+            &mut x11_ctx.core,
+            Some(&x11_ctx.x11),
+            win,
+            &mut new_rect,
+            interact,
+        ),
+        crate::contexts::WmCtx::Wayland(ref mut wl_ctx) => {
+            apply_size_hints(&mut wl_ctx.core, None, win, &mut new_rect, interact)
+        }
     };
-
-    let changed = apply_size_hints(ctx.core_mut(), x11, win, &mut new_rect, interact);
     let client_count = ctx.g().clients.len();
 
     if changed || client_count == 1 {

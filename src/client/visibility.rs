@@ -107,7 +107,11 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
             );
             let _ = ctx.x11.conn.flush();
 
-            let is_tiling = ctx.core.g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
+            let is_tiling = ctx
+                .core
+                .g
+                .monitors_iter()
+                .any(|(_, m)| m.is_tiling_layout());
 
             if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
                 let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
@@ -268,15 +272,7 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let _ = ctx.x11.conn.flush();
 
     // Animate: slide down to (x, y) from (x, -50).
-    animate_client_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
-        win,
-        &Rect { x, y, w: 0, h: 0 },
-        14,
-        0,
-    );
+    animate_client_x11(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -300,9 +296,7 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
         animate_client_x11(
-            &mut ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
+            ctx,
             win,
             &Rect {
                 x,
