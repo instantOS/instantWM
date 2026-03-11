@@ -1,5 +1,8 @@
 use clap::{Parser, Subcommand};
-use instantwm::ipc_types::{IpcCommand, IpcRequest, IpcResponse, KeyboardLayout};
+use instantwm::ipc_types::{
+    IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout, MonitorCommand,
+    ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
+};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
@@ -41,6 +44,30 @@ impl From<KeyboardLayoutArg> for KeyboardLayout {
             variant: arg.variant,
         }
     }
+}
+
+/// Monitor-related commands.
+#[derive(Debug, Subcommand)]
+enum MonitorAction {
+    /// List all monitors with their information.
+    List,
+    /// Switch focus to a specific monitor by index.
+    Switch {
+        /// Monitor index (0-based)
+        index: u32,
+    },
+    /// Move focus to the next monitor(s).
+    Next {
+        /// Number of monitors to move (default: 1)
+        #[arg(default_value = "1")]
+        count: u32,
+    },
+    /// Move focus to the previous monitor(s).
+    Prev {
+        /// Number of monitors to move (default: 1)
+        #[arg(default_value = "1")]
+        count: u32,
+    },
 }
 
 /// Keyboard layout actions.
@@ -124,18 +151,9 @@ enum ScratchpadAction {
     Delete,
 }
 
+/// Window-related commands.
 #[derive(Debug, Subcommand)]
-enum CommandKind {
-    /// Run a keybind action by name. Use --list to see available actions.
-    Action {
-        /// Action name (e.g., "zoom", "quit", "toggle_bar")
-        name: Option<String>,
-        /// List all available actions and exit.
-        #[arg(long = "list", short = 'l')]
-        list: bool,
-    },
-    /// Get status information about the running instantWM instance.
-    Status,
+enum WindowAction {
     /// List all managed windows.
     List,
     /// Get window geometry.
@@ -143,23 +161,16 @@ enum CommandKind {
         /// Window ID (defaults to currently selected window)
         window_id: Option<u32>,
     },
-    /// Spawn a command.
-    Spawn {
-        /// Command to execute
-        command: Vec<String>,
-    },
     /// Close a window.
     Close {
         /// Window ID (defaults to currently selected window)
         window_id: Option<u32>,
     },
-    /// Warp cursor to the currently focused window.
-    WarpFocus,
-    /// Switch to a tag (workspace).
-    Tag {
-        /// Tag number (1-8, defaults to 2; 0 is treated as 2)
-        number: Option<u32>,
-    },
+}
+
+/// Toggle-related commands.
+#[derive(Debug, Subcommand)]
+enum ToggleAction {
     /// Toggle or set animated windows mode.
     ///
     /// Action argument:
@@ -220,6 +231,82 @@ enum CommandKind {
         /// Action: toggle, enable, or disable
         action: Option<String>,
     },
+}
+
+/// Tag-related commands.
+#[derive(Debug, Subcommand)]
+enum TagAction {
+    /// Switch to a tag (workspace).
+    View {
+        /// Tag number (1-8, defaults to 2; 0 is treated as 2)
+        number: Option<u32>,
+    },
+    /// Rename the current tag.
+    Name {
+        /// New tag name (max 16 bytes)
+        name: String,
+    },
+    /// Reset all tag names to defaults ("1" through "9").
+    Reset,
+}
+
+#[derive(Debug, Subcommand)]
+enum CommandKind {
+    /// Run a keybind action by name. Use --list to see available actions.
+    Action {
+        /// Action name (e.g., "zoom", "quit", "toggle_bar")
+        name: Option<String>,
+        /// List all available actions and exit.
+        #[arg(long = "list", short = 'l')]
+        list: bool,
+    },
+    /// Get status information about the running instantWM instance.
+    Status,
+    /// Monitor management.
+    Monitor {
+        #[command(subcommand)]
+        action: MonitorAction,
+    },
+    /// Window management.
+    Window {
+        #[command(subcommand)]
+        action: WindowAction,
+    },
+    /// Tag/workspace management.
+    Tag {
+        #[command(subcommand)]
+        action: TagAction,
+    },
+    /// Toggle settings.
+    Toggle {
+        #[command(subcommand)]
+        action: ToggleAction,
+    },
+    /// Spawn a command.
+    Spawn {
+        /// Command to execute
+        command: Vec<String>,
+    },
+    /// Warp cursor to the currently focused window.
+    WarpFocus,
+    /// Move the selected window to another monitor.
+    ///
+    /// Direction:
+    ///   positive (e.g., 1): next monitor (right/down)
+    ///   negative (e.g., -1): previous monitor (left/up)
+    TagMon {
+        /// Direction (1 for next, -1 for previous)
+        direction: Option<i32>,
+    },
+    /// Move the selected window to another monitor and follow it.
+    ///
+    /// Direction:
+    ///   positive (e.g., 1): next monitor (right/down)
+    ///   negative (e.g., -1): previous monitor (left/up)
+    FollowMon {
+        /// Direction (1 for next, -1 for previous)
+        direction: Option<i32>,
+    },
     /// Set the layout type.
     ///
     /// Layout indices: 0=Tile, 1=Grid, 2=Floating, 3=Monocle, 4=Vert, 5=Deck,
@@ -247,47 +334,6 @@ enum CommandKind {
         /// Mode: 0=none, non-zero=float (default: 0)
         value: Option<u32>,
     },
-    /// Move the selected window to another monitor.
-    ///
-    /// Direction:
-    ///   positive (e.g., 1): next monitor (right/down)
-    ///   negative (e.g., -1): previous monitor (left/up)
-    TagMon {
-        /// Direction (1 for next, -1 for previous)
-        direction: Option<i32>,
-    },
-    /// Move the selected window to another monitor and follow it.
-    ///
-    /// Direction:
-    ///   positive (e.g., 1): next monitor (right/down)
-    ///   negative (e.g., -1): previous monitor (left/up)
-    FollowMon {
-        /// Direction (1 for next, -1 for previous)
-        direction: Option<i32>,
-    },
-    /// Switch focus to another monitor.
-    ///
-    /// Direction:
-    ///   positive (e.g., 1): next monitor (right/down)
-    ///   negative (e.g., -1): previous monitor (left/up)
-    FocusMon {
-        /// Direction (1 for next, -1 for previous)
-        direction: Option<i32>,
-    },
-    /// Switch focus to a specific monitor by index.
-    FocusNMon {
-        /// Monitor index (0-based, defaults to 0)
-        index: Option<i32>,
-    },
-    /// Rename the current tag.
-    ///
-    /// Names longer than 16 bytes are ignored. Empty string resets to default.
-    NameTag {
-        /// New tag name (max 16 bytes)
-        name: String,
-    },
-    /// Reset all tag names to defaults ("1" through "9").
-    ResetNameTag,
     /// Keyboard layout management.
     Keyboard {
         #[command(subcommand)]
@@ -317,8 +363,46 @@ fn main() {
             IpcCommand::RunAction(name)
         }
         CommandKind::Status => IpcCommand::Status,
-        CommandKind::List => IpcCommand::List,
-        CommandKind::Geom { window_id } => IpcCommand::Geom(window_id),
+        CommandKind::Monitor { action } => {
+            let cmd = match action {
+                MonitorAction::List => MonitorCommand::List,
+                MonitorAction::Switch { index } => MonitorCommand::Switch { index },
+                MonitorAction::Next { count } => MonitorCommand::Next { count },
+                MonitorAction::Prev { count } => MonitorCommand::Prev { count },
+            };
+            IpcCommand::Monitor(cmd)
+        }
+        CommandKind::Window { action } => {
+            let cmd = match action {
+                WindowAction::List => WindowCommand::List,
+                WindowAction::Geom { window_id } => WindowCommand::Geom(window_id),
+                WindowAction::Close { window_id } => WindowCommand::Close(window_id),
+            };
+            IpcCommand::Window(cmd)
+        }
+        CommandKind::Tag { action } => {
+            let cmd = match action {
+                TagAction::View { number } => TagCommand::View(number.unwrap_or(2)),
+                TagAction::Name { name } => TagCommand::Name(name),
+                TagAction::Reset => TagCommand::ResetNames,
+            };
+            IpcCommand::Tag(cmd)
+        }
+        CommandKind::Toggle { action } => {
+            let cmd = match action {
+                ToggleAction::Animated { action } => ToggleCommand::Animated(action),
+                ToggleAction::FocusFollowsMouse { action } => {
+                    ToggleCommand::FocusFollowsMouse(action)
+                }
+                ToggleAction::FocusFollowsFloatMouse { action } => {
+                    ToggleCommand::FocusFollowsFloatMouse(action)
+                }
+                ToggleAction::AltTab { action } => ToggleCommand::AltTab(action),
+                ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
+                ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
+            };
+            IpcCommand::Toggle(cmd)
+        }
         CommandKind::Spawn { command } => {
             if command.is_empty() {
                 eprintln!("instantwmctl: spawn requires a command");
@@ -326,61 +410,53 @@ fn main() {
             }
             IpcCommand::Spawn(command.join(" "))
         }
-        CommandKind::Close { window_id } => IpcCommand::Close(window_id),
         CommandKind::WarpFocus => IpcCommand::WarpFocus,
-        CommandKind::Tag { number } => IpcCommand::Tag(number.unwrap_or(2)),
-        CommandKind::Animated { action } => IpcCommand::Animated(action),
-        CommandKind::FocusFollowsMouse { action } => IpcCommand::FocusFollowsMouse(action),
-        CommandKind::FocusFollowsFloatMouse { action } => {
-            IpcCommand::FocusFollowsFloatMouse(action)
-        }
-        CommandKind::AltTab { action } => IpcCommand::AltTab(action),
-        CommandKind::AltTag { action } => IpcCommand::AltTag(action),
-        CommandKind::HideTags { action } => IpcCommand::HideTags(action),
+        CommandKind::TagMon { direction } => IpcCommand::TagMon(direction.unwrap_or(1)),
+        CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction.unwrap_or(1)),
         CommandKind::Layout { number } => IpcCommand::Layout(number.unwrap_or(0)),
         CommandKind::Prefix { value } => IpcCommand::Prefix(value),
         CommandKind::Border { width } => IpcCommand::Border(width),
         CommandKind::SpecialNext { value } => IpcCommand::SpecialNext(value),
-        CommandKind::TagMon { direction } => IpcCommand::TagMon(direction.unwrap_or(1)),
-        CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction.unwrap_or(1)),
-        CommandKind::FocusMon { direction } => IpcCommand::FocusMon(direction.unwrap_or(1)),
-        CommandKind::FocusNMon { index } => IpcCommand::FocusNMon(index.unwrap_or(0)),
-        CommandKind::NameTag { name } => IpcCommand::NameTag(name),
-        CommandKind::ResetNameTag => IpcCommand::ResetNameTag,
-        CommandKind::Keyboard { action } => match action {
-            KeyboardAction::List { all } => {
-                if all {
-                    IpcCommand::KeyboardListAll
-                } else {
-                    IpcCommand::KeyboardList
+        CommandKind::Keyboard { action } => {
+            let cmd = match action {
+                KeyboardAction::List { all } => {
+                    if all {
+                        KeyboardCommand::ListAll
+                    } else {
+                        KeyboardCommand::List
+                    }
                 }
-            }
-            KeyboardAction::Status => IpcCommand::KeyboardStatus,
-            KeyboardAction::Next => IpcCommand::KeyboardNext,
-            KeyboardAction::Prev => IpcCommand::KeyboardPrev,
-            KeyboardAction::Set { layouts } => {
-                let keyboard_layouts: Vec<KeyboardLayout> = layouts
-                    .into_iter()
-                    .map(KeyboardLayoutArg::from)
-                    .map(KeyboardLayout::from)
-                    .collect();
-                IpcCommand::KeyboardSet(keyboard_layouts)
-            }
-            KeyboardAction::Add { name } => {
-                let arg = KeyboardLayoutArg::from(name);
-                IpcCommand::KeyboardAdd(KeyboardLayout::from(arg))
-            }
-            KeyboardAction::Remove { layout } => IpcCommand::KeyboardRemove(layout),
-        },
-        CommandKind::Scratchpad { action } => match action {
-            ScratchpadAction::List => IpcCommand::ScratchpadList,
-            ScratchpadAction::Status { name } => IpcCommand::ScratchpadStatus(name),
-            ScratchpadAction::Show { name } => IpcCommand::ScratchpadShow(name),
-            ScratchpadAction::Hide { name } => IpcCommand::ScratchpadHide(name),
-            ScratchpadAction::Toggle { name } => IpcCommand::ScratchpadToggle(name),
-            ScratchpadAction::Create { name } => IpcCommand::ScratchpadCreate(name),
-            ScratchpadAction::Delete => IpcCommand::ScratchpadDelete,
-        },
+                KeyboardAction::Status => KeyboardCommand::Status,
+                KeyboardAction::Next => KeyboardCommand::Next,
+                KeyboardAction::Prev => KeyboardCommand::Prev,
+                KeyboardAction::Set { layouts } => {
+                    let keyboard_layouts: Vec<KeyboardLayout> = layouts
+                        .into_iter()
+                        .map(KeyboardLayoutArg::from)
+                        .map(KeyboardLayout::from)
+                        .collect();
+                    KeyboardCommand::Set(keyboard_layouts)
+                }
+                KeyboardAction::Add { name } => {
+                    let arg = KeyboardLayoutArg::from(name);
+                    KeyboardCommand::Add(KeyboardLayout::from(arg))
+                }
+                KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
+            };
+            IpcCommand::Keyboard(cmd)
+        }
+        CommandKind::Scratchpad { action } => {
+            let cmd = match action {
+                ScratchpadAction::List => ScratchpadCommand::List,
+                ScratchpadAction::Status { name } => ScratchpadCommand::Status(name),
+                ScratchpadAction::Show { name } => ScratchpadCommand::Show(name),
+                ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
+                ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
+                ScratchpadAction::Create { name } => ScratchpadCommand::Create(name),
+                ScratchpadAction::Delete => ScratchpadCommand::Delete,
+            };
+            IpcCommand::Scratchpad(cmd)
+        }
         CommandKind::UpdateStatus { text } => {
             if text == "-" {
                 use std::io::BufRead;
@@ -398,12 +474,13 @@ fn main() {
                         continue;
                     }
 
-                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|_| {
+                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|| {
                         format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
                     });
 
                     if let Ok(mut stream) = UnixStream::connect(&socket) {
-                        let request = IpcRequest::new(IpcCommand::UpdateStatus(trim_line.to_string()));
+                        let request =
+                            IpcRequest::new(IpcCommand::UpdateStatus(trim_line.to_string()));
                         if let Ok(data) =
                             bincode::encode_to_vec(&request, bincode::config::standard())
                         {
@@ -419,7 +496,7 @@ fn main() {
     };
 
     let socket = std::env::var("INSTANTWM_SOCKET")
-        .unwrap_or_else(|_| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
+        .unwrap_or_else(|| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
     let mut stream = match UnixStream::connect(&socket) {
         Ok(s) => s,
         Err(err) => {

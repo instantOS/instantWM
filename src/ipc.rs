@@ -1,5 +1,8 @@
 use crate::commands::{command_prefix, set_special_next};
-use crate::ipc_types::{IpcCommand, IpcRequest, IpcResponse};
+use crate::ipc_types::{
+    IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, MonitorCommand, ScratchpadCommand,
+    TagCommand, ToggleCommand, WindowCommand,
+};
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_monitor, focus_n_mon, move_to_monitor_and_follow};
@@ -75,17 +78,17 @@ impl IpcServer {
             return;
         }
 
-        let request: IpcRequest = match bincode::decode_from_slice(&buffer, bincode::config::standard())
-        {
-            Ok((req, _)) => req,
-            Err(e) => {
-                let _ = send_response(
-                    &mut stream,
-                    &IpcResponse::err(format!("deserialize error: {}", e)),
-                );
-                return;
-            }
-        };
+        let request: IpcRequest =
+            match bincode::decode_from_slice(&buffer, bincode::config::standard()) {
+                Ok((req, _)) => req,
+                Err(e) => {
+                    let _ = send_response(
+                        &mut stream,
+                        &IpcResponse::err(format!("deserialize error: {}", e)),
+                    );
+                    return;
+                }
+            };
 
         // Validate protocol version
         if let Err(e) = request.validate_version() {
@@ -131,205 +134,112 @@ fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Re
 }
 
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
-    let mut ctx = wm.ctx();
-
     match cmd {
         IpcCommand::Status => get_status(wm),
-        IpcCommand::List => list_windows(wm),
-        IpcCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
-        IpcCommand::Spawn(command) => spawn_command(&mut ctx, command),
-        IpcCommand::Close(window_id) => close_window(&mut ctx, window_id.map(WindowId::from)),
-        IpcCommand::WarpFocus => {
-            crate::mouse::warp::warp_to_focus(&mut ctx);
-            IpcResponse::ok("")
-        }
-        IpcCommand::Tag(tag_num) => {
-            let tag = if tag_num == 0 { 2 } else { tag_num };
-            if let Some(mask) = TagMask::single(tag as usize) {
-                crate::tags::view::view(&mut ctx, mask);
-            }
-            IpcResponse::ok("")
-        }
-        IpcCommand::Animated(arg) => {
-            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_animated(ctx.core_mut(), action);
-            IpcResponse::ok("")
-        }
-        IpcCommand::FocusFollowsMouse(arg) => {
-            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_mouse(ctx.core_mut(), action);
-            IpcResponse::ok("")
-        }
-        IpcCommand::FocusFollowsFloatMouse(arg) => {
-            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_float_mouse(ctx.core_mut(), action);
-            IpcResponse::ok("")
-        }
-        IpcCommand::AltTab(arg) => {
-            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            alt_tab_free(&mut ctx, action);
-            IpcResponse::ok("")
-        }
-        IpcCommand::AltTag(arg) => {
-            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_alt_tag(&mut ctx, action);
-            IpcResponse::ok("")
-        }
-        IpcCommand::HideTags(arg) => {
-            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_show_tags(&mut ctx, action);
-            IpcResponse::ok("")
-        }
-        IpcCommand::Layout(val) => {
-            command_layout(&mut ctx, val);
-            IpcResponse::ok("")
-        }
-        IpcCommand::Prefix(arg) => {
-            let val = arg.unwrap_or(1);
-            command_prefix(&mut ctx, val);
-            IpcResponse::ok("")
-        }
-        IpcCommand::Border(arg) => {
-            let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
-            if let Some(win) = ctx.selected_client() {
-                set_border_width(ctx.core_mut(), win, val as i32);
-            }
-            IpcResponse::ok("")
-        }
-        IpcCommand::SpecialNext(arg) => {
-            let val = arg.unwrap_or(0);
-            set_special_next(ctx.core_mut(), val);
-            IpcResponse::ok("")
-        }
-        IpcCommand::TagMon(dir) => {
-            let direction = MonitorDirection::from(dir);
-            send_to_monitor(&mut ctx, direction);
-            IpcResponse::ok("")
-        }
-        IpcCommand::FollowMon(dir) => {
-            let direction = MonitorDirection::from(dir);
-            move_to_monitor_and_follow(&mut ctx, direction);
-            IpcResponse::ok("")
-        }
-        IpcCommand::FocusMon(dir) => {
-            let direction = MonitorDirection::from(dir);
-            focus_monitor(&mut ctx, direction);
-            IpcResponse::ok("")
-        }
-        IpcCommand::FocusNMon(val) => {
-            focus_n_mon(&mut ctx, val);
-            IpcResponse::ok("")
-        }
-        IpcCommand::NameTag(name) => {
-            name_tag(&mut ctx, &name);
-            IpcResponse::ok("")
-        }
-        IpcCommand::ResetNameTag => {
-            reset_name_tag(&mut ctx);
-            IpcResponse::ok("")
-        }
-        IpcCommand::ScratchpadList => {
-            let list = scratchpad_list(ctx.g());
-            IpcResponse::ok(list)
-        }
-        IpcCommand::ScratchpadToggle(name) => {
-            scratchpad_toggle(&mut ctx, name.as_deref());
-            IpcResponse::ok("")
-        }
-        IpcCommand::ScratchpadShow(name) => {
-            scratchpad_show_name(&mut ctx, &name);
-            IpcResponse::ok("")
-        }
-        IpcCommand::ScratchpadHide(name) => {
-            scratchpad_hide_name(&mut ctx, &name);
-            IpcResponse::ok("")
-        }
-        IpcCommand::ScratchpadStatus(name) => {
-            let status = scratchpad_status(ctx.g(), name.as_deref().unwrap_or(""));
-            IpcResponse::ok(status)
-        }
-        IpcCommand::ScratchpadCreate(name) => {
-            scratchpad_make(&mut ctx, name.as_deref());
-            IpcResponse::ok("")
-        }
-        IpcCommand::ScratchpadDelete => {
-            scratchpad_unmake(&mut ctx);
-            IpcResponse::ok("")
-        }
-        IpcCommand::KeyboardNext => {
-            keyboard_layout::cycle_keyboard_layout(&mut ctx, true);
-            IpcResponse::ok("")
-        }
-        IpcCommand::KeyboardPrev => {
-            keyboard_layout::cycle_keyboard_layout(&mut ctx, false);
-            IpcResponse::ok("")
-        }
-        IpcCommand::KeyboardStatus => {
-            let status = keyboard_layout::keyboard_layout_status(&ctx);
-            IpcResponse::ok(status)
-        }
-        IpcCommand::KeyboardList => {
-            let list = keyboard_layout::keyboard_layout_list(&ctx);
-            IpcResponse::ok(list)
-        }
-        IpcCommand::KeyboardListAll => {
-            let layouts = keyboard_layout::get_all_keyboard_layouts();
-            let list = layouts.join("\n");
-            IpcResponse::ok(list)
-        }
-        IpcCommand::KeyboardSet(layouts) => {
-            let globals_layouts: Vec<crate::globals::KeyboardLayout> = layouts
-                .into_iter()
-                .map(|l| crate::globals::KeyboardLayout {
-                    name: l.name,
-                    variant: l.variant,
-                })
-                .collect();
-            keyboard_layout::set_keyboard_layouts(&mut ctx, globals_layouts);
-            IpcResponse::ok("")
-        }
-        IpcCommand::KeyboardAdd(layout) => {
-            let globals_layout = crate::globals::KeyboardLayout {
-                name: layout.name,
-                variant: layout.variant,
-            };
-            match keyboard_layout::add_keyboard_layout(&mut ctx, globals_layout) {
-                Ok(()) => IpcResponse::ok(""),
-                Err(e) => IpcResponse::err(e),
-            }
-        }
-        IpcCommand::KeyboardRemove(layout) => {
-            match keyboard_layout::remove_keyboard_layout(&mut ctx, &layout) {
-                Ok(()) => IpcResponse::ok(""),
-                Err(e) => IpcResponse::err(e),
-            }
-        }
-        IpcCommand::UpdateStatus(text) => {
-            wm.g.status_text = text;
+        IpcCommand::RunAction(name) => run_action(wm, name),
+        IpcCommand::Spawn(command) => spawn_command(wm, command),
+        IpcCommand::WarpFocus => warp_focus(wm),
+        IpcCommand::TagMon(dir) => tag_mon(wm, dir),
+        IpcCommand::FollowMon(dir) => follow_mon(wm, dir),
+        IpcCommand::Layout(val) => set_layout(wm, val),
+        IpcCommand::Prefix(arg) => set_prefix(wm, arg),
+        IpcCommand::Border(arg) => set_border(wm, arg),
+        IpcCommand::SpecialNext(arg) => set_special_next_cmd(wm, arg),
+        IpcCommand::UpdateStatus(text) => update_status(wm, text),
+        IpcCommand::Monitor(cmd) => handle_monitor_command(wm, cmd),
+        IpcCommand::Window(cmd) => handle_window_command(wm, cmd),
+        IpcCommand::Tag(cmd) => handle_tag_command(wm, cmd),
+        IpcCommand::Scratchpad(cmd) => handle_scratchpad_command(wm, cmd),
+        IpcCommand::Keyboard(cmd) => handle_keyboard_command(wm, cmd),
+        IpcCommand::Toggle(cmd) => handle_toggle_command(wm, cmd),
+    }
+}
 
-            if let crate::backend::Backend::X11(_) = wm.backend {
-                let mut ctx = wm.ctx();
-                if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-                    crate::bar::draw_bars_x11(
-                        &mut x11_ctx.core,
-                        x11_ctx.x11_runtime,
-                        x11_ctx.systray.as_deref(),
-                    );
-                }
-            }
-            wm.bar.mark_dirty();
+// ============================================================================
+// Monitor Commands
+// ============================================================================
 
-            IpcResponse::ok("")
-        }
-        IpcCommand::RunAction(name) => {
-            use crate::config::keybind_config::compile_named_action;
-            if let Some(action) = compile_named_action(&name) {
-                action(&mut ctx);
-                IpcResponse::ok("")
-            } else {
-                IpcResponse::err(format!("unknown action '{name}'"))
-            }
-        }
+fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> IpcResponse {
+    match cmd {
+        MonitorCommand::List => list_monitors(wm),
+        MonitorCommand::Switch { index } => switch_monitor(wm, index as i32),
+        MonitorCommand::Next { count } => next_monitor(wm, count as i32),
+        MonitorCommand::Prev { count } => prev_monitor(wm, count as i32),
+    }
+}
+
+/// Information about a single monitor for JSON output.
+#[derive(Debug, serde::Serialize)]
+struct MonitorInfo {
+    id: usize,
+    index: i32,
+    width: i32,
+    height: i32,
+    x: i32,
+    y: i32,
+    is_primary: bool,
+}
+
+/// Root structure for monitor list JSON output.
+#[derive(Debug, serde::Serialize)]
+struct MonitorList {
+    monitors: Vec<MonitorInfo>,
+    selected: usize,
+}
+
+fn list_monitors(wm: &Wm) -> IpcResponse {
+    let selected_id = wm.g.selected_monitor_id();
+
+    let monitors: Vec<MonitorInfo> =
+        wm.g.monitors_iter_all()
+            .map(|(id, m)| MonitorInfo {
+                id,
+                index: m.num,
+                width: m.monitor_rect.w,
+                height: m.monitor_rect.h,
+                x: m.monitor_rect.x,
+                y: m.monitor_rect.y,
+                is_primary: id == selected_id,
+            })
+            .collect();
+
+    let list = MonitorList {
+        monitors,
+        selected: selected_id,
+    };
+
+    match serde_json::to_string_pretty(&list) {
+        Ok(json) => IpcResponse::ok(json),
+        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
+    }
+}
+
+fn switch_monitor(wm: &mut Wm, index: i32) -> IpcResponse {
+    focus_n_mon(&mut wm.ctx(), index);
+    IpcResponse::ok("")
+}
+
+fn next_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
+    let direction = MonitorDirection::Next(count);
+    focus_monitor(&mut wm.ctx(), direction);
+    IpcResponse::ok("")
+}
+
+fn prev_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
+    let direction = MonitorDirection::Prev(count);
+    focus_monitor(&mut wm.ctx(), direction);
+    IpcResponse::ok("")
+}
+
+// ============================================================================
+// Window Commands
+// ============================================================================
+
+fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> IpcResponse {
+    match cmd {
+        WindowCommand::List => list_windows(wm),
+        WindowCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
+        WindowCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
     }
 }
 
@@ -459,10 +369,7 @@ fn build_window_state(c: &crate::types::client::Client) -> WindowState {
 }
 
 /// Convert a single client to WindowInfo for JSON output.
-fn client_to_window_info(
-    c: &crate::types::client::Client,
-    valid_tag_mask: u32,
-) -> WindowInfo {
+fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) -> WindowInfo {
     WindowInfo {
         id: c.win.0 as u64,
         title: c.name.clone(),
@@ -497,12 +404,12 @@ fn list_windows(wm: &Wm) -> IpcResponse {
     }
 }
 
-fn close_window(ctx: &mut crate::contexts::WmCtx, parsed_id: Option<WindowId>) -> IpcResponse {
-    let target = parsed_id.or_else(|| ctx.g_mut().selected_win());
+fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> IpcResponse {
+    let target = parsed_id.or_else(|| wm.g.selected_win());
     let Some(win) = target else {
         return IpcResponse::err("no target window");
     };
-    crate::client::close_win(ctx, win);
+    crate::client::close_win(&mut wm.ctx(), win);
     IpcResponse::ok("")
 }
 
@@ -538,14 +445,188 @@ fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
     }
 }
 
-fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcResponse {
+// ============================================================================
+// Tag Commands
+// ============================================================================
+
+fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> IpcResponse {
+    match cmd {
+        TagCommand::View(tag_num) => view_tag(wm, tag_num),
+        TagCommand::Name(name) => name_tag_cmd(wm, name),
+        TagCommand::ResetNames => reset_tag_names(wm),
+    }
+}
+
+fn view_tag(wm: &mut Wm, tag_num: u32) -> IpcResponse {
+    let tag = if tag_num == 0 { 2 } else { tag_num };
+    if let Some(mask) = TagMask::single(tag as usize) {
+        crate::tags::view::view(&mut wm.ctx(), mask);
+    }
+    IpcResponse::ok("")
+}
+
+fn name_tag_cmd(wm: &mut Wm, name: String) -> IpcResponse {
+    name_tag(&mut wm.ctx(), &name);
+    IpcResponse::ok("")
+}
+
+fn reset_tag_names(wm: &mut Wm) -> IpcResponse {
+    reset_name_tag(&mut wm.ctx());
+    IpcResponse::ok("")
+}
+
+// ============================================================================
+// Scratchpad Commands
+// ============================================================================
+
+fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> IpcResponse {
+    match cmd {
+        ScratchpadCommand::List => {
+            let list = scratchpad_list(&wm.g);
+            IpcResponse::ok(list)
+        }
+        ScratchpadCommand::Toggle(name) => {
+            scratchpad_toggle(&mut wm.ctx(), name.as_deref());
+            IpcResponse::ok("")
+        }
+        ScratchpadCommand::Show(name) => {
+            scratchpad_show_name(&mut wm.ctx(), &name);
+            IpcResponse::ok("")
+        }
+        ScratchpadCommand::Hide(name) => {
+            scratchpad_hide_name(&mut wm.ctx(), &name);
+            IpcResponse::ok("")
+        }
+        ScratchpadCommand::Status(name) => {
+            let status = scratchpad_status(&wm.g, name.as_deref().unwrap_or(""));
+            IpcResponse::ok(status)
+        }
+        ScratchpadCommand::Create(name) => {
+            scratchpad_make(&mut wm.ctx(), name.as_deref());
+            IpcResponse::ok("")
+        }
+        ScratchpadCommand::Delete => {
+            scratchpad_unmake(&mut wm.ctx());
+            IpcResponse::ok("")
+        }
+    }
+}
+
+// ============================================================================
+// Keyboard Commands
+// ============================================================================
+
+fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> IpcResponse {
+    let mut ctx = wm.ctx();
+    match cmd {
+        KeyboardCommand::Next => {
+            keyboard_layout::cycle_keyboard_layout(&mut ctx, true);
+            IpcResponse::ok("")
+        }
+        KeyboardCommand::Prev => {
+            keyboard_layout::cycle_keyboard_layout(&mut ctx, false);
+            IpcResponse::ok("")
+        }
+        KeyboardCommand::Status => {
+            let status = keyboard_layout::keyboard_layout_status(&ctx);
+            IpcResponse::ok(status)
+        }
+        KeyboardCommand::List => {
+            let list = keyboard_layout::keyboard_layout_list(&ctx);
+            IpcResponse::ok(list)
+        }
+        KeyboardCommand::ListAll => {
+            let layouts = keyboard_layout::get_all_keyboard_layouts();
+            let list = layouts.join("\n");
+            IpcResponse::ok(list)
+        }
+        KeyboardCommand::Set(layouts) => {
+            let globals_layouts: Vec<crate::globals::KeyboardLayout> = layouts
+                .into_iter()
+                .map(|l| crate::globals::KeyboardLayout {
+                    name: l.name,
+                    variant: l.variant,
+                })
+                .collect();
+            keyboard_layout::set_keyboard_layouts(&mut ctx, globals_layouts);
+            IpcResponse::ok("")
+        }
+        KeyboardCommand::Add(layout) => {
+            let globals_layout = crate::globals::KeyboardLayout {
+                name: layout.name,
+                variant: layout.variant,
+            };
+            match keyboard_layout::add_keyboard_layout(&mut ctx, globals_layout) {
+                Ok(()) => IpcResponse::ok(""),
+                Err(e) => IpcResponse::err(e),
+            }
+        }
+        KeyboardCommand::Remove(layout) => {
+            match keyboard_layout::remove_keyboard_layout(&mut ctx, &layout) {
+                Ok(()) => IpcResponse::ok(""),
+                Err(e) => IpcResponse::err(e),
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Toggle Commands
+// ============================================================================
+
+fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> IpcResponse {
+    let core = wm.ctx().core_mut();
+    match cmd {
+        ToggleCommand::Animated(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_animated(core, action);
+        }
+        ToggleCommand::FocusFollowsMouse(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_focus_follows_mouse(core, action);
+        }
+        ToggleCommand::FocusFollowsFloatMouse(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_focus_follows_float_mouse(core, action);
+        }
+        ToggleCommand::AltTab(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            alt_tab_free(&mut wm.ctx(), action);
+        }
+        ToggleCommand::AltTag(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_alt_tag(&mut wm.ctx(), action);
+        }
+        ToggleCommand::HideTags(arg) => {
+            let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
+            toggle_show_tags(&mut wm.ctx(), action);
+        }
+    }
+    IpcResponse::ok("")
+}
+
+// ============================================================================
+// Other Commands
+// ============================================================================
+
+fn run_action(wm: &mut Wm, name: String) -> IpcResponse {
+    use crate::config::keybind_config::compile_named_action;
+    if let Some(action) = compile_named_action(&name) {
+        action(&mut wm.ctx());
+        IpcResponse::ok("")
+    } else {
+        IpcResponse::err(format!("unknown action '{name}'"))
+    }
+}
+
+fn spawn_command(wm: &mut Wm, command: String) -> IpcResponse {
     if command.trim().is_empty() {
         return IpcResponse::err("spawn requires a command");
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if ctx.is_wayland() {
-        if let crate::backend::BackendRef::Wayland(wayland) = ctx.backend() {
+    if wm.ctx().is_wayland() {
+        if let crate::backend::BackendRef::Wayland(wayland) = wm.ctx().backend() {
             if let Some(display) = wayland.xdisplay() {
                 cmd.env("DISPLAY", format!(":{display}"));
             }
@@ -556,6 +637,70 @@ fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcRespon
         Err(err) => IpcResponse::err(format!("spawn failed: {}", err)),
     }
 }
+
+fn warp_focus(wm: &mut Wm) -> IpcResponse {
+    crate::mouse::warp::warp_to_focus(&mut wm.ctx());
+    IpcResponse::ok("")
+}
+
+fn tag_mon(wm: &mut Wm, dir: i32) -> IpcResponse {
+    let direction = MonitorDirection::from(dir);
+    send_to_monitor(&mut wm.ctx(), direction);
+    IpcResponse::ok("")
+}
+
+fn follow_mon(wm: &mut Wm, dir: i32) -> IpcResponse {
+    let direction = MonitorDirection::from(dir);
+    move_to_monitor_and_follow(&mut wm.ctx(), direction);
+    IpcResponse::ok("")
+}
+
+fn set_layout(wm: &mut Wm, val: u32) -> IpcResponse {
+    command_layout(&mut wm.ctx(), val);
+    IpcResponse::ok("")
+}
+
+fn set_prefix(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
+    let val = arg.unwrap_or(1);
+    command_prefix(&mut wm.ctx(), val);
+    IpcResponse::ok("")
+}
+
+fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
+    let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
+    if let Some(win) = wm.ctx().selected_client() {
+        set_border_width(wm.ctx().core_mut(), win, val as i32);
+    }
+    IpcResponse::ok("")
+}
+
+fn set_special_next_cmd(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
+    let val = arg.unwrap_or(0);
+    set_special_next(wm.ctx().core_mut(), val);
+    IpcResponse::ok("")
+}
+
+fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
+    wm.g.status_text = text;
+
+    if let crate::backend::Backend::X11(_) = wm.backend {
+        let mut ctx = wm.ctx();
+        if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
+            crate::bar::draw_bars_x11(
+                &mut x11_ctx.core,
+                x11_ctx.x11_runtime,
+                x11_ctx.systray.as_deref(),
+            );
+        }
+    }
+    wm.bar.mark_dirty();
+
+    IpcResponse::ok("")
+}
+
+// ============================================================================
+// Status Command
+// ============================================================================
 
 /// Status information for the running instantWM instance.
 #[derive(Debug, serde::Serialize)]
@@ -569,7 +714,6 @@ struct WmStatusInfo {
     tags: usize,
 }
 
-/// Get status information about the running instantWM instance.
 fn get_status(wm: &Wm) -> IpcResponse {
     let backend = match &wm.backend {
         crate::backend::Backend::X11(_) => "x11",

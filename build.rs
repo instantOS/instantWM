@@ -16,7 +16,11 @@ fn main() {
     let source_hash = compute_ipc_source_hash();
 
     // Protocol version: crate version + first 8 chars of source hash
-    let protocol_version = format!("{}-{}", crate_version, &source_hash[..8.min(source_hash.len())]);
+    let protocol_version = format!(
+        "{}-{}",
+        crate_version,
+        &source_hash[..8.min(source_hash.len())]
+    );
 
     println!("cargo:rustc-env=IPC_PROTOCOL_VERSION={}", protocol_version);
 }
@@ -27,11 +31,7 @@ fn compute_ipc_source_hash() -> String {
     let mut hasher = DefaultHasher::new();
 
     // Hash all files that affect IPC protocol (must match on both client and server)
-    let ipc_files = [
-        "src/ipc_types.rs",
-        "src/ipc.rs",
-        "src/bin/instantwmctl.rs",
-    ];
+    let ipc_files = ["src/ipc_types.rs", "src/ipc.rs", "src/bin/instantwmctl.rs"];
 
     for file in &ipc_files {
         println!("cargo:rerun-if-changed={}", file);

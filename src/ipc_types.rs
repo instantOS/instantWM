@@ -75,65 +75,134 @@ impl IpcRequest {
     }
 }
 
+/// Monitor-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum MonitorCommand {
+    /// List all monitors with their information.
+    List,
+    /// Switch focus to a specific monitor by index.
+    Switch { index: u32 },
+    /// Move focus to the next monitor(s).
+    Next { count: u32 },
+    /// Move focus to the previous monitor(s).
+    Prev { count: u32 },
+}
+
+/// Scratchpad-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum ScratchpadCommand {
+    /// List all scratchpads (show names and visibility status).
+    List,
+    /// Toggle scratchpad visibility.
+    Toggle(Option<String>),
+    /// Show a scratchpad (make visible on current tag).
+    Show(String),
+    /// Hide a scratchpad (remove from current tag).
+    Hide(String),
+    /// Get scratchpad visibility status.
+    Status(Option<String>),
+    /// Create a scratchpad from the selected window.
+    Create(Option<String>),
+    /// Remove scratchpad status from the selected window.
+    Delete,
+}
+
+/// Keyboard layout-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum KeyboardCommand {
+    /// Switch to the next keyboard layout.
+    Next,
+    /// Switch to the previous keyboard layout.
+    Prev,
+    /// Get current keyboard layout status (e.g., "2/3: us (nodeadkeys)").
+    Status,
+    /// List configured keyboard layouts (with * marker for current).
+    List,
+    /// List all available XKB layouts from the system.
+    ListAll,
+    /// Set keyboard layouts (replaces all, switches to first).
+    Set(Vec<KeyboardLayout>),
+    /// Add a keyboard layout to the active list.
+    Add(KeyboardLayout),
+    /// Remove a keyboard layout from the active list (by name or #index).
+    Remove(String),
+}
+
+/// Tag-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum TagCommand {
+    /// Switch to a tag (workspace).
+    View(u32),
+    /// Rename the current tag.
+    Name(String),
+    /// Reset all tag names to defaults ("1" through "9").
+    ResetNames,
+}
+
+/// Window-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum WindowCommand {
+    /// Get window geometry.
+    Geom(Option<u32>),
+    /// Close a window.
+    Close(Option<u32>),
+    /// List all managed windows.
+    List,
+}
+
+/// Toggle-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum ToggleCommand {
+    /// Toggle or set animated windows mode.
+    Animated(Option<String>),
+    /// Toggle or set focus follows mouse.
+    FocusFollowsMouse(Option<String>),
+    /// Toggle or set focus follows mouse for floating windows only.
+    FocusFollowsFloatMouse(Option<String>),
+    /// Toggle or set alt-tab free mode (enables prefix-based window switching).
+    AltTab(Option<String>),
+    /// Toggle or set alt-tag mode (shows alternative tag names in bar).
+    AltTag(Option<String>),
+    /// Toggle or set hide tags visibility (hides tag bar).
+    HideTags(Option<String>),
+}
+
 #[derive(Debug, Clone, Decode, Encode)]
 pub enum IpcCommand {
     /// Get status information about the running instantWM instance.
     Status,
-    List,
-    Geom(Option<u32>),
+    /// Run a keybind action by name.
     RunAction(String),
+    /// Spawn a command.
     Spawn(String),
-    Close(Option<u32>),
+    /// Warp cursor to the currently focused window.
     WarpFocus,
-    Tag(u32),
-    Animated(Option<String>),
-    FocusFollowsMouse(Option<String>),
-    FocusFollowsFloatMouse(Option<String>),
-    AltTab(Option<String>),
-    AltTag(Option<String>),
-    HideTags(Option<String>),
-    Layout(u32),
-    Prefix(Option<u32>),
-    Border(Option<u32>),
-    SpecialNext(Option<u32>),
+    /// Move the selected window to another monitor.
     TagMon(i32),
+    /// Move the selected window to another monitor and follow it.
     FollowMon(i32),
-    FocusMon(i32),
-    FocusNMon(i32),
-    NameTag(String),
-    ResetNameTag,
-    /// List all scratchpads (show names and visibility status).
-    ScratchpadList,
-    /// Toggle scratchpad visibility.
-    ScratchpadToggle(Option<String>),
-    /// Show a scratchpad (make visible on current tag).
-    ScratchpadShow(String),
-    /// Hide a scratchpad (remove from current tag).
-    ScratchpadHide(String),
-    /// Get scratchpad visibility status.
-    ScratchpadStatus(Option<String>),
-    /// Create a scratchpad from the selected window.
-    ScratchpadCreate(Option<String>),
-    /// Remove scratchpad status from the selected window.
-    ScratchpadDelete,
-    /// Switch to the next keyboard layout.
-    KeyboardNext,
-    /// Switch to the previous keyboard layout.
-    KeyboardPrev,
-    /// Get current keyboard layout status (e.g., "2/3: us (nodeadkeys)").
-    KeyboardStatus,
-    /// List configured keyboard layouts (with * marker for current).
-    KeyboardList,
-    /// List all available XKB layouts from the system.
-    KeyboardListAll,
-    /// Set keyboard layouts (replaces all, switches to first).
-    KeyboardSet(Vec<KeyboardLayout>),
-    /// Add a keyboard layout to the active list.
-    KeyboardAdd(KeyboardLayout),
-    /// Remove a keyboard layout from the active list (by name or #index).
-    KeyboardRemove(String),
+    /// Set the layout type.
+    Layout(u32),
+    /// Enable or disable prefix mode for special keybindings.
+    Prefix(Option<u32>),
+    /// Set border width for the selected window.
+    Border(Option<u32>),
+    /// Set special next mode for cycling through windows.
+    SpecialNext(Option<u32>),
     /// Update status text via IPC.
     UpdateStatus(String),
+    /// Monitor-related commands.
+    Monitor(MonitorCommand),
+    /// Scratchpad-related commands.
+    Scratchpad(ScratchpadCommand),
+    /// Keyboard layout-related commands.
+    Keyboard(KeyboardCommand),
+    /// Tag-related commands.
+    Tag(TagCommand),
+    /// Window-related commands.
+    Window(WindowCommand),
+    /// Toggle-related commands.
+    Toggle(ToggleCommand),
 }
 
 #[derive(Debug, Clone, Decode, Encode)]
