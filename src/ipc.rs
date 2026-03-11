@@ -134,6 +134,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
     let mut ctx = wm.ctx();
 
     match cmd {
+        IpcCommand::Status => get_status(wm),
         IpcCommand::List => list_windows(wm),
         IpcCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
         IpcCommand::Spawn(command) => spawn_command(&mut ctx, command),
@@ -553,5 +554,40 @@ fn spawn_command(ctx: &mut crate::contexts::WmCtx, command: String) -> IpcRespon
     match cmd.spawn() {
         Ok(child) => IpcResponse::ok(format!("pid={}", child.id())),
         Err(err) => IpcResponse::err(format!("spawn failed: {}", err)),
+    }
+}
+
+/// Status information for the running instantWM instance.
+#[derive(Debug, serde::Serialize)]
+struct WmStatusInfo {
+    version: String,
+    protocol_version: String,
+    backend: String,
+    running: bool,
+    monitors: usize,
+    windows: usize,
+    tags: usize,
+}
+
+/// Get status information about the running instantWM instance.
+fn get_status(wm: &Wm) -> IpcResponse {
+    let backend = match &wm.backend {
+        crate::backend::Backend::X11(_) => "x11",
+        crate::backend::Backend::Wayland(_) => "wayland",
+    };
+
+    let info = WmStatusInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        protocol_version: crate::ipc_types::IPC_PROTOCOL_VERSION.to_string(),
+        backend: backend.to_string(),
+        running: wm.running,
+        monitors: wm.g.monitors.len(),
+        windows: wm.g.clients.len(),
+        tags: wm.g.tags.num_tags,
+    };
+
+    match serde_json::to_string_pretty(&info) {
+        Ok(json) => IpcResponse::ok(json),
+        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
     }
 }

@@ -134,6 +134,8 @@ enum CommandKind {
         #[arg(long = "list", short = 'l')]
         list: bool,
     },
+    /// Get status information about the running instantWM instance.
+    Status,
     /// List all managed windows.
     List,
     /// Get window geometry.
@@ -314,6 +316,7 @@ fn main() {
             let name = name.expect("action name required (use --list to see available actions)");
             IpcCommand::RunAction(name)
         }
+        CommandKind::Status => IpcCommand::Status,
         CommandKind::List => IpcCommand::List,
         CommandKind::Geom { window_id } => IpcCommand::Geom(window_id),
         CommandKind::Spawn { command } => {

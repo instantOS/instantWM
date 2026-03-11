@@ -77,6 +77,8 @@ impl IpcRequest {
 
 #[derive(Debug, Clone, Decode, Encode)]
 pub enum IpcCommand {
+    /// Get status information about the running instantWM instance.
+    Status,
     List,
     Geom(Option<u32>),
     RunAction(String),
