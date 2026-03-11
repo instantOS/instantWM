@@ -254,8 +254,8 @@ fn init_cursors(wm: &mut Wm, drw: &mut Drw) {
     ];
 
     for (i, cursor) in cursors.into_iter().enumerate() {
-        if i < wm.g.cfg.cursors.len() {
-            wm.g.cfg.cursors[i] = Some(cursor);
+        if i < wm.x11_runtime.cursors.len() {
+            wm.x11_runtime.cursors[i] = Some(cursor);
         }
     }
 }

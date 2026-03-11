@@ -24,13 +24,13 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
     if let Some(ref systray) = systray {
         for &icon_win in &systray.icons {
             if let Some(c) = core.g.clients.get(&icon_win) {
-                w += c.geo.w as u32 + core.g.cfg.systrayspacing as u32;
+                w += c.geo.w as u32 + core.g.cfg.systray_spacing as u32;
             }
         }
     }
 
     if w > 0 {
-        w + core.g.cfg.systrayspacing as u32
+        w + core.g.cfg.systray_spacing as u32
     } else {
         1
     }
@@ -312,7 +312,7 @@ pub fn update_systray(
     };
 
     let bar_height = core.g.cfg.bar_height;
-    let systrayspacing = core.g.cfg.systrayspacing;
+    let systrayspacing = core.g.cfg.systray_spacing;
     let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, i32, i32)> = icons
@@ -415,7 +415,7 @@ pub fn win_to_systray_icon(
 
 /// Get monitor for systray using dependency injection.
 pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
-    if core.g.cfg.systraypinning == 0 {
+    if core.g.cfg.systray_pinning == 0 {
         return match m {
             Some(id) => {
                 if id == core.g.selected_monitor_id() {
@@ -429,9 +429,9 @@ pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
     }
 
     let n = core.g.monitors.count();
-    let target = core.g.cfg.systraypinning.min(n);
+    let target = core.g.cfg.systray_pinning.min(n);
 
-    if core.g.cfg.systraypinning > n {
+    if core.g.cfg.systray_pinning > n {
         0
     } else {
         target.saturating_sub(1)

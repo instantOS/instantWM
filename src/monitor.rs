@@ -377,7 +377,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         ctx.g_mut().cfg.mfact,
         ctx.g_mut().cfg.nmaster,
         ctx.g_mut().cfg.show_bar,
-        ctx.g_mut().cfg.topbar,
+        ctx.g_mut().cfg.top_bar,
     );
     mon.init_tags(&template);
     ctx.g_mut().monitors.push(mon);
@@ -461,7 +461,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
         ctx.g_mut().cfg.mfact,
         ctx.g_mut().cfg.nmaster,
         ctx.g_mut().cfg.show_bar,
-        ctx.g_mut().cfg.topbar,
+        ctx.g_mut().cfg.top_bar,
     );
     while ctx.g_mut().monitors.count() < new_count {
         let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);

@@ -11,7 +11,7 @@ fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor: Cursor) {
     }
     let conn = ctx.x11.conn;
     let root = ctx.x11_runtime.root;
-    if let Some(ref loaded_cursor) = ctx.core.g.cfg.cursors[cursor_index] {
+    if let Some(ref loaded_cursor) = ctx.x11_runtime.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
             root,

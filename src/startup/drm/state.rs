@@ -76,7 +76,7 @@ pub fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntr
             wm.g.cfg.mfact,
             wm.g.cfg.nmaster,
             wm.g.cfg.show_bar,
-            wm.g.cfg.topbar,
+            wm.g.cfg.top_bar,
         );
         mon.num = i as i32;
         mon.monitor_rect = Rect { x, y, w, h };
@@ -105,7 +105,7 @@ pub fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntr
             wm.g.cfg.mfact,
             wm.g.cfg.nmaster,
             wm.g.cfg.show_bar,
-            wm.g.cfg.topbar,
+            wm.g.cfg.top_bar,
         );
         mon.monitor_rect = Rect {
             x: 0,

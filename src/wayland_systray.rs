@@ -189,7 +189,7 @@ pub fn get_wayland_systray_width_with_state(
         return 0;
     }
     let icon_h = core.g.cfg.bar_height.max(1);
-    let spacing = core.g.cfg.systrayspacing.max(0);
+    let spacing = core.g.cfg.systray_spacing.max(0);
     let mut width = spacing;
     for item in items {
         let iw = scale_icon_width(item.icon_w, item.icon_h, icon_h);
@@ -447,7 +447,7 @@ fn systray_layout(
     mon: &Monitor,
 ) -> SystrayLayout {
     let icon_h = core.g.cfg.bar_height.max(1);
-    let spacing = core.g.cfg.systrayspacing.max(0);
+    let spacing = core.g.cfg.systray_spacing.max(0);
     let mut tray_total_w = 0;
     if !wayland_systray.items.is_empty() {
         tray_total_w = spacing;

@@ -628,7 +628,7 @@ pub fn cleanup(wm: &mut Wm) {
     let _ = conn.delete_property(root, wm.x11_runtime.netatom.wm_check);
 
     if let Some(ref drw) = wm.x11_runtime.drw {
-        for cursor in &wm.g.cfg.cursors {
+        for cursor in &wm.x11_runtime.cursors {
             if let Some(ref cur) = cursor {
                 drw.cur_free(cur);
             }

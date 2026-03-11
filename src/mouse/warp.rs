@@ -94,7 +94,7 @@ pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X
     core.g.cursor_icon = AltCursor::None;
 
     let cursor_idx = Cursor::Normal.to_x11_index();
-    if let Some(ref cursor) = core.g.cfg.cursors[cursor_idx] {
+    if let Some(ref cursor) = x11_runtime.cursors[cursor_idx] {
         let _ = change_window_attributes(
             x11.conn,
             x11_runtime.root,

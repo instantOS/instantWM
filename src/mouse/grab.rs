@@ -50,9 +50,7 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
 
     let root = ctx.x11_runtime.root;
     let cursor = ctx
-        .core
-        .g
-        .cfg
+        .x11_runtime
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
@@ -84,9 +82,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
 
     let root = ctx.x11_runtime.root;
     let cursor = ctx
-        .core
-        .g
-        .cfg
+        .x11_runtime
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())

@@ -31,6 +31,8 @@ pub struct X11RuntimeConfig {
     pub borderscheme: crate::types::color::BorderScheme,
     /// X11 color scheme for status bar.
     pub statusscheme: crate::types::color::StatusScheme,
+    /// X11 cursors for different cursor states.
+    pub cursors: [Option<Cursor>; 10],
 }
 
 impl Default for X11RuntimeConfig {
@@ -48,6 +50,7 @@ impl Default for X11RuntimeConfig {
             drw: None,
             borderscheme: BorderScheme::default(),
             statusscheme: StatusScheme::default(),
+            cursors: [const { None }; 10],
         }
     }
 }
@@ -69,11 +72,11 @@ pub struct RuntimeConfig {
     pub mfact: f32,
     pub nmaster: i32,
     pub show_bar: bool,
-    pub topbar: bool,
+    pub top_bar: bool,
     pub bar_height: i32,
     pub show_systray: bool,
-    pub systraypinning: usize,
-    pub systrayspacing: i32,
+    pub systray_pinning: usize,
+    pub systray_spacing: i32,
 
     // Raw color values for config (parsed at load time)
     pub windowcolors: WindowColorConfigs,
@@ -89,14 +92,10 @@ pub struct RuntimeConfig {
 
     pub fonts: Vec<String>,
     pub config_font: String,
-    pub instantmenumon: String,
 
     // External commands
     pub external_commands: ExternalCommands,
 
-    // Cursors
-    //TODO: is this X11 specific? Does it belong here?
-    pub cursors: [Option<Cursor>; 10],
     pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::Tag>,
@@ -121,11 +120,11 @@ impl Default for RuntimeConfig {
             mfact: 0.55,
             nmaster: 1,
             show_bar: true,
-            topbar: true,
+            top_bar: true,
             bar_height: 0,
             show_systray: true,
-            systraypinning: 0,
-            systrayspacing: 2,
+            systray_pinning: 0,
+            systray_spacing: 2,
             windowcolors: WindowColorConfigs::default(),
             closebuttoncolors: CloseButtonColorConfigs::default(),
             bordercolors: BorderColorConfig::default(),
@@ -136,9 +135,7 @@ impl Default for RuntimeConfig {
             rules: Vec::new(),
             fonts: Vec::new(),
             config_font: String::new(),
-            instantmenumon: String::new(),
             external_commands: crate::config::commands::default_commands(),
-            cursors: [const { None }; 10],
             horizontal_padding: 0,
             tag_template: Vec::new(),
             input: std::collections::HashMap::new(),
@@ -562,11 +559,11 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.input = cfg.input.clone();
     g.cfg.snap = cfg.snap;
     g.cfg.startmenusize = cfg.startmenusize;
-    g.cfg.systraypinning = cfg.systraypinning;
-    g.cfg.systrayspacing = cfg.systrayspacing;
+    g.cfg.systray_pinning = cfg.systraypinning;
+    g.cfg.systray_spacing = cfg.systrayspacing;
     g.cfg.show_systray = cfg.showsystray;
     g.cfg.show_bar = cfg.showbar;
-    g.cfg.topbar = cfg.topbar;
+    g.cfg.top_bar = cfg.topbar;
     g.cfg.bar_height = cfg.bar_height;
     g.cfg.resizehints = cfg.resizehints;
     g.cfg.decorhints = cfg.decorhints;
