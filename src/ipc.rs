@@ -397,119 +397,94 @@ struct WindowList {
     windows: Vec<WindowInfo>,
 }
 
+/// Convert a tags bitmask to an array of 1-indexed tag numbers.
+fn tags_from_mask(tags_mask: u32, valid_mask: u32) -> Vec<u32> {
+    (1..=32)
+        .filter(|&t| {
+            let tag_bit = 1u32 << (t - 1);
+            (tags_mask & tag_bit) != 0 && (valid_mask & tag_bit) != 0
+        })
+        .collect()
+}
+
+/// Build scratchpad info from a client if it's a scratchpad window.
+fn build_scratchpad_info(c: &crate::types::client::Client) -> Option<ScratchpadInfo> {
+    if !c.is_scratchpad() {
+        return None;
+    }
+    Some(ScratchpadInfo {
+        name: c.scratchpad_name.clone(),
+        restore_tags: tags_from_mask(c.scratchpad_restore_tags, u32::MAX),
+    })
+}
+
+/// Build size hints info from a client, only including non-default values.
+fn build_size_hints(c: &crate::types::client::Client) -> Option<SizeHintsInfo> {
+    if c.size_hints_valid <= 0 {
+        return None;
+    }
+    let h = &c.size_hints;
+    Some(SizeHintsInfo {
+        min_width: (h.minw > 0).then_some(h.minw),
+        min_height: (h.minh > 0).then_some(h.minh),
+        max_width: (h.maxw > 0).then_some(h.maxw),
+        max_height: (h.maxh > 0).then_some(h.maxh),
+        base_width: (h.basew > 0).then_some(h.basew),
+        base_height: (h.baseh > 0).then_some(h.baseh),
+        width_increment: (h.incw > 0).then_some(h.incw),
+        height_increment: (h.inch > 0).then_some(h.inch),
+    })
+}
+
+/// Build window state info from a client.
+fn build_window_state(c: &crate::types::client::Client) -> WindowState {
+    WindowState {
+        floating: c.is_floating,
+        fullscreen: c.is_fullscreen,
+        fake_fullscreen: c.isfakefullscreen,
+        sticky: c.issticky,
+        hidden: c.is_hidden,
+        urgent: c.isurgent,
+        locked: c.is_locked,
+        fixed_size: c.is_fixed_size,
+        never_focus: c.never_focus,
+    }
+}
+
+/// Convert a single client to WindowInfo for JSON output.
+fn client_to_window_info(
+    c: &crate::types::client::Client,
+    valid_tag_mask: u32,
+) -> WindowInfo {
+    WindowInfo {
+        id: c.win.0 as u64,
+        title: c.name.clone(),
+        monitor: c.monitor_id,
+        tags: tags_from_mask(c.tags, valid_tag_mask),
+        geometry: GeometryInfo {
+            x: c.geo.x,
+            y: c.geo.y,
+            width: c.geo.w,
+            height: c.geo.h,
+        },
+        border_width: c.border_width,
+        state: build_window_state(c),
+        scratchpad: build_scratchpad_info(c),
+        size_hints: build_size_hints(c),
+    }
+}
+
 fn list_windows(wm: &Wm) -> IpcResponse {
     let mut wins: Vec<_> = wm.g.clients.values().collect();
     wins.sort_by_key(|c| c.win.0);
 
     let tag_mask = wm.g.tags.mask();
-
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| {
-            // Convert tags bitmask to array of tag numbers (1-indexed)
-            let tags: Vec<u32> = (1..=32)
-                .filter(|&t| {
-                    let tag_bit = 1u32 << (t - 1);
-                    (c.tags & tag_bit) != 0 && (tag_bit & tag_mask) != 0
-                })
-                .collect();
-
-            // Build scratchpad info if applicable
-            let scratchpad = if c.is_scratchpad() {
-                let restore_tags: Vec<u32> = (1..=32)
-                    .filter(|&t| {
-                        let tag_bit = 1u32 << (t - 1);
-                        (c.scratchpad_restore_tags & tag_bit) != 0
-                    })
-                    .collect();
-                Some(ScratchpadInfo {
-                    name: c.scratchpad_name.clone(),
-                    restore_tags,
-                })
-            } else {
-                None
-            };
-
-            // Build size hints info (only include non-default values)
-            let size_hints = if c.size_hints_valid > 0 {
-                Some(SizeHintsInfo {
-                    min_width: if c.size_hints.minw > 0 {
-                        Some(c.size_hints.minw)
-                    } else {
-                        None
-                    },
-                    min_height: if c.size_hints.minh > 0 {
-                        Some(c.size_hints.minh)
-                    } else {
-                        None
-                    },
-                    max_width: if c.size_hints.maxw > 0 {
-                        Some(c.size_hints.maxw)
-                    } else {
-                        None
-                    },
-                    max_height: if c.size_hints.maxh > 0 {
-                        Some(c.size_hints.maxh)
-                    } else {
-                        None
-                    },
-                    base_width: if c.size_hints.basew > 0 {
-                        Some(c.size_hints.basew)
-                    } else {
-                        None
-                    },
-                    base_height: if c.size_hints.baseh > 0 {
-                        Some(c.size_hints.baseh)
-                    } else {
-                        None
-                    },
-                    width_increment: if c.size_hints.incw > 0 {
-                        Some(c.size_hints.incw)
-                    } else {
-                        None
-                    },
-                    height_increment: if c.size_hints.inch > 0 {
-                        Some(c.size_hints.inch)
-                    } else {
-                        None
-                    },
-                })
-            } else {
-                None
-            };
-
-            WindowInfo {
-                id: c.win.0 as u64,
-                title: c.name.clone(),
-                monitor: c.monitor_id,
-                tags,
-                geometry: GeometryInfo {
-                    x: c.geo.x,
-                    y: c.geo.y,
-                    width: c.geo.w,
-                    height: c.geo.h,
-                },
-                border_width: c.border_width,
-                state: WindowState {
-                    floating: c.is_floating,
-                    fullscreen: c.is_fullscreen,
-                    fake_fullscreen: c.isfakefullscreen,
-                    sticky: c.issticky,
-                    hidden: c.is_hidden,
-                    urgent: c.isurgent,
-                    locked: c.is_locked,
-                    fixed_size: c.is_fixed_size,
-                    never_focus: c.never_focus,
-                },
-                scratchpad,
-                size_hints,
-            }
-        })
+        .map(|c| client_to_window_info(c, tag_mask))
         .collect();
 
-    let window_list = WindowList { windows };
-
-    match serde_json::to_string_pretty(&window_list) {
+    match serde_json::to_string_pretty(&WindowList { windows }) {
         Ok(json) => IpcResponse::ok(json),
         Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
     }
