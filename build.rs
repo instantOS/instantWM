@@ -1,8 +1,8 @@
-use std::process::Command;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=.git/HEAD");
 
     println!("cargo:rustc-link-lib=Xinerama");
     println!("cargo:rustc-link-lib=X11");
@@ -11,29 +11,42 @@ fn main() {
     println!("cargo:rustc-link-lib=fontconfig");
     println!("cargo:rustc-link-lib=freetype");
 
-    // Generate protocol version from crate version and git commit
+    // Generate protocol version from crate version and source hash
     let crate_version = env!("CARGO_PKG_VERSION");
-    let git_hash = get_git_hash();
+    let source_hash = compute_ipc_source_hash();
 
-    // Protocol version: crate version + first 8 chars of git hash
-    let protocol_version = format!("{}-{}", crate_version, &git_hash[..8.min(git_hash.len())]);
+    // Protocol version: crate version + first 8 chars of source hash
+    let protocol_version = format!("{}-{}", crate_version, &source_hash[..8.min(source_hash.len())]);
 
     println!("cargo:rustc-env=IPC_PROTOCOL_VERSION={}", protocol_version);
 }
 
-fn get_git_hash() -> String {
-    Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout).ok()
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| "unknown".to_string())
-        .trim()
-        .to_string()
+/// Compute a hash of all files that affect the IPC protocol.
+/// This ensures any change to IPC-related code results in a different version.
+fn compute_ipc_source_hash() -> String {
+    let mut hasher = DefaultHasher::new();
+
+    // Hash all files that affect IPC protocol (must match on both client and server)
+    let ipc_files = [
+        "src/ipc_types.rs",
+        "src/ipc.rs",
+        "src/bin/instantwmctl.rs",
+    ];
+
+    for file in &ipc_files {
+        println!("cargo:rerun-if-changed={}", file);
+        if let Ok(contents) = std::fs::read_to_string(file) {
+            contents.hash(&mut hasher);
+        }
+    }
+
+    // Include build timestamp to ensure different builds have different versions
+    // even if source hasn't changed (catches build environment differences)
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    timestamp.hash(&mut hasher);
+
+    format!("{:016x}", hasher.finish())
 }
