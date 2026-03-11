@@ -27,35 +27,6 @@ const MS: u32 = MODKEY | SHIFT;
 const MC: u32 = MODKEY | CONTROL;
 const MA: u32 = MODKEY | MOD1;
 
-macro_rules! btn_x11 {
-    ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, $arg:ident| $action:expr) => {
-        Button {
-            target: $target,
-            mask: $mods,
-            button: $button,
-            action: Rc::new(|$ctx, $arg| {
-                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
-                    let $ctx = ctx_x11;
-                    $action
-                }
-            }),
-        }
-    };
-    ($target:expr, $mods:expr, button:$button:expr => |$ctx:ident, _| $action:expr) => {
-        Button {
-            target: $target,
-            mask: $mods,
-            button: $button,
-            action: Rc::new(|$ctx, _| {
-                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
-                    let $ctx = ctx_x11;
-                    $action
-                }
-            }),
-        }
-    };
-}
-
 macro_rules! btn {
     ($target:expr, $mask:expr, button:$btn:expr => $action:expr) => {
         Button {

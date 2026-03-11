@@ -95,6 +95,7 @@ pub struct RuntimeConfig {
     pub external_commands: ExternalCommands,
 
     // Cursors
+    //TODO: is this X11 specific? Does it belong here?
     pub cursors: [Option<Cursor>; 10],
     pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.

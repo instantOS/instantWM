@@ -33,9 +33,12 @@ use x11rb::CURRENT_TIME;
 // kill_client
 // ---------------------------------------------------------------------------
 
-/// Kill the given window (X11-specific implementation).
-fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
-    let Some(client) = ctx_x11.core.g.clients.get(&win).clone() else {
+/// Backend-agnostic client kill with animation.
+///
+/// Plays a closing animation (unless already animating or fullscreen),
+/// then calls the backend-specific close operation.
+pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
+    let Some(client) = ctx.client(win).cloned() else {
         return;
     };
 
@@ -44,22 +47,20 @@ fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     let is_fullscreen = client.is_fullscreen;
-    let mon_mh = ctx_x11
-        .core
-        .g
+    let mon_mh = ctx
+        .g()
         .monitor(client.monitor_id)
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 
-    let animated = ctx_x11.core.g.animated;
-    let anim_client = ctx_x11.core.focus.anim_client;
+    let animated = ctx.g().animated;
+    let anim_client = ctx.core().focus.anim_client;
 
+    // Play closing animation for both X11 and Wayland
     if animated && win != anim_client && !is_fullscreen {
-        ctx_x11.core.focus.anim_client = win;
-        // Use backend-agnostic animation via WmCtx
-        let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+        ctx.core_mut().focus.anim_client = win;
         animate_client(
-            &mut wm_ctx,
+            ctx,
             win,
             &Rect {
                 x: 0,
@@ -72,16 +73,19 @@ fn kill_client_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
         );
     }
 
-    let wmatom_delete = ctx_x11.x11_runtime.wmatom.delete;
-    force_close_x11(ctx_x11, win, wmatom_delete);
+    // Backend-specific close operation
+    force_close(ctx, win);
 }
 
-/// Kill the given window.
-pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
+/// Backend-specific force close operation.
+fn force_close(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
-        WmCtx::X11(ref mut c) => kill_client_x11(c, win),
-        WmCtx::Wayland(c) => {
-            let _ = c.wayland.backend.close_window(win);
+        WmCtx::X11(ctx_x11) => {
+            let wmatom_delete = ctx_x11.x11_runtime.wmatom.delete;
+            force_close_x11(ctx_x11, win, wmatom_delete);
+        }
+        WmCtx::Wayland(wl) => {
+            let _ = wl.wayland.backend.close_window(win);
         }
     }
 }
@@ -111,33 +115,18 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 // close_win
 // ---------------------------------------------------------------------------
 
-/// Close an arbitrary window by its Window ID (X11-specific).
-fn close_win_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
-    let is_locked = ctx_x11
-        .core
-        .g
-        .clients
-        .get(&win)
-        .map(|c| c.is_locked)
-        .unwrap_or(true);
+/// Close an arbitrary window by its Window ID.
+///
+/// Like `kill_client` but without the kill fallback - only attempts graceful close.
+pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
+    let is_locked = ctx.client(win).map(|c| c.is_locked).unwrap_or(true);
 
     if is_locked {
         return;
     }
 
-    // Animation not yet supported in X11-specific path
-    let wmatom_delete = ctx_x11.x11_runtime.wmatom.delete;
-    force_close_x11(ctx_x11, win, wmatom_delete);
-}
-
-/// Close an arbitrary window by its Window ID.
-pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
-    match ctx {
-        WmCtx::X11(ref mut c) => close_win_x11(c, win),
-        WmCtx::Wayland(c) => {
-            let _ = c.wayland.backend.close_window(win);
-        }
-    }
+    // Use the same close path as kill_client (graceful close for both backends)
+    force_close(ctx, win);
 }
 
 // ---------------------------------------------------------------------------

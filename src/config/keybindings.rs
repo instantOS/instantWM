@@ -45,33 +45,6 @@ macro_rules! key {
     };
 }
 
-macro_rules! key_x11 {
-    ($mods:expr, $sym:expr => move |$ctx:ident| $action:expr) => {
-        Key {
-            mod_mask: $mods,
-            keysym: $sym,
-            action: Rc::new(move |$ctx| {
-                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
-                    let $ctx = ctx_x11;
-                    $action
-                }
-            }),
-        }
-    };
-    ($mods:expr, $sym:expr => |$ctx:ident| $action:expr) => {
-        Key {
-            mod_mask: $mods,
-            keysym: $sym,
-            action: Rc::new(|$ctx| {
-                if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = $ctx {
-                    let $ctx = ctx_x11;
-                    $action
-                }
-            }),
-        }
-    };
-}
-
 use crate::types::MonitorDirection;
 
 fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {

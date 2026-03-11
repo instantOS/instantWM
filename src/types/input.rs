@@ -29,6 +29,24 @@ pub enum Cursor {
     BR,
 }
 
+impl Cursor {
+    /// Convert cursor type to X11 cursor index (for cfg.cursors array).
+    pub fn to_x11_index(self) -> usize {
+        match self {
+            Cursor::Normal => 0,
+            Cursor::Resize => 1,
+            Cursor::Move => 2,
+            Cursor::Click => 3,
+            Cursor::Hor => 4,
+            Cursor::Vert => 5,
+            Cursor::BL => 6,
+            Cursor::BR => 7,
+            Cursor::TL => 8,
+            Cursor::TR => 9,
+        }
+    }
+}
+
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MouseButton {

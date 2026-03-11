@@ -1,19 +1,21 @@
 use crate::contexts::{WmCtx, WmCtxWayland, WmCtxX11};
+use crate::types::input::Cursor;
 use crate::types::ResizeDirection;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{change_window_attributes, ChangeWindowAttributesAux};
 
-fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
+fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor: Cursor) {
+    let cursor_index = cursor.to_x11_index();
     if ctx.core.g.drag.last_x11_cursor_index == Some(cursor_index) {
         return;
     }
     let conn = ctx.x11.conn;
     let root = ctx.x11_runtime.root;
-    if let Some(ref cursor) = ctx.core.g.cfg.cursors[cursor_index] {
+    if let Some(ref loaded_cursor) = ctx.core.g.cfg.cursors[cursor_index] {
         let _ = change_window_attributes(
             conn,
             root,
-            &ChangeWindowAttributesAux::new().cursor(cursor.cursor as u32),
+            &ChangeWindowAttributesAux::new().cursor(loaded_cursor.cursor as u32),
         );
         let _ = conn.flush();
         ctx.core.g.drag.last_x11_cursor_index = Some(cursor_index);
@@ -21,7 +23,7 @@ fn set_x11_root_cursor(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
 }
 
 pub fn set_cursor_default_x11(ctx: &mut WmCtxX11<'_>) {
-    set_x11_root_cursor(ctx, 0);
+    set_x11_root_cursor(ctx, Cursor::Normal);
 }
 
 pub fn set_cursor_default_wayland(ctx: &mut WmCtxWayland<'_>) {
@@ -36,7 +38,7 @@ pub fn set_cursor_default(ctx: &mut WmCtx) {
 }
 
 pub fn set_cursor_move_x11(ctx: &mut WmCtxX11<'_>) {
-    set_x11_root_cursor(ctx, 2);
+    set_x11_root_cursor(ctx, Cursor::Move);
 }
 
 pub fn set_cursor_move_wayland(ctx: &mut WmCtxWayland<'_>) {
@@ -53,8 +55,14 @@ pub fn set_cursor_move(ctx: &mut WmCtx) {
 }
 
 pub fn set_cursor_resize_x11(ctx: &mut WmCtxX11<'_>, dir: Option<ResizeDirection>) {
-    let idx = dir.map(ResizeDirection::cursor_index).unwrap_or(1);
-    set_x11_root_cursor(ctx, idx);
+    let cursor = match dir {
+        Some(ResizeDirection::Left | ResizeDirection::Right) => Cursor::Hor,
+        Some(ResizeDirection::Top | ResizeDirection::Bottom) => Cursor::Vert,
+        Some(ResizeDirection::TopRight | ResizeDirection::BottomLeft) => Cursor::TR,
+        Some(ResizeDirection::TopLeft | ResizeDirection::BottomRight) => Cursor::TL,
+        None => Cursor::Resize,
+    };
+    set_x11_root_cursor(ctx, cursor);
 }
 
 pub fn set_cursor_resize_wayland(ctx: &mut WmCtxWayland<'_>, dir: Option<ResizeDirection>) {
