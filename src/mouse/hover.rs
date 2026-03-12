@@ -125,7 +125,8 @@ pub fn selected_hover_resize_target_at(
     let win = ctx.selected_client()?;
     let c = ctx.client(win)?;
     let mon = ctx.g().selected_monitor();
-    if mon.showbar && root_y < mon.monitor_rect.y + ctx.g().cfg.bar_height {
+    let bar_h = ctx.g().cfg.bar_height.max(1);
+    if mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h {
         return None;
     }
     let selected_tags = mon.selected_tags();
