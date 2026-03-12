@@ -117,6 +117,34 @@ pub fn hover_resize_target_at(
     Some((win, dir))
 }
 
+pub fn selected_hover_resize_target_at(
+    ctx: &WmCtx,
+    root_x: i32,
+    root_y: i32,
+) -> Option<(WindowId, ResizeDirection)> {
+    let win = ctx.selected_client()?;
+    let c = ctx.client(win)?;
+    let mon = ctx.g().selected_monitor();
+    if mon.showbar && root_y < mon.monitor_rect.y + ctx.g().cfg.bar_height {
+        return None;
+    }
+    let selected_tags = mon.selected_tags();
+    let has_tiling = mon.is_tiling_layout();
+    if c.is_hidden || !c.is_visible_on_tags(selected_tags) {
+        return None;
+    }
+    if !c.is_floating && has_tiling {
+        return None;
+    }
+    if !geometry::is_point_in_resize_border(&c.geo, root_x, root_y, RESIZE_BORDER_ZONE) {
+        return None;
+    }
+    let hit_x = root_x - c.geo.x;
+    let hit_y = root_y - c.geo.y;
+    let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
+    Some((win, dir))
+}
+
 fn clear_hover_resize_offer(ctx: &mut WmCtx) {
     ctx.g_mut().cursor_icon = AltCursor::None;
     ctx.g_mut().drag.resize_direction = None;
