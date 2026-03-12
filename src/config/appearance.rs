@@ -96,6 +96,7 @@ pub fn get_tag_colors() -> crate::types::TagColorConfigs {
             focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
             nofocus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
             empty: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
+            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
         },
         hover: crate::types::TagColorSet {
             inactive: crate::types::ColorSchemeRgba::new(TEXT, BG_HOVER, BG),
@@ -103,6 +104,7 @@ pub fn get_tag_colors() -> crate::types::TagColorConfigs {
             focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER),
             nofocus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
             empty: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
+            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
         },
     }
 }
@@ -118,6 +120,7 @@ pub fn get_window_colors() -> crate::types::WindowColorConfigs {
             sticky_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
             overlay: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
             overlay_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
+            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
         },
         hover: crate::types::WindowColorSet {
             focus: crate::types::ColorSchemeRgba::new(TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER),
@@ -131,6 +134,7 @@ pub fn get_window_colors() -> crate::types::WindowColorConfigs {
                 LIGHT_GREEN_HOVER,
                 GREEN_HOVER,
             ),
+            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
         },
     }
 }
