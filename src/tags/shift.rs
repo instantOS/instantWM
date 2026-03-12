@@ -5,6 +5,7 @@ use crate::contexts::{CoreCtx, WmCtx};
 
 use crate::backend::BackendOps;
 use crate::layouts::arrange;
+use crate::tags::sticky::reset_sticky_win;
 use crate::types::{Direction, OverlayMode, Rect, WindowId};
 
 pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
@@ -50,7 +51,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    clear_sticky(ctx.core_mut(), win);
+    reset_sticky_win(ctx.core_mut(), win);
 
     if animated {
         play_slide_animation(ctx, win, dir);
@@ -71,26 +72,6 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let selected_monitor_id = ctx.g().selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selected_monitor_id));
-}
-
-fn clear_sticky(core: &mut CoreCtx, win: WindowId) {
-    let target_tags = {
-        let mon = core.g.selected_monitor();
-        if mon.current_tag > 0 {
-            Some(1u32 << (mon.current_tag - 1))
-        } else {
-            None
-        }
-    };
-
-    if let Some(client) = core.g.clients.get_mut(&win) {
-        if client.issticky {
-            client.issticky = false;
-            if let Some(tags) = target_tags {
-                client.tags = tags;
-            }
-        }
-    }
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {

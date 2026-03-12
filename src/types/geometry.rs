@@ -263,3 +263,20 @@ impl SizeHints {
         self.maxw != 0 && self.maxh != 0 && self.maxw == self.minw && self.maxh == self.minh
     }
 }
+
+/// Check if point (x, y) is in the resize-border zone of a window with geometry geo.
+/// The zone is a `border_zone`-pixel band around the outside of the window.
+#[inline]
+pub fn is_point_in_resize_border(geo: &Rect, x: i32, y: i32, border_zone: i32) -> bool {
+    if x > geo.x && x < geo.x + geo.w && y > geo.y && y < geo.y + geo.h {
+        return false;
+    }
+    if y < geo.y - border_zone
+        || x < geo.x - border_zone
+        || y > geo.y + geo.h + border_zone
+        || x > geo.x + geo.w + border_zone
+    {
+        return false;
+    }
+    true
+}
