@@ -474,7 +474,7 @@ fn main() {
                         continue;
                     }
 
-                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|| {
+                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|_| {
                         format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
                     });
 
@@ -496,7 +496,7 @@ fn main() {
     };
 
     let socket = std::env::var("INSTANTWM_SOCKET")
-        .unwrap_or_else(|| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
+        .unwrap_or_else(|_| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
     let mut stream = match UnixStream::connect(&socket) {
         Ok(s) => s,
         Err(err) => {

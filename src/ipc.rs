@@ -191,7 +191,7 @@ fn list_monitors(wm: &Wm) -> IpcResponse {
     let selected_id = wm.g.selected_monitor_id();
 
     let monitors: Vec<MonitorInfo> =
-        wm.g.monitors_iter_all()
+        wm.g.monitors_iter()
             .map(|(id, m)| MonitorInfo {
                 id,
                 index: m.num,
@@ -220,14 +220,18 @@ fn switch_monitor(wm: &mut Wm, index: i32) -> IpcResponse {
 }
 
 fn next_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
-    let direction = MonitorDirection::Next(count);
-    focus_monitor(&mut wm.ctx(), direction);
+    let direction = MonitorDirection::new(count.max(1));
+    for _ in 0..count.max(1) {
+        focus_monitor(&mut wm.ctx(), direction);
+    }
     IpcResponse::ok("")
 }
 
 fn prev_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
-    let direction = MonitorDirection::Prev(count);
-    focus_monitor(&mut wm.ctx(), direction);
+    let direction = MonitorDirection::new(-count.max(1));
+    for _ in 0..count.max(1) {
+        focus_monitor(&mut wm.ctx(), direction);
+    }
     IpcResponse::ok("")
 }
 
@@ -575,31 +579,31 @@ fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> IpcResponse {
 // ============================================================================
 
 fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> IpcResponse {
-    let core = wm.ctx().core_mut();
+    let mut ctx = wm.ctx();
     match cmd {
         ToggleCommand::Animated(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_animated(core, action);
+            toggle_animated(ctx.core_mut(), action);
         }
         ToggleCommand::FocusFollowsMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_mouse(core, action);
+            toggle_focus_follows_mouse(ctx.core_mut(), action);
         }
         ToggleCommand::FocusFollowsFloatMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_float_mouse(core, action);
+            toggle_focus_follows_float_mouse(ctx.core_mut(), action);
         }
         ToggleCommand::AltTab(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            alt_tab_free(&mut wm.ctx(), action);
+            alt_tab_free(&mut ctx, action);
         }
         ToggleCommand::AltTag(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_alt_tag(&mut wm.ctx(), action);
+            toggle_alt_tag(&mut ctx, action);
         }
         ToggleCommand::HideTags(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_show_tags(&mut wm.ctx(), action);
+            toggle_show_tags(&mut ctx, action);
         }
     }
     IpcResponse::ok("")
