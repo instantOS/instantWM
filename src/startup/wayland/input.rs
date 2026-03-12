@@ -517,7 +517,11 @@ pub fn handle_pointer_button<B: InputBackend>(
             );
         } else if let Some(win) = clicked_win {
             let mut ctx = wm.ctx();
+            let is_floating = ctx.client(win).is_some_and(|c| c.is_floating);
             crate::focus::focus_soft(&mut ctx, Some(win));
+            if is_floating {
+                ctx.raise_interactive(win);
+            }
         } else {
             let mut ctx = wm.ctx();
             crate::focus::focus_soft(&mut ctx, None);
