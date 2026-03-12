@@ -54,16 +54,6 @@ raise only happens when I move it or make it floating or resize it etc.
 
 clicking a window title should raise that window.
 
-I would like to be able to configure mouse sensitivity in the wayland backend,
-using the toml file and IPC (instantwmctl currently does not have a mouse
-subcommand, I would like one with appropriate UX/DX).
-I want this to work like it does on sway (as
-similar as possible), so users don't have to too much new stuff.
-There should be an `instantwmctl mouse` subcommand, with `set` and `get` and
-`list` etc. 
-
-
-
 figure out where to put client state, monitor? Monitor mnanager? Something
 erlse? Is there a mess?
 
@@ -84,10 +74,6 @@ if ctx.core.g.clients.get(&win).map(|c| c.isfloating).unwrap_or(false) {
     }
 }
 
-
-
-make keybinds toml configurable
-make default layout toml configurable
 ability to set keybind to none with toml
 
 
