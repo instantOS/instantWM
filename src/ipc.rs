@@ -253,6 +253,17 @@ fn set_monitor_config(
     scale: Option<f32>,
     enable: Option<bool>,
 ) -> IpcResponse {
+    let resolved_id = if identifier == "focused" {
+        let name = wm.g.selected_monitor().name.clone();
+        if name.is_empty() {
+            "*".to_string()
+        } else {
+            name
+        }
+    } else {
+        identifier
+    };
+
     let config = crate::config::config_toml::MonitorConfig {
         resolution,
         refresh_rate,
@@ -261,7 +272,7 @@ fn set_monitor_config(
         enable,
     };
 
-    wm.g.cfg.monitors.insert(identifier, config);
+    wm.g.cfg.monitors.insert(resolved_id, config);
     wm.g.monitor_config_dirty = true;
     IpcResponse::ok("")
 }

@@ -73,8 +73,8 @@ enum MonitorAction {
     },
     /// Configure a monitor.
     Set {
-        /// Monitor identifier (name, or "*" for currently focused)
-        #[arg(default_value = "*")]
+        /// Monitor identifier (name, 'focused' for currently focused, or '*' for all)
+        #[arg(default_value = "focused")]
         identifier: String,
         /// Resolution (e.g., "1920x1080")
         #[arg(long, short = 'r')]
