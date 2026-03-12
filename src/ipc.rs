@@ -6,6 +6,7 @@ use crate::ipc_types::{
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
 use crate::monitor::{focus_monitor, focus_n_mon, move_to_monitor_and_follow};
+use crate::reload::reload_config;
 use crate::scratchpad::{
     scratchpad_hide_name, scratchpad_list, scratchpad_make, scratchpad_show_name,
     scratchpad_status, scratchpad_toggle, scratchpad_unmake,
@@ -136,6 +137,7 @@ fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Re
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
     match cmd {
         IpcCommand::Status => get_status(wm),
+        IpcCommand::Reload => reload_config(wm),
         IpcCommand::RunAction { name, args } => run_action(wm, name, args),
         IpcCommand::Spawn(command) => spawn_command(wm, command),
         IpcCommand::WarpFocus => warp_focus(wm),

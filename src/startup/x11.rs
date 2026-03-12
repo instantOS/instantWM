@@ -211,6 +211,10 @@ fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
     }
 }
 
+pub fn reload_runtime_config(wm: &mut Wm) {
+    init_drw_and_schemes(wm);
+}
+
 fn init_drw_and_schemes(wm: &mut Wm) {
     if wm.backend.x11().is_none() {
         return;

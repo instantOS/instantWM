@@ -212,6 +212,8 @@ pub enum InputCommand {
 pub enum IpcCommand {
     /// Get status information about the running instantWM instance.
     Status,
+    /// Reload the runtime configuration from disk.
+    Reload,
     /// Run a named WM action with optional arguments.
     RunAction {
         /// Action name (e.g., "zoom", "focus_next").

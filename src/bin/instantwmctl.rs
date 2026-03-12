@@ -6,6 +6,18 @@ use instantwm::ipc_types::{
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn parses_reload_command() {
+        let cli = Cli::parse_from(["instantwmctl", "reload"]);
+        assert!(matches!(cli.command, CommandKind::Reload));
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "instantwmctl", version, disable_help_subcommand = true)]
 struct Cli {
@@ -374,6 +386,8 @@ enum CommandKind {
 
     /// Get status information about the running instantWM instance.
     Status,
+    /// Reload the running configuration from disk.
+    Reload,
     /// Monitor management.
     Monitor {
         #[command(subcommand)]

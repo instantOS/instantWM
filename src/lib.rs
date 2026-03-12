@@ -22,6 +22,7 @@ mod monitor;
 mod mouse;
 mod overlay;
 mod push;
+pub mod reload;
 mod scratchpad;
 pub mod startup;
 mod systray;

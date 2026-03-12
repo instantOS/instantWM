@@ -13,15 +13,9 @@ responsibilities, and should be refactored. Same goes for its callers. Highly
 X11 and wayland specific details should probably go into their respective
 backend modules. X11 should have a folder in that, just like wayland does.
 
-What is reborrow() ? How is it used? Is it a code-smell
-
 Investigate the DRM wayland backend. The wayland compositor works somewhat well
 as a nested compositor, is the standalone mode missing something to get it to
 work as well? Is there anything unfinished?
-
-Investigate what numlockmask is, why it is all over the place, including
-dangerously close to wayland, and if we can make it cleaner, not relying on the
-runtime check panic accessor for the X11 stuff.
 
 I would like more encapsulation, that way state could maybe eventually be
 propagated cleaner than passing around huge objects all the time.
@@ -49,10 +43,6 @@ crate::layouts::arrange(
 the indicator light for the capslock key does not work on wayland instantwm.
 
 
-I would like a swapescape option similar to sway and i3 in instantwm wayland,
-also accessible via the IPC.
-
-
 investigate this for overdraw issues. Is that a performance risk?
 
 dmenu does not grab input on the wayland backend, I need to click it in order to type in it. This is
@@ -69,6 +59,8 @@ using the toml file and IPC (instantwmctl currently does not have a mouse
 subcommand, I would like one with appropriate UX/DX).
 I want this to work like it does on sway (as
 similar as possible), so users don't have to too much new stuff.
+There should be an `instantwmctl mouse` subcommand, with `set` and `get` and
+`list` etc. 
 
 
 
@@ -103,8 +95,4 @@ I would like the `instantwmctl monitor` command to be able to change
 resolution/refresh rate at runtime. I also want this to be configurable through
 toml if that is not already the case. Think hard about good UX for this
 
-
-I would like to be able to split my config file into multiple files, and add an
-include to my global file to get it to include other files as though they are in
-that file. That way I can for example keep my colors config in a separate file. 
 
