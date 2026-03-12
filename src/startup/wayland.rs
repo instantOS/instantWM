@@ -162,6 +162,11 @@ pub fn run() -> ! {
                 server.process_pending(&mut wm);
             }
 
+            if wm.g.monitor_config_dirty {
+                let mut ctx = wm.ctx();
+                crate::monitor::apply_monitor_config(&mut ctx);
+            }
+
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).

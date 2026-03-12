@@ -170,6 +170,10 @@ pub fn init_wayland_globals(wm: &mut Wm) {
     wm.g.cfg.horizontal_padding = font_height;
     wm.x11_runtime.numlockmask = 0;
     update_geom(&mut wm.ctx());
+    if !wm.g.cfg.monitors.is_empty() {
+        let mut ctx = wm.ctx();
+        crate::monitor::apply_monitor_config(&mut ctx);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -839,6 +839,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             server.process_pending(wm);
         }
 
+        if wm.g.monitor_config_dirty {
+            let mut ctx = wm.ctx();
+            crate::monitor::apply_monitor_config(&mut ctx);
+        }
+
         // ── 3. Wait for new data on X11 fd and/or IPC fd ────────────────
         // Skip the wait when we just handled events — there may be more
         // events that arrived while we were dispatching.

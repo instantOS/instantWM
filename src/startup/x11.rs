@@ -127,6 +127,11 @@ fn init_globals(
 
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
+
+    if !wm.g.cfg.monitors.is_empty() {
+        let mut ctx = wm.ctx();
+        crate::monitor::apply_monitor_config(&mut ctx);
+    }
 }
 
 fn setup_signal_handlers() {

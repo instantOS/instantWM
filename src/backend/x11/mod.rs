@@ -141,6 +141,10 @@ impl BackendOps for X11Backend {
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         self.as_ref().set_monitor_config(name, config)
     }
+
+    fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
+        self.as_ref().get_outputs()
+    }
 }
 
 impl BackendOps for X11BackendRef<'_> {
@@ -229,5 +233,18 @@ impl BackendOps for X11BackendRef<'_> {
 
     fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {
         // TODO: X11 XRandR support
+    }
+
+    fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
+        let screen = &self.conn.setup().roots[self.screen_num];
+        vec![crate::backend::BackendOutputInfo {
+            name: "X11".to_owned(),
+            rect: crate::types::Rect {
+                x: 0,
+                y: 0,
+                w: screen.width_in_pixels as i32,
+                h: screen.height_in_pixels as i32,
+            },
+        }]
     }
 }

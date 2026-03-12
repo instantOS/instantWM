@@ -210,4 +210,27 @@ impl BackendOps for WaylandBackend {
             state.set_output_config(&name_str, &config_clone);
         });
     }
+
+    fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
+        self.with_state(|state: &mut WaylandState| {
+            state
+                .space
+                .outputs()
+                .map(|o| crate::backend::BackendOutputInfo {
+                    name: o.name(),
+                    rect: {
+                        let loc = state.space.output_location(o).unwrap_or_default();
+                        let size = o.current_mode().map(|m| m.size).unwrap_or_default();
+                        crate::types::Rect {
+                            x: loc.x,
+                            y: loc.y,
+                            w: size.w,
+                            h: size.h,
+                        }
+                    },
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+    }
 }

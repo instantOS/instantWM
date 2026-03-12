@@ -12,6 +12,12 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11Backend, X11BackendRef};
 use crate::types::{Rect, WindowId};
 
+#[derive(Debug, Clone)]
+pub struct BackendOutputInfo {
+    pub name: String,
+    pub rect: Rect,
+}
+
 /// Core backend operations required by the WM.
 pub trait BackendOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
@@ -59,6 +65,11 @@ pub trait BackendOps {
 
     /// Set monitor configuration
     fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {}
+
+    /// Get current outputs from the backend
+    fn get_outputs(&self) -> Vec<BackendOutputInfo> {
+        Vec::new()
+    }
 }
 
 /// Owned backend implementation.
@@ -150,6 +161,10 @@ impl BackendOps for Backend {
 
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         self.as_ref().set_monitor_config(name, config)
+    }
+
+    fn get_outputs(&self) -> Vec<BackendOutputInfo> {
+        self.as_ref().get_outputs()
     }
 }
 
@@ -290,6 +305,13 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.set_monitor_config(name, config),
             BackendRef::Wayland(wayland) => wayland.set_monitor_config(name, config),
+        }
+    }
+
+    fn get_outputs(&self) -> Vec<BackendOutputInfo> {
+        match self {
+            BackendRef::X11(x11) => x11.get_outputs(),
+            BackendRef::Wayland(wayland) => wayland.get_outputs(),
         }
     }
 }

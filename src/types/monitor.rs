@@ -80,6 +80,8 @@ pub struct Monitor {
     pub stack: Vec<WindowId>,
     /// Currently fullscreen client.
     pub fullscreen: Option<WindowId>,
+    /// Monitor name (e.g., "DP-1", "HDMI-1").
+    pub name: String,
 }
 
 impl Default for Monitor {
@@ -113,6 +115,7 @@ impl Default for Monitor {
             overlay: None,
             stack: Vec::new(),
             fullscreen: None,
+            name: String::new(),
         }
     }
 }

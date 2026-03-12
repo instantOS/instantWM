@@ -455,6 +455,10 @@ fn process_ipc(
 ) {
     if let Some(server) = ipc_server.as_mut() {
         server.process_pending(wm);
+        if wm.g.monitor_config_dirty {
+            let mut ctx = wm.ctx();
+            crate::monitor::apply_monitor_config(&mut ctx);
+        }
         shared.lock().unwrap().mark_all_dirty();
     }
 }

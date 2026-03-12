@@ -326,9 +326,35 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
     ctx.warp_cursor_to_client(c_win);
 }
 
+pub fn apply_monitor_config(ctx: &mut WmCtx) {
+    let monitors_cfg = ctx.g.cfg.monitors.clone();
+
+    // Apply wildcard first as fallback
+    if let Some(wildcard_cfg) = monitors_cfg.get("*") {
+        ctx.backend().set_monitor_config("*", wildcard_cfg);
+    }
+
+    // Apply specific configs
+    for (name, config) in monitors_cfg {
+        if name != "*" {
+            ctx.backend().set_monitor_config(&name, &config);
+        }
+    }
+
+    ctx.g.monitor_config_dirty = false;
+    update_geom(ctx);
+}
+
 pub fn update_geom(ctx: &mut WmCtx) -> bool {
     if let Some(result) = update_from_xinerama(ctx) {
         return result;
+    }
+
+    if ctx.is_wayland() {
+        let outputs = ctx.backend().get_outputs();
+        if !outputs.is_empty() {
+            return update_from_outputs(ctx, outputs);
+        }
     }
 
     let sw = ctx.g_mut().cfg.screen_width.max(1);
@@ -339,6 +365,49 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
     } else {
         update_single_monitor(ctx, sw, sh)
     }
+}
+
+fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutputInfo>) -> bool {
+    let mut changed = false;
+    let old_count = ctx.g.monitors.len();
+
+    if old_count != outputs.len() {
+        changed = true;
+    }
+
+    let mut new_monitors = Vec::new();
+    for (i, output) in outputs.into_iter().enumerate() {
+        let mut m = Monitor::new_with_values(
+            ctx.g.cfg.mfact,
+            ctx.g.cfg.nmaster,
+            ctx.g.cfg.show_bar,
+            ctx.g.cfg.top_bar,
+        );
+        m.num = i as i32;
+        m.monitor_rect = output.rect;
+        m.work_rect = output.rect;
+        m.name = output.name;
+        m.init_tags(&ctx.g.cfg.tag_template);
+        m.update_bar_position(ctx.g.cfg.bar_height);
+        new_monitors.push(m);
+    }
+
+    // Preserve existing tags/clients if possible
+    for (i, new_m) in new_monitors.iter_mut().enumerate() {
+        if let Some(old_m) = ctx.g.monitors.get(i) {
+            new_m.tags = old_m.tags.clone();
+            new_m.clients = old_m.clients.clone();
+            new_m.stack = old_m.stack.clone();
+            new_m.sel = old_m.sel;
+        }
+    }
+
+    ctx.g_mut().monitors.monitors = new_monitors;
+    if ctx.g.monitors.selected_monitor_idx >= ctx.g.monitors.len() {
+        ctx.g_mut().monitors.selected_monitor_idx = 0;
+    }
+
+    changed
 }
 
 // -----------------------------------------------------------------------------
