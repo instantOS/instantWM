@@ -170,6 +170,7 @@ pub fn handle_keyboard<B: InputBackend>(
         _ => false,
     };
     let key_code = event.key_code();
+    let tracked_key_code: u32 = key_code.into();
     let key_state = event.state();
     keyboard_handle.input(
         state,
@@ -179,7 +180,7 @@ pub fn handle_keyboard<B: InputBackend>(
         event.time_msec(),
         |_data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
-                if wm.g.intercepted_keycodes.remove(&key_code) {
+                if wm.g.intercepted_keycodes.remove(&tracked_key_code) {
                     return FilterResult::Intercept(());
                 }
                 return FilterResult::Forward;
@@ -196,7 +197,7 @@ pub fn handle_keyboard<B: InputBackend>(
                     keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
-                    wm.g.intercepted_keycodes.insert(key_code);
+                    wm.g.intercepted_keycodes.insert(tracked_key_code);
                     return FilterResult::Intercept(());
                 }
             }
@@ -304,6 +305,12 @@ fn dispatch_pointer_motion(
 ) {
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
+    let pointer_focus = state
+        .layer_surface_under_pointer(*pointer_location)
+        .or_else(|| state.surface_under_pointer(*pointer_location));
+    let hovered_win = pointer_focus
+        .as_ref()
+        .and_then(|(surface, _)| find_hovered_window_for_surface(wm, surface));
 
     if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
         // During an active resize drag, still forward motion to Smithay so
@@ -314,9 +321,8 @@ fn dispatch_pointer_motion(
             serial,
             time: time_msec,
         };
-        let focus = state
-            .surface_under_pointer(*pointer_location)
-            .map(|(s, l)| (PointerFocusTarget::WlSurface(s), l.to_f64()));
+        let focus = pointer_focus
+            .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
         pointer_handle.motion(state, focus, &motion);
         pointer_handle.frame(state);
         return;
@@ -339,7 +345,6 @@ fn dispatch_pointer_motion(
             let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(lock_win));
         }
     } else {
-        let hovered_win = find_hovered_window(wm, state, *pointer_location);
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
             return;
@@ -363,10 +368,8 @@ fn dispatch_pointer_motion(
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
     }
 
-    let focus = state
-        .layer_surface_under_pointer(*pointer_location)
-        .or_else(|| state.surface_under_pointer(*pointer_location))
-        .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+    let focus =
+        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
 
     let serial = SERIAL_COUNTER.next_serial();
     let motion = smithay::input::pointer::MotionEvent {
@@ -598,39 +601,24 @@ fn find_hovered_window(
     state: &WaylandState,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) -> Option<WindowId> {
-    let pointer_x = pointer_location.x;
-    let pointer_y = pointer_location.y;
-    for window in state.space.elements().rev() {
-        let Some(w) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
-            continue;
-        };
-        let Some(c) = wm.g.clients.get(&w) else {
-            continue;
-        };
-        if c.is_hidden {
-            continue;
-        }
-        let is_visible =
-            wm.g.monitor(c.monitor_id)
-                .map(|m| c.is_visible_on_tags(m.selected_tags()))
-                .unwrap_or(false);
-        if !is_visible {
-            continue;
-        }
-        let bw = c.border_width.max(0) as f64;
-        let ox = c.geo.x as f64;
-        let oy = c.geo.y as f64;
-        let ow = c.geo.w as f64 + 2.0 * bw;
-        let oh = c.geo.h as f64 + 2.0 * bw;
-        if pointer_x >= ox && pointer_x < ox + ow && pointer_y >= oy && pointer_y < oy + oh {
-            return Some(w);
-        }
-    }
+    let (surface, _) = state
+        .layer_surface_under_pointer(pointer_location)
+        .or_else(|| state.surface_under_pointer(pointer_location))?;
+    find_hovered_window_for_surface(wm, &surface)
+}
 
-    state
-        .space
-        .element_under(pointer_location)
-        .and_then(|(window, _)| window.user_data().get::<WindowIdMarker>().map(|m| m.id))
+fn find_hovered_window_for_surface(
+    _wm: &Wm,
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> Option<WindowId> {
+    use smithay::wayland::compositor::with_states;
+
+    with_states(surface, |states| {
+        states
+            .data_map
+            .get::<WindowIdMarker>()
+            .map(|marker| marker.id)
+    })
 }
 
 fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {

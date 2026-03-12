@@ -86,8 +86,8 @@ impl CompositorHandler for WaylandState {
             window.on_commit();
         }
 
-        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
-            let mut map = layer_map_for_output(&output);
+        for output in self.space.outputs() {
+            let mut map = layer_map_for_output(output);
             if let Some(layer) = map
                 .layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
                 .cloned()

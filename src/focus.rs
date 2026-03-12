@@ -93,7 +93,12 @@ trait FocusBackendOps {
     /// Called when selection state changes (focused <-> unfocused).
     fn on_selection_changed(&self, core: &mut CoreCtx);
     /// Called after focus state is updated, before focusing a window.
-    fn post_state_update(&mut self, core: &mut CoreCtx);
+    fn post_state_update(
+        &mut self,
+        core: &mut CoreCtx,
+        previous: Option<WindowId>,
+        current: Option<WindowId>,
+    );
 }
 
 struct X11FocusBackend<'a> {
@@ -137,25 +142,20 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 
-    fn post_state_update(&mut self, core: &mut CoreCtx) {
+    fn post_state_update(
+        &mut self,
+        core: &mut CoreCtx,
+        previous: Option<WindowId>,
+        current: Option<WindowId>,
+    ) {
+        let _ = self.systray;
         core.bar.mark_dirty();
-        crate::bar::draw_bars_x11(core, self.x11_runtime, self.systray);
 
-        // Refresh border colors for all visible windows on the selected monitor.
-        // This ensures tiled/floating specific colors are applied correctly
-        // when the layout changes.
-        let selmon = core.g.selected_monitor();
-        let sel = selmon.sel;
-        let selected_tags = selmon.selected_tags();
-
-        let visible_windows: Vec<WindowId> = selmon
-            .iter_stack(&*core.g.clients)
-            .filter(|(_win, c)| c.is_visible_on_tags(selected_tags))
-            .map(|(win, _c)| win)
-            .collect();
-
-        for win in visible_windows {
-            refresh_border_color_x11(core, self.x11, &*self.x11_runtime, win, Some(win) == sel);
+        if let Some(win) = previous.filter(|win| Some(*win) != current) {
+            refresh_border_color_x11(core, self.x11, &*self.x11_runtime, win, false);
+        }
+        if let Some(win) = current {
+            refresh_border_color_x11(core, self.x11, &*self.x11_runtime, win, true);
         }
     }
 }
@@ -181,7 +181,12 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         // Wayland: key grabs not applicable; desktop bindings kept in core
     }
 
-    fn post_state_update(&mut self, core: &mut CoreCtx) {
+    fn post_state_update(
+        &mut self,
+        core: &mut CoreCtx,
+        _previous: Option<WindowId>,
+        _current: Option<WindowId>,
+    ) {
         core.bar.mark_dirty();
     }
 }
@@ -211,11 +216,16 @@ fn focus_generic(
         backend.on_selection_changed(core);
     }
 
-    backend.post_state_update(core);
+    let focus_changed = current_sel != target;
+    if focus_changed {
+        backend.post_state_update(core, current_sel, target);
+    }
 
     if let Some(w) = target {
-        backend.focus_window(core, w);
-    } else {
+        if focus_changed {
+            backend.focus_window(core, w);
+        }
+    } else if focus_changed {
         backend.focus_none(core);
     }
 

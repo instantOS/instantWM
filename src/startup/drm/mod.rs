@@ -120,11 +120,12 @@ pub fn run() -> ! {
         .udev_assign_seat(&seat_name)
         .expect("libinput assign seat");
 
-    let (libinput_tx, libinput_rx) = std::sync::mpsc::channel();
+    let pending_input_events = Arc::new(Mutex::new(Vec::new()));
+    let pending_input_events_cb = Arc::clone(&pending_input_events);
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
     loop_handle
         .insert_source(libinput_backend, move |event, _, _state| {
-            let _ = libinput_tx.send(event);
+            pending_input_events_cb.lock().unwrap().push(event);
         })
         .expect("failed to insert libinput source");
 
@@ -163,7 +164,6 @@ pub fn run() -> ! {
         &mut ipc_server,
         &mut render_failures,
         start_time,
-        libinput_rx,
     );
 
     exit(0);
@@ -326,12 +326,8 @@ fn run_event_loop(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
-    libinput_rx: std::sync::mpsc::Receiver<
-        smithay::backend::input::InputEvent<LibinputInputBackend>,
-    >,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
-    let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
     let mut tracked_devices: Vec<smithay::reexports::input::Device> = Vec::new();
 
@@ -341,16 +337,7 @@ fn run_event_loop(
 
             process_completed_crtcs(state, shared, output_surfaces);
 
-            process_libinput_events(
-                libinput_context,
-                state,
-                wm,
-                shared,
-                &libinput_rx,
-                &keyboard_handle,
-                &pointer_handle,
-                &mut tracked_devices,
-            );
+            let _ = libinput_context;
 
             arrange_layout(wm, state);
 
@@ -404,33 +391,34 @@ fn process_completed_crtcs(
 
 /// Process libinput events and dispatch to handlers.
 fn process_libinput_events(
-    _libinput_context: &mut Libinput,
+    libinput_context: &mut Libinput,
     state: &mut WaylandState,
     wm: &mut Wm,
     shared: &Arc<Mutex<SharedDrmState>>,
-    libinput_rx: &std::sync::mpsc::Receiver<
-        smithay::backend::input::InputEvent<LibinputInputBackend>,
+    pending_input_events: &Arc<
+        Mutex<Vec<smithay::backend::input::InputEvent<LibinputInputBackend>>>,
     >,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     tracked_devices: &mut Vec<smithay::reexports::input::Device>,
 ) {
-    // NOTE: Do NOT call libinput_context.dispatch() here.  The
-    // LibinputInputBackend calloop source already dispatches internally
-    // and feeds events into `libinput_rx`.  A second dispatch would pull
-    // new events into libinput's internal queue without routing them
-    // through the channel, causing them to arrive late in bursts
-    // (perceived as repeated / delayed key presses).
+    let _ = libinput_context;
 
-    // Lock once to read shared pointer state; individual events update the
-    // local copy and we write it back once after the batch.
+    let pending_events = {
+        let mut events = pending_input_events.lock().unwrap();
+        std::mem::take(&mut *events)
+    };
+    if pending_events.is_empty() {
+        return;
+    }
+
     let (mut pointer_location, total_w, total_h) = {
         let s = shared.lock().unwrap();
         (s.pointer_location, s.total_width, s.total_height)
     };
 
     let mut any_input = false;
-    while let Ok(event) = libinput_rx.try_recv() {
+    for event in pending_events {
         if dispatch_libinput_event(
             event,
             state,
@@ -486,11 +474,7 @@ fn process_ipc(
 }
 
 /// Process window animations and sync compositor space when dirty.
-fn process_animations(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
-) {
+fn process_animations(wm: &mut Wm, state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
     if wm.g.space_dirty {
         wm.g.space_dirty = false;
         state.sync_space_from_globals();
