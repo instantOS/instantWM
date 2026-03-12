@@ -4,6 +4,7 @@
 //! for monitor-related operations.
 
 use crate::backend::x11::X11BackendRef;
+use crate::backend::BackendOps;
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
 use crate::contexts::WmCtx;
 use crate::focus::{focus_soft, unfocus_win};

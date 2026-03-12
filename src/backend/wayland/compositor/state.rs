@@ -471,7 +471,11 @@ impl WaylandState {
             let mut current_mode = output.current_mode();
             let mut current_scale = output.current_scale();
             let mut current_transform = output.current_transform();
-            let mut current_location = self.space.output_location(&output).unwrap_or_default();
+            let mut current_location = self
+                .space
+                .output_geometry(&output)
+                .map(|g| g.loc)
+                .unwrap_or_default();
 
             if let Some(ref res) = config.resolution {
                 if let Some((w_str, h_str)) = res.split_once('x') {

@@ -157,8 +157,8 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
             }
         }
 
-        for mode_keys in modes.values() {
-            for key in mode_keys {
+        for mode in modes.values() {
+            for key in &mode.keybinds {
                 if keysym == key.keysym {
                     for &modif in &modifiers {
                         let _ = grab_key(

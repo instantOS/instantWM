@@ -219,11 +219,11 @@ impl BackendOps for WaylandBackend {
                 .map(|o| crate::backend::BackendOutputInfo {
                     name: o.name(),
                     rect: {
-                        let loc = state.space.output_location(o).unwrap_or_default();
+                        let geom = state.space.output_geometry(o).unwrap_or_default();
                         let size = o.current_mode().map(|m| m.size).unwrap_or_default();
                         crate::types::Rect {
-                            x: loc.x,
-                            y: loc.y,
+                            x: geom.loc.x,
+                            y: geom.loc.y,
                             w: size.w,
                             h: size.h,
                         }
