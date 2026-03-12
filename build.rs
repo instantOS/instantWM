@@ -17,13 +17,15 @@ fn main() {
     let crate_version = env!("CARGO_PKG_VERSION");
     let source_hash = compute_ipc_source_hash();
 
-    // Protocol version: crate version + first 8 chars of source hash
-    let protocol_version = format!(
-        "{}-{}",
-        crate_version,
-        &source_hash[..8.min(source_hash.len())]
-    );
     let build_commit = git_head_commit().unwrap_or_else(|| "unknown".to_string());
+
+    // Protocol version: crate version + first 8 chars of source hash + first 8 chars of git commit
+    let protocol_version = format!(
+        "{}-{}-{}",
+        crate_version,
+        &source_hash[..8.min(source_hash.len())],
+        &build_commit[..8.min(build_commit.len())]
+    );
 
     println!("cargo:rustc-env=IPC_PROTOCOL_VERSION={}", protocol_version);
     println!("cargo:rustc-env=INSTANTWM_BUILD_COMMIT={}", build_commit);

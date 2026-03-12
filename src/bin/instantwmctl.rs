@@ -751,6 +751,8 @@ fn main() {
         Ok((r, _)) => r,
         Err(e) => {
             eprintln!("instantwmctl: deserialization failed: {}", e);
+            eprintln!("This is likely caused by a version mismatch between instantwmctl and instantWM.");
+            eprintln!("Please ensure they are built from the same commit.");
             std::process::exit(1);
         }
     };
