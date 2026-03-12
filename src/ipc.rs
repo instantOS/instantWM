@@ -136,7 +136,7 @@ fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Re
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
     match cmd {
         IpcCommand::Status => get_status(wm),
-        IpcCommand::RunAction(name) => run_action(wm, name),
+        IpcCommand::RunAction { name, args } => run_action(wm, name, args),
         IpcCommand::Spawn(command) => spawn_command(wm, command),
         IpcCommand::WarpFocus => warp_focus(wm),
         IpcCommand::TagMon(dir) => tag_mon(wm, dir),
@@ -757,13 +757,13 @@ fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
 // Other Commands
 // ============================================================================
 
-fn run_action(wm: &mut Wm, name: String) -> IpcResponse {
-    use crate::config::keybind_config::compile_named_action;
-    if let Some(action) = compile_named_action(&name) {
+fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> IpcResponse {
+    use crate::config::keybind_config::compile_action_with_args;
+    if let Some(action) = compile_action_with_args(&name, &args) {
         action(&mut wm.ctx());
         IpcResponse::ok("")
     } else {
-        IpcResponse::err(format!("unknown action '{name}'"))
+        IpcResponse::err(format!("unknown or invalid action '{name}'"))
     }
 }
 

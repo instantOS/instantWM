@@ -4,7 +4,7 @@ use bincode::{Decode, Encode};
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
 
 /// A single keyboard layout with optional variant (used for IPC).
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct KeyboardLayout {
     pub name: String,
     pub variant: Option<String>,
@@ -47,7 +47,7 @@ impl From<crate::globals::KeyboardLayout> for KeyboardLayout {
 }
 
 /// IPC request with protocol version validation.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct IpcRequest {
     pub version: String,
     pub command: IpcCommand,
@@ -76,7 +76,7 @@ impl IpcRequest {
 }
 
 /// Monitor-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum MonitorCommand {
     /// List all monitors with their information.
     List,
@@ -104,7 +104,7 @@ pub enum MonitorCommand {
 }
 
 /// Mode-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ModeCommand {
     /// List all configured modes (shows name and description).
     List,
@@ -113,7 +113,7 @@ pub enum ModeCommand {
 }
 
 /// Scratchpad-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ScratchpadCommand {
     /// List all scratchpads (show names and visibility status).
     List,
@@ -132,7 +132,7 @@ pub enum ScratchpadCommand {
 }
 
 /// Keyboard layout-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum KeyboardCommand {
     /// Switch to the next keyboard layout.
     Next,
@@ -153,7 +153,7 @@ pub enum KeyboardCommand {
 }
 
 /// Tag-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum TagCommand {
     /// Switch to a tag (workspace).
     View(u32),
@@ -164,7 +164,7 @@ pub enum TagCommand {
 }
 
 /// Window-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum WindowCommand {
     /// Get window geometry.
     Geom(Option<u32>),
@@ -175,7 +175,7 @@ pub enum WindowCommand {
 }
 
 /// Toggle-related commands.
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ToggleCommand {
     /// Toggle or set animated windows mode.
     Animated(Option<String>),
@@ -192,7 +192,7 @@ pub enum ToggleCommand {
 }
 
 /// Input device configuration commands (sway-compatible).
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum InputCommand {
     /// List all input settings for a device identifier (or all if None).
     List(Option<String>),
@@ -208,12 +208,18 @@ pub enum InputCommand {
     ScrollFactor { identifier: String, value: f64 },
 }
 
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum IpcCommand {
     /// Get status information about the running instantWM instance.
     Status,
-    /// Run a keybind action by name.
-    RunAction(String),
+    /// Run a named WM action with optional arguments.
+    RunAction {
+        /// Action name (e.g., "zoom", "focus_next").
+        name: String,
+        /// Optional arguments for the action.
+        #[serde(default)]
+        args: Vec<String>,
+    },
     /// Spawn a command.
     Spawn(String),
     /// Warp cursor to the currently focused window.
@@ -250,7 +256,7 @@ pub enum IpcCommand {
     Mode(ModeCommand),
 }
 
-#[derive(Debug, Clone, Decode, Encode)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum IpcResponse {
     Ok(String),
     Err(String),

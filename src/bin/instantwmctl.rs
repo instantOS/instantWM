@@ -362,10 +362,16 @@ enum CommandKind {
     Action {
         /// Action name (e.g., "zoom", "quit", "toggle_bar")
         name: Option<String>,
+        /// Arguments for the action.
+        args: Vec<String>,
         /// List all available actions and exit.
-        #[arg(long = "list", short = 'l')]
+        #[arg(long, short = 'l')]
         list: bool,
+        /// Output action list as JSON (works with --list).
+        #[arg(long, short = 'j')]
+        json: bool,
     },
+
     /// Get status information about the running instantWM instance.
     Status,
     /// Monitor management.
@@ -472,16 +478,21 @@ enum CommandKind {
 fn main() {
     let cli = Cli::parse();
     let request = match cli.command {
-        CommandKind::Action { name, list } => {
+        CommandKind::Action {
+            name,
+            args,
+            list,
+            json,
+        } => {
             // If --list flag is set, show the list
             if list {
                 use instantwm::config::keybind_config::print_actions;
-                print_actions();
+                print_actions(json);
                 return;
             }
             // No name provided - show error
             let name = name.expect("action name required (use --list to see available actions)");
-            IpcCommand::RunAction(name)
+            IpcCommand::RunAction { name, args }
         }
         CommandKind::Status => IpcCommand::Status,
         CommandKind::Monitor { action } => {

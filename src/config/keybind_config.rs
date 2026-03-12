@@ -275,11 +275,11 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
 // ---------------------------------------------------------------------------
 
 /// Metadata for a named action (for `--list-actions`).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
 pub struct ActionMeta {
     pub name: &'static str,
     pub doc: &'static str,
-    pub takes_args: bool,
+    pub arg_example: Option<&'static str>,
 }
 
 /// Structured actions that take arguments.
@@ -288,37 +288,37 @@ pub fn get_structured_actions() -> Vec<ActionMeta> {
         ActionMeta {
             name: "spawn",
             doc: "spawn command",
-            takes_args: true,
-        },
-        ActionMeta {
-            name: "unbind",
-            doc: "unbind keybind",
-            takes_args: true,
+            arg_example: Some("kitty --arg"),
         },
         ActionMeta {
             name: "set_layout",
             doc: "set layout",
-            takes_args: true,
+            arg_example: Some("tile|float|monocle|grid"),
         },
         ActionMeta {
             name: "focus_stack",
             doc: "focus stack direction",
-            takes_args: true,
+            arg_example: Some("next|prev"),
         },
         ActionMeta {
             name: "set_mfact",
             doc: "set master factor",
-            takes_args: true,
+            arg_example: Some("0.05"),
+        },
+        ActionMeta {
+            name: "inc_nmaster",
+            doc: "increment nmaster count",
+            arg_example: Some("1"),
         },
         ActionMeta {
             name: "keyboard_layout",
             doc: "set keyboard layout",
-            takes_args: true,
+            arg_example: Some("us(intl)"),
         },
         ActionMeta {
             name: "set_mode",
             doc: "set WM mode (sway-like modes)",
-            takes_args: true,
+            arg_example: Some("resize"),
         },
     ];
     actions.sort_by(|a, b| a.name.cmp(b.name));
@@ -335,18 +335,32 @@ pub fn get_all_actions() -> Vec<ActionMeta> {
 
 /// Print all actions to stdout with documentation.
 /// Used by both instantwm --list-actions and instantwmctl action --list.
-pub fn print_actions() {
+pub fn print_actions(json: bool) {
     let actions = get_all_actions();
-    // Note: get_all_actions() already sorts by name
+
+    if json {
+        match serde_json::to_string_pretty(&actions) {
+            Ok(json) => println!("{}", json),
+            Err(e) => eprintln!("Error generating JSON: {}", e),
+        }
+        return;
+    }
+
+    // Determine max name length for alignment
+    let max_name_len = actions.iter().map(|a| a.name.len()).max().unwrap_or(0);
+
+    println!("{:<width$} | {:<20} | {}", "ACTION", "ARGUMENTS", "DESCRIPTION", width = max_name_len);
+    println!("{:-<width$}-|-{:-<20}-|-{:-<30}", "", "", "", width = max_name_len);
 
     for action in &actions {
-        if action.doc.is_empty() {
-            println!("{}", action.name);
-        } else if action.takes_args {
-            println!("{} # {} (takes args)", action.name, action.doc);
-        } else {
-            println!("{} # {}", action.name, action.doc);
-        }
+        let args = action.arg_example.unwrap_or("-");
+        println!(
+            "{:<width$} | {:<20} | {}",
+            action.name,
+            args,
+            action.doc,
+            width = max_name_len
+        );
     }
 }
 
@@ -381,7 +395,7 @@ macro_rules! define_actions {
     // Final generation
     (@collect names: [$($names:expr),*] docs: [$($docs:expr),*] actions: [$($actions:expr),*]) => {
         pub fn get_named_actions() -> Vec<ActionMeta> {
-            vec![$(ActionMeta { name: $names, doc: $docs, takes_args: false }),*]
+            vec![$(ActionMeta { name: $names, doc: $docs, arg_example: None }),*]
         }
         fn compile_named_action_impl(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             match name.to_ascii_lowercase().as_str() {
@@ -558,6 +572,72 @@ define_actions!(
 /// Compile a named action string into a closure (public wrapper).
 pub fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
     compile_named_action_impl(name)
+}
+
+/// Compile an action that might take arguments from IPC.
+pub fn compile_action_with_args(name: &str, args: &[String]) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
+    // Check structured actions first
+    match name.to_ascii_lowercase().as_str() {
+        "spawn" => {
+            if args.is_empty() {
+                eprintln!("instantwm: action 'spawn' requires arguments");
+                return None;
+            }
+            let argv = args.to_vec();
+            Some(Rc::new(move |ctx| spawn(ctx, &argv)))
+        }
+        "set_layout" => {
+            let layout_name = args.get(0)?;
+            let kind = match layout_name.to_ascii_lowercase().as_str() {
+                "tile" | "tiling" => LayoutKind::Tile,
+                "float" | "floating" => LayoutKind::Floating,
+                "monocle" => LayoutKind::Monocle,
+                "grid" => LayoutKind::Grid,
+                other => {
+                    eprintln!("instantwm: unknown layout '{other}'");
+                    return None;
+                }
+            };
+            Some(Rc::new(move |ctx| set_layout(ctx, kind)))
+        }
+        "focus_stack" => {
+            let dir = args.get(0)?;
+            let direction = match dir.to_ascii_lowercase().as_str() {
+                "next" | "down" | "forward" => StackDirection::Next,
+                "prev" | "previous" | "up" | "backward" => StackDirection::Previous,
+                other => {
+                    eprintln!("instantwm: unknown focus_stack direction '{other}'");
+                    return None;
+                }
+            };
+            Some(Rc::new(move |ctx| focus_stack(ctx, direction)))
+        }
+        "set_mfact" => {
+            let delta_str = args.get(0)?;
+            let delta = delta_str.parse::<f32>().ok()?;
+            Some(Rc::new(move |ctx| set_mfact(ctx, delta)))
+        }
+        "inc_nmaster" => {
+            let n_str = args.get(0)?;
+            let n = n_str.parse::<i32>().ok()?;
+            Some(Rc::new(move |ctx| inc_nmaster_by(ctx, n)))
+        }
+        "keyboard_layout" => {
+            let name = args.get(0)?.clone();
+            Some(Rc::new(move |ctx| {
+                crate::keyboard_layout::set_keyboard_layout_by_name(ctx, &name);
+            }))
+        }
+        "set_mode" => {
+            let name = args.get(0)?.clone();
+            Some(Rc::new(move |ctx| {
+                ctx.g_mut().current_mode = name.clone();
+                ctx.request_bar_update(None);
+            }))
+        }
+        // Fall back to named actions
+        _ => compile_named_action(name),
+    }
 }
 
 /// Merge TOML keybind specs into a default keybind list.

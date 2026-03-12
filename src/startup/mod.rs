@@ -40,9 +40,10 @@ pub fn run() {
 
     if cli.list_actions {
         use crate::config::keybind_config::print_actions;
-        print_actions();
-        return;
+        print_actions(false);
+        std::process::exit(0);
     }
+
 
     if locale::set_locale().is_err() {
         eprintln!("warning: no locale support");
