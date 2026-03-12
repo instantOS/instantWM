@@ -252,6 +252,8 @@ pub enum IpcCommand {
     Window(WindowCommand),
     /// Toggle-related commands.
     Toggle(ToggleCommand),
+    /// Set the wallpaper.
+    Wallpaper(String),
     /// Input device configuration commands.
     Input(InputCommand),
     /// Mode-related commands.

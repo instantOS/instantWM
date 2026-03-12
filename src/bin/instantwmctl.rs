@@ -487,6 +487,11 @@ enum CommandKind {
     },
     /// Update status text on the bar. If text is "-", read from stdin continuously.
     UpdateStatus { text: String },
+    /// Set the wallpaper.
+    Wallpaper {
+        /// Path to the wallpaper image
+        path: String,
+    },
 }
 
 fn main() {
@@ -663,6 +668,7 @@ fn main() {
             };
             IpcCommand::Mode(cmd)
         }
+        CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
         CommandKind::UpdateStatus { text } => {
             if text == "-" {
                 use std::io::BufRead;

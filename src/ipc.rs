@@ -164,6 +164,36 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Toggle(cmd) => handle_toggle_command(wm, cmd),
         IpcCommand::Input(cmd) => handle_input_command(wm, cmd),
         IpcCommand::Mode(cmd) => handle_mode_command(wm, cmd),
+        IpcCommand::Wallpaper(path) => set_wallpaper(wm, path),
+    }
+}
+
+fn set_wallpaper(wm: &mut Wm, path: String) -> IpcResponse {
+    if wm.ctx().is_wayland() {
+        // Use swaybg on Wayland
+        let _ = std::process::Command::new("killall")
+            .arg("swaybg")
+            .status();
+        let status = std::process::Command::new("swaybg")
+            .arg("-i")
+            .arg(&path)
+            .arg("-m")
+            .arg("fill")
+            .spawn();
+        match status {
+            Ok(_) => IpcResponse::ok(format!("Wallpaper set to {}", path)),
+            Err(e) => IpcResponse::err(format!("Failed to spawn swaybg: {}", e)),
+        }
+    } else {
+        // Use feh on X11
+        let status = std::process::Command::new("feh")
+            .arg("--bg-fill")
+            .arg(&path)
+            .spawn();
+        match status {
+            Ok(_) => IpcResponse::ok(format!("Wallpaper set to {}", path)),
+            Err(e) => IpcResponse::err(format!("Failed to spawn feh: {}", e)),
+        }
     }
 }
 
