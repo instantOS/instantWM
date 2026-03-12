@@ -38,8 +38,10 @@ pub enum SchemeTag {
     Focus,
     /// Active tag on an unfocused monitor.
     NoFocus,
-    /// Urgent / special state.
+    /// Empty / special state.
     Empty,
+    /// Urgent state.
+    Urgent,
 }
 
 impl SchemeTag {
@@ -50,6 +52,7 @@ impl SchemeTag {
             2 => Some(Self::Focus),
             3 => Some(Self::NoFocus),
             4 => Some(Self::Empty),
+            5 => Some(Self::Urgent),
             _ => None,
         }
     }
@@ -65,6 +68,7 @@ pub enum SchemeWin {
     StickyFocus,
     Overlay,
     OverlayFocus,
+    Urgent,
 }
 
 impl SchemeWin {
@@ -77,6 +81,7 @@ impl SchemeWin {
             4 => Some(Self::StickyFocus),
             5 => Some(Self::Overlay),
             6 => Some(Self::OverlayFocus),
+            7 => Some(Self::Urgent),
             _ => None,
         }
     }
@@ -260,6 +265,7 @@ pub struct TagColorSet {
     pub focus: ColorSchemeRgba,
     pub nofocus: ColorSchemeRgba,
     pub empty: ColorSchemeRgba,
+    pub urgent: ColorSchemeRgba,
 }
 
 impl Default for TagColorSet {
@@ -270,6 +276,7 @@ impl Default for TagColorSet {
             focus: ColorSchemeRgba::empty(),
             nofocus: ColorSchemeRgba::empty(),
             empty: ColorSchemeRgba::empty(),
+            urgent: ColorSchemeRgba::empty(),
         }
     }
 }
@@ -282,6 +289,7 @@ impl TagColorSet {
             SchemeTag::Focus => &self.focus,
             SchemeTag::NoFocus => &self.nofocus,
             SchemeTag::Empty => &self.empty,
+            SchemeTag::Urgent => &self.urgent,
         }
     }
 
@@ -292,6 +300,7 @@ impl TagColorSet {
             SchemeTag::Focus => &mut self.focus,
             SchemeTag::NoFocus => &mut self.nofocus,
             SchemeTag::Empty => &mut self.empty,
+            SchemeTag::Urgent => &mut self.urgent,
         }
     }
 }
@@ -307,6 +316,7 @@ pub struct WindowColorSet {
     pub sticky_focus: ColorSchemeRgba,
     pub overlay: ColorSchemeRgba,
     pub overlay_focus: ColorSchemeRgba,
+    pub urgent: ColorSchemeRgba,
 }
 
 impl Default for WindowColorSet {
@@ -319,6 +329,7 @@ impl Default for WindowColorSet {
             sticky_focus: ColorSchemeRgba::empty(),
             overlay: ColorSchemeRgba::empty(),
             overlay_focus: ColorSchemeRgba::empty(),
+            urgent: ColorSchemeRgba::empty(),
         }
     }
 }
@@ -333,6 +344,7 @@ impl WindowColorSet {
             SchemeWin::StickyFocus => &self.sticky_focus,
             SchemeWin::Overlay => &self.overlay,
             SchemeWin::OverlayFocus => &self.overlay_focus,
+            SchemeWin::Urgent => &self.urgent,
         }
     }
 
@@ -345,6 +357,7 @@ impl WindowColorSet {
             SchemeWin::StickyFocus => &mut self.sticky_focus,
             SchemeWin::Overlay => &mut self.overlay,
             SchemeWin::OverlayFocus => &mut self.overlay_focus,
+            SchemeWin::Urgent => &mut self.urgent,
         }
     }
 }
