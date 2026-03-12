@@ -1,0 +1,85 @@
+use crate::config::config_toml::{AccelProfile, InputConfig, ToggleSetting};
+use crate::ipc_types::{InputCommand, IpcResponse};
+use crate::wm::Wm;
+
+pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
+    let inputs = &mut wm.g.cfg.input;
+    match cmd {
+        InputCommand::List(identifier) => {
+            let entries: Vec<_> = match &identifier {
+                Some(id) => inputs
+                    .iter()
+                    .filter(|(k, _)| k.as_str() == id.as_str())
+                    .collect(),
+                None => inputs.iter().collect(),
+            };
+            if entries.is_empty() {
+                return IpcResponse::ok("no input configuration found");
+            }
+            let info: Vec<String> = entries
+                .iter()
+                .map(|(id, cfg)| {
+                    format!(
+                        "[{}]\ntap: {:?}\nnatural_scroll: {:?}\naccel_profile: {:?}\npointer_accel: {:?}\nscroll_factor: {:?}",
+                        id, cfg.tap, cfg.natural_scroll, cfg.accel_profile, cfg.pointer_accel, cfg.scroll_factor,
+                    )
+                })
+                .collect();
+            return IpcResponse::ok(info.join("\n\n"));
+        }
+        InputCommand::PointerAccel { identifier, value } => {
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
+            cfg.pointer_accel = Some(value.clamp(-1.0, 1.0));
+        }
+        InputCommand::AccelProfile {
+            identifier,
+            profile,
+        } => {
+            let p = match profile.to_lowercase().as_str() {
+                "flat" => AccelProfile::Flat,
+                "adaptive" => AccelProfile::Adaptive,
+                _ => return IpcResponse::err(format!("unknown accel profile '{profile}'")),
+            };
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
+            cfg.accel_profile = Some(p);
+        }
+        InputCommand::Tap {
+            identifier,
+            enabled,
+        } => {
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
+            cfg.tap = Some(if enabled {
+                ToggleSetting::Enabled
+            } else {
+                ToggleSetting::Disabled
+            });
+        }
+        InputCommand::NaturalScroll {
+            identifier,
+            enabled,
+        } => {
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
+            cfg.natural_scroll = Some(if enabled {
+                ToggleSetting::Enabled
+            } else {
+                ToggleSetting::Disabled
+            });
+        }
+        InputCommand::ScrollFactor { identifier, value } => {
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
+            cfg.scroll_factor = Some(value);
+        }
+    }
+    wm.g.input_config_dirty = true;
+    IpcResponse::ok("")
+}
