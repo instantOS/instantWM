@@ -338,6 +338,7 @@ fn run_event_loop(
     let loop_signal: LoopSignal = event_loop.get_signal();
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
+    let mut tracked_devices: Vec<smithay::reexports::input::Device> = Vec::new();
 
     event_loop
         .run(Duration::from_millis(16), state, move |state| {
@@ -353,11 +354,17 @@ fn run_event_loop(
                 &libinput_rx,
                 &keyboard_handle,
                 &pointer_handle,
+                &mut tracked_devices,
             );
 
             arrange_layout(wm, state);
 
             process_ipc(ipc_server, wm, shared);
+
+            if wm.g.input_config_dirty {
+                wm.g.input_config_dirty = false;
+                input::reconfigure_all_devices(&mut tracked_devices, &wm.g.cfg.input);
+            }
 
             process_animations(state, shared);
 
@@ -411,13 +418,22 @@ fn process_libinput_events(
     >,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+    tracked_devices: &mut Vec<smithay::reexports::input::Device>,
 ) {
     if let Err(e) = libinput_context.dispatch() {
         log::error!("libinput dispatch error: {e}");
     }
     let mut any_input = false;
     while let Ok(event) = libinput_rx.try_recv() {
-        if dispatch_libinput_event(event, state, wm, keyboard_handle, pointer_handle, shared) {
+        if dispatch_libinput_event(
+            event,
+            state,
+            wm,
+            keyboard_handle,
+            pointer_handle,
+            shared,
+            tracked_devices,
+        ) {
             any_input = true;
         }
     }

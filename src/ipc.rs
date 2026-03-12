@@ -642,7 +642,9 @@ fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
             return IpcResponse::ok(info.join("\n\n"));
         }
         InputCommand::PointerAccel { identifier, value } => {
-            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
             cfg.pointer_accel = Some(value.clamp(-1.0, 1.0));
         }
         InputCommand::AccelProfile {
@@ -654,14 +656,18 @@ fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
                 "adaptive" => AccelProfile::Adaptive,
                 _ => return IpcResponse::err(format!("unknown accel profile '{profile}'")),
             };
-            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
             cfg.accel_profile = Some(p);
         }
         InputCommand::Tap {
             identifier,
             enabled,
         } => {
-            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
             cfg.tap = Some(if enabled {
                 ToggleSetting::Enabled
             } else {
@@ -672,7 +678,9 @@ fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
             identifier,
             enabled,
         } => {
-            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
             cfg.natural_scroll = Some(if enabled {
                 ToggleSetting::Enabled
             } else {
@@ -680,7 +688,9 @@ fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
             });
         }
         InputCommand::ScrollFactor { identifier, value } => {
-            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            let cfg = inputs
+                .entry(identifier)
+                .or_insert_with(InputConfig::default);
             cfg.scroll_factor = Some(value);
         }
     }

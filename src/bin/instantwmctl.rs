@@ -530,21 +530,21 @@ fn main() {
                 InputAction::PointerAccel { identifier, value } => {
                     InputCommand::PointerAccel { identifier, value }
                 }
-                InputAction::AccelProfile { identifier, profile } => {
-                    InputCommand::AccelProfile { identifier, profile }
-                }
-                InputAction::Tap { identifier, state } => {
-                    InputCommand::Tap {
-                        identifier,
-                        enabled: state == "enabled",
-                    }
-                }
-                InputAction::NaturalScroll { identifier, state } => {
-                    InputCommand::NaturalScroll {
-                        identifier,
-                        enabled: state == "enabled",
-                    }
-                }
+                InputAction::AccelProfile {
+                    identifier,
+                    profile,
+                } => InputCommand::AccelProfile {
+                    identifier,
+                    profile,
+                },
+                InputAction::Tap { identifier, state } => InputCommand::Tap {
+                    identifier,
+                    enabled: state == "enabled",
+                },
+                InputAction::NaturalScroll { identifier, state } => InputCommand::NaturalScroll {
+                    identifier,
+                    enabled: state == "enabled",
+                },
                 InputAction::ScrollFactor { identifier, value } => {
                     InputCommand::ScrollFactor { identifier, value }
                 }
@@ -595,7 +595,10 @@ fn main() {
         Ok(s) => s,
         Err(err) => {
             if err.kind() == std::io::ErrorKind::NotFound {
-                eprintln!("instantwmctl: instantWM is not running (socket not found: {})", socket);
+                eprintln!(
+                    "instantwmctl: instantWM is not running (socket not found: {})",
+                    socket
+                );
                 eprintln!("Make sure instantWM is started before using instantwmctl.");
             } else {
                 eprintln!("instantwmctl: connect failed ({}): {}", socket, err);
