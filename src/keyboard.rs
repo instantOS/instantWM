@@ -347,7 +347,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = ctx.g().selected_monitor().is_tiling_layout();
+    let is_overview = !ctx.g().selected_monitor().is_tiling_layout();
 
     if is_overview {
         direction_focus(ctx, Direction::Down);

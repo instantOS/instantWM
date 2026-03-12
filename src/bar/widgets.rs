@@ -73,7 +73,7 @@ pub(crate) fn draw_tag_indicators(
 
         let scheme = ctx
             .g
-            .tag_scheme(m, t.tag_index as u32, occupied_tags, is_hover);
+            .tag_scheme(m, t.tag_index as u32, occupied_tags, urg, is_hover);
 
         let mut draw_scheme = scheme;
         if is_hover && bar_dragging {
