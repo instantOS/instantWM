@@ -305,7 +305,8 @@ fn dispatch_pointer_motion(
 ) {
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
-    let in_bar_band = crate::types::find_monitor_by_rect(
+    let active_drag_window = wayland_active_drag_window(wm);
+    let (in_bar_band, in_bar_guard_band) = crate::types::find_monitor_by_rect(
         wm.g.monitors.monitors(),
         &Rect {
             x: root_x,
@@ -315,18 +316,25 @@ fn dispatch_pointer_motion(
         },
     )
     .and_then(|mid| wm.g.monitor(mid))
-    .is_some_and(|mon| {
+    .map(|mon| {
         let bar_h = wm.g.cfg.bar_height.max(1);
-        mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h
-    });
-    let pointer_focus = if in_bar_band {
+        let guard_h = 4;
+        let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
+        let in_guard = mon.showbar
+            && active_drag_window.is_none()
+            && root_y >= mon.bar_y + bar_h
+            && root_y < mon.bar_y + bar_h + guard_h;
+        (in_bar, in_guard)
+    })
+    .unwrap_or((false, false));
+    let pointer_focus = if in_bar_band || in_bar_guard_band {
         state.layer_surface_under_pointer(*pointer_location)
     } else {
         state
             .layer_surface_under_pointer(*pointer_location)
             .or_else(|| state.surface_under_pointer(*pointer_location))
     };
-    let hovered_win = if in_bar_band {
+    let hovered_win = if in_bar_band || in_bar_guard_band {
         None
     } else {
         pointer_focus
