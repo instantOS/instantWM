@@ -119,7 +119,6 @@ pub fn run() -> ! {
     libinput_context
         .udev_assign_seat(&seat_name)
         .expect("libinput assign seat");
-    libinput_context.dispatch().ok();
 
     let (libinput_tx, libinput_rx) = std::sync::mpsc::channel();
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
@@ -405,7 +404,7 @@ fn process_completed_crtcs(
 
 /// Process libinput events and dispatch to handlers.
 fn process_libinput_events(
-    libinput_context: &mut Libinput,
+    _libinput_context: &mut Libinput,
     state: &mut WaylandState,
     wm: &mut Wm,
     shared: &Arc<Mutex<SharedDrmState>>,
@@ -416,9 +415,12 @@ fn process_libinput_events(
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     tracked_devices: &mut Vec<smithay::reexports::input::Device>,
 ) {
-    if let Err(e) = libinput_context.dispatch() {
-        log::error!("libinput dispatch error: {e}");
-    }
+    // NOTE: Do NOT call libinput_context.dispatch() here.  The
+    // LibinputInputBackend calloop source already dispatches internally
+    // and feeds events into `libinput_rx`.  A second dispatch would pull
+    // new events into libinput's internal queue without routing them
+    // through the channel, causing them to arrive late in bursts
+    // (perceived as repeated / delayed key presses).
     let mut any_input = false;
     while let Ok(event) = libinput_rx.try_recv() {
         if dispatch_libinput_event(
