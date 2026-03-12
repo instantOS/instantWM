@@ -83,16 +83,6 @@ impl Default for InputConfig {
 }
 
 /// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
-///
-/// ```toml
-/// [keyboard]
-/// layouts = [
-///   { name = "us" },
-///   { name = "de", variant = "nodeadkeys" },
-///   { name = "fr" }
-/// ]
-/// options = "grp:alt_shift_toggle"
-/// ```
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
 #[serde(default)]
 pub struct KeyboardLayoutConfig {
@@ -104,6 +94,17 @@ pub struct KeyboardLayoutConfig {
 }
 
 /// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
+///
+/// ```toml
+/// [keyboard]
+/// layouts = [
+///   { name = "us" },
+///   { name = "de", variant = "nodeadkeys" },
+///   { name = "fr" }
+/// ]
+/// options = "grp:alt_shift_toggle"
+/// swapescape = true
+/// ```
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct KeyboardConfig {
@@ -114,6 +115,8 @@ pub struct KeyboardConfig {
     pub options: Option<String>,
     /// XKB model, e.g. `"pc105"`. Defaults to system default if unset.
     pub model: Option<String>,
+    /// Swap Caps Lock and Escape.
+    pub swapescape: bool,
 }
 
 impl Default for KeyboardConfig {
@@ -122,6 +125,7 @@ impl Default for KeyboardConfig {
             layouts: Vec::new(),
             options: None,
             model: None,
+            swapescape: false,
         }
     }
 }

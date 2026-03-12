@@ -310,6 +310,8 @@ pub struct KeyboardLayoutState {
     pub options: Option<String>,
     /// XKB model string.
     pub model: Option<String>,
+    /// Swap Caps Lock and Escape.
+    pub swapescape: bool,
     /// Index of the currently active layout in `layouts`.
     pub current: usize,
 }
@@ -588,22 +590,46 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.status_command = cfg.status_command.clone();
 
     // Initialize keyboard layout state from config
-    if !cfg.keyboard_layouts.is_empty() {
-        let layouts: Vec<KeyboardLayout> = cfg
-            .keyboard_layouts
-            .iter()
-            .map(|c| KeyboardLayout {
-                name: c.name.clone(),
-                variant: c.variant.clone(),
-            })
-            .collect();
-        g.keyboard_layout = KeyboardLayoutState {
-            layouts,
-            options: cfg.keyboard_options.clone(),
-            model: cfg.keyboard_model.clone(),
-            current: 0,
-        };
+    let mut layouts: Vec<KeyboardLayout> = cfg
+        .keyboard_layouts
+        .iter()
+        .map(|c| KeyboardLayout {
+            name: c.name.clone(),
+            variant: c.variant.clone(),
+        })
+        .collect();
+
+    if layouts.is_empty() {
+        // Fallback to environment variables (standard Wayland convention)
+        let layout = std::env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
+        if !layout.is_empty() {
+            let variant = std::env::var("XKB_DEFAULT_VARIANT").ok();
+            layouts.push(KeyboardLayout {
+                name: layout,
+                variant,
+            });
+        } else {
+            // Last resort: standard US layout
+            layouts.push(KeyboardLayout::new("us"));
+        }
     }
+
+    let options = cfg
+        .keyboard_options
+        .clone()
+        .or_else(|| std::env::var("XKB_DEFAULT_OPTIONS").ok());
+    let model = cfg
+        .keyboard_model
+        .clone()
+        .or_else(|| std::env::var("XKB_DEFAULT_MODEL").ok());
+
+    g.keyboard_layout = KeyboardLayoutState {
+        layouts,
+        options,
+        model,
+        swapescape: cfg.keyboard_swapescape,
+        current: 0,
+    };
 
     // Rebuild tag template so monitor creation picks up any config changes.
     g.cfg.tag_template = build_tag_template(cfg);

@@ -190,6 +190,8 @@ pub struct Config {
     pub keyboard_options: Option<String>,
     /// XKB model string.
     pub keyboard_model: Option<String>,
+    /// Swap Caps Lock and Escape.
+    pub keyboard_swapescape: bool,
 
     // --- Input configuration ---
     pub input: std::collections::HashMap<String, config_toml::InputConfig>,
@@ -266,6 +268,7 @@ pub fn init_config() -> Config {
         keyboard_layouts: theme.keyboard.layouts.clone(),
         keyboard_options: theme.keyboard.options.clone(),
         keyboard_model: theme.keyboard.model.clone(),
+        keyboard_swapescape: theme.keyboard.swapescape,
 
         // --- Input configuration ---
         input: theme.input.clone(),
