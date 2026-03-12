@@ -87,6 +87,7 @@ pub struct RuntimeConfig {
     // Bindings
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
+    pub modes: std::collections::HashMap<String, Vec<Key>>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
 
@@ -131,6 +132,7 @@ impl Default for RuntimeConfig {
             statusbarcolors: StatusColorConfig::default(),
             keys: Vec::new(),
             desktop_keybinds: Vec::new(),
+            modes: std::collections::HashMap::new(),
             buttons: Vec::new(),
             rules: Vec::new(),
             fonts: Vec::new(),
@@ -357,6 +359,9 @@ pub struct Globals {
 
     /// Whether input configuration has changed and needs to be re-applied.
     pub input_config_dirty: bool,
+
+    /// Current active mode (sway-like modes).
+    pub current_mode: String,
 }
 
 impl Globals {
@@ -520,6 +525,7 @@ impl Default for Globals {
             systray_width: 0,
             keyboard_layout: KeyboardLayoutState::default(),
             input_config_dirty: false,
+            current_mode: "default".to_string(),
         }
     }
 }
@@ -583,6 +589,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
 
     g.cfg.keys = cfg.keys.clone();
     g.cfg.desktop_keybinds = cfg.desktop_keybinds.clone();
+    g.cfg.modes = cfg.modes.clone();
     g.cfg.buttons = cfg.buttons.clone();
     g.cfg.rules = cfg.rules.clone();
     g.cfg.fonts = cfg.fonts.clone();

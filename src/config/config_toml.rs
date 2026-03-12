@@ -25,6 +25,8 @@ pub struct ThemeConfig {
     pub input: std::collections::HashMap<String, InputConfig>,
     /// Background command to execute for reading status bar text, typically `i3status-rs`
     pub status_command: Option<String>,
+    /// User-defined modes (sway-like modes).
+    pub modes: std::collections::HashMap<String, Vec<KeybindSpec>>,
 }
 
 impl Default for ThemeConfig {
@@ -37,6 +39,7 @@ impl Default for ThemeConfig {
             keyboard: KeyboardConfig::default(),
             input: std::collections::HashMap::new(),
             status_command: None,
+            modes: std::collections::HashMap::new(),
         }
     }
 }

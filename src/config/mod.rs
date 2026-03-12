@@ -176,6 +176,7 @@ pub struct Config {
     // --- Bindings ---
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
+    pub modes: std::collections::HashMap<String, Vec<Key>>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub fonts: Vec<String>,
@@ -221,6 +222,14 @@ pub fn init_config() -> Config {
         keybind_config::merge_keybinds(get_desktop_keybinds(), &theme.desktop_keybinds)
     };
 
+    let mut modes = std::collections::HashMap::new();
+    for (name, specs) in &theme.modes {
+        modes.insert(
+            name.clone(),
+            keybind_config::merge_keybinds(Vec::new(), specs),
+        );
+    }
+
     Config {
         // --- Window geometry ---
         borderpx: BORDERPX,
@@ -258,6 +267,7 @@ pub fn init_config() -> Config {
         // --- Bindings (merged with TOML overrides) ---
         keys,
         desktop_keybinds,
+        modes,
         buttons: buttons::get_buttons(),
         rules: rules::get_rules(),
 

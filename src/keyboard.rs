@@ -41,22 +41,40 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
-    let action = ctx
-        .g()
-        .cfg
-        .keys
-        .iter()
-        .find(|key| keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned)
-        .or_else(|| {
-            if ctx.selected_client().is_none() {
-                ctx.g().cfg.desktop_keybinds.iter().find(|key| {
+    let current_mode = ctx.g().current_mode.clone();
+
+    let action = if !current_mode.is_empty() && current_mode != "default" {
+        // Look ONLY in mode-specific keybindings
+        ctx.g()
+            .cfg
+            .modes
+            .get(&current_mode)
+            .and_then(|mode_keys| {
+                mode_keys.iter().find(|key| {
                     keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                 })
-            } else {
-                None
-            }
-        })
-        .map(|key| Rc::clone(&key.action));
+            })
+            .map(|key| Rc::clone(&key.action))
+    } else {
+        // Normal mode
+        ctx.g()
+            .cfg
+            .keys
+            .iter()
+            .find(|key| {
+                keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+            })
+            .or_else(|| {
+                if ctx.selected_client().is_none() {
+                    ctx.g().cfg.desktop_keybinds.iter().find(|key| {
+                        keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                    })
+                } else {
+                    None
+                }
+            })
+            .map(|key| Rc::clone(&key.action))
+    };
 
     if let Some(action) = action {
         action(ctx);
@@ -82,6 +100,7 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
     let numlockmask = x11_runtime.numlockmask;
     let keys = core.g.cfg.keys.as_slice();
     let desktop_keybinds = core.g.cfg.desktop_keybinds.as_slice();
+    let modes = &core.g.cfg.modes;
     let free_alt_tab = true;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
@@ -114,8 +133,12 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
     };
 
     for keycode in keycode_min..=keycode_max {
+        let keysym = get_keysym(keycode);
+        if keysym == 0 {
+            continue;
+        }
+
         for key in keys {
-            let keysym = get_keysym(keycode);
             if keysym == key.keysym {
                 for &modif in &modifiers {
                     if free_alt_tab && key.mod_mask == ModMask::M1.bits() as u32 {
@@ -134,10 +157,27 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
             }
         }
 
+        for mode_keys in modes.values() {
+            for key in mode_keys {
+                if keysym == key.keysym {
+                    for &modif in &modifiers {
+                        let _ = grab_key(
+                            conn,
+                            false,
+                            root,
+                            ((key.mod_mask as u16) | modif).into(),
+                            keycode,
+                            GrabMode::ASYNC,
+                            GrabMode::ASYNC,
+                        );
+                    }
+                }
+            }
+        }
+
         let selected_window = core.selected_client();
         if selected_window.is_none() {
             for key in desktop_keybinds {
-                let keysym = get_keysym(keycode);
                 if keysym == key.keysym {
                     for &modif in &modifiers {
                         let _ = grab_key(

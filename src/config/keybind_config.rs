@@ -58,6 +58,8 @@ pub enum StructuredAction {
     IncNmaster(i32),
     /// Set keyboard layout by name: `{ keyboard_layout = "de" }`.
     KeyboardLayout(String),
+    /// Set current WM mode: `{ set_mode = "resize" }`.
+    SetMode(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +258,14 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
             }))
         }
 
+        ActionSpec::Structured(StructuredAction::SetMode(name)) => {
+            let name = name.clone();
+            Some(Rc::new(move |ctx| {
+                ctx.g_mut().current_mode = name.clone();
+                ctx.request_bar_update(None);
+            }))
+        }
+
         ActionSpec::Named(name) => compile_named_action(name),
     }
 }
@@ -303,6 +313,11 @@ pub fn get_structured_actions() -> Vec<ActionMeta> {
         ActionMeta {
             name: "keyboard_layout",
             doc: "set keyboard layout",
+            takes_args: true,
+        },
+        ActionMeta {
+            name: "set_mode",
+            doc: "set WM mode (sway-like modes)",
             takes_args: true,
         },
     ];
