@@ -213,6 +213,9 @@ fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
     if let Some(rest) = json_str.strip_prefix(',') {
         json_str = rest.trim_start();
     }
+    if let Some(rest) = json_str.strip_suffix(',') {
+        json_str = rest.trim_end();
+    }
 
     let raw_blocks: Vec<RawI3Block> = serde_json::from_str(json_str).ok()?;
     let mut blocks = Vec::with_capacity(raw_blocks.len());
