@@ -621,32 +621,54 @@ pub fn handle_pointer_axis<B: InputBackend>(
     let direction_modifier = if natural_scroll { -1.0 } else { 1.0 };
     let effective_factor = scroll_factor * direction_modifier;
 
+    let horizontal_amount = event.amount(smithay::backend::input::Axis::Horizontal).unwrap_or(0.0);
+    let vertical_amount = event.amount(smithay::backend::input::Axis::Vertical).unwrap_or(0.0);
+    let horizontal_amount_discrete = event.amount_v120(smithay::backend::input::Axis::Horizontal);
+    let vertical_amount_discrete = event.amount_v120(smithay::backend::input::Axis::Vertical);
+
     let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());
 
-    if let Some(amount) = event.amount(smithay::backend::input::Axis::Vertical) {
-        frame = frame.value(
-            smithay::backend::input::Axis::Vertical,
-            amount * effective_factor,
+    if horizontal_amount != 0.0 {
+        frame = frame.relative_direction(
+            smithay::backend::input::Axis::Horizontal,
+            event.relative_direction(smithay::backend::input::Axis::Horizontal),
         );
-    }
-    if let Some(amount) = event.amount(smithay::backend::input::Axis::Horizontal) {
         frame = frame.value(
             smithay::backend::input::Axis::Horizontal,
-            amount * effective_factor,
+            horizontal_amount * effective_factor,
         );
+        if let Some(steps) = horizontal_amount_discrete {
+            frame = frame.v120(
+                smithay::backend::input::Axis::Horizontal,
+                (steps as f64 * effective_factor) as i32,
+            );
+        }
     }
-    if let Some(steps) = event.amount_v120(smithay::backend::input::Axis::Vertical) {
-        frame = frame.v120(
+    if vertical_amount != 0.0 {
+        frame = frame.relative_direction(
             smithay::backend::input::Axis::Vertical,
-            (steps as f64 * effective_factor) as i32,
+            event.relative_direction(smithay::backend::input::Axis::Vertical),
         );
+        frame = frame.value(
+            smithay::backend::input::Axis::Vertical,
+            vertical_amount * effective_factor,
+        );
+        if let Some(steps) = vertical_amount_discrete {
+            frame = frame.v120(
+                smithay::backend::input::Axis::Vertical,
+                (steps as f64 * effective_factor) as i32,
+            );
+        }
     }
-    if let Some(steps) = event.amount_v120(smithay::backend::input::Axis::Horizontal) {
-        frame = frame.v120(
-            smithay::backend::input::Axis::Horizontal,
-            (steps as f64 * effective_factor) as i32,
-        );
+
+    if event.source() == smithay::backend::input::AxisSource::Finger {
+        if event.amount(smithay::backend::input::Axis::Horizontal) == Some(0.0) {
+            frame = frame.stop(smithay::backend::input::Axis::Horizontal);
+        }
+        if event.amount(smithay::backend::input::Axis::Vertical) == Some(0.0) {
+            frame = frame.stop(smithay::backend::input::Axis::Vertical);
+        }
     }
 
     let scroll_delta = event
