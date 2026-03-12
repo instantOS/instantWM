@@ -865,6 +865,7 @@ fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
 struct WmStatusInfo {
     version: String,
     protocol_version: String,
+    build_commit: String,
     backend: String,
     running: bool,
     monitors: usize,
@@ -881,6 +882,7 @@ fn get_status(wm: &Wm) -> IpcResponse {
     let info = WmStatusInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         protocol_version: crate::ipc_types::IPC_PROTOCOL_VERSION.to_string(),
+        build_commit: env!("INSTANTWM_BUILD_COMMIT").to_string(),
         backend: backend.to_string(),
         running: wm.running,
         monitors: wm.g.monitors.len(),

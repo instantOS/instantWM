@@ -3,6 +3,8 @@ use std::hash::{Hash, Hasher};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=.git/HEAD");
+    println!("cargo:rerun-if-changed=.git/index");
 
     println!("cargo:rustc-link-lib=Xinerama");
     println!("cargo:rustc-link-lib=X11");
@@ -21,8 +23,10 @@ fn main() {
         crate_version,
         &source_hash[..8.min(source_hash.len())]
     );
+    let build_commit = git_head_commit().unwrap_or_else(|| "unknown".to_string());
 
     println!("cargo:rustc-env=IPC_PROTOCOL_VERSION={}", protocol_version);
+    println!("cargo:rustc-env=INSTANTWM_BUILD_COMMIT={}", build_commit);
 }
 
 /// Compute a hash of all files that affect the IPC protocol.
@@ -49,4 +53,21 @@ fn compute_ipc_source_hash() -> String {
     timestamp.hash(&mut hasher);
 
     format!("{:016x}", hasher.finish())
+}
+
+fn git_head_commit() -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let commit = String::from_utf8(output.stdout).ok()?;
+    let commit = commit.trim();
+    if commit.is_empty() {
+        None
+    } else {
+        Some(commit.to_string())
+    }
 }
