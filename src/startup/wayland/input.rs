@@ -518,20 +518,34 @@ pub fn handle_pointer_axis<B: InputBackend>(
     event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
+    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+
     let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());
 
     if let Some(amount) = event.amount(smithay::backend::input::Axis::Vertical) {
-        frame = frame.value(smithay::backend::input::Axis::Vertical, amount);
+        frame = frame.value(
+            smithay::backend::input::Axis::Vertical,
+            amount * scroll_factor,
+        );
     }
     if let Some(amount) = event.amount(smithay::backend::input::Axis::Horizontal) {
-        frame = frame.value(smithay::backend::input::Axis::Horizontal, amount);
+        frame = frame.value(
+            smithay::backend::input::Axis::Horizontal,
+            amount * scroll_factor,
+        );
     }
     if let Some(steps) = event.amount_v120(smithay::backend::input::Axis::Vertical) {
-        frame = frame.v120(smithay::backend::input::Axis::Vertical, steps as i32);
+        frame = frame.v120(
+            smithay::backend::input::Axis::Vertical,
+            (steps as f64 * scroll_factor) as i32,
+        );
     }
     if let Some(steps) = event.amount_v120(smithay::backend::input::Axis::Horizontal) {
-        frame = frame.v120(smithay::backend::input::Axis::Horizontal, steps as i32);
+        frame = frame.v120(
+            smithay::backend::input::Axis::Horizontal,
+            (steps as f64 * scroll_factor) as i32,
+        );
     }
 
     let scroll_delta = event
@@ -839,4 +853,21 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
         );
     }
     true
+}
+
+/// Resolve the effective scroll factor from input configuration.
+///
+/// Checks `type:pointer`, `type:touchpad`, then `*` (wildcard) entries,
+/// returning the first `scroll_factor` found, or `1.0` if none is set.
+fn resolve_scroll_factor(
+    input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
+) -> f64 {
+    for key in &["type:pointer", "type:touchpad", "*"] {
+        if let Some(cfg) = input_config.get(*key) {
+            if let Some(factor) = cfg.scroll_factor {
+                return factor.max(0.0);
+            }
+        }
+    }
+    1.0
 }

@@ -89,6 +89,19 @@ pub fn configure_device(
         if let Some(pointer_accel) = config.pointer_accel {
             let _ = device.config_accel_set_speed(pointer_accel.clamp(-1.0, 1.0));
         }
+
+        // scroll_factor is applied at the compositor level in the axis handler,
+        // not via libinput. Nothing to do here for it.
+    }
+}
+
+/// Re-apply input configuration to all tracked devices.
+pub fn reconfigure_all_devices(
+    devices: &mut [smithay::reexports::input::Device],
+    input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
+) {
+    for device in devices.iter_mut() {
+        configure_device(device, input_config);
     }
 }
 
@@ -99,6 +112,7 @@ pub fn dispatch_libinput_event(
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     shared: &Arc<Mutex<SharedDrmState>>,
+    tracked_devices: &mut Vec<smithay::reexports::input::Device>,
 ) -> bool {
     let (total_w, total_h) = {
         let s = shared.lock().unwrap();
@@ -108,6 +122,11 @@ pub fn dispatch_libinput_event(
     match event {
         InputEvent::DeviceAdded { mut device } => {
             crate::startup::drm::input::configure_device(&mut device, &wm.g.cfg.input);
+            tracked_devices.push(device);
+            false
+        }
+        InputEvent::DeviceRemoved { device } => {
+            tracked_devices.retain(|d| d != &device);
             false
         }
         InputEvent::Keyboard { event } => {

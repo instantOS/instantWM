@@ -67,6 +67,7 @@ pub struct InputConfig {
     pub natural_scroll: Option<ToggleSetting>,
     pub accel_profile: Option<AccelProfile>,
     pub pointer_accel: Option<f64>,
+    pub scroll_factor: Option<f64>,
 }
 
 impl Default for InputConfig {
@@ -76,6 +77,7 @@ impl Default for InputConfig {
             natural_scroll: None,
             accel_profile: None,
             pointer_accel: None,
+            scroll_factor: None,
         }
     }
 }

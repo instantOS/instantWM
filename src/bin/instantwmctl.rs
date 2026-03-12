@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
-    IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout, MonitorCommand,
-    ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
+    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout,
+    MonitorCommand, ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
 };
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -250,6 +250,63 @@ enum TagAction {
     Reset,
 }
 
+/// Input device configuration actions (sway-compatible).
+#[derive(Debug, Subcommand)]
+enum InputAction {
+    /// List current input configuration.
+    ///
+    /// Shows configuration for all device types, or for a specific
+    /// identifier (e.g., "type:touchpad", "type:pointer", "*").
+    List {
+        /// Device identifier (e.g., "type:touchpad", "type:pointer", "*")
+        identifier: Option<String>,
+    },
+    /// Set pointer acceleration speed.
+    ///
+    /// Value must be between -1.0 and 1.0.
+    /// Negative values slow down, positive values speed up.
+    /// Identifier examples: "type:touchpad", "type:pointer", "*"
+    PointerAccel {
+        /// Device identifier (e.g., "type:pointer", "type:touchpad", "*")
+        identifier: String,
+        /// Acceleration value (-1.0 to 1.0)
+        value: f64,
+    },
+    /// Set acceleration profile.
+    ///
+    /// "flat" disables acceleration, "adaptive" applies dynamic acceleration.
+    AccelProfile {
+        /// Device identifier
+        identifier: String,
+        /// Profile: "flat" or "adaptive"
+        profile: String,
+    },
+    /// Enable or disable tap-to-click.
+    Tap {
+        /// Device identifier
+        identifier: String,
+        /// "enabled" or "disabled"
+        state: String,
+    },
+    /// Enable or disable natural (inverted) scrolling.
+    NaturalScroll {
+        /// Device identifier
+        identifier: String,
+        /// "enabled" or "disabled"
+        state: String,
+    },
+    /// Set scroll factor (speed multiplier).
+    ///
+    /// Values greater than 1.0 increase scroll speed,
+    /// values less than 1.0 decrease it.
+    ScrollFactor {
+        /// Device identifier
+        identifier: String,
+        /// Scroll speed multiplier (must be non-negative)
+        value: f64,
+    },
+}
+
 #[derive(Debug, Subcommand)]
 enum CommandKind {
     /// Run a keybind action by name. Use --list to see available actions.
@@ -343,6 +400,16 @@ enum CommandKind {
     Scratchpad {
         #[command(subcommand)]
         action: ScratchpadAction,
+    },
+    /// Input device configuration (mouse, touchpad, pointer).
+    ///
+    /// Configure input device settings like pointer acceleration,
+    /// scroll behavior, and tap-to-click. Uses sway-compatible
+    /// identifiers ("type:touchpad", "type:pointer", or "*").
+    #[command(alias = "input")]
+    Mouse {
+        #[command(subcommand)]
+        action: InputAction,
     },
     /// Update status text on the bar. If text is "-", read from stdin continuously.
     UpdateStatus { text: String },
@@ -457,6 +524,33 @@ fn main() {
             };
             IpcCommand::Scratchpad(cmd)
         }
+        CommandKind::Mouse { action } => {
+            let cmd = match action {
+                InputAction::List { identifier } => InputCommand::List(identifier),
+                InputAction::PointerAccel { identifier, value } => {
+                    InputCommand::PointerAccel { identifier, value }
+                }
+                InputAction::AccelProfile {
+                    identifier,
+                    profile,
+                } => InputCommand::AccelProfile {
+                    identifier,
+                    profile,
+                },
+                InputAction::Tap { identifier, state } => InputCommand::Tap {
+                    identifier,
+                    enabled: state == "enabled",
+                },
+                InputAction::NaturalScroll { identifier, state } => InputCommand::NaturalScroll {
+                    identifier,
+                    enabled: state == "enabled",
+                },
+                InputAction::ScrollFactor { identifier, value } => {
+                    InputCommand::ScrollFactor { identifier, value }
+                }
+            };
+            IpcCommand::Input(cmd)
+        }
         CommandKind::UpdateStatus { text } => {
             if text == "-" {
                 use std::io::BufRead;
@@ -474,7 +568,7 @@ fn main() {
                         continue;
                     }
 
-                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|| {
+                    let socket = std::env::var("INSTANTWM_SOCKET").unwrap_or_else(|_| {
                         format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() })
                     });
 
@@ -496,11 +590,19 @@ fn main() {
     };
 
     let socket = std::env::var("INSTANTWM_SOCKET")
-        .unwrap_or_else(|| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
+        .unwrap_or_else(|_| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
     let mut stream = match UnixStream::connect(&socket) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("instantwmctl: connect failed ({}): {}", socket, err);
+            if err.kind() == std::io::ErrorKind::NotFound {
+                eprintln!(
+                    "instantwmctl: instantWM is not running (socket not found: {})",
+                    socket
+                );
+                eprintln!("Make sure instantWM is started before using instantwmctl.");
+            } else {
+                eprintln!("instantwmctl: connect failed ({}): {}", socket, err);
+            }
             std::process::exit(1);
         }
     };
