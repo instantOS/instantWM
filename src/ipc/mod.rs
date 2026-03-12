@@ -6,15 +6,15 @@ use std::io::{BufReader, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
-pub mod monitor;
-pub mod window;
-pub mod tag;
-pub mod scratchpad;
-pub mod keyboard;
-pub mod toggle;
-pub mod input;
-pub mod mode;
 pub mod general;
+pub mod input;
+pub mod keyboard;
+pub mod mode;
+pub mod monitor;
+pub mod scratchpad;
+pub mod tag;
+pub mod toggle;
+pub mod window;
 
 pub struct IpcServer {
     listener: UnixListener,

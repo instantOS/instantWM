@@ -10,9 +10,7 @@ use crate::wm::Wm;
 pub fn set_wallpaper(wm: &mut Wm, path: String) -> IpcResponse {
     if wm.ctx().is_wayland() {
         // Use swaybg on Wayland
-        let _ = std::process::Command::new("killall")
-            .arg("swaybg")
-            .status();
+        let _ = std::process::Command::new("killall").arg("swaybg").status();
         let status = std::process::Command::new("swaybg")
             .arg("-i")
             .arg(&path)
