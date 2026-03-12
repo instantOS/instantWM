@@ -867,6 +867,7 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
             drag.win,
         );
     }
+    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(drag.win);
     true
 }
 

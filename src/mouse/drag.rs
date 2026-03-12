@@ -1203,6 +1203,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         } else {
             handle_client_monitor_switch(ctx, win);
         }
+        ctx.raise_interactive(win);
         return;
     }
 
