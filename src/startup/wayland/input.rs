@@ -155,10 +155,20 @@ pub fn handle_keyboard<B: InputBackend>(
             );
         }
     }
-    let wm_shortcuts_allowed = matches!(
-        keyboard_handle.current_focus(),
-        None | Some(KeyboardFocusTarget::Window(_))
-    );
+    let wm_shortcuts_allowed = match keyboard_handle.current_focus() {
+        None => true,
+        Some(KeyboardFocusTarget::Window(ref w)) => {
+            // Suppress WM shortcuts when an overlay window (dmenu, popup,
+            // override-redirect menu, etc.) has keyboard focus so that key
+            // events reach the overlay instead of triggering desktop keybinds.
+            match w.user_data().get::<WindowIdMarker>() {
+                Some(m) => !m.is_overlay,
+                // No marker → unmanaged X11 surface, treat as overlay.
+                None => !w.x11_surface().is_some(),
+            }
+        }
+        _ => false,
+    };
     keyboard_handle.input(
         state,
         event.key_code(),
