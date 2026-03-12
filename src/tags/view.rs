@@ -304,10 +304,9 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     let core = ctx.core_mut();
     let selmon_id = core.g.selected_monitor_id();
     let mon = core.g.selected_monitor();
-    let (current_tag, tagset, _tagmask) = (
+    let (current_tag, tagset) = (
         mon.current_tag,
         TagMask::from_bits(mon.selected_tags()),
-        TagMask::from_bits(core.g.tags.mask()),
     );
 
     if dir == Direction::Left && current_tag <= 1 {

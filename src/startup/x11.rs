@@ -139,8 +139,6 @@ fn setup_signal_handlers() {
 }
 
 fn init_atoms(x11_runtime: &mut crate::globals::X11RuntimeConfig, conn: &RustConnection) {
-    let _utf8string = intern_atom(conn, "UTF8_STRING", false);
-
     let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
     let wm_delete = intern_atom(conn, "WM_DELETE_WINDOW", false);
     let wm_state = intern_atom(conn, "WM_STATE", false);

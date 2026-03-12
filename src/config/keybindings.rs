@@ -48,9 +48,6 @@ macro_rules! key {
 use crate::types::MonitorDirection;
 
 fn tag_keys(keysym: u32, tag_idx: usize) -> [Key; 6] {
-    // Use type-safe TagMask - unwrap is safe here as tag_idx < 9
-    let _mask = TagMask::single(tag_idx + 1).unwrap();
-
     [
         // View: MOD+num
         key!(MODKEY, keysym => move |ctx| {

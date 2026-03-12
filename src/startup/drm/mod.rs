@@ -129,9 +129,6 @@ pub fn run() -> ! {
         })
         .expect("failed to insert libinput source");
 
-    let _keyboard_handle = state.keyboard.clone();
-    let _pointer_handle = state.pointer.clone();
-
     setup_session_handlers(
         &loop_handle,
         notifier,
