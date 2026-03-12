@@ -143,13 +143,6 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let is_monocle = layout.is_monocle();
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
-    let selected_is_floating = ctx.client(selected_window).is_some_and(|c| c.is_floating);
-
-    if selected_is_floating {
-        ctx.raise(selected_window);
-        ctx.flush();
-        return;
-    }
 
     if !is_tiling {
         ctx.raise(selected_window);
@@ -173,20 +166,26 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         }
     }
 
-    // In monocle every tiled client occupies the full work area, so the
-    // focused tiled client must be the last tiled element in z-order.
-    // Keeping this explicit also makes the generic tiled case easier to read.
-    if let Some(idx) = tiled_stack.iter().position(|&win| win == selected_window) {
-        let selected = tiled_stack.remove(idx);
-        tiled_stack.push(selected);
-    }
-    if is_monocle && tiled_stack.last().copied() != Some(selected_window) {
-        tiled_stack.retain(|&win| win != selected_window);
-        tiled_stack.push(selected_window);
+    if let Some(idx) = floating_stack.iter().position(|&win| win == selected_window) {
+        let selected = floating_stack.remove(idx);
+        floating_stack.push(selected);
+    } else {
+        // In monocle every tiled client occupies the full work area, so the
+        // focused tiled client must be the last tiled element in z-order.
+        // Keeping this explicit also makes the generic tiled case easier to read.
+        if let Some(idx) = tiled_stack.iter().position(|&win| win == selected_window) {
+            let selected = tiled_stack.remove(idx);
+            tiled_stack.push(selected);
+        }
+        if is_monocle && tiled_stack.last().copied() != Some(selected_window) {
+            tiled_stack.retain(|&win| win != selected_window);
+            tiled_stack.push(selected_window);
+        }
     }
 
-    // Final z-order: tiled clients (selected tiled last), then the bar,
-    // then floating clients above all tiled content.
+    // Final z-order: tiled clients, then the bar, then floating clients.
+    // This keeps every floating window above tiled content while still
+    // keeping the selected window topmost within its own class.
     let mut stack = tiled_stack;
     stack.push(bar_win);
     stack.extend(floating_stack);
