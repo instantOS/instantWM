@@ -330,7 +330,32 @@ fn dispatch_pointer_motion(
 
     let active_drag_window = wayland_active_drag_window(wm);
     if active_drag_window.is_none() {
-        let _ = update_wayland_selected_resize_offer(wm, root_x, root_y);
+        let selected_floating = wm
+            .g
+            .selected_win()
+            .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.is_floating)))
+            .is_some_and(|(_, is_floating)| is_floating);
+        let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
+        if !(selected_floating && !hovered_is_selected) {
+            let _ = update_wayland_selected_resize_offer(wm, root_x, root_y);
+        } else {
+            let ctx = wm.ctx();
+            let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+                return;
+            };
+            if let Some((win, dir)) = crate::mouse::hover::hover_resize_target_at(
+                &crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                root_x,
+                root_y,
+            ) {
+                set_cursor_resize_wayland(&mut ctx, Some(dir));
+                ctx.core.g.cursor_icon = AltCursor::Resize;
+                ctx.core.g.drag.resize_direction = Some(dir);
+                let _ = win;
+            } else if ctx.core.g.cursor_icon == AltCursor::Resize {
+                clear_wayland_hover_resize_offer(&mut ctx);
+            }
+        }
     }
 
     if let Some(lock_win) = active_drag_window {

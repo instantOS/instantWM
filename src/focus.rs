@@ -171,7 +171,6 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 
     fn focus_window(&self, _core: &mut CoreCtx, win: WindowId) {
         self.wayland.backend.set_focus(win);
-        self.wayland.backend.raise_window(win);
     }
 
     fn focus_none(&self, _core: &mut CoreCtx) {
@@ -185,10 +184,58 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
     fn post_state_update(
         &mut self,
         core: &mut CoreCtx,
-        _previous: Option<WindowId>,
-        _current: Option<WindowId>,
+        previous: Option<WindowId>,
+        current: Option<WindowId>,
     ) {
         core.bar.mark_dirty();
+
+        let Some(current) = current else {
+            return;
+        };
+        let Some(monitor_id) = core.g.clients.get(&current).map(|c| c.monitor_id) else {
+            return;
+        };
+        if core
+            .g
+            .clients
+            .get(&current)
+            .is_some_and(|c| c.is_floating)
+        {
+            self.wayland.backend.raise_window(current);
+            return;
+        }
+
+        if previous == Some(current) {
+            return;
+        }
+
+        let mut stack = Vec::new();
+        let mut floating = Vec::new();
+        let Some(monitor) = core.g.monitor(monitor_id) else {
+            return;
+        };
+        let selected_tags = monitor.selected_tags();
+        let bar_win = monitor.bar_win;
+        for &win in &monitor.stack {
+            let Some(client) = core.g.clients.get(&win) else {
+                continue;
+            };
+            if !client.is_visible_on_tags(selected_tags) {
+                continue;
+            }
+            if client.is_floating {
+                floating.push(win);
+            } else {
+                stack.push(win);
+            }
+        }
+        if let Some(idx) = stack.iter().position(|&win| win == current) {
+            let selected = stack.remove(idx);
+            stack.push(selected);
+        }
+        stack.push(bar_win);
+        stack.extend(floating);
+        self.wayland.backend.restack(&stack);
     }
 }
 
