@@ -43,15 +43,15 @@ impl ClientBarStats {
 }
 
 /// Map a `BarPosition` to the `Gesture` used for hover highlighting.
-pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
+pub fn bar_position_to_hover_state(pos: BarPosition) -> BarHoverState {
     match pos {
-        BarPosition::StartMenu => Gesture::StartMenu,
-        BarPosition::Tag(idx) => Gesture::Tag(idx),
-        BarPosition::CloseButton(_) => Gesture::CloseButton,
-        BarPosition::WinTitle(w) => Gesture::WinTitle(w),
-        BarPosition::SystrayItem(_) => Gesture::None,
-        BarPosition::SystrayMenuItem(_) => Gesture::None,
-        _ => Gesture::None,
+        BarPosition::StartMenu => BarHoverState::StartMenu,
+        BarPosition::Tag(idx) => BarHoverState::Tag(idx),
+        BarPosition::CloseButton(_) => BarHoverState::CloseButton,
+        BarPosition::WinTitle(w) => BarHoverState::WinTitle(w),
+        BarPosition::SystrayItem(_) => BarHoverState::None,
+        BarPosition::SystrayMenuItem(_) => BarHoverState::None,
+        _ => BarHoverState::None,
     }
 }
 

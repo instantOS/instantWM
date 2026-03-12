@@ -2,7 +2,7 @@ use crate::bar::model::ClientBarStats;
 use crate::bar::paint::BarPainter;
 use crate::bar::{status, widgets};
 use crate::contexts::CoreCtx;
-use crate::types::Gesture;
+use crate::types::BarHoverState;
 
 /// Core bar drawing implementation shared between X11 and Wayland.
 ///
@@ -132,9 +132,9 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
 
 pub fn reset_bar_common(core: &mut CoreCtx) {
     let selmon = core.g.selected_monitor();
-    if selmon.gesture == Gesture::None {
+    if selmon.bar_hover_state == BarHoverState::None {
         return;
     }
 
-    core.g.selected_monitor_mut().gesture = Gesture::None;
+    core.g.selected_monitor_mut().bar_hover_state = BarHoverState::None;
 }

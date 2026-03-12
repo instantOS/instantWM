@@ -22,7 +22,7 @@
 //! post-loop cleanup (bar drop, monitor switch, bar redraw, …)
 //! ```
 
-use crate::bar::bar_position_to_gesture;
+use crate::bar::bar_position_to_hover_state;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{change_snap, reset_snap, set_window_mode, SnapDir, WindowMode};
@@ -224,23 +224,23 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
     let selmon_id = ctx.g().selected_monitor_id();
 
     if on_bar {
-        let new_gesture = {
+        let new_hover_state = {
             let core = ctx.core();
             let mon = core.g.selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
-            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+            bar_position_to_hover_state(mon.bar_position_at_x(core, local_x))
         };
 
-        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
+        let hover_state_changed = ctx.g().selected_monitor().bar_hover_state != new_hover_state;
 
-        if !state.cursor_on_bar || gesture_changed {
+        if !state.cursor_on_bar || hover_state_changed {
             ctx.g_mut().drag.bar_active = true;
-            ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.g_mut().selected_monitor_mut().bar_hover_state = new_hover_state;
             ctx.request_bar_update(Some(selmon_id));
         }
     } else if state.cursor_on_bar {
         ctx.g_mut().drag.bar_active = false;
-        ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.g_mut().selected_monitor_mut().bar_hover_state = BarHoverState::None;
         ctx.request_bar_update(Some(selmon_id));
     }
 
@@ -257,21 +257,21 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32) -> bool 
     let was_on_bar = ctx.g().drag.bar_active;
 
     if on_bar {
-        let new_gesture = {
+        let new_hover_state = {
             let core = ctx.core();
             let mon = core.g.selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
-            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+            bar_position_to_hover_state(mon.bar_position_at_x(core, local_x))
         };
-        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
-        if !was_on_bar || gesture_changed {
+        let hover_state_changed = ctx.g().selected_monitor().bar_hover_state != new_hover_state;
+        if !was_on_bar || hover_state_changed {
             ctx.g_mut().drag.bar_active = true;
-            ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.g_mut().selected_monitor_mut().bar_hover_state = new_hover_state;
             ctx.request_bar_update(Some(selmon_id));
         }
     } else if was_on_bar {
         ctx.g_mut().drag.bar_active = false;
-        ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.g_mut().selected_monitor_mut().bar_hover_state = BarHoverState::None;
         ctx.request_bar_update(Some(selmon_id));
     }
 
@@ -403,7 +403,7 @@ fn maybe_promote_tiled_drag_to_floating(
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.g_mut().drag.bar_active = false;
     let selmon_id = ctx.g().selected_monitor_id();
-    ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+    ctx.g_mut().selected_monitor_mut().bar_hover_state = BarHoverState::None;
     ctx.request_bar_update(Some(selmon_id));
 }
 
@@ -777,23 +777,23 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.g_mut().drag.tag.last_motion = Some((root_x, root_y, 0));
 
     let local_x = root_x - mon_mx;
-    let new_gesture = {
+    let new_hover_state = {
         let core = ctx.core();
         core.g
             .monitors
             .get(selmon_id)
-            .map(|mon| bar_position_to_gesture(mon.bar_position_at_x(core, local_x)))
-            .unwrap_or(Gesture::None)
+            .map(|mon| bar_position_to_hover_state(mon.bar_position_at_x(core, local_x)))
+            .unwrap_or(BarHoverState::None)
     };
-    let gesture_key = match new_gesture {
-        Gesture::Tag(idx) => idx as i32,
+    let hover_state_key = match new_hover_state {
+        BarHoverState::Tag(idx) => idx as i32,
         _ => -1,
     };
 
-    if ctx.g_mut().drag.tag.last_tag != gesture_key {
-        ctx.g_mut().drag.tag.last_tag = gesture_key;
+    if ctx.g_mut().drag.tag.last_tag != hover_state_key {
+        ctx.g_mut().drag.tag.last_tag = hover_state_key;
         if let Some(mon) = ctx.g_mut().monitors.get_mut(selmon_id) {
-            mon.gesture = new_gesture;
+            mon.bar_hover_state = new_hover_state;
         }
         ctx.request_bar_update(Some(selmon_id));
     }
@@ -843,7 +843,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
 
     ctx.g_mut().drag.bar_active = false;
     if let Some(mon) = ctx.g_mut().monitor_mut(selmon_id) {
-        mon.gesture = Gesture::None;
+        mon.bar_hover_state = BarHoverState::None;
     }
     set_cursor_default(ctx);
     ctx.request_bar_update(Some(selmon_id));

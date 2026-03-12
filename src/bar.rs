@@ -9,7 +9,7 @@ mod widgets;
 pub mod x11;
 mod x11_painter;
 
-pub use model::bar_position_to_gesture;
+pub use model::bar_position_to_hover_state;
 pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 

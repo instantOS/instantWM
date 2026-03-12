@@ -136,7 +136,7 @@ pub enum BarPosition {
 
 /// Describes which interactive bar region the cursor is hovering over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Gesture {
+pub enum BarHoverState {
     /// No actionable hover target.
     #[default]
     None,
@@ -155,7 +155,7 @@ pub enum Gesture {
     StartMenu,
 }
 
-impl Gesture {
+impl BarHoverState {
     /// Construct a `Tag` gesture from a 0-based tag index.
     ///
     /// Returns `None` only if the index is unreasonably large (> 63).

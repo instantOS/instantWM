@@ -1,7 +1,7 @@
 use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
 use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::BackendOps;
-use crate::bar::bar_position_to_gesture;
+use crate::bar::bar_position_to_hover_state;
 use crate::bar::status::emit_i3bar_status_click;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
 use crate::client::{
@@ -481,7 +481,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         let in_bar = selmon.showbar
             && root_y >= selmon.bar_y
             && root_y < selmon.bar_y + ctx.core.g.cfg.bar_height;
-        if !in_bar && selmon.gesture != Gesture::None {
+        if !in_bar && selmon.bar_hover_state != BarHoverState::None {
             reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
         }
         return;
@@ -513,9 +513,13 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     };
 
     // Early-out: cursor is below the bar area.
-    let (monitor_y, bar_height, current_gesture) = {
+    let (monitor_y, bar_height, current_hover_state) = {
         let mon = ctx.core.g.selected_monitor();
-        (mon.monitor_rect.y, ctx.core.g.cfg.bar_height, mon.gesture)
+        (
+            mon.monitor_rect.y,
+            ctx.core.g.cfg.bar_height,
+            mon.bar_hover_state,
+        )
     };
 
     if root_y >= monitor_y + bar_height {
@@ -537,7 +541,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     // Compute the bar position from the cursor's monitor-local x coordinate,
     // then convert to a gesture for hover highlighting.
-    let new_gesture = {
+    let new_hover_state = {
         let mon = ctx.core.g.selected_monitor();
         let local_x = root_x - mon.work_rect.x;
         let position = mon.bar_position_at_x(&ctx.core, local_x);
@@ -548,12 +552,12 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
                 reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
                 return;
             }
-            other => bar_position_to_gesture(other),
+            other => bar_position_to_hover_state(other),
         }
     };
 
-    if new_gesture != current_gesture {
-        ctx.core.g.selected_monitor_mut().gesture = new_gesture;
+    if new_hover_state != current_hover_state {
+        ctx.core.g.selected_monitor_mut().bar_hover_state = new_hover_state;
         draw_bar(
             &mut ctx.core,
             ctx.x11_runtime,

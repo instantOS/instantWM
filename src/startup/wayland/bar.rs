@@ -1,4 +1,4 @@
-use crate::bar::bar_position_to_gesture;
+use crate::bar::bar_position_to_hover_state;
 use crate::bar::status::emit_i3bar_status_click;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
@@ -26,7 +26,7 @@ pub(super) fn update_wayland_bar_hit_state(
     let mon = ctx.g.selected_monitor();
     let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
     if !in_bar {
-        let had_hover = mon.gesture != crate::types::Gesture::None;
+        let had_hover = mon.bar_hover_state != crate::types::BarHoverState::None;
         if had_hover {
             crate::bar::reset_bar_common(ctx.core_mut());
         }
@@ -40,12 +40,12 @@ pub(super) fn update_wayland_bar_hit_state(
         crate::bar::reset_bar_common(ctx.core_mut());
     }
 
-    let gesture = if pos == BarPosition::StatusText {
-        ctx.g.selected_monitor().gesture
+    let bar_hover_state = if pos == BarPosition::StatusText {
+        ctx.g.selected_monitor().bar_hover_state
     } else {
-        bar_position_to_gesture(pos)
+        bar_position_to_hover_state(pos)
     };
-    ctx.g.selected_monitor_mut().gesture = gesture;
+    ctx.g.selected_monitor_mut().bar_hover_state = bar_hover_state;
 
     Some(pos)
 }

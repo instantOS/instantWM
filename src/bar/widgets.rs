@@ -13,7 +13,7 @@ pub(crate) fn draw_startmenu_icon(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
     let icon_offset = (bar_height - CLOSE_BUTTON_WIDTH) / 2;
-    let startmenu_invert = ctx.g.selected_monitor().gesture == Gesture::StartMenu;
+    let startmenu_invert = ctx.g.selected_monitor().bar_hover_state == BarHoverState::StartMenu;
 
     let startmenu_size = ctx.g.cfg.startmenusize;
     let scheme = ctx.g.status_scheme();
@@ -61,11 +61,11 @@ pub(crate) fn draw_tag_indicators(
 
     let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 
-    let selmon_gesture = ctx.g.selected_monitor().gesture;
+    let selmon_hover_state = ctx.g.selected_monitor().bar_hover_state;
 
     for t in &tags {
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
-        let is_hover = selmon_gesture == Gesture::Tag(t.slot);
+        let is_hover = selmon_hover_state == BarHoverState::Tag(t.slot);
 
         let text_w = painter.text_width(t.label);
         let width = (text_w + horizontal_padding).max(horizontal_padding);
@@ -208,7 +208,7 @@ pub(crate) fn draw_close_button(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
     let selmon = ctx.g.selected_monitor();
-    let close_hovered = selmon.gesture == Gesture::CloseButton;
+    let close_hovered = selmon.bar_hover_state == BarHoverState::CloseButton;
     let is_fullscreen = selmon
         .sel
         .and_then(|selected_window| {
@@ -262,7 +262,7 @@ fn draw_window_title(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> Option<u32> {
     let selected_monitor = ctx.g.selected_monitor();
-    let is_hover = selected_monitor.gesture == Gesture::WinTitle(c.win);
+    let is_hover = selected_monitor.bar_hover_state == BarHoverState::WinTitle(c.win);
 
     let client_name = c.name.as_str();
     let text_w = painter.text_width(client_name);

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::layouts::LayoutKind;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::Rect;
-use crate::types::input::Gesture;
+use crate::types::input::BarHoverState;
 use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
 use crate::types::tag_types::MonitorDirection;
@@ -59,7 +59,7 @@ pub struct Monitor {
     /// Overlay mode (which edge it slides from).
     pub overlaymode: OverlayMode,
     /// Current gesture state.
-    pub gesture: Gesture,
+    pub bar_hover_state: BarHoverState,
     /// Bar window handle.
     pub bar_win: WindowId,
     /// Which tags to show.
@@ -104,7 +104,7 @@ impl Default for Monitor {
             topbar: true,
             overlaystatus: 0,
             overlaymode: OverlayMode::default(),
-            gesture: Gesture::default(),
+            bar_hover_state: BarHoverState::default(),
             bar_win: WindowId::default(),
             showtags: 0,
             current_tag: 0,

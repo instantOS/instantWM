@@ -554,20 +554,20 @@ pub fn render_bar_buffers(
     rendered
 }
 
-fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
+fn hash_bar_hover_state(hasher: &mut DefaultHasher, gesture: crate::types::BarHoverState) {
     match gesture {
-        crate::types::Gesture::None => 0u8.hash(hasher),
-        crate::types::Gesture::WinTitle(win) => {
+        crate::types::BarHoverState::None => 0u8.hash(hasher),
+        crate::types::BarHoverState::WinTitle(win) => {
             1u8.hash(hasher);
             win.hash(hasher);
         }
-        crate::types::Gesture::Tag(tag) => {
+        crate::types::BarHoverState::Tag(tag) => {
             2u8.hash(hasher);
             tag.hash(hasher);
         }
-        crate::types::Gesture::Overlay => 3u8.hash(hasher),
-        crate::types::Gesture::CloseButton => 4u8.hash(hasher),
-        crate::types::Gesture::StartMenu => 5u8.hash(hasher),
+        crate::types::BarHoverState::Overlay => 3u8.hash(hasher),
+        crate::types::BarHoverState::CloseButton => 4u8.hash(hasher),
+        crate::types::BarHoverState::StartMenu => 5u8.hash(hasher),
     }
 }
 
@@ -597,7 +597,7 @@ fn bar_render_key(
         m.current_tag.hash(&mut hasher);
         m.selected_tags().hash(&mut hasher);
         m.sel.hash(&mut hasher);
-        hash_gesture(&mut hasher, m.gesture);
+        hash_bar_hover_state(&mut hasher, m.bar_hover_state);
         if let Some(tag) = m.current_tag() {
             tag.showbar.hash(&mut hasher);
             tag.name.hash(&mut hasher);
