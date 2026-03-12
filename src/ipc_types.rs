@@ -167,6 +167,23 @@ pub enum ToggleCommand {
     HideTags(Option<String>),
 }
 
+/// Input device configuration commands (sway-compatible).
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum InputCommand {
+    /// List all input settings for a device identifier (or all if None).
+    List(Option<String>),
+    /// Set pointer acceleration speed [-1.0, 1.0].
+    PointerAccel { identifier: String, value: f64 },
+    /// Set acceleration profile (flat or adaptive).
+    AccelProfile { identifier: String, profile: String },
+    /// Enable or disable tap-to-click.
+    Tap { identifier: String, enabled: bool },
+    /// Enable or disable natural scrolling.
+    NaturalScroll { identifier: String, enabled: bool },
+    /// Set scroll factor (multiplier).
+    ScrollFactor { identifier: String, value: f64 },
+}
+
 #[derive(Debug, Clone, Decode, Encode)]
 pub enum IpcCommand {
     /// Get status information about the running instantWM instance.
@@ -203,6 +220,8 @@ pub enum IpcCommand {
     Window(WindowCommand),
     /// Toggle-related commands.
     Toggle(ToggleCommand),
+    /// Input device configuration commands.
+    Input(InputCommand),
 }
 
 #[derive(Debug, Clone, Decode, Encode)]

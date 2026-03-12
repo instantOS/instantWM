@@ -1,7 +1,7 @@
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{
-    IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, MonitorCommand, ScratchpadCommand,
-    TagCommand, ToggleCommand, WindowCommand,
+    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, MonitorCommand,
+    ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
 };
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
@@ -152,6 +152,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Scratchpad(cmd) => handle_scratchpad_command(wm, cmd),
         IpcCommand::Keyboard(cmd) => handle_keyboard_command(wm, cmd),
         IpcCommand::Toggle(cmd) => handle_toggle_command(wm, cmd),
+        IpcCommand::Input(cmd) => handle_input_command(wm, cmd),
     }
 }
 
@@ -606,6 +607,84 @@ fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> IpcResponse {
             toggle_show_tags(&mut ctx, action);
         }
     }
+    IpcResponse::ok("")
+}
+
+// ============================================================================
+// Input Commands
+// ============================================================================
+
+fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
+    use crate::config::config_toml::{AccelProfile, InputConfig, ToggleSetting};
+
+    let inputs = &mut wm.g.cfg.input;
+    match cmd {
+        InputCommand::List(identifier) => {
+            let entries: Vec<_> = match &identifier {
+                Some(id) => inputs
+                    .iter()
+                    .filter(|(k, _)| k.as_str() == id.as_str())
+                    .collect(),
+                None => inputs.iter().collect(),
+            };
+            if entries.is_empty() {
+                return IpcResponse::ok("no input configuration found");
+            }
+            let info: Vec<String> = entries
+                .iter()
+                .map(|(id, cfg)| {
+                    format!(
+                        "[{}]\ntap: {:?}\nnatural_scroll: {:?}\naccel_profile: {:?}\npointer_accel: {:?}\nscroll_factor: {:?}",
+                        id, cfg.tap, cfg.natural_scroll, cfg.accel_profile, cfg.pointer_accel, cfg.scroll_factor,
+                    )
+                })
+                .collect();
+            return IpcResponse::ok(info.join("\n\n"));
+        }
+        InputCommand::PointerAccel { identifier, value } => {
+            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            cfg.pointer_accel = Some(value.clamp(-1.0, 1.0));
+        }
+        InputCommand::AccelProfile {
+            identifier,
+            profile,
+        } => {
+            let p = match profile.to_lowercase().as_str() {
+                "flat" => AccelProfile::Flat,
+                "adaptive" => AccelProfile::Adaptive,
+                _ => return IpcResponse::err(format!("unknown accel profile '{profile}'")),
+            };
+            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            cfg.accel_profile = Some(p);
+        }
+        InputCommand::Tap {
+            identifier,
+            enabled,
+        } => {
+            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            cfg.tap = Some(if enabled {
+                ToggleSetting::Enabled
+            } else {
+                ToggleSetting::Disabled
+            });
+        }
+        InputCommand::NaturalScroll {
+            identifier,
+            enabled,
+        } => {
+            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            cfg.natural_scroll = Some(if enabled {
+                ToggleSetting::Enabled
+            } else {
+                ToggleSetting::Disabled
+            });
+        }
+        InputCommand::ScrollFactor { identifier, value } => {
+            let cfg = inputs.entry(identifier).or_insert_with(InputConfig::default);
+            cfg.scroll_factor = Some(value);
+        }
+    }
+    wm.g.input_config_dirty = true;
     IpcResponse::ok("")
 }
 

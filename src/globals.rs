@@ -352,6 +352,9 @@ pub struct Globals {
 
     /// XKB keyboard layout state.
     pub keyboard_layout: KeyboardLayoutState,
+
+    /// Whether input configuration has changed and needs to be re-applied.
+    pub input_config_dirty: bool,
 }
 
 impl Globals {
@@ -514,6 +517,7 @@ impl Default for Globals {
             status_text: String::new(),
             systray_width: 0,
             keyboard_layout: KeyboardLayoutState::default(),
+            input_config_dirty: false,
         }
     }
 }

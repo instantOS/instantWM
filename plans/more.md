@@ -97,3 +97,8 @@ if ctx.core.g.clients.get(&win).map(|c| c.isfloating).unwrap_or(false) {
 make keybinds toml configurable
 make default layout toml configurable
 ability to set keybind to none with toml
+
+
+I would like the `instantwmctl monitor` command to be able to change
+resolution/refresh rate at runtime. I also want this to be configurable through
+toml if that is not already the case. 
