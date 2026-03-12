@@ -252,9 +252,9 @@ impl WaylandState {
         let current = self
             .globals()
             .and_then(|g| {
-                g.clients.get(&window_id).map(|c| {
-                    Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width))
-                })
+                g.clients
+                    .get(&window_id)
+                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
             })
             .or_else(|| self.space.element_location(&element))
             .unwrap_or(target);

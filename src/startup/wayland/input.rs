@@ -331,16 +331,17 @@ fn dispatch_pointer_motion(
     let active_drag_window = wayland_active_drag_window(wm);
     let mut suppress_hover_focus = false;
     if active_drag_window.is_none() {
-        let selected_floating = wm
-            .g
-            .selected_win()
-            .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.is_floating)))
-            .is_some_and(|(_, is_floating)| is_floating);
+        let selected_floating =
+            wm.g.selected_win()
+                .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.is_floating)))
+                .is_some_and(|(_, is_floating)| is_floating);
         let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
         if selected_floating {
+            suppress_hover_focus = !hovered_is_selected;
             let selected_offer = update_wayland_selected_resize_offer(wm, root_x, root_y).is_some();
-            suppress_hover_focus = selected_offer;
-            if !selected_offer && !hovered_is_selected {
+            if selected_offer {
+                suppress_hover_focus = true;
+            } else if !hovered_is_selected {
                 let ctx = wm.ctx();
                 let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
                     return;
@@ -440,6 +441,12 @@ pub fn handle_pointer_button<B: InputBackend>(
             return;
         }
 
+        if let Some(btn) = wm_button {
+            if wayland_hover_resize_drag_begin(wm, root_x, root_y, btn) {
+                return;
+            }
+        }
+
         // Resolve the window directly under the pointer via Smithay's
         // surface hit-test. This is the ground truth for focus, bindings,
         // and drag targets for non-bar clicks.
@@ -459,12 +466,6 @@ pub fn handle_pointer_button<B: InputBackend>(
         } else {
             let mut ctx = wm.ctx();
             crate::focus::focus_soft(&mut ctx, None);
-        }
-
-        if let Some(btn) = wm_button {
-            if wayland_hover_resize_drag_begin(wm, root_x, root_y, btn) {
-                return;
-            }
         }
 
         let mut consumed = false;

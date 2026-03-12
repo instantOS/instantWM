@@ -195,12 +195,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         let Some(monitor_id) = core.g.clients.get(&current).map(|c| c.monitor_id) else {
             return;
         };
-        if core
-            .g
-            .clients
-            .get(&current)
-            .is_some_and(|c| c.is_floating)
-        {
+        if core.g.clients.get(&current).is_some_and(|c| c.is_floating) {
             self.wayland.backend.raise_window(current);
             return;
         }

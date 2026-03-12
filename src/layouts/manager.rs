@@ -166,7 +166,10 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         }
     }
 
-    if let Some(idx) = floating_stack.iter().position(|&win| win == selected_window) {
+    if let Some(idx) = floating_stack
+        .iter()
+        .position(|&win| win == selected_window)
+    {
         let selected = floating_stack.remove(idx);
         floating_stack.push(selected);
     } else {

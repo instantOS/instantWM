@@ -321,7 +321,9 @@ fn run_event_loop(
     state: &mut WaylandState,
     libinput_context: &mut Libinput,
     shared: &Arc<Mutex<SharedDrmState>>,
-    pending_input_events: Arc<Mutex<Vec<smithay::backend::input::InputEvent<LibinputInputBackend>>>>,
+    pending_input_events: Arc<
+        Mutex<Vec<smithay::backend::input::InputEvent<LibinputInputBackend>>>,
+    >,
     output_surfaces: &mut [OutputSurfaceEntry],
     renderer: &mut GlesRenderer,
     cursor_manager: &CursorManager,
