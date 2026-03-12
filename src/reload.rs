@@ -8,6 +8,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
 
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
+    normalize_current_mode(wm);
     wm.g.monitor_config_dirty = true;
     wm.g.input_config_dirty = true;
     wm.bar.mark_dirty();
@@ -18,6 +19,16 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn normalize_current_mode(wm: &mut Wm) {
+    if wm.g.current_mode == "default" {
+        return;
+    }
+
+    if !wm.g.cfg.modes.contains_key(&wm.g.current_mode) {
+        wm.g.current_mode = "default".to_string();
+    }
 }
 
 fn reload_x11(wm: &mut Wm) {
@@ -56,8 +67,9 @@ fn reload_wayland(wm: &mut Wm) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend as WmBackend;
     use crate::backend::wayland::WaylandBackend;
+    use crate::backend::Backend as WmBackend;
+    use crate::config::ModeConfig;
 
     #[test]
     fn reload_marks_dirty_flags_for_wayland() {
@@ -67,5 +79,28 @@ mod tests {
 
         assert!(wm.g.monitor_config_dirty);
         assert!(wm.g.input_config_dirty);
+    }
+
+    #[test]
+    fn normalize_current_mode_resets_missing_mode_to_default() {
+        let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
+        wm.g.current_mode = "resize".to_string();
+
+        normalize_current_mode(&mut wm);
+
+        assert_eq!(wm.g.current_mode, "default");
+    }
+
+    #[test]
+    fn normalize_current_mode_preserves_existing_mode() {
+        let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
+        wm.g.current_mode = "resize".to_string();
+        wm.g.cfg
+            .modes
+            .insert("resize".to_string(), ModeConfig::default());
+
+        normalize_current_mode(&mut wm);
+
+        assert_eq!(wm.g.current_mode, "resize");
     }
 }

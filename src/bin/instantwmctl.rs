@@ -509,6 +509,7 @@ fn main() {
             IpcCommand::RunAction { name, args }
         }
         CommandKind::Status => IpcCommand::Status,
+        CommandKind::Reload => IpcCommand::Reload,
         CommandKind::Monitor { action } => {
             let cmd = match action {
                 MonitorAction::List { window_id: _ } => MonitorCommand::List,

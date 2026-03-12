@@ -137,7 +137,10 @@ fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Re
 fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
     match cmd {
         IpcCommand::Status => get_status(wm),
-        IpcCommand::Reload => reload_config(wm),
+        IpcCommand::Reload => match reload_config(wm) {
+            Ok(()) => IpcResponse::ok(""),
+            Err(err) => IpcResponse::err(err),
+        },
         IpcCommand::RunAction { name, args } => run_action(wm, name, args),
         IpcCommand::Spawn(command) => spawn_command(wm, command),
         IpcCommand::WarpFocus => warp_focus(wm),

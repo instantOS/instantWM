@@ -4,7 +4,7 @@ mod common_wayland;
 mod drm;
 mod locale;
 mod wayland;
-mod x11;
+pub(crate) mod x11;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum CliBackend {
