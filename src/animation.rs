@@ -240,13 +240,7 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     };
 
     if has_tiling {
-        let focus_dir = match dir {
-            Direction::Left => Direction::Up,
-            Direction::Right => Direction::Down,
-            Direction::Up => Direction::Up,
-            Direction::Down => Direction::Down,
-        };
-        crate::focus::direction_focus(ctx, focus_dir);
+        crate::focus::direction_focus(ctx, dir);
     } else {
         scroll_view(ctx, dir);
     }
