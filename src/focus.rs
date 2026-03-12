@@ -195,12 +195,14 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         let Some(monitor_id) = core.g.clients.get(&current).map(|c| c.monitor_id) else {
             return;
         };
-        if core.g.clients.get(&current).is_some_and(|c| c.is_floating) {
-            self.wayland.backend.raise_window(current);
+        if previous == Some(current) {
             return;
         }
 
-        if previous == Some(current) {
+        // Only explicitly restack if the focused window is tiled.
+        // Floating windows should not automatically pop to the top just
+        // from being hovered, otherwise they flicker rapidly when overlapping.
+        if core.g.clients.get(&current).is_some_and(|c| c.is_floating) {
             return;
         }
 
