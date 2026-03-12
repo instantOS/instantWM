@@ -189,7 +189,7 @@ impl WaylandState {
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat-0");
         let keyboard = seat
-            .add_keyboard(XkbConfig::default(), 200, 25)
+            .add_keyboard(XkbConfig::default(), 400, 25)
             .expect("Failed to add keyboard to seat");
         let pointer = seat.add_pointer();
 
