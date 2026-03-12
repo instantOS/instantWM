@@ -161,6 +161,12 @@ pub fn run() -> ! {
             if let Some(server) = ipc_server.as_mut() {
                 server.process_pending(&mut wm);
             }
+
+            // Winit has no libinput devices to reconfigure, but clear the
+            // flag so it doesn't stay dirty forever (scroll_factor is
+            // already applied at the compositor level in handle_pointer_axis).
+            wm.g.input_config_dirty = false;
+
             state.sync_space_from_globals();
 
             // Apply any compositor-side cursor warp requested during this tick
