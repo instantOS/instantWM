@@ -305,12 +305,34 @@ fn dispatch_pointer_motion(
 ) {
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
-    let pointer_focus = state
-        .layer_surface_under_pointer(*pointer_location)
-        .or_else(|| state.surface_under_pointer(*pointer_location));
-    let hovered_win = pointer_focus
-        .as_ref()
-        .and_then(|(surface, _)| find_hovered_window_for_surface(wm, surface));
+    let in_bar_band = crate::types::find_monitor_by_rect(
+        wm.g.monitors.monitors(),
+        &Rect {
+            x: root_x,
+            y: root_y,
+            w: 1,
+            h: 1,
+        },
+    )
+    .and_then(|mid| wm.g.monitor(mid))
+    .is_some_and(|mon| {
+        let bar_h = wm.g.cfg.bar_height.max(1);
+        mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h
+    });
+    let pointer_focus = if in_bar_band {
+        state.layer_surface_under_pointer(*pointer_location)
+    } else {
+        state
+            .layer_surface_under_pointer(*pointer_location)
+            .or_else(|| state.surface_under_pointer(*pointer_location))
+    };
+    let hovered_win = if in_bar_band {
+        None
+    } else {
+        pointer_focus
+            .as_ref()
+            .and_then(|(surface, _)| find_hovered_window_for_surface(wm, surface))
+    };
 
     if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
         // During an active resize drag, still forward motion to Smithay so
@@ -323,6 +345,28 @@ fn dispatch_pointer_motion(
         };
         let focus = pointer_focus
             .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+        pointer_handle.motion(state, focus, &motion);
+        pointer_handle.frame(state);
+        return;
+    }
+
+    let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+    if in_bar_band || bar_pos.is_some() {
+        let ctx = wm.ctx();
+        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+            return;
+        };
+        if ctx.core.g.cursor_icon == AltCursor::Resize {
+            clear_wayland_hover_resize_offer(&mut ctx);
+        }
+        let focus =
+            pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+        let serial = SERIAL_COUNTER.next_serial();
+        let motion = smithay::input::pointer::MotionEvent {
+            location: *pointer_location,
+            serial,
+            time: time_msec,
+        };
         pointer_handle.motion(state, focus, &motion);
         pointer_handle.frame(state);
         return;
