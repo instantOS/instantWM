@@ -127,36 +127,28 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update(Some(monitor_id));
 
-    if ctx
-        .g()
-        .monitor(monitor_id)
-        .map_or(false, |m| m.current_layout().is_overview())
-    {
+    let Some(monitor) = ctx.g().monitor(monitor_id) else {
+        return;
+    };
+    if monitor.current_layout().is_overview() {
         return;
     }
 
-    // Extract data from monitor first to avoid borrow conflicts
-    let (selected_window, is_tiling, selected_tags, bar_win, is_floating) = {
-        let m = ctx.g().monitor(monitor_id).expect("invalid monitor");
-        let selected_window = match m.sel {
-            Some(w) => w,
-            None => return,
-        };
-        let is_tiling = m.current_layout().is_tiling();
-        let selected_tags = m.selected_tags();
-        let bar_win = m.bar_win;
-        let is_floating = ctx.client(selected_window).map_or(false, |c| c.is_floating);
-        (
-            selected_window,
-            is_tiling,
-            selected_tags,
-            bar_win,
-            is_floating,
-        )
+    let selected_window = match monitor.sel {
+        Some(win) => win,
+        None => return,
     };
+    let layout = monitor.current_layout();
+    let is_tiling = layout.is_tiling();
+    let is_monocle = layout.is_monocle();
+    let selected_tags = monitor.selected_tags();
+    let bar_win = monitor.bar_win;
+    let selected_is_floating = ctx.client(selected_window).is_some_and(|c| c.is_floating);
 
-    if is_floating {
+    if selected_is_floating {
         ctx.raise(selected_window);
+        ctx.flush();
+        return;
     }
 
     if !is_tiling {
@@ -181,6 +173,20 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         }
     }
 
+    // In monocle every tiled client occupies the full work area, so the
+    // focused tiled client must be the last tiled element in z-order.
+    // Keeping this explicit also makes the generic tiled case easier to read.
+    if let Some(idx) = tiled_stack.iter().position(|&win| win == selected_window) {
+        let selected = tiled_stack.remove(idx);
+        tiled_stack.push(selected);
+    }
+    if is_monocle && tiled_stack.last().copied() != Some(selected_window) {
+        tiled_stack.retain(|&win| win != selected_window);
+        tiled_stack.push(selected_window);
+    }
+
+    // Final z-order: tiled clients (selected tiled last), then the bar,
+    // then floating clients above all tiled content.
     let mut stack = tiled_stack;
     stack.push(bar_win);
     stack.extend(floating_stack);

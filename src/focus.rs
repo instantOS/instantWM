@@ -411,7 +411,18 @@ pub fn hover_focus_target_x11(
     let _ = focus_x11(core, x11, x11_runtime, None, hovered_win);
 }
 
-/// Shared hover-focus behavior used by both X11 and Wayland pointer paths.
+/// Wayland hover-focus: update WM selection and keyboard focus when the
+/// pointer enters a different client surface.
+///
+/// Guards:
+///   - `focus_follows_mouse` must be enabled.
+///   - Floating windows are skipped when `focus_follows_float_mouse` is off
+///     and the layout is tiling.
+///   - If the hovered window is already selected, nothing happens.
+///
+/// Delegates to `focus_wayland` so that `mon.sel`, the activated state, and
+/// the Smithay keyboard focus are all updated through a single path —
+/// identical to click-to-focus.
 pub fn hover_focus_target_wayland(
     core: &mut CoreCtx,
     wayland: &WaylandCtx,
@@ -425,12 +436,14 @@ pub fn hover_focus_target_wayland(
         return;
     }
 
+    // Switch monitor if the hovered window lives on a different one.
     if let Some(mid) = core.g.clients.get(&hovered_win).map(|c| c.monitor_id) {
         if mid != core.g.selected_monitor_id() {
             core.g.set_selected_monitor(mid);
         }
     }
 
+    // Respect the "don't focus floating windows on hover" setting.
     let hovered_is_floating = core
         .g
         .clients
@@ -442,13 +455,14 @@ pub fn hover_focus_target_wayland(
         return;
     }
 
+    // No-op if already focused.
     if core.selected_client() == Some(hovered_win) {
         return;
     }
 
-    core.set_selected_client(Some(hovered_win));
-    wayland.backend.set_focus(hovered_win);
-    let _ = core;
+    // Use the full focus path so mon.sel, activation, and keyboard focus
+    // are all consistent.
+    let _ = focus_wayland(core, wayland, Some(hovered_win));
 }
 
 pub fn set_focus_win_x11(

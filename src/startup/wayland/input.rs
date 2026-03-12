@@ -329,14 +329,11 @@ fn dispatch_pointer_motion(
     }
 
     let active_drag_window = wayland_active_drag_window(wm);
-    let resize_offer_window = if active_drag_window.is_none() {
-        update_wayland_selected_resize_offer(wm, root_x, root_y)
-    } else {
-        None
-    };
-    let focus_lock_window = active_drag_window.or(resize_offer_window);
+    if active_drag_window.is_none() {
+        let _ = update_wayland_selected_resize_offer(wm, root_x, root_y);
+    }
 
-    if let Some(lock_win) = focus_lock_window {
+    if let Some(lock_win) = active_drag_window {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
@@ -399,24 +396,54 @@ pub fn handle_pointer_button<B: InputBackend>(
     let wm_button = wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
 
     if event.state() == smithay::backend::input::ButtonState::Pressed {
+        // Bar interactions must short-circuit the generic surface click path.
+        // Otherwise a title-bar click can first focus the window via the
+        // client-surface hit test and then also run the bar-title click action
+        // on release, which toggles the same window and feels random.
+        if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
+            let clean_state = crate::util::clean_mask(
+                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                wm.x11_runtime.numlockmask,
+            );
+            dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
+            pointer_handle.frame(state);
+            return;
+        }
+
+        // Resolve the window directly under the pointer via Smithay's
+        // surface hit-test. This is the ground truth for focus, bindings,
+        // and drag targets for non-bar clicks.
+        let clicked_win = find_hovered_window(wm, state, pointer_location);
+
+        // Update focus before dispatching client button bindings so callbacks
+        // (e.g. Super+Left move) operate on the window under the cursor.
+        if let Some((layer_surface, _)) = state.layer_surface_under_pointer(pointer_location) {
+            keyboard_handle.set_focus(
+                state,
+                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
+                serial,
+            );
+        } else if let Some(win) = clicked_win {
+            let mut ctx = wm.ctx();
+            crate::focus::focus_soft(&mut ctx, Some(win));
+        } else {
+            let mut ctx = wm.ctx();
+            crate::focus::focus_soft(&mut ctx, None);
+        }
+
         if let Some(btn) = wm_button {
             if wayland_hover_resize_drag_begin(wm, root_x, root_y, btn) {
                 return;
             }
         }
 
-        // Check ClientWin bindings (e.g. Super+Left to move) before forwarding
-        // the button event to the client, so modifier-based WM actions consume
-        // the press instead of passing it through.
         let mut consumed = false;
-        if update_wayland_bar_hit_state(wm, root_x, root_y, false).is_none() {
-            if let Some(btn) = wm_button {
-                let clean_state = crate::util::clean_mask(
-                    modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    wm.x11_runtime.numlockmask,
-                );
-                consumed = dispatch_wayland_client_button(wm, btn, root_x, root_y, clean_state);
-            }
+        if let Some(btn) = wm_button {
+            let clean_state = crate::util::clean_mask(
+                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                wm.x11_runtime.numlockmask,
+            );
+            consumed = dispatch_wayland_client_button(wm, btn, root_x, root_y, clean_state);
         }
 
         if !consumed {
@@ -429,68 +456,30 @@ pub fn handle_pointer_button<B: InputBackend>(
             pointer_handle.button(state, &button);
         }
 
-        if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
-            let clean_state = {
-                crate::util::clean_mask(
-                    modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    wm.x11_runtime.numlockmask,
-                )
-            };
-            dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
-        } else if !consumed {
-            let maybe_close = {
-                let core = crate::contexts::CoreCtx::new(
-                    &mut wm.g,
-                    &mut wm.running,
-                    &mut wm.bar,
-                    &mut wm.focus,
-                );
-                let mon = core.g.selected_monitor().clone();
-                let local_x = root_x - mon.work_rect.x;
-                wm.wayland_systray_menu.is_some()
-                    && crate::wayland_systray::hit_test_wayland_systray_menu_item(
-                        &core,
-                        &wm.wayland_systray,
-                        wm.wayland_systray_menu.as_ref(),
-                        &mon,
-                        local_x,
-                    )
-                    .is_none()
-            };
-            if maybe_close {
-                wm.wayland_systray_menu = None;
-                wm.bar.mark_dirty();
-            }
-        }
-
-        // Focus the clicked window through the WM (updates mon.sel, sends
-        // activated state to the client) but do NOT raise it — raising only
-        // happens on move/resize/float operations.
-        //
-        // Layer surfaces (e.g. panels) are not tracked by the WM; for those
-        // we fall back to a direct Smithay keyboard-focus call so they still
-        // receive key input after being clicked.
-        if let Some((layer_surface, _)) = state.layer_surface_under_pointer(pointer_location) {
-            // Layer surface: focus directly, no WM involvement needed.
-            keyboard_handle.set_focus(
-                state,
-                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
-                serial,
+        let maybe_close = if !consumed {
+            let core = crate::contexts::CoreCtx::new(
+                &mut wm.g,
+                &mut wm.running,
+                &mut wm.bar,
+                &mut wm.focus,
             );
+            let mon = core.g.selected_monitor().clone();
+            let local_x = root_x - mon.work_rect.x;
+            wm.wayland_systray_menu.is_some()
+                && crate::wayland_systray::hit_test_wayland_systray_menu_item(
+                    &core,
+                    &wm.wayland_systray,
+                    wm.wayland_systray_menu.as_ref(),
+                    &mon,
+                    local_x,
+                )
+                .is_none()
         } else {
-            // Regular client window: route through the WM so that mon.sel,
-            // the activated flag, and bar highlighting are all kept in sync.
-            let clicked_win = find_hovered_window(wm, state, pointer_location);
-            if let Some(win) = clicked_win {
-                let mut ctx = wm.ctx();
-                crate::focus::focus_soft(&mut ctx, Some(win));
-            }
-            // If nothing was under the pointer (click on desktop), clear WM
-            // selection and Smithay focus both.
-            if clicked_win.is_none() {
-                let mut ctx = wm.ctx();
-                crate::focus::focus_soft(&mut ctx, None);
-            }
+            false
+        };
+        if maybe_close {
+            wm.wayland_systray_menu = None;
+            wm.bar.mark_dirty();
         }
     } else if event.state() == smithay::backend::input::ButtonState::Released {
         if let Some(btn) = wm_button {

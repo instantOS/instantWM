@@ -82,3 +82,4 @@ resolution/refresh rate at runtime. I also want this to be configurable through
 toml if that is not already the case. Think hard about good UX for this
 
 
+super + up works, super + down does not

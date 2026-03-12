@@ -244,7 +244,20 @@ impl WaylandState {
         target: Point<i32, Logical>,
         remap: bool,
     ) {
-        let current = self.space.element_location(&element).unwrap_or(target);
+        // Use the client's stored geometry as the authoritative current position
+        // to avoid animating from stale locations after map/unmap cycles.
+        // This is especially important on tag switches where windows are
+        // unmapped and then mapped again at their existing geometry.
+        // Note: target includes border width offset, so we add it to current too.
+        let current = self
+            .globals()
+            .and_then(|g| {
+                g.clients.get(&window_id).map(|c| {
+                    Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width))
+                })
+            })
+            .or_else(|| self.space.element_location(&element))
+            .unwrap_or(target);
         if !self.animations_enabled() || remap || current == target {
             self.window_animations.remove(&window_id);
             self.space.map_element(element, target, remap);
@@ -655,10 +668,8 @@ impl WaylandState {
 
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
-        let focus = self
-            .find_window(window)
-            .cloned()
-            .map(KeyboardFocusTarget::Window);
+        let focus_window = self.find_window(window).cloned();
+        let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
         if let Some(old_id) = self.focused_window {
             if old_id != window {
@@ -671,7 +682,7 @@ impl WaylandState {
                 }
             }
         }
-        if let Some(new_window) = self.window_index.get(&window).cloned() {
+        if let Some(new_window) = focus_window {
             if new_window.set_activated(true) {
                 if let Some(toplevel) = new_window.toplevel() {
                     toplevel.send_pending_configure();
@@ -702,9 +713,16 @@ impl WaylandState {
 
     pub fn map_window(&mut self, window: WindowId) {
         if let Some(element) = self.find_window(window).cloned() {
+            // Get the location from the space if the element is already mapped,
+            // otherwise use the client's stored geometry to avoid animating from (0,0)
             let loc = self
                 .space
                 .element_location(&element)
+                .or_else(|| {
+                    self.globals()
+                        .and_then(|g| g.clients.get(&window))
+                        .map(|c| Point::from((c.geo.x, c.geo.y)))
+                })
                 .unwrap_or((0, 0).into());
             self.window_animations.remove(&window);
             self.space.map_element(element, loc, false);
