@@ -756,6 +756,13 @@ impl WaylandState {
         }
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
+        if self.focused_window == Some(window) {
+            self.focused_window = None;
+            let serial = SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
+            }
+        }
         if let Some(g) = self.globals_mut() {
             g.layout_dirty = true;
             g.space_dirty = true;
@@ -1036,5 +1043,28 @@ impl WaylandState {
             .values()
             .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
+    }
+
+    pub(crate) fn window_id_for_surface(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<WindowId> {
+        use smithay::desktop::WindowSurfaceType;
+
+        self.window_index.iter().find_map(|(win, window)| {
+            if window.wl_surface().as_deref() == Some(surface) {
+                return Some(*win);
+            }
+
+            let owns_surface = window
+                .surface_under((0.0, 0.0), WindowSurfaceType::ALL)
+                .map(|(hit_surface, _)| hit_surface == *surface)
+                .unwrap_or(false);
+            if owns_surface {
+                Some(*win)
+            } else {
+                None
+            }
+        })
     }
 }

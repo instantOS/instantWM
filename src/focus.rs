@@ -171,6 +171,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 
     fn focus_window(&self, _core: &mut CoreCtx, win: WindowId) {
         self.wayland.backend.set_focus(win);
+        self.wayland.backend.raise_window(win);
     }
 
     fn focus_none(&self, _core: &mut CoreCtx) {

@@ -601,17 +601,28 @@ fn find_hovered_window(
 }
 
 fn find_hovered_window_for_surface(
-    _wm: &Wm,
+    wm: &Wm,
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
 ) -> Option<WindowId> {
     use smithay::wayland::compositor::with_states;
 
-    with_states(surface, |states| {
+    if let Some(win) = with_states(surface, |states| {
         states
             .data_map
             .get::<WindowIdMarker>()
             .map(|marker| marker.id)
-    })
+    }) {
+        return Some(win);
+    }
+
+    let backend = match &wm.backend {
+        crate::backend::Backend::Wayland(backend) => backend,
+        _ => return None,
+    };
+
+    backend
+        .with_state(|state| state.window_id_for_surface(surface))
+        .flatten()
 }
 
 fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
