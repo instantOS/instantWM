@@ -67,7 +67,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             .or_else(|| {
                 if ctx.selected_client().is_none() {
                     ctx.g().cfg.desktop_keybinds.iter().find(|key| {
-                        keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                        keysym == key.keysym
+                            && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                     })
                 } else {
                     None

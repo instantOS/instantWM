@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout,
-    MonitorCommand, ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
+    ModeCommand, MonitorCommand, ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
 };
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -340,6 +340,22 @@ enum InputAction {
     },
 }
 
+/// Mode-related commands.
+#[derive(Debug, Subcommand)]
+enum ModeAction {
+    /// List all configured modes with their descriptions.
+    ///
+    /// Shows an asterisk (*) next to the currently active mode.
+    List,
+    /// Set the current mode (enter a mode).
+    ///
+    /// Use "default" to exit any mode and return to normal operation.
+    Set {
+        /// Mode name (use "default" to exit current mode)
+        name: String,
+    },
+}
+
 #[derive(Debug, Subcommand)]
 enum CommandKind {
     /// Run a keybind action by name. Use --list to see available actions.
@@ -443,6 +459,11 @@ enum CommandKind {
     Mouse {
         #[command(subcommand)]
         action: InputAction,
+    },
+    /// Mode management (list and set modes).
+    Mode {
+        #[command(subcommand)]
+        action: ModeAction,
     },
     /// Update status text on the bar. If text is "-", read from stdin continuously.
     UpdateStatus { text: String },
@@ -608,6 +629,13 @@ fn main() {
                 }
             };
             IpcCommand::Input(cmd)
+        }
+        CommandKind::Mode { action } => {
+            let cmd = match action {
+                ModeAction::List => ModeCommand::List,
+                ModeAction::Set { name } => ModeCommand::Set(name),
+            };
+            IpcCommand::Mode(cmd)
         }
         CommandKind::UpdateStatus { text } => {
             if text == "-" {

@@ -1,7 +1,7 @@
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::{
-    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, MonitorCommand,
-    ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
+    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, ModeCommand,
+    MonitorCommand, ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
 };
 use crate::keyboard_layout;
 use crate::layouts::command_layout;
@@ -153,6 +153,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::Keyboard(cmd) => handle_keyboard_command(wm, cmd),
         IpcCommand::Toggle(cmd) => handle_toggle_command(wm, cmd),
         IpcCommand::Input(cmd) => handle_input_command(wm, cmd),
+        IpcCommand::Mode(cmd) => handle_mode_command(wm, cmd),
     }
 }
 
@@ -173,7 +174,15 @@ fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> IpcResponse {
             position,
             scale,
             enable,
-        } => set_monitor_config(wm, identifier, resolution, refresh_rate, position, scale, enable),
+        } => set_monitor_config(
+            wm,
+            identifier,
+            resolution,
+            refresh_rate,
+            position,
+            scale,
+            enable,
+        ),
     }
 }
 
@@ -872,5 +881,40 @@ fn get_status(wm: &Wm) -> IpcResponse {
     match serde_json::to_string_pretty(&info) {
         Ok(json) => IpcResponse::ok(json),
         Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
+    }
+}
+
+// ============================================================================
+// Mode Commands
+// ============================================================================
+
+fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> IpcResponse {
+    match cmd {
+        ModeCommand::List => {
+            let modes = &wm.g.cfg.modes;
+            let current_mode = &wm.g.current_mode;
+
+            if modes.is_empty() {
+                return IpcResponse::ok("No modes configured");
+            }
+
+            let mut output = String::new();
+            for (name, mode) in modes {
+                let marker = if name == current_mode { "*" } else { " " };
+                let desc = mode.description.as_deref().unwrap_or("(no description)");
+                output.push_str(&format!("{} {} - {}\n", marker, name, desc));
+            }
+            IpcResponse::ok(output)
+        }
+        ModeCommand::Set(name) => {
+            // Check if mode exists
+            if !wm.g.cfg.modes.contains_key(&name) && name != "default" {
+                return IpcResponse::err(format!("Mode '{}' not found", name));
+            }
+            wm.g.current_mode = name.clone();
+            // Request bar update to reflect mode change
+            wm.bar.mark_dirty();
+            IpcResponse::ok(format!("Switched to mode '{}'", name))
+        }
     }
 }

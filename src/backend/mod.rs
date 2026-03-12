@@ -64,7 +64,8 @@ pub trait BackendOps {
     }
 
     /// Set monitor configuration
-    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {}
+    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {
+    }
 
     /// Get current outputs from the backend
     fn get_outputs(&self) -> Vec<BackendOutputInfo> {

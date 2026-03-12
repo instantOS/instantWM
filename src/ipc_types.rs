@@ -103,6 +103,15 @@ pub enum MonitorCommand {
     },
 }
 
+/// Mode-related commands.
+#[derive(Debug, Clone, Decode, Encode)]
+pub enum ModeCommand {
+    /// List all configured modes (shows name and description).
+    List,
+    /// Set the current mode (enter a mode).
+    Set(String),
+}
+
 /// Scratchpad-related commands.
 #[derive(Debug, Clone, Decode, Encode)]
 pub enum ScratchpadCommand {
@@ -237,6 +246,8 @@ pub enum IpcCommand {
     Toggle(ToggleCommand),
     /// Input device configuration commands.
     Input(InputCommand),
+    /// Mode-related commands.
+    Mode(ModeCommand),
 }
 
 #[derive(Debug, Clone, Decode, Encode)]
