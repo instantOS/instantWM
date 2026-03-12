@@ -27,6 +27,13 @@ const MS: u32 = MODKEY | SHIFT;
 const MC: u32 = MODKEY | CONTROL;
 const MA: u32 = MODKEY | MOD1;
 
+fn tag_mask_from_pos(pos: BarPosition) -> Option<TagMask> {
+    match pos {
+        BarPosition::Tag(idx) => TagMask::single(idx + 1),
+        _ => None,
+    }
+}
+
 macro_rules! btn {
     ($target:expr, $mask:expr, button:$btn:expr => $action:expr) => {
         Button {
@@ -128,28 +135,22 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), 0,      button:MouseButton::ScrollDown => |ctx, _| crate::tags::view::scroll_view(ctx, Direction::Right)),
         btn!(Tag(0), MODKEY, button:MouseButton::Left  => |ctx, arg| {
             if let Some(win) = ctx.selected_client() {
-                if let BarPosition::Tag(idx) = arg.pos {
-                    if let Some(tag_mask) = TagMask::single(idx + 1) {
-                        set_client_tag_ctx(ctx, win, tag_mask)
-                    }
+                if let Some(tag_mask) = tag_mask_from_pos(arg.pos) {
+                    set_client_tag_ctx(ctx, win, tag_mask)
                 }
             }
         }),
         btn!(Tag(0), MODKEY, button:MouseButton::Right => |ctx, arg| {
             if let Some(win) = ctx.selected_client() {
-                if let BarPosition::Tag(idx) = arg.pos {
-                    if let Some(tag_mask) = TagMask::single(idx + 1) {
-                        toggle_tag_ctx(ctx, win, tag_mask)
-                    }
+                if let Some(tag_mask) = tag_mask_from_pos(arg.pos) {
+                    toggle_tag_ctx(ctx, win, tag_mask)
                 }
             }
         }),
         btn!(Tag(0), MOD1,   button:MouseButton::Left => |ctx, arg| {
             if let Some(win) = ctx.selected_client() {
-                if let BarPosition::Tag(idx) = arg.pos {
-                    if let Some(tag_mask) = TagMask::single(idx + 1) {
-                        follow_tag_ctx(ctx, win, tag_mask)
-                    }
+                if let Some(tag_mask) = tag_mask_from_pos(arg.pos) {
+                    follow_tag_ctx(ctx, win, tag_mask)
                 }
             }
         }),
