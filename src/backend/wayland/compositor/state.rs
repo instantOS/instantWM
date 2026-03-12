@@ -598,6 +598,10 @@ impl WaylandState {
             toplevel.send_pending_configure();
             self.last_configured_size.insert(window_id, target);
         }
+        if let Some(g) = self.globals_mut() {
+            g.layout_dirty = true;
+            g.space_dirty = true;
+        }
         self.set_focus(window_id);
         window_id
     }
@@ -734,6 +738,10 @@ impl WaylandState {
         }
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
+        if let Some(g) = self.globals_mut() {
+            g.layout_dirty = true;
+            g.space_dirty = true;
+        }
     }
 
     pub(super) fn remove_window_tracking(&mut self, window: WindowId) {
@@ -745,6 +753,10 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         if self.focused_window == Some(window) {
             self.focused_window = None;
+        }
+        if let Some(g) = self.globals_mut() {
+            g.layout_dirty = true;
+            g.space_dirty = true;
         }
     }
 

@@ -169,14 +169,22 @@ pub fn handle_keyboard<B: InputBackend>(
         }
         _ => false,
     };
+    let key_code = event.key_code();
+    let key_state = event.state();
     keyboard_handle.input(
         state,
-        event.key_code(),
-        event.state(),
+        key_code,
+        key_state,
         serial,
         event.time_msec(),
         |_data, modifiers, keysym| {
-            if wm_shortcuts_allowed && event.state() == smithay::backend::input::KeyState::Pressed {
+            if key_state == smithay::backend::input::KeyState::Released {
+                if wm.g.intercepted_keycodes.remove(&key_code) {
+                    return FilterResult::Intercept(());
+                }
+                return FilterResult::Forward;
+            }
+            if wm_shortcuts_allowed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let ctx = wm.ctx();
                 let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
@@ -188,6 +196,7 @@ pub fn handle_keyboard<B: InputBackend>(
                     keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
+                    wm.g.intercepted_keycodes.insert(key_code);
                     return FilterResult::Intercept(());
                 }
             }

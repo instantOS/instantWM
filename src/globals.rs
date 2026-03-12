@@ -368,8 +368,20 @@ pub struct Globals {
     /// Whether monitor configuration has changed and needs to be re-applied.
     pub monitor_config_dirty: bool,
 
+    /// Whether the layout needs to be re-arranged (set by anything that
+    /// changes client/tag/monitor state; consumed by the event loop).
+    pub layout_dirty: bool,
+
+    /// Whether the Wayland compositor space needs to be synced from WM
+    /// globals (set when client geometry changes; consumed by the event loop).
+    pub space_dirty: bool,
+
     /// Current active mode (sway-like modes).
     pub current_mode: String,
+
+    /// Keycodes whose press was intercepted by the WM; the matching release
+    /// should also be intercepted so clients don't see an orphaned release.
+    pub intercepted_keycodes: std::collections::HashSet<u32>,
 }
 
 impl Globals {
@@ -534,7 +546,10 @@ impl Default for Globals {
             keyboard_layout: KeyboardLayoutState::default(),
             input_config_dirty: false,
             monitor_config_dirty: false,
+            layout_dirty: true,
+            space_dirty: true,
             current_mode: "default".to_string(),
+            intercepted_keycodes: std::collections::HashSet::new(),
         }
     }
 }

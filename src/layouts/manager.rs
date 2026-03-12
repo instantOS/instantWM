@@ -26,6 +26,8 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
         }
     }
 
+    ctx.g_mut().layout_dirty = false;
+    ctx.g_mut().space_dirty = true;
     ctx.flush();
 }
 

@@ -303,6 +303,10 @@ impl XwmHandler for WaylandState {
             }
         }
         let _ = window.configure(Some(geo));
+        if let Some(g) = self.globals_mut() {
+            g.layout_dirty = true;
+            g.space_dirty = true;
+        }
         self.set_focus(win);
         self.raise_window(win);
     }

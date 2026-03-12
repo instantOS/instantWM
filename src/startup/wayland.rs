@@ -151,9 +151,10 @@ pub fn run() -> ! {
                 _ => {}
             });
 
-            {
+            if wm.g.layout_dirty {
                 let mut ctx = wm.ctx();
                 if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
+                    ctx.g.layout_dirty = false;
                     let selected_monitor_id = ctx.g.selected_monitor_id();
                     crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
                 }
@@ -172,7 +173,10 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             wm.g.input_config_dirty = false;
 
-            state.sync_space_from_globals();
+            if wm.g.space_dirty {
+                wm.g.space_dirty = false;
+                state.sync_space_from_globals();
+            }
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).

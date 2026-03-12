@@ -361,7 +361,7 @@ fn run_event_loop(
                 input::reconfigure_all_devices(&mut tracked_devices, &wm.g.cfg.input);
             }
 
-            process_animations(state, shared);
+            process_animations(wm, state, shared);
 
             process_cursor_warp(state, &pointer_handle, shared);
 
@@ -452,10 +452,14 @@ fn process_libinput_events(
     }
 }
 
-/// Arrange layout if clients exist and no animations are active.
+/// Arrange layout when dirty and no animations are active.
 fn arrange_layout(wm: &mut Wm, state: &mut WaylandState) {
+    if !wm.g.layout_dirty {
+        return;
+    }
     let mut ctx = wm.ctx();
     if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
+        ctx.g.layout_dirty = false;
         let selected_monitor_id = ctx.g.selected_monitor_id();
         crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
     }
@@ -473,15 +477,25 @@ fn process_ipc(
             let mut ctx = wm.ctx();
             crate::monitor::apply_monitor_config(&mut ctx);
         }
-        if handled || wm.g.monitor_config_dirty {
+        if handled {
+            wm.g.layout_dirty = true;
+            wm.g.space_dirty = true;
             shared.lock().unwrap().mark_all_dirty();
         }
     }
 }
 
-/// Process window animations.
-fn process_animations(state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
-    state.sync_space_from_globals();
+/// Process window animations and sync compositor space when dirty.
+fn process_animations(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    if wm.g.space_dirty {
+        wm.g.space_dirty = false;
+        state.sync_space_from_globals();
+        shared.lock().unwrap().mark_all_dirty();
+    }
     state.tick_window_animations();
     if state.has_active_window_animations() {
         shared.lock().unwrap().mark_all_dirty();
