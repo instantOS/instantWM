@@ -55,7 +55,7 @@ pub fn run() -> ! {
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     init_wayland_globals(&mut wm);
 
-    let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
+    let event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();
 
     let (mut session, notifier) = LibSeatSession::new().expect("libseat session");
@@ -78,7 +78,7 @@ pub fn run() -> ! {
         primary_gpu_path,
         mut drm_device,
         drm_notifier,
-        drm_fd,
+        _drm_fd,
         gbm_device,
         egl_display,
         mut renderer,
@@ -124,13 +124,13 @@ pub fn run() -> ! {
     let (libinput_tx, libinput_rx) = std::sync::mpsc::channel();
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
     loop_handle
-        .insert_source(libinput_backend, move |mut event, _, _state| {
+        .insert_source(libinput_backend, move |event, _, _state| {
             let _ = libinput_tx.send(event);
         })
         .expect("failed to insert libinput source");
 
-    let keyboard_handle = state.keyboard.clone();
-    let pointer_handle = state.pointer.clone();
+    let _keyboard_handle = state.keyboard.clone();
+    let _pointer_handle = state.pointer.clone();
 
     setup_session_handlers(
         &loop_handle,
@@ -189,8 +189,7 @@ fn init_gpu(
     EGLDisplay,
     GlesRenderer,
 ) {
-    let (primary_gpu_path, mut drm_device, drm_notifier, drm_fd) =
-        open_primary_gpu(session, seat_name);
+    let (primary_gpu_path, drm_device, drm_notifier, drm_fd) = open_primary_gpu(session, seat_name);
 
     let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
     let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
@@ -390,7 +389,7 @@ fn run_event_loop(
 
 /// Process frame submissions for completed CRTCs.
 fn process_completed_crtcs(
-    state: &mut WaylandState,
+    _state: &mut WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
 ) {

@@ -21,10 +21,18 @@ pub trait BackendOps {
     fn map_window(&self, window: WindowId);
     fn unmap_window(&self, window: WindowId);
     fn set_border_width(&self, window: WindowId, width: i32);
+
+    /// Check if a window still exists in the backend.
+    ///
+    /// Returns `true` if the window exists, `false` otherwise.
+    /// This is a query method that returns state rather than performing an action.
     fn window_exists(&self, window: WindowId) -> bool;
     fn flush(&self);
 
     /// Get current pointer location in root coordinates.
+    ///
+    /// Returns `None` if the pointer position cannot be determined
+    /// (e.g., no pointer device available).
     fn pointer_location(&self) -> Option<(i32, i32)>;
 
     /// Warp pointer to (x, y) in root coordinates.

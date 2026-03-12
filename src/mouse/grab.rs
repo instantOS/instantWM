@@ -26,7 +26,6 @@
 //! ungrab_ctx(ctx);
 //! ```
 
-use crate::contexts::WmCtx;
 use crate::contexts::WmCtxX11;
 use crate::types::{MouseButton, WindowId};
 use x11rb::connection::Connection;

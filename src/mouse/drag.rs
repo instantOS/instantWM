@@ -38,7 +38,7 @@ use x11rb::protocol::xproto::*;
 use super::constants::{DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 use super::cursor::{set_cursor_default, set_cursor_move};
 use super::monitor::handle_client_monitor_switch;
-use super::warp::{get_root_ptr, warp_into};
+use super::warp::get_root_ptr;
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {

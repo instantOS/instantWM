@@ -242,7 +242,7 @@ fn prev_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
 
 fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> IpcResponse {
     match cmd {
-        WindowCommand::List => list_windows(wm),
+        WindowCommand::List(window_id) => list_windows(wm, window_id.map(WindowId::from)),
         WindowCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
         WindowCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
     }
@@ -393,8 +393,13 @@ fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) 
     }
 }
 
-fn list_windows(wm: &Wm) -> IpcResponse {
-    let mut wins: Vec<_> = wm.g.clients.values().collect();
+fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
+    let target = parsed_id.or_else(|| wm.g.selected_win());
+    let mut wins: Vec<_> = if let Some(win) = target {
+        wm.g.clients.get(&win).into_iter().collect()
+    } else {
+        wm.g.clients.values().collect()
+    };
     wins.sort_by_key(|c| c.win.0);
 
     let tag_mask = wm.g.tags.mask();
@@ -777,7 +782,7 @@ fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
     wm.g.status_text = text;
 
     if let crate::backend::Backend::X11(_) = wm.backend {
-        let mut ctx = wm.ctx();
+        let ctx = wm.ctx();
         if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
             crate::bar::draw_bars_x11(
                 &mut x11_ctx.core,

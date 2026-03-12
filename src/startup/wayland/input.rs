@@ -89,7 +89,7 @@ pub fn apply_pending_warp(
     // We need a mutable borrow of the handle to call motion/frame.
     // Clone the handle (cheap Arc clone) so we can call methods on it while
     // `state` is also borrowed through the focus computation above.
-    let mut ph = pointer_handle.clone();
+    let ph = pointer_handle.clone();
     ph.motion(state, focus, &motion);
     ph.frame(state);
 

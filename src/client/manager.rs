@@ -2,7 +2,7 @@
 
 use crate::types::{Client, ClientId, WindowId};
 use std::collections::HashMap;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Default)]
 pub struct ClientManager {
@@ -18,35 +18,19 @@ impl Deref for ClientManager {
     }
 }
 
+impl DerefMut for ClientManager {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.clients
+    }
+}
+
 impl ClientManager {
     pub fn new() -> Self {
         Self::default()
     }
 
-    // -------------------------------------------------------------------------
-    // Map access
-    // -------------------------------------------------------------------------
-
-    pub fn contains(&self, win: &WindowId) -> bool {
-        self.clients.contains_key(win)
-    }
-    pub fn len(&self) -> usize {
-        self.clients.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.clients.is_empty()
-    }
-    pub fn keys(&self) -> std::collections::hash_map::Keys<'_, WindowId, Client> {
-        self.clients.keys()
-    }
-    pub fn values(&self) -> std::collections::hash_map::Values<'_, WindowId, Client> {
-        self.clients.values()
-    }
-    pub fn insert(&mut self, win: WindowId, client: Client) {
-        self.clients.insert(win, client);
-    }
-    pub fn remove(&mut self, win: &WindowId) -> Option<Client> {
-        self.clients.remove(win)
+    pub fn map(&self) -> &HashMap<WindowId, Client> {
+        &self.clients
     }
 
     pub fn is_hidden(&self, win: WindowId) -> bool {
@@ -92,19 +76,5 @@ impl ClientManager {
                 client.border_width = client.old_border_width;
             }
         }
-    }
-
-    // -------------------------------------------------------------------------
-    // Legacy support
-    // -------------------------------------------------------------------------
-
-    pub fn map(&self) -> &HashMap<WindowId, Client> {
-        &self.clients
-    }
-    pub fn get(&self, win: &WindowId) -> Option<&Client> {
-        self.clients.get(win)
-    }
-    pub fn get_mut(&mut self, win: &WindowId) -> Option<&mut Client> {
-        self.clients.get_mut(win)
     }
 }

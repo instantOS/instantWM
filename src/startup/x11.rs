@@ -41,7 +41,7 @@ pub fn run() {
     wm_init(&mut wm);
     crate::events::setup(&mut wm);
     {
-        let mut ctx = wm.ctx();
+        let ctx = wm.ctx();
         if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }

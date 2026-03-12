@@ -84,7 +84,7 @@ fn classify_windows(
         }
 
         // Skip already-managed windows.
-        if core.g.clients.contains(&win_id) {
+        if core.g.clients.contains_key(&win_id) {
             continue;
         }
 

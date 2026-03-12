@@ -30,7 +30,7 @@ fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
 
 /// Check if the overlay window exists in the clients map.
 pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    get_overlay_win(ctx).is_some_and(|win| ctx.g().clients.contains(&win))
+    get_overlay_win(ctx).is_some_and(|win| ctx.g().clients.contains_key(&win))
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).

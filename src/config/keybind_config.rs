@@ -321,7 +321,7 @@ pub fn get_all_actions() -> Vec<ActionMeta> {
 /// Print all actions to stdout with documentation.
 /// Used by both instantwm --list-actions and instantwmctl action --list.
 pub fn print_actions() {
-    let mut actions = get_all_actions();
+    let actions = get_all_actions();
     // Note: get_all_actions() already sorts by name
 
     for action in &actions {

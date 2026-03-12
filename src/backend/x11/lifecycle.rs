@@ -28,7 +28,6 @@
 //! When the global `animated` flag is set, newly managed windows slide in from
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
-use crate::animation::animate_client;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
@@ -127,7 +126,7 @@ fn assign_initial_monitor_and_tags(
     c: &mut Client,
     trans: Option<WindowId>,
 ) {
-    let trans_client = trans.filter(|win| g.clients.contains(win));
+    let trans_client = trans.filter(|win| g.clients.contains_key(win));
     if let Some(tc_win) = trans_client {
         if let Some(tc) = g.clients.get(&tc_win) {
             c.monitor_id = tc.monitor_id;

@@ -218,7 +218,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         (is_scratchpad, tags)
     };
 
-    if ctx.g_mut().clients.contains(&win) {
+    if ctx.g_mut().clients.contains_key(&win) {
         unfocus_win(ctx, win, true);
     }
 

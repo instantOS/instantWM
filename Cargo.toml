@@ -14,14 +14,14 @@ libc = "0.2"
 fontconfig = "0.8"
 freetype = "0.7"
 bitflags = "2.4"
-thiserror = "1.0"
+thiserror = "2.0"
 once_cell = "1.19"
 anyhow = "1.0"
 log = "0.4"
 clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 bincode = "2.0"
-toml = "0.8"
+toml = "1.0"
 dirs = "5.0"
 xcursor = "0.3"
 
@@ -46,11 +46,13 @@ calloop = { version = "0.14" }
 cosmic-text = "0.12"
 zbus = { version = "5" }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
-serde_json = "1.0.149"
+serde_json = "1.0"
 
 [build-dependencies]
 
-
+[patch.crates-io]
+# Force calloop 0.14.4 for all transitive dependencies that require 0.13.0
+calloop = { git = "https://github.com/Smithay/calloop.git", tag = "v0.14.4" }
 
 [profile.release]
 opt-level = 3

@@ -147,7 +147,7 @@ pub enum WindowCommand {
     /// Close a window.
     Close(Option<u32>),
     /// List all managed windows.
-    List,
+    List(Option<u32>),
 }
 
 /// Toggle-related commands.

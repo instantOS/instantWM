@@ -90,7 +90,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     // (tag index, window handle, etc.) through to the button action.
     let bar_pos: BarPosition;
 
-    if ctx.core.g.clients.contains(&event_win) {
+    if ctx.core.g.clients.contains_key(&event_win) {
         bar_pos = BarPosition::ClientWin;
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
@@ -213,7 +213,7 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
-    if !ctx.core.g.clients.contains(&event_win) {
+    if !ctx.core.g.clients.contains_key(&event_win) {
         return;
     };
 
@@ -241,7 +241,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.g.clients.contains(&event_win) {
+    if ctx.core.g.clients.contains_key(&event_win) {
         configure_x11(&mut ctx.core, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
@@ -262,7 +262,7 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.g.clients.contains(&event_win) {
+    if ctx.core.g.clients.contains_key(&event_win) {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
     } else if let Some(icon) =
@@ -321,7 +321,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         let has_tiling = selmon.is_tiling_layout();
         is_floating || !has_tiling
     };
-    let entering_client = ctx.core.g.clients.contains(&event_win);
+    let entering_client = ctx.core.g.clients.contains_key(&event_win);
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
@@ -462,7 +462,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         return;
     };
 
-    if !ctx.core.g.clients.contains(&event_win)
+    if !ctx.core.g.clients.contains_key(&event_win)
         && !is_override_redirect(&ctx.core, &ctx.x11, event_win)
     {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, event_win);
@@ -576,7 +576,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if ctx.core.g.clients.contains(&event_win) {
+    if ctx.core.g.clients.contains_key(&event_win) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
                 if let Some(c) = ctx.core.g.clients.get_mut(&event_win) {
@@ -612,7 +612,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.g.clients.contains(&event_win) {
+    if ctx.core.g.clients.contains_key(&event_win) {
         if e.response_type & 0x80 != 0 {
             set_client_state(
                 &ctx.core,

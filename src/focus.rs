@@ -7,7 +7,6 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::{refresh_border_color_x11, set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
-use crate::globals::X11RuntimeConfig;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};

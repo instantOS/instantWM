@@ -21,7 +21,7 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::{set_cursor_default, set_cursor_resize};
-use super::warp::{get_root_ptr, warp_into};
+use super::warp::get_root_ptr;
 
 use super::resize::resize_mouse_directional;
 
@@ -501,7 +501,7 @@ pub fn get_cursor_client_win_with_conn(
     }
 
     let win = WindowId::from(reply.child);
-    if core.g.clients.contains(&win) {
+    if core.g.clients.contains_key(&win) {
         Some(win)
     } else {
         None

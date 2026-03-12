@@ -893,7 +893,7 @@ impl WaylandState {
         let Some(g) = self.globals_mut() else {
             return;
         };
-        if g.clients.contains(&window) {
+        if g.clients.contains_key(&window) {
             return;
         }
 

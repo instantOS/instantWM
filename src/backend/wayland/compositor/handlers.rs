@@ -387,7 +387,7 @@ impl XwmHandler for WaylandState {
             let Some(g) = self.globals_mut() else {
                 return;
             };
-            if g.clients.contains(&win) {
+            if g.clients.contains_key(&win) {
                 g.detach(win);
                 g.detach_stack(win);
                 g.clients.remove(&win);
@@ -569,7 +569,7 @@ impl XdgShellHandler for WaylandState {
             let Some(g) = self.globals_mut() else {
                 return;
             };
-            if g.clients.contains(&win) {
+            if g.clients.contains_key(&win) {
                 g.detach(win);
                 g.detach_stack(win);
                 g.clients.remove(&win);

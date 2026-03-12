@@ -50,7 +50,10 @@ impl From<KeyboardLayoutArg> for KeyboardLayout {
 #[derive(Debug, Subcommand)]
 enum MonitorAction {
     /// List all monitors with their information.
-    List,
+    List {
+        /// Window ID (defaults to all windows)
+        window_id: Option<u32>,
+    },
     /// Switch focus to a specific monitor by index.
     Switch {
         /// Monitor index (0-based)
@@ -110,7 +113,10 @@ enum KeyboardAction {
 #[derive(Debug, Subcommand)]
 enum ScratchpadAction {
     /// List all scratchpads (show names and visibility status).
-    List,
+    List {
+        /// Window ID (defaults to all windows)
+        window_id: Option<u32>,
+    },
     /// Show scratchpad visibility status.
     ///
     /// With no argument, shows status for all scratchpads.
@@ -155,7 +161,10 @@ enum ScratchpadAction {
 #[derive(Debug, Subcommand)]
 enum WindowAction {
     /// List all managed windows.
-    List,
+    List {
+        /// Window ID (defaults to all windows)
+        window_id: Option<u32>,
+    },
     /// Get window geometry.
     Geom {
         /// Window ID (defaults to currently selected window)
@@ -432,7 +441,7 @@ fn main() {
         CommandKind::Status => IpcCommand::Status,
         CommandKind::Monitor { action } => {
             let cmd = match action {
-                MonitorAction::List => MonitorCommand::List,
+                MonitorAction::List { window_id: _ } => MonitorCommand::List,
                 MonitorAction::Switch { index } => MonitorCommand::Switch { index },
                 MonitorAction::Next { count } => MonitorCommand::Next { count },
                 MonitorAction::Prev { count } => MonitorCommand::Prev { count },
@@ -441,7 +450,7 @@ fn main() {
         }
         CommandKind::Window { action } => {
             let cmd = match action {
-                WindowAction::List => WindowCommand::List,
+                WindowAction::List { window_id } => WindowCommand::List(window_id),
                 WindowAction::Geom { window_id } => WindowCommand::Geom(window_id),
                 WindowAction::Close { window_id } => WindowCommand::Close(window_id),
             };
@@ -514,7 +523,7 @@ fn main() {
         }
         CommandKind::Scratchpad { action } => {
             let cmd = match action {
-                ScratchpadAction::List => ScratchpadCommand::List,
+                ScratchpadAction::List { window_id: _ } => ScratchpadCommand::List,
                 ScratchpadAction::Status { name } => ScratchpadCommand::Status(name),
                 ScratchpadAction::Show { name } => ScratchpadCommand::Show(name),
                 ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
