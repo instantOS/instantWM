@@ -45,9 +45,6 @@ use x11rb::CURRENT_TIME;
 /// After a successful grab, use [`wait_event`] to poll events inside the
 /// loop and [`ungrab_ctx`] to release the grab when done.
 pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
-    let conn = ctx.x11.conn;
-
-    let root = ctx.x11_runtime.root;
     let cursor = ctx
         .x11_runtime
         .cursors
@@ -56,10 +53,48 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
         .map(|c| c.cursor as u32)
         .unwrap_or(x11rb::NONE);
 
+    grab_pointer_impl(
+        ctx.x11.conn,
+        ctx.x11_runtime.root,
+        cursor,
+        EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+    )
+}
+
+/// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
+///
+/// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
+/// Escape can abort the hover-resize wait before the user clicks.
+pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
+    let cursor = ctx
+        .x11_runtime
+        .cursors
+        .get(cursor_index)
+        .and_then(|c| c.as_ref())
+        .map(|c| c.cursor as u32)
+        .unwrap_or(x11rb::NONE);
+
+    grab_pointer_impl(
+        ctx.x11.conn,
+        ctx.x11_runtime.root,
+        cursor,
+        EventMask::BUTTON_PRESS
+            | EventMask::BUTTON_RELEASE
+            | EventMask::POINTER_MOTION
+            | EventMask::KEY_PRESS,
+    )
+}
+
+fn grab_pointer_impl<C: Connection>(
+    conn: &C,
+    root: x11rb::protocol::xproto::Window,
+    cursor: u32,
+    event_mask: EventMask,
+) -> bool {
     conn.grab_pointer(
         false,
         root,
-        EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
+        event_mask,
         GrabMode::ASYNC,
         GrabMode::ASYNC,
         x11rb::NONE,
@@ -70,44 +105,6 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     .and_then(|cookie| cookie.reply().ok())
     .map(|r| r.status == GrabStatus::SUCCESS)
     .unwrap_or(false)
-}
-
-/// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
-///
-/// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
-/// Escape can abort the hover-resize wait before the user clicks.
-pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
-    let conn = ctx.x11.conn;
-
-    let root = ctx.x11_runtime.root;
-    let cursor = ctx
-        .x11_runtime
-        .cursors
-        .get(cursor_index)
-        .and_then(|c| c.as_ref())
-        .map(|c| c.cursor as u32)
-        .unwrap_or(x11rb::NONE);
-
-    let result = conn
-        .grab_pointer(
-            false,
-            root,
-            EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-            x11rb::NONE,
-            cursor,
-            CURRENT_TIME,
-        )
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .map(|r| {
-            // Non-success is expected occasionally (another grab in flight).
-            r.status == GrabStatus::SUCCESS
-        })
-        .unwrap_or(false);
-
-    result
 }
 
 /// Wait for the next X11 event.

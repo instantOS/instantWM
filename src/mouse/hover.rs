@@ -72,22 +72,6 @@ fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
 
 // ── Border detection ─────────────────────────────────────────────────────────
 
-/// Check if point (x, y) is in the resize-border zone of a window with geometry geo.
-/// The zone is a [`RESIZE_BORDER_ZONE`]-pixel band around the outside of the window.
-fn is_point_in_resize_border(geo: &Rect, x: i32, y: i32) -> bool {
-    if x > geo.x && x < geo.x + geo.w && y > geo.y && y < geo.y + geo.h {
-        return false;
-    }
-    if y < geo.y - RESIZE_BORDER_ZONE
-        || x < geo.x - RESIZE_BORDER_ZONE
-        || y > geo.y + geo.h + RESIZE_BORDER_ZONE
-        || x > geo.x + geo.w + RESIZE_BORDER_ZONE
-    {
-        return false;
-    }
-    true
-}
-
 /// Find a visible floating window whose resize border zone contains (`x`, `y`).
 /// Returns `None` if the cursor is on the bar or no window matches.
 pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option<WindowId> {
@@ -106,7 +90,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
         if !c.is_floating && has_tiling {
             continue;
         }
-        if is_point_in_resize_border(&c.geo, x, y) {
+        if geometry::is_point_in_resize_border(&c.geo, x, y, RESIZE_BORDER_ZONE) {
             return Some(w);
         }
     }
@@ -195,7 +179,7 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
     if mon.showbar && y < mon.monitor_rect.y + ctx.g().cfg.bar_height {
         return false;
     }
-    is_point_in_resize_border(&c.geo, x, y)
+    geometry::is_point_in_resize_border(&c.geo, x, y, RESIZE_BORDER_ZONE)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
@@ -454,7 +438,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtx) -> bool {
     };
 
     // If cursor is already outside the resize border, just focus the tiled window
-    if !is_point_in_resize_border(&sel_geo, x, y) {
+    if !geometry::is_point_in_resize_border(&sel_geo, x, y, RESIZE_BORDER_ZONE) {
         crate::focus::focus_soft(ctx, Some(hovered_win));
         return true;
     }

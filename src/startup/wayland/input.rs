@@ -715,7 +715,7 @@ fn wayland_selected_resize_target_at(
     if !c.is_floating && has_tiling {
         return None;
     }
-    if !is_point_in_resize_border(c.geo, root_x, root_y) {
+    if !crate::types::geometry::is_point_in_resize_border(&c.geo, root_x, root_y, RESIZE_BORDER_ZONE) {
         return None;
     }
     let hit_x = root_x - c.geo.x;
@@ -747,19 +747,6 @@ fn clear_wayland_hover_resize_offer(ctx: &mut crate::contexts::WmCtxWayland<'_>)
     set_cursor_default_wayland(ctx);
 }
 
-fn is_point_in_resize_border(geo: Rect, x: i32, y: i32) -> bool {
-    if x > geo.x && x < geo.x + geo.w && y > geo.y && y < geo.y + geo.h {
-        return false;
-    }
-    if y < geo.y - RESIZE_BORDER_ZONE
-        || x < geo.x - RESIZE_BORDER_ZONE
-        || y > geo.y + geo.h + RESIZE_BORDER_ZONE
-        || x > geo.x + geo.w + RESIZE_BORDER_ZONE
-    {
-        return false;
-    }
-    true
-}
 
 fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bool {
     let ctx = wm.ctx();
