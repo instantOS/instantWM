@@ -819,7 +819,9 @@ fn send_status_ipc(text: &str) {
         .unwrap_or_else(|_| format!("/tmp/instantwm-{}.sock", unsafe { libc::geteuid() }));
 
     if let Ok(mut stream) = UnixStream::connect(&socket) {
-        let req = crate::ipc_types::IpcCommand::UpdateStatus(text.to_string());
+        let req = crate::ipc_types::IpcRequest::new(crate::ipc_types::IpcCommand::UpdateStatus(
+            text.to_string(),
+        ));
         if let Ok(data) = bincode::encode_to_vec(&req, bincode::config::standard()) {
             let _ = stream.write_all(&data);
         }
