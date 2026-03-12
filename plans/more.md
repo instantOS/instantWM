@@ -102,3 +102,9 @@ ability to set keybind to none with toml
 I would like the `instantwmctl monitor` command to be able to change
 resolution/refresh rate at runtime. I also want this to be configurable through
 toml if that is not already the case. Think hard about good UX for this
+
+
+I would like to be able to split my config file into multiple files, and add an
+include to my global file to get it to include other files as though they are in
+that file. That way I can for example keep my colors config in a separate file. 
+

@@ -8,11 +8,19 @@ use crate::types::{
     WindowColorConfigs,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+pub struct IncludeConfig {
+    pub file: String,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
+    pub includes: Vec<IncludeConfig>,
     pub fonts: Vec<String>,
     pub colors: ColorConfig,
     /// User-defined keybinds (override/extend defaults).
@@ -32,6 +40,7 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
+            includes: Vec::new(),
             fonts: get_fonts(),
             colors: ColorConfig::default(),
             keybinds: Vec::new(),
@@ -165,19 +174,101 @@ pub fn load_config_file() -> ThemeConfig {
         return ThemeConfig::default();
     }
 
-    let contents = match fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("instantwm: could not read config: {e}");
-            return ThemeConfig::default();
-        }
-    };
+    let mut visited = HashSet::new();
+    match load_and_merge_config(&path, &mut visited) {
+        Ok(merged_value) => match merged_value.try_into::<ThemeConfig>() {
+            Ok(file) => file,
+            Err(e) => {
+                eprintln!("instantwm: config parse error, using defaults: {e}");
+                ThemeConfig::default()
+            }
+        },
+        Err(_) => ThemeConfig::default(),
+    }
+}
 
-    match toml::from_str(&contents) {
-        Ok(file) => file,
-        Err(e) => {
-            eprintln!("instantwm: config parse error, using defaults: {e}");
-            ThemeConfig::default()
+fn load_and_merge_config(path: &Path, visited: &mut HashSet<PathBuf>) -> Result<toml::Value, ()> {
+    let canonical_path = path.canonicalize().map_err(|e| {
+        eprintln!("instantwm: could not canonicalize path {:?}: {e}", path);
+    })?;
+
+    if visited.contains(&canonical_path) {
+        eprintln!("instantwm: circular include detected: {:?}", canonical_path);
+        return Err(());
+    }
+    visited.insert(canonical_path.clone());
+
+    let contents = fs::read_to_string(path).map_err(|e| {
+        eprintln!("instantwm: could not read config file {:?}: {e}", path);
+    })?;
+
+    let value: toml::Value = toml::from_str(&contents).map_err(|e| {
+        eprintln!("instantwm: config parse error in {:?}: {e}", path);
+    })?;
+
+    let mut merged_base = toml::Value::Table(toml::Table::new());
+
+    if let Some(includes) = value.get("includes").and_then(|v| v.as_array()) {
+        let parent_dir = path.parent().unwrap_or(Path::new("."));
+
+        for include in includes {
+            if let Some(file_path_str) = include.get("file").and_then(|v| v.as_str()) {
+                let include_path = if Path::new(file_path_str).is_absolute() {
+                    PathBuf::from(file_path_str)
+                } else {
+                    parent_dir.join(file_path_str)
+                };
+
+                if !include_path.exists() {
+                    eprintln!(
+                        "instantwm: warning: included config file {:?} does not exist",
+                        include_path
+                    );
+                    continue;
+                }
+
+                if let Ok(included_value) = load_and_merge_config(&include_path, visited) {
+                    merge_toml_values(&mut merged_base, included_value);
+                }
+            }
+        }
+    }
+
+    // Merge current file OVER includes
+    merge_toml_values(&mut merged_base, value);
+
+    Ok(merged_base)
+}
+
+fn merge_toml_values(base: &mut toml::Value, over: toml::Value) {
+    match (base, over) {
+        (toml::Value::Table(base_table), toml::Value::Table(over_table)) => {
+            for (key, value) in over_table {
+                if key == "includes" {
+                    if let Some(base_includes) = base_table.get_mut("includes") {
+                        if let (toml::Value::Array(base_arr), toml::Value::Array(over_arr)) =
+                            (base_includes, value)
+                        {
+                            base_arr.extend(over_arr);
+                        }
+                    } else {
+                        base_table.insert(key, value);
+                    }
+                    continue;
+                }
+
+                if let Some(base_value) = base_table.get_mut(&key) {
+                    merge_toml_values(base_value, value);
+                } else {
+                    base_table.insert(key, value);
+                }
+            }
+        }
+        (toml::Value::Array(base_array), toml::Value::Array(over_array)) => {
+            base_array.extend(over_array);
+        }
+        (base, over) => {
+            *base = over;
         }
     }
 }
