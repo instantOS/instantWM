@@ -750,7 +750,10 @@ fn main() {
     {
         Ok((r, _)) => r,
         Err(e) => {
-            eprintln!("instantwmctl: deserialization failed: {}", e);
+            eprintln!(
+                "instantwmctl: deserialization failed: {} (this might be caused by a version mismatch between instantwm and instantwmctl)",
+                e
+            );
             std::process::exit(1);
         }
     };
