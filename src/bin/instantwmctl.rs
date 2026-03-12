@@ -500,7 +500,12 @@ fn main() {
     let mut stream = match UnixStream::connect(&socket) {
         Ok(s) => s,
         Err(err) => {
-            eprintln!("instantwmctl: connect failed ({}): {}", socket, err);
+            if err.kind() == std::io::ErrorKind::NotFound {
+                eprintln!("instantwmctl: instantWM is not running (socket not found: {})", socket);
+                eprintln!("Make sure instantWM is started before using instantwmctl.");
+            } else {
+                eprintln!("instantwmctl: connect failed ({}): {}", socket, err);
+            }
             std::process::exit(1);
         }
     };
