@@ -158,6 +158,7 @@ pub fn run() -> ! {
         &mut state,
         &mut libinput_context,
         &shared,
+        pending_input_events,
         &mut output_surfaces,
         &mut renderer,
         &cursor_manager,
@@ -320,6 +321,7 @@ fn run_event_loop(
     state: &mut WaylandState,
     libinput_context: &mut Libinput,
     shared: &Arc<Mutex<SharedDrmState>>,
+    pending_input_events: Arc<Mutex<Vec<smithay::backend::input::InputEvent<LibinputInputBackend>>>>,
     output_surfaces: &mut [OutputSurfaceEntry],
     renderer: &mut GlesRenderer,
     cursor_manager: &CursorManager,
@@ -328,6 +330,7 @@ fn run_event_loop(
     start_time: std::time::Instant,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
+    let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
     let mut tracked_devices: Vec<smithay::reexports::input::Device> = Vec::new();
 
@@ -337,7 +340,16 @@ fn run_event_loop(
 
             process_completed_crtcs(state, shared, output_surfaces);
 
-            let _ = libinput_context;
+            process_libinput_events(
+                libinput_context,
+                state,
+                wm,
+                shared,
+                &pending_input_events,
+                &keyboard_handle,
+                &pointer_handle,
+                &mut tracked_devices,
+            );
 
             arrange_layout(wm, state);
 
