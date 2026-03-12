@@ -457,6 +457,61 @@ impl WaylandState {
         }
     }
 
+    pub fn set_output_config(
+        &mut self,
+        display: &str,
+        config: &crate::config::config_toml::MonitorConfig,
+    ) {
+        let outputs: Vec<_> = self.space.outputs().cloned().collect();
+        for output in outputs {
+            if display != "*" && output.name() != display {
+                continue;
+            }
+
+            let mut current_mode = output.current_mode();
+            let mut current_scale = output.current_scale();
+            let mut current_transform = output.current_transform();
+            let mut current_location = self.space.output_location(&output).unwrap_or_default();
+
+            if let Some(ref res) = config.resolution {
+                if let Some((w_str, h_str)) = res.split_once('x') {
+                    if let (Ok(w), Ok(h)) = (w_str.parse::<i32>(), h_str.parse::<i32>()) {
+                        if let Some(mode) = output.modes().into_iter().find(|m| {
+                            m.size.w == w
+                                && m.size.h == h
+                                && config
+                                    .refresh_rate
+                                    .map(|r| (m.refresh as f32 / 1000.0 - r).abs() < 0.1)
+                                    .unwrap_or(true)
+                        }) {
+                            current_mode = Some(mode);
+                        }
+                    }
+                }
+            }
+
+            if let Some(scale) = config.scale {
+                current_scale = Scale::Fractional(scale as f64);
+            }
+
+            if let Some(ref pos) = config.position {
+                if let Some((x_str, y_str)) = pos.split_once(',') {
+                    if let (Ok(x), Ok(y)) = (x_str.parse::<i32>(), y_str.parse::<i32>()) {
+                        current_location = (x, y).into();
+                    }
+                }
+            }
+
+            output.change_current_state(
+                current_mode,
+                Some(current_transform),
+                Some(current_scale),
+                Some(current_location),
+            );
+            self.space.map_output(&output, current_location);
+        }
+    }
+
     pub fn sync_space_from_globals(&mut self) {
         let Some(g) = self.globals() else {
             return;

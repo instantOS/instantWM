@@ -104,6 +104,9 @@ pub struct RuntimeConfig {
     // Input configuration
     pub input: std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
 
+    // Monitor configuration
+    pub monitors: std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+
     // Status command
     pub status_command: Option<String>,
 }
@@ -141,6 +144,7 @@ impl Default for RuntimeConfig {
             horizontal_padding: 0,
             tag_template: Vec::new(),
             input: std::collections::HashMap::new(),
+            monitors: std::collections::HashMap::new(),
             status_command: None,
         }
     }
@@ -360,6 +364,9 @@ pub struct Globals {
     /// Whether input configuration has changed and needs to be re-applied.
     pub input_config_dirty: bool,
 
+    /// Whether monitor configuration has changed and needs to be re-applied.
+    pub monitor_config_dirty: bool,
+
     /// Current active mode (sway-like modes).
     pub current_mode: String,
 }
@@ -525,6 +532,7 @@ impl Default for Globals {
             systray_width: 0,
             keyboard_layout: KeyboardLayoutState::default(),
             input_config_dirty: false,
+            monitor_config_dirty: false,
             current_mode: "default".to_string(),
         }
     }
@@ -569,6 +577,7 @@ impl X11Connection {
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.border_width_px = cfg.borderpx;
     g.cfg.input = cfg.input.clone();
+    g.cfg.monitors = cfg.monitors.clone();
     g.cfg.snap = cfg.snap;
     g.cfg.startmenusize = cfg.startmenusize;
     g.cfg.systray_pinning = cfg.systraypinning;

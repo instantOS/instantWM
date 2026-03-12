@@ -137,6 +137,10 @@ impl BackendOps for X11Backend {
     fn warp_pointer(&self, x: f64, y: f64) {
         self.as_ref().warp_pointer(x, y)
     }
+
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+        self.as_ref().set_monitor_config(name, config)
+    }
 }
 
 impl BackendOps for X11BackendRef<'_> {
@@ -221,5 +225,9 @@ impl BackendOps for X11BackendRef<'_> {
             y.round() as i16,
         );
         let _ = self.conn.flush();
+    }
+
+    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {
+        // TODO: X11 XRandR support
     }
 }

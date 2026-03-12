@@ -56,6 +56,9 @@ pub trait BackendOps {
         _model: Option<&str>,
     ) {
     }
+
+    /// Set monitor configuration
+    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {}
 }
 
 /// Owned backend implementation.
@@ -143,6 +146,10 @@ impl BackendOps for Backend {
     ) {
         self.as_ref()
             .set_keyboard_layout(layout, variant, options, model)
+    }
+
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+        self.as_ref().set_monitor_config(name, config)
     }
 }
 
@@ -276,6 +283,13 @@ impl BackendOps for BackendRef<'_> {
             BackendRef::Wayland(wayland) => {
                 wayland.set_keyboard_layout(layout, variant, options, model)
             }
+        }
+    }
+
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+        match self {
+            BackendRef::X11(x11) => x11.set_monitor_config(name, config),
+            BackendRef::Wayland(wayland) => wayland.set_monitor_config(name, config),
         }
     }
 }

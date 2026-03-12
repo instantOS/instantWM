@@ -202,4 +202,12 @@ impl BackendOps for WaylandBackend {
             );
         });
     }
+
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+        let name_str = name.to_owned();
+        let config_clone = config.clone();
+        let _ = self.with_state(move |state: &mut WaylandState| {
+            state.set_output_config(&name_str, &config_clone);
+        });
+    }
 }

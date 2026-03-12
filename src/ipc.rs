@@ -166,6 +166,14 @@ fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> IpcResponse {
         MonitorCommand::Switch { index } => switch_monitor(wm, index as i32),
         MonitorCommand::Next { count } => next_monitor(wm, count as i32),
         MonitorCommand::Prev { count } => prev_monitor(wm, count as i32),
+        MonitorCommand::Set {
+            identifier,
+            resolution,
+            refresh_rate,
+            position,
+            scale,
+            enable,
+        } => set_monitor_config(wm, identifier, resolution, refresh_rate, position, scale, enable),
     }
 }
 
@@ -233,6 +241,28 @@ fn prev_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
     for _ in 0..count.max(1) {
         focus_monitor(&mut wm.ctx(), direction);
     }
+    IpcResponse::ok("")
+}
+
+fn set_monitor_config(
+    wm: &mut Wm,
+    identifier: String,
+    resolution: Option<String>,
+    refresh_rate: Option<f32>,
+    position: Option<String>,
+    scale: Option<f32>,
+    enable: Option<bool>,
+) -> IpcResponse {
+    let config = crate::config::config_toml::MonitorConfig {
+        resolution,
+        refresh_rate,
+        position,
+        scale,
+        enable,
+    };
+
+    wm.g.cfg.monitors.insert(identifier, config);
+    wm.g.monitor_config_dirty = true;
     IpcResponse::ok("")
 }
 

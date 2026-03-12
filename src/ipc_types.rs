@@ -86,6 +86,21 @@ pub enum MonitorCommand {
     Next { count: u32 },
     /// Move focus to the previous monitor(s).
     Prev { count: u32 },
+    /// Configure a monitor.
+    Set {
+        /// Monitor identifier (name or "*" for all).
+        identifier: String,
+        /// Resolution (e.g., "1920x1080").
+        resolution: Option<String>,
+        /// Refresh rate in Hz.
+        refresh_rate: Option<f32>,
+        /// Position (e.g., "1920,0").
+        position: Option<String>,
+        /// Scale factor.
+        scale: Option<f32>,
+        /// Whether to enable or disable the output.
+        enable: Option<bool>,
+    },
 }
 
 /// Scratchpad-related commands.

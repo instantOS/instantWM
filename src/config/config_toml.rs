@@ -31,6 +31,8 @@ pub struct ThemeConfig {
     pub keyboard: KeyboardConfig,
     /// Input configuration (mouse, touchpad).
     pub input: std::collections::HashMap<String, InputConfig>,
+    /// Monitor configuration.
+    pub monitors: std::collections::HashMap<String, MonitorConfig>,
     /// Background command to execute for reading status bar text, typically `i3status-rs`
     pub status_command: Option<String>,
     /// User-defined modes (sway-like modes).
@@ -47,10 +49,27 @@ impl Default for ThemeConfig {
             desktop_keybinds: Vec::new(),
             keyboard: KeyboardConfig::default(),
             input: std::collections::HashMap::new(),
+            monitors: std::collections::HashMap::new(),
             status_command: None,
             modes: std::collections::HashMap::new(),
         }
     }
+}
+
+/// Monitor configuration from the TOML `[monitors]` section.
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
+#[serde(default)]
+pub struct MonitorConfig {
+    /// Resolution in "WIDTHxHEIGHT" format (e.g., "1920x1080").
+    pub resolution: Option<String>,
+    /// Refresh rate in Hz (e.g., 60.0).
+    pub refresh_rate: Option<f32>,
+    /// Position in "X,Y" format (e.g., "1920,0") or relative (e.g., "left-of:DP-1").
+    pub position: Option<String>,
+    /// Scale factor (e.g., 1.0, 2.0).
+    pub scale: Option<f32>,
+    /// Whether the monitor is enabled.
+    pub enable: Option<bool>,
 }
 
 /// Toggle setting for boolean-like input options (tap, natural_scroll).

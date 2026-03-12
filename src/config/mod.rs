@@ -196,6 +196,8 @@ pub struct Config {
 
     // --- Input configuration ---
     pub input: std::collections::HashMap<String, config_toml::InputConfig>,
+    /// Monitor configuration.
+    pub monitors: std::collections::HashMap<String, config_toml::MonitorConfig>,
     pub status_command: Option<String>,
 }
 
@@ -282,6 +284,7 @@ pub fn init_config() -> Config {
 
         // --- Input configuration ---
         input: theme.input.clone(),
+        monitors: theme.monitors.clone(),
         status_command: theme.status_command.clone(),
     }
 }

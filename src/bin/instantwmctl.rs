@@ -71,6 +71,30 @@ enum MonitorAction {
         #[arg(default_value = "1")]
         count: u32,
     },
+    /// Configure a monitor.
+    Set {
+        /// Monitor identifier (name, or "*" for currently focused)
+        #[arg(default_value = "*")]
+        identifier: String,
+        /// Resolution (e.g., "1920x1080")
+        #[arg(long, short = 'r')]
+        res: Option<String>,
+        /// Refresh rate in Hz
+        #[arg(long, short = 'f')]
+        rate: Option<f32>,
+        /// Position (e.g., "1920,0")
+        #[arg(long, short = 'p')]
+        pos: Option<String>,
+        /// Scale factor
+        #[arg(long, short = 's')]
+        scale: Option<f32>,
+        /// Enable the monitor
+        #[arg(long, conflicts_with = "disable")]
+        enable: bool,
+        /// Disable the monitor
+        #[arg(long, conflicts_with = "enable")]
+        disable: bool,
+    },
 }
 
 /// Keyboard layout actions.
@@ -445,6 +469,31 @@ fn main() {
                 MonitorAction::Switch { index } => MonitorCommand::Switch { index },
                 MonitorAction::Next { count } => MonitorCommand::Next { count },
                 MonitorAction::Prev { count } => MonitorCommand::Prev { count },
+                MonitorAction::Set {
+                    identifier,
+                    res,
+                    rate,
+                    pos,
+                    scale,
+                    enable,
+                    disable,
+                } => {
+                    let enable_val = if enable {
+                        Some(true)
+                    } else if disable {
+                        Some(false)
+                    } else {
+                        None
+                    };
+                    MonitorCommand::Set {
+                        identifier,
+                        resolution: res,
+                        refresh_rate: rate,
+                        position: pos,
+                        scale,
+                        enable: enable_val,
+                    }
+                }
             };
             IpcCommand::Monitor(cmd)
         }
