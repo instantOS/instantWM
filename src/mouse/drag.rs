@@ -247,6 +247,37 @@ fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveSta
     on_bar
 }
 
+/// Simplified bar hover update for Wayland drag paths that don't use [`MoveState`].
+///
+/// Sets `bar_active` and the gesture highlight when the cursor enters the bar,
+/// and clears them when it leaves.  Returns `true` while on the bar.
+pub fn update_bar_hover_simple(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32) -> bool {
+    let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
+    let selmon_id = ctx.g().selected_monitor_id();
+    let was_on_bar = ctx.g().drag.bar_active;
+
+    if on_bar {
+        let new_gesture = {
+            let core = ctx.core();
+            let mon = core.g.selected_monitor();
+            let local_x = ptr_x - mon.work_rect.x;
+            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+        };
+        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
+        if !was_on_bar || gesture_changed {
+            ctx.g_mut().drag.bar_active = true;
+            ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.request_bar_update(Some(selmon_id));
+        }
+    } else if was_on_bar {
+        ctx.g_mut().drag.bar_active = false;
+        ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.request_bar_update(Some(selmon_id));
+    }
+
+    on_bar
+}
+
 /// Process a single throttled `MotionNotify` event during [`crate::backend::x11::mouse::move_mouse_x11`].
 pub fn on_motion(
     ctx: &mut WmCtx,
@@ -985,6 +1016,9 @@ fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32)
         return false;
     }
 
+    // Update bar hover gesture highlighting so tag indicators react during drag.
+    update_bar_hover_simple(ctx, root_x, root_y);
+
     let td = &ctx.g_mut().drag.title;
     let win = td.win;
     let td_win_start_geo = td.win_start_geo;
@@ -992,6 +1026,12 @@ fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32)
     let td_start_y = td.start_y;
     let mut new_x = td_win_start_geo.x + (root_x - td_start_x);
     let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
+
+    // While hovering over the bar, keep the window just below it.
+    if point_is_on_bar(ctx, root_x, root_y) {
+        let bar_bottom = ctx.g().selected_monitor().bar_y + ctx.g().cfg.bar_height;
+        new_y = bar_bottom;
+    }
 
     let (is_floating, geo) = match ctx.g().clients.get(&win) {
         Some(c) => (c.is_floating, c.geo),
@@ -1200,6 +1240,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         set_cursor_default(ctx);
         if !is_right_click {
             complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
+            clear_bar_hover(ctx);
         } else {
             handle_client_monitor_switch(ctx, win);
         }

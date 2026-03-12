@@ -319,9 +319,11 @@ fn dispatch_pointer_motion(
     .map(|mon| {
         let bar_h = wm.g.cfg.bar_height.max(1);
         let guard_h = 4;
+        let drag_active =
+            active_drag_window.is_some() || wm.g.drag.title.active || wm.g.drag.tag.active;
         let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
         let in_guard = mon.showbar
-            && active_drag_window.is_none()
+            && !drag_active
             && root_y >= mon.bar_y + bar_h
             && root_y < mon.bar_y + bar_h + guard_h;
         (in_bar, in_guard)
@@ -359,7 +361,8 @@ fn dispatch_pointer_motion(
     }
 
     let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
-    if in_bar_band || bar_pos.is_some() {
+    let is_window_drag = wm.g.drag.title.active || wm.g.drag.hover_resize.active;
+    if (in_bar_band || bar_pos.is_some()) && !is_window_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
@@ -367,8 +370,8 @@ fn dispatch_pointer_motion(
         if ctx.core.g.cursor_icon == AltCursor::Resize {
             clear_wayland_hover_resize_offer(&mut ctx);
         }
-        let focus =
-            pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+        let focus = pointer_focus
+            .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
         let serial = SERIAL_COUNTER.next_serial();
         let motion = smithay::input::pointer::MotionEvent {
             location: *pointer_location,
@@ -846,6 +849,16 @@ fn clear_wayland_hover_resize_offer(ctx: &mut crate::contexts::WmCtxWayland<'_>)
     set_cursor_default_wayland(ctx);
 }
 
+/// Update bar hover gesture highlighting during a Wayland move drag.
+fn update_wayland_move_bar_hover(
+    ctx: &mut crate::contexts::WmCtxWayland<'_>,
+    root_x: i32,
+    root_y: i32,
+) {
+    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root_x, root_y);
+}
+
 fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bool {
     let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
@@ -858,6 +871,9 @@ fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -> bo
     ctx.core.g.drag.hover_resize.last_root_x = root_x;
     ctx.core.g.drag.hover_resize.last_root_y = root_y;
     if drag.move_mode {
+        // Update bar hover gesture highlighting during move drags.
+        update_wayland_move_bar_hover(&mut ctx, root_x, root_y);
+
         let mut new_x = drag.win_start_geo.x + (root_x - drag.start_x);
         let mut new_y = drag.win_start_geo.y + (root_y - drag.start_y);
         {
@@ -944,6 +960,7 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
             None,
             Some((drag.last_root_x, drag.last_root_y)),
         );
+        crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
     } else {
         crate::mouse::monitor::handle_client_monitor_switch(
             &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
