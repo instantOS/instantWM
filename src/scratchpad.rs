@@ -220,7 +220,7 @@ pub fn scratchpad_status(g: &Globals, name: &str) -> String {
 /// List all scratchpads with their visibility status.
 ///
 /// Returns a formatted string like:
-/// ```
+/// ```text
 /// * term     (visible)
 ///   music    (hidden)
 /// ```

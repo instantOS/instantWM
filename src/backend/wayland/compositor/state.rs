@@ -658,7 +658,7 @@ impl WaylandState {
     }
 
     pub fn restack(&mut self, windows: &[WindowId]) {
-        for window in windows {
+        for window in windows.iter().rev() {
             if let Some(element) = self.find_window(*window).cloned() {
                 self.space.raise_element(&element, false);
             }
