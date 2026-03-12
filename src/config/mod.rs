@@ -115,6 +115,15 @@ use crate::types::{
     TagColorConfigs, WindowColorConfigs,
 };
 
+/// Mode configuration with keybinds and optional description.
+#[derive(Debug, Clone, Default)]
+pub struct ModeConfig {
+    /// Optional description shown in status bar when mode is active.
+    pub description: Option<String>,
+    /// Keybinds for this mode.
+    pub keybinds: Vec<Key>,
+}
+
 /// All WM configuration in one place.
 ///
 /// Built by [`init_config`] and consumed by `init_globals` in `startup::x11`.
@@ -176,7 +185,7 @@ pub struct Config {
     // --- Bindings ---
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
-    pub modes: std::collections::HashMap<String, Vec<Key>>,
+    pub modes: std::collections::HashMap<String, ModeConfig>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub fonts: Vec<String>,
@@ -225,10 +234,14 @@ pub fn init_config() -> Config {
     };
 
     let mut modes = std::collections::HashMap::new();
-    for (name, specs) in &theme.modes {
+    for (name, spec) in &theme.modes {
+        let keybinds = keybind_config::merge_keybinds(Vec::new(), &spec.keybinds);
         modes.insert(
             name.clone(),
-            keybind_config::merge_keybinds(Vec::new(), specs),
+            ModeConfig {
+                description: spec.description.clone(),
+                keybinds,
+            },
         );
     }
 

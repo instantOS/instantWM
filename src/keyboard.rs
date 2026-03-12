@@ -49,8 +49,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             .cfg
             .modes
             .get(&current_mode)
-            .and_then(|mode_keys| {
-                mode_keys.iter().find(|key| {
+            .and_then(|mode| {
+                mode.keybinds.iter().find(|key| {
                     keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
                 })
             })

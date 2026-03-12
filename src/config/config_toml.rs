@@ -17,6 +17,17 @@ pub struct IncludeConfig {
     pub file: String,
 }
 
+/// Mode specification for sway-like modes.
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
+pub struct ModeSpec {
+    /// Optional description shown in status bar when mode is active.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Keybinds for this mode.
+    #[serde(default)]
+    pub keybinds: Vec<KeybindSpec>,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
@@ -36,7 +47,7 @@ pub struct ThemeConfig {
     /// Background command to execute for reading status bar text, typically `i3status-rs`
     pub status_command: Option<String>,
     /// User-defined modes (sway-like modes).
-    pub modes: std::collections::HashMap<String, Vec<KeybindSpec>>,
+    pub modes: std::collections::HashMap<String, ModeSpec>,
 }
 
 impl Default for ThemeConfig {

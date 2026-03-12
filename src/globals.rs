@@ -1,5 +1,6 @@
 use crate::client::manager::ClientManager;
 use crate::config::commands::ExternalCommands;
+use crate::config::ModeConfig;
 use crate::drw::{Cursor, Drw};
 use crate::monitor::MonitorManager;
 use crate::types::color::{BorderScheme, StatusScheme};
@@ -87,7 +88,7 @@ pub struct RuntimeConfig {
     // Bindings
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
-    pub modes: std::collections::HashMap<String, Vec<Key>>,
+    pub modes: std::collections::HashMap<String, ModeConfig>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
 

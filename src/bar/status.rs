@@ -171,7 +171,16 @@ pub(crate) fn draw_status_bar(
     let mode = ctx.g.current_mode.clone();
     let stext_owned: String;
     let stext = if !mode.is_empty() && mode != "default" {
-        stext_owned = format!("mode: {}", mode);
+        // Try to get mode description, fall back to mode name
+        let mode_display = ctx
+            .g
+            .cfg
+            .modes
+            .get(&mode)
+            .and_then(|m| m.description.as_ref())
+            .map(|s| s.as_str())
+            .unwrap_or(&mode);
+        stext_owned = format!("mode: {}", mode_display);
         &stext_owned
     } else {
         ctx.g.status_text.as_str()
