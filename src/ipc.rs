@@ -44,16 +44,21 @@ impl IpcServer {
         Ok(Self { listener, path })
     }
 
-    pub fn process_pending(&mut self, wm: &mut Wm) {
+    /// Process all pending IPC connections.  Returns `true` when at least one
+    /// command was handled (callers can use this to decide whether to re-render).
+    pub fn process_pending(&mut self, wm: &mut Wm) -> bool {
+        let mut handled = false;
         loop {
             match self.listener.accept() {
                 Ok((stream, _)) => {
                     self.handle_client(stream, wm);
+                    handled = true;
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(_) => break,
             }
         }
+        handled
     }
 
     fn handle_client(&self, mut stream: UnixStream, wm: &mut Wm) {

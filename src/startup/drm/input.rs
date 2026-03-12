@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use smithay::backend::input::InputEvent;
 use smithay::backend::libinput::{LibinputInputBackend, PointerScrollAxis};
 use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent};
@@ -11,7 +9,6 @@ use crate::startup::wayland::input::{
 };
 use crate::wm::Wm;
 
-use super::state::SharedDrmState;
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
 
 pub fn raw_event_to_input_event(
@@ -111,14 +108,11 @@ pub fn dispatch_libinput_event(
     wm: &mut Wm,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
-    shared: &Arc<Mutex<SharedDrmState>>,
+    pointer_location: &mut smithay::utils::Point<f64, smithay::utils::Logical>,
+    total_w: i32,
+    total_h: i32,
     tracked_devices: &mut Vec<smithay::reexports::input::Device>,
 ) -> bool {
-    let (total_w, total_h) = {
-        let s = shared.lock().unwrap();
-        (s.total_width, s.total_height)
-    };
-
     match event {
         InputEvent::DeviceAdded { mut device } => {
             crate::startup::drm::input::configure_device(&mut device, &wm.g.cfg.input);
@@ -134,56 +128,50 @@ pub fn dispatch_libinput_event(
             true
         }
         InputEvent::PointerMotion { event } => {
-            let mut loc = shared.lock().unwrap().pointer_location;
             handle_pointer_motion_relative::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
                 keyboard_handle,
                 event,
-                &mut loc,
+                pointer_location,
                 total_w,
                 total_h,
             );
-            shared.lock().unwrap().pointer_location = loc;
             true
         }
         InputEvent::PointerMotionAbsolute { event } => {
-            let mut loc = shared.lock().unwrap().pointer_location;
             handle_pointer_motion_absolute::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
                 keyboard_handle,
                 event,
-                &mut loc,
+                pointer_location,
                 total_w,
                 total_h,
             );
-            shared.lock().unwrap().pointer_location = loc;
             true
         }
         InputEvent::PointerButton { event } => {
-            let loc = shared.lock().unwrap().pointer_location;
             handle_pointer_button::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
                 keyboard_handle,
                 event,
-                loc,
+                *pointer_location,
             );
             true
         }
         InputEvent::PointerAxis { event } => {
-            let loc = shared.lock().unwrap().pointer_location;
             handle_pointer_axis::<LibinputInputBackend>(
                 wm,
                 state,
                 pointer_handle,
                 keyboard_handle,
                 event,
-                loc,
+                *pointer_location,
             );
             true
         }

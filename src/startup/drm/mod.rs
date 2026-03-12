@@ -421,6 +421,14 @@ fn process_libinput_events(
     // new events into libinput's internal queue without routing them
     // through the channel, causing them to arrive late in bursts
     // (perceived as repeated / delayed key presses).
+
+    // Lock once to read shared pointer state; individual events update the
+    // local copy and we write it back once after the batch.
+    let (mut pointer_location, total_w, total_h) = {
+        let s = shared.lock().unwrap();
+        (s.pointer_location, s.total_width, s.total_height)
+    };
+
     let mut any_input = false;
     while let Ok(event) = libinput_rx.try_recv() {
         if dispatch_libinput_event(
@@ -429,14 +437,18 @@ fn process_libinput_events(
             wm,
             keyboard_handle,
             pointer_handle,
-            shared,
+            &mut pointer_location,
+            total_w,
+            total_h,
             tracked_devices,
         ) {
             any_input = true;
         }
     }
     if any_input {
-        shared.lock().unwrap().mark_all_dirty();
+        let mut s = shared.lock().unwrap();
+        s.pointer_location = pointer_location;
+        s.mark_all_dirty();
     }
 }
 
@@ -456,12 +468,14 @@ fn process_ipc(
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
     if let Some(server) = ipc_server.as_mut() {
-        server.process_pending(wm);
+        let handled = server.process_pending(wm);
         if wm.g.monitor_config_dirty {
             let mut ctx = wm.ctx();
             crate::monitor::apply_monitor_config(&mut ctx);
         }
-        shared.lock().unwrap().mark_all_dirty();
+        if handled || wm.g.monitor_config_dirty {
+            shared.lock().unwrap().mark_all_dirty();
+        }
     }
 }
 
@@ -482,8 +496,9 @@ fn process_cursor_warp(
 ) {
     let mut loc = shared.lock().unwrap().pointer_location;
     if apply_pending_warp(state, pointer_handle, &mut loc) {
-        shared.lock().unwrap().pointer_location = loc;
-        shared.lock().unwrap().mark_all_dirty();
+        let mut s = shared.lock().unwrap();
+        s.pointer_location = loc;
+        s.mark_all_dirty();
     }
 }
 
