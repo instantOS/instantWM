@@ -58,8 +58,10 @@ pub fn set_cursor_resize_x11(ctx: &mut WmCtxX11<'_>, dir: Option<ResizeDirection
     let cursor = match dir {
         Some(ResizeDirection::Left | ResizeDirection::Right) => Cursor::Hor,
         Some(ResizeDirection::Top | ResizeDirection::Bottom) => Cursor::Vert,
-        Some(ResizeDirection::TopRight | ResizeDirection::BottomLeft) => Cursor::TR,
-        Some(ResizeDirection::TopLeft | ResizeDirection::BottomRight) => Cursor::TL,
+        Some(ResizeDirection::TopRight) => Cursor::TR,
+        Some(ResizeDirection::BottomLeft) => Cursor::BL,
+        Some(ResizeDirection::TopLeft) => Cursor::TL,
+        Some(ResizeDirection::BottomRight) => Cursor::BR,
         None => Cursor::Resize,
     };
     set_x11_root_cursor(ctx, cursor);
@@ -67,16 +69,15 @@ pub fn set_cursor_resize_x11(ctx: &mut WmCtxX11<'_>, dir: Option<ResizeDirection
 
 pub fn set_cursor_resize_wayland(ctx: &mut WmCtxWayland<'_>, dir: Option<ResizeDirection>) {
     let icon = match dir {
-        Some(ResizeDirection::Left) | Some(ResizeDirection::Right) => {
-            smithay::input::pointer::CursorIcon::EwResize
-        }
-        Some(ResizeDirection::Top) | Some(ResizeDirection::Bottom) => {
-            smithay::input::pointer::CursorIcon::NsResize
-        }
-        Some(ResizeDirection::TopRight) | Some(ResizeDirection::BottomLeft) => {
-            smithay::input::pointer::CursorIcon::NeswResize
-        }
-        _ => smithay::input::pointer::CursorIcon::NwseResize,
+        Some(ResizeDirection::Left) => smithay::input::pointer::CursorIcon::WResize,
+        Some(ResizeDirection::Right) => smithay::input::pointer::CursorIcon::EResize,
+        Some(ResizeDirection::Top) => smithay::input::pointer::CursorIcon::NResize,
+        Some(ResizeDirection::Bottom) => smithay::input::pointer::CursorIcon::SResize,
+        Some(ResizeDirection::TopRight) => smithay::input::pointer::CursorIcon::NeResize,
+        Some(ResizeDirection::BottomLeft) => smithay::input::pointer::CursorIcon::SwResize,
+        Some(ResizeDirection::TopLeft) => smithay::input::pointer::CursorIcon::NwResize,
+        Some(ResizeDirection::BottomRight) => smithay::input::pointer::CursorIcon::SeResize,
+        None => smithay::input::pointer::CursorIcon::SeResize,
     };
     ctx.wayland.backend.set_cursor_icon_override(Some(icon));
 }
