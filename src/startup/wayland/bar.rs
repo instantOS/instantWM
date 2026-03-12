@@ -40,12 +40,16 @@ pub(super) fn update_wayland_bar_hit_state(
         crate::bar::reset_bar_common(ctx.core_mut());
     }
 
+    let old_gesture = ctx.g.selected_monitor().gesture;
     let gesture = if pos == BarPosition::StatusText {
-        ctx.g.selected_monitor().gesture
+        old_gesture
     } else {
         bar_position_to_gesture(pos)
     };
-    ctx.g.selected_monitor_mut().gesture = gesture;
+    if old_gesture != gesture {
+        ctx.g.selected_monitor_mut().gesture = gesture;
+        ctx.request_bar_update(Some(mid));
+    }
 
     Some(pos)
 }
