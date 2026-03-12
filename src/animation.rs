@@ -232,18 +232,12 @@ pub fn check_animate_x11(
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     let sel_mon = ctx.g().selected_monitor_id();
 
-    let (has_tiling, current_tag) = {
+    let current_tag = {
         let mon = ctx.g().selected_monitor();
-        let has_tiling = mon.is_tiling_layout();
-        let current_tag = mon.current_tag as u32;
-        (has_tiling, current_tag)
+        mon.current_tag as u32
     };
 
-    if has_tiling {
-        crate::focus::direction_focus(ctx, dir);
-    } else {
-        scroll_view(ctx, dir);
-    }
+    scroll_view(ctx, dir);
 
     if let WmCtx::X11(ref mut ctx_x11) = ctx {
         let clients_to_animate: Vec<(WindowId, Rect)> = ctx_x11
