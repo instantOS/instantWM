@@ -747,7 +747,7 @@ impl Globals {
         use crate::types::TagMask;
 
         let tag_num = tag_index as usize + 1;
-        let scheme_idx = if urgent_tags & (1 << tag_index) != 0 {
+        let scheme_idx = if TagMask::from_bits(urgent_tags).contains(tag_num) {
             SchemeTag::Urgent
         } else if occupied_tags.contains(tag_num) {
             let selmon = self.selected_monitor();
