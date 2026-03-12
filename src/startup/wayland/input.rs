@@ -361,7 +361,7 @@ fn dispatch_pointer_motion(
     }
 
     let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
-    let is_window_drag = wm.g.drag.title.active || wm.g.drag.hover_resize.active;
+    let is_window_drag = wm.g.drag.title.active || wm.g.drag.hover_resize.active || wm.g.drag.tag.active;
     if (in_bar_band || bar_pos.is_some()) && !is_window_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
