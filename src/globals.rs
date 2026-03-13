@@ -503,13 +503,32 @@ impl Globals {
     /// Detach `win` from its assigned monitor's stacking list.
     pub fn detach_stack(&mut self, win: WindowId) {
         let monitor_id = self.clients.get(&win).map(|c| c.monitor_id);
+
+        let mut handle_monitor = |mon: &mut crate::types::Monitor,
+                                  clients: &crate::client::manager::ClientManager|
+         -> bool {
+            if mon.stack.contains(&win) {
+                mon.stack.retain(|&w| w != win);
+                if mon.sel == Some(win) {
+                    mon.sel = None;
+                    let selected = mon.selected_tag_mask();
+                    for &c_win in &mon.stack {
+                        if let Some(c) = clients.get(&c_win) {
+                            if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
+                                mon.sel = Some(c_win);
+                                break;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            false
+        };
+
         if let Some(mid) = monitor_id {
             if let Some(mon) = self.monitors.get_mut(mid) {
-                if mon.stack.contains(&win) {
-                    mon.stack.retain(|&w| w != win);
-                    if mon.sel == Some(win) {
-                        mon.sel = mon.stack.first().copied();
-                    }
+                if handle_monitor(mon, &self.clients) {
                     return;
                 }
             }
@@ -517,11 +536,8 @@ impl Globals {
 
         // Fallback: search all monitors if not found on the assigned one.
         for mon in self.monitors.iter_all_mut() {
-            if mon.stack.contains(&win) {
-                mon.stack.retain(|&w| w != win);
-                if mon.sel == Some(win) {
-                    mon.sel = mon.stack.first().copied();
-                }
+            if handle_monitor(mon, &self.clients) {
+                return;
             }
         }
     }
@@ -551,41 +567,6 @@ impl Default for Globals {
             current_mode: "default".to_string(),
             intercepted_keycodes: std::collections::HashSet::new(),
         }
-    }
-}
-
-pub static RUNNING: AtomicBool = AtomicBool::new(true);
-
-/// Storage for the X11 connection during initialization and shutdown.
-/// After initialization, use [`crate::backend::x11::X11BackendRef`] which guarantees
-/// the connection exists.
-#[derive(Default)]
-pub struct X11Connection {
-    pub conn: Option<x11rb::rust_connection::RustConnection>,
-    pub screen_num: usize,
-}
-
-impl X11Connection {
-    /// Get a guaranteed X11 connection reference.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the connection is not available. This should only happen
-    /// during initialization before the connection is established, or after
-    /// cleanup when the connection has been closed.
-    pub fn conn(&self) -> &x11rb::rust_connection::RustConnection {
-        self.conn
-            .as_ref()
-            .expect("X11 connection not available - this is a fatal error for a window manager")
-    }
-
-    /// Create a borrowed X11 handle from this connection.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the connection is not available.
-    pub fn as_ref(&self) -> crate::backend::x11::X11BackendRef<'_> {
-        crate::backend::x11::X11BackendRef::new(self.conn(), self.screen_num)
     }
 }
 

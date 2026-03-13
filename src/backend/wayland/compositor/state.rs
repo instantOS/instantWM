@@ -627,6 +627,11 @@ impl WaylandState {
             self.last_configured_size.insert(window_id, target);
         }
         if let Some(g) = self.globals_mut() {
+            if let Some(monitor_id) = g.clients.get(&window_id).map(|c| c.monitor_id) {
+                if let Some(mon) = g.monitor_mut(monitor_id) {
+                    mon.sel = Some(window_id);
+                }
+            }
             g.layout_dirty = true;
             g.space_dirty = true;
         }
@@ -936,7 +941,7 @@ impl WaylandState {
         }
         if let Some((window, loc)) = self.space.element_under(point) {
             if let Some(result) =
-                window.surface_under(point - loc.to_f64(), WindowSurfaceType::TOPLEVEL)
+                window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
             {
                 return Some((result.0, result.1 + loc));
             }
