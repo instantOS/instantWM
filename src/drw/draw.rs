@@ -20,7 +20,6 @@ use std::ptr;
 
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
-use crate::util::die;
 
 use std::cmp::min;
 
@@ -1092,7 +1091,7 @@ impl Drw {
 
             let fonts_ref = self.fonts.as_ref().unwrap();
             if fonts_ref.pattern.is_null() {
-                die("drw: the first font in the cache must be loaded from a font name string.");
+                panic!("drw: the first font in the cache must be loaded from a font name string.");
             }
 
             let fcpattern = FcPatternDuplicate(fonts_ref.pattern);

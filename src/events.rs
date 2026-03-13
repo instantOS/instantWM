@@ -907,7 +907,7 @@ pub fn check_other_wm(conn: &x11rb::rust_connection::RustConnection, root: Windo
         conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
 
     if result.is_err() || conn.flush().is_err() {
-        crate::util::die("instantwm: another window manager is already running");
+        panic!("instantwm: another window manager is already running");
     }
 }
 

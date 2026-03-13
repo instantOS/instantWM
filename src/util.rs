@@ -1,8 +1,3 @@
-use std::ffi::CString;
-use std::io::{self, Write};
-use std::process::exit;
-use std::ptr;
-
 use anyhow::{Context, Result};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -11,40 +6,6 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 use crate::contexts::WmCtx;
 use crate::types::*;
-
-pub fn die(fmt: &str) -> ! {
-    let _ = io::stderr().write_all(fmt.as_bytes());
-    let _ = io::stderr().write_all(b"\n");
-    exit(1);
-}
-
-pub fn die_with_errno(fmt: &str) -> ! {
-    let _ = io::stderr().write_all(fmt.as_bytes());
-    let _ = io::stderr().write_all(b": ");
-    let errno = std::io::Error::last_os_error();
-    let _ = io::stderr().write_all(errno.to_string().as_bytes());
-    let _ = io::stderr().write_all(b"\n");
-    exit(1);
-}
-
-pub fn die_args(args: &[&str]) -> ! {
-    for arg in args {
-        let _ = io::stderr().write_all(arg.as_bytes());
-    }
-    let _ = io::stderr().write_all(b"\n");
-    exit(1);
-}
-
-pub fn die_args_with_errno(args: &[&str]) -> ! {
-    for arg in args {
-        let _ = io::stderr().write_all(arg.as_bytes());
-    }
-    let _ = io::stderr().write_all(b": ");
-    let errno = std::io::Error::last_os_error();
-    let _ = io::stderr().write_all(errno.to_string().as_bytes());
-    let _ = io::stderr().write_all(b"\n");
-    exit(1);
-}
 
 /// Spawn a command directly.
 pub fn spawn<S: AsRef<str>>(ctx: &WmCtx, argv: &[S]) {

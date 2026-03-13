@@ -10,7 +10,6 @@ use crate::config::init_config;
 use crate::drw::Drw;
 use crate::globals::XlibDisplay;
 use crate::types::*;
-use crate::util::die;
 use crate::wm::Wm;
 
 use super::autostart::run_autostart;
@@ -221,12 +220,12 @@ fn init_drw_and_schemes(wm: &mut Wm) {
     }
     let mut drw = match Drw::new(None) {
         Ok(d) => d,
-        Err(_) => die("instantwm: cannot create drawing context"),
+        Err(_) => panic!("instantwm: cannot create drawing context"),
     };
 
     let fonts: Vec<&str> = wm.g.cfg.fonts.iter().map(|f| f.as_str()).collect();
     if drw.fontset_create(&fonts).is_err() {
-        die("no fonts could be loaded.");
+        panic!("no fonts could be loaded.");
     }
 
     let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
