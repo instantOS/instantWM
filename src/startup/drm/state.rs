@@ -60,6 +60,12 @@ impl SharedDrmState {
             *flag = true;
         }
     }
+
+    pub fn mark_dirty(&mut self, crtc: crtc::Handle) {
+        if let Some(flag) = self.render_flags.get_mut(&crtc) {
+            *flag = true;
+        }
+    }
 }
 
 pub fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[OutputSurfaceEntry]) {

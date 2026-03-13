@@ -399,12 +399,29 @@ pub fn build_common_scene_elements(
 // Frame callbacks
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Send `wl_surface.frame` callbacks for every mapped window and its popups.
+/// Send `wl_surface.frame` callbacks for windows visible on `output`.
 ///
 /// Must be called once per rendered frame, after the buffer has been submitted
 /// for scanout, so that clients know when to draw the next frame.
+///
+/// Only windows whose geometry intersects the output receive callbacks,
+/// preventing off-screen windows from committing empty-damage frames in a
+/// busy loop (an approach borrowed from niri's per-output frame throttling).
 pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
+    let output_geo = state.space.output_geometry(output);
+
     for window in state.space.elements() {
+        // Only notify windows that are actually visible on this output.
+        if let Some(out_geo) = output_geo {
+            if let Some(win_loc) = state.space.element_location(window) {
+                let win_size = window.geometry().size;
+                let win_rect = smithay::utils::Rectangle::new(win_loc, win_size);
+                if !out_geo.overlaps(win_rect) {
+                    continue;
+                }
+            }
+        }
+
         if let Some(wl_surface) = window.wl_surface() {
             send_frames_surface_tree(
                 &wl_surface,
@@ -427,17 +444,15 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         }
     }
 
-    // Layer surfaces (mako, dunst, waybar, etc.) — must get frame callbacks too.
-    for output in state.space.outputs().cloned().collect::<Vec<_>>() {
-        let map = smithay::desktop::layer_map_for_output(&output);
-        for layer_surface in map.layers() {
-            layer_surface.send_frame(
-                &output,
-                elapsed,
-                Some(Duration::from_millis(16)),
-                surface_primary_scanout_output,
-            );
-        }
+    // Layer surfaces for this output only.
+    let map = smithay::desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.send_frame(
+            output,
+            elapsed,
+            Some(Duration::from_millis(16)),
+            surface_primary_scanout_output,
+        );
     }
 }
 

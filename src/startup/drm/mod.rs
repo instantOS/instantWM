@@ -351,6 +351,7 @@ fn run_event_loop(
                 &keyboard_handle,
                 &pointer_handle,
                 &mut tracked_devices,
+                output_surfaces,
             );
 
             arrange_layout(wm, state);
@@ -394,12 +395,20 @@ fn process_completed_crtcs(
         let mut s = shared.lock().unwrap();
         std::mem::take(&mut s.completed_crtcs)
     };
-    for crtc in completed_crtcs {
-        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
+    if completed_crtcs.is_empty() {
+        return;
+    }
+    for crtc in &completed_crtcs {
+        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc) {
             if let Err(err) = entry.surface.frame_submitted() {
                 log::warn!("frame_submitted failed for {:?}: {err}", crtc);
             }
         }
+    }
+    // Clear in-flight tracking so these CRTCs can render again.
+    let mut s = shared.lock().unwrap();
+    for crtc in &completed_crtcs {
+        s.pending_crtcs.remove(crtc);
     }
 }
 
@@ -415,6 +424,7 @@ fn process_libinput_events(
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     tracked_devices: &mut Vec<smithay::reexports::input::Device>,
+    output_surfaces: &[OutputSurfaceEntry],
 ) {
     let _ = libinput_context;
 
@@ -450,7 +460,19 @@ fn process_libinput_events(
     if any_input {
         let mut s = shared.lock().unwrap();
         s.pointer_location = pointer_location;
-        s.mark_all_dirty();
+        // Only mark the output under the pointer as dirty for input events.
+        let px = pointer_location.x as i32;
+        let mut marked = false;
+        for entry in output_surfaces {
+            if px >= entry.x_offset && px < entry.x_offset + entry.width {
+                s.mark_dirty(entry.crtc);
+                marked = true;
+                break;
+            }
+        }
+        if !marked {
+            s.mark_all_dirty();
+        }
     }
 }
 
@@ -526,19 +548,26 @@ fn render_outputs(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
 ) {
-    let (session_active, pointer_location, render_flags) = {
+    let (session_active, pointer_location, render_flags, pending_crtcs) = {
         let mut s = shared.lock().unwrap();
         let flags = s.render_flags.clone();
         for flag in s.render_flags.values_mut() {
             *flag = false;
         }
-        (s.session_active, s.pointer_location, flags)
+        (s.session_active, s.pointer_location, flags, s.pending_crtcs.clone())
     };
 
     if session_active {
         for entry in output_surfaces.iter_mut() {
             let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
             if !needs_render {
+                continue;
+            }
+            // Don't render if a page flip is already in flight — queue_buffer
+            // would fail with EBUSY and leak a swapchain slot.
+            if pending_crtcs.contains(&entry.crtc) {
+                // Re-mark as dirty so we render after the VBlank arrives.
+                shared.lock().unwrap().render_flags.insert(entry.crtc, true);
                 continue;
             }
             let rendered = render_drm_output(
@@ -552,6 +581,7 @@ fn render_outputs(
             );
 
             if rendered {
+                shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
                 if let Some(failed_frames) = render_failures.remove(&entry.crtc) {
                     if failed_frames >= 3 {
                         log::info!(
