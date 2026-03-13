@@ -1,6 +1,7 @@
 use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
 use crate::backend::x11::lifecycle::{manage, unmanage};
 use crate::backend::BackendOps;
+use crate::backend::BackendRef;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::status::emit_i3bar_status_click;
 use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
@@ -848,7 +849,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         // Skip the wait when we just handled events — there may be more
         // events that arrived while we were dispatching.
         if !handled {
-            wm.backend.flush();
+            BackendRef::from_backend(&wm.backend).flush();
 
             let mut fds = [
                 libc::pollfd {

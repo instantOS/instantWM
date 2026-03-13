@@ -30,11 +30,6 @@ impl X11Backend {
     pub fn new(conn: RustConnection, screen_num: usize) -> Self {
         Self { conn, screen_num }
     }
-
-    /// Create a borrowed reference to delegate operations to.
-    fn as_ref(&self) -> X11BackendRef<'_> {
-        X11BackendRef::new(&self.conn, self.screen_num)
-    }
 }
 
 /// Borrowed view of the X11 backend.
@@ -74,60 +69,6 @@ impl Drop for ServerGrab<'_> {
     fn drop(&mut self) {
         let _ = self.conn.ungrab_server();
         let _ = self.conn.flush();
-    }
-}
-
-impl BackendOps for X11Backend {
-    fn resize_window(&self, window: WindowId, rect: Rect) {
-        self.as_ref().resize_window(window, rect)
-    }
-
-    fn raise_window(&self, window: WindowId) {
-        self.as_ref().raise_window(window)
-    }
-
-    fn restack(&self, windows: &[WindowId]) {
-        self.as_ref().restack(windows)
-    }
-
-    fn set_focus(&self, window: WindowId) {
-        self.as_ref().set_focus(window)
-    }
-
-    fn map_window(&self, window: WindowId) {
-        self.as_ref().map_window(window)
-    }
-
-    fn unmap_window(&self, window: WindowId) {
-        self.as_ref().unmap_window(window)
-    }
-
-    fn set_border_width(&self, window: WindowId, width: i32) {
-        self.as_ref().set_border_width(window, width)
-    }
-
-    fn window_exists(&self, window: WindowId) -> bool {
-        self.as_ref().window_exists(window)
-    }
-
-    fn flush(&self) {
-        self.as_ref().flush()
-    }
-
-    fn pointer_location(&self) -> Option<(i32, i32)> {
-        self.as_ref().pointer_location()
-    }
-
-    fn warp_pointer(&self, x: f64, y: f64) {
-        self.as_ref().warp_pointer(x, y)
-    }
-
-    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
-        self.as_ref().set_monitor_config(name, config)
-    }
-
-    fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
-        self.as_ref().get_outputs()
     }
 }
 
