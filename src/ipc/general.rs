@@ -106,6 +106,10 @@ pub fn set_special_next_cmd(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
 }
 
 pub fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
+    if !text.starts_with("instantwm-") {
+        crate::bar::status::CUSTOM_STATUS_RECEIVED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     wm.g.status_text = text;
 
     if let crate::backend::Backend::X11(_) = wm.backend {
