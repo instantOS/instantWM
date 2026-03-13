@@ -422,8 +422,13 @@ fn call_item_method(
 
 fn register_watcher_host(conn: &Connection) {
     if let Ok(proxy) = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE) {
-        let unique_name = conn.unique_name().map(|n| n.to_string()).unwrap_or_else(|| "".into());
-        let _: zbus::Result<()> = proxy.call("RegisterStatusNotifierHost", &(unique_name));
+        let Some(unique_name) = conn.unique_name().map(|n| n.to_string()) else {
+            log::warn!("wayland systray: cannot register watcher host, missing unique bus name");
+            return;
+        };
+        if let Err(e) = proxy.call::<_, _, ()>("RegisterStatusNotifierHost", &(unique_name)) {
+            log::warn!("wayland systray: failed to register watcher host: {}", e);
+        }
     }
 }
 
