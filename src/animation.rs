@@ -256,15 +256,3 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         animate_client(ctx, id, &rect, 10, 0);
     }
 }
-
-pub fn check_animate_snap(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
-    check_animate_x11(ctx, win, rect, 10, 1);
-}
-
-pub fn animate_maximize(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
-    animate_client_x11(ctx, win, rect, 10, 1);
-}
-
-pub fn animate_restore(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
-    animate_client_x11(ctx, win, rect, 10, 1);
-}

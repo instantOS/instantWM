@@ -10,20 +10,6 @@ use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::ConnectionExt;
 
-/// Apply size hints to the given rect and return whether it changed.
-///
-/// Returns `true` if the resulting geometry differs from the client's current
-/// stored geometry (i.e. an actual change would occur).
-pub fn apply_size_hints_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    win: WindowId,
-    rect: &mut Rect,
-    interact: bool,
-) -> bool {
-    crate::client::geometry::apply_size_hints(core, Some(x11), win, rect, interact)
-}
-
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
 /// `min_aspect`, `max_aspect`, and `isfixed`.
 pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
