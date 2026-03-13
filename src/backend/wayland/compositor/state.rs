@@ -3,8 +3,6 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 
-#[cfg(feature = "use_system_lib")]
-use smithay::backend::renderer::ImportEgl;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     backend::allocator::Format,
@@ -128,6 +126,9 @@ pub struct WaylandState {
     /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
     /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
+
+    /// Channel to notify the DRM backend loop of keyboard LED state changes.
+    pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -227,6 +228,7 @@ impl WaylandState {
             focused_window: None,
             pending_screencopies: Vec::new(),
             pending_warp: None,
+            led_state_tx: None,
         }
     }
 
