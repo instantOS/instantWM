@@ -9,26 +9,25 @@ use crate::types::Gesture;
 /// Systray width must be cached in `core.g.systray_width` by the caller
 /// before invoking this function.
 pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
-    let bar = core.bar as *mut crate::bar::BarState;
-    unsafe { (*bar).recursion_enter() };
+    core.bar.recursion_enter();
 
     let (monitor_num, work_rect_w, monitor_id) = match core.g.monitor(mon_idx) {
         Some(m) => {
             if !m.shows_bar() || core.bar.pausedraw() {
-                unsafe { (*bar).recursion_exit() };
+                core.bar.recursion_exit();
                 return;
             }
             (m.num, m.work_rect.w, m.id())
         }
         None => {
-            unsafe { (*bar).recursion_exit() };
+            core.bar.recursion_exit();
             return;
         }
     };
 
     let bar_height = core.g.cfg.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
-        unsafe { (*bar).recursion_exit() };
+        core.bar.recursion_exit();
         return;
     }
 
@@ -127,7 +126,7 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         }
     }
 
-    unsafe { (*bar).recursion_exit() };
+    core.bar.recursion_exit();
 }
 
 pub fn reset_bar_common(core: &mut CoreCtx) {

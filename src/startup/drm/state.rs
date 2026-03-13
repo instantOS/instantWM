@@ -17,6 +17,13 @@ pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
 /// Nominal cursor size in pixels to load from the xcursor theme.
 pub const CURSOR_SIZE: u32 = 24;
 
+/// Lightweight output region used for O(1) CRTC lookups from pointer position.
+pub struct OutputHitRegion {
+    pub crtc: crtc::Handle,
+    pub x_offset: i32,
+    pub width: i32,
+}
+
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
     pub surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
@@ -40,6 +47,7 @@ pub struct SharedDrmState {
     /// `next_buffer` acquired is leaked.  After enough leaked slots the
     /// swapchain is exhausted and rendering freezes permanently.
     pub pending_crtcs: HashSet<crtc::Handle>,
+    pub output_hit_regions: Vec<OutputHitRegion>,
 }
 
 impl SharedDrmState {

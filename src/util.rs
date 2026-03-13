@@ -48,61 +48,36 @@ pub fn die_args_with_errno(args: &[&str]) -> ! {
 
 /// Spawn a command directly.
 pub fn spawn<S: AsRef<str>>(ctx: &WmCtx, argv: &[S]) {
-    if !argv.is_empty() {
-        let wayland_display_env: Option<CString> = match ctx {
-            WmCtx::Wayland(wl) => wl
-                .wayland
-                .backend
-                .xdisplay()
-                .map(|d| format!(":{d}"))
-                .or_else(|| std::env::var("DISPLAY").ok())
-                .and_then(|d| CString::new(d).ok()),
-            WmCtx::X11(_) => None,
-        };
+    if argv.is_empty() {
+        return;
+    }
 
-        let c_args: Vec<CString> = argv
-            .iter()
-            .map(|s| CString::new(s.as_ref()).unwrap_or_else(|_| CString::new("").unwrap()))
-            .collect();
+    let mut command = std::process::Command::new(argv[0].as_ref());
+    command.args(argv.iter().skip(1).map(|s| s.as_ref()));
 
-        let args: Vec<*const libc::c_char> = c_args
-            .iter()
-            .map(|s| s.as_ptr())
-            .chain(std::iter::once(ptr::null()))
-            .collect();
-
-        let argv0_display = argv[0].as_ref().to_owned();
-
-        unsafe {
-            match libc::fork() {
-                -1 => {
-                    die_with_errno("fork failed");
-                }
-                0 => {
-                    libc::setsid();
-
-                    libc::sigprocmask(libc::SIG_SETMASK, ptr::null(), ptr::null_mut());
-
-                    // Wayland backend: ensure XWayland DISPLAY is present for X11 apps (dmenu, etc).
-                    if let Some(ref val) = wayland_display_env {
-                        if let Ok(key) = CString::new("DISPLAY") {
-                            libc::setenv(key.as_ptr(), val.as_ptr(), 1);
-                        }
-                    }
-
-                    let mut sa: libc::sigaction = std::mem::zeroed();
-                    sa.sa_sigaction = libc::SIG_DFL;
-                    libc::sigemptyset(&mut sa.sa_mask);
-                    sa.sa_flags = 0;
-                    libc::sigaction(libc::SIGCHLD, &sa, ptr::null_mut());
-
-                    libc::execvp(c_args[0].as_ptr(), args.as_ptr());
-
-                    die_args_with_errno(&["instantwm: execvp '", &argv0_display, "' failed"]);
-                }
-                _ => {}
-            }
+    // Ensure XWayland DISPLAY is present for X11 apps if running under Wayland.
+    if let WmCtx::Wayland(wl) = ctx {
+        if let Some(d) = wl.wayland.backend.xdisplay() {
+            command.env("DISPLAY", format!(":{d}"));
+        } else if let Ok(val) = std::env::var("DISPLAY") {
+            command.env("DISPLAY", val);
         }
+    }
+
+    // Detach the process by redirecting standard streams to null.
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+
+    if let Err(e) = command.spawn() {
+        log::error!("instantwm: failed to spawn '{}': {}", argv[0].as_ref(), e);
     }
 }
 

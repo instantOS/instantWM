@@ -82,14 +82,14 @@ impl BarState {
         self.pausedraw = paused;
     }
 
-    fn recursion_enter(&mut self) {
+    pub(crate) fn recursion_enter(&mut self) {
         self.draw_bar_recursion += 1;
         if self.draw_bar_recursion > 50 {
             std::process::abort();
         }
     }
 
-    fn recursion_exit(&mut self) {
+    pub(crate) fn recursion_exit(&mut self) {
         self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
     }
 
