@@ -624,29 +624,21 @@ pub fn handle_pointer_axis<B: InputBackend>(
     let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());
 
-    if let Some(amount) = event.amount(smithay::backend::input::Axis::Vertical) {
-        frame = frame.value(
-            smithay::backend::input::Axis::Vertical,
-            amount * effective_factor,
-        );
-    }
-    if let Some(amount) = event.amount(smithay::backend::input::Axis::Horizontal) {
-        frame = frame.value(
-            smithay::backend::input::Axis::Horizontal,
-            amount * effective_factor,
-        );
-    }
-    if let Some(steps) = event.amount_v120(smithay::backend::input::Axis::Vertical) {
-        frame = frame.v120(
-            smithay::backend::input::Axis::Vertical,
-            (steps as f64 * effective_factor) as i32,
-        );
-    }
-    if let Some(steps) = event.amount_v120(smithay::backend::input::Axis::Horizontal) {
-        frame = frame.v120(
-            smithay::backend::input::Axis::Horizontal,
-            (steps as f64 * effective_factor) as i32,
-        );
+    for axis in [
+        smithay::backend::input::Axis::Horizontal,
+        smithay::backend::input::Axis::Vertical,
+    ] {
+        if let Some(amount) = event.amount(axis) {
+            if amount.abs() >= f64::EPSILON {
+                frame = frame.relative_direction(axis, event.relative_direction(axis));
+                frame = frame.value(axis, amount * effective_factor);
+                if let Some(steps) = event.amount_v120(axis) {
+                    frame = frame.v120(axis, (steps as f64 * effective_factor) as i32);
+                }
+            } else if event.source() == smithay::backend::input::AxisSource::Finger {
+                frame = frame.stop(axis);
+            }
+        }
     }
 
     let scroll_delta = event
