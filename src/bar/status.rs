@@ -11,6 +11,8 @@ pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
 pub(crate) const TEXT_PADDING: i32 = 6;
 const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
 
+pub static CUSTOM_STATUS_RECEIVED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Debug, Clone)]
 pub(crate) enum StatusItem {
     Text(String),
@@ -582,9 +584,15 @@ fn measure_i3_block_width(block: &I3Block, painter: &mut dyn crate::bar::paint::
         None => 0,
     };
 
+    let padding = if !block.separator && block.separator_block_width == 0 {
+        0
+    } else {
+        TEXT_PADDING
+    };
+
     let content_width = text_width.max(min_width).max(0);
     let border_width = block.border_left + block.border_right;
-    let block_width = border_width + TEXT_PADDING * 2 + content_width;
+    let block_width = border_width + padding * 2 + content_width;
 
     let separator_width = if block.separator {
         block.separator_block_width
@@ -716,8 +724,14 @@ fn draw_i3_block(
         None => 0,
     };
 
+    let padding = if !block.separator && block.separator_block_width == 0 {
+        0
+    } else {
+        TEXT_PADDING
+    };
+
     let content_width = text_width.max(min_width).max(0);
-    let block_inner_width = (TEXT_PADDING * 2 + content_width).max(0);
+    let block_inner_width = (padding * 2 + content_width).max(0);
     let block_width = (block.border_left + block.border_right + block_inner_width).max(0);
     if block_width <= 0 {
         return 0;
@@ -769,9 +783,9 @@ fn draw_i3_block(
 
     painter.set_scheme(block_scheme);
 
-    let text_area_x = x + block.border_left + TEXT_PADDING;
+    let text_area_x = x + block.border_left + padding;
     let text_area_width =
-        (block_width - block.border_left - block.border_right - TEXT_PADDING * 2).max(0);
+        (block_width - block.border_left - block.border_right - padding * 2).max(0);
 
     if text_area_width > 0 {
         let lpad = match block.align {
@@ -857,10 +871,14 @@ pub(crate) fn spawn_default_status() {
     std::thread::spawn(move || {
         use std::thread;
         use std::time::Duration;
+        use std::sync::atomic::Ordering;
 
         thread::sleep(Duration::from_millis(500));
 
         loop {
+            if CUSTOM_STATUS_RECEIVED.load(Ordering::Relaxed) {
+                break;
+            }
             send_status_ipc(&default_status_text());
             thread::sleep(Duration::from_secs(30));
         }
