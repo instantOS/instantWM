@@ -668,10 +668,10 @@ pub fn handle_pointer_axis<B: InputBackend>(
     }
 
     if event.source() == smithay::backend::input::AxisSource::Finger {
-        if event.amount(smithay::backend::input::Axis::Horizontal) == Some(0.0) {
+        if horizontal_amount == Some(0.0) {
             frame = frame.stop(smithay::backend::input::Axis::Horizontal);
         }
-        if event.amount(smithay::backend::input::Axis::Vertical) == Some(0.0) {
+        if vertical_amount == Some(0.0) {
             frame = frame.stop(smithay::backend::input::Axis::Vertical);
         }
     }
