@@ -134,55 +134,35 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let selected_window = match monitor.sel {
-        Some(win) => win,
-        None => return,
-    };
+    let selected_window = monitor.sel;
     let layout = monitor.current_layout();
     let is_tiling = layout.is_tiling();
-    let is_monocle = layout.is_monocle();
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
 
-    if !is_tiling {
-        ctx.raise(selected_window);
-        ctx.flush();
-        return;
-    }
-
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
-    if let Some(m) = ctx.g().monitor(monitor_id) {
-        for &win in &m.stack {
-            if let Some(c) = ctx.client(win) {
-                if c.is_visible_on_tags(selected_tags) {
-                    if c.is_floating {
-                        floating_stack.push(win);
-                    } else {
-                        tiled_stack.push(win);
-                    }
+
+    for &win in &monitor.stack {
+        if let Some(c) = ctx.client(win) {
+            if c.is_visible_on_tags(selected_tags) {
+                if c.is_floating {
+                    floating_stack.push(win);
+                } else {
+                    tiled_stack.push(win);
                 }
             }
         }
     }
 
-    if let Some(idx) = floating_stack
-        .iter()
-        .position(|&win| win == selected_window)
-    {
-        let selected = floating_stack.remove(idx);
-        floating_stack.push(selected);
-    } else {
-        // In monocle every tiled client occupies the full work area, so the
-        // focused tiled client must be the last tiled element in z-order.
-        // Keeping this explicit also makes the generic tiled case easier to read.
-        if let Some(idx) = tiled_stack.iter().position(|&win| win == selected_window) {
-            let selected = tiled_stack.remove(idx);
-            tiled_stack.push(selected);
-        }
-        if is_monocle && tiled_stack.last().copied() != Some(selected_window) {
-            tiled_stack.retain(|&win| win != selected_window);
-            tiled_stack.push(selected_window);
+    // The only exception: if the currently selected window is tiled,
+    // it should be raised over all other tiling windows.
+    if let Some(sel) = selected_window {
+        if is_tiling {
+            if let Some(idx) = tiled_stack.iter().position(|&win| win == sel) {
+                let selected = tiled_stack.remove(idx);
+                tiled_stack.push(selected);
+            }
         }
     }
 

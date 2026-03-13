@@ -258,13 +258,20 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// restacks do not drop the dragged floating window behind others.
     pub fn raise_interactive(&mut self, win: WindowId) {
+        let mut mid_to_restack = None;
         if let Some(mid) = self.g().clients.get(&win).map(|c| c.monitor_id) {
             if let Some(mon) = self.g_mut().monitor_mut(mid) {
                 mon.stack.retain(|&w| w != win);
                 mon.stack.push(win);
+                mid_to_restack = Some(mid);
             }
         }
-        self.backend().raise_window(win);
+
+        if let Some(mid) = mid_to_restack {
+            crate::layouts::restack(self, mid);
+        } else {
+            self.backend().raise_window(win);
+        }
     }
 
     pub fn restack(&self, wins: &[WindowId]) {
