@@ -34,6 +34,7 @@ use smithay::{
             },
         },
         shm::ShmHandler,
+        xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
         xwayland_shell::XWaylandShellHandler,
     },
     xwayland::{XWaylandClientData, XwmHandler},
@@ -751,6 +752,17 @@ impl XWaylandShellHandler for WaylandState {
         &mut self,
     ) -> &mut smithay::wayland::xwayland_shell::XWaylandShellState {
         &mut self.xwayland_shell_state
+    }
+}
+
+impl XWaylandKeyboardGrabHandler for WaylandState {
+    fn keyboard_focus_for_xsurface(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<Self::KeyboardFocus> {
+        let win = self.window_id_for_surface(surface)?;
+        let window = self.window_index.get(&win)?;
+        Some(KeyboardFocusTarget::Window(window.clone()))
     }
 }
 
