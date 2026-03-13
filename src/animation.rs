@@ -245,18 +245,15 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         scroll_view(ctx, dir);
     }
 
-    if let WmCtx::X11(ref mut ctx_x11) = ctx {
-        let clients_to_animate: Vec<(WindowId, Rect)> = ctx_x11
-            .core
-            .g
-            .clients
-            .iter()
-            .filter(|(_, client)| client.monitor_id == sel_mon && client.tags == current_tag)
-            .map(|(id, client)| (*id, client.geo))
-            .collect();
-        for (id, rect) in clients_to_animate {
-            animate_client_x11(ctx_x11, id, &rect, 10, 0);
-        }
+    let clients_to_animate: Vec<(WindowId, Rect)> = ctx
+        .g()
+        .clients
+        .iter()
+        .filter(|(_, client)| client.monitor_id == sel_mon && client.tags == current_tag)
+        .map(|(id, client)| (*id, client.geo))
+        .collect();
+    for (id, rect) in clients_to_animate {
+        animate_client(ctx, id, &rect, 10, 0);
     }
 }
 
