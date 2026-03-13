@@ -710,11 +710,11 @@ fn fetch_item_icon_on_conn(
         }
     }
     let (w, h, bytes, _) = best?;
-    let rgba = argb32_to_rgba(&bytes, w, h)?;
+    let rgba = dbus_icon_bytes_to_rgba(&bytes, w, h)?;
     Some((rgba, w, h))
 }
 
-fn argb32_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
+fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
     let px_count = (w as usize).checked_mul(h as usize)?;
     let need = px_count.checked_mul(4)?;
     if bytes.len() < need {
