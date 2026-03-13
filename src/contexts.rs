@@ -271,6 +271,7 @@ impl<'a> WmCtx<'a> {
             crate::layouts::restack(self, mid);
         } else {
             self.backend().raise_window(win);
+            self.flush();
         }
     }
 
