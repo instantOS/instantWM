@@ -718,6 +718,50 @@ impl XdgShellHandler for WaylandState {
             self.raise_window(win);
         }
     }
+
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+    ) {
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            if let Some(g) = self.globals_mut() {
+                if let Some(client) = g.clients.get_mut(&win) {
+                    client.is_fullscreen = true;
+                }
+                g.space_dirty = true;
+                g.layout_dirty = true;
+                if let Some(mon) = g.selected_monitor_mut_opt() {
+                    mon.fullscreen = Some(win);
+                }
+            }
+        }
+        surface.with_pending_state(|state| {
+            state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
+        });
+        surface.send_configure();
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            if let Some(g) = self.globals_mut() {
+                if let Some(client) = g.clients.get_mut(&win) {
+                    client.is_fullscreen = false;
+                }
+                g.space_dirty = true;
+                g.layout_dirty = true;
+                if let Some(mon) = g.selected_monitor_mut_opt() {
+                    if mon.fullscreen == Some(win) {
+                        mon.fullscreen = None;
+                    }
+                }
+            }
+        }
+        surface.with_pending_state(|state| {
+            state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
+        });
+        surface.send_configure();
+    }
 }
 
 impl XdgDecorationHandler for WaylandState {
