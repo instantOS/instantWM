@@ -536,6 +536,16 @@ impl SeatHandler for WaylandState {
     ) {
         self.cursor_image_status = image;
     }
+
+    fn led_state_changed(
+        &mut self,
+        _seat: &smithay::input::Seat<Self>,
+        led_state: smithay::input::keyboard::LedState,
+    ) {
+        if let Some(tx) = &self.led_state_tx {
+            let _ = tx.send(led_state);
+        }
+    }
 }
 
 impl XdgShellHandler for WaylandState {

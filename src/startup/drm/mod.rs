@@ -152,6 +152,9 @@ pub fn run() -> ! {
         crate::bar::status::spawn_default_status();
     }
 
+    let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
+    state.led_state_tx = Some(led_state_tx);
+
     run_event_loop(
         event_loop,
         &mut wm,
@@ -165,6 +168,7 @@ pub fn run() -> ! {
         &mut ipc_server,
         &mut render_failures,
         start_time,
+        led_state_rx,
     );
 
     exit(0);
@@ -330,6 +334,7 @@ fn run_event_loop(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
+    led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
     let keyboard_handle = state.keyboard.clone();
@@ -352,6 +357,16 @@ fn run_event_loop(
                 &pointer_handle,
                 &mut tracked_devices,
             );
+
+            while let Ok(led_state) = led_state_rx.try_recv() {
+                let leds = smithay::reexports::input::Led::from(led_state);
+                for device in tracked_devices.iter_mut() {
+                    use smithay::reexports::input::DeviceCapability;
+                    if device.has_capability(DeviceCapability::Keyboard) {
+                        device.led_update(leds);
+                    }
+                }
+            }
 
             arrange_layout(wm, state);
 
