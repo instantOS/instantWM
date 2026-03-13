@@ -503,13 +503,30 @@ impl Globals {
     /// Detach `win` from its assigned monitor's stacking list.
     pub fn detach_stack(&mut self, win: WindowId) {
         let monitor_id = self.clients.get(&win).map(|c| c.monitor_id);
+
+        let mut handle_monitor = |mon: &mut crate::types::Monitor, clients: &crate::client::manager::ClientManager| -> bool {
+            if mon.stack.contains(&win) {
+                mon.stack.retain(|&w| w != win);
+                if mon.sel == Some(win) {
+                    mon.sel = None;
+                    let selected = mon.selected_tag_mask();
+                    for &c_win in &mon.stack {
+                        if let Some(c) = clients.get(&c_win) {
+                            if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
+                                mon.sel = Some(c_win);
+                                break;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            false
+        };
+
         if let Some(mid) = monitor_id {
             if let Some(mon) = self.monitors.get_mut(mid) {
-                if mon.stack.contains(&win) {
-                    mon.stack.retain(|&w| w != win);
-                    if mon.sel == Some(win) {
-                        mon.sel = mon.stack.first().copied();
-                    }
+                if handle_monitor(mon, &self.clients) {
                     return;
                 }
             }
@@ -517,11 +534,8 @@ impl Globals {
 
         // Fallback: search all monitors if not found on the assigned one.
         for mon in self.monitors.iter_all_mut() {
-            if mon.stack.contains(&win) {
-                mon.stack.retain(|&w| w != win);
-                if mon.sel == Some(win) {
-                    mon.sel = mon.stack.first().copied();
-                }
+            if handle_monitor(mon, &self.clients) {
+                return;
             }
         }
     }

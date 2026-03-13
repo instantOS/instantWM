@@ -578,6 +578,8 @@ impl XdgShellHandler for WaylandState {
                 g.detach_stack(win);
                 g.clients.remove(&win);
             }
+            g.layout_dirty = true;
+            g.space_dirty = true;
             g.selected_win()
         };
         // Update Smithay keyboard focus to match mon.sel.
