@@ -33,6 +33,7 @@ use smithay::{
             xdg::{decoration::XdgDecorationState, ToplevelSurface, XdgShellState},
         },
         shm::ShmState,
+        xwayland_keyboard_grab::XWaylandKeyboardGrabState,
         xwayland_shell::XWaylandShellState,
     },
     xwayland::X11Wm,
@@ -96,6 +97,7 @@ pub struct WaylandState {
     pub output_manager_state: OutputManagerState,
     pub data_device_state: DataDeviceState,
     pub xwayland_shell_state: XWaylandShellState,
+    pub xwayland_keyboard_grab_state: XWaylandKeyboardGrabState,
     pub wlr_layer_shell_state: WlrLayerShellState,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
@@ -184,6 +186,7 @@ impl WaylandState {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
+        let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
 
@@ -207,6 +210,7 @@ impl WaylandState {
             output_manager_state,
             data_device_state,
             xwayland_shell_state,
+            xwayland_keyboard_grab_state,
             wlr_layer_shell_state,
             dmabuf_state,
             dmabuf_global: None,
