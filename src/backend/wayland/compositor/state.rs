@@ -40,6 +40,7 @@ use smithay::{
 
 use crate::globals::Globals;
 use crate::types::{Client as WmClient, Rect, WindowId};
+use crate::wm::Wm;
 
 use super::screencopy::PendingScreencopy;
 use super::KeyboardFocusTarget;
@@ -112,7 +113,8 @@ pub struct WaylandState {
     pub xdisplay: Option<u32>,
 
     next_window_id: u32,
-    globals: Option<NonNull<Globals>>,
+    wm: Option<NonNull<Wm>>,
+    pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
@@ -217,7 +219,8 @@ impl WaylandState {
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
-            globals: None,
+            wm: None,
+            tracked_devices: Vec::new(),
             last_configured_size: HashMap::new(),
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
@@ -319,8 +322,13 @@ impl WaylandState {
         !self.window_animations.is_empty()
     }
 
-    pub fn attach_globals(&mut self, globals: &mut Globals) {
-        self.globals = Some(NonNull::from(globals));
+    pub fn attach_wm(&mut self, wm: &mut Wm) {
+        self.wm = Some(NonNull::from(wm));
+    }
+
+    pub fn with_wm<T>(&mut self, f: impl FnOnce(&mut WaylandState, &mut Wm) -> T) -> Option<T> {
+        let mut wm = self.wm?;
+        Some(unsafe { f(self, wm.as_mut()) })
     }
 
     /// Initialise the linux-dmabuf global.
@@ -398,12 +406,13 @@ impl WaylandState {
 
     #[inline]
     fn globals(&self) -> Option<&Globals> {
-        self.globals.map(|p| unsafe { p.as_ref() })
+        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
     }
 
     #[inline]
     pub(super) fn globals_mut(&mut self) -> Option<&mut Globals> {
-        self.globals.map(|mut p| unsafe { p.as_mut() })
+        self.wm
+            .map(|mut p: NonNull<Wm>| unsafe { &mut p.as_mut().g })
     }
 
     /// Create and register a default output.

@@ -48,7 +48,7 @@ pub fn run() -> ! {
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut display_handle = display.handle();
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_globals(&mut wm.g);
+    state.attach_wm(&mut wm);
     if let WmBackend::Wayland(ref wayland) = wm.backend {
         wayland.attach_state(&mut state);
     }
@@ -102,7 +102,7 @@ pub fn run() -> ! {
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {
-            state.attach_globals(&mut wm.g);
+            state.attach_wm(&mut wm);
 
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {

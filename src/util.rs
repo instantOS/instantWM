@@ -95,7 +95,6 @@ pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
 
 /// Get the currently selected monitor ID.
 /// Returns `None` if no monitor is selected (monitors list is empty).
-#[inline]
 pub fn get_sel_mon(ctx: &WmCtx) -> Option<MonitorId> {
     if ctx.g().monitors.is_empty() {
         None

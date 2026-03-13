@@ -64,7 +64,7 @@ pub fn run() -> ! {
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_globals(&mut wm.g);
+    state.attach_wm(&mut wm);
     if let WmBackend::Wayland(ref wayland) = wm.backend {
         wayland.attach_state(&mut state);
     }
@@ -120,12 +120,33 @@ pub fn run() -> ! {
         .udev_assign_seat(&seat_name)
         .expect("libinput assign seat");
 
-    let pending_input_events = Arc::new(Mutex::new(Vec::new()));
-    let pending_input_events_cb = Arc::clone(&pending_input_events);
+    let shared_cb = Arc::clone(&shared);
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
     loop_handle
-        .insert_source(libinput_backend, move |event, _, _state| {
-            pending_input_events_cb.lock().unwrap().push(event);
+        .insert_source(libinput_backend, move |event, _, state| {
+            let (mut pointer_location, total_w, total_h) = {
+                let s = shared_cb.lock().unwrap();
+                (s.pointer_location, s.total_width, s.total_height)
+            };
+
+            let any_input = state
+                .with_wm(|state, wm| {
+                    dispatch_libinput_event(
+                        event,
+                        state,
+                        wm,
+                        &mut pointer_location,
+                        total_w,
+                        total_h,
+                    )
+                })
+                .unwrap_or(false);
+
+            if any_input {
+                let mut s = shared_cb.lock().unwrap();
+                s.pointer_location = pointer_location;
+                s.mark_pointer_output_dirty(pointer_location.x as i32);
+            }
         })
         .expect("failed to insert libinput source");
 
@@ -156,9 +177,7 @@ pub fn run() -> ! {
         event_loop,
         &mut wm,
         &mut state,
-        &mut libinput_context,
         &shared,
-        pending_input_events,
         &mut output_surfaces,
         &mut renderer,
         &cursor_manager,
@@ -240,6 +259,12 @@ fn init_shared_state(
         let mut s = shared.lock().unwrap();
         for entry in output_surfaces {
             s.render_flags.insert(entry.crtc, true);
+            s.output_hit_regions
+                .push(crate::startup::drm::state::OutputHitRegion {
+                    crtc: entry.crtc,
+                    x_offset: entry.x_offset,
+                    width: entry.width,
+                });
         }
     }
     shared
@@ -319,11 +344,7 @@ fn run_event_loop(
     mut event_loop: EventLoop<WaylandState>,
     wm: &mut Wm,
     state: &mut WaylandState,
-    libinput_context: &mut Libinput,
     shared: &Arc<Mutex<SharedDrmState>>,
-    pending_input_events: Arc<
-        Mutex<Vec<smithay::backend::input::InputEvent<LibinputInputBackend>>>,
-    >,
     output_surfaces: &mut [OutputSurfaceEntry],
     renderer: &mut GlesRenderer,
     cursor_manager: &CursorManager,
@@ -332,27 +353,13 @@ fn run_event_loop(
     start_time: std::time::Instant,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
-    let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
-    let mut tracked_devices: Vec<smithay::reexports::input::Device> = Vec::new();
 
     event_loop
         .run(Duration::from_millis(16), state, move |state| {
-            state.attach_globals(&mut wm.g);
+            state.attach_wm(wm);
 
             process_completed_crtcs(state, shared, output_surfaces);
-
-            process_libinput_events(
-                libinput_context,
-                state,
-                wm,
-                shared,
-                &pending_input_events,
-                &keyboard_handle,
-                &pointer_handle,
-                &mut tracked_devices,
-                output_surfaces,
-            );
 
             arrange_layout(wm, state);
 
@@ -360,7 +367,7 @@ fn run_event_loop(
 
             if wm.g.input_config_dirty {
                 wm.g.input_config_dirty = false;
-                input::reconfigure_all_devices(&mut tracked_devices, &wm.g.cfg.input);
+                input::reconfigure_all_devices(&mut state.tracked_devices, &wm.g.cfg.input);
             }
 
             process_animations(wm, state, shared);
@@ -409,70 +416,6 @@ fn process_completed_crtcs(
     let mut s = shared.lock().unwrap();
     for crtc in &completed_crtcs {
         s.pending_crtcs.remove(crtc);
-    }
-}
-
-/// Process libinput events and dispatch to handlers.
-fn process_libinput_events(
-    libinput_context: &mut Libinput,
-    state: &mut WaylandState,
-    wm: &mut Wm,
-    shared: &Arc<Mutex<SharedDrmState>>,
-    pending_input_events: &Arc<
-        Mutex<Vec<smithay::backend::input::InputEvent<LibinputInputBackend>>>,
-    >,
-    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
-    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
-    tracked_devices: &mut Vec<smithay::reexports::input::Device>,
-    output_surfaces: &[OutputSurfaceEntry],
-) {
-    let _ = libinput_context;
-
-    let pending_events = {
-        let mut events = pending_input_events.lock().unwrap();
-        std::mem::take(&mut *events)
-    };
-    if pending_events.is_empty() {
-        return;
-    }
-
-    let (mut pointer_location, total_w, total_h) = {
-        let s = shared.lock().unwrap();
-        (s.pointer_location, s.total_width, s.total_height)
-    };
-
-    let mut any_input = false;
-    for event in pending_events {
-        if dispatch_libinput_event(
-            event,
-            state,
-            wm,
-            keyboard_handle,
-            pointer_handle,
-            &mut pointer_location,
-            total_w,
-            total_h,
-            tracked_devices,
-        ) {
-            any_input = true;
-        }
-    }
-    if any_input {
-        let mut s = shared.lock().unwrap();
-        s.pointer_location = pointer_location;
-        // Only mark the output under the pointer as dirty for input events.
-        let px = pointer_location.x as i32;
-        let mut marked = false;
-        for entry in output_surfaces {
-            if px >= entry.x_offset && px < entry.x_offset + entry.width {
-                s.mark_dirty(entry.crtc);
-                marked = true;
-                break;
-            }
-        }
-        if !marked {
-            s.mark_all_dirty();
-        }
     }
 }
 
@@ -554,7 +497,12 @@ fn render_outputs(
         for flag in s.render_flags.values_mut() {
             *flag = false;
         }
-        (s.session_active, s.pointer_location, flags, s.pending_crtcs.clone())
+        (
+            s.session_active,
+            s.pointer_location,
+            flags,
+            s.pending_crtcs.clone(),
+        )
     };
 
     if session_active {

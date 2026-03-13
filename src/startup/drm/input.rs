@@ -106,33 +106,33 @@ pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
     wm: &mut Wm,
-    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
-    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     pointer_location: &mut smithay::utils::Point<f64, smithay::utils::Logical>,
     total_w: i32,
     total_h: i32,
-    tracked_devices: &mut Vec<smithay::reexports::input::Device>,
 ) -> bool {
+    let keyboard_handle = state.keyboard.clone();
+    let pointer_handle = state.pointer.clone();
+
     match event {
         InputEvent::DeviceAdded { mut device } => {
             crate::startup::drm::input::configure_device(&mut device, &wm.g.cfg.input);
-            tracked_devices.push(device);
+            state.tracked_devices.push(device);
             false
         }
         InputEvent::DeviceRemoved { device } => {
-            tracked_devices.retain(|d| d != &device);
+            state.tracked_devices.retain(|d| d != &device);
             false
         }
         InputEvent::Keyboard { event } => {
-            handle_keyboard::<LibinputInputBackend>(wm, state, keyboard_handle, event);
+            handle_keyboard::<LibinputInputBackend>(wm, state, &keyboard_handle, event);
             true
         }
         InputEvent::PointerMotion { event } => {
             handle_pointer_motion_relative::<LibinputInputBackend>(
                 wm,
                 state,
-                pointer_handle,
-                keyboard_handle,
+                &pointer_handle,
+                &keyboard_handle,
                 event,
                 pointer_location,
                 total_w,
@@ -144,8 +144,8 @@ pub fn dispatch_libinput_event(
             handle_pointer_motion_absolute::<LibinputInputBackend>(
                 wm,
                 state,
-                pointer_handle,
-                keyboard_handle,
+                &pointer_handle,
+                &keyboard_handle,
                 event,
                 pointer_location,
                 total_w,
@@ -157,8 +157,8 @@ pub fn dispatch_libinput_event(
             handle_pointer_button::<LibinputInputBackend>(
                 wm,
                 state,
-                pointer_handle,
-                keyboard_handle,
+                &pointer_handle,
+                &keyboard_handle,
                 event,
                 *pointer_location,
             );
@@ -168,8 +168,8 @@ pub fn dispatch_libinput_event(
             handle_pointer_axis::<LibinputInputBackend>(
                 wm,
                 state,
-                pointer_handle,
-                keyboard_handle,
+                &pointer_handle,
+                &keyboard_handle,
                 event,
                 *pointer_location,
             );

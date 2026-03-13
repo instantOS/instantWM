@@ -54,13 +54,11 @@ use crate::types::{Monitor, Rect};
 // ── public entry points ───────────────────────────────────────────────────────
 
 /// Inward-spiral fibonacci layout.
-#[inline]
 pub fn spiral(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     fibonacci(ctx, m, true);
 }
 
 /// Outward-dwindle fibonacci layout.
-#[inline]
 pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     fibonacci(ctx, m, false);
 }

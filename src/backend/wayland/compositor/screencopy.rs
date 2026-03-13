@@ -396,19 +396,18 @@ pub fn submit_pending_screencopies(
                 let dst_stride = bd.stride as usize;
                 let height = region.size.h as usize;
                 let copy_w = (region.size.w as usize * 4).min(dst_stride);
+
+                // SAFETY: with_buffer_contents_mut guarantees dst_ptr is valid for dst_len.
+                let dst_slice = unsafe { std::slice::from_raw_parts_mut(dst_ptr, dst_len) };
+
                 for row in 0..height {
                     let src_offset = row * src_stride;
                     let dst_offset = row * dst_stride;
                     if src_offset + copy_w > pixels.len() || dst_offset + copy_w > dst_len {
                         break;
                     }
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(
-                            pixels.as_ptr().add(src_offset),
-                            dst_ptr.add(dst_offset),
-                            copy_w,
-                        );
-                    }
+                    dst_slice[dst_offset..dst_offset + copy_w]
+                        .copy_from_slice(&pixels[src_offset..src_offset + copy_w]);
                 }
             },
         );

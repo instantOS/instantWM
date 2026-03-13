@@ -60,6 +60,7 @@ impl SharedDrmState {
             total_height,
             completed_crtcs: Vec::new(),
             pending_crtcs: HashSet::new(),
+            output_hit_regions: Vec::new(),
         }
     }
 
@@ -73,6 +74,16 @@ impl SharedDrmState {
         if let Some(flag) = self.render_flags.get_mut(&crtc) {
             *flag = true;
         }
+    }
+
+    pub fn mark_pointer_output_dirty(&mut self, px: i32) {
+        for entry in &self.output_hit_regions {
+            if px >= entry.x_offset && px < entry.x_offset + entry.width {
+                self.mark_dirty(entry.crtc);
+                return;
+            }
+        }
+        self.mark_all_dirty();
     }
 }
 

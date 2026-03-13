@@ -86,7 +86,6 @@ pub fn is_valid_window_size(
 }
 
 /// Rect-typed convenience wrapper around [`is_valid_window_size`].
-#[inline]
 pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: WindowId) -> bool {
     is_valid_window_size(ctx, rect.x, rect.y, rect.w, rect.h, c_win)
 }
@@ -128,7 +127,6 @@ pub fn apply_window_resize(
 }
 
 /// Rect-typed convenience wrapper around [`apply_window_resize`].
-#[inline]
 pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     apply_window_resize(ctx, c_win, rect.x, rect.y, rect.w, rect.h);
 }
