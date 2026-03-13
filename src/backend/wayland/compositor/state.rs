@@ -941,7 +941,7 @@ impl WaylandState {
         }
         if let Some((window, loc)) = self.space.element_under(point) {
             if let Some(result) =
-                window.surface_under(point - loc.to_f64(), WindowSurfaceType::TOPLEVEL)
+                window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
             {
                 return Some((result.0, result.1 + loc));
             }
