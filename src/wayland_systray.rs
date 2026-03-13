@@ -422,7 +422,8 @@ fn call_item_method(
 
 fn register_watcher_host(conn: &Connection) {
     if let Ok(proxy) = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE) {
-        let _: zbus::Result<()> = proxy.call("RegisterStatusNotifierHost", &("instantwm-wayland"));
+        let unique_name = conn.unique_name().map(|n| n.to_string()).unwrap_or_else(|| "".into());
+        let _: zbus::Result<()> = proxy.call("RegisterStatusNotifierHost", &(unique_name));
     }
 }
 
@@ -718,10 +719,19 @@ fn argb32_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
     let mut out = vec![0u8; need];
     for i in 0..px_count {
         let si = i * 4;
-        let a = bytes[si];
-        let r = bytes[si + 1];
-        let g = bytes[si + 2];
-        let b = bytes[si + 3];
+        // D-Bus ARGB32 bytes are in network byte order (Big Endian), so A, R, G, B.
+        // Or if it's little-endian host order ARGB, then it's B, G, R, A.
+        // Qt actually serializes `QImage::Format_ARGB32` to D-Bus array of bytes
+        // which gives B, G, R, A on little-endian machines.
+        // Let's assume standard little-endian BGRA -> RGBA mapping here.
+        let b = bytes[si];
+        let g = bytes[si + 1];
+        let r = bytes[si + 2];
+        let a = bytes[si + 3];
+        // Our blit_rgba_bgra method takes RGBA byte array, but wait!
+        // In bar.rs `blit_rgba_bgra`, it actually parses the array as [R, G, B, A]
+        // and assigns it to ARGB8888 (Little-endian B, G, R, A buffer).
+        // So we must output [R, G, B, A] bytes exactly.
         out[si] = r;
         out[si + 1] = g;
         out[si + 2] = b;
