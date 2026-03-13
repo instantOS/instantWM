@@ -1,5 +1,5 @@
 use crate::contexts::CoreCtx;
-use crate::types::{Monitor, Rect};
+use crate::types::Monitor;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Write;
@@ -7,19 +7,12 @@ use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Mutex, OnceLock};
 
-pub(crate) const MAX_COMMAND_OFFSETS: usize = 20;
 pub(crate) const TEXT_PADDING: i32 = 6;
 const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
 
 #[derive(Debug, Clone)]
 pub(crate) enum StatusItem {
     Text(String),
-    SetBg(String),
-    SetFg(String),
-    ResetColors,
-    Rect(Rect),
-    Offset(i32),
-    CommandOffset,
     I3Block(I3Block),
 }
 
@@ -187,7 +180,6 @@ pub(crate) fn draw_status_bar(
     };
 
     if stext.is_empty() {
-        ctx.bar.clear_command_offsets();
         return (0, 0, Vec::new());
     }
 
@@ -201,7 +193,6 @@ pub(crate) fn draw_status_bar(
         items.as_slice(),
         layout,
         ctx.g,
-        &mut ctx.bar.command_offsets,
         &mut click_targets,
     );
 
@@ -274,89 +265,21 @@ pub(crate) fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
 }
 
 pub(crate) fn parse_status(bytes: &[u8]) -> ParsedStatus {
+    // Try i3bar JSON format first
     if let Some(parsed) = parse_i3bar_json(bytes) {
         return parsed;
     }
 
-    let mut items = Vec::new();
-    let mut i = 0usize;
-    let mut text_start = 0usize;
-
-    while i < bytes.len() {
-        if bytes[i] != b'^' {
-            i += 1;
-            continue;
-        }
-
-        if i > text_start {
-            let text = std::str::from_utf8(&bytes[text_start..i]).unwrap_or("");
-            if !text.is_empty() {
-                items.push(StatusItem::Text(text.to_string()));
-            }
-        }
-
-        i += 1;
-        if i >= bytes.len() {
-            break;
-        }
-
-        if bytes[i] == b'^' {
-            items.push(StatusItem::Text("^".to_string()));
-            i += 1;
-            text_start = i;
-            continue;
-        }
-
-        let cmd = bytes[i];
-        i += 1;
-
-        match cmd {
-            b'c' => {
-                if i + 7 <= bytes.len() {
-                    if let Ok(color) = std::str::from_utf8(&bytes[i..i + 7]) {
-                        items.push(StatusItem::SetBg(color.to_string()));
-                    }
-                    i += 7;
-                }
-            }
-            b't' => {
-                if i + 7 <= bytes.len() {
-                    if let Ok(color) = std::str::from_utf8(&bytes[i..i + 7]) {
-                        items.push(StatusItem::SetFg(color.to_string()));
-                    }
-                    i += 7;
-                }
-            }
-            b'd' => items.push(StatusItem::ResetColors),
-            b'f' => items.push(StatusItem::Offset(parse_number(bytes, &mut i))),
-            b'o' => items.push(StatusItem::CommandOffset),
-            b'r' => {
-                let x = parse_number(bytes, &mut i);
-                consume_comma(bytes, &mut i);
-                let y = parse_number(bytes, &mut i);
-                consume_comma(bytes, &mut i);
-                let w = parse_number(bytes, &mut i);
-                consume_comma(bytes, &mut i);
-                let h = parse_number(bytes, &mut i);
-                items.push(StatusItem::Rect(Rect { x, y, w, h }));
-            }
-            _ => {}
-        }
-
-        if i < bytes.len() && bytes[i] == b'^' {
-            i += 1;
-        }
-        text_start = i;
+    // Fall back to plain text
+    let text = std::str::from_utf8(bytes).unwrap_or("").to_string();
+    if text.is_empty() {
+        return ParsedStatus::default();
     }
 
-    if text_start < bytes.len() {
-        let text = std::str::from_utf8(&bytes[text_start..]).unwrap_or("");
-        if !text.is_empty() {
-            items.push(StatusItem::Text(text.to_string()));
-        }
+    ParsedStatus {
+        items: vec![StatusItem::Text(text)],
+        i3bar: None,
     }
-
-    ParsedStatus { items, i3bar: None }
 }
 
 pub(crate) fn parse_i3bar_header(line: &str) -> Option<I3BarHeader> {
@@ -525,27 +448,6 @@ pub(crate) fn flush_i3bar_click_events<W: Write>(
     writer.flush()
 }
 
-fn consume_comma(bytes: &[u8], i: &mut usize) {
-    if *i < bytes.len() && bytes[*i] == b',' {
-        *i += 1;
-    }
-}
-
-fn parse_number(bytes: &[u8], i: &mut usize) -> i32 {
-    let start = *i;
-    while *i < bytes.len() && (bytes[*i].is_ascii_digit() || bytes[*i] == b'-') {
-        *i += 1;
-    }
-    if *i > start {
-        std::str::from_utf8(&bytes[start..*i])
-            .ok()
-            .and_then(|n| n.parse::<i32>().ok())
-            .unwrap_or(0)
-    } else {
-        0
-    }
-}
-
 fn measure_layout(
     systray_width: i32,
     m: &Monitor,
@@ -557,9 +459,7 @@ fn measure_layout(
     for item in items {
         match item {
             StatusItem::Text(text) => width += painter.text_width(text),
-            StatusItem::Offset(offset) => width += *offset,
             StatusItem::I3Block(block) => width += measure_i3_block_width(block, painter),
-            _ => {}
         }
     }
 
@@ -601,24 +501,19 @@ fn draw_items(
     items: &[StatusItem],
     layout: StatusLayout,
     g: &crate::globals::Globals,
-    command_offsets: &mut [i32; MAX_COMMAND_OFFSETS],
     click_targets: &mut Vec<StatusClickTarget>,
 ) {
-    let mut scheme = g.status_scheme();
-    let base_scheme = scheme.clone();
-
-    painter.set_scheme(scheme.clone());
+    let scheme = g.status_scheme();
+    painter.set_scheme(scheme);
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
         painter.rect(layout.draw_start_x, 0, draw_width, bar_height, true, true);
     }
 
-    command_offsets.fill(-1);
     click_targets.clear();
 
     let mut x = layout.draw_start_x + 1;
-    let mut marker_idx = 0usize;
     let mut click_idx = 0usize;
 
     for item in items {
@@ -629,36 +524,6 @@ fn draw_items(
                     painter.text(x, 0, seg_w, bar_height, 0, text, false, 0);
                 }
                 x += seg_w;
-            }
-            StatusItem::Offset(offset) => x += *offset,
-            StatusItem::SetBg(color) => {
-                if let Some(clr) = crate::bar::theme::rgba_from_config(color) {
-                    scheme.bg = clr;
-                    painter.set_scheme(scheme.clone());
-                }
-            }
-            StatusItem::SetFg(color) => {
-                if let Some(clr) = crate::bar::theme::rgba_from_config(color) {
-                    scheme.fg = clr;
-                    painter.set_scheme(scheme.clone());
-                }
-            }
-            StatusItem::ResetColors => {
-                scheme = base_scheme.clone();
-                painter.set_scheme(scheme.clone());
-            }
-            StatusItem::Rect(r) => {
-                let rw = r.w.max(0);
-                let rh = r.h.max(0);
-                if rw > 0 && rh > 0 {
-                    painter.rect(x + r.x, r.y, rw, rh, true, false);
-                }
-            }
-            StatusItem::CommandOffset => {
-                if marker_idx < MAX_COMMAND_OFFSETS {
-                    command_offsets[marker_idx] = x;
-                    marker_idx += 1;
-                }
             }
             StatusItem::I3Block(block) => {
                 let total_w = draw_i3_block(painter, x, bar_height, block, g);
@@ -673,10 +538,6 @@ fn draw_items(
                 click_idx += 1;
             }
         }
-    }
-
-    if marker_idx < MAX_COMMAND_OFFSETS {
-        command_offsets[marker_idx] = -1;
     }
 }
 

@@ -23,7 +23,6 @@ pub struct BarState {
     pausedraw: bool,
     draw_bar_recursion: usize,
     bar_update_seq: u64,
-    pub command_offsets: [i32; 20],
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
     /// Total width of the tag strip (including start menu)
@@ -91,10 +90,6 @@ impl BarState {
 
     pub(crate) fn recursion_exit(&mut self) {
         self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
-    }
-
-    pub fn clear_command_offsets(&mut self) {
-        self.command_offsets.fill(-1);
     }
 
     /// Bump the backend-agnostic bar invalidation sequence.

@@ -143,18 +143,6 @@ pub fn handle_keyboard<B: InputBackend>(
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    if matches!(
-        keyboard_handle.current_focus(),
-        None | Some(KeyboardFocusTarget::Window(_))
-    ) {
-        if let Some(layer_surface) = state.keyboard_focus_layer_surface() {
-            keyboard_handle.set_focus(
-                state,
-                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
-                serial,
-            );
-        }
-    }
     let wm_shortcuts_allowed = match keyboard_handle.current_focus() {
         None => true,
         Some(KeyboardFocusTarget::Window(ref w)) => {
