@@ -73,6 +73,20 @@ impl IpcServer {
             return;
         }
 
+        // Attempt to decode just the version string first
+        if let Ok((version_str, _)) =
+            bincode::decode_from_slice::<String, _>(&buffer, bincode::config::standard())
+        {
+            if version_str != crate::ipc_types::IPC_PROTOCOL_VERSION {
+                let error_msg = format!(
+                    "version mismatch: client is {}, server is {}. Please ensure instantwmctl and instantWM are the same version.",
+                    version_str, crate::ipc_types::IPC_PROTOCOL_VERSION
+                );
+                let _ = send_response(&mut stream, &IpcResponse::err(error_msg));
+                return;
+            }
+        }
+
         let request: IpcRequest =
             match bincode::decode_from_slice(&buffer, bincode::config::standard()) {
                 Ok((req, _)) => req,
@@ -85,7 +99,7 @@ impl IpcServer {
                 }
             };
 
-        // Validate protocol version
+        // Validate protocol version (fallback just in case)
         if let Err(e) = request.validate_version() {
             let _ = send_response(&mut stream, &IpcResponse::err(e));
             return;
