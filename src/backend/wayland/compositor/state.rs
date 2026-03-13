@@ -1065,6 +1065,22 @@ impl WaylandState {
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
+    pub(crate) fn window_for_surface(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<Window> {
+        use smithay::desktop::WindowSurfaceType;
+
+        self.space.elements().find(|w| {
+            if w.wl_surface().as_deref() == Some(surface) {
+                return true;
+            }
+            w.surface_under((0.0, 0.0), WindowSurfaceType::ALL)
+                .map(|(hit_surface, _)| hit_surface == *surface)
+                .unwrap_or(false)
+        }).cloned()
+    }
+
     pub(crate) fn window_id_for_surface(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,

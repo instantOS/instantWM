@@ -767,14 +767,8 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
                 return Some(KeyboardFocusTarget::Window(window.clone()));
             }
         }
-
-        self.space
-            .elements()
-            .find(|w| w.wl_surface().as_deref() == Some(surface))
-            .cloned()
+        self.window_for_surface(surface)
             .map(KeyboardFocusTarget::Window)
-
-
     }
 }
 
