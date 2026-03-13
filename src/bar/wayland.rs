@@ -158,6 +158,9 @@ fn rasterize_text(
                     let pw = image.placement.width as i32;
                     for row in 0..image.placement.height as i32 {
                         for col in 0..pw {
+                            if gx + col >= x + w || gy + row >= y + h {
+                                continue;
+                            }
                             let mask_idx = (row * pw + col) as usize;
                             if mask_idx >= image.data.len() {
                                 continue;
@@ -185,6 +188,9 @@ fn rasterize_text(
                     let pw = image.placement.width as i32;
                     for row in 0..image.placement.height as i32 {
                         for col in 0..pw {
+                            if gx + col >= x + w || gy + row >= y + h {
+                                continue;
+                            }
                             let si = ((row * pw + col) * 4) as usize;
                             if si + 3 < image.data.len() {
                                 pixel_fill(

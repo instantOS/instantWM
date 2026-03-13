@@ -272,7 +272,7 @@ fn draw_window_title(
     let lpad = if text_w < width - 64 {
         ((width - text_w) as f32 * 0.5) as i32
     } else {
-        ctx.g.cfg.horizontal_padding / 2 + 20
+        ctx.g.cfg.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
     };
 
     painter.text(x, 0, width, bar_height, lpad, client_name, false, 4);
@@ -280,7 +280,9 @@ fn draw_window_title(
     let is_selected = selected_monitor.sel == Some(c.win);
 
     if is_selected {
-        draw_close_button(ctx, c, x, bar_height, painter);
+        if width >= 32 {
+            draw_close_button(ctx, c, x, bar_height, painter);
+        }
         return Some(m.monitor_rect.x as u32 + x as u32);
     }
 
