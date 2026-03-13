@@ -2,7 +2,6 @@
 
 use std::rc::Rc;
 
-use crate::animation;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
@@ -159,8 +158,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,  XK_TAB     => |ctx| last_view(ctx)),
         key!(MODKEY | SHIFT,      XK_TAB     => |ctx| focus_last_client(ctx)),
         key!(MODKEY | MOD1,      XK_TAB     => |ctx| follow_view(ctx)),
-        key!(MODKEY,  XK_LEFT    => |ctx| animation::anim_scroll(ctx, Direction::Left)),
-        key!(MODKEY,  XK_RIGHT   => |ctx| animation::anim_scroll(ctx, Direction::Right)),
+        key!(MODKEY,  XK_LEFT    => |ctx| crate::tags::view::scroll_view(ctx, Direction::Left)),
+        key!(MODKEY,  XK_RIGHT   => |ctx| crate::tags::view::scroll_view(ctx, Direction::Right)),
         key!(MODKEY | MOD1,      XK_LEFT    => |ctx| move_client(ctx, Direction::Left)),
         key!(MODKEY | MOD1,      XK_RIGHT   => |ctx| move_client(ctx, Direction::Right)),
         key!(MODKEY | SHIFT,      XK_LEFT    => |ctx| shift_tag(ctx, Direction::Left, 1)),
