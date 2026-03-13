@@ -442,21 +442,7 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     let monitor_id = ctx.core.client(win).map(|c| c.monitor_id);
 
-    // Clear overlay and fullscreen references.
-    for mon in ctx.core.g.monitors_iter_all_mut() {
-        if mon.overlay == Some(win) {
-            mon.overlay = None;
-        }
-        if mon.fullscreen == Some(win) {
-            mon.fullscreen = None;
-        }
-    }
-
-    {
-        let mut tmp = WmCtx::X11(ctx.reborrow());
-        detach(&mut tmp, win);
-        detach_stack(&mut tmp, win);
-    }
+    crate::client::lifecycle::unmanage_client_state(&mut ctx.core.g, win);
 
     if !destroyed {
         let x11_win: Window = win.into();
@@ -480,9 +466,6 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
             );
         }
     }
-
-    // Remove from the global map.
-    ctx.core.g.clients.remove(&win);
 
     {
         let tmp = ctx.reborrow();

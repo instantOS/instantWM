@@ -573,11 +573,7 @@ impl XdgShellHandler for WaylandState {
             let Some(g) = self.globals_mut() else {
                 return;
             };
-            if g.clients.contains_key(&win) {
-                g.detach(win);
-                g.detach_stack(win);
-                g.clients.remove(&win);
-            }
+            crate::client::lifecycle::unmanage_client_state(g, win);
             g.layout_dirty = true;
             g.space_dirty = true;
             g.selected_win()
