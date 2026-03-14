@@ -600,10 +600,7 @@ impl WaylandState {
                     let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
                         target.0, target.1,
                     );
-                    toplevel.with_pending_state(|state| {
-                        state.size = Some(size);
-                    });
-                    toplevel.send_pending_configure();
+                    self.send_toplevel_configure(&window, Some(size));
                     self.last_configured_size.insert(key, target);
                 }
             }
@@ -641,10 +638,7 @@ impl WaylandState {
             let target = (w.max(Self::MIN_WL_DIM), h.max(Self::MIN_WL_DIM));
             let size =
                 smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
-            toplevel.with_pending_state(|state| {
-                state.size = Some(size);
-            });
-            toplevel.send_pending_configure();
+            self.send_toplevel_configure(&window, Some(size));
             self.last_configured_size.insert(window_id, target);
         }
         if let Some(g) = self.globals_mut() {
@@ -677,10 +671,7 @@ impl WaylandState {
                 let target = (rect.w.max(1), rect.h.max(1));
                 let size =
                     smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
-                toplevel.with_pending_state(|state| {
-                    state.size = Some(size);
-                });
-                toplevel.send_pending_configure();
+                self.send_toplevel_configure(&element, Some(size));
                 self.last_configured_size.insert(window, target);
             }
         }
@@ -690,9 +681,7 @@ impl WaylandState {
         if let Some(element) = self.find_window(window).cloned() {
             self.space.raise_element(&element, true);
             if element.set_activated(true) {
-                if let Some(toplevel) = element.toplevel() {
-                    toplevel.send_pending_configure();
-                }
+                self.send_toplevel_configure(&element, None);
             }
         }
         self.raise_unmanaged_x11_windows();
@@ -722,18 +711,14 @@ impl WaylandState {
             if old_id != window {
                 if let Some(old_window) = self.window_index.get(&old_id).cloned() {
                     if old_window.set_activated(false) {
-                        if let Some(toplevel) = old_window.toplevel() {
-                            toplevel.send_pending_configure();
-                        }
+                        self.send_toplevel_configure(&old_window, None);
                     }
                 }
             }
         }
         if let Some(new_window) = focus_window {
             if new_window.set_activated(true) {
-                if let Some(toplevel) = new_window.toplevel() {
-                    toplevel.send_pending_configure();
-                }
+                self.send_toplevel_configure(&new_window, None);
             }
         }
         self.focused_window = Some(window);
@@ -803,13 +788,7 @@ impl WaylandState {
         }
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
-        if self.focused_window == Some(window) {
-            self.focused_window = None;
-            let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
-            }
-        }
+        self.clear_keyboard_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
             g.layout_dirty = true;
             g.space_dirty = true;
@@ -823,9 +802,7 @@ impl WaylandState {
         self.window_index.remove(&window);
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
-        if self.focused_window == Some(window) {
-            self.focused_window = None;
-        }
+        self.clear_keyboard_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
             g.layout_dirty = true;
             g.space_dirty = true;
@@ -858,6 +835,32 @@ impl WaylandState {
         }
     }
 
+    /// Clear keyboard focus if the given window is currently focused.
+    /// Used when a window is unmapped or removed to avoid leaving the
+    /// keyboard seat pointing at a dead surface.
+    fn clear_keyboard_focus_if_focused(&mut self, window: WindowId) {
+        if self.focused_window == Some(window) {
+            self.clear_keyboard_focus();
+        }
+    }
+
+    /// Send a configure event to a toplevel surface with the specified size.
+    /// This is a helper to avoid repeating the same configure pattern.
+    fn send_toplevel_configure(
+        &self,
+        window: &Window,
+        size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
+    ) {
+        if let Some(toplevel) = window.toplevel() {
+            if let Some(size) = size {
+                toplevel.with_pending_state(|state| {
+                    state.size = Some(size);
+                });
+            }
+            toplevel.send_pending_configure();
+        }
+    }
+
     pub(super) fn restore_focus_after_overlay(&mut self) {
         let target = self
             .globals()
@@ -870,11 +873,7 @@ impl WaylandState {
             // doesn't keep pointing at the dead overlay surface.  Without
             // this, WM shortcuts stay suppressed (the input handler sees an
             // overlay as the current focus and blocks keybindings).
-            self.focused_window = None;
-            let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
-            }
+            self.clear_keyboard_focus();
         }
     }
 
