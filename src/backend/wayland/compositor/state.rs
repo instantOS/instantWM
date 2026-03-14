@@ -980,7 +980,10 @@ impl WaylandState {
             let map = layer_map_for_output(output);
             for layer in map.layers().rev() {
                 if layer.can_receive_keyboard_focus() {
-                    return Some(layer.wl_surface().clone());
+                    let is_exclusive = smithay::wayland::compositor::with_states(layer.wl_surface(), |states| {
+                        states.cached_state.get::<smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState>().current().keyboard_interactivity == smithay::wayland::shell::wlr_layer::KeyboardInteractivity::Exclusive
+                    });
+                    if is_exclusive { return Some(layer.wl_surface().clone()); }
                 }
             }
         }

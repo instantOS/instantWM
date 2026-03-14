@@ -26,22 +26,7 @@ dirs = "5.0"
 xcursor = "0.3"
 
 # Wayland compositor support via Smithay
-smithay = { version = "0.7", default-features = false, features = [
-    "backend_winit",
-    "backend_drm",
-    "backend_gbm",
-    "backend_gbm_has_fd_for_plane",
-    "backend_gbm_has_create_with_modifiers2",
-    "backend_egl",
-    "backend_libinput",
-    "backend_udev",
-    "backend_session_libseat",
-    "renderer_gl",
-    "use_system_lib",
-    "wayland_frontend",
-    "desktop",
-    "xwayland",
-] }
+smithay = { version = "0.7", default-features = false, features = ["backend_winit", "backend_drm", "backend_gbm", "backend_gbm_has_fd_for_plane", "backend_gbm_has_create_with_modifiers2", "backend_egl", "backend_libinput", "backend_udev", "backend_session_libseat", "renderer_gl", "use_system_lib", "wayland_frontend", "desktop", "xwayland"] }
 calloop = { version = "0.14" }
 cosmic-text = "0.12"
 zbus = { version = "5" }
