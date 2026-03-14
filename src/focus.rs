@@ -212,20 +212,16 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
             return;
         }
 
-        // Only explicitly restack if the focused window is tiled.
-        // Floating windows should not automatically pop to the top just
-        // from being hovered, otherwise they flicker rapidly when overlapping.
-        if core.g.clients.get(&current).is_some_and(|c| c.is_floating) {
-            return;
-        }
-
-        let mut stack = Vec::new();
-        let mut floating = Vec::new();
+        let mut tiled_stack = Vec::new();
+        let mut floating_stack = Vec::new();
         let Some(monitor) = core.g.monitor(monitor_id) else {
             return;
         };
         let selected_tags = monitor.selected_tags();
         let bar_win = monitor.bar_win;
+
+        let is_tiling = monitor.current_layout().is_tiling();
+
         for &win in &monitor.stack {
             let Some(client) = core.g.clients.get(&win) else {
                 continue;
@@ -234,17 +230,22 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
                 continue;
             }
             if client.is_floating {
-                floating.push(win);
+                floating_stack.push(win);
             } else {
-                stack.push(win);
+                tiled_stack.push(win);
             }
         }
-        if let Some(idx) = stack.iter().position(|&win| win == current) {
-            let selected = stack.remove(idx);
-            stack.push(selected);
+
+        if is_tiling {
+            if let Some(idx) = tiled_stack.iter().position(|&win| win == current) {
+                let selected = tiled_stack.remove(idx);
+                tiled_stack.push(selected);
+            }
         }
+
+        let mut stack = tiled_stack;
         stack.push(bar_win);
-        stack.extend(floating);
+        stack.extend(floating_stack);
         self.wayland.backend.restack(&stack);
     }
 }
@@ -340,8 +341,10 @@ pub(crate) fn focus_soft_x11(
 /// handlers where focus failures should not abort the operation.
 pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
+    let previous_sel = ctx.selected_client();
+
     match ctx {
-        X11(x11_ctx) => {
+        X11(ref mut x11_ctx) => {
             let systray = x11_ctx.systray.as_deref();
             if let Err(e) = focus_x11(
                 &mut x11_ctx.core,
@@ -353,11 +356,17 @@ pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
                 log::warn!("focus_soft X11({:?}) failed: {}", win, e);
             }
         }
-        Wayland(wayland_ctx) => {
+        Wayland(ref mut wayland_ctx) => {
             if let Err(e) = focus_wayland(&mut wayland_ctx.core, &wayland_ctx.wayland, win) {
                 log::warn!("focus_soft Wayland({:?}) failed: {}", win, e);
             }
         }
+    }
+
+    let current_sel = ctx.selected_client();
+    if previous_sel != current_sel {
+        let monitor_id = ctx.g().selected_monitor_id();
+        crate::layouts::restack(ctx, monitor_id);
     }
 }
 
