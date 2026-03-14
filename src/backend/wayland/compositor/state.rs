@@ -798,6 +798,10 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         if self.focused_window == Some(window) {
             self.focused_window = None;
+            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
+            }
         }
         if let Some(g) = self.globals_mut() {
             g.layout_dirty = true;
@@ -809,6 +813,16 @@ impl WaylandState {
         if let Some(g) = self.globals_mut() {
             if let Some(win) = g.selected_win() {
                 self.set_focus(win);
+            } else {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
+                }
+            }
+        } else {
+            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
             }
         }
     }
