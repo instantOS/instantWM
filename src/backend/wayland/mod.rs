@@ -118,6 +118,11 @@ impl WaylandBackend {
             .unwrap_or(false)
     }
 
+    /// Clear keyboard focus from the currently focused window.
+    pub fn clear_keyboard_focus(&self) {
+        let _ = self.with_state(|state: &mut WaylandState| state.clear_keyboard_focus());
+    }
+
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
             state.cursor_icon_override = icon;

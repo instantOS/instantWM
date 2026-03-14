@@ -824,7 +824,7 @@ impl WaylandState {
 
     /// Explicitly clear keyboard focus on the Smithay seat so that the
     /// seat is not left pointing at a dead / dying surface.
-    pub(super) fn clear_keyboard_focus(&mut self) {
+    pub(crate) fn clear_keyboard_focus(&mut self) {
         self.focused_window = None;
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {

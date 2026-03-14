@@ -180,7 +180,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
     }
 
     fn focus_none(&self, _core: &mut CoreCtx) {
-        // Wayland: no explicit root focus needed
+        self.wayland.backend.clear_keyboard_focus();
     }
 
     fn on_selection_changed(&self, _core: &mut CoreCtx) {
