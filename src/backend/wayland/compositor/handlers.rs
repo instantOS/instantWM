@@ -586,10 +586,7 @@ impl XdgShellHandler for WaylandState {
         if let Some(new_win) = new_sel {
             self.set_focus(new_win);
         } else {
-            let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
-            }
+            self.clear_keyboard_focus();
         }
     }
 

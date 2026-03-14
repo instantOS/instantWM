@@ -585,24 +585,21 @@ impl WaylandState {
                 Point::from((geo.x + bw, geo.y + bw)),
                 false,
             );
-            if let Some(toplevel) = window.toplevel() {
-                let key = window
-                    .user_data()
-                    .get::<WindowIdMarker>()
-                    .map(|m| m.id)
-                    .unwrap_or_default();
-                let target = (geo.w.max(1), geo.h.max(1));
-                let unchanged = self
-                    .last_configured_size
-                    .get(&key)
-                    .is_some_and(|&s| s == target);
-                if !unchanged {
-                    let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
-                        target.0, target.1,
-                    );
-                    self.send_toplevel_configure(&window, Some(size));
-                    self.last_configured_size.insert(key, target);
-                }
+            let key = window
+                .user_data()
+                .get::<WindowIdMarker>()
+                .map(|m| m.id)
+                .unwrap_or_default();
+            let target = (geo.w.max(1), geo.h.max(1));
+            let unchanged = self
+                .last_configured_size
+                .get(&key)
+                .is_some_and(|&s| s == target);
+            if !unchanged {
+                let size =
+                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
+                self.send_toplevel_configure(&window, Some(size));
+                self.last_configured_size.insert(key, target);
             }
         }
         self.raise_unmanaged_x11_windows();
