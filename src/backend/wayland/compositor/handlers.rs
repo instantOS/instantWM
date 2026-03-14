@@ -262,13 +262,13 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(existing) = existing {
-                self.space.map_element(existing.clone(), geo.loc, true);
-                self.space.raise_element(&existing, true);
+                self.space.map_element(existing.clone(), geo.loc, false);
+                self.space.raise_element(&existing, false);
                 focus_overlay_if_launcher(self, &existing);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
-                self.space.map_element(element.clone(), geo.loc, true);
-                self.space.raise_element(&element, true);
+                self.space.map_element(element.clone(), geo.loc, false);
+                self.space.raise_element(&element, false);
                 focus_overlay_if_launcher(self, &element);
             }
             return;
@@ -290,7 +290,7 @@ impl XwmHandler for WaylandState {
                 is_overlay,
             });
         let geo = window.geometry();
-        self.space.map_element(element.clone(), geo.loc, true);
+        self.space.map_element(element.clone(), geo.loc, false);
         self.window_index.insert(win, element);
         self.ensure_client_for_window(win);
         if let Some(g) = self.globals_mut() {
@@ -319,8 +319,8 @@ impl XwmHandler for WaylandState {
     ) {
         let geo = window.geometry();
         let element = smithay::desktop::Window::new_x11_window(window);
-        self.space.map_element(element.clone(), geo.loc, true);
-        self.space.raise_element(&element, true);
+        self.space.map_element(element.clone(), geo.loc, false);
+        self.space.raise_element(&element, false);
         focus_overlay_if_launcher(self, &element);
     }
 
@@ -449,8 +449,8 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
-                self.space.map_element(element.clone(), geometry.loc, true);
-                self.space.raise_element(&element, true);
+                self.space.map_element(element.clone(), geometry.loc, false);
+                self.space.raise_element(&element, false);
             }
             return;
         };

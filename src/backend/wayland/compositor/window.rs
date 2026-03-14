@@ -28,7 +28,7 @@ impl WaylandState {
                 is_overlay: false,
             });
 
-        self.space.map_element(window.clone(), (0, 0), true);
+        self.space.map_element(window.clone(), (0, 0), false);
         self.window_index.insert(window_id, window.clone());
         self.ensure_client_for_window(window_id);
 
@@ -40,7 +40,7 @@ impl WaylandState {
             }
         }
 
-        if let Some(toplevel) = window.toplevel() {
+        if window.toplevel().is_some() {
             let (w, h) = self
                 .globals()
                 .and_then(|g| g.clients.get(&window_id).map(|c| (c.geo.w, c.geo.h)))
@@ -91,9 +91,14 @@ impl WaylandState {
     /// Raise a window to the top of the stack.
     pub fn raise_window(&mut self, window: WindowId) {
         if let Some(element) = self.find_window(window).cloned() {
-            self.space.raise_element(&element, true);
-            if element.set_activated(true) {
-                self.send_toplevel_configure(&element, None);
+            // Focus is handled independently by `set_focus`, so we pass `false`
+            self.space.raise_element(&element, false);
+
+            // XWayland requires us to explicitly restack the X11 surface so X clients draw correctly
+            if let Some(surface) = element.x11_surface() {
+                if let Some(xwm) = self.xwm.as_mut() {
+                    let _ = xwm.raise_window(surface);
+                }
             }
         }
         self.raise_unmanaged_x11_windows();
@@ -103,7 +108,8 @@ impl WaylandState {
     pub fn restack(&mut self, windows: &[WindowId]) {
         for window in windows.iter() {
             if let Some(element) = self.find_window(*window).cloned() {
-                //TODO: this has interactive false. Should that be the case even for the focussed client?
+                // Focus / activation is managed by `set_focus`, so we pass `false`
+                // here to avoid overriding the focus state visually.
                 self.space.raise_element(&element, false);
             }
         }
@@ -167,23 +173,10 @@ impl WaylandState {
             .find_window(window)
             .is_some_and(|w| self.space.elements().any(|e| e == w));
 
-        //TODO: what are we doing here? Document or fix, it looks like we're
-        //re-mapping an already-mapped window
+        // If the window is already mapped, calling `map_element` will unnecessarily
+        // pull it to the top of the stack and disrupt the Z-order.
         if is_already_mapped {
-            if let Some(element) = self.find_window(window).cloned() {
-                let loc = self
-                    .space
-                    .element_location(&element)
-                    .or_else(|| {
-                        self.globals()
-                            .and_then(|g| g.clients.get(&window))
-                            .map(|c| Point::from((c.geo.x, c.geo.y)))
-                    })
-                    .unwrap_or((0, 0).into());
-                self.window_animations.remove(&window);
-                self.space.map_element(element, loc, false);
-                return;
-            }
+            return;
         }
 
         if let Some(element) = self.window_index.get(&window).cloned() {
@@ -604,18 +597,31 @@ impl WaylandState {
         // This is especially important on tag switches where windows are
         // unmapped and then mapped again at their existing geometry.
         // Note: target includes border width offset, so we add it to current too.
-        let current = self
-            .globals()
-            .and_then(|g| {
-                g.clients
-                    .get(&window_id)
-                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+        let actual_loc = self.space.element_location(&element);
+
+        // Do not update the location if it is visually already at the target
+        // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
+        if actual_loc == Some(target) && !remap {
+            self.window_animations.remove(&window_id);
+            return;
+        }
+
+        // Use the client's stored geometry as the authoritative current position
+        // to avoid animating from stale locations after map/unmap cycles.
+        let current = actual_loc
+            .or_else(|| {
+                self.globals().and_then(|g| {
+                    g.clients
+                        .get(&window_id)
+                        .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+                })
             })
-            .or_else(|| self.space.element_location(&element))
             .unwrap_or(target);
+
         if !self.animations_enabled() || remap || current == target {
             self.window_animations.remove(&window_id);
-            self.space.map_element(element, target, remap);
+            // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
+            self.space.map_element(element, target, false);
             return;
         }
 
