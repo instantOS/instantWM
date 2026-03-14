@@ -82,8 +82,6 @@ impl WaylandState {
         display: &str,
         config: &crate::config::config_toml::MonitorConfig,
     ) {
-        use smithay::utils::Point;
-
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs {
             if display != "*" && output.name() != display {

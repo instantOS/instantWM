@@ -67,7 +67,7 @@ impl WaylandState {
     /// Resize a window to the given rectangle.
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {
-            let bw = self
+            let border_width = self
                 .globals()
                 .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
                 .unwrap_or(0);
@@ -75,10 +75,10 @@ impl WaylandState {
             self.set_window_target_location(
                 window,
                 element.clone(),
-                Point::from((rect.x + bw, rect.y + bw)),
+                Point::from((rect.x + border_width, rect.y + border_width)),
                 remap_immediately,
             );
-            if let Some(toplevel) = element.toplevel() {
+            if let Some(_) = element.toplevel() {
                 let target = (rect.w.max(1), rect.h.max(1));
                 let size =
                     smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
@@ -103,6 +103,7 @@ impl WaylandState {
     pub fn restack(&mut self, windows: &[WindowId]) {
         for window in windows.iter() {
             if let Some(element) = self.find_window(*window).cloned() {
+                //TODO: this has interactive false. Should that be the case even for the focussed client?
                 self.space.raise_element(&element, false);
             }
         }
@@ -166,6 +167,8 @@ impl WaylandState {
             .find_window(window)
             .is_some_and(|w| self.space.elements().any(|e| e == w));
 
+        //TODO: what are we doing here? Document or fix, it looks like we're
+        //re-mapping an already-mapped window
         if is_already_mapped {
             if let Some(element) = self.find_window(window).cloned() {
                 let loc = self
