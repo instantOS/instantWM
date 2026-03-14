@@ -4,6 +4,7 @@ use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 
 use smithay::wayland::seat::WaylandFocus;
+use smithay::utils::IsAlive;
 use smithay::{
     backend::allocator::Format,
     backend::drm::DrmNode,
@@ -545,6 +546,19 @@ impl WaylandState {
     }
 
     pub fn sync_space_from_globals(&mut self) {
+        let dead_windows: Vec<WindowId> = self.window_index.iter()
+            .filter_map(|(&id, w)| if !w.alive() { Some(id) } else { None })
+            .collect();
+
+        for win in dead_windows {
+            self.remove_window_tracking(win);
+            if let Some(g) = self.globals_mut() {
+                g.detach(win);
+                g.detach_stack(win);
+                g.clients.remove(&win);
+            }
+        }
+
         let Some(g) = self.globals() else {
             return;
         };
