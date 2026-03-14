@@ -51,6 +51,7 @@ impl IpcServer {
     }
 
     fn handle_client(&self, mut stream: UnixStream, wm: &mut Wm) {
+        let _ = stream.set_nonblocking(false);
         let mut buffer = Vec::new();
         let mut reader = BufReader::new(&stream);
 

@@ -160,7 +160,10 @@ pub fn run() -> ! {
                 }
             }
             if let Some(server) = ipc_server.as_mut() {
-                let _ = server.process_pending(&mut wm);
+                let handled = server.process_pending(&mut wm);
+                if handled {
+                    wm.g.layout_dirty = true;
+                }
             }
 
             if wm.g.monitor_config_dirty {
