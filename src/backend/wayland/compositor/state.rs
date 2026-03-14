@@ -940,8 +940,7 @@ impl WaylandState {
             }
         }
         if let Some((window, loc)) = self.space.element_under(point) {
-            if let Some(result) =
-                window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
+            if let Some(result) = window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
             {
                 return Some((result.0, result.1 + loc));
             }
@@ -1063,6 +1062,29 @@ impl WaylandState {
             .values()
             .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
+    }
+
+    pub(crate) fn window_for_surface(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<Window> {
+        use smithay::desktop::WindowSurfaceType;
+
+        self.space
+            .elements()
+            .find(|w| {
+                if w.wl_surface().as_deref() == Some(surface) {
+                    return true;
+                }
+                let mut found = false;
+                w.with_surfaces(|surf, _| {
+                    if surf == surface {
+                        found = true;
+                    }
+                });
+                found
+            })
+            .cloned()
     }
 
     pub(crate) fn window_id_for_surface(
