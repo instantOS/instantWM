@@ -150,6 +150,11 @@ pub struct WindowIdMarker {
 }
 
 impl WaylandState {
+    /// Get the currently focused window ID, if any.
+    pub fn focused_window(&self) -> Option<WindowId> {
+        self.focused_window
+    }
+
     const MIN_WL_DIM: i32 = 64;
     /// Create a new `WaylandState` and register all Wayland globals.
     pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
@@ -703,6 +708,12 @@ impl WaylandState {
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
+
+        // If the window doesn't exist in our index, don't leave stale state.
+        if focus_window.is_none() && !self.window_index.contains_key(&window) {
+            return;
+        }
+
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
         if let Some(old_id) = self.focused_window {
@@ -819,10 +830,48 @@ impl WaylandState {
         }
     }
 
+    /// Check whether the Smithay keyboard seat is currently focused on the
+    /// X11 surface with the given `window_id`.
+    pub(super) fn is_x11_surface_focused(&self, window_id: u32) -> bool {
+        self.seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|focus| {
+                if let KeyboardFocusTarget::Window(w) = focus {
+                    w.x11_surface()
+                        .is_some_and(|x11| x11.window_id() == window_id)
+                } else {
+                    false
+                }
+            })
+    }
+
+    /// Explicitly clear keyboard focus on the Smithay seat so that the
+    /// seat is not left pointing at a dead / dying surface.
+    pub(super) fn clear_keyboard_focus(&mut self) {
+        self.focused_window = None;
+        let serial = SERIAL_COUNTER.next_serial();
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
+        }
+    }
+
     pub(super) fn restore_focus_after_overlay(&mut self) {
-        if let Some(g) = self.globals_mut() {
-            if let Some(win) = g.selected_win() {
-                self.set_focus(win);
+        let target = self
+            .globals()
+            .and_then(|g| g.selected_win())
+            .filter(|w| self.window_index.contains_key(w));
+        if let Some(win) = target {
+            self.set_focus(win);
+        } else {
+            // No valid target — explicitly clear keyboard focus so the seat
+            // doesn't keep pointing at the dead overlay surface.  Without
+            // this, WM shortcuts stay suppressed (the input handler sees an
+            // overlay as the current focus and blocks keybindings).
+            self.focused_window = None;
+            let serial = SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
             }
         }
     }

@@ -330,18 +330,13 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
     ) {
         let window_id = window.window_id();
-        let was_focused = self
-            .seat
-            .get_keyboard()
-            .and_then(|k| k.current_focus())
-            .is_some_and(|focus| {
-                if let KeyboardFocusTarget::Window(w) = focus {
-                    w.x11_surface()
-                        .is_some_and(|x11| x11.window_id() == window_id)
-                } else {
-                    false
-                }
-            });
+        let was_focused = self.is_x11_surface_focused(window_id);
+
+        // Clear keyboard focus from the dying surface *before* unmapping so
+        // the Smithay seat never holds a dead target.
+        if was_focused {
+            self.clear_keyboard_focus();
+        }
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.unmap_window(win);
@@ -374,18 +369,12 @@ impl XwmHandler for WaylandState {
     ) {
         let window_id = window.window_id();
         let is_overlay = self.window_id_for_x11_surface(&window).is_none();
-        let was_focused = self
-            .seat
-            .get_keyboard()
-            .and_then(|k| k.current_focus())
-            .is_some_and(|focus| {
-                if let KeyboardFocusTarget::Window(w) = focus {
-                    w.x11_surface()
-                        .is_some_and(|x11| x11.window_id() == window_id)
-                } else {
-                    false
-                }
-            });
+        let was_focused = self.is_x11_surface_focused(window_id);
+
+        // Clear keyboard focus from the dying surface *before* cleanup.
+        if was_focused {
+            self.clear_keyboard_focus();
+        }
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.remove_window_tracking(win);
@@ -411,7 +400,7 @@ impl XwmHandler for WaylandState {
             }
         }
 
-        if was_focused && is_overlay {
+        if was_focused {
             self.restore_focus_after_overlay();
         }
     }

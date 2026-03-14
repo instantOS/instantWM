@@ -112,6 +112,12 @@ impl WaylandBackend {
         });
     }
 
+    /// Return `true` when the Smithay seat's keyboard focus is on `window`.
+    pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
+        self.with_state(|state: &mut WaylandState| state.focused_window() == Some(window))
+            .unwrap_or(false)
+    }
+
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
             state.cursor_icon_override = icon;

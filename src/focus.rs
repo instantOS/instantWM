@@ -99,6 +99,12 @@ trait FocusBackendOps {
         previous: Option<WindowId>,
         current: Option<WindowId>,
     );
+    /// Return `true` when the backend's seat focus is out of sync with the
+    /// requested target and needs to be re-applied even though the WM-level
+    /// selection (`mon.sel`) did not change.
+    fn needs_focus_refresh(&self, _target: Option<WindowId>) -> bool {
+        false
+    }
 }
 
 struct X11FocusBackend<'a> {
@@ -179,6 +185,13 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 
     fn on_selection_changed(&self, _core: &mut CoreCtx) {
         // Wayland: key grabs not applicable; desktop bindings kept in core
+    }
+
+    fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
+        match target {
+            Some(win) => !self.wayland.backend.is_keyboard_focused_on(win),
+            None => false,
+        }
     }
 
     fn post_state_update(
@@ -262,12 +275,13 @@ fn focus_generic(
     }
 
     let focus_changed = current_sel != target;
+    let needs_refocus = backend.needs_focus_refresh(target);
     if focus_changed {
         backend.post_state_update(core, current_sel, target);
     }
 
     if let Some(w) = target {
-        if focus_changed {
+        if focus_changed || needs_refocus {
             backend.focus_window(core, w);
         }
     } else if focus_changed {
