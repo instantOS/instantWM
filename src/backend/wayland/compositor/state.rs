@@ -149,6 +149,11 @@ pub struct WindowIdMarker {
 }
 
 impl WaylandState {
+    /// Get the currently focused window ID, if any.
+    pub fn focused_window(&self) -> Option<WindowId> {
+        self.focused_window
+    }
+
     const MIN_WL_DIM: i32 = 64;
     /// Create a new `WaylandState` and register all Wayland globals.
     pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
