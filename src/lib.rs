@@ -15,7 +15,7 @@ pub mod ipc;
 pub mod ipc_types;
 mod keyboard;
 mod keyboard_layout;
-mod layouts;
+pub mod layouts;
 #[macro_use]
 mod macros;
 mod monitor;
@@ -28,7 +28,7 @@ pub mod startup;
 mod systray;
 mod tags;
 mod toggles;
-mod types;
+pub mod types;
 mod util;
 mod wayland_systray;
 mod wm;

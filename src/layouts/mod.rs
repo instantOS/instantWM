@@ -36,6 +36,8 @@ pub mod algo;
 pub mod manager;
 pub mod query;
 
+use std::str::FromStr;
+
 use crate::contexts::WmCtx;
 use crate::types::Monitor;
 
@@ -43,7 +45,19 @@ use crate::types::Monitor;
 ///
 /// Each variant corresponds to a specific arrangement algorithm.
 /// Properties like `is_tiling()` and `symbol()` are implemented as methods.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    bincode::Decode,
+    bincode::Encode,
+    serde::Serialize,
+    serde::Deserialize,
+    clap::ValueEnum,
+)]
 pub enum LayoutKind {
     /// Classic master/stack tiling (`+`).
     #[default]
@@ -67,6 +81,10 @@ pub enum LayoutKind {
 }
 
 impl LayoutKind {
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::from_str(name).ok()
+    }
+
     pub fn symbol(self) -> &'static str {
         match self {
             Self::Tile => "+",
@@ -122,6 +140,25 @@ impl LayoutKind {
             Self::Bstack,
             Self::Horiz,
         ]
+    }
+}
+
+impl FromStr for LayoutKind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "tile" | "tiling" => Ok(Self::Tile),
+            "grid" => Ok(Self::Grid),
+            "float" | "floating" => Ok(Self::Floating),
+            "monocle" => Ok(Self::Monocle),
+            "vert" | "vertical" => Ok(Self::Vert),
+            "deck" => Ok(Self::Deck),
+            "overview" => Ok(Self::Overview),
+            "bstack" | "bottomstack" => Ok(Self::Bstack),
+            "horiz" | "horizontal" => Ok(Self::Horiz),
+            _ => Err(()),
+        }
     }
 }
 

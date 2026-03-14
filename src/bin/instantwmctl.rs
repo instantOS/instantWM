@@ -1,7 +1,8 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
-    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout,
-    ModeCommand, MonitorCommand, ScratchpadCommand, TagCommand, ToggleCommand, WindowCommand,
+    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout, LayoutKind,
+    ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, TagCommand, ToggleCommand,
+    WindowCommand,
 };
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -417,29 +418,24 @@ enum CommandKind {
     WarpFocus,
     /// Move the selected window to another monitor.
     ///
-    /// Direction:
-    ///   positive (e.g., 1): next monitor (right/down)
-    ///   negative (e.g., -1): previous monitor (left/up)
+    /// Direction: "next"/"prev" or "1"/"-1"
     TagMon {
-        /// Direction (1 for next, -1 for previous)
-        direction: Option<i32>,
+        /// Direction (e.g., "next", "prev", "1", "-1")
+        direction: Option<MonitorDirection>,
     },
     /// Move the selected window to another monitor and follow it.
     ///
-    /// Direction:
-    ///   positive (e.g., 1): next monitor (right/down)
-    ///   negative (e.g., -1): previous monitor (left/up)
+    /// Direction: "next"/"prev" or "1"/"-1"
     FollowMon {
-        /// Direction (1 for next, -1 for previous)
-        direction: Option<i32>,
+        /// Direction (e.g., "next", "prev", "1", "-1")
+        direction: Option<MonitorDirection>,
     },
     /// Set the layout type.
     ///
-    /// Layout indices: 0=Tile, 1=Grid, 2=Floating, 3=Monocle, 4=Vert, 5=Deck,
-    /// 6=Overview, 7=Bstack, 8=Horiz. Invalid indices default to Tile (0).
+    /// Layout names: tile, grid, floating, monocle, vert, deck, overview, bstack, horiz
     Layout {
-        /// Layout index (0-based, invalid values default to Tile)
-        number: Option<u32>,
+        /// Layout name (e.g., "tile", "grid", "monocle")
+        name: Option<LayoutKind>,
     },
     /// Enable or disable prefix mode for special keybindings.
     ///
@@ -588,9 +584,13 @@ fn main() {
             IpcCommand::Spawn(command.join(" "))
         }
         CommandKind::WarpFocus => IpcCommand::WarpFocus,
-        CommandKind::TagMon { direction } => IpcCommand::TagMon(direction.unwrap_or(1)),
-        CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction.unwrap_or(1)),
-        CommandKind::Layout { number } => IpcCommand::Layout(number.unwrap_or(0)),
+        CommandKind::TagMon { direction } => {
+            IpcCommand::TagMon(direction.unwrap_or(MonitorDirection::NEXT))
+        }
+        CommandKind::FollowMon { direction } => {
+            IpcCommand::FollowMon(direction.unwrap_or(MonitorDirection::NEXT))
+        }
+        CommandKind::Layout { name } => IpcCommand::Layout(name.unwrap_or(LayoutKind::Tile)),
         CommandKind::Prefix { value } => IpcCommand::Prefix(value),
         CommandKind::Border { width } => IpcCommand::Border(width),
         CommandKind::SpecialNext { value } => IpcCommand::SpecialNext(value),

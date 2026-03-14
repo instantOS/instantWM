@@ -1,6 +1,6 @@
 use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::IpcResponse;
-use crate::layouts::command_layout;
+use crate::layouts::{set_layout as layouts_set_layout, LayoutKind};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 use crate::toggles::set_border_width;
@@ -68,20 +68,18 @@ pub fn warp_focus(wm: &mut Wm) -> IpcResponse {
     IpcResponse::ok("")
 }
 
-pub fn tag_mon(wm: &mut Wm, dir: i32) -> IpcResponse {
-    let direction = MonitorDirection::from(dir);
+pub fn tag_mon(wm: &mut Wm, direction: MonitorDirection) -> IpcResponse {
     send_to_monitor(&mut wm.ctx(), direction);
     IpcResponse::ok("")
 }
 
-pub fn follow_mon(wm: &mut Wm, dir: i32) -> IpcResponse {
-    let direction = MonitorDirection::from(dir);
+pub fn follow_mon(wm: &mut Wm, direction: MonitorDirection) -> IpcResponse {
     move_to_monitor_and_follow(&mut wm.ctx(), direction);
     IpcResponse::ok("")
 }
 
-pub fn set_layout(wm: &mut Wm, val: u32) -> IpcResponse {
-    command_layout(&mut wm.ctx(), val);
+pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> IpcResponse {
+    layouts_set_layout(&mut wm.ctx(), layout);
     IpcResponse::ok("")
 }
 
@@ -107,7 +105,8 @@ pub fn set_special_next_cmd(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
 
 pub fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
     if !text.starts_with("instantwm-") {
-        crate::bar::status::CUSTOM_STATUS_RECEIVED.store(true, std::sync::atomic::Ordering::Relaxed);
+        crate::bar::status::CUSTOM_STATUS_RECEIVED
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     wm.g.status_text = text;

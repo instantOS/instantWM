@@ -3,8 +3,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 use std::time::{Duration, Instant};
 
-use smithay::wayland::seat::WaylandFocus;
 use smithay::utils::IsAlive;
+use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     backend::allocator::Format,
     backend::drm::DrmNode,
@@ -504,7 +504,7 @@ impl WaylandState {
 
             let mut current_mode = output.current_mode();
             let mut current_scale = output.current_scale();
-            let mut current_transform = output.current_transform();
+            let current_transform = output.current_transform();
             let mut current_location = self
                 .space
                 .output_geometry(&output)
@@ -551,7 +551,9 @@ impl WaylandState {
     }
 
     pub fn sync_space_from_globals(&mut self) {
-        let dead_windows: Vec<WindowId> = self.window_index.iter()
+        let dead_windows: Vec<WindowId> = self
+            .window_index
+            .iter()
             .filter_map(|(&id, w)| if !w.alive() { Some(id) } else { None })
             .collect();
 
@@ -1003,8 +1005,7 @@ impl WaylandState {
             }
         }
         if let Some((window, loc)) = self.space.element_under(point) {
-            if let Some(result) =
-                window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
+            if let Some(result) = window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
             {
                 return Some((result.0, result.1 + loc));
             }

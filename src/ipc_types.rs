@@ -1,3 +1,5 @@
+pub use crate::layouts::LayoutKind;
+pub use crate::types::MonitorDirection;
 use bincode::{Decode, Encode};
 
 /// Protocol version generated at compile time from crate version and git hash.
@@ -227,11 +229,11 @@ pub enum IpcCommand {
     /// Warp cursor to the currently focused window.
     WarpFocus,
     /// Move the selected window to another monitor.
-    TagMon(i32),
+    TagMon(MonitorDirection),
     /// Move the selected window to another monitor and follow it.
-    FollowMon(i32),
+    FollowMon(MonitorDirection),
     /// Set the layout type.
-    Layout(u32),
+    Layout(LayoutKind),
     /// Enable or disable prefix mode for special keybindings.
     Prefix(Option<u32>),
     /// Set border width for the selected window.

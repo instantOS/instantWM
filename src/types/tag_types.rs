@@ -4,6 +4,7 @@
 //! approach with semantic, type-safe alternatives that improve DX and prevent bugs.
 
 use std::ops::{BitAnd, BitOr, BitXor, Not};
+use std::str::FromStr;
 
 use crate::types::{core::SCRATCHPAD_MASK, MAX_TAGS};
 
@@ -289,7 +290,17 @@ impl From<TagMask> for TagSelection {
 }
 
 /// A newtype for monitor directions to prevent mixing with other i32 values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    bincode::Decode,
+    bincode::Encode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct MonitorDirection(pub i32);
 
 impl MonitorDirection {
@@ -322,6 +333,36 @@ impl MonitorDirection {
 impl Default for MonitorDirection {
     fn default() -> Self {
         Self::NEXT
+    }
+}
+
+impl FromStr for MonitorDirection {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "next" | "right" | "down" | "1" => Ok(Self::NEXT),
+            "prev" | "previous" | "left" | "up" | "-1" => Ok(Self::PREV),
+            _ => Err(()),
+        }
+    }
+}
+
+impl clap::ValueEnum for MonitorDirection {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::NEXT, Self::PREV]
+    }
+
+    fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
+        match self.0 {
+            1 => Some(clap::builder::PossibleValue::new("next")),
+            -1 => Some(clap::builder::PossibleValue::new("prev")),
+            _ => None,
+        }
+    }
+
+    fn from_str(s: &str, _ignore_case: bool) -> Result<Self, String> {
+        FromStr::from_str(s).map_err(|_| format!("Invalid direction: {}", s))
     }
 }
 
