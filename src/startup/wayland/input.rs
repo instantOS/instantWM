@@ -18,6 +18,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::desktop::layer_map_for_output;
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
+use smithay::utils::IsAlive;
 use smithay::input::pointer::PointerHandle;
 use smithay::output::{Mode as OutputMode, Output};
 use smithay::utils::{Point, Transform, SERIAL_COUNTER};
@@ -149,13 +150,24 @@ pub fn handle_keyboard<B: InputBackend>(
             // Suppress WM shortcuts when an overlay window (dmenu, popup,
             // override-redirect menu, etc.) has keyboard focus so that key
             // events reach the overlay instead of triggering desktop keybinds.
-            match w.user_data().get::<WindowIdMarker>() {
-                Some(m) => !m.is_overlay,
-                // No marker → unmanaged X11 surface, treat as overlay.
-                None => !w.x11_surface().is_some(),
+            //
+            // Also suppress shortcuts when the focused window is no longer
+            // alive — the surface is dying and we should not intercept its
+            // remaining key events.
+            if !w.alive() {
+                true
+            } else {
+                match w.user_data().get::<WindowIdMarker>() {
+                    Some(m) => !m.is_overlay,
+                    // No marker → unmanaged X11 surface, treat as overlay.
+                    None => !w.x11_surface().is_some(),
+                }
             }
         }
-        _ => false,
+        // WlSurface (e.g. layer shell surfaces like the bar) and Popups:
+        // allow WM shortcuts so compositor keybindings keep working.
+        Some(KeyboardFocusTarget::WlSurface(_)) => true,
+        Some(KeyboardFocusTarget::Popup(_)) => false,
     };
     let key_code = event.key_code();
     let tracked_key_code: u32 = key_code.into();
