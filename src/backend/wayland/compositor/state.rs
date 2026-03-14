@@ -31,6 +31,7 @@ use smithay::{
             xdg::{decoration::XdgDecorationState, ToplevelSurface, XdgShellState},
         },
         shm::ShmState,
+        xdg_activation::XdgActivationState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
         xwayland_shell::XWaylandShellState,
     },
@@ -92,6 +93,7 @@ pub struct WaylandState {
     pub shm_state: ShmState,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    pub xdg_activation_state: XdgActivationState,
     pub seat_state: SeatState<WaylandState>,
     pub output_manager_state: OutputManagerState,
     pub data_device_state: DataDeviceState,
@@ -177,6 +179,7 @@ impl WaylandState {
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
@@ -200,6 +203,7 @@ impl WaylandState {
             shm_state,
             xdg_shell_state,
             xdg_decoration_state,
+            xdg_activation_state,
             seat_state,
             output_manager_state,
             data_device_state,

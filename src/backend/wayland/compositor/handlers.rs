@@ -792,6 +792,45 @@ impl XdgDecorationHandler for WaylandState {
     }
 }
 
+impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
+    fn activation_state(&mut self) -> &mut smithay::wayland::xdg_activation::XdgActivationState {
+        &mut self.xdg_activation_state
+    }
+
+    fn request_activation(
+        &mut self,
+        _token: smithay::wayland::xdg_activation::XdgActivationToken,
+        token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        // Find the window associated with this surface and focus it
+        if let Some(win) = self.window_id_for_surface(&surface) {
+            // Update the WM's selected window to match
+            let monitor_id = self
+                .globals()
+                .and_then(|g| g.clients.get(&win).map(|c| c.monitor_id));
+            if let Some(g) = self.globals_mut() {
+                if let Some(mon_id) = monitor_id {
+                    if let Some(mon) = g.monitor_mut(mon_id) {
+                        mon.sel = Some(win);
+                    }
+                }
+            }
+            // Focus the window
+            self.set_focus(win);
+            log::debug!(
+                "xdg_activation: activated window (app_id: {:?})",
+                token_data.app_id
+            );
+        } else {
+            log::warn!(
+                "xdg_activation: could not find window for surface (app_id: {:?})",
+                token_data.app_id
+            );
+        }
+    }
+}
+
 impl XWaylandShellHandler for WaylandState {
     fn xwayland_shell_state(
         &mut self,
