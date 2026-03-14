@@ -304,6 +304,7 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
         key!(0, XK_E      => |ctx| spawn(ctx, defaults::EDITOR)),
         key!(0, XK_N      => |ctx| spawn(ctx, defaults::FILEMANAGER)),
         key!(0, XK_SPACE  => |ctx| spawn(ctx, defaults::APPMENU)),
+        key!(0, XK_Y      => |ctx| spawn(ctx, menu::SMART)),
         key!(0, XK_F      => |ctx| spawn(ctx, defaults::BROWSER)),
         key!(0, XK_TAB    => |ctx| spawn(ctx, ROFI_WINDOW_SWITCH)),
         key!(0, XK_PLUS   => |ctx| spawn(ctx, media::up_vol())),
