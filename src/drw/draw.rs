@@ -20,7 +20,6 @@ use std::ptr;
 
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
-
 use std::cmp::min;
 
 use super::color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG};

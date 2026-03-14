@@ -460,7 +460,9 @@ fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
     }
 
     // No external watcher — start our embedded one.
-    log::info!("wayland systray: no external watcher found, starting embedded StatusNotifierWatcher");
+    log::info!(
+        "wayland systray: no external watcher found, starting embedded StatusNotifierWatcher"
+    );
 
     let state = Arc::new(Mutex::new(WatcherState::default()));
     let service = StatusNotifierWatcherService {
@@ -482,7 +484,9 @@ fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
         Err(e) => {
             log::warn!("embedded watcher: failed to acquire bus name: {e}");
             // Someone raced us — fall back to external.
-            let _ = conn.object_server().remove::<StatusNotifierWatcherService, _>(WATCHER_PATH);
+            let _ = conn
+                .object_server()
+                .remove::<StatusNotifierWatcherService, _>(WATCHER_PATH);
             return WatcherMode::External;
         }
     }
@@ -517,14 +521,22 @@ fn reconcile_items_embedded(
     let registered = state.lock().unwrap().items.clone();
 
     // Prune dead services (app exited without unregistering).
-    let dbus_proxy = Proxy::new(conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus");
+    let dbus_proxy = Proxy::new(
+        conn,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+    );
     let mut alive = HashSet::new();
     for id in &registered {
         if let Some((service, _path)) = parse_sni_id(id) {
             let is_alive = dbus_proxy
                 .as_ref()
                 .ok()
-                .and_then(|p| p.call::<_, _, bool>("NameHasOwner", &(service.as_str(),)).ok())
+                .and_then(|p| {
+                    p.call::<_, _, bool>("NameHasOwner", &(service.as_str(),))
+                        .ok()
+                })
                 .unwrap_or(false);
             if is_alive {
                 alive.insert(id.clone());

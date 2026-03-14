@@ -18,9 +18,9 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::desktop::layer_map_for_output;
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
-use smithay::utils::IsAlive;
 use smithay::input::pointer::PointerHandle;
 use smithay::output::{Mode as OutputMode, Output};
+use smithay::utils::IsAlive;
 use smithay::utils::{Point, Transform, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{

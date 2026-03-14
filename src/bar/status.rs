@@ -10,7 +10,8 @@ use std::sync::{Mutex, OnceLock};
 pub(crate) const TEXT_PADDING: i32 = 6;
 const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
 
-pub static CUSTOM_STATUS_RECEIVED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static CUSTOM_STATUS_RECEIVED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 pub(crate) enum StatusItem {
@@ -730,9 +731,9 @@ fn default_status_text() -> String {
 /// (version + current time) via IPC. Used when no `status_command` is configured.
 pub(crate) fn spawn_default_status() {
     std::thread::spawn(move || {
+        use std::sync::atomic::Ordering;
         use std::thread;
         use std::time::Duration;
-        use std::sync::atomic::Ordering;
 
         thread::sleep(Duration::from_millis(500));
 

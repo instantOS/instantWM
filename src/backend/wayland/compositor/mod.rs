@@ -28,8 +28,10 @@
 
 mod focus;
 mod handlers;
+pub mod output;
 pub mod screencopy;
 mod state;
+pub mod window;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
