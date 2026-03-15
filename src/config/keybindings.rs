@@ -244,6 +244,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | SHIFT,     XK_SPACE => |ctx| {
             space_toggle(ctx)
         }),
+        // Keyboard layout cycling: Super+Alt+Space (same as instantwmctl keyboard next)
+        key!(MODKEY | MOD1, XK_SPACE => |ctx| {
+            crate::keyboard_layout::cycle_keyboard_layout(ctx, true);
+        }),
         key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| alt_tab_free(ctx, ToggleAction::Toggle)),
         key!(MODKEY | CONTROL,     XK_R     => |ctx| ctx.request_bar_update(None)),
         key!(MODKEY | CONTROL,  XK_H => |ctx| {

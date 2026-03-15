@@ -6,12 +6,12 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> IpcResponse
     let mut ctx = wm.ctx();
     match cmd {
         KeyboardCommand::Next => {
-            keyboard_layout::cycle_keyboard_layout(&mut ctx, true);
-            IpcResponse::ok("")
+            let status = keyboard_layout::cycle_keyboard_layout(&mut ctx, true);
+            IpcResponse::ok(status)
         }
         KeyboardCommand::Prev => {
-            keyboard_layout::cycle_keyboard_layout(&mut ctx, false);
-            IpcResponse::ok("")
+            let status = keyboard_layout::cycle_keyboard_layout(&mut ctx, false);
+            IpcResponse::ok(status)
         }
         KeyboardCommand::Status => {
             let status = keyboard_layout::keyboard_layout_status(&ctx);

@@ -483,8 +483,8 @@ define_actions!(
     "begin_keyboard_move" => "move window with keyboard" => |ctx: &mut WmCtx, _args: &[String]| begin_keyboard_move(ctx),
 
     // Keyboard layout switching
-    "next_keyboard_layout" => "cycle to next keyboard layout" => |ctx: &mut WmCtx, _args: &[String]| crate::keyboard_layout::cycle_keyboard_layout(ctx, true),
-    "prev_keyboard_layout" => "cycle to previous keyboard layout" => |ctx: &mut WmCtx, _args: &[String]| crate::keyboard_layout::cycle_keyboard_layout(ctx, false),
+    "next_keyboard_layout" => "cycle to next keyboard layout" => |ctx: &mut WmCtx, _args: &[String]| { crate::keyboard_layout::cycle_keyboard_layout(ctx, true); },
+    "prev_keyboard_layout" => "cycle to previous keyboard layout" => |ctx: &mut WmCtx, _args: &[String]| { crate::keyboard_layout::cycle_keyboard_layout(ctx, false); },
     "keyboard_layout" ("us(intl)") => "set keyboard layout" => |ctx: &mut WmCtx, args: &[String]| {
         if let Some(name) = args.get(0) {
             crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name);

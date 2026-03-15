@@ -94,10 +94,11 @@ pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
 }
 
 /// Cycle to the next keyboard layout.
-pub fn cycle_keyboard_layout(ctx: &mut WmCtx, forward: bool) {
+/// Returns the status string of the new layout, or an empty string if no layouts are configured.
+pub fn cycle_keyboard_layout(ctx: &mut WmCtx, forward: bool) -> String {
     let state = &ctx.g().keyboard_layout;
     if state.layouts.is_empty() {
-        return;
+        return String::new();
     }
     let len = state.layouts.len();
     let current = state.current;
@@ -109,6 +110,7 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, forward: bool) {
         current - 1
     };
     set_keyboard_layout(ctx, next);
+    keyboard_layout_status(ctx)
 }
 
 /// Get the current keyboard layout status as a formatted string.
