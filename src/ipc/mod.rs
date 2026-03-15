@@ -51,6 +51,10 @@ impl IpcServer {
     }
 
     fn handle_client(&self, mut stream: UnixStream, wm: &mut Wm) {
+        if let Err(e) = stream.set_nonblocking(false) {
+            log::warn!("Failed to set IPC stream to blocking mode: {}", e);
+            return;
+        }
         let mut buffer = Vec::new();
         let mut reader = BufReader::new(&stream);
 
