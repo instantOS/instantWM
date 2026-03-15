@@ -378,10 +378,6 @@ pub struct Globals {
 
     /// Current active mode (sway-like modes).
     pub current_mode: String,
-
-    /// Keycodes whose press was intercepted by the WM; the matching release
-    /// should also be intercepted so clients don't see an orphaned release.
-    pub intercepted_keycodes: std::collections::HashSet<u32>,
 }
 
 impl Globals {
@@ -565,7 +561,6 @@ impl Default for Globals {
             layout_dirty: true,
             space_dirty: true,
             current_mode: "default".to_string(),
-            intercepted_keycodes: std::collections::HashSet::new(),
         }
     }
 }

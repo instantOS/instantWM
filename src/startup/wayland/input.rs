@@ -170,7 +170,6 @@ pub fn handle_keyboard<B: InputBackend>(
         Some(KeyboardFocusTarget::Popup(_)) => false,
     };
     let key_code = event.key_code();
-    let tracked_key_code: u32 = key_code.into();
     let key_state = event.state();
     keyboard_handle.input(
         state,
@@ -180,9 +179,6 @@ pub fn handle_keyboard<B: InputBackend>(
         event.time_msec(),
         |_data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
-                if wm.g.intercepted_keycodes.remove(&tracked_key_code) {
-                    return FilterResult::Intercept(());
-                }
                 return FilterResult::Forward;
             }
             if wm_shortcuts_allowed {
@@ -197,7 +193,6 @@ pub fn handle_keyboard<B: InputBackend>(
                     keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
-                    wm.g.intercepted_keycodes.insert(tracked_key_code);
                     return FilterResult::Intercept(());
                 }
             }
