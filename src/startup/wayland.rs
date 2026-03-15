@@ -160,8 +160,9 @@ pub fn run() -> ! {
                 }
             }
             if let Some(server) = ipc_server.as_mut() {
-                let handled = server.process_pending(&mut wm);
-                if handled {
+                let handled_ipc_command = server.process_pending(&mut wm);
+                if handled_ipc_command {
+                    // Force a layout arrangement and redraw if an IPC command modified state
                     wm.g.layout_dirty = true;
                 }
             }
