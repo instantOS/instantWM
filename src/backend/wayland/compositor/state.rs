@@ -102,6 +102,8 @@ pub struct WaylandState {
     pub wlr_layer_shell_state: WlrLayerShellState,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
+    /// DRM node used for rendering, needed to tag imported dmabufs.
+    pub(super) render_node: Option<DrmNode>,
     renderer: Option<NonNull<GlesRenderer>>,
 
     // -- Input --
@@ -212,6 +214,7 @@ impl WaylandState {
             wlr_layer_shell_state,
             dmabuf_state,
             dmabuf_global: None,
+            render_node: None,
             renderer: None,
             seat,
             keyboard,
@@ -279,7 +282,10 @@ impl WaylandState {
                 })
         });
 
-        self.dmabuf_global = Some(if let Some(node) = render_node {
+        // Store the render node so we can tag imported dmabufs with it.
+        self.render_node = render_node;
+
+        self.dmabuf_global = Some(if let Some(node) = self.render_node {
             log::info!("dmabuf: advertising zwp_linux_dmabuf_feedback_v1 v4 on node {node:?}");
             let feedback = DmabufFeedbackBuilder::new(node.dev_id(), formats)
                 .build()

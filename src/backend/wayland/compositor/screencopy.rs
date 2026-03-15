@@ -229,14 +229,10 @@ fn init_frame(
         size.w as u32 * 4,
     );
 
-    // v3+: additionally advertise linux-dmabuf format and signal that all
-    // buffer types have been enumerated.
+    // v3+: signal that all buffer types have been enumerated.
+    // Note: we intentionally do NOT advertise linux_dmabuf support here,
+    // as the copy path only validates SHM buffers (see request handler).
     if manager.version() >= 3 {
-        frame.linux_dmabuf(
-            smithay::backend::allocator::Fourcc::Xrgb8888 as u32,
-            size.w as u32,
-            size.h as u32,
-        );
         frame.buffer_done();
     }
 }

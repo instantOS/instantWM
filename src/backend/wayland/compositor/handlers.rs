@@ -155,9 +155,14 @@ impl DmabufHandler for WaylandState {
     fn dmabuf_imported(
         &mut self,
         _global: &DmabufGlobal,
-        dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
+        mut dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
         notifier: ImportNotifier,
     ) {
+        // Tag the dmabuf with the render node so clients know which device to use.
+        if let Some(node) = self.render_node {
+            dmabuf.set_node(node);
+        }
+
         let imported = self
             .renderer_mut()
             .and_then(|renderer| renderer.import_dmabuf(&dmabuf, None).ok())

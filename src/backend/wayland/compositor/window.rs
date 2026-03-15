@@ -487,8 +487,16 @@ impl WaylandState {
     }
 
     /// Get the title of a window.
+    ///
+    /// For XWayland (X11) surfaces the title comes from the X11 property;
+    /// for native Wayland toplevels it comes from `xdg_toplevel::set_title`.
     pub fn window_title(&self, window: WindowId) -> Option<String> {
         let element = self.window_index.get(&window)?;
+
+        if let Some(x11) = element.x11_surface() {
+            return Some(x11.title());
+        }
+
         let wl_surface = element.wl_surface()?;
         smithay::wayland::compositor::with_states(&wl_surface, |states| {
             states
