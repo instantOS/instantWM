@@ -48,12 +48,10 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let (mon_rect, clients) = match ctx.g().monitor(monitor_id) {
-        Some(m) => (m.monitor_rect, m.clients.clone()),
+    let (mon_rect, clients, selected_tags) = match ctx.g().monitor(monitor_id) {
+        Some(m) => (m.monitor_rect, m.clients.clone(), m.selected_tags()),
         None => return,
     };
-
-    let selected_tags = ctx.g().monitor(monitor_id).unwrap().selected_tags();
 
     let fullscreen_windows: Vec<_> = clients
         .into_iter()
@@ -218,9 +216,11 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         }
     }
 
-    // Final z-order: tiled clients, then the bar, then floating clients.
+    // Final z-order: tiled clients, then the bar, then floating clients,
+    // and finally fullscreen clients.
     // This keeps every floating window above tiled content while still
-    // keeping the selected window topmost within its own class.
+    // keeping the selected window topmost within its own class, and guarantees
+    // fullscreen windows sit above everything else.
     let mut stack = tiled_stack;
     stack.push(bar_win);
     stack.extend(floating_stack);
