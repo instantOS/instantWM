@@ -461,6 +461,31 @@ impl WaylandState {
         None
     }
 
+    /// Find the topmost window containing the given logical point within its core geometry.
+    /// Used for WM hit-testing to prevent small surfaces from creating focus holes.
+    pub fn logical_window_under_pointer(&self, point: Point<f64, Logical>) -> Option<WindowId> {
+        let root_x = point.x.round() as i32;
+        let root_y = point.y.round() as i32;
+        let globals = self.globals()?;
+
+        for window in self.space.elements().rev() {
+            if let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) {
+                if let Some(c) = globals.clients.get(&win_id) {
+                    let bw = c.border_width;
+                    // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
+                    if root_x >= c.geo.x
+                        && root_x < c.geo.x + c.geo.w + 2 * bw
+                        && root_y >= c.geo.y
+                        && root_y < c.geo.y + c.geo.h + 2 * bw
+                    {
+                        return Some(win_id);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Get the title of a window.
     pub fn window_title(&self, window: WindowId) -> Option<String> {
         let element = self.window_index.get(&window)?;

@@ -329,20 +329,35 @@ fn dispatch_pointer_motion(
         (in_bar, in_guard)
     })
     .unwrap_or((false, false));
-    let pointer_focus = if in_bar_band || in_bar_guard_band {
+    let mut pointer_focus = if in_bar_band || in_bar_guard_band {
         state.layer_surface_under_pointer(*pointer_location)
     } else {
         state
             .layer_surface_under_pointer(*pointer_location)
             .or_else(|| state.surface_under_pointer(*pointer_location))
     };
+
     let hovered_win = if in_bar_band || in_bar_guard_band {
         None
+    } else if let Some((surface, _)) = state.layer_surface_under_pointer(*pointer_location) {
+        find_hovered_window_for_surface(wm, &surface)
     } else {
-        pointer_focus
-            .as_ref()
-            .and_then(|(surface, _)| find_hovered_window_for_surface(wm, surface))
+        state.logical_window_under_pointer(*pointer_location)
     };
+
+    // If the logical window (the one the WM thinks the pointer is in) differs from the surface
+    // Smithay found (because the Wayland surface is smaller than its WM frame), clear pointer
+    // focus so events don't fall through to the background window.
+    if !in_bar_band && !in_bar_guard_band {
+        if let Some(logical) = hovered_win {
+            if let Some((surf, _)) = &pointer_focus {
+                if find_hovered_window_for_surface(wm, surf) != Some(logical) {
+                    pointer_focus = None;
+                }
+            }
+        }
+    }
+
 
     if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
         // During an active resize drag, still forward motion to Smithay so
@@ -672,10 +687,10 @@ fn find_hovered_window(
     state: &WaylandState,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) -> Option<WindowId> {
-    let (surface, _) = state
-        .layer_surface_under_pointer(pointer_location)
-        .or_else(|| state.surface_under_pointer(pointer_location))?;
-    find_hovered_window_for_surface(wm, &surface)
+    if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
+        return find_hovered_window_for_surface(wm, &surface);
+    }
+    state.logical_window_under_pointer(pointer_location)
 }
 
 fn find_hovered_window_for_surface(
