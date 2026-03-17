@@ -347,17 +347,18 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
 }
 
 pub fn update_geom(ctx: &mut WmCtx) -> bool {
+    // Try the backend's get_outputs first (uses XRandR on X11, native on Wayland)
+    let outputs = ctx.backend().get_outputs();
+    if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
+        return update_from_outputs(ctx, outputs);
+    }
+
+    // Fall back to Xinerama for X11
     if let Some(result) = update_from_xinerama(ctx) {
         return result;
     }
 
-    if ctx.is_wayland() {
-        let outputs = ctx.backend().get_outputs();
-        if !outputs.is_empty() {
-            return update_from_outputs(ctx, outputs);
-        }
-    }
-
+    // Final fallback to single monitor
     let sw = ctx.g_mut().cfg.screen_width.max(1);
     let sh = ctx.g_mut().cfg.screen_height.max(1);
 

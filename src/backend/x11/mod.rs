@@ -18,6 +18,7 @@ pub mod client;
 pub mod events;
 pub mod lifecycle;
 pub mod mouse;
+pub mod randr;
 
 pub use client::update_size_hints_x11;
 
@@ -156,20 +157,28 @@ impl BackendOps for X11BackendRef<'_> {
         let _ = self.conn.flush();
     }
 
-    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {
-        // TODO: X11 XRandR support
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
+        let root = self.conn.setup().roots[self.screen_num].root;
+        randr::set_monitor_config(self.conn, root, name, config);
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
-        let screen = &self.conn.setup().roots[self.screen_num];
-        vec![crate::backend::BackendOutputInfo {
-            name: "X11".to_owned(),
-            rect: crate::types::Rect {
-                x: 0,
-                y: 0,
-                w: screen.width_in_pixels as i32,
-                h: screen.height_in_pixels as i32,
-            },
-        }]
+        let root = self.conn.setup().roots[self.screen_num].root;
+        let outputs = randr::get_outputs(self.conn, root);
+        if outputs.is_empty() {
+            // Fall back to screen info if no outputs found
+            let screen = &self.conn.setup().roots[self.screen_num];
+            vec![crate::backend::BackendOutputInfo {
+                name: "X11".to_owned(),
+                rect: crate::types::Rect {
+                    x: 0,
+                    y: 0,
+                    w: screen.width_in_pixels as i32,
+                    h: screen.height_in_pixels as i32,
+                },
+            }]
+        } else {
+            outputs
+        }
     }
 }
