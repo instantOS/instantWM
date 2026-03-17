@@ -296,22 +296,22 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 ///
 /// Returns `true` if the function entered its loop (caller should skip normal
 /// focus/event handling), `false` if the cursor was not in a resize border.
-pub fn hover_resize_mouse(ctx: &mut WmCtx) -> bool {
-    require_x11_ret!(ctx, false);
-    let Some((x, y)) = get_root_ptr(ctx) else {
+pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
+    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+    let Some((x, y)) = get_root_ptr(&wm_ctx) else {
         return false;
     };
-    let in_border = is_in_resize_border(ctx, x, y);
+    let in_border = is_in_resize_border(&wm_ctx, x, y);
     if !in_border {
         return false;
     }
 
-    crate::mouse::handle_floating_resize_hover(ctx, x, y, false);
+    crate::mouse::handle_floating_resize_hover(&mut wm_ctx, x, y, false);
 
     let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
-        clear_hover_resize_offer(ctx);
+        clear_hover_resize_offer(&mut wm_ctx);
     }
 
     true

@@ -9,6 +9,7 @@ use crate::types::{
     AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
 };
 use crate::wm::Wm;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
 

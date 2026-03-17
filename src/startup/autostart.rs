@@ -1,24 +1,35 @@
+use std::env;
+use std::process::Command;
+
 pub fn run_autostart() {
-    if std::env::var("INSTANTWM_AUTOSTART").ok().as_deref() == Some("0") {
+    if env::var("INSTANTWM_AUTOSTART").ok().as_deref() == Some("0") {
         return;
     }
-    unsafe {
-        match libc::fork() {
-            -1 => {
-                eprintln!("instantwm: fork failed for autostart");
-            }
-            0 => {
-                libc::setsid();
 
-                let _ = libc::system(
-                    b"command -v instantautostart || { sleep 4 && notify-send 'instantutils missing, please install instantutils!!!'; } &\0"
-                        .as_ptr() as *const i8,
-                );
-                let _ = libc::system(b"instantautostart &\0".as_ptr() as *const i8);
+    // Check if ins exists, warn if not
+    let check = Command::new("command")
+        .arg("-v")
+        .arg("ins")
+        .output();
 
-                libc::_exit(0);
-            }
-            _ => {}
+    if let Ok(output) = check {
+        if !output.status.success() {
+            eprintln!("instantwm: 'ins' command not found, please install instantutils");
+            return;
+        }
+    } else {
+        eprintln!("instantwm: failed to check for 'ins' command");
+        return;
+    }
+
+    // Run ins autostart in the background
+    match Command::new("ins")
+        .arg("autostart")
+        .spawn()
+    {
+        Ok(_) => {}
+        Err(e) => {
+            eprintln!("instantwm: failed to run ins autostart: {}", e);
         }
     }
 }

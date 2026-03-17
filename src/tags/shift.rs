@@ -36,7 +36,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             Direction::Up => OverlayMode::Top,
             Direction::Down => OverlayMode::Bottom,
         };
-        crate::overlay::set_overlay_mode(ctx, mode);
+        crate::floating::set_overlay_mode(ctx, mode);
         return;
     }
 

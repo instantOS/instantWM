@@ -87,7 +87,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     arrange(ctx, Some(monitor_id));
 }
 
-pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
+pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     let Some(found) = scratchpad_find(ctx.g(), name) else {
         return;
     };
@@ -129,7 +129,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     }
 }
 
-pub(crate) fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
+pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     let Some(found) = scratchpad_find(ctx.g(), name) else {
         return;
     };

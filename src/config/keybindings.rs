@@ -4,7 +4,10 @@ use std::rc::Rc;
 
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
-use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
+use crate::floating::{
+    center_window, distribute_clients, key_resize, scratchpad_make, scratchpad_toggle,
+    toggle_maximized,
+};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
 use crate::layouts::{
@@ -13,9 +16,8 @@ use crate::layouts::{
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::warp::warp_to_focus;
 use crate::mouse::{begin_keyboard_move, draw_window, moveresize, resize_mouse_from_cursor};
-use crate::overlay::{create_overlay, set_overlay};
+use crate::floating::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};
-use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
     follow_view, last_view, move_client, quit, send_to_monitor, shift_tag, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,

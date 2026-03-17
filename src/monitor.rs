@@ -432,7 +432,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     }
     ctx.g_mut().monitors.set_sel_idx(target_mon);
 
-    crate::scratchpad::scratchpad_show_name(ctx, &sp_name);
+    crate::floating::scratchpad_show_name(ctx, &sp_name);
 
     if let Some(selected_window) = ctx.g_mut().monitors.get(target_mon).and_then(|m| m.sel) {
         unfocus_win(ctx, selected_window, false);

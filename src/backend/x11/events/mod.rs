@@ -4,6 +4,7 @@ use crate::backend::x11::lifecycle::{is_window_iconic, manage};
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 // ---------------------------------------------------------------------------

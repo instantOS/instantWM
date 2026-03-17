@@ -1,8 +1,8 @@
-use crate::ipc_types::{IpcResponse, ScratchpadCommand};
-use crate::scratchpad::{
+use crate::floating::scratchpad::{
     scratchpad_hide_name, scratchpad_list, scratchpad_make, scratchpad_show_name,
     scratchpad_status, scratchpad_toggle, scratchpad_unmake,
 };
+use crate::ipc_types::{IpcResponse, ScratchpadCommand};
 use crate::wm::Wm;
 
 pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> IpcResponse {

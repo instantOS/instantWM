@@ -182,14 +182,15 @@ use crate::contexts::WmCtx;
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
+use crate::floating::{
+    create_overlay, scratchpad_make, scratchpad_toggle, set_overlay,
+};
 use crate::layouts::{
     cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
-use crate::overlay::{create_overlay, set_overlay};
 use crate::push::{push, Direction as PushDirection};
-use crate::scratchpad::{scratchpad_make, scratchpad_toggle};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
     toggle_overview, win_view,

@@ -8,12 +8,11 @@ use crate::config::commands_common::{defaults, media, menu, ROFI_WINDOW_SWITCH};
 use crate::focus::focus_stack;
 use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 
-use crate::floating::toggle_floating;
+use crate::floating::{create_overlay, hide_overlay, set_overlay, show_overlay, toggle_floating};
 use crate::mouse::{
     drag_tag, draw_window, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
     window_title_mouse_handler,
 };
-use crate::overlay::{create_overlay, hide_overlay, set_overlay, show_overlay};
 use crate::push::{push, Direction as PushDirection};
 use crate::tags::view::toggle_view_tag;
 use crate::tags::{follow_tag_ctx, set_client_tag_ctx, shift_view, toggle_tag_ctx};

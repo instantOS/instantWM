@@ -1,6 +1,8 @@
 use crate::wm::Wm;
+use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
+use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
 

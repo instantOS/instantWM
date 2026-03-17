@@ -1,6 +1,8 @@
+use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::ipc::IpcServer;
 use crate::wm::Wm;
+use x11rb::connection::Connection;
 
 use super::handlers;
 
