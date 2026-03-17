@@ -90,15 +90,8 @@ fn get_screen_resources_current(
 }
 
 /// Get outputs using GetScreenResources (fallback).
-fn get_screen_resources(
-    conn: &RustConnection,
-    root: Window,
-) -> Option<Vec<BackendOutputInfo>> {
-    let resources = conn
-        .randr_get_screen_resources(root)
-        .ok()?
-        .reply()
-        .ok()?;
+fn get_screen_resources(conn: &RustConnection, root: Window) -> Option<Vec<BackendOutputInfo>> {
+    let resources = conn.randr_get_screen_resources(root).ok()?.reply().ok()?;
 
     let mut outputs = Vec::new();
     let config_timestamp = resources.config_timestamp;
@@ -158,12 +151,7 @@ fn get_screen_resources(
 }
 
 /// Set monitor configuration using XRandR.
-pub fn set_monitor_config(
-    conn: &RustConnection,
-    root: Window,
-    name: &str,
-    config: &MonitorConfig,
-) {
+pub fn set_monitor_config(conn: &RustConnection, root: Window, name: &str, config: &MonitorConfig) {
     // Try to use current resources first
     if set_monitor_config_current(conn, root, name, config) {
         return;

@@ -5,7 +5,11 @@
 //! - [`constants`]  — shared numeric constants (sizes, thresholds, keycodes)
 //! - [`warp`]       — cursor-warping utilities (`warp_into`, `warp_to_focus`, `reset_cursor`, …)
 //! - [`grab`]       — X11 pointer-grab helpers (`grab_buttons`, modal grab/ungrab)
-//! - [`drag`]       — drag loops: move window, drag tag bar, title-bar click/drag, gestures
+//! - [`drag`]       — drag operations aggregator, re-exports from sub-modules:
+//!   - [`drag::move_drop`] — move/drop logic, bar hover, edge snap
+//!   - [`drag::tag`] — tag bar drag operations
+//!   - [`drag::title`] — title bar click/drag
+//!   - [`drag::gesture`] — root-window gestures
 //! - [`resize`]     — resize loops: corner resize, aspect resize, hover-resize
 //! - [`slop`]       — slop-based `draw_window`, geometry validation, `apply_window_resize`
 //! - [`monitor`]    — monitor-crossing detection after a drag/resize

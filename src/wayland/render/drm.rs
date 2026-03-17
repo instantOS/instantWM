@@ -74,12 +74,18 @@ pub mod cursor {
 
     impl CursorManager {
         pub fn new(renderer: &mut GlesRenderer, theme: &str, size: u32) -> Self {
-            let default = load_cursor_names(renderer, theme, size, &["left_ptr", "default", "arrow"])
-                .unwrap_or_else(|| synthesise_fallback_cursor(renderer));
+            let default =
+                load_cursor_names(renderer, theme, size, &["left_ptr", "default", "arrow"])
+                    .unwrap_or_else(|| synthesise_fallback_cursor(renderer));
 
             Self {
                 default,
-                move_cursor: load_cursor_names(renderer, theme, size, &["grabbing", "fleur", "move"]),
+                move_cursor: load_cursor_names(
+                    renderer,
+                    theme,
+                    size,
+                    &["grabbing", "fleur", "move"],
+                ),
                 resize_nw: load_cursor_names(
                     renderer,
                     theme,
@@ -223,7 +229,10 @@ pub mod cursor {
         })
     }
 
-    fn import_image(renderer: &mut GlesRenderer, image: &Image) -> Option<TextureBuffer<GlesTexture>> {
+    fn import_image(
+        renderer: &mut GlesRenderer,
+        image: &Image,
+    ) -> Option<TextureBuffer<GlesTexture>> {
         TextureBuffer::from_memory(
             renderer,
             &image.pixels_rgba,
@@ -331,7 +340,10 @@ pub mod state {
             Self {
                 session_active: true,
                 render_flags: HashMap::new(),
-                pointer_location: Point::from(((total_width / 2) as f64, (total_height / 2) as f64)),
+                pointer_location: Point::from((
+                    (total_width / 2) as f64,
+                    (total_height / 2) as f64,
+                )),
                 total_width,
                 total_height,
                 completed_crtcs: Vec::new(),

@@ -143,10 +143,7 @@ fn build_occluders(windows: &[WindowBorderInfo]) -> Vec<Rect> {
 }
 
 /// Renders border elements for all visible windows.
-pub fn render_border_elements(
-    g: &Globals,
-    state: &WaylandState,
-) -> Vec<SolidColorRenderElement> {
+pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidColorRenderElement> {
     let windows = collect_window_info(g, state);
     let selected_win = g.selected_win();
     let colors = &g.cfg.bordercolors;
@@ -164,7 +161,8 @@ pub fn render_border_elements(
         let bw = window.border_width;
 
         // Generate the four border sides
-        let border_parts = generate_border_rectangles(window.geo.x, window.geo.y, outer_w, outer_h, bw);
+        let border_parts =
+            generate_border_rectangles(window.geo.x, window.geo.y, outer_w, outer_h, bw);
         if border_parts.is_empty() {
             continue;
         }
