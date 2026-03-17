@@ -30,5 +30,6 @@ mod tags;
 mod toggles;
 pub mod types;
 mod util;
+mod wayland;
 mod wayland_systray;
 mod wm;
