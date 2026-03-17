@@ -34,6 +34,7 @@ use crate::mouse::{
 use crate::types::*;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 
 use self::bar::{
     dispatch_wayland_bar_click, dispatch_wayland_bar_scroll, update_wayland_bar_hit_state,
@@ -320,8 +321,79 @@ fn dispatch_pointer_motion(
     let pointer_location = state.pointer_location;
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
+
+    // Get active drag window once - used in multiple phases
     let active_drag_window = wayland_active_drag_window(wm);
-    let (in_bar_band, in_bar_guard_band) = crate::types::find_monitor_by_rect(
+
+    // Phase 1: Compute bar/guard band hit detection
+    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root_x, root_y, active_drag_window);
+
+    // Phase 2: Resolve pointer focus and hovered window
+    let (pointer_focus, hovered_win) =
+        resolve_pointer_focus(wm, state, in_bar_band, in_bar_guard_band);
+
+    // Phase 3: Handle resize drag motion (early return path)
+    if handle_resize_drag_motion(wm, state, pointer_handle, pointer_focus.clone(), time_msec) {
+        return;
+    }
+
+    // Phase 4: Handle bar interaction (early return path)
+    let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+    if handle_bar_motion(
+        wm,
+        state,
+        pointer_handle,
+        pointer_focus.clone(),
+        in_bar_band,
+        bar_pos,
+        time_msec,
+    ) {
+        return;
+    }
+
+    // Phase 5: Update hover resize state for floating windows
+    let suppress_hover_focus = update_hover_resize_state(
+        wm,
+        root_x,
+        root_y,
+        hovered_win,
+        active_drag_window.is_none(),
+    );
+
+    // Phase 6: Update pointer focus based on drag state
+    update_pointer_focus(wm, active_drag_window, hovered_win, suppress_hover_focus);
+
+    let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+
+    // Phase 7: Handle tag/title drag motion
+    handle_wm_drag_motion(wm, keyboard_handle, root_x, root_y);
+
+    // Phase 8: Dispatch final motion event to Smithay
+    let focus =
+        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+
+    let serial = SERIAL_COUNTER.next_serial();
+    let motion = smithay::input::pointer::MotionEvent {
+        location: pointer_location,
+        serial,
+        time: time_msec,
+    };
+    pointer_handle.motion(state, focus, &motion);
+    pointer_handle.frame(state);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper functions for dispatch_pointer_motion
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Compute whether the pointer is in the bar area or guard band below it.
+fn compute_bar_hit(
+    wm: &Wm,
+    root_x: i32,
+    root_y: i32,
+    active_drag_window: Option<WindowId>,
+) -> (bool, bool) {
+    crate::types::find_monitor_by_rect(
         wm.g.monitors.monitors(),
         &Rect {
             x: root_x,
@@ -346,7 +418,20 @@ fn dispatch_pointer_motion(
             && root_y < mon.bar_y + bar_h + guard_h;
         (in_bar, in_guard)
     })
-    .unwrap_or((false, false));
+    .unwrap_or((false, false))
+}
+
+/// Resolve pointer focus and hovered window based on bar hit state.
+fn resolve_pointer_focus(
+    wm: &Wm,
+    state: &WaylandState,
+    in_bar_band: bool,
+    in_bar_guard_band: bool,
+) -> (
+    Option<(WlSurface, Point<i32, smithay::utils::Logical>)>,
+    Option<WindowId>,
+) {
+    let pointer_location = state.pointer_location;
     let mut pointer_focus = if in_bar_band || in_bar_guard_band {
         state.layer_surface_under_pointer(pointer_location)
     } else {
@@ -376,28 +461,57 @@ fn dispatch_pointer_motion(
         }
     }
 
-    if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
-        // During an active resize drag, still forward motion to Smithay so
-        // the pointer protocol stays in sync, but skip focus updates.
-        let serial = SERIAL_COUNTER.next_serial();
-        let motion = smithay::input::pointer::MotionEvent {
-            location: pointer_location,
-            serial,
-            time: time_msec,
-        };
-        let focus = pointer_focus
-            .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-        pointer_handle.motion(state, focus, &motion);
-        pointer_handle.frame(state);
-        return;
+    (pointer_focus, hovered_win)
+}
+
+/// Handle resize drag motion. Returns true if handled (early return).
+fn handle_resize_drag_motion(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    pointer_focus: Option<(WlSurface, Point<i32, smithay::utils::Logical>)>,
+    time_msec: u32,
+) -> bool {
+    let pointer_location = state.pointer_location;
+    if !wayland_hover_resize_drag_motion(
+        wm,
+        pointer_location.x.round() as i32,
+        pointer_location.y.round() as i32,
+    ) {
+        return false;
     }
 
-    let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+    // During an active resize drag, still forward motion to Smithay so
+    // the pointer protocol stays in sync, but skip focus updates.
+    let serial = SERIAL_COUNTER.next_serial();
+    let motion = smithay::input::pointer::MotionEvent {
+        location: pointer_location,
+        serial,
+        time: time_msec,
+    };
+    let focus =
+        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+    pointer_handle.motion(state, focus, &motion);
+    pointer_handle.frame(state);
+    true
+}
+
+/// Handle bar motion. Returns true if handled (early return).
+fn handle_bar_motion(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    pointer_focus: Option<(WlSurface, Point<i32, smithay::utils::Logical>)>,
+    in_bar_band: bool,
+    bar_pos: Option<BarPosition>,
+    time_msec: u32,
+) -> bool {
+    let pointer_location = state.pointer_location;
     let is_drag = wm.g.drag.title.active || wm.g.drag.hover_resize.active || wm.g.drag.tag.active;
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
-            return;
+            return true;
         };
         if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
             clear_wayland_hover_resize_offer(&mut ctx);
@@ -412,45 +526,67 @@ fn dispatch_pointer_motion(
         };
         pointer_handle.motion(state, focus, &motion);
         pointer_handle.frame(state);
-        return;
+        return true;
+    }
+    false
+}
+
+/// Update hover resize state for floating windows. Returns whether to suppress hover focus.
+fn update_hover_resize_state(
+    wm: &mut Wm,
+    root_x: i32,
+    root_y: i32,
+    hovered_win: Option<WindowId>,
+    no_active_drag: bool,
+) -> bool {
+    if !no_active_drag {
+        return false;
     }
 
-    let active_drag_window = wayland_active_drag_window(wm);
-    let mut suppress_hover_focus = false;
-    if active_drag_window.is_none() {
-        let selected_floating =
-            wm.g.selected_win()
-                .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.is_floating)))
-                .is_some_and(|(_, is_floating)| is_floating);
-        let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
-        if selected_floating {
-            suppress_hover_focus = !hovered_is_selected;
-            let selected_offer = update_wayland_selected_resize_offer(wm, root_x, root_y).is_some();
-            if selected_offer {
-                suppress_hover_focus = true;
-            } else if !hovered_is_selected {
-                let ctx = wm.ctx();
-                let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
-                    return;
-                };
-                if let Some((_, dir)) = crate::mouse::hover::selected_hover_resize_target_at(
-                    &crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                    root_x,
-                    root_y,
-                ) {
-                    set_cursor_resize_wayland(&mut ctx, Some(dir));
-                    ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
-                    ctx.core.g.drag.resize_direction = Some(dir);
-                    suppress_hover_focus = true;
-                } else if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
-                    clear_wayland_hover_resize_offer(&mut ctx);
-                }
-            }
-        } else {
-            let _ = update_wayland_selected_resize_offer(wm, root_x, root_y);
+    let selected_floating =
+        wm.g.selected_win()
+            .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.is_floating)))
+            .is_some_and(|(_, is_floating)| is_floating);
+    let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
+
+    if !selected_floating {
+        let _ = update_wayland_selected_resize_offer(wm, root_x, root_y);
+        return false;
+    }
+
+    let mut suppress_hover_focus = !hovered_is_selected;
+    let selected_offer = update_wayland_selected_resize_offer(wm, root_x, root_y).is_some();
+    if selected_offer {
+        suppress_hover_focus = true;
+    } else if !hovered_is_selected {
+        let ctx = wm.ctx();
+        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+            return suppress_hover_focus;
+        };
+        if let Some((_, dir)) = crate::mouse::hover::selected_hover_resize_target_at(
+            &crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+            root_x,
+            root_y,
+        ) {
+            set_cursor_resize_wayland(&mut ctx, Some(dir));
+            ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
+            ctx.core.g.drag.resize_direction = Some(dir);
+            suppress_hover_focus = true;
+        } else if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
+            clear_wayland_hover_resize_offer(&mut ctx);
         }
     }
 
+    suppress_hover_focus
+}
+
+/// Update pointer focus based on drag state.
+fn update_pointer_focus(
+    wm: &mut Wm,
+    active_drag_window: Option<WindowId>,
+    hovered_win: Option<WindowId>,
+    suppress_hover_focus: bool,
+) {
     if let Some(lock_win) = active_drag_window {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
@@ -467,9 +603,15 @@ fn dispatch_pointer_motion(
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
         crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false);
     }
+}
 
-    let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
-
+/// Handle tag and title drag motion.
+fn handle_wm_drag_motion(
+    wm: &mut Wm,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    root_x: i32,
+    root_y: i32,
+) {
     if wm.g.drag.tag.active {
         let mut ctx = wm.ctx();
         if !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y) {
@@ -482,18 +624,6 @@ fn dispatch_pointer_motion(
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
     }
-
-    let focus =
-        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-
-    let serial = SERIAL_COUNTER.next_serial();
-    let motion = smithay::input::pointer::MotionEvent {
-        location: pointer_location,
-        serial,
-        time: time_msec,
-    };
-    pointer_handle.motion(state, focus, &motion);
-    pointer_handle.frame(state);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -541,7 +671,8 @@ pub fn handle_pointer_button<B: InputBackend>(
 
         // Update focus before dispatching client button bindings so callbacks
         // (e.g. Super+Left move) operate on the window under the cursor.
-        if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location) {
+        if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location)
+        {
             // Set both keyboard and pointer focus on the layer surface
             keyboard_handle.set_focus(
                 state,
@@ -549,7 +680,10 @@ pub fn handle_pointer_button<B: InputBackend>(
                 serial,
             );
             // Also set pointer focus so the layer surface receives mouse events
-            let focus = Some((PointerFocusTarget::WlSurface(layer_surface), location.to_f64()));
+            let focus = Some((
+                PointerFocusTarget::WlSurface(layer_surface),
+                location.to_f64(),
+            ));
             let motion = smithay::input::pointer::MotionEvent {
                 location: pointer_location.clone(),
                 serial,

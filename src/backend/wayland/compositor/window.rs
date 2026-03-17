@@ -613,8 +613,8 @@ impl WaylandState {
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {
             let Some(output_geo) = self.space.output_geometry(output) else {
-                    continue;
-                };
+                continue;
+            };
             let map = layer_map_for_output(output);
             for layer in map.layers().rev() {
                 let Some(geo) = map.layer_geometry(layer) else {

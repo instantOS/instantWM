@@ -6,9 +6,8 @@ use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEv
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::input::{
-    handle_keyboard, handle_pointer_axis, handle_pointer_button,
-    handle_pointer_motion, motion_event_from_libinput_absolute,
-    motion_event_from_libinput_relative,
+    handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
+    motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
 };
 use crate::wm::Wm;
 
@@ -131,24 +130,12 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::PointerMotion { event } => {
             let motion_event = motion_event_from_libinput_relative(event);
-            handle_pointer_motion(
-                wm,
-                state,
-                &pointer_handle,
-                &keyboard_handle,
-                motion_event,
-            );
+            handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, motion_event);
             true
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let motion_event = motion_event_from_libinput_absolute(event, total_w, total_h);
-            handle_pointer_motion(
-                wm,
-                state,
-                &pointer_handle,
-                &keyboard_handle,
-                motion_event,
-            );
+            handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, motion_event);
             true
         }
         InputEvent::PointerButton { event } => {

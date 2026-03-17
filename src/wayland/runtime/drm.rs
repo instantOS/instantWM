@@ -122,11 +122,7 @@ pub fn run() -> ! {
             let any_input = state
                 .with_wm(|state, wm| {
                     crate::wayland::input::drm::dispatch_libinput_event(
-                        event,
-                        state,
-                        wm,
-                        total_w,
-                        total_h,
+                        event, state, wm, total_w, total_h,
                     )
                 })
                 .unwrap_or(false);
