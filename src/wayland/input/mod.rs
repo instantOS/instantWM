@@ -510,12 +510,22 @@ pub fn handle_pointer_button<B: InputBackend>(
 
         // Update focus before dispatching client button bindings so callbacks
         // (e.g. Super+Left move) operate on the window under the cursor.
-        if let Some((layer_surface, _)) = state.layer_surface_under_pointer(pointer_location) {
+        if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location) {
+            // Set both keyboard and pointer focus on the layer surface
             keyboard_handle.set_focus(
                 state,
-                Some(KeyboardFocusTarget::WlSurface(layer_surface)),
+                Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
                 serial,
             );
+            // Also set pointer focus so the layer surface receives mouse events
+            let focus = Some((PointerFocusTarget::WlSurface(layer_surface), location.to_f64()));
+            let motion = smithay::input::pointer::MotionEvent {
+                location: pointer_location.clone(),
+                serial,
+                time: event.time_msec(),
+            };
+            pointer_handle.motion(state, focus, &motion);
+            pointer_handle.frame(state);
         } else if let Some(win) = clicked_win {
             let mut ctx = wm.ctx();
             crate::focus::focus_soft(&mut ctx, Some(win));
