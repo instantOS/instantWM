@@ -322,7 +322,7 @@ fn run_event_loop(
 
             process_completed_crtcs(state, shared, output_surfaces);
 
-            arrange_layout(wm, state);
+            super::common::arrange_layout_if_dirty(wm, state);
 
             process_ipc(ipc_server, wm, shared);
 
@@ -393,44 +393,27 @@ fn process_completed_crtcs(
     }
 }
 
-/// Arrange layout when dirty and no animations are active.
-fn arrange_layout(wm: &mut Wm, state: &mut WaylandState) {
-    if !wm.g.dirty.layout {
-        return;
-    }
-    let mut ctx = wm.ctx();
-    if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
-        ctx.g.dirty.layout = false;
-        let selected_monitor_id = ctx.g.selected_monitor_id();
-        crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
-    }
-}
 
-/// Process IPC commands.
+
+/// Process IPC commands with DRM-specific output invalidation.
 fn process_ipc(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     wm: &mut Wm,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
-    if let Some(server) = ipc_server.as_mut() {
-        let handled = server.process_pending(wm);
-        if wm.g.dirty.monitor_config {
-            let mut ctx = wm.ctx();
-            crate::monitor::apply_monitor_config(&mut ctx);
-        }
-        if handled {
-            wm.g.dirty.layout = true;
-            wm.g.dirty.space = true;
-            shared.lock().unwrap().mark_all_dirty();
-        }
+    let handled = super::common::process_ipc_commands(ipc_server, wm);
+    super::common::apply_monitor_config_if_dirty(wm);
+    if handled {
+        // DRM-specific: also mark space and all outputs dirty
+        wm.g.dirty.space = true;
+        shared.lock().unwrap().mark_all_dirty();
     }
 }
 
 /// Process window animations and sync compositor space when dirty.
 fn process_animations(wm: &mut Wm, state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
-    if wm.g.dirty.space {
-        wm.g.dirty.space = false;
-        state.sync_space_from_globals();
+    if super::common::sync_space_if_dirty(wm, state) {
+        // DRM-specific: mark all outputs dirty after space sync
         shared.lock().unwrap().mark_all_dirty();
     }
     state.tick_window_animations();

@@ -57,12 +57,7 @@ pub fn render_frame(
     let mut render_elements = Vec::with_capacity(counts.total());
 
     // Shared: assemble elements in z-order
-    assemble_render_elements(
-        scene,
-        space_render_elements,
-        num_upper,
-        &mut render_elements,
-    );
+    super::assemble_scene_elements!(WaylandExtras, scene, space_render_elements, num_upper, render_elements);
 
     // Backend-specific: render with damage tracker
     let render_result = damage_tracker
@@ -95,45 +90,6 @@ pub fn render_frame(
 
     // Shared: send frame callbacks
     send_frame_callbacks(state, output, start_time.elapsed());
-}
-
-/// Assemble render elements in z-order (shared logic).
-fn assemble_render_elements(
-    scene: crate::wayland::common::CommonSceneElements,
-    space_render_elements: Vec<
-        smithay::desktop::space::SpaceRenderElements<
-            GlesRenderer,
-            WaylandSurfaceRenderElement<GlesRenderer>,
-        >,
-    >,
-    num_upper: usize,
-    elements: &mut Vec<WaylandExtras>,
-) {
-    // 1. Overlays (dmenu, popups)
-    for elem in scene.overlays {
-        elements.push(WaylandExtras::Surface(elem));
-    }
-
-    // 2. Upper layer shells (Overlay / Top)
-    let mut space_iter = space_render_elements.into_iter();
-    for elem in space_iter.by_ref().take(num_upper) {
-        elements.push(WaylandExtras::Space(elem));
-    }
-
-    // 3. Status Bar
-    for elem in scene.bar {
-        elements.push(WaylandExtras::Memory(elem));
-    }
-
-    // 4. Borders
-    for elem in scene.borders {
-        elements.push(WaylandExtras::Solid(elem));
-    }
-
-    // 5. Windows and lower layer shells (Bottom / Background)
-    for elem in space_iter {
-        elements.push(WaylandExtras::Space(elem));
-    }
 }
 
 // Backend-specific: cursor handling via winit window API

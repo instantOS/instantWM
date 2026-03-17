@@ -653,12 +653,7 @@ pub fn render_drm_output(
     }
 
     // Shared: assemble remaining elements in z-order
-    assemble_render_elements_drm(
-        scene,
-        space_render_elements,
-        num_upper,
-        &mut render_elements,
-    );
+    super::assemble_scene_elements!(DrmExtras, scene, space_render_elements, num_upper, render_elements);
 
     let render_result = entry.damage_tracker.render_output(
         renderer,
@@ -729,41 +724,4 @@ fn build_cursor_elements(
     custom_elements
 }
 
-/// Assemble render elements in z-order (mirrors winit's assemble_render_elements).
-fn assemble_render_elements_drm(
-    scene: crate::wayland::common::CommonSceneElements,
-    space_render_elements: Vec<
-        smithay::desktop::space::SpaceRenderElements<
-            GlesRenderer,
-            WaylandSurfaceRenderElement<GlesRenderer>,
-        >,
-    >,
-    num_upper: usize,
-    elements: &mut Vec<DrmExtras>,
-) {
-    // 1. Overlays (dmenu, popups)
-    for elem in scene.overlays {
-        elements.push(DrmExtras::Surface(elem));
-    }
 
-    // 2. Upper layer shells (Overlay / Top)
-    let mut space_iter = space_render_elements.into_iter();
-    for elem in space_iter.by_ref().take(num_upper) {
-        elements.push(DrmExtras::Space(elem));
-    }
-
-    // 3. Status Bar
-    for elem in scene.bar {
-        elements.push(DrmExtras::Memory(elem));
-    }
-
-    // 4. Borders
-    for elem in scene.borders {
-        elements.push(DrmExtras::Solid(elem));
-    }
-
-    // 5. Windows and lower layer shells (Bottom / Background)
-    for elem in space_iter {
-        elements.push(DrmExtras::Space(elem));
-    }
-}

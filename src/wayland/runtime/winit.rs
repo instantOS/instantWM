@@ -146,36 +146,16 @@ pub fn run() -> ! {
                 _ => {}
             });
 
-            if wm.g.dirty.layout {
-                let mut ctx = wm.ctx();
-                if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
-                    ctx.g.dirty.layout = false;
-                    let selected_monitor_id = ctx.g.selected_monitor_id();
-                    crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
-                }
-            }
-            if let Some(server) = ipc_server.as_mut() {
-                let handled_ipc_command = server.process_pending(&mut wm);
-                if handled_ipc_command {
-                    // Force a layout arrangement and redraw if an IPC command modified state
-                    wm.g.dirty.layout = true;
-                }
-            }
-
-            if wm.g.dirty.monitor_config {
-                let mut ctx = wm.ctx();
-                crate::monitor::apply_monitor_config(&mut ctx);
-            }
+            super::common::arrange_layout_if_dirty(&mut wm, state);
+            super::common::process_ipc_commands(&mut ipc_server, &mut wm);
+            super::common::apply_monitor_config_if_dirty(&mut wm);
 
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
             wm.g.dirty.input_config = false;
 
-            if wm.g.dirty.space {
-                wm.g.dirty.space = false;
-                state.sync_space_from_globals();
-            }
+            super::common::sync_space_if_dirty(&mut wm, state);
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
